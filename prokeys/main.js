@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Smart Abbreviation Expander (Shift+Space) — No Preview, Alt+P Palette + Gemini Correct (Alt+G)
 // @namespace    https://github.com/your-namespace
-// @version      1.6.0
-// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Now with Export/Import (merge/replace) of dictionary.
+// @version      1.6.1
+// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Now with Export/Import of dictionary (imports are merged).
 // @author       You
 // @match        *://*/*
 // @grant        GM_getValue
@@ -122,8 +122,7 @@
     GMX.registerMenuCommand('Open Abbreviation Palette', openPalette);
     GMX.registerMenuCommand('Edit Dictionary (JSON)', openPaletteEditor);
     GMX.registerMenuCommand('Export Dictionary (.json)', exportDict);
-    GMX.registerMenuCommand('Import Dictionary (Merge)', () => importDict('merge'));
-    GMX.registerMenuCommand('Import Dictionary (Replace)', () => importDict('replace'));
+    GMX.registerMenuCommand('Import Dictionary', () => importDict());
     GMX.registerMenuCommand('Reset Dictionary to Defaults', async () => setDict(DEFAULT_DICT, 'Dictionary reset to defaults.'));
     GMX.registerMenuCommand('Gemini: Correct Selection/Field (Alt+G)', triggerGeminiCorrection);
     GMX.registerMenuCommand('Gemini: Set Tone (neutral/friendly/formal/casual/concise)', async () => {
@@ -447,15 +446,15 @@
     document.documentElement.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast('Dictionary exported.');
   }
-  async function importDict(mode = 'merge') {
+  async function importDict() {
     const file = await pickFile('.json'); if (!file) return;
     try {
       const text = await file.text(); let obj = JSON.parse(text);
       if (obj && typeof obj === 'object' && obj.dict && typeof obj.dict === 'object') obj = obj.dict; // allow { dict: {...} }
       const imported = normalizeDict(obj); const count = Object.keys(imported).length;
       if (!count) return toast('Import failed: no entries detected.');
-      const next = mode === 'replace' ? imported : { ...state.dict, ...imported };
-      await setDict(next, `Imported ${count} entr${count === 1 ? 'y' : 'ies'} (${mode}).`);
+      const next = { ...state.dict, ...imported };
+      await setDict(next, `Imported ${count} entr${count === 1 ? 'y' : 'ies'}.`);
       const editor = paletteEl?.querySelector('.sae-editor'); const editBtn = paletteEl?.querySelector('.sae-header-actions [data-action="edit"]');
       if (editor?.classList.contains('open')) { editor.value = JSON.stringify(state.dict, null, 2); if (editBtn) editBtn.textContent = 'Save JSON'; }
     } catch (err) { console.warn('Import failed:', err); toast('Import failed: invalid JSON.'); }
@@ -471,8 +470,7 @@
           <div class="sae-header-actions">
             <button data-action="edit">Edit JSON</button>
             <button data-action="export">Export</button>
-            <button data-action="import-merge">Import (Merge)</button>
-            <button data-action="import-replace">Import (Replace)</button>
+            <button data-action="import">Import</button>
             <button data-action="reset">Reset</button>
             <button data-action="close">Close</button>
           </div>
@@ -517,8 +515,7 @@
       edit: () => toggleEditor(editor.classList.contains('open')),
       reset: () => setDict(DEFAULT_DICT, 'Dictionary reset.'),
       export: exportDict,
-      'import-merge': () => importDict('merge'),
-      'import-replace': () => importDict('replace'),
+      'import': () => importDict(),
     };
 
     actions.addEventListener('click', (e) => {
