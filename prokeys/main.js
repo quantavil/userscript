@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Smart Abbreviation Expander (Shift+Space) — Best of Both
+// @name         Smart Abbreviation Expander (Shift+Space) — No Preview, Alt+P Palette
 // @namespace    https://github.com/your-namespace
-// @version      1.1.0
-// @description  Expand abbreviations with Shift+Space, palette (Alt+Shift+Space), preview, {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable, with robust CE insertion and InputEvent dispatch.
+// @version      1.2.0
+// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion.
 // @author       You
 // @match        *://*/*
 // @grant        GM_getValue
@@ -20,35 +20,24 @@
   // Config
   // ----------------------
   const CONFIG = {
-    trigger: { shift: true, alt: false, ctrl: false, meta: false },  // Shift+Space
-    palette: { shift: true, alt: true, ctrl: false, meta: false },   // Alt+Shift+Space
-    preview: { enabled: true, confirmKeys: ['Enter', 'Tab'], cancelKeys: ['Escape'], confirmWithShiftSpace: true },
+    trigger: { shift: true, alt: false, ctrl: false, meta: false },      // Shift+Space
+    palette: { code: 'KeyP', alt: true, shift: false, ctrl: false, meta: false }, // Alt+P
     maxAbbrevLen: 80,
     styleId: 'sae-styles',
-    storeKeys: {
-      dict: 'sae.dict.v1',
-      preview: 'sae.preview.enabled.v1',
-    },
+    storeKeys: { dict: 'sae.dict.v1' },
     toast: { throttleMs: 3000 },
     clipboardReadTimeoutMs: 350,
   };
 
   // ----------------------
-  // Default dictionary (edit via palette JSON editor)
+  // Default dictionary
   // ----------------------
   const DEFAULT_DICT = {
-    // quick chats
     brb: 'Be right back.',
     ty: 'Thank you!',
     hth: 'Hope this helps!',
-
-    // dev/general
     opt: 'Optional: {{cursor}}',
-
-    // dynamic date/time example
     log: 'Log Entry - {{date:iso}} {{time}}: {{cursor}}',
-
-    // clipboard example
     track: 'The tracking number for your order is {{clipboard}}. {{cursor}}',
     dt: 'Today is {{day}}, {{date:long}} at {{time}}.',
   };
@@ -79,10 +68,7 @@
   // ----------------------
   const state = {
     dict: null,
-    previewEnabled: CONFIG.preview.enabled,
     lastEditable: null,
-    pendingPreview: null, // {ctx, tokenInfo, text, cursorIndex, abort}
-    _previewHandler: null,
     _lastToastAt: 0,
   };
 
@@ -104,8 +90,6 @@
       white-space: pre-wrap;
       pointer-events: auto;
     }
-    .sae-bubble .sae-preview-text { white-space: pre-wrap; font-size: 13px; }
-    .sae-bubble .sae-hint { opacity: .7; margin-top: 6px; font-size: 12px; }
     .sae-palette {
       position: fixed;
       z-index: 2147483647;
@@ -191,35 +175,31 @@
 
   async function init() {
     state.dict = normalizeDict(await GMX.getValue(CONFIG.storeKeys.dict, DEFAULT_DICT)) || normalizeDict(DEFAULT_DICT);
-    state.previewEnabled = !!(await GMX.getValue(CONFIG.storeKeys.preview, CONFIG.preview.enabled));
 
     GMX.registerMenuCommand('Open Abbreviation Palette', openPalette);
-    GMX.registerMenuCommand('Toggle Preview', async () => {
-      state.previewEnabled = !state.previewEnabled;
-      await GMX.setValue(CONFIG.storeKeys.preview, state.previewEnabled);
-      toast(`Preview ${state.previewEnabled ? 'enabled' : 'disabled'}`);
-      updatePalettePreviewToggle();
-    });
     GMX.registerMenuCommand('Edit Dictionary (JSON)', openPaletteEditor);
     GMX.registerMenuCommand('Reset Dictionary to Defaults', async () => {
       state.dict = normalizeDict(DEFAULT_DICT);
       await GMX.setValue(CONFIG.storeKeys.dict, state.dict);
       toast('Dictionary reset to defaults.');
-      if (paletteEl) renderList();
+      if (paletteEl && paletteEl.__render) paletteEl.__render();
     });
 
     document.addEventListener('keydown', onKeyDownCapture, true);
-    window.addEventListener('blur', () => clearPreview());
   }
 
   // ----------------------
   // Key handling
   // ----------------------
-  function isSpaceKey(e) {
-    return e.key === ' ' || e.code === 'Space' || e.key === 'Spacebar';
+  function matchSpaceHotkey(e, spec) {
+    return (e.key === ' ' || e.code === 'Space' || e.key === 'Spacebar')
+      && !!e.shiftKey === !!spec.shift
+      && !!e.altKey === !!spec.alt
+      && !!e.ctrlKey === !!spec.ctrl
+      && !!e.metaKey === !!spec.meta;
   }
-  function matchHotkey(e, spec) {
-    return isSpaceKey(e)
+  function matchCodeHotkey(e, spec) {
+    return e.code === spec.code
       && !!e.shiftKey === !!spec.shift
       && !!e.altKey === !!spec.alt
       && !!e.ctrlKey === !!spec.ctrl
@@ -228,16 +208,13 @@
 
   function isEditable(el) {
     if (!el) return null;
-    // Inputs and textareas
     if (el instanceof HTMLTextAreaElement) return el;
     if (el instanceof HTMLInputElement) {
       const type = (el.type || 'text').toLowerCase();
-      // Narrow allowlist; skip password
-      const allow = new Set(['text', 'search', 'url,', 'url', 'email', 'tel', 'number']);
+      const allow = new Set(['text', 'search', 'url', 'email', 'tel']); // exclude password/number
       if (type === 'password' || !allow.has(type)) return null;
       return el;
     }
-    // Robust CE root (handles inherited and plaintext-only)
     let node = el;
     while (node && node !== document.documentElement) {
       if (node.nodeType === 1 && node.isContentEditable) return node;
@@ -249,38 +226,24 @@
   async function onKeyDownCapture(e) {
     if (e.defaultPrevented || e.isComposing) return;
 
-    // Palette (Alt+Shift+Space)
-    if (matchHotkey(e, CONFIG.palette)) {
+    // Ignore events inside palette UI
+    if (paletteEl && paletteEl.classList.contains('open') && paletteEl.contains(e.target)) return;
+
+    // Palette (Alt+P)
+    if (matchCodeHotkey(e, CONFIG.palette)) {
       const target = isEditable(e.target);
-      if (!target) return;
+      if (!target) return; // only open when an editable is focused
       e.preventDefault(); e.stopPropagation();
       state.lastEditable = captureEditableContext();
       openPalette();
       return;
     }
 
-    // Preview confirmation handler (inside bubble)
-    if (state.pendingPreview) {
-      if (CONFIG.preview.cancelKeys.includes(e.key)) {
-        e.preventDefault(); e.stopPropagation();
-        clearPreview();
-        return;
-      }
-      if (CONFIG.preview.confirmKeys.includes(e.key) ||
-          (CONFIG.preview.confirmWithShiftSpace && matchHotkey(e, CONFIG.trigger))) {
-        e.preventDefault(); e.stopPropagation();
-        const { ctx, tokenInfo, text, cursorIndex } = state.pendingPreview;
-        clearPreview();
-        await performExpansion(ctx, tokenInfo, { text, cursorIndex });
-        return;
-      }
-    }
-
     // Expand (Shift+Space)
-    if (matchHotkey(e, CONFIG.trigger)) {
+    if (matchSpaceHotkey(e, CONFIG.trigger)) {
       const target = isEditable(e.target);
-      if (!target) return; // not an editable target
-      e.preventDefault(); e.stopPropagation(); // avoid Shift+Space page-up
+      if (!target) return;
+      e.preventDefault(); e.stopPropagation(); // prevent page up
 
       const ctx = captureEditableContext();
       if (!ctx || !ctx.collapsed) return;
@@ -295,13 +258,7 @@
 
       try {
         const rendered = await renderTemplate(tmpl); // {text, cursorIndex}
-        if (!rendered) return;
-
-        if (state.previewEnabled) {
-          await showPreviewAndMaybeExpand(ctx, tokenInfo, rendered);
-        } else {
-          await performExpansion(ctx, tokenInfo, rendered);
-        }
+        await performExpansion(ctx, tokenInfo, rendered);
       } catch (err) {
         console.warn('SAE expand error:', err);
       }
@@ -325,16 +282,11 @@
         collapsed: (el.selectionStart === el.selectionEnd),
       };
     } else {
-      const root = el; // contenteditable root
+      const root = el;
       const sel = getSafeSelection();
       if (!sel || sel.rangeCount === 0) return null;
       const range = sel.getRangeAt(0);
-      return {
-        kind: 'ce',
-        root,
-        range: range.cloneRange(),
-        collapsed: range.collapsed,
-      };
+      return { kind: 'ce', root, range: range.cloneRange(), collapsed: range.collapsed };
     }
   }
 
@@ -369,7 +321,6 @@
       const caretRange = sel.getRangeAt(0);
       if (!caretRange.collapsed) return null;
 
-      // Prefix text up to caret
       const prefixRange = document.createRange();
       prefixRange.selectNodeContents(ctx.root);
       try {
@@ -384,14 +335,12 @@
         if (++count > CONFIG.maxAbbrevLen) break;
       }
       const token = prefix.slice(Math.max(0, i + 1));
-      // Build a range covering the token (last `token.length` chars)
       const tokenRange = caretRange.cloneRange();
       moveRangeStartByChars(tokenRange, token.length, ctx.root);
       return { token, tokenRange };
     }
   }
 
-  // Move range start N chars backward within `root`.
   function moveRangeStartByChars(range, n, root) {
     let remaining = n;
     while (remaining > 0) {
@@ -407,14 +356,10 @@
         const prev = previousTextNode(root, sc);
         if (!prev) break;
         range.setStart(prev, prev.nodeValue.length);
-      } else { // element node
-        // find previous text node before (sc, so)
+      } else {
         let candidate = null;
-        if (so > 0) {
-          candidate = lastTextDescendant(sc.childNodes[so - 1]);
-        } else {
-          candidate = previousTextNode(root, sc);
-        }
+        if (so > 0) candidate = lastTextDescendant(sc.childNodes[so - 1]);
+        else candidate = previousTextNode(root, sc);
         if (!candidate) break;
         range.setStart(candidate, candidate.nodeValue.length);
       }
@@ -469,24 +414,14 @@
         if (cursorIndex === -1) cursorIndex = out.length;
         continue;
       }
-      if (tag === 'date') {
-        out += formatDate(now, arg);
-        continue;
-      }
-      if (tag === 'time') {
-        out += formatTime(now, arg);
-        continue;
-      }
-      if (tag === 'day') {
-        out += formatDay(now, arg);
-        continue;
-      }
+      if (tag === 'date') { out += formatDate(now, arg); continue; }
+      if (tag === 'time') { out += formatTime(now, arg); continue; }
+      if (tag === 'day')  { out += formatDay(now, arg); continue; }
       if (tag === 'clipboard') {
         const clip = await readClipboardSafe();
         out += clip ?? '';
         continue;
       }
-      // Unknown tag: keep literal
       out += m[0];
     }
     return { text: out, cursorIndex: cursorIndex >= 0 ? cursorIndex : out.length };
@@ -508,9 +443,7 @@
   }
   function formatTime(d, arg) {
     const mode = (arg || '12').toLowerCase();
-    if (mode === '24' || mode === '24h') {
-      return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-    }
+    if (mode === '24' || mode === '24h') return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
     let h = d.getHours();
     const m = pad2(d.getMinutes());
     const ampm = h >= 12 ? 'PM' : 'AM';
@@ -518,9 +451,7 @@
     return `${pad2(h)}:${m} ${ampm}`;
   }
   function formatDay(d, arg) {
-    const opts = (!arg || arg.toLowerCase() === 'long')
-      ? { weekday: 'long' }
-      : { weekday: 'short' };
+    const opts = (!arg || arg.toLowerCase() === 'long') ? { weekday: 'long' } : { weekday: 'short' };
     return d.toLocaleDateString(undefined, opts);
   }
 
@@ -533,90 +464,11 @@
         const t = await navigator.clipboard.readText();
         return t ?? '';
       } catch {
-        if (!timedOut) throttledToast('Clipboard read blocked — allow clipboard permission to use {{clipboard}}.');
+        if (!timedOut) throttledToast('Clipboard read blocked — allow permission to use {{clipboard}}.');
         return '';
       }
     })();
     return await Promise.race([read, timeout]);
-  }
-
-  // ----------------------
-  // Preview bubble
-  // ----------------------
-  async function showPreviewAndMaybeExpand(ctx, tokenInfo, rendered) {
-    clearPreview();
-
-    const bubble = document.createElement('div');
-    bubble.className = 'sae-bubble';
-    bubble.innerHTML = `
-      <div class="sae-preview-text"></div>
-      <div class="sae-hint">Enter/Tab/Shift+Space: insert · Esc: cancel</div>
-    `;
-    bubble.querySelector('.sae-preview-text').textContent = rendered.text;
-
-    document.documentElement.appendChild(bubble);
-    positionBubbleNearCaret(bubble, ctx);
-
-    const abort = () => {
-      bubble.remove();
-      if (state.pendingPreview && state.pendingPreview.abort === abort) {
-        state.pendingPreview = null;
-        removePreviewKeyHandler();
-      }
-    };
-
-    state.pendingPreview = { ctx, tokenInfo, text: rendered.text, cursorIndex: rendered.cursorIndex, abort };
-    addPreviewKeyHandler(async (e) => {
-      if (CONFIG.preview.cancelKeys.includes(e.key)) {
-        e.preventDefault(); e.stopPropagation();
-        abort();
-      } else if (
-        CONFIG.preview.confirmKeys.includes(e.key) ||
-        (CONFIG.preview.confirmWithShiftSpace && matchHotkey(e, CONFIG.trigger))
-      ) {
-        e.preventDefault(); e.stopPropagation();
-        const { ctx, tokenInfo } = state.pendingPreview || {};
-        abort();
-        await performExpansion(ctx, tokenInfo, rendered);
-      }
-    });
-  }
-  function positionBubbleNearCaret(el, ctx) {
-    // Prefer caret rect for CE; otherwise element rect
-    let rect = null;
-    if (ctx.kind === 'ce') {
-      const sel = getSafeSelection();
-      if (sel && sel.rangeCount) {
-        const r = sel.getRangeAt(0);
-        const cr = r.getBoundingClientRect();
-        if (cr && cr.width >= 0) rect = cr;
-      }
-    }
-    if (!rect) {
-      const host = ctx.kind === 'input' ? ctx.el : ctx.root;
-      rect = host.getBoundingClientRect();
-      // top-right of host
-      el.style.left = `${Math.round(rect.left + rect.width - 10)}px`;
-      el.style.top = `${Math.round(rect.top - 8)}px`;
-      return;
-    }
-    const x = rect.left;
-    const y = rect.bottom + 6;
-    el.style.left = `${Math.round(x)}px`;
-    el.style.top = `${Math.round(y)}px`;
-  }
-  function addPreviewKeyHandler(fn) {
-    document.addEventListener('keydown', fn, true);
-    state._previewHandler = fn;
-  }
-  function removePreviewKeyHandler() {
-    if (state._previewHandler) {
-      document.removeEventListener('keydown', state._previewHandler, true);
-      state._previewHandler = null;
-    }
-  }
-  function clearPreview() {
-    if (state.pendingPreview) state.pendingPreview.abort();
   }
 
   // ----------------------
@@ -627,13 +479,11 @@
       const { el } = ctx;
       const start = tokenInfo.tokenStart;
       const end = tokenInfo.tokenEnd;
-      el.setRangeText(rendered.text, start, end, 'end'); // replace and set caret at end
+      el.setRangeText(rendered.text, start, end, 'end');
       const caret = start + (rendered.cursorIndex ?? rendered.text.length);
       el.selectionStart = el.selectionEnd = caret;
       el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: rendered.text }));
-      return;
     } else {
-      // CE
       const sel = getSafeSelection();
       if (!sel) return;
       const r = tokenInfo.tokenRange.cloneRange();
@@ -649,7 +499,6 @@
       sel.removeAllRanges();
       sel.addRange(newRange);
 
-      // Dispatch input event on the CE root so frameworks react
       try {
         ctx.root.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: rendered.text }));
       } catch {
@@ -679,11 +528,10 @@
 
       if (idx < parts.length - 1) {
         frag.appendChild(document.createElement('br'));
-        pos += 1; // treat newline as single position
+        pos += 1;
       }
     });
 
-    // If cursorIndex is at end
     if (!cursorNode && lastNode) {
       cursorNode = lastNode;
       cursorOffset = lastNode.nodeValue.length;
@@ -707,7 +555,6 @@
         <div class="sae-panel-header">
           <input class="sae-search" type="search" placeholder="Search abbreviations…" />
           <div class="sae-header-actions">
-            <button data-action="toggle-preview">Preview: ${state.previewEnabled ? 'On' : 'Off'}</button>
             <button data-action="edit">Edit JSON</button>
             <button data-action="reset">Reset</button>
             <button data-action="close">Close</button>
@@ -715,7 +562,7 @@
         </div>
         <textarea class="sae-editor" spellcheck="false"></textarea>
         <div class="sae-list" tabindex="0"></div>
-        <div class="sae-footer">Alt+Shift+Space to open · Enter to insert · Esc to close</div>
+        <div class="sae-footer">Alt+P to open · Enter to insert · Esc to close</div>
       </div>
     `;
     document.documentElement.appendChild(wrap);
@@ -729,14 +576,8 @@
       const btn = e.target.closest('button'); if (!btn) return;
       const act = btn.dataset.action;
       if (act === 'close') closePalette();
-      if (act === 'toggle-preview') {
-        state.previewEnabled = !state.previewEnabled;
-        btn.textContent = `Preview: ${state.previewEnabled ? 'On' : 'Off'}`;
-        await GMX.setValue(CONFIG.storeKeys.preview, state.previewEnabled);
-      }
       if (act === 'edit') {
         if (editor.classList.contains('open')) {
-          // save
           try {
             const obj = JSON.parse(editor.value);
             state.dict = normalizeDict(obj);
@@ -748,7 +589,6 @@
             alert('Invalid JSON: ' + err.message);
           }
         } else {
-          // open editor
           editor.value = JSON.stringify(state.dict, null, 2);
           editor.classList.add('open');
         }
@@ -782,7 +622,6 @@
     async function selectAndInsert(key) {
       if (!state.lastEditable) state.lastEditable = captureEditableContext();
       closePalette();
-      // Insert template directly (no abbrev to remove)
       const tmpl = state.dict[key];
       if (!tmpl) return;
       const ctx = state.lastEditable || captureEditableContext();
@@ -845,6 +684,7 @@
     });
 
     renderList();
+    wrap.__render = () => renderList(search.value);
     paletteEl = wrap;
     return wrap;
   }
@@ -857,6 +697,7 @@
     p.querySelector('.sae-editor').classList.remove('open');
     p.querySelector('.sae-list').focus({ preventScroll: true });
     p.querySelector('.sae-search').focus({ preventScroll: true });
+    if (p.__render) p.__render();
   }
   function openPaletteEditor() {
     const p = ensurePalette();
@@ -869,32 +710,6 @@
   function closePalette() {
     if (paletteEl) paletteEl.classList.remove('open');
   }
-  function renderList() {
-    if (!paletteEl) return;
-    const search = paletteEl.querySelector('.sae-search');
-    const list = paletteEl.querySelector('.sae-list');
-    const q = (search.value || '').trim().toLowerCase();
-    const keys = Object.keys(state.dict).sort();
-    const items = q ? keys.filter(k => k.includes(q) || state.dict[k].toLowerCase().includes(q)) : keys;
-    list.innerHTML = '';
-    items.forEach((k, i) => {
-      const div = document.createElement('div');
-      div.className = 'sae-item' + (i === 0 ? ' active' : '');
-      div.dataset.key = k;
-      div.innerHTML = `<div class="sae-key">${escapeHtml(k)}</div><div class="sae-val">${escapeHtml(state.dict[k])}</div>`;
-      div.addEventListener('click', () => {
-        const active = paletteEl.querySelector('.sae-item.active');
-        active?.classList.remove('active');
-        div.classList.add('active');
-      });
-      list.appendChild(div);
-    });
-  }
-  function updatePalettePreviewToggle() {
-    if (!paletteEl) return;
-    const btn = paletteEl.querySelector('button[data-action="toggle-preview"]');
-    if (btn) btn.textContent = `Preview: ${state.previewEnabled ? 'On' : 'Off'}`;
-  }
 
   // ----------------------
   // Toast helper
@@ -905,7 +720,6 @@
     el.className = 'sae-bubble';
     el.textContent = msg;
     document.documentElement.appendChild(el);
-    // bottom-right
     const r = { left: Math.max(8, window.innerWidth - 320), top: Math.max(8, window.innerHeight - 80) };
     el.style.left = `${r.left}px`; el.style.top = `${r.top}px`;
     clearTimeout(toastTimer);
