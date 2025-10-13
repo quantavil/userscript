@@ -1,14 +1,16 @@
 // ==UserScript==
-// @name         Smart Abbreviation Expander (Shift+Space) — No Preview, Alt+P Palette
+// @name         Smart Abbreviation Expander (Shift+Space) — No Preview, Alt+P Palette + Gemini Correct (Alt+G)
 // @namespace    https://github.com/your-namespace
-// @version      1.2.0
-// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion.
+// @version      1.5.0
+// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion.
 // @author       You
 // @match        *://*/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_addStyle
+// @grant        GM_xmlhttpRequest
+// @connect      generativelanguage.googleapis.com
 // @run-at       document-start
 // @license      MIT
 // ==/UserScript==
@@ -22,11 +24,26 @@
     const CONFIG = {
         trigger: { shift: true, alt: false, ctrl: false, meta: false },      // Shift+Space
         palette: { code: 'KeyP', alt: true, shift: false, ctrl: false, meta: false }, // Alt+P
+        correct: { code: 'KeyG', alt: true, shift: false, ctrl: false, meta: false }, // Alt+G
         maxAbbrevLen: 80,
         styleId: 'sae-styles',
-        storeKeys: { dict: 'sae.dict.v1' },
+        storeKeys: {
+            dict: 'sae.dict.v1',
+            tone: 'sae.gemini.tone.v1',
+        },
         toast: { throttleMs: 3000 },
         clipboardReadTimeoutMs: 350,
+
+        // Gemini API config
+        // IMPORTANT: Put your Gemini API key below
+        gemini: {
+            endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
+            model: 'gemini-2.5-flash-lite', // fast & inexpensive
+            temperature: 0.15,
+            timeoutMs: 20000,
+            maxInputChars: 32000,
+            apiKey: 'AIzaSyBkbDlwdw4xUB9_wiwcNvXYnEGrLSlJcwU'
+        },
     };
 
     // ----------------------
@@ -61,6 +78,35 @@
         registerMenuCommand: (title, fn) => {
             if (typeof window.GM_registerMenuCommand === 'function') window.GM_registerMenuCommand(title, fn);
         },
+        request: (opts) => new Promise((resolve, reject) => {
+            const method = opts.method || 'GET';
+            const url = opts.url;
+            const headers = opts.headers || {};
+            const data = opts.data;
+            const timeout = opts.timeout || CONFIG.gemini.timeoutMs;
+
+            if (typeof window.GM_xmlhttpRequest === 'function') {
+                window.GM_xmlhttpRequest({
+                    method, url, headers, data, timeout,
+                    onload: (res) => resolve({ status: res.status, text: res.responseText }),
+                    onerror: () => reject(new Error('Network error')),
+                    ontimeout: () => reject(new Error('Request timed out')),
+                });
+            } else {
+                const controller = new AbortController();
+                const t = setTimeout(() => controller.abort(), timeout);
+                fetch(url, { method, headers, body: data, signal: controller.signal })
+                    .then(async res => {
+                        clearTimeout(t);
+                        const text = await res.text();
+                        resolve({ status: res.status, text });
+                    })
+                    .catch(err => {
+                        clearTimeout(t);
+                        reject(err);
+                    });
+            }
+        }),
     };
 
     // ----------------------
@@ -70,6 +116,7 @@
         dict: null,
         lastEditable: null,
         _lastToastAt: 0,
+        tone: 'neutral',
     };
 
     // ----------------------
@@ -175,6 +222,7 @@
 
     async function init() {
         state.dict = normalizeDict(await GMX.getValue(CONFIG.storeKeys.dict, DEFAULT_DICT)) || normalizeDict(DEFAULT_DICT);
+        state.tone = await GMX.getValue(CONFIG.storeKeys.tone, 'neutral');
 
         GMX.registerMenuCommand('Open Abbreviation Palette', openPalette);
         GMX.registerMenuCommand('Edit Dictionary (JSON)', openPaletteEditor);
@@ -183,6 +231,20 @@
             await GMX.setValue(CONFIG.storeKeys.dict, state.dict);
             toast('Dictionary reset to defaults.');
             if (paletteEl && paletteEl.__render) paletteEl.__render();
+        });
+
+        // Gemini menu: tone only (API key is embedded)
+        GMX.registerMenuCommand('Gemini: Correct Selection/Field (Alt+G)', triggerGeminiCorrection);
+        GMX.registerMenuCommand('Gemini: Set Tone (neutral/friendly/formal/casual/concise)', async () => {
+            const val = prompt('Tone (neutral, friendly, formal, casual, concise):', state.tone || 'neutral');
+            if (val != null) {
+                const t = (val || '').trim().toLowerCase();
+                const allowed = ['neutral', 'friendly', 'formal', 'casual', 'concise'];
+                if (!allowed.includes(t)) return toast('Invalid tone.');
+                state.tone = t;
+                await GMX.setValue(CONFIG.storeKeys.tone, state.tone);
+                toast(`Tone set to ${state.tone}.`);
+            }
         });
 
         document.addEventListener('keydown', onKeyDownCapture, true);
@@ -236,6 +298,15 @@
             e.preventDefault(); e.stopPropagation();
             state.lastEditable = captureEditableContext();
             openPalette();
+            return;
+        }
+
+        // Gemini Correct (Alt+G)
+        if (matchCodeHotkey(e, CONFIG.correct)) {
+            const target = isEditable(e.target);
+            if (!target) return;
+            e.preventDefault(); e.stopPropagation();
+            triggerGeminiCorrection();
             return;
         }
 
@@ -472,7 +543,7 @@
     }
 
     // ----------------------
-    // Perform expansion
+    // Perform abbreviation expansion
     // ----------------------
     async function performExpansion(ctx, tokenInfo, rendered) {
         if (ctx.kind === 'input') {
@@ -542,6 +613,174 @@
     function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
     // ----------------------
+    // Gemini correction
+    // ----------------------
+    async function triggerGeminiCorrection() {
+        const ctx = captureEditableContext();
+        if (!ctx) return;
+
+        let show = showBubble('Polishing text with Gemini…');
+
+        try {
+            if (ctx.kind === 'input') {
+                const el = ctx.el;
+                let start = el.selectionStart ?? 0;
+                let end = el.selectionEnd ?? 0;
+                if (start === end) { start = 0; end = el.value.length; }
+
+                const srcText = el.value.slice(start, end);
+                if (!srcText) { show.update('Nothing to rewrite.'); setTimeout(() => show.close(), 1200); return; }
+
+                const truncated = maybeTruncate(srcText, CONFIG.gemini.maxInputChars);
+                if (truncated.truncated) throttledToast(`Note: input truncated to ${CONFIG.gemini.maxInputChars} chars for correction.`);
+
+                const correctedRaw = await correctWithGemini(truncated.text, show);
+                if (correctedRaw == null) return; // error handled
+                const corrected = stripModelArtifacts(correctedRaw);
+
+                el.setRangeText(corrected, start, end, 'end');
+                const caret = start + corrected.length;
+                el.selectionStart = el.selectionEnd = caret;
+                el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data: corrected }));
+
+                show.update('Rewritten ✓');
+                setTimeout(() => show.close(), 900);
+            } else {
+                const root = ctx.root;
+                const sel = getSafeSelection();
+                if (!sel || sel.rangeCount === 0) { show.close(); return; }
+                let range = sel.getRangeAt(0).cloneRange();
+                if (range.collapsed) {
+                    range = document.createRange();
+                    range.selectNodeContents(root);
+                }
+                const srcText = range.toString();
+                if (!srcText) { show.update('Nothing to rewrite.'); setTimeout(() => show.close(), 1200); return; }
+
+                const truncated = maybeTruncate(srcText, CONFIG.gemini.maxInputChars);
+                if (truncated.truncated) throttledToast(`Note: input truncated to ${CONFIG.gemini.maxInputChars} chars for correction.`);
+
+                const correctedRaw = await correctWithGemini(truncated.text, show);
+                if (correctedRaw == null) return;
+                const corrected = stripModelArtifacts(correctedRaw);
+
+                range.deleteContents();
+                const { fragment, lastNode } = buildFragment(corrected, corrected.length);
+                range.insertNode(fragment);
+
+                // Place caret at end
+                const newRange = document.createRange();
+                if (lastNode) newRange.setStartAfter(lastNode); else newRange.setStart(range.startContainer, range.startOffset);
+                newRange.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(newRange);
+
+                try {
+                    root.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data: corrected }));
+                } catch {
+                    root.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+
+                show.update('Rewritten ✓');
+                setTimeout(() => show.close(), 900);
+            }
+        } catch (err) {
+            console.warn('Gemini correction error:', err);
+            show.update('AI Fix failed — check console.');
+            setTimeout(() => show.close(), 1400);
+        }
+    }
+
+    function maybeTruncate(text, max) {
+        if (text.length <= max) return { text, truncated: false };
+        return { text: text.slice(0, max), truncated: true };
+    }
+
+    async function correctWithGemini(text, bubble) {
+        const key = (CONFIG.gemini.apiKey || '').trim();
+        if (!key) {
+            if (bubble) bubble.update('Add your Gemini API key in CONFIG.gemini.apiKey (userscript).');
+            throttledToast('No Gemini API key set in script (CONFIG.gemini.apiKey).');
+            setTimeout(() => bubble && bubble.close(), 1400);
+            return null;
+        }
+        const model = CONFIG.gemini.model;
+        const url = `${CONFIG.gemini.endpoint}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+
+        const tone = (state.tone || 'neutral').toLowerCase();
+        const prompt = [
+            `You are a writing assistant.`,
+            `Task: Correct grammar, spelling, punctuation; improve clarity and flow.`,
+            `Tone: ${tone}. Preserve meaning. Keep the language and details.`,
+            `Do not add explanations or quotes. Return only the corrected text.`,
+            `Keep line breaks where reasonable.`,
+            ``,
+            `Text:`,
+            text
+        ].join('\n');
+
+        try {
+            const res = await GMX.request({
+                method: 'POST',
+                url,
+                headers: { 'Content-Type': 'application/json' },
+                data: JSON.stringify({
+                    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                    generationConfig: { temperature: CONFIG.gemini.temperature }
+                }),
+                timeout: CONFIG.gemini.timeoutMs,
+            });
+
+            if (res.status < 200 || res.status >= 300) {
+                console.warn('Gemini error HTTP', res.status, res.text);
+                if (bubble) bubble.update(`Gemini error: HTTP ${res.status}`);
+                throttledToast(`Gemini error: HTTP ${res.status}`);
+                setTimeout(() => bubble && bubble.close(), 1400);
+                return null;
+            }
+
+            let json;
+            try { json = JSON.parse(res.text); } catch {
+                if (bubble) bubble.update('Gemini: Parse error.');
+                throttledToast('Gemini: Failed to parse response.');
+                setTimeout(() => bubble && bubble.close(), 1400);
+                return null;
+            }
+
+            const cand = json.candidates && json.candidates[0];
+            const parts = cand && cand.content && cand.content.parts || [];
+            const out = parts.map(p => p.text || '').join('').trim();
+
+            if (!out) {
+                if (bubble) bubble.update('Gemini: Empty response.');
+                throttledToast('Gemini: Empty response.');
+                setTimeout(() => bubble && bubble.close(), 1400);
+                return null;
+            }
+            return out;
+        } catch (err) {
+            console.warn('Gemini request failed:', err);
+            if (bubble) bubble.update('Gemini request failed.');
+            throttledToast('Gemini request failed. Check connection.');
+            setTimeout(() => bubble && bubble.close(), 1400);
+            return null;
+        }
+    }
+
+    function stripModelArtifacts(s) {
+        if (!s) return s;
+        let out = String(s).trim();
+        // Strip code fences if any
+        const m = out.match(/^\s*```(?:\w+)?\s*([\s\S]*?)\s*```\s*$/);
+        if (m) out = m[1].trim();
+        // Strip leading/trailing quotes if entire block is quoted
+        if ((out.startsWith('"') && out.endsWith('"')) || (out.startsWith("'") && out.endsWith("'"))) {
+            out = out.slice(1, -1);
+        }
+        return out;
+    }
+
+    // ----------------------
     // Palette UI
     // ----------------------
     let paletteEl = null;
@@ -562,7 +801,7 @@
         </div>
         <textarea class="sae-editor" spellcheck="false"></textarea>
         <div class="sae-list" tabindex="0"></div>
-        <div class="sae-footer">Alt+P to open · Enter to insert · Esc to close</div>
+        <div class="sae-footer">Alt+P to open · Shift+Space to expand · Alt+G to correct grammar/tone</div>
       </div>
     `;
         document.documentElement.appendChild(wrap);
@@ -571,26 +810,33 @@
         const list = wrap.querySelector('.sae-list');
         const editor = wrap.querySelector('.sae-editor');
         const actions = wrap.querySelector('.sae-header-actions');
+        const editBtn = actions.querySelector('button[data-action="edit"]');
 
         actions.addEventListener('click', async (e) => {
             const btn = e.target.closest('button'); if (!btn) return;
             const act = btn.dataset.action;
-            if (act === 'close') closePalette();
+            if (act === 'close') {
+                closePalette();
+            }
             if (act === 'edit') {
                 if (editor.classList.contains('open')) {
+                    // Save JSON
                     try {
                         const obj = JSON.parse(editor.value);
                         state.dict = normalizeDict(obj);
                         await GMX.setValue(CONFIG.storeKeys.dict, state.dict);
                         renderList();
                         editor.classList.remove('open');
+                        editBtn.textContent = 'Edit JSON';
                         toast('Dictionary saved.');
                     } catch (err) {
                         alert('Invalid JSON: ' + err.message);
                     }
                 } else {
+                    // Open editor
                     editor.value = JSON.stringify(state.dict, null, 2);
                     editor.classList.add('open');
+                    editBtn.textContent = 'Save JSON';
                 }
             }
             if (act === 'reset') {
@@ -599,6 +845,7 @@
                     await GMX.setValue(CONFIG.storeKeys.dict, state.dict);
                     renderList();
                     editor.classList.remove('open');
+                    editBtn.textContent = 'Edit JSON';
                     toast('Dictionary reset.');
                 }
             }
@@ -621,23 +868,25 @@
 
         async function selectAndInsert(key) {
             if (!state.lastEditable) state.lastEditable = captureEditableContext();
-            closePalette();
-            const tmpl = state.dict[key];
-            if (!tmpl) return;
             const ctx = state.lastEditable || captureEditableContext();
-            if (!ctx || !ctx.collapsed) return;
+            closePalette();
+
+            const tmpl = state.dict[key];
+            if (!tmpl || !ctx) return;
             const rendered = await renderTemplate(tmpl);
+
             if (ctx.kind === 'input') {
                 const { el } = ctx;
-                const pos = el.selectionStart ?? 0;
-                el.setRangeText(rendered.text, pos, pos, 'end');
-                const caret = pos + (rendered.cursorIndex ?? rendered.text.length);
+                const posStart = el.selectionStart ?? ctx.start ?? 0;
+                const posEnd = el.selectionEnd ?? ctx.end ?? posStart;
+                el.setRangeText(rendered.text, posStart, posEnd, 'end');
+                const caret = posStart + (rendered.cursorIndex ?? rendered.text.length);
                 el.selectionStart = el.selectionEnd = caret;
-                el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: rendered.text }));
+                el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: (posEnd > posStart ? 'insertReplacementText' : 'insertText'), data: rendered.text }));
             } else {
                 const sel = getSafeSelection();
-                if (!sel) return;
-                const r = ctx.range.cloneRange();
+                const r = (ctx.range && ctx.range.cloneRange()) || (sel && sel.getRangeAt(0).cloneRange());
+                if (!r) return;
                 r.deleteContents();
                 const { fragment, cursorNode, cursorOffset, lastNode } = buildFragment(rendered.text, rendered.cursorIndex);
                 r.insertNode(fragment);
@@ -646,8 +895,8 @@
                 else if (lastNode) newRange.setStartAfter(lastNode);
                 else newRange.setStart(r.startContainer, r.startOffset);
                 newRange.collapse(true);
-                sel.removeAllRanges();
-                sel.addRange(newRange);
+                (sel || getSafeSelection())?.removeAllRanges();
+                (sel || getSafeSelection())?.addRange(newRange);
                 try {
                     ctx.root.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: rendered.text }));
                 } catch {
@@ -658,7 +907,7 @@
 
         search.addEventListener('input', () => renderList(search.value));
         wrap.addEventListener('keydown', (e) => {
-            // If typing in the JSON editor, ignore palette hotkeys
+            // If typing in the JSON editor, minimal keys only
             if (e.target.closest('.sae-editor')) {
                 if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
                 return;
@@ -703,7 +952,10 @@
         p.classList.add('open');
         const input = p.querySelector('.sae-search');
         input.value = '';
-        p.querySelector('.sae-editor').classList.remove('open');
+        const editor = p.querySelector('.sae-editor');
+        editor.classList.remove('open');
+        const editBtn = p.querySelector('.sae-header-actions [data-action="edit"]');
+        if (editBtn) editBtn.textContent = 'Edit JSON';
         p.querySelector('.sae-list').focus({ preventScroll: true });
         p.querySelector('.sae-search').focus({ preventScroll: true });
         if (p.__render) p.__render();
@@ -714,14 +966,21 @@
         const editor = p.querySelector('.sae-editor');
         editor.value = JSON.stringify(state.dict, null, 2);
         editor.classList.add('open');
+        const editBtn = p.querySelector('.sae-header-actions [data-action="edit"]');
+        if (editBtn) editBtn.textContent = 'Save JSON';
         editor.focus({ preventScroll: true });
     }
     function closePalette() {
-        if (paletteEl) paletteEl.classList.remove('open');
+        if (!paletteEl) return;
+        const editor = paletteEl.querySelector('.sae-editor');
+        if (editor) editor.classList.remove('open');
+        const editBtn = paletteEl.querySelector('.sae-header-actions [data-action="edit"]');
+        if (editBtn) editBtn.textContent = 'Edit JSON';
+        paletteEl.classList.remove('open');
     }
 
     // ----------------------
-    // Toast helper
+    // Toast/bubble helpers
     // ----------------------
     let toastTimer = null;
     function toast(msg, ms = 2200) {
@@ -739,6 +998,18 @@
         if (now - state._lastToastAt < CONFIG.toast.throttleMs) return;
         state._lastToastAt = now;
         toast(msg, ms);
+    }
+    function showBubble(msg) {
+        const el = document.createElement('div');
+        el.className = 'sae-bubble';
+        el.textContent = msg;
+        document.documentElement.appendChild(el);
+        const r = { left: Math.max(8, window.innerWidth - 320), top: Math.max(8, window.innerHeight - 80) };
+        el.style.left = `${r.left}px`; el.style.top = `${r.top}px`;
+        return {
+            update(m) { el.textContent = m; },
+            close() { el.remove(); }
+        };
     }
 
     // ----------------------
