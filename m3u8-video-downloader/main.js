@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Universal M3U8 Downloader (Ultimate Edition, Refactored)
 // @namespace    https://github.com/m3u8dl-userscripts
-// @version      1.4.0
+// @version      1.4.1
 // @description  Download HLS (.m3u8) streams — optimized, robust, and cleaner
 // @match        *://*/*
 // @run-at       document-start
@@ -18,6 +18,7 @@
   const CONCURRENCY = 6; // tune as needed
   const REQ_TIMEOUT = 60000;
   const MANIFEST_TIMEOUT = 30000;
+  const MAX_MANIFESTS = 50;
 
   // Logger
   const log = (...args) => console.log('[m3u8dl]', ...args);
@@ -30,6 +31,13 @@
     idleTimer: null
   };
 
+  const DOWNLOAD_ICON_SVG = `
+    <svg class="m3u8dl-icon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" aria-hidden="true">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>`;
+
   // Styles
   GM_addStyle(`
     .m3u8dl-btn{display:inline-flex;align-items:center;justify-content:center;height:2em;width:2.25em;border:none;cursor:pointer;background:transparent;color:inherit;padding:0;transition:opacity .25s ease}
@@ -39,7 +47,7 @@
     .m3u8dl-floating.idle{opacity:.28}
     .m3u8dl-floating.idle:hover{opacity:1}
     .m3u8dl-floating:hover{filter:brightness(1.12)}
-    #m3u8dl-progress-container{position:fixed;bottom:1rem;right:1rem;z-index:2147483646;display:flex;flex-direction:column;gap:.75rem;max-width:360px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+    #m3u8dl-progress-container{position:fixed;bottom:5rem;right:1rem;z-index:2147483646;display:flex;flex-direction:column;gap:.75rem;max-width:360px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
     .m3u8dl-card{background:rgba(17,17,17,.97);color:#e5e7eb;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px;min-width:260px;box-shadow:0 8px 32px rgba(0,0,0,.5);opacity:0;transform:translateX(100%);transition:opacity .28s ease,transform .28s ease}
     .m3u8dl-card.show{opacity:1;transform:translateX(0)}
     .m3u8dl-header{display:flex;align-items:center;gap:8px;justify-content:space-between;margin-bottom:10px}
@@ -55,11 +63,15 @@
     .m3u8dl-text{text-align:right;color:#d1d5db;font-size:12px;font-weight:500;min-height:17px}
     .m3u8dl-variant-popup{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
     .m3u8dl-variant-popup.show{display:flex}
-    .m3u8dl-variant-card{background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.15);padding:16px;border-radius:12px;width:min(340px,92vw);max-height:80vh;overflow-y:auto}
+    .m3u8dl-variant-card{background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.15);padding:16px;border-radius:12px;width:min(340px,92vw);max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
     .m3u8dl-variant-card h4{margin:0 0 14px;font-size:15px;font-weight:600}
     .m3u8dl-var-list{display:flex;flex-direction:column;gap:8px}
     .m3u8dl-var-btn{background:#1f2937;border:1px solid rgba(255,255,255,.14);color:#e5e7eb;border-radius:8px;padding:11px 13px;text-align:left;cursor:pointer;font-size:13px;transition:all .2s ease}
-    .m3u8dl-var-btn:hover{background:#374151;border-color:rgba(255,255,255,.25);transform:translateX(2px)}
+    .m3u8dl-var-btn:hover,.m3u8dl-var-btn:focus{background:#374151;border-color:rgba(255,255,255,.25);transform:translateX(2px);outline:none}
+    .m3u8dl-floating.detected{animation:m3u8-pulse .5s ease}
+    @keyframes m3u8-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+    .m3u8dl-variant-card::-webkit-scrollbar{width:6px}
+    .m3u8dl-variant-card::-webkit-scrollbar-thumb{background:rgba(255,255,255,.25);border-radius:6px}
     @media (max-width:480px){#m3u8dl-progress-container{left:1rem;right:1rem;max-width:none}.m3u8dl-card{min-width:auto}}
   `);
 
@@ -72,11 +84,8 @@
     const btn = document.createElement('button');
     btn.className = 'm3u8dl-floating';
     btn.title = 'Download detected HLS (m3u8)';
-    btn.innerHTML = `<svg class="m3u8dl-icon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" aria-hidden="true">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-      <polyline points="7 10 12 15 17 10"/>
-      <line x1="12" y1="15" x2="12" y2="3"/>
-    </svg>`;
+    btn.setAttribute('aria-label', 'Download HLS stream');
+    btn.innerHTML = DOWNLOAD_ICON_SVG;
 
     const startIdle = () => {
       clearTimeout(state.idleTimer);
@@ -96,6 +105,10 @@
     btn.onmouseleave = startIdle;
     btn.startIdleTimer = startIdle;
     btn.stopIdle = stopIdle;
+    btn.cleanup = () => {
+      clearTimeout(state.idleTimer);
+      try { mo.disconnect(); } catch {}
+    };
     return btn;
   }
 
@@ -109,7 +122,7 @@
     const popup = document.createElement('div');
     popup.className = 'm3u8dl-variant-popup';
     popup.innerHTML = `
-      <div class="m3u8dl-variant-card">
+      <div class="m3u8dl-variant-card" role="dialog" aria-label="Select video quality">
         <h4>Choose Quality</h4>
         <div class="m3u8dl-var-list"></div>
       </div>`;
@@ -126,17 +139,26 @@
     if (!variantPopup.parentNode) document.body.appendChild(variantPopup);
   }
 
-  function createProgressCard(title, onPauseResume, onCancel) {
+  const escapeEl = document.createElement('div');
+  function escapeHtml(str) {
+    escapeEl.textContent = str == null ? '' : String(str);
+    return escapeEl.innerHTML;
+  }
+
+  function createProgressCard(title, sourceUrl, onStopResume, onCancel) {
     const card = document.createElement('div');
     card.className = 'm3u8dl-card';
     card.innerHTML = `
       <div class="m3u8dl-header">
         <div class="m3u8dl-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
         <div class="m3u8dl-actions">
-          <button class="m3u8dl-mini-btn pause-btn" title="Pause">
-            <span class="ico">⏸</span><span class="lbl">Pause</span>
+          <button class="m3u8dl-mini-btn copy-btn" title="Copy playlist URL" aria-label="Copy playlist URL">
+            <span class="ico">📋</span><span class="lbl">Copy URL</span>
           </button>
-          <button class="m3u8dl-mini-btn close-btn" title="Cancel">
+          <button class="m3u8dl-mini-btn stop-btn" title="Stop" aria-label="Stop or resume download">
+            <span class="ico">⏸</span><span class="lbl">Stop</span>
+          </button>
+          <button class="m3u8dl-mini-btn close-btn" title="Cancel" aria-label="Cancel download">
             <span class="ico">✕</span>
           </button>
         </div>
@@ -147,21 +169,29 @@
     progressContainer.appendChild(card);
     requestAnimationFrame(() => card.classList.add('show'));
 
-    const pauseBtn = card.querySelector('.pause-btn');
+    const stopBtn = card.querySelector('.stop-btn');
     const closeBtn = card.querySelector('.close-btn');
+    const copyBtn = card.querySelector('.copy-btn');
     const fill = card.querySelector('.m3u8dl-fill');
     const text = card.querySelector('.m3u8dl-text');
 
-    pauseBtn.onclick = onPauseResume;
+    stopBtn.onclick = onStopResume;
     closeBtn.onclick = onCancel;
+    copyBtn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(sourceUrl || state.latestM3U8 || '');
+        copyBtn.querySelector('.lbl').textContent = 'Copied';
+        setTimeout(() => (copyBtn.querySelector('.lbl').textContent = 'Copy URL'), 1200);
+      } catch {}
+    };
 
     return {
-      setPaused(paused) {
-        const ico = pauseBtn.querySelector('.ico');
-        const lbl = pauseBtn.querySelector('.lbl');
-        pauseBtn.title = paused ? 'Resume' : 'Pause';
-        ico.textContent = paused ? '▶' : '⏸';
-        lbl.textContent = paused ? 'Resume' : 'Pause';
+      setStopped(stopped) {
+        const ico = stopBtn.querySelector('.ico');
+        const lbl = stopBtn.querySelector('.lbl');
+        stopBtn.title = stopped ? 'Resume' : 'Stop';
+        ico.textContent = stopped ? '▶' : '⏸';
+        lbl.textContent = stopped ? 'Resume' : 'Stop';
       },
       update(pct, extraText = '') {
         const percent = Math.max(0, Math.min(100, Math.floor(pct)));
@@ -181,12 +211,6 @@
     };
   }
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str == null ? '' : String(str);
-    return div.innerHTML;
-  }
-
   function showVariantPicker(variants) {
     return new Promise(resolve => {
       const list = variantPopup.querySelector('.m3u8dl-var-list');
@@ -203,16 +227,12 @@
           resolve(null);
         }
       };
-      const onKey = (e) => {
-        if (e.key === 'Escape') {
-          cleanup();
-          resolve(null);
-        }
-      };
 
+      let buttons = [];
       variants.forEach((v, i) => {
         const btn = document.createElement('button');
         btn.className = 'm3u8dl-var-btn';
+        btn.setAttribute('role', 'button');
         const parts = [
           v.resolution,
           v.bandwidth ? `${Math.round(v.bandwidth / 1000)} kbps` : null,
@@ -224,7 +244,33 @@
           resolve(v);
         };
         list.appendChild(btn);
+        buttons.push(btn);
       });
+
+      let selectedIndex = 0;
+      if (buttons[0]) buttons[0].focus();
+
+      const onKey = (e) => {
+        if (!buttons.length) return;
+        if (e.key === 'Escape') {
+          cleanup();
+          resolve(null);
+        }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          selectedIndex = (selectedIndex + 1) % buttons.length;
+          buttons[selectedIndex].focus();
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          selectedIndex = (selectedIndex - 1 + buttons.length) % buttons.length;
+          buttons[selectedIndex].focus();
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          buttons[selectedIndex].click();
+        }
+      };
 
       variantPopup.classList.add('show');
       variantPopup.addEventListener('click', onBackdrop);
@@ -378,7 +424,7 @@
   // Network
   function gmRequest({ url, responseType = 'text', headers = {}, timeout = REQ_TIMEOUT, onprogress }) {
     return new Promise((resolve, reject) => {
-      const req = GM_xmlhttpRequest({
+      GM_xmlhttpRequest({
         method: 'GET',
         url, headers, timeout, responseType,
         onprogress: onprogress ? (e) => onprogress(e) : undefined,
@@ -386,8 +432,6 @@
         onerror: () => reject(new Error('Network error')),
         ontimeout: () => reject(new Error('Timeout'))
       });
-      // Return request handle for abort if needed
-      resolve.abort = () => { try { req.abort?.(); } catch {} };
     });
   }
   const getText = (url) => gmRequest({ url, responseType: 'text', timeout: MANIFEST_TIMEOUT });
@@ -398,13 +442,21 @@
   function detected(url) {
     if (typeof url !== 'string') return;
     if (!/^https?:/i.test(url)) return;
-    if (!/\.m3u8(\b|[\?#])/i.test(url)) return; // keep it conservative
+    // Fix: allow plain ".m3u8" endings
+    if (!/\.m3u8(\b|[\?#]|$)/i.test(url)) return;
     if (state.manifests.has(url)) return;
 
     state.latestM3U8 = url;
     state.manifests.add(url);
+    // Cap memory
+    if (state.manifests.size > MAX_MANIFESTS) {
+      const first = state.manifests.values().next().value;
+      state.manifests.delete(first);
+    }
+
     mountUI();
-    floatingBtn.classList.add('show');
+    floatingBtn.classList.add('show', 'detected');
+    setTimeout(() => floatingBtn.classList.remove('detected'), 500);
     floatingBtn.stopIdle();
     floatingBtn.startIdleTimer();
     attachButtons();
@@ -429,14 +481,15 @@
     po.observe({ entryTypes: ['resource'] });
   } catch {}
 
-  // Attach to Video.js
+  // Attach to Video.js (debounced to reduce observer churn)
   function attachButtons() {
     document.querySelectorAll('.video-js .vjs-control-bar').forEach(bar => {
       if (bar.querySelector('.m3u8dl-btn')) return;
       const btn = document.createElement('button');
       btn.className = 'vjs-control vjs-button m3u8dl-btn';
       btn.title = 'Download M3U8';
-      btn.innerHTML = floatingBtn.innerHTML;
+      btn.setAttribute('aria-label', 'Download HLS stream');
+      btn.innerHTML = DOWNLOAD_ICON_SVG;
       btn.onclick = (e) => {
         e.stopPropagation();
         floatingBtn.stopIdle();
@@ -446,10 +499,17 @@
       bar.appendChild(btn);
     });
   }
-  const mo = new MutationObserver(attachButtons);
+  let attachDebounce;
+  const mo = new MutationObserver(() => {
+    clearTimeout(attachDebounce);
+    attachDebounce = setTimeout(attachButtons, 250);
+  });
   document.addEventListener('DOMContentLoaded', () => {
     mountUI();
     mo.observe(document.documentElement, { childList: true, subtree: true });
+  });
+  window.addEventListener('beforeunload', () => {
+    try { floatingBtn.cleanup?.(); } catch {}
   });
 
   // Download flow
@@ -460,6 +520,10 @@
         alert('No m3u8 detected. Play the video, then try again.');
         return;
       }
+
+      // Loading feedback
+      const oldOpacity = floatingBtn.style.opacity;
+      floatingBtn.style.opacity = '0.55';
 
       const url = state.latestM3U8;
       log('Downloading:', url);
@@ -475,6 +539,10 @@
         variant = opts.showVariantPicker ? await showVariantPicker(vars) : vars[0];
         if (!variant) return; // canceled
         mediaUrl = variant.url;
+        if (!opts.showVariantPicker) {
+          const pick = variant.resolution || `${Math.round((variant.bandwidth || 0) / 1000)} kbps`;
+          log('Auto-selected variant:', pick);
+        }
       } else if (!isMedia(masterTxt)) {
         throw new Error('Invalid playlist');
       }
@@ -489,24 +557,28 @@
       const qual = variant?.resolution ? `_${variant.resolution}` : '';
       const filename = `${name}${qual}.${ext}`;
 
-      await download(parsed, filename, ext, isFmp4);
+      await download(parsed, filename, ext, isFmp4, url);
+      // restore button
+      floatingBtn.style.opacity = oldOpacity || '1';
     } catch (e) {
+      floatingBtn.style.opacity = '1';
       err(e);
       alert(`Error: ${e.message || e}`);
     }
   }
 
-  async function download(parsed, filename, ext, isFmp4) {
+  async function download(parsed, filename, ext, isFmp4, sourceUrl) {
     const { segments, mediaSeq } = parsed;
     const total = segments.length;
 
-    let paused = false;
+    let stopped = false;
     let cancelled = false;
 
     const card = createProgressCard(
       filename,
-      () => { paused = !paused; card.setPaused(paused); if (!paused) schedule(); else abortAll(); },
-      () => { cancelled = true; abortAll(); card.done(false); }
+      sourceUrl,
+      () => { stopped = !stopped; card.setStopped(stopped); if (!stopped) schedule(); else abortAll({ resetQueued: true }); },
+      () => { cancelled = true; abortAll({ resetQueued: false }); finalize(false); }
     );
 
     // Caches for keys and init maps
@@ -522,6 +594,18 @@
     let nextWrite = 0, nextIndex = 0, doneCount = 0;
     let bytesCompleted = 0, avgSegSize = 0;
 
+    // Stats & throttled draw
+    let lastUpdate = Date.now();
+    let lastBytes = 0;
+    let drawScheduled = false;
+    function scheduleDraw() {
+      if (drawScheduled) return;
+      drawScheduled = true;
+      requestAnimationFrame(() => {
+        drawScheduled = false;
+        draw();
+      });
+    }
     function draw() {
       let partial = 0;
       progress.forEach(({ loaded, size }) => {
@@ -529,12 +613,33 @@
         else if (avgSegSize > 0) partial += Math.min(1, loaded / avgSegSize);
       });
       const pct = ((doneCount + partial) / total) * 100;
-      card.update(pct, `(${doneCount}/${total})`);
+
+      const now = Date.now();
+      const deltaMs = Math.max(1, now - lastUpdate);
+      const speed = ((bytesCompleted - lastBytes) / deltaMs) * 1000; // bytes/sec
+      const speedMB = (speed / 1024 / 1024);
+      lastUpdate = now;
+      lastBytes = bytesCompleted;
+
+      const extra = `(${doneCount}/${total}) ${speedMB.toFixed(2)} MB/s`;
+      card.update(pct, extra);
     }
 
-    function abortAll() {
-      active.forEach(req => { try { req.abort?.(); } catch {} });
+    function shouldAbort() {
+      return cancelled || stopped;
+    }
+
+    function abortAll({ resetQueued = false } = {}) {
+      const toReset = [];
+      active.forEach((req, i) => {
+        try { req.abort?.(); } catch {}
+        toReset.push(i);
+      });
       active.clear();
+      for (const i of toReset) {
+        progress.delete(i);
+        if (resetQueued && status[i] === 1) status[i] = 0; // allow re-scheduling on resume
+      }
     }
 
     async function writeOrdered() {
@@ -578,7 +683,7 @@
     }
 
     async function handleLoad(i, response) {
-      if (cancelled || paused) return;
+      if (shouldAbort()) return;
       active.delete(i);
       progress.delete(i);
 
@@ -611,7 +716,7 @@
       avgSegSize = bytesCompleted / Math.max(1, doneCount);
 
       await writeOrdered();
-      draw();
+      scheduleDraw();
       schedule();
       checkFinalize();
     }
@@ -619,7 +724,7 @@
     function handleFail(i, why) {
       active.delete(i);
       progress.delete(i);
-      if (cancelled || paused) return;
+      if (shouldAbort()) return; // paused/stopped or cancelled; do not change status/attempts
       const a = attempts[i] + 1;
       attempts[i] = a;
       if (a > MAX_RETRIES) {
@@ -635,15 +740,14 @@
     function checkFinalize() {
       if (doneCount === total) {
         finalize(true);
-      } else if (!active.size && !paused && !cancelled) {
-        // No active transfers; if any failed permanently, abort
-        const failed = status.some ? Array.prototype.some.call(status, v => v === -1) : false;
+      } else if (!active.size && !stopped && !cancelled) {
+        const failed = status.some(v => v === -1);
         if (failed) finalize(false);
       }
     }
 
     function schedule() {
-      if (cancelled || paused) return;
+      if (shouldAbort()) return;
       // Fill pipeline
       while (active.size < CONCURRENCY) {
         // Prefer retries first
@@ -662,7 +766,7 @@
     }
 
     function downloadSeg(i) {
-      if (cancelled || paused) return;
+      if (shouldAbort()) return;
       const seg = segments[i];
       status[i] = 1;
 
@@ -676,7 +780,7 @@
         onprogress: (p) => {
           if (p && typeof p.loaded === 'number') {
             progress.set(i, { loaded: p.loaded, size: p.total || 0 });
-            draw();
+            scheduleDraw();
           }
         },
         onload: (r) => {
