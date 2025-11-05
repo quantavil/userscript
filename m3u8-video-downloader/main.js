@@ -595,8 +595,6 @@
     let bytesCompleted = 0, avgSegSize = 0;
 
     // Stats & throttled draw
-    let lastUpdate = Date.now();
-    let lastBytes = 0;
     let drawScheduled = false;
     function scheduleDraw() {
       if (drawScheduled) return;
@@ -614,14 +612,7 @@
       });
       const pct = ((doneCount + partial) / total) * 100;
 
-      const now = Date.now();
-      const deltaMs = Math.max(1, now - lastUpdate);
-      const speed = ((bytesCompleted - lastBytes) / deltaMs) * 1000; // bytes/sec
-      const speedMB = (speed / 1024 / 1024);
-      lastUpdate = now;
-      lastBytes = bytesCompleted;
-
-      const extra = `(${doneCount}/${total}) ${speedMB.toFixed(2)} MB/s`;
+      const extra = `(${doneCount}/${total})`;
       card.update(pct, extra);
     }
 
