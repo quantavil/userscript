@@ -114,8 +114,7 @@
     .m3u8dl-variant-card{background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.15);padding:16px;border-radius:12px;width:min(420px,92vw);max-height:80vh;overflow-y:auto;scrollbar-width:thin}
     .m3u8dl-variant-card h4{margin:0 0 4px;font-size:15px;font-weight:600}
     .m3u8dl-variant-card .subtitle{font-size:12px;color:#9ca3af;margin-bottom:10px}
-    .m3u8dl-opt{display:none;user-select:none;cursor:pointer;font-size:12px;color:#9ca3af;margin:6px 0 12px;gap:.5rem;align-items:center}
-    .m3u8dl-var-list{display:flex;flex-direction:column;gap:8px}
+    .m3u8dl-opt{display:flex;user-select:none;cursor:pointer;font-size:12px;color:#9ca3af;margin:6px 0 12px;gap:.5rem;align-items:center}    .m3u8dl-var-list{display:flex;flex-direction:column;gap:8px}
     .m3u8dl-var-btn{background:#1f2937;border:1px solid rgba(255,255,255,.14);color:#e5e7eb;border-radius:8px;padding:11px 13px;text-align:left;cursor:pointer;font-size:13px;transition:all .2s;position:relative}
     .m3u8dl-var-btn:hover,.m3u8dl-var-btn:focus{background:#374151;border-color:rgba(255,255,255,.25);transform:translateX(2px);outline:none}
     .m3u8dl-var-btn.video-direct{background:linear-gradient(135deg,#065f46,#047857);border-color:#10b981}
@@ -502,55 +501,130 @@
   function showMediaPicker(items) {
     return new Promise(resolve => {
       const list = variantPopup.querySelector('.m3u8dl-var-list');
-      const optRow = variantPopup.querySelector('.m3u8dl-opt');
       const chk = variantPopup.querySelector('.m3u8dl-exclude-small');
 
-      const cleanup = () => { variantPopup.classList.remove('show'); document.removeEventListener('keydown', onKey); variantPopup.removeEventListener('click', onBackdrop); if (chk) chk.onchange = null; };
-      const onBackdrop = (e) => { if (e.target === variantPopup) { cleanup(); resolve(null); } };
+      const cleanup = () => {
+        variantPopup.classList.remove('show');
+        document.removeEventListener('keydown', onKey);
+        variantPopup.removeEventListener('click', onBackdrop);
+        if (chk) chk.onchange = null;
+      };
+
+      const onBackdrop = (e) => {
+        if (e.target === variantPopup) {
+          cleanup();
+          resolve(null);
+        }
+      };
 
       let buttons = [], selectedIndex = 0;
 
       function buildButtons(showItems) {
-        list.innerHTML = ''; buttons = [];
+        list.innerHTML = '';
+        buttons = [];
+
         showItems.forEach((item, i) => {
-          const btn = document.createElement('button'); btn.className = 'm3u8dl-var-btn'; if (item.category === 'video') btn.classList.add('video-direct'); btn.setAttribute('role', 'button');
+          const btn = document.createElement('button');
+          btn.className = 'm3u8dl-var-btn';
+          if (item.category === 'video') btn.classList.add('video-direct');
+          btn.setAttribute('role', 'button');
+
           const badgeText = item.category === 'video' ? 'Direct' : 'HLS';
           const titleText = item.label || `Option ${i + 1}`;
           const subtitleText = item.url.slice(0, 80) + (item.url.length > 80 ? '...' : '');
-          btn.innerHTML = `<div class="badge">${escapeHtml(badgeText)}</div><div class="title">${escapeHtml(titleText)}</div><div class="subtitle">${escapeHtml(subtitleText)}</div>`;
-          btn.onclick = () => { cleanup(); resolve(item); };
-          list.appendChild(btn); buttons.push(btn);
+
+          btn.innerHTML = `
+          <div class="badge">${escapeHtml(badgeText)}</div>
+          <div class="title">${escapeHtml(titleText)}</div>
+          <div class="subtitle">${escapeHtml(subtitleText)}</div>
+        `;
+
+          btn.onclick = () => {
+            cleanup();
+            resolve(item);
+          };
+
+          list.appendChild(btn);
+          buttons.push(btn);
         });
-        if (!buttons.length) list.innerHTML = `<div style="font-size:12px;color:#9ca3af;padding:8px;">No items with current filter. Uncheck to show all.</div>`;
-        selectedIndex = 0; if (buttons[0]) buttons[0].focus();
+
+        if (!buttons.length) {
+          list.innerHTML = `<div style="font-size:12px;color:#9ca3af;padding:8px;">No items match the filter. Uncheck to show all.</div>`;
+        }
+
+        selectedIndex = 0;
+        if (buttons[0]) buttons[0].focus();
       }
 
       const applyFilter = (baseItems) => {
         const excludeSmall = chk?.checked ?? false;
         if (!excludeSmall) return baseItems;
-        return baseItems.filter(it => it.category !== 'video' || it.size == null || it.size >= SMALL_FILE_THRESHOLD);
+
+        return baseItems.filter(it => {
+          // Keep all HLS items
+          if (it.category !== 'video') return true;
+          // Keep videos with unknown size OR size >= 1MB
+          if (it.size == null) return true;
+          return it.size >= SMALL_FILE_THRESHOLD;
+        });
       };
 
       const onKey = (e) => {
-        if (!buttons.length) { if (e.key === 'Escape') { cleanup(); resolve(null); } return; }
-        if (e.key === 'Escape') { cleanup(); resolve(null); }
-        if (e.key === 'ArrowDown') { e.preventDefault(); selectedIndex = (selectedIndex + 1) % buttons.length; buttons[selectedIndex].focus(); }
-        if (e.key === 'ArrowUp') { e.preventDefault(); selectedIndex = (selectedIndex - 1 + buttons.length) % buttons.length; buttons[selectedIndex].focus(); }
-        if (e.key === 'Enter') { e.preventDefault(); buttons[selectedIndex].click(); }
+        if (!buttons.length) {
+          if (e.key === 'Escape') {
+            cleanup();
+            resolve(null);
+          }
+          return;
+        }
+
+        if (e.key === 'Escape') {
+          cleanup();
+          resolve(null);
+        }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          selectedIndex = (selectedIndex + 1) % buttons.length;
+          buttons[selectedIndex].focus();
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          selectedIndex = (selectedIndex - 1 + buttons.length) % buttons.length;
+          buttons[selectedIndex].focus();
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          buttons[selectedIndex].click();
+        }
       };
 
-      const hasVideoItems = items.some(x => x.category === 'video');
-      if (optRow) optRow.style.display = hasVideoItems ? 'flex' : 'none';
-      if (chk) { chk.checked = settings.excludeSmall; chk.onchange = () => { setExcludeSmall(chk.checked); buildButtons(applyFilter(items)); }; }
+      // Initialize checkbox
+      if (chk) {
+        chk.checked = settings.excludeSmall;
+        chk.onchange = () => {
+          setExcludeSmall(chk.checked);
+          buildButtons(applyFilter(items));
+        };
+      }
 
-      (async () => { if (hasVideoItems) { try { await ensureVideoItemSizes(items); } catch { } } buildButtons(applyFilter(items)); })();
+      // Load sizes for video items, then build list
+      (async () => {
+        const hasVideoItems = items.some(x => x.category === 'video');
+        if (hasVideoItems) {
+          try {
+            await ensureVideoItemSizes(items);
+          } catch (e) {
+            err('Failed to fetch video sizes:', e);
+          }
+        }
+        buildButtons(applyFilter(items));
+      })();
 
       variantPopup.classList.add('show');
       variantPopup.addEventListener('click', onBackdrop);
       document.addEventListener('keydown', onKey);
     });
   }
-
   // ========================
   // Download Flow
   // ========================
