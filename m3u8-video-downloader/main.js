@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Universal M3U8 + Blob Downloader (Optimized, Patched)
+// @name         Universal M3U8 + Blob Downloader
 // @namespace    https://github.com/m3u8dl-userscripts
-// @version      2.5.0
-// @description  Download HLS (.m3u8) streams and direct video blobs with smart filtering and size estimation (with fixes and optimizations)
+// @version      2.6.1
+// @description  Download HLS (.m3u8) streams and direct video blobs with smart filtering and size estimation 
 // @match        *://*/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
@@ -56,9 +56,10 @@
   // ========================
   // Caches & helpers
   // ========================
-  const manifestCache = new Map(); // url -> text
-  const headCache = new Map();     // url -> { length, type }
-  const headPending = new Map();   // url -> Promise<{length,type}>
+  const manifestCache = new Map();     // url -> text
+  const manifestPending = new Map();   // url -> Promise<string>
+  const headCache = new Map();         // url -> { length, type }
+  const headPending = new Map();       // url -> Promise<{length,type}>
   const monitoredVideos = new Set();
 
   function evictOldest(set, max) {
@@ -68,27 +69,26 @@
     }
   }
 
-  async function getManifest(url) {
-    if (manifestCache.has(url)) return manifestCache.get(url);
-    const txt = await getText(url);
-    manifestCache.set(url, txt);
-    return txt;
-  }
-
-  async function getHeadCached(url) {
-    if (headCache.has(url)) return headCache.get(url);
-    if (headPending.has(url)) return headPending.get(url);
-
-    const p = headMeta(url).then(meta => {
-      const v = { length: meta.length ?? null, type: meta.type ?? null };
-      headCache.set(url, v);
-      headPending.delete(url);
-      return v;
-    }).catch(err => { headPending.delete(url); throw err; });
-
-    headPending.set(url, p);
+  // Promise de-duplicator (cache + in-flight)
+  function ensureOnce(cache, pending, key, loader) {
+    if (cache.has(key)) return cache.get(key);
+    if (pending.has(key)) return pending.get(key);
+    const p = (async () => {
+      try {
+        const val = await loader();
+        cache.set(key, val);
+        return val;
+      } finally {
+        pending.delete(key);
+      }
+    })();
+    pending.set(key, p);
     return p;
   }
+
+  // De-duplicated, cached manifest fetch
+  const getManifest = (url) =>
+    ensureOnce(manifestCache, manifestPending, url, () => getText(url));
 
   function revokeLater(blobUrl, ms = 30000) {
     try {
@@ -116,8 +116,20 @@
   const guessExtFromType = (t = '') => (t = t.toLowerCase(), /mp4/.test(t) ? 'mp4' : /matroska|mkv/.test(t) ? 'mkv' : /webm/.test(t) ? 'webm' : /quicktime|mov/.test(t) ? 'mov' : /avi/.test(t) ? 'avi' : /mp2t|mpegts/.test(t) ? 'ts' : /ogg/.test(t) ? 'ogg' : 'mp4');
   const formatBytes = (n) => { if (n == null) return ''; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0, v = n; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`; };
 
+  const guessExt = (url, type) =>
+    type ? guessExtFromType(type)
+         : ((url || '').match(/\.([a-z0-9]+)(\?|#|$)/i)?.[1]?.toLowerCase() || 'mp4');
+
+  const filterBySmall = (items, enabled) =>
+    enabled ? items.filter(it => it.size == null || it.size >= SMALL_FILE_THRESHOLD) : items;
+
   const escapeEl = document.createElement('div');
   const escapeHtml = (str) => { escapeEl.textContent = str == null ? '' : String(str); return escapeEl.innerHTML; };
+
+  // compact size label for HLS estimation
+  const sizeLabel = (est) => est?.bytes != null
+    ? `${est.method === 'byterange' ? '' : '~'}${formatBytes(est.bytes)}`
+    : '';
 
   // Unified URL detector used everywhere
   const detectFromUrl = (u) => {
@@ -133,23 +145,6 @@
       }
     } catch {}
   };
-
-  // Promise de-duplicator (cache + in-flight)
-  function ensureOnce(cache, pending, key, loader) {
-    if (cache.has(key)) return cache.get(key);
-    if (pending.has(key)) return pending.get(key);
-    const p = (async () => {
-      try {
-        const val = await loader();
-        cache.set(key, val);
-        return val;
-      } finally {
-        pending.delete(key);
-      }
-    })();
-    pending.set(key, p);
-    return p;
-  }
 
   // Unified save to disk. Uses FS Access API when available, otherwise anchor fallback
   async function saveBlob(blob, filename, extHint) {
@@ -174,6 +169,16 @@
     document.body.appendChild(a); a.click(); a.remove();
     revokeLater(blobUrl);
     return true;
+  }
+
+  // Single click handler used by all buttons
+  function triggerDownload(e) {
+    try {
+      floatingBtn.stopIdle?.();
+      floatingBtn.startIdleTimer?.();
+    } catch {}
+    const totalSources = state.manifests.size + state.videos.size;
+    chooseDownloadFlow({ showVariantPicker: e?.altKey || totalSources > 1 });
   }
 
   let mo = null;
@@ -244,17 +249,6 @@
   // ========================
   // UI Components
   // ========================
-  const floatingBtn = createFloatingButton();
-  const progressContainer = createProgressContainer();
-  const variantPopup = createVariantPopup();
-
-  function mountUI() {
-    if (!document.body) { document.addEventListener('DOMContentLoaded', mountUI, { once: true }); return; }
-    if (!progressContainer.parentNode) document.body.appendChild(progressContainer);
-    if (!floatingBtn.parentNode) document.body.appendChild(floatingBtn);
-    if (!variantPopup.parentNode) document.body.appendChild(variantPopup);
-  }
-
   function createFloatingButton() {
     const btn = document.createElement('button');
     btn.className = 'm3u8dl-floating';
@@ -269,11 +263,7 @@
     const startIdle = () => { clearTimeout(state.idleTimer); state.idleTimer = setTimeout(() => btn.classList.add('idle'), 15000); };
     const stopIdle = () => { btn.classList.remove('idle'); clearTimeout(state.idleTimer); };
 
-    btn.onclick = (e) => {
-      stopIdle(); startIdle();
-      const totalSources = state.manifests.size + state.videos.size;
-      chooseDownloadFlow({ showVariantPicker: e.altKey || totalSources > 1 });
-    };
+    btn.onclick = triggerDownload;
     btn.onmouseenter = stopIdle;
     btn.onmouseleave = startIdle;
     btn.startIdleTimer = startIdle;
@@ -306,6 +296,17 @@
         <div class="m3u8dl-var-list"></div>
       </div>`;
     return popup;
+  }
+
+  const floatingBtn = createFloatingButton();
+  const progressContainer = createProgressContainer();
+  const variantPopup = createVariantPopup();
+
+  function mountUI() {
+    if (!document.body) { document.addEventListener('DOMContentLoaded', mountUI, { once: true }); return; }
+    if (!progressContainer.parentNode) document.body.appendChild(progressContainer);
+    if (!floatingBtn.parentNode) document.body.appendChild(floatingBtn);
+    if (!variantPopup.parentNode) document.body.appendChild(variantPopup);
   }
 
   function createProgressCard(title, sourceUrl, onStopResume, onCancel) {
@@ -497,36 +498,49 @@
     return p;
   }
 
-  const getText = async (url) => {
+  function getData(url, responseType, { headers = {}, timeout = REQ_TIMEOUT, onprogress } = {}) {
     if (isBlob(url)) {
-      const info = blobStore.get(url); if (!info || !info.blob) throw new Error('Blob not available');
-      return info.blob.text();
-    }
-    return gmRequest({ url, responseType: 'text', timeout: MANIFEST_TIMEOUT });
-  };
-
-  const getBuffer = async (url, headers = {}, timeout = REQ_TIMEOUT, onprogress) => {
-    if (isBlob(url)) {
-      const info = blobStore.get(url); if (!info || !info.blob) throw new Error('Blob not available');
-      const blob = info.blob; const r = parseRangeHeader(headers.Range);
-      const slice = r ? blob.slice(r.start, r.end != null ? (r.end + 1) : blob.size) : blob;
+      const info = blobStore.get(url);
+      if (!info?.blob) return Promise.reject(new Error('Blob not available'));
+      if (responseType === 'text') {
+        return info.blob.text();
+      }
+      const r = parseRangeHeader(headers.Range);
+      const slice = r ? info.blob.slice(r.start, r.end != null ? (r.end + 1) : info.blob.size) : info.blob;
       if (onprogress) setTimeout(() => onprogress({ loaded: slice.size, total: slice.size }), 0);
       return slice.arrayBuffer();
     }
-    return gmRequest({ url, responseType: 'arraybuffer', headers, timeout, onprogress });
-  };
-
-  async function headMeta(url) {
-    try {
-      const resp = await new Promise((resolve, reject) => {
-        GM_xmlhttpRequest({ method: 'HEAD', url, timeout: REQ_TIMEOUT, onload: r => resolve(r), onerror: () => reject(new Error('HEAD failed')), ontimeout: () => reject(new Error('HEAD timeout')) });
-      });
-      const headers = resp.responseHeaders || '';
-      const lenMatch = /(^|\r?\n)content-length:\s*(\d+)/i.exec(headers);
-      const typeMatch = /(^|\r?\n)content-type:\s*([^\r\n]+)/i.exec(headers);
-      return { length: lenMatch ? parseInt(lenMatch[2], 10) : null, type: typeMatch ? typeMatch[2].trim() : null };
-    } catch { return { length: null, type: null }; }
+    return gmRequest({ url, responseType, headers, timeout, onprogress });
   }
+
+  const getText = (url) => getData(url, 'text', { timeout: MANIFEST_TIMEOUT });
+  const getBuffer = (url, headers = {}, timeout = REQ_TIMEOUT, onprogress) =>
+    getData(url, 'arraybuffer', { headers, timeout, onprogress });
+
+  // HEAD request caching (refactored: single ensureOnce consumer)
+  const getHeadCached = (url) => ensureOnce(
+    headCache, headPending, url,
+    async () => {
+      try {
+        const resp = await new Promise((resolve, reject) => {
+          GM_xmlhttpRequest({
+            method: 'HEAD',
+            url,
+            timeout: REQ_TIMEOUT,
+            onload: resolve,
+            onerror: () => reject(new Error('HEAD failed')),
+            ontimeout: () => reject(new Error('HEAD timeout'))
+          });
+        });
+        const h = resp.responseHeaders || '';
+        const length = +(/(^|\r?\n)content-length:\s*(\d+)/i.exec(h)?.[2] || 0) || null;
+        const type = (/(^|\r?\n)content-type:\s*([^\r\n]+)/i.exec(h)?.[2] || '').trim() || null;
+        return { length, type };
+      } catch {
+        return { length: null, type: null };
+      }
+    }
+  );
 
   // ========================
   // Detection & Hooks
@@ -647,7 +661,7 @@
       btn.className = 'vjs-control vjs-button m3u8dl-btn';
       btn.title = 'Download Media'; btn.setAttribute('aria-label', 'Download media');
       btn.innerHTML = DOWNLOAD_ICON_SVG;
-      btn.onclick = (e) => { e.stopPropagation(); floatingBtn.stopIdle(); floatingBtn.startIdleTimer(); const totalSources = state.manifests.size + state.videos.size; chooseDownloadFlow({ showVariantPicker: e.altKey || totalSources > 1 }); };
+      btn.onclick = (e) => { e.stopPropagation(); triggerDownload(e); };
       bar.appendChild(btn);
     });
   }
@@ -677,7 +691,7 @@
   let attachDebounce;
 
   // ========================
-  // Picker
+  // Picker (refactored)
   // ========================
   function showMediaPicker(items) {
     return new Promise(resolve => {
@@ -691,109 +705,101 @@
         variantPopup.removeEventListener('click', onBackdrop);
         if (chk) chk.onchange = null;
       };
+      const onBackdrop = (e) => { if (e.target === variantPopup) { cleanup(); resolve(null); } };
 
-      const onBackdrop = (e) => {
-        if (e.target === variantPopup) {
-          cleanup();
-          resolve(null);
-        }
-      };
-
-      let buttons = [], selectedIndex = 0;
-
-      function buildButtons(showItems) {
+      let idx = 0, buttons = [];
+      const render = (arr) => {
         list.innerHTML = '';
-        buttons = [];
-
-        showItems.forEach((item, i) => {
+        buttons = arr.map((item, i) => {
           const btn = document.createElement('button');
-          btn.className = 'm3u8dl-var-btn';
-          if (item.category === 'video') btn.classList.add('video-direct');
+          btn.className = `m3u8dl-var-btn${item.category === 'video' ? ' video-direct' : ''}`;
           btn.setAttribute('role', 'button');
-
-        const badgeText = item.category === 'video' ? 'Direct' : 'HLS';
-          const titleText = item.label || `Option ${i + 1}`;
-          const subtitleText = item.url.slice(0, 80) + (item.url.length > 80 ? '...' : '');
-
+          const badge = item.category === 'video' ? 'Direct' : 'HLS';
+          const title = item.label || `Option ${i + 1}`;
+          const sub = item.url.length > 80 ? item.url.slice(0, 80) + '...' : item.url;
           btn.innerHTML = `
-          <div class="badge">${escapeHtml(badgeText)}</div>
-          <div class="title">${escapeHtml(titleText)}</div>
-          <div class="subtitle">${escapeHtml(subtitleText)}</div>
-        `;
-
-          btn.onclick = () => {
-            cleanup();
-            resolve(item);
-          };
-
+            <div class="badge">${escapeHtml(badge)}</div>
+            <div class="title">${escapeHtml(title)}</div>
+            <div class="subtitle">${escapeHtml(sub)}</div>`;
+          btn.onclick = () => { cleanup(); resolve(item); };
           list.appendChild(btn);
-          buttons.push(btn);
+          return btn;
         });
-
         if (!buttons.length) {
           list.innerHTML = `<div style="font-size:12px;color:#9ca3af;padding:8px;">No items match the filter. Uncheck to show all.</div>`;
         }
-
-        selectedIndex = 0;
-        if (buttons[0]) buttons[0].focus();
-      }
-
-      const applyFilter = (baseItems) => {
-        const excludeSmall = chk?.checked ?? false;
-        if (!excludeSmall) return baseItems;
-
-        return baseItems.filter(it => {
-          if (it.size == null) return true; // unknown size => keep
-          return it.size >= SMALL_FILE_THRESHOLD;
-        });
+        idx = 0; buttons[0]?.focus();
       };
 
+      const apply = () => render(filterBySmall(items, chk?.checked ?? false));
       const onKey = (e) => {
-        if (!buttons.length) {
-          if (e.key === 'Escape') {
-            cleanup();
-            resolve(null);
-          }
-          return;
-        }
-
-        if (e.key === 'Escape') {
-          cleanup();
-          resolve(null);
-        }
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          selectedIndex = (selectedIndex + 1) % buttons.length;
-          buttons[selectedIndex].focus();
-        }
-        if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          selectedIndex = (selectedIndex - 1 + buttons.length) % buttons.length;
-          buttons[selectedIndex].focus();
-        }
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          buttons[selectedIndex].click();
-        }
+        if (e.key === 'Escape') { cleanup(); resolve(null); }
+        else if (e.key === 'ArrowDown' && buttons.length) { e.preventDefault(); idx = (idx + 1) % buttons.length; buttons[idx].focus(); }
+        else if (e.key === 'ArrowUp' && buttons.length) { e.preventDefault(); idx = (idx - 1 + buttons.length) % buttons.length; buttons[idx].focus(); }
+        else if (e.key === 'Enter' && buttons.length) { e.preventDefault(); buttons[idx].click(); }
       };
 
-      // Always show checkbox
       if (optRow) optRow.style.display = 'flex';
-
       if (chk) {
         chk.checked = settings.excludeSmall;
-        chk.onchange = () => {
-          setExcludeSmall(chk.checked);
-          buildButtons(applyFilter(items));
-        };
+        chk.onchange = () => { setExcludeSmall(chk.checked); apply(); };
       }
-
-      buildButtons(applyFilter(items));
 
       variantPopup.classList.add('show');
       variantPopup.addEventListener('click', onBackdrop);
       document.addEventListener('keydown', onKey);
+      apply();
     });
+  }
+
+  // ========================
+  // Media list builders (parallel, de-duplicated)
+  // ========================
+  async function buildHlsItem(url) {
+    const info = blobStore.get(url);
+    if (info) {
+      return { type: 'm3u8', category: 'm3u8', url, label: `HLS Stream (blob, ${formatBytes(info.size)})`, size: info.size };
+    }
+    try {
+      const masterTxt = await getManifest(url);
+      if (isMaster(masterTxt)) {
+        const vars = parseMaster(masterTxt, url);
+        if (vars.length) {
+          vars.sort((a, b) => (b.height || 0) - (a.height || 0) ||
+                              (b.avgBandwidth || b.peakBandwidth || 0) - (a.avgBandwidth || a.peakBandwidth || 0));
+          const v = vars[0];
+          const mediaTxt = await getManifest(v.url);
+          const est = await estimateHlsSize(mediaTxt, v.url, v);
+          const sizeTxt = sizeLabel(est);
+          return { type: 'm3u8', category: 'm3u8', url, label: `HLS Stream${sizeTxt ? ` (${sizeTxt})` : ''}`, size: est?.bytes ?? null };
+        }
+      } else if (isMedia(masterTxt)) {
+        const est = await estimateHlsSize(masterTxt, url, null);
+        const sizeTxt = sizeLabel(est);
+        return { type: 'm3u8', category: 'm3u8', url, label: `HLS Stream${sizeTxt ? ` (${sizeTxt})` : ''}`, size: est.bytes ?? null };
+      }
+    } catch (e) {
+      log('Failed to estimate HLS size:', e);
+    }
+    return { type: 'm3u8', category: 'm3u8', url, label: 'HLS Stream', size: null };
+  }
+
+  function buildVideoItem(url) {
+    const info = blobStore.get(url);
+    const ext = guessExt(url, info?.type).toUpperCase();
+    const preSize = info?.size ?? null;
+    const sizeTxt = preSize != null ? ` (${formatBytes(preSize)})` : '';
+    return { type: 'video', category: 'video', url, label: `Direct Video (${ext})${sizeTxt}`, size: preSize };
+  }
+
+  async function buildMediaList() {
+    const m3u8s = Array.from(state.manifests);
+    const videos = Array.from(state.videos);
+    const items = await Promise.all([
+      ...m3u8s.map(buildHlsItem),
+      ...videos.map(u => Promise.resolve(buildVideoItem(u)))
+    ]);
+    return items.filter(Boolean);
   }
 
   // ========================
@@ -805,73 +811,18 @@
     try {
       floatingBtn.style.opacity = '0.55';
 
-      const allMedia = [];
-
-      // HLS sources with estimated sizes
-      for (const url of state.manifests) {
-        const info = blobStore.get(url);
-        let est = null;
-        if (info) {
-          allMedia.push({ type: 'm3u8', category: 'm3u8', url, label: `HLS Stream (blob, ${formatBytes(info.size)})`, size: info.size });
-        } else {
-          try {
-            const masterTxt = await getManifest(url);
-            if (isMaster(masterTxt)) {
-              const vars = parseMaster(masterTxt, url);
-              if (vars.length) {
-                vars.sort((a, b) => (b.height || 0) - (a.height || 0) || (b.avgBandwidth || b.peakBandwidth || 0) - (a.avgBandwidth || a.peakBandwidth || 0));
-                const topVar = vars[0];
-                const mediaTxt = await getManifest(topVar.url);
-                est = await estimateHlsSize(mediaTxt, topVar.url, topVar);
-              }
-            } else if (isMedia(masterTxt)) {
-              est = await estimateHlsSize(masterTxt, url, null);
-            }
-          } catch (e) {
-            log('Failed to estimate HLS size:', e);
-          }
-
-          if (est && est.bytes != null) {
-            const prefix = est.method === 'byterange' ? '' : '~';
-            allMedia.push({ type: 'm3u8', category: 'm3u8', url, label: `HLS Stream (${prefix}${formatBytes(est.bytes)})`, size: est.bytes });
-          } else {
-            allMedia.push({ type: 'm3u8', category: 'm3u8', url, label: 'HLS Stream', size: null });
-          }
-        }
-      }
-
-      // Direct video sources
-      state.videos.forEach(url => {
-        const info = blobStore.get(url);
-        let ext = 'video';
-        if (info) ext = guessExtFromType(info.type).toUpperCase();
-        else if (isHttp(url)) { const m = url.match(/\.([a-z0-9]+)(\?|#|$)/i); if (m) ext = m[1].toUpperCase(); }
-        const preSize = info ? info.size : null;
-        const sizeTxt = preSize != null ? ` (${formatBytes(preSize)})` : '';
-        allMedia.push({ type: 'video', category: 'video', url, label: `Direct Video (${ext})${sizeTxt}`, size: preSize });
-      });
-
+      const allMedia = await buildMediaList();
       if (!allMedia.length) { alert('No media detected. Play the video and try again.'); return; }
 
-      // Apply filter
-      const filteredAll = settings.excludeSmall
-        ? allMedia.filter(it => it.size == null || it.size >= SMALL_FILE_THRESHOLD)
-        : allMedia;
+      const filteredAll = filterBySmall(allMedia, settings.excludeSmall);
 
-      if (!filteredAll.length) {
-        const pick = await showMediaPicker(allMedia);
-        if (!pick) return;
-        if (pick.type === 'video') await downloadDirectVideo(pick.url);
-        else await downloadHLS(pick.url);
-        return;
-      }
-
-      const willShowPicker = opts.showVariantPicker || filteredAll.length > 1;
-      let selected = filteredAll[filteredAll.length - 1];
-      if (willShowPicker) {
-        const pick = await showMediaPicker(filteredAll);
+      let selected;
+      if (!filteredAll.length || opts.showVariantPicker || filteredAll.length > 1) {
+        const pick = await showMediaPicker(filteredAll.length ? filteredAll : allMedia);
         if (!pick) return;
         selected = pick;
+      } else {
+        selected = filteredAll[filteredAll.length - 1];
       }
 
       if (selected.type === 'video') await downloadDirectVideo(selected.url);
@@ -891,16 +842,15 @@
     log('Downloading direct video:', url);
     const info = blobStore.get(url);
     const titleBase = sanitize(document.title);
-    const cardLabel = (msg) => msg ? ` ${msg}` : '';
+    const ext = guessExt(url, info?.type);
+    const filename = `${titleBase}.${ext}`;
 
     // Case A: local blob present
     if (info?.blob) {
-      const ext = guessExtFromType(info.type);
-      const filename = `${titleBase}.${ext}`;
       const card = createProgressCard(filename, url, null, () => {});
       try {
         await saveBlob(info.blob, filename, ext);
-        card.update(100, cardLabel('(local)'));
+        card.update(100, '(local)');
         card.done(true);
       } catch (e) {
         err('Blob save error:', e);
@@ -910,22 +860,14 @@
     }
 
     // Case B: fetch over network
-    let inferredExt = 'mp4';
-    const m = url.match(/\.([a-z0-9]+)(\?|#|$)/i);
-    if (m) inferredExt = m[1].toLowerCase();
+    let cancelled = false, totalKnown = 0, lastLoaded = 0, req = null;
+    let headType = null;
 
-    let headLen = null, headType = null;
     try {
       const meta = await getHeadCached(url);
-      headLen = meta.length; headType = meta.type;
+      totalKnown = meta.length || 0;
+      headType = meta.type || null;
     } catch {}
-    if (headType) inferredExt = guessExtFromType(headType);
-
-    const ext = inferredExt;
-    const filename = `${titleBase}.${ext}`;
-
-    let cancelled = false, totalKnown = headLen || 0, lastLoaded = 0;
-    let req = null;
 
     const card = createProgressCard(filename, url, null, () => { cancelled = true; try { req?.abort?.(); } catch {} });
 
@@ -939,8 +881,9 @@
           const loaded = e?.loaded ?? 0;
           const total = totalKnown || e?.total || 0;
           if (!totalKnown && e?.total) totalKnown = e.total;
-          if (total > 0) card.update((loaded / total) * 100, `(${formatBytes(loaded)}/${formatBytes(total)})`);
-          else if (loaded > lastLoaded + 512 * 1024) {
+          if (total > 0) {
+            card.update((loaded / total) * 100, `(${formatBytes(loaded)}/${formatBytes(total)})`);
+          } else if (loaded > lastLoaded + 512 * 1024) {
             card.update(0, `(${formatBytes(loaded)})`);
             lastLoaded = loaded;
           }
@@ -952,7 +895,7 @@
 
       const blob = new Blob([arrayBuffer], { type: headType || `video/${ext}` });
       await saveBlob(blob, filename, ext);
-      card.update(100, cardLabel('(done)'));
+      card.update(100, '(done)');
       card.done(true);
     } catch (e) {
       if (cancelled) { card.remove(); return; }
@@ -984,10 +927,7 @@
         try {
           const mediaTxt = await getManifest(v.url);
           const est = await estimateHlsSize(mediaTxt, v.url, v);
-          if (est.bytes != null) {
-            const prefix = est.method === 'byterange' ? '' : '~';
-            label += ` • ${prefix}${formatBytes(est.bytes)}`;
-          }
+          if (est.bytes != null) label += ` • ${sizeLabel(est)}`;
           pickerItems.push({ type: 'variant', category: 'm3u8', url: v.url, label, variant: v, size: est.bytes });
         } catch (e) {
           log('Failed to estimate variant size:', e);
@@ -1014,135 +954,128 @@
   }
 
   // ========================
-  // Segment Downloader (refactored inner functions)
+  // Segment Downloader (refactored)
   // ========================
   async function downloadSegments(parsed, filename, ext, isFmp4, sourceUrl) {
-    const { segments, mediaSeq } = parsed; const total = segments.length;
+    const { segments, mediaSeq } = parsed;
+    const total = segments.length;
     let stopped = false, cancelled = false;
 
     const card = createProgressCard(
-      filename, sourceUrl,
-      () => { stopped = !stopped; card.setStopped(stopped); if (!stopped) schedule(); else abortAll({ resetQueued: true }); },
-      () => { cancelled = true; abortAll({ resetQueued: false }); finalize(false); }
+      filename,
+      sourceUrl,
+      () => { // stop/resume
+        stopped = !stopped;
+        card.setStopped(stopped);
+        if (stopped) abortAll();
+        else pump();
+      },
+      () => { // cancel
+        cancelled = true;
+        abortAll();
+        finalize(false);
+      }
     );
 
-    const keyCache = new Map(), keyPending = new Map(), mapCache = new Map(), mapPending = new Map();
-    const active = new Map(), pending = new Map(), progress = new Map();
-    const attempts = new Uint8Array(total), status = new Int8Array(total);
-    let nextWrite = 0, nextIndex = 0, doneCount = 0;
-    let bytesCompleted = 0, avgSegSize = 0;
+    const keyCache = new Map(), keyPending = new Map();
+    const mapCache = new Map(), mapPending = new Map();
 
-    let drawScheduled = false;
-    const scheduleDraw = () => { if (drawScheduled) return; drawScheduled = true; requestAnimationFrame(() => { drawScheduled = false; draw(); }); };
-    const draw = () => {
-      let partial = 0; progress.forEach(({ loaded, size }) => { if (size > 0) partial += Math.min(1, loaded / size); else if (avgSegSize > 0) partial += Math.min(1, loaded / avgSegSize); });
-      const pct = ((doneCount + partial) / total) * 100; card.update(pct, `(${doneCount}/${total})`);
-    };
+    const attempts = new Uint8Array(total);   // retries
+    const status = new Int8Array(total);      // 0=queued,1=loading,2=done,-1=failed
+    const active = new Map();                 // i -> req (with abort)
+    const progress = new Map();               // i -> { loaded,total }
+    const pending = new Map();                // i -> Uint8Array (awaiting ordered write)
+
+    let doneCount = 0, bytesCompleted = 0, avgSegSize = 0;
+    let nextWrite = 0, nextIndex = 0, inflight = 0;
+
     const shouldAbort = () => cancelled || stopped;
-    function abortAll({ resetQueued = false } = {}) {
-      const toReset = [];
-      active.forEach((req, i) => { try { req.abort?.(); } catch { } toReset.push(i); });
+
+    function abortAll() {
+      for (const [i, req] of active) {
+        try { req.abort?.(); } catch {}
+        progress.delete(i);
+      }
       active.clear();
-      for (const i of toReset) { progress.delete(i); if (resetQueued && status[i] === 1) status[i] = 0; }
     }
 
-    // Serialized writer (fix race)
-    let writeBusy = false, writeAgain = false;
-    async function writeOrdered() {
-      if (writeBusy) { writeAgain = true; return; }
-      writeBusy = true;
-      try {
-        do {
-          writeAgain = false;
-          while (pending.has(nextWrite)) {
-            const data = pending.get(nextWrite); pending.delete(nextWrite++);
-            if (useFS) await writable.write(data); else chunks.push(data);
-          }
-        } while (writeAgain);
-      } finally {
-        writeBusy = false;
-      }
+    // Progress drawing (rAF coalesced)
+    let drawScheduled = false;
+    function rafDraw() {
+      if (drawScheduled) return; drawScheduled = true;
+      requestAnimationFrame(() => {
+        drawScheduled = false;
+        let partial = 0;
+        progress.forEach(({ loaded, total }) => {
+          if (total > 0) partial += Math.min(1, loaded / total);
+          else if (avgSegSize > 0) partial += Math.min(1, loaded / avgSegSize);
+        });
+        const pct = ((doneCount + partial) / total) * 100;
+        card.update(pct, `(${doneCount}/${total})`);
+      });
     }
 
     async function getKeyBytes(seg) {
       if (!seg.key || seg.key.method !== 'AES-128' || !seg.key.uri) return null;
-      const uri = seg.key.uri;
-      return ensureOnce(keyCache, keyPending, uri, async () => {
-        log('Fetching key:', uri);
-        return new Uint8Array(await getBuffer(uri));
-      });
+      return ensureOnce(
+        keyCache, keyPending, seg.key.uri,
+        async () => new Uint8Array(await getBuffer(seg.key.uri))
+      );
     }
 
     async function getMapBytes(seg) {
       if (!seg.needsMap || !seg.map?.uri) return null;
-      const key = `${seg.map.uri}|${seg.map.rangeHeader || ''}`;
-      return ensureOnce(mapCache, mapPending, key, async () => {
-        log('Init segment:', seg.map.uri);
-        const headers = seg.map.rangeHeader ? { Range: seg.map.rangeHeader } : {};
-        return new Uint8Array(await getBuffer(seg.map.uri, headers));
-      });
-    }
-
-    async function handleLoad(i, response) {
-      if (shouldAbort()) return; active.delete(i); progress.delete(i);
-      const seg = segments[i];
-
-      if (seg.key && seg.key.method && seg.key.method !== 'AES-128') {
-        handleFail(i, `Unsupported key method: ${seg.key.method}`);
-        return;
-      }
-
-      let data = response;
-      try {
-        const keyBytes = await getKeyBytes(seg);
-        if (keyBytes) { const iv = seg.key.iv ? hexToU8(seg.key.iv) : ivFromSeq(mediaSeq + i); data = await decryptAesCbc(data, keyBytes, iv); }
-      } catch (e) {
-        handleFail(i, e.message || 'decrypt failed'); return;
-      }
-
-      let u8 = new Uint8Array(data);
-      try {
-        if (seg.needsMap) {
-          const mapBytes = await getMapBytes(seg);
-          if (mapBytes && mapBytes.length) {
-            const combined = new Uint8Array(mapBytes.length + u8.length);
-            combined.set(mapBytes, 0);
-            combined.set(u8, mapBytes.length);
-            u8 = combined;
-          }
+      const k = `${seg.map.uri}|${seg.map.rangeHeader || ''}`;
+      return ensureOnce(
+        mapCache, mapPending, k,
+        async () => {
+          const headers = seg.map.rangeHeader ? { Range: seg.map.rangeHeader } : {};
+          return new Uint8Array(await getBuffer(seg.map.uri, headers));
         }
-      } catch (e) {
-        handleFail(i, e.message || 'init map failed'); return;
-      }
+      );
+    }
 
-      pending.set(i, u8); status[i] = 2; doneCount++; bytesCompleted += u8.length; avgSegSize = bytesCompleted / Math.max(1, doneCount);
-      await writeOrdered(); scheduleDraw(); schedule(); checkFinalize();
+    // Ordered writer via a tiny promise chain
+    let writeChain = Promise.resolve();
+    function queueWrite(fn) { return (writeChain = writeChain.then(fn)); }
+
+    async function flushInOrder(writable, useFS, chunks) {
+      while (pending.has(nextWrite)) {
+        const data = pending.get(nextWrite);
+        pending.delete(nextWrite++);
+        if (useFS) await writable.write(data);
+        else chunks.push(data);
+      }
     }
+
     function handleFail(i, why) {
-      active.delete(i); progress.delete(i); if (shouldAbort()) return;
-      const a = attempts[i] + 1; attempts[i] = a;
-      if (a > MAX_RETRIES) { status[i] = -1; err(`Segment ${i} failed permanently (${why})`); } else status[i] = 0;
-      schedule(); checkFinalize();
+      if (shouldAbort()) return;
+      const a = ++attempts[i];
+      if (a > MAX_RETRIES) {
+        status[i] = -1;
+        err(`Segment ${i} failed permanently (${why})`);
+      } else {
+        status[i] = 0; // requeue
+      }
     }
+
     function checkFinalize() {
       if (doneCount === total) finalize(true);
-      else if (!active.size && !stopped && !cancelled) { const failed = status.some(v => v === -1); if (failed) finalize(false); }
-    }
-    function schedule() {
-      if (shouldAbort()) return;
-      while (active.size < CONCURRENCY) {
-        let i = -1;
-        for (let j = 0; j < total; j++) { if (status[j] === 0 && attempts[j] > 0) { i = j; break; } }
-        if (i === -1) { while (nextIndex < total && status[nextIndex] !== 0) nextIndex++; if (nextIndex < total) i = nextIndex++; }
-        if (i === -1) break;
-        downloadSeg(i);
+      else if (!inflight && !stopped && !cancelled) {
+        if (Array.prototype.some.call(status, v => v === -1)) finalize(false);
       }
     }
-    function downloadSeg(i) {
-      if (shouldAbort()) return;
-      const seg = segments[i]; status[i] = 1;
-      const headers = seg.rangeHeader ? { Range: seg.rangeHeader } : {};
 
+    function start(i) {
+      if (shouldAbort()) return;
+      const seg = segments[i];
+      status[i] = 1; inflight++;
+
+      if (seg.key && seg.key.method && seg.key.method !== 'AES-128') {
+        inflight--; status[i] = -1; err(`Unsupported key method: ${seg.key.method}`); checkFinalize(); return;
+      }
+
+      const headers = seg.rangeHeader ? { Range: seg.rangeHeader } : {};
       const req = gmRequest({
         url: seg.uri,
         headers,
@@ -1150,30 +1083,92 @@
         timeout: REQ_TIMEOUT,
         onprogress: (p) => {
           if (p && typeof p.loaded === 'number') {
-            progress.set(i, { loaded: p.loaded, size: p.total || 0 });
-            scheduleDraw();
+            progress.set(i, { loaded: p.loaded, total: p.total || 0 });
+            rafDraw();
           }
         }
       });
 
       active.set(i, req);
-      req.then((buf) => {
-        handleLoad(i, buf).catch(e => handleFail(i, e.message || 'decrypt/map error'));
+      req.then(async (buf) => {
+        if (shouldAbort()) return;
+
+        // decrypt if needed
+        try {
+          const keyBytes = await getKeyBytes(seg);
+          if (keyBytes) {
+            const iv = seg.key.iv ? hexToU8(seg.key.iv) : ivFromSeq(mediaSeq + i);
+            buf = await decryptAesCbc(buf, keyBytes, iv);
+          }
+        } catch (e) { handleFail(i, e.message || 'decrypt'); return; }
+
+        // prepend init segment if needed
+        let u8 = new Uint8Array(buf);
+        try {
+          if (seg.needsMap) {
+            const mapBytes = await getMapBytes(seg);
+            if (mapBytes && mapBytes.length) {
+              const combined = new Uint8Array(mapBytes.length + u8.length);
+              combined.set(mapBytes, 0); combined.set(u8, mapBytes.length);
+              u8 = combined;
+            }
+          }
+        } catch (e) { handleFail(i, e.message || 'init map'); return; }
+
+        pending.set(i, u8);
+        // schedule ordered write flush
+        queueWrite(() => flushInOrder(writable, useFS, chunks));
+
+        status[i] = 2;
+        doneCount++;
+        bytesCompleted += u8.length;
+        avgSegSize = bytesCompleted / Math.max(1, doneCount);
+        rafDraw();
       }).catch((e) => {
         handleFail(i, (e && e.message) || 'network');
+      }).finally(() => {
+        active.delete(i);
+        progress.delete(i);
+        inflight--;
+        pump();
+        checkFinalize();
       });
     }
 
+    function pump() {
+      if (shouldAbort()) return;
+      // Fill slots preferring retried items first
+      while (inflight < CONCURRENCY) {
+        let i = -1;
+        for (let j = 0; j < total; j++) { if (status[j] === 0 && attempts[j] > 0) { i = j; break; } }
+        if (i === -1) {
+          while (nextIndex < total && status[nextIndex] !== 0) nextIndex++;
+          if (nextIndex < total) i = nextIndex++;
+        }
+        if (i === -1) break;
+        start(i);
+      }
+    }
+
+    // File writing
     let writable = null, useFS = false; const chunks = [];
     if ('showSaveFilePicker' in window) {
       try {
-        const handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }] });
-        writable = await handle.createWritable(); useFS = true; log('Using File System Access API');
-      } catch { }
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }]
+        });
+        writable = await handle.createWritable();
+        useFS = true;
+        log('Using File System Access API');
+      } catch {}
     }
 
     async function finalize(ok) {
       try {
+        // flush remaining buffered chunks in order
+        await queueWrite(() => flushInOrder(writable, useFS, chunks));
+
         if (ok) {
           if (useFS) {
             await writable.close();
@@ -1183,16 +1178,23 @@
             await saveBlob(blob, filename, isFmp4 ? 'mp4' : 'ts');
             log('Downloaded via Blob');
           }
-          card.update(100, '(done)'); card.done(true);
+          card.update(100, '(done)');
+          card.done(true);
         } else {
-          if (useFS) { try { await writable.truncate(0); } catch { } try { await writable.close(); } catch { } }
+          if (useFS) { try { await writable.truncate(0); } catch {} try { await writable.close(); } catch {} }
           card.done(false);
         }
-      } catch (e) { err('Finalize error:', e); card.done(false); }
-      finally { abortAll(); }
+      } catch (e) {
+        err('Finalize error:', e);
+        card.done(false);
+      } finally {
+        abortAll();
+      }
     }
 
-    schedule();
+    // Start the download and write loop (writer runs as data arrives)
+    queueWrite(() => flushInOrder(writable, useFS, chunks));
+    pump();
   }
 
   // ========================
