@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Universal M3U8 + Blob Downloader (Optimized)
 // @namespace    https://github.com/m3u8dl-userscripts
-// @version      2.2.0
+// @version      2.2.1
 // @description  Download HLS (.m3u8) streams and direct video blobs with smart filtering
 // @match        *://*/*
 // @run-at       document-start
@@ -114,7 +114,8 @@
     .m3u8dl-variant-card{background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.15);padding:16px;border-radius:12px;width:min(420px,92vw);max-height:80vh;overflow-y:auto;scrollbar-width:thin}
     .m3u8dl-variant-card h4{margin:0 0 4px;font-size:15px;font-weight:600}
     .m3u8dl-variant-card .subtitle{font-size:12px;color:#9ca3af;margin-bottom:10px}
-    .m3u8dl-opt{display:flex;user-select:none;cursor:pointer;font-size:12px;color:#9ca3af;margin:6px 0 12px;gap:.5rem;align-items:center}    .m3u8dl-var-list{display:flex;flex-direction:column;gap:8px}
+    .m3u8dl-opt{display:flex;user-select:none;cursor:pointer;font-size:12px;color:#9ca3af;margin:6px 0 12px;gap:.5rem;align-items:center}
+    .m3u8dl-var-list{display:flex;flex-direction:column;gap:8px}
     .m3u8dl-var-btn{background:#1f2937;border:1px solid rgba(255,255,255,.14);color:#e5e7eb;border-radius:8px;padding:11px 13px;text-align:left;cursor:pointer;font-size:13px;transition:all .2s;position:relative}
     .m3u8dl-var-btn:hover,.m3u8dl-var-btn:focus{background:#374151;border-color:rgba(255,255,255,.25);transform:translateX(2px);outline:none}
     .m3u8dl-var-btn.video-direct{background:linear-gradient(135deg,#065f46,#047857);border-color:#10b981}
@@ -431,6 +432,20 @@
     };
   })();
 
+  // Hook: URL.revokeObjectURL — cleanup registry/state
+  (() => {
+    const _revoke = URL.revokeObjectURL;
+    URL.revokeObjectURL = function (href) {
+      try {
+        blobStore.delete(href);
+        state.manifests.delete(href);
+        state.videos.delete(href);
+        floatingBtn.updateBadge?.();
+      } catch {}
+      return _revoke.call(this, href);
+    };
+  })();
+
   // Hook: fetch & XMLHttpRequest
   const _fetch = window.fetch;
   window.fetch = new Proxy(_fetch, {
@@ -502,6 +517,7 @@
     return new Promise(resolve => {
       const list = variantPopup.querySelector('.m3u8dl-var-list');
       const chk = variantPopup.querySelector('.m3u8dl-exclude-small');
+      const optRow = variantPopup.querySelector('.m3u8dl-opt');
 
       const cleanup = () => {
         variantPopup.classList.remove('show');
@@ -530,7 +546,8 @@
           btn.setAttribute('role', 'button');
 
           const badgeText = item.category === 'video' ? 'Direct' : 'HLS';
-          const titleText = item.label || `Option ${i + 1}`;
+          const sizeExtra = item.category === 'video' && item.size != null ? ` (${formatBytes(item.size)})` : '';
+          const titleText = (item.label || `Option ${i + 1}`) + sizeExtra;
           const subtitleText = item.url.slice(0, 80) + (item.url.length > 80 ? '...' : '');
 
           btn.innerHTML = `
@@ -598,18 +615,21 @@
         }
       };
 
-      // Initialize checkbox
-      if (chk) {
-        chk.checked = settings.excludeSmall;
-        chk.onchange = () => {
-          setExcludeSmall(chk.checked);
-          buildButtons(applyFilter(items));
-        };
-      }
-
-      // Load sizes for video items, then build list
       (async () => {
+        // Determine relevance of small-file toggle
         const hasVideoItems = items.some(x => x.category === 'video');
+        if (optRow) optRow.style.display = hasVideoItems ? 'flex' : 'none';
+
+        // Initialize checkbox
+        if (chk) {
+          chk.checked = settings.excludeSmall;
+          chk.onchange = () => {
+            setExcludeSmall(chk.checked);
+            buildButtons(applyFilter(items));
+          };
+        }
+
+        // Load sizes for video items (picker fetches sizes itself)
         if (hasVideoItems) {
           try {
             await ensureVideoItemSizes(items);
@@ -657,17 +677,23 @@
       if (!allMedia.length) { alert('No media detected. Play the video and try again.'); return; }
 
       const hasVideoItems = allMedia.some(i => i.category === 'video');
-      // Only resolve sizes if we need them (filtering or picker)
-      const willShowPicker = opts.showVariantPicker || allMedia.length > 1;
-      if (hasVideoItems && (settings.excludeSmall || willShowPicker)) { try { await ensureVideoItemSizes(allMedia); } catch { } }
+
+      // Fetch sizes only if we're filtering now.
+      // If a picker is shown, it will fetch sizes itself if needed.
+      if (hasVideoItems && settings.excludeSmall) {
+        try { await ensureVideoItemSizes(allMedia); } catch { }
+      }
 
       const filteredAll = settings.excludeSmall
         ? allMedia.filter(it => it.category !== 'video' || it.size == null || it.size >= SMALL_FILE_THRESHOLD)
         : allMedia;
 
-      // If filter hid everything, open picker so user can uncheck
+      // If filter hid everything, open picker so user can uncheck and proceed with selection
       if (!filteredAll.length) {
-        await showMediaPicker(allMedia);
+        const pick = await showMediaPicker(allMedia);
+        if (!pick) return;
+        if (pick.type === 'video') await downloadDirectVideo(pick.url);
+        else await downloadHLS(pick.url);
         return;
       }
 
@@ -679,8 +705,9 @@
       }
 
       // Selection: latest by default or picker if multiple/forced
+      const willShowPicker = opts.showVariantPicker || filteredAll.length > 1;
       let selected = filteredAll[filteredAll.length - 1];
-      if (willShowPicker || filteredAll.length > 1) {
+      if (willShowPicker) {
         const pick = await showMediaPicker(filteredAll);
         if (!pick) return;
         selected = pick;
@@ -705,7 +732,38 @@
     let blob, ext, filename;
 
     if (info && info.blob) {
-      blob = info.blob; ext = guessExtFromType(info.type); filename = `${sanitize(document.title)}.${ext}`;
+      // Local blob: show a simple card for consistent UX
+      ext = guessExtFromType(info.type);
+      blob = info.blob;
+      filename = `${sanitize(document.title)}.${ext}`;
+
+      const card = createProgressCard(filename, url, null, () => { /* no-op for local blob */ });
+      try {
+        // Save
+        if ('showSaveFilePicker' in window) {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          log('Saved via File System API');
+        } else {
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl; a.download = filename;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+          log('Downloaded via anchor');
+        }
+        card.update(100, '(local)');
+        card.done(true);
+      } catch (e) {
+        err('Blob save error:', e);
+        card.done(false, e?.message || 'Failed to save');
+      }
+      return;
     } else {
       let inferredExt = 'mp4';
       const m = url.match(/\.([a-z0-9]+)(\?|#|$)/i); if (m) inferredExt = m[1].toLowerCase();
@@ -746,7 +804,7 @@
       card.done(true);
     }
 
-    // Save
+    // Save (for network path)
     if ('showSaveFilePicker' in window) {
       try {
         const handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }] });
@@ -845,7 +903,15 @@
     }
     async function handleLoad(i, response) {
       if (shouldAbort()) return; active.delete(i); progress.delete(i);
-      const seg = segments[i]; let data = response;
+      const seg = segments[i];
+
+      // Fail explicitly on unsupported key methods (avoid saving encrypted data)
+      if (seg.key && seg.key.method && seg.key.method !== 'AES-128') {
+        handleFail(i, `Unsupported key method: ${seg.key.method}`);
+        return;
+      }
+
+      let data = response;
       const keyBytes = await getKeyBytes(seg);
       if (keyBytes) { const iv = seg.key.iv ? hexToU8(seg.key.iv) : ivFromSeq(mediaSeq + i); data = await decryptAesCbc(data, keyBytes, iv); }
       let u8 = new Uint8Array(data);
