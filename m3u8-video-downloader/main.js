@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Universal M3U8 + Blob Downloader (Optimized)
 // @namespace    https://github.com/m3u8dl-userscripts
-// @version      2.2.1
-// @description  Download HLS (.m3u8) streams and direct video blobs with smart filtering
+// @version      2.3.0
+// @description  Download HLS (.m3u8) streams and direct video blobs with smart filtering and size estimation
 // @match        *://*/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
@@ -40,7 +40,6 @@
     videos: new Set(),
     idleTimer: null
   };
-  // Blob registry: blob: URL => {blob, type, size, kind: 'm3u8'|'video'|'other'}
   const blobStore = new Map();
 
   // Persistent settings
@@ -54,10 +53,7 @@
   };
   const setExcludeSmall = (v) => { settings.excludeSmall = !!v; try { localStorage.setItem('m3u8dl_exclude_small', String(!!v)); } catch { } };
 
-  // HEAD size cache
-  const sizeCache = new Map(); // url => number|null
-
-  // Forward refs
+  const sizeCache = new Map();
   let mo = null;
 
   // ========================
@@ -67,6 +63,7 @@
   const isBlob = (u) => /^blob:/i.test(u);
   const isMaster = (t) => /#EXT-X-STREAM-INF/i.test(t);
   const isMedia = (t) => /#EXTINF:/i.test(t) || /#EXT-X-TARGETDURATION:/i.test(t);
+  const hasEndlist = (t) => /#EXT-X-ENDLIST\b/i.test(t);
   const sanitize = (s) => (s || 'video').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120).trim() || 'video';
   const toAbs = (u, b) => { try { return new URL(u, b).href; } catch { return u; } };
   const looksLikeM3U8Type = (t) => /mpegurl|application\/x-mpegurl|vnd\.apple\.mpegurl/i.test(t || '');
@@ -76,7 +73,6 @@
   const guessExtFromType = (t = '') => (t = t.toLowerCase(), /mp4/.test(t) ? 'mp4' : /matroska|mkv/.test(t) ? 'mkv' : /webm/.test(t) ? 'webm' : /quicktime|mov/.test(t) ? 'mov' : /avi/.test(t) ? 'avi' : /mp2t|mpegts/.test(t) ? 'ts' : /ogg/.test(t) ? 'ogg' : 'mp4');
   const formatBytes = (n) => { if (n == null) return ''; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0, v = n; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`; };
 
-  // HTML escaper
   const escapeEl = document.createElement('div');
   const escapeHtml = (str) => { escapeEl.textContent = str == null ? '' : String(str); return escapeEl.innerHTML; };
 
@@ -276,6 +272,8 @@
     const endInclusive = start + len - 1; const nextStart = start + len;
     return { len, start, endInclusive, nextStart };
   };
+  const parseRangeHeader = (range) => { if (!range) return null; const m = /bytes=(\d+)-(\d+)?/i.exec(range); if (!m) return null; const start = parseInt(m[1], 10); const end = m[2] != null ? parseInt(m[2], 10) : null; return { start, end }; };
+
   function parseMaster(text, base) {
     const lines = text.split(/\r?\n/), variants = [];
     for (let i = 0; i < lines.length; i++) {
@@ -284,11 +282,14 @@
       for (let j = i + 1; j < lines.length; j++) { const next = lines[j].trim(); if (!next || next.startsWith('#')) continue; url = toAbs(next, base); break; }
       if (url) {
         const res = attrs.RESOLUTION || ''; const [w, h] = res ? res.split('x').map(n => parseInt(n, 10)) : [null, null];
-        variants.push({ url, bandwidth: attrs.BANDWIDTH ? parseInt(attrs.BANDWIDTH, 10) : (attrs['AVERAGE-BANDWIDTH'] ? parseInt(attrs['AVERAGE-BANDWIDTH'], 10) : null), resolution: res || null, width: w, height: h, codecs: attrs.CODECS || null });
+        const peakBw = attrs.BANDWIDTH ? parseInt(attrs.BANDWIDTH, 10) : null;
+        const avgBw = attrs['AVERAGE-BANDWIDTH'] ? parseInt(attrs['AVERAGE-BANDWIDTH'], 10) : null;
+        variants.push({ url, peakBandwidth: peakBw, avgBandwidth: avgBw, resolution: res || null, width: w, height: h, codecs: attrs.CODECS || null });
       }
     }
     return variants;
   }
+
   function parseMedia(text, base) {
     const lines = text.split(/\r?\n/), segments = [];
     let currentKey = { method: 'NONE', uri: null, iv: null }, currentMap = null, mediaSeq = 0;
@@ -314,6 +315,55 @@
       segments[i].needsMap = !!(mapKey && mapKey !== lastMapKey); if (mapKey) lastMapKey = mapKey;
     }
     return { segments, mediaSeq };
+  }
+
+  // ========================
+  // HLS Size Estimation
+  // ========================
+  const sumDuration = (parsed) => parsed.segments.reduce((a, s) => a + (s.duration || 0), 0);
+
+  function bytesFromByterange(parsed) {
+    let total = 0, exact = true;
+    const seenMaps = new Set();
+    for (const s of parsed.segments) {
+      if (s.rangeHeader) {
+        const r = parseRangeHeader(s.rangeHeader);
+        if (r && r.end != null) total += (r.end - r.start + 1);
+        else exact = false;
+      } else exact = false;
+      if (s.needsMap && s.map?.rangeHeader) {
+        const key = `${s.map.uri}|${s.map.rangeHeader}`;
+        if (!seenMaps.has(key)) {
+          seenMaps.add(key);
+          const mr = parseRangeHeader(s.map.rangeHeader);
+          if (mr && mr.end != null) total += (mr.end - mr.start + 1);
+          else exact = false;
+        }
+      } else if (s.needsMap && s.map && !s.map.rangeHeader) {
+        exact = false;
+      }
+    }
+    return exact ? total : null;
+  }
+
+  async function estimateHlsSize(mediaTxt, mediaUrl, variantMeta) {
+    const parsed = parseMedia(mediaTxt, mediaUrl);
+    const durationSec = sumDuration(parsed);
+    const vod = hasEndlist(mediaTxt);
+
+    // A) Exact from BYTERANGE
+    const brBytes = bytesFromByterange(parsed);
+    if (brBytes != null) return { bytes: brBytes, durationSec, vod, method: 'byterange' };
+
+    // B) Duration × AVERAGE-BANDWIDTH (or peak BANDWIDTH)
+    const bw = variantMeta?.avgBandwidth ?? variantMeta?.peakBandwidth ?? null;
+    if (vod && bw && durationSec > 0) {
+      const bytes = Math.round((bw / 8) * durationSec);
+      return { bytes, durationSec, vod, method: 'avg-bw' };
+    }
+
+    // C) For non-VOD or no bandwidth info, return unknown
+    return { bytes: null, durationSec, vod, method: 'unknown' };
   }
 
   // ========================
@@ -344,7 +394,7 @@
     p.abort = () => { try { reqRef?.abort(); } catch { } };
     return p;
   }
-  const parseRangeHeader = (range) => { if (!range) return null; const m = /bytes=(\d+)-(\d+)?/i.exec(range); if (!m) return null; const start = parseInt(m[1], 10); const end = m[2] != null ? parseInt(m[2], 10) : null; return { start, end }; };
+
   const getText = async (url) => {
     if (isBlob(url)) {
       const info = blobStore.get(url); if (!info || !info.blob) throw new Error('Blob not available');
@@ -352,6 +402,7 @@
     }
     return gmRequest({ url, responseType: 'text', timeout: MANIFEST_TIMEOUT });
   };
+
   const getBuffer = async (url, headers = {}, timeout = REQ_TIMEOUT, onprogress) => {
     if (isBlob(url)) {
       const info = blobStore.get(url); if (!info || !info.blob) throw new Error('Blob not available');
@@ -362,6 +413,7 @@
     }
     return gmRequest({ url, responseType: 'arraybuffer', headers, timeout, onprogress });
   };
+
   async function headMeta(url) {
     try {
       const resp = await new Promise((resolve, reject) => {
@@ -372,19 +424,6 @@
       const typeMatch = /(^|\r?\n)content-type:\s*([^\r\n]+)/i.exec(headers);
       return { length: lenMatch ? parseInt(lenMatch[2], 10) : null, type: typeMatch ? typeMatch[2].trim() : null };
     } catch { return { length: null, type: null }; }
-  }
-  async function getContentLengthCached(url) {
-    if (sizeCache.has(url)) return sizeCache.get(url);
-    if (isBlob(url)) {
-      const info = blobStore.get(url); const s = info?.blob?.size ?? info?.size ?? null; sizeCache.set(url, s); return s;
-    }
-    const { length } = await headMeta(url); sizeCache.set(url, length ?? null); return length ?? null;
-  }
-  async function ensureVideoItemSizes(items) {
-    const tasks = [];
-    for (const it of items) if (it?.category === 'video' && it.size == null) tasks.push((async () => { it.size = await getContentLengthCached(it.url); })());
-    if (tasks.length) await Promise.allSettled(tasks);
-    return items;
   }
 
   // ========================
@@ -407,7 +446,7 @@
     showButton(); log('Video detected:', url);
   }
 
-  // Hook: URL.createObjectURL — detect blob types
+  // Hook: URL.createObjectURL
   (() => {
     const orig = URL.createObjectURL;
     URL.createObjectURL = function (obj) {
@@ -432,7 +471,7 @@
     };
   })();
 
-  // Hook: URL.revokeObjectURL — cleanup registry/state
+  // Hook: URL.revokeObjectURL
   (() => {
     const _revoke = URL.revokeObjectURL;
     URL.revokeObjectURL = function (href) {
@@ -463,7 +502,7 @@
     return _open.apply(this, arguments);
   };
 
-  // PerformanceObserver (resource-level)
+  // PerformanceObserver
   try {
     const po = new PerformanceObserver(list => { for (const e of list.getEntries()) { const url = e.name; if (isM3U8Url(url)) detectedM3U8(url); else if (isVideoUrl(url)) detectedVideo(url); } });
     po.observe({ entryTypes: ['resource'] });
@@ -511,7 +550,7 @@
   let attachDebounce;
 
   // ========================
-  // Picker (with size filter)
+  // Picker
   // ========================
   function showMediaPicker(items) {
     return new Promise(resolve => {
@@ -546,8 +585,7 @@
           btn.setAttribute('role', 'button');
 
           const badgeText = item.category === 'video' ? 'Direct' : 'HLS';
-          const sizeExtra = item.category === 'video' && item.size != null ? ` (${formatBytes(item.size)})` : '';
-          const titleText = (item.label || `Option ${i + 1}`) + sizeExtra;
+          const titleText = item.label || `Option ${i + 1}`;
           const subtitleText = item.url.slice(0, 80) + (item.url.length > 80 ? '...' : '');
 
           btn.innerHTML = `
@@ -578,10 +616,7 @@
         if (!excludeSmall) return baseItems;
 
         return baseItems.filter(it => {
-          // Keep all HLS items
-          if (it.category !== 'video') return true;
-          // Keep videos with unknown size OR size >= 1MB
-          if (it.size == null) return true;
+          if (it.size == null) return true; // unknown size => keep
           return it.size >= SMALL_FILE_THRESHOLD;
         });
       };
@@ -615,36 +650,25 @@
         }
       };
 
-      (async () => {
-        // Determine relevance of small-file toggle
-        const hasVideoItems = items.some(x => x.category === 'video');
-        if (optRow) optRow.style.display = hasVideoItems ? 'flex' : 'none';
+      // Always show checkbox
+      if (optRow) optRow.style.display = 'flex';
 
-        // Initialize checkbox
-        if (chk) {
-          chk.checked = settings.excludeSmall;
-          chk.onchange = () => {
-            setExcludeSmall(chk.checked);
-            buildButtons(applyFilter(items));
-          };
-        }
+      if (chk) {
+        chk.checked = settings.excludeSmall;
+        chk.onchange = () => {
+          setExcludeSmall(chk.checked);
+          buildButtons(applyFilter(items));
+        };
+      }
 
-        // Load sizes for video items (picker fetches sizes itself)
-        if (hasVideoItems) {
-          try {
-            await ensureVideoItemSizes(items);
-          } catch (e) {
-            err('Failed to fetch video sizes:', e);
-          }
-        }
-        buildButtons(applyFilter(items));
-      })();
+      buildButtons(applyFilter(items));
 
       variantPopup.classList.add('show');
       variantPopup.addEventListener('click', onBackdrop);
       document.addEventListener('keydown', onKey);
     });
   }
+
   // ========================
   // Download Flow
   // ========================
@@ -656,14 +680,40 @@
 
       const allMedia = [];
 
-      // HLS sources (never size-filtered)
-      state.manifests.forEach(url => {
+      // HLS sources with estimated sizes
+      for (const url of state.manifests) {
         const info = blobStore.get(url);
-        const label = info ? `HLS Stream (blob, ${formatBytes(info.size)})` : 'HLS Stream';
-        allMedia.push({ type: 'm3u8', category: 'm3u8', url, label });
-      });
+        let est = null;
+        if (info) {
+          allMedia.push({ type: 'm3u8', category: 'm3u8', url, label: `HLS Stream (blob, ${formatBytes(info.size)})`, size: info.size });
+        } else {
+          try {
+            const masterTxt = await getText(url);
+            if (isMaster(masterTxt)) {
+              const vars = parseMaster(masterTxt, url);
+              if (vars.length) {
+                vars.sort((a, b) => (b.height || 0) - (a.height || 0) || (b.avgBandwidth || b.peakBandwidth || 0) - (a.avgBandwidth || a.peakBandwidth || 0));
+                const topVar = vars[0];
+                const mediaTxt = await getText(topVar.url);
+                est = await estimateHlsSize(mediaTxt, topVar.url, topVar);
+              }
+            } else if (isMedia(masterTxt)) {
+              est = await estimateHlsSize(masterTxt, url, null);
+            }
+          } catch (e) {
+            log('Failed to estimate HLS size:', e);
+          }
 
-      // Direct video sources (size-aware)
+          if (est && est.bytes != null) {
+            const prefix = est.method === 'byterange' ? '' : '~';
+            allMedia.push({ type: 'm3u8', category: 'm3u8', url, label: `HLS Stream (${prefix}${formatBytes(est.bytes)})`, size: est.bytes });
+          } else {
+            allMedia.push({ type: 'm3u8', category: 'm3u8', url, label: 'HLS Stream', size: null });
+          }
+        }
+      }
+
+      // Direct video sources
       state.videos.forEach(url => {
         const info = blobStore.get(url);
         let ext = 'video';
@@ -676,19 +726,11 @@
 
       if (!allMedia.length) { alert('No media detected. Play the video and try again.'); return; }
 
-      const hasVideoItems = allMedia.some(i => i.category === 'video');
-
-      // Fetch sizes only if we're filtering now.
-      // If a picker is shown, it will fetch sizes itself if needed.
-      if (hasVideoItems && settings.excludeSmall) {
-        try { await ensureVideoItemSizes(allMedia); } catch { }
-      }
-
+      // Apply filter
       const filteredAll = settings.excludeSmall
-        ? allMedia.filter(it => it.category !== 'video' || it.size == null || it.size >= SMALL_FILE_THRESHOLD)
+        ? allMedia.filter(it => it.size == null || it.size >= SMALL_FILE_THRESHOLD)
         : allMedia;
 
-      // If filter hid everything, open picker so user can uncheck and proceed with selection
       if (!filteredAll.length) {
         const pick = await showMediaPicker(allMedia);
         if (!pick) return;
@@ -697,14 +739,6 @@
         return;
       }
 
-      // Enhance labels with resolved sizes (if not already present)
-      for (const it of filteredAll) {
-        if (it.category === 'video' && it.size != null && !/\(\d+(\.\d+)?\s*(B|KB|MB|GB|TB)\)\s*$/.test(it.label)) {
-          it.label = `${it.label.replace(/\s*$/, '')} (${formatBytes(it.size)})`;
-        }
-      }
-
-      // Selection: latest by default or picker if multiple/forced
       const willShowPicker = opts.showVariantPicker || filteredAll.length > 1;
       let selected = filteredAll[filteredAll.length - 1];
       if (willShowPicker) {
@@ -732,14 +766,12 @@
     let blob, ext, filename;
 
     if (info && info.blob) {
-      // Local blob: show a simple card for consistent UX
       ext = guessExtFromType(info.type);
       blob = info.blob;
       filename = `${sanitize(document.title)}.${ext}`;
 
-      const card = createProgressCard(filename, url, null, () => { /* no-op for local blob */ });
+      const card = createProgressCard(filename, url, null, () => { });
       try {
-        // Save
         if ('showSaveFilePicker' in window) {
           const handle = await window.showSaveFilePicker({
             suggestedName: filename,
@@ -768,13 +800,11 @@
       let inferredExt = 'mp4';
       const m = url.match(/\.([a-z0-9]+)(\?|#|$)/i); if (m) inferredExt = m[1].toLowerCase();
 
-      // Use cache if possible
       let headLen = sizeCache.get(url) ?? null, headType = null;
       if (headLen == null) {
         try { const meta = await headMeta(url); headLen = meta.length; headType = meta.type; if (meta.length != null) sizeCache.set(url, meta.length); }
         catch { }
       } else {
-        // still attempt to get content-type if unknown
         try { const meta = await headMeta(url); headType = meta.type; } catch { }
       }
       if (headType) inferredExt = guessExtFromType(headType);
@@ -804,7 +834,6 @@
       card.done(true);
     }
 
-    // Save (for network path)
     if ('showSaveFilePicker' in window) {
       try {
         const handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }] });
@@ -827,11 +856,29 @@
     if (isMaster(masterTxt)) {
       const vars = parseMaster(masterTxt, url);
       if (!vars.length) throw new Error('No variants found');
-      vars.sort((a, b) => (b.height || 0) - (a.height || 0) || (b.bandwidth || 0) - (a.bandwidth || 0));
-      const pickerItems = vars.map(v => {
-        const parts = [v.resolution, v.bandwidth ? `${Math.round(v.bandwidth / 1000)} kbps` : null, v.codecs].filter(Boolean);
-        return { type: 'variant', category: 'm3u8', url: v.url, label: parts.join(' • ') || 'Variant', variant: v };
-      });
+      vars.sort((a, b) => (b.height || 0) - (a.height || 0) || (b.avgBandwidth || b.peakBandwidth || 0) - (a.avgBandwidth || a.peakBandwidth || 0));
+
+      // Estimate sizes for variants
+      const pickerItems = [];
+      for (const v of vars) {
+        const bw = v.avgBandwidth || v.peakBandwidth;
+        const parts = [v.resolution, bw ? `${Math.round(bw / 1000)} kbps` : null, v.codecs].filter(Boolean);
+        let label = parts.join(' • ') || 'Variant';
+
+        try {
+          const mediaTxt = await getText(v.url);
+          const est = await estimateHlsSize(mediaTxt, v.url, v);
+          if (est.bytes != null) {
+            const prefix = est.method === 'byterange' ? '' : '~';
+            label += ` • ${prefix}${formatBytes(est.bytes)}`;
+          }
+          pickerItems.push({ type: 'variant', category: 'm3u8', url: v.url, label, variant: v, size: est.bytes });
+        } catch (e) {
+          log('Failed to estimate variant size:', e);
+          pickerItems.push({ type: 'variant', category: 'm3u8', url: v.url, label, variant: v, size: null });
+        }
+      }
+
       const selected = await showMediaPicker(pickerItems);
       if (!selected) return;
       variant = selected.variant; mediaUrl = variant.url;
@@ -905,7 +952,6 @@
       if (shouldAbort()) return; active.delete(i); progress.delete(i);
       const seg = segments[i];
 
-      // Fail explicitly on unsupported key methods (avoid saving encrypted data)
       if (seg.key && seg.key.method && seg.key.method !== 'AES-128') {
         handleFail(i, `Unsupported key method: ${seg.key.method}`);
         return;
