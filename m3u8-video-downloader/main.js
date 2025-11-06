@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Universal M3U8 + Blob Downloader (Optimized, Patched)
 // @namespace    https://github.com/m3u8dl-userscripts
-// @version      2.4.0
+// @version      2.5.0
 // @description  Download HLS (.m3u8) streams and direct video blobs with smart filtering and size estimation (with fixes and optimizations)
 // @match        *://*/*
 // @run-at       document-start
@@ -99,8 +99,6 @@
     } catch {}
   }
 
-  let mo = null;
-
   // ========================
   // Utilities
   // ========================
@@ -120,6 +118,65 @@
 
   const escapeEl = document.createElement('div');
   const escapeHtml = (str) => { escapeEl.textContent = str == null ? '' : String(str); return escapeEl.innerHTML; };
+
+  // Unified URL detector used everywhere
+  const detectFromUrl = (u) => {
+    try {
+      if (!u || typeof u !== 'string') return;
+      if (!isHttp(u) && !isBlob(u)) return;
+      if (isM3U8Url(u)) return detectedM3U8(u);
+      if (isVideoUrl(u)) return detectedVideo(u);
+      if (isBlob(u)) {
+        const info = blobStore.get(u);
+        if (info?.kind === 'm3u8') return detectedM3U8(u);
+        if (info?.kind === 'video') return detectedVideo(u);
+      }
+    } catch {}
+  };
+
+  // Promise de-duplicator (cache + in-flight)
+  function ensureOnce(cache, pending, key, loader) {
+    if (cache.has(key)) return cache.get(key);
+    if (pending.has(key)) return pending.get(key);
+    const p = (async () => {
+      try {
+        const val = await loader();
+        cache.set(key, val);
+        return val;
+      } finally {
+        pending.delete(key);
+      }
+    })();
+    pending.set(key, p);
+    return p;
+  }
+
+  // Unified save to disk. Uses FS Access API when available, otherwise anchor fallback
+  async function saveBlob(blob, filename, extHint) {
+    try {
+      if ('showSaveFilePicker' in window) {
+        const ext = (extHint || '').replace(/^\./, '') || (blob.type.split('/').pop() || 'bin');
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: 'Media', accept: { [blob.type || 'video/*']: [`.${ext}`] } }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return true;
+      }
+    } catch (e) {
+      if (e?.name === 'AbortError') throw e;
+    }
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    revokeLater(blobUrl);
+    return true;
+  }
+
+  let mo = null;
 
   // ========================
   // Styles
@@ -536,21 +593,23 @@
   window.fetch = new Proxy(_fetch, {
     apply(target, thisArg, args) {
       try {
-        const input = args[0]; const url = typeof input === 'string' ? input : input?.url;
-        if (url) { if (isM3U8Url(url)) detectedM3U8(url); else if (isVideoUrl(url)) detectedVideo(url); }
+        const input = args[0];
+        detectFromUrl(typeof input === 'string' ? input : input?.url);
       } catch { }
       return Reflect.apply(target, thisArg, args);
     }
   });
   const _open = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url) {
-    try { if (isM3U8Url(url)) detectedM3U8(url); else if (isVideoUrl(url)) detectedVideo(url); } catch { }
+    try { detectFromUrl(url); } catch { }
     return _open.apply(this, arguments);
   };
 
   // PerformanceObserver
   try {
-    const po = new PerformanceObserver(list => { for (const e of list.getEntries()) { const url = e.name; if (isM3U8Url(url)) detectedM3U8(url); else if (isVideoUrl(url)) detectedVideo(url); } });
+    const po = new PerformanceObserver(list => {
+      for (const e of list.getEntries()) detectFromUrl(e.name);
+    });
     po.observe({ entryTypes: ['resource'] });
   } catch { }
 
@@ -559,15 +618,12 @@
     document.querySelectorAll('video').forEach(video => {
       if (video.__m3u8dl_monitored) return; video.__m3u8dl_monitored = true;
 
-      const handleUrl = (u) => {
-        if (!u) return;
-        if (isM3U8Url(u)) detectedM3U8(u);
-        else if (isVideoUrl(u)) detectedVideo(u);
-        else if (isBlob(u)) { const info = blobStore.get(u); if (info?.kind === 'm3u8') detectedM3U8(u); else if (info?.kind === 'video') detectedVideo(u); }
-      };
       const checkSrc = () => {
-        const src = video.currentSrc || video.src; handleUrl(src);
-        video.querySelectorAll('source').forEach(source => handleUrl(source.src));
+        const srcs = [
+          video.currentSrc || video.src,
+          ...Array.from(video.querySelectorAll('source')).map(s => s.src)
+        ];
+        srcs.forEach(detectFromUrl);
       };
 
       const evs = ['loadedmetadata', 'loadstart', 'canplay'];
@@ -655,7 +711,7 @@
           if (item.category === 'video') btn.classList.add('video-direct');
           btn.setAttribute('role', 'button');
 
-          const badgeText = item.category === 'video' ? 'Direct' : 'HLS';
+        const badgeText = item.category === 'video' ? 'Direct' : 'HLS';
           const titleText = item.label || `Option ${i + 1}`;
           const subtitleText = item.url.slice(0, 80) + (item.url.length > 80 ? '...' : '');
 
@@ -829,101 +885,79 @@
   }
 
   // ========================
-  // Direct Video Download
+  // Direct Video Download (refactored)
   // ========================
   async function downloadDirectVideo(url) {
     log('Downloading direct video:', url);
     const info = blobStore.get(url);
-    let blob, ext, filename;
+    const titleBase = sanitize(document.title);
+    const cardLabel = (msg) => msg ? ` ${msg}` : '';
 
-    if (info && info.blob) {
-      ext = guessExtFromType(info.type);
-      blob = info.blob;
-      filename = `${sanitize(document.title)}.${ext}`;
-
-      const card = createProgressCard(filename, url, null, () => { });
+    // Case A: local blob present
+    if (info?.blob) {
+      const ext = guessExtFromType(info.type);
+      const filename = `${titleBase}.${ext}`;
+      const card = createProgressCard(filename, url, null, () => {});
       try {
-        if ('showSaveFilePicker' in window) {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: filename,
-            types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }]
-          });
-          const writable = await handle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          log('Saved via File System API');
-        } else {
-          const blobUrl = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = blobUrl; a.download = filename;
-          document.body.appendChild(a); a.click(); a.remove();
-          revokeLater(blobUrl);
-          log('Downloaded via anchor');
-        }
-        card.update(100, '(local)');
+        await saveBlob(info.blob, filename, ext);
+        card.update(100, cardLabel('(local)'));
         card.done(true);
       } catch (e) {
         err('Blob save error:', e);
         card.done(false, e?.message || 'Failed to save');
       }
       return;
-    } else {
-      let inferredExt = 'mp4';
-      const m = url.match(/\.([a-z0-9]+)(\?|#|$)/i); if (m) inferredExt = m[1].toLowerCase();
+    }
 
-      let headLen = null, headType = null;
-      try {
-        const meta = await getHeadCached(url);
-        headLen = meta.length; headType = meta.type;
-      } catch { }
-      if (headType) inferredExt = guessExtFromType(headType);
+    // Case B: fetch over network
+    let inferredExt = 'mp4';
+    const m = url.match(/\.([a-z0-9]+)(\?|#|$)/i);
+    if (m) inferredExt = m[1].toLowerCase();
 
-      ext = inferredExt; filename = `${sanitize(document.title)}.${ext}`;
+    let headLen = null, headType = null;
+    try {
+      const meta = await getHeadCached(url);
+      headLen = meta.length; headType = meta.type;
+    } catch {}
+    if (headType) inferredExt = guessExtFromType(headType);
 
-      let cancelled = false, totalKnown = headLen || 0;
-      const card = createProgressCard(filename, url, null, () => { cancelled = true; try { req?.abort?.(); } catch { } });
+    const ext = inferredExt;
+    const filename = `${titleBase}.${ext}`;
 
-      let lastLoaded = 0;
-      const req = gmRequest({
-        url, responseType: 'arraybuffer', timeout: REQ_TIMEOUT,
+    let cancelled = false, totalKnown = headLen || 0, lastLoaded = 0;
+    let req = null;
+
+    const card = createProgressCard(filename, url, null, () => { cancelled = true; try { req?.abort?.(); } catch {} });
+
+    try {
+      req = gmRequest({
+        url,
+        responseType: 'arraybuffer',
+        timeout: REQ_TIMEOUT,
         onprogress: (e) => {
           if (cancelled) return;
-          const loaded = e?.loaded ?? 0, total = totalKnown || e?.total || 0;
+          const loaded = e?.loaded ?? 0;
+          const total = totalKnown || e?.total || 0;
           if (!totalKnown && e?.total) totalKnown = e.total;
           if (total > 0) card.update((loaded / total) * 100, `(${formatBytes(loaded)}/${formatBytes(total)})`);
-          else if (loaded > lastLoaded + 512 * 1024) { card.update(0, `(${formatBytes(loaded)})`); lastLoaded = loaded; }
+          else if (loaded > lastLoaded + 512 * 1024) {
+            card.update(0, `(${formatBytes(loaded)})`);
+            lastLoaded = loaded;
+          }
         }
       });
 
-      let arrayBuffer;
-      try { arrayBuffer = await req; }
-      catch (e) { if (cancelled) { card.remove(); return; } throw e; }
+      const arrayBuffer = await req;
       if (cancelled) { card.remove(); return; }
 
-      blob = new Blob([arrayBuffer], { type: headType || `video/${ext}` });
-
-      try {
-        if ('showSaveFilePicker' in window) {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: filename,
-            types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }]
-          });
-          const writable = await handle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          log('Saved via File System API');
-        } else {
-          const blobUrl = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = blobUrl; a.download = filename;
-          document.body.appendChild(a); a.click(); a.remove();
-          revokeLater(blobUrl);
-          log('Downloaded via anchor');
-        }
-        card.update(100, '(done)'); card.done(true);
-      } catch (e) {
-        err('Save error:', e);
-        card.done(false, e?.message || 'Failed to save');
-      }
+      const blob = new Blob([arrayBuffer], { type: headType || `video/${ext}` });
+      await saveBlob(blob, filename, ext);
+      card.update(100, cardLabel('(done)'));
+      card.done(true);
+    } catch (e) {
+      if (cancelled) { card.remove(); return; }
+      err('Direct video save error:', e);
+      card.done(false, e?.message || 'Failed to save');
     }
   }
 
@@ -980,7 +1014,7 @@
   }
 
   // ========================
-  // Segment Downloader
+  // Segment Downloader (refactored inner functions)
   // ========================
   async function downloadSegments(parsed, filename, ext, isFmp4, sourceUrl) {
     const { segments, mediaSeq } = parsed; const total = segments.length;
@@ -1032,41 +1066,21 @@
 
     async function getKeyBytes(seg) {
       if (!seg.key || seg.key.method !== 'AES-128' || !seg.key.uri) return null;
-      const uri = seg.key.uri; if (keyCache.has(uri)) return keyCache.get(uri);
-      if (!keyPending.has(uri)) {
-        keyPending.set(uri, (async () => {
-          try {
-            log('Fetching key:', uri);
-            const buf = await getBuffer(uri);
-            const k = new Uint8Array(buf);
-            keyCache.set(uri, k);
-            return k;
-          } finally {
-            keyPending.delete(uri); // always cleanup
-          }
-        })());
-      }
-      return keyPending.get(uri);
+      const uri = seg.key.uri;
+      return ensureOnce(keyCache, keyPending, uri, async () => {
+        log('Fetching key:', uri);
+        return new Uint8Array(await getBuffer(uri));
+      });
     }
 
     async function getMapBytes(seg) {
       if (!seg.needsMap || !seg.map?.uri) return null;
       const key = `${seg.map.uri}|${seg.map.rangeHeader || ''}`;
-      if (mapCache.has(key)) return mapCache.get(key);
-      if (!mapPending.has(key)) {
-        mapPending.set(key, (async () => {
-          try {
-            log('Init segment:', seg.map.uri);
-            const headers = seg.map.rangeHeader ? { Range: seg.map.rangeHeader } : {};
-            const buf = new Uint8Array(await getBuffer(seg.map.uri, headers));
-            mapCache.set(key, buf);
-            return buf;
-          } finally {
-            mapPending.delete(key);
-          }
-        })());
-      }
-      return mapPending.get(key);
+      return ensureOnce(mapCache, mapPending, key, async () => {
+        log('Init segment:', seg.map.uri);
+        const headers = seg.map.rangeHeader ? { Range: seg.map.rangeHeader } : {};
+        return new Uint8Array(await getBuffer(seg.map.uri, headers));
+      });
     }
 
     async function handleLoad(i, response) {
@@ -1128,13 +1142,26 @@
       if (shouldAbort()) return;
       const seg = segments[i]; status[i] = 1;
       const headers = seg.rangeHeader ? { Range: seg.rangeHeader } : {};
-      const req = GM_xmlhttpRequest({
-        method: 'GET', url: seg.uri, headers, responseType: 'arraybuffer', timeout: REQ_TIMEOUT,
-        onprogress: (p) => { if (p && typeof p.loaded === 'number') { progress.set(i, { loaded: p.loaded, size: p.total || 0 }); scheduleDraw(); } },
-        onload: (r) => { if (r.status >= 200 && r.status < 300) { handleLoad(i, r.response).catch(e => handleFail(i, e.message || 'decrypt/map error')); } else handleFail(i, `HTTP ${r.status}`); },
-        onerror: () => handleFail(i, 'network'), ontimeout: () => handleFail(i, 'timeout')
+
+      const req = gmRequest({
+        url: seg.uri,
+        headers,
+        responseType: 'arraybuffer',
+        timeout: REQ_TIMEOUT,
+        onprogress: (p) => {
+          if (p && typeof p.loaded === 'number') {
+            progress.set(i, { loaded: p.loaded, size: p.total || 0 });
+            scheduleDraw();
+          }
+        }
       });
+
       active.set(i, req);
+      req.then((buf) => {
+        handleLoad(i, buf).catch(e => handleFail(i, e.message || 'decrypt/map error'));
+      }).catch((e) => {
+        handleFail(i, (e && e.message) || 'network');
+      });
     }
 
     let writable = null, useFS = false; const chunks = [];
@@ -1148,11 +1175,13 @@
     async function finalize(ok) {
       try {
         if (ok) {
-          if (useFS) { await writable.close(); log('Saved via File System API'); }
-          else {
+          if (useFS) {
+            await writable.close();
+            log('Saved via File System API');
+          } else {
             const blob = new Blob(chunks, { type: isFmp4 ? 'video/mp4' : 'video/mp2t' });
-            const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename;
-            document.body.appendChild(a); a.click(); a.remove(); revokeLater(url); log('Downloaded via Blob');
+            await saveBlob(blob, filename, isFmp4 ? 'mp4' : 'ts');
+            log('Downloaded via Blob');
           }
           card.update(100, '(done)'); card.done(true);
         } else {
