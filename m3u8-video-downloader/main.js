@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Universal M3U8 + Blob Downloader (Optimized)
+// @name         Universal M3U8 + Blob Downloader (Optimized, Patched)
 // @namespace    https://github.com/m3u8dl-userscripts
-// @version      2.3.0
-// @description  Download HLS (.m3u8) streams and direct video blobs with smart filtering and size estimation
+// @version      2.4.0
+// @description  Download HLS (.m3u8) streams and direct video blobs with smart filtering and size estimation (with fixes and optimizations)
 // @match        *://*/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
@@ -53,7 +53,52 @@
   };
   const setExcludeSmall = (v) => { settings.excludeSmall = !!v; try { localStorage.setItem('m3u8dl_exclude_small', String(!!v)); } catch { } };
 
-  const sizeCache = new Map();
+  // ========================
+  // Caches & helpers
+  // ========================
+  const manifestCache = new Map(); // url -> text
+  const headCache = new Map();     // url -> { length, type }
+  const headPending = new Map();   // url -> Promise<{length,type}>
+  const monitoredVideos = new Set();
+
+  function evictOldest(set, max) {
+    while (set.size > max) {
+      const first = set.values().next().value;
+      set.delete(first);
+    }
+  }
+
+  async function getManifest(url) {
+    if (manifestCache.has(url)) return manifestCache.get(url);
+    const txt = await getText(url);
+    manifestCache.set(url, txt);
+    return txt;
+  }
+
+  async function getHeadCached(url) {
+    if (headCache.has(url)) return headCache.get(url);
+    if (headPending.has(url)) return headPending.get(url);
+
+    const p = headMeta(url).then(meta => {
+      const v = { length: meta.length ?? null, type: meta.type ?? null };
+      headCache.set(url, v);
+      headPending.delete(url);
+      return v;
+    }).catch(err => { headPending.delete(url); throw err; });
+
+    headPending.set(url, p);
+    return p;
+  }
+
+  function revokeLater(blobUrl, ms = 30000) {
+    try {
+      setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch {} }, ms);
+      window.addEventListener('pagehide', () => {
+        try { URL.revokeObjectURL(blobUrl); } catch {}
+      }, { once: true });
+    } catch {}
+  }
+
   let mo = null;
 
   // ========================
@@ -433,16 +478,17 @@
     mountUI(); floatingBtn.classList.add('show', 'detected'); setTimeout(() => floatingBtn.classList.remove('detected'), 500);
     floatingBtn.updateBadge(); floatingBtn.stopIdle(); floatingBtn.startIdleTimer(); attachButtons();
   };
+
   function detectedM3U8(url) {
     if (typeof url !== 'string') return; if (!isHttp(url) && !isBlob(url)) return; if (isHttp(url) && !isM3U8Url(url)) return; if (state.manifests.has(url)) return;
     state.latestM3U8 = url; state.manifests.add(url);
-    if (state.manifests.size > MAX_MANIFESTS) state.manifests.delete(state.manifests.values().next().value);
+    evictOldest(state.manifests, MAX_MANIFESTS);
     showButton(); log('M3U8 detected:', url);
   }
   function detectedVideo(url) {
     if (typeof url !== 'string') return; if (!isHttp(url) && !isBlob(url)) return; if (isHttp(url) && !isVideoUrl(url)) return; if (state.videos.has(url)) return;
     state.latestVideo = url; state.videos.add(url);
-    if (state.videos.size > MAX_MANIFESTS) state.videos.delete(state.videos.values().next().value);
+    evictOldest(state.videos, MAX_MANIFESTS);
     showButton(); log('Video detected:', url);
   }
 
@@ -508,10 +554,11 @@
     po.observe({ entryTypes: ['resource'] });
   } catch { }
 
-  // Video element scanning
+  // Video element scanning with cleanup
   function monitorVideoElements() {
     document.querySelectorAll('video').forEach(video => {
       if (video.__m3u8dl_monitored) return; video.__m3u8dl_monitored = true;
+
       const handleUrl = (u) => {
         if (!u) return;
         if (isM3U8Url(u)) detectedM3U8(u);
@@ -522,7 +569,17 @@
         const src = video.currentSrc || video.src; handleUrl(src);
         video.querySelectorAll('source').forEach(source => handleUrl(source.src));
       };
-      checkSrc();['loadedmetadata', 'loadstart', 'canplay'].forEach(ev => video.addEventListener(ev, checkSrc));
+
+      const evs = ['loadedmetadata', 'loadstart', 'canplay'];
+      evs.forEach(ev => video.addEventListener(ev, checkSrc));
+
+      video.__m3u8dl_cleanup = () => {
+        try { evs.forEach(ev => video.removeEventListener(ev, checkSrc)); } catch {}
+        video.__m3u8dl_monitored = false;
+      };
+
+      monitoredVideos.add(video);
+      checkSrc();
     });
   }
 
@@ -542,7 +599,21 @@
   // DOM observers/init
   document.addEventListener('DOMContentLoaded', () => {
     mountUI();
-    mo = new MutationObserver(() => { clearTimeout(attachDebounce); attachDebounce = setTimeout(() => { attachButtons(); monitorVideoElements(); }, 250); });
+    mo = new MutationObserver(() => {
+      clearTimeout(attachDebounce);
+      attachDebounce = setTimeout(() => {
+        attachButtons();
+        monitorVideoElements();
+
+        // Cleanup removed videos to prevent leaks
+        for (const v of Array.from(monitoredVideos)) {
+          if (!v.isConnected) {
+            try { v.__m3u8dl_cleanup?.(); } catch {}
+            monitoredVideos.delete(v);
+          }
+        }
+      }, 250);
+    });
     mo.observe(document.documentElement, { childList: true, subtree: true });
     monitorVideoElements();
   });
@@ -688,13 +759,13 @@
           allMedia.push({ type: 'm3u8', category: 'm3u8', url, label: `HLS Stream (blob, ${formatBytes(info.size)})`, size: info.size });
         } else {
           try {
-            const masterTxt = await getText(url);
+            const masterTxt = await getManifest(url);
             if (isMaster(masterTxt)) {
               const vars = parseMaster(masterTxt, url);
               if (vars.length) {
                 vars.sort((a, b) => (b.height || 0) - (a.height || 0) || (b.avgBandwidth || b.peakBandwidth || 0) - (a.avgBandwidth || a.peakBandwidth || 0));
                 const topVar = vars[0];
-                const mediaTxt = await getText(topVar.url);
+                const mediaTxt = await getManifest(topVar.url);
                 est = await estimateHlsSize(mediaTxt, topVar.url, topVar);
               }
             } else if (isMedia(masterTxt)) {
@@ -786,7 +857,7 @@
           const a = document.createElement('a');
           a.href = blobUrl; a.download = filename;
           document.body.appendChild(a); a.click(); a.remove();
-          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+          revokeLater(blobUrl);
           log('Downloaded via anchor');
         }
         card.update(100, '(local)');
@@ -800,14 +871,13 @@
       let inferredExt = 'mp4';
       const m = url.match(/\.([a-z0-9]+)(\?|#|$)/i); if (m) inferredExt = m[1].toLowerCase();
 
-      let headLen = sizeCache.get(url) ?? null, headType = null;
-      if (headLen == null) {
-        try { const meta = await headMeta(url); headLen = meta.length; headType = meta.type; if (meta.length != null) sizeCache.set(url, meta.length); }
-        catch { }
-      } else {
-        try { const meta = await headMeta(url); headType = meta.type; } catch { }
-      }
+      let headLen = null, headType = null;
+      try {
+        const meta = await getHeadCached(url);
+        headLen = meta.length; headType = meta.type;
+      } catch { }
       if (headType) inferredExt = guessExtFromType(headType);
+
       ext = inferredExt; filename = `${sanitize(document.title)}.${ext}`;
 
       let cancelled = false, totalKnown = headLen || 0;
@@ -831,18 +901,30 @@
       if (cancelled) { card.remove(); return; }
 
       blob = new Blob([arrayBuffer], { type: headType || `video/${ext}` });
-      card.done(true);
-    }
 
-    if ('showSaveFilePicker' in window) {
       try {
-        const handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }] });
-        const writable = await handle.createWritable(); await writable.write(blob); await writable.close(); log('Saved via File System API'); return;
-      } catch { }
+        if ('showSaveFilePicker' in window) {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          log('Saved via File System API');
+        } else {
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = blobUrl; a.download = filename;
+          document.body.appendChild(a); a.click(); a.remove();
+          revokeLater(blobUrl);
+          log('Downloaded via anchor');
+        }
+        card.update(100, '(done)'); card.done(true);
+      } catch (e) {
+        err('Save error:', e);
+        card.done(false, e?.message || 'Failed to save');
+      }
     }
-    const blobUrl = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = blobUrl; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-    log('Downloaded via anchor');
   }
 
   // ========================
@@ -850,7 +932,7 @@
   // ========================
   async function downloadHLS(url) {
     log('Downloading HLS:', url);
-    const masterTxt = await getText(url);
+    const masterTxt = await getManifest(url);
     let mediaUrl = url, variant = null;
 
     if (isMaster(masterTxt)) {
@@ -866,7 +948,7 @@
         let label = parts.join(' • ') || 'Variant';
 
         try {
-          const mediaTxt = await getText(v.url);
+          const mediaTxt = await getManifest(v.url);
           const est = await estimateHlsSize(mediaTxt, v.url, v);
           if (est.bytes != null) {
             const prefix = est.method === 'byterange' ? '' : '~';
@@ -884,7 +966,7 @@
       variant = selected.variant; mediaUrl = variant.url;
     } else if (!isMedia(masterTxt)) throw new Error('Invalid playlist');
 
-    const mediaTxt = isMedia(masterTxt) ? masterTxt : await getText(mediaUrl);
+    const mediaTxt = isMedia(masterTxt) ? masterTxt : await getManifest(mediaUrl);
     const parsed = parseMedia(mediaTxt, mediaUrl);
     if (!parsed.segments.length) throw new Error('No segments found');
 
@@ -910,7 +992,7 @@
       () => { cancelled = true; abortAll({ resetQueued: false }); finalize(false); }
     );
 
-    const keyCache = new Map(), keyPending = new Map(), mapCache = new Map();
+    const keyCache = new Map(), keyPending = new Map(), mapCache = new Map(), mapPending = new Map();
     const active = new Map(), pending = new Map(), progress = new Map();
     const attempts = new Uint8Array(total), status = new Int8Array(total);
     let nextWrite = 0, nextIndex = 0, doneCount = 0;
@@ -929,25 +1011,64 @@
       active.clear();
       for (const i of toReset) { progress.delete(i); if (resetQueued && status[i] === 1) status[i] = 0; }
     }
+
+    // Serialized writer (fix race)
+    let writeBusy = false, writeAgain = false;
     async function writeOrdered() {
-      while (pending.has(nextWrite)) {
-        const data = pending.get(nextWrite); pending.delete(nextWrite++);
-        if (useFS) { await writable.write(data); } else chunks.push(data);
+      if (writeBusy) { writeAgain = true; return; }
+      writeBusy = true;
+      try {
+        do {
+          writeAgain = false;
+          while (pending.has(nextWrite)) {
+            const data = pending.get(nextWrite); pending.delete(nextWrite++);
+            if (useFS) await writable.write(data); else chunks.push(data);
+          }
+        } while (writeAgain);
+      } finally {
+        writeBusy = false;
       }
     }
+
     async function getKeyBytes(seg) {
       if (!seg.key || seg.key.method !== 'AES-128' || !seg.key.uri) return null;
       const uri = seg.key.uri; if (keyCache.has(uri)) return keyCache.get(uri);
-      if (!keyPending.has(uri)) keyPending.set(uri, (async () => { log('Fetching key:', uri); const buf = await getBuffer(uri); const k = new Uint8Array(buf); keyCache.set(uri, k); keyPending.delete(uri); return k; })());
+      if (!keyPending.has(uri)) {
+        keyPending.set(uri, (async () => {
+          try {
+            log('Fetching key:', uri);
+            const buf = await getBuffer(uri);
+            const k = new Uint8Array(buf);
+            keyCache.set(uri, k);
+            return k;
+          } finally {
+            keyPending.delete(uri); // always cleanup
+          }
+        })());
+      }
       return keyPending.get(uri);
     }
+
     async function getMapBytes(seg) {
       if (!seg.needsMap || !seg.map?.uri) return null;
-      const key = `${seg.map.uri}|${seg.map.rangeHeader || ''}`; if (mapCache.has(key)) return mapCache.get(key);
-      log('Init segment:', seg.map.uri);
-      const headers = seg.map.rangeHeader ? { Range: seg.map.rangeHeader } : {};
-      const buf = new Uint8Array(await getBuffer(seg.map.uri, headers)); mapCache.set(key, buf); return buf;
+      const key = `${seg.map.uri}|${seg.map.rangeHeader || ''}`;
+      if (mapCache.has(key)) return mapCache.get(key);
+      if (!mapPending.has(key)) {
+        mapPending.set(key, (async () => {
+          try {
+            log('Init segment:', seg.map.uri);
+            const headers = seg.map.rangeHeader ? { Range: seg.map.rangeHeader } : {};
+            const buf = new Uint8Array(await getBuffer(seg.map.uri, headers));
+            mapCache.set(key, buf);
+            return buf;
+          } finally {
+            mapPending.delete(key);
+          }
+        })());
+      }
+      return mapPending.get(key);
     }
+
     async function handleLoad(i, response) {
       if (shouldAbort()) return; active.delete(i); progress.delete(i);
       const seg = segments[i];
@@ -958,10 +1079,28 @@
       }
 
       let data = response;
-      const keyBytes = await getKeyBytes(seg);
-      if (keyBytes) { const iv = seg.key.iv ? hexToU8(seg.key.iv) : ivFromSeq(mediaSeq + i); data = await decryptAesCbc(data, keyBytes, iv); }
+      try {
+        const keyBytes = await getKeyBytes(seg);
+        if (keyBytes) { const iv = seg.key.iv ? hexToU8(seg.key.iv) : ivFromSeq(mediaSeq + i); data = await decryptAesCbc(data, keyBytes, iv); }
+      } catch (e) {
+        handleFail(i, e.message || 'decrypt failed'); return;
+      }
+
       let u8 = new Uint8Array(data);
-      if (seg.needsMap) { const mapBytes = await getMapBytes(seg); if (mapBytes && mapBytes.length) { const combined = new Uint8Array(mapBytes.length + u8.length); combined.set(mapBytes, 0); combined.set(u8, mapBytes.length); u8 = combined; } }
+      try {
+        if (seg.needsMap) {
+          const mapBytes = await getMapBytes(seg);
+          if (mapBytes && mapBytes.length) {
+            const combined = new Uint8Array(mapBytes.length + u8.length);
+            combined.set(mapBytes, 0);
+            combined.set(u8, mapBytes.length);
+            u8 = combined;
+          }
+        }
+      } catch (e) {
+        handleFail(i, e.message || 'init map failed'); return;
+      }
+
       pending.set(i, u8); status[i] = 2; doneCount++; bytesCompleted += u8.length; avgSegSize = bytesCompleted / Math.max(1, doneCount);
       await writeOrdered(); scheduleDraw(); schedule(); checkFinalize();
     }
@@ -1013,7 +1152,7 @@
           else {
             const blob = new Blob(chunks, { type: isFmp4 ? 'video/mp4' : 'video/mp2t' });
             const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename;
-            document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); log('Downloaded via Blob');
+            document.body.appendChild(a); a.click(); a.remove(); revokeLater(url); log('Downloaded via Blob');
           }
           card.update(100, '(done)'); card.done(true);
         } else {
