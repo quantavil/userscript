@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Universal M3U8 + Blob Downloader 
+// @name         Universal M3U8 + Blob Downloader
 // @namespace    https://github.com/m3u8dl-userscripts
-// @version      2.0.0
+// @version      2.1.0
 // @description  Download HLS (.m3u8) streams and direct video blobs
 // @match        *://*/*
 // @run-at       document-start
@@ -53,13 +53,14 @@
   const toAbs = (url, base) => { try { return new URL(url, base).href; } catch { return url; } };
   const looksLikeM3U8Type = (t) => /mpegurl|application\/x-mpegurl|vnd\.apple\.mpegurl/i.test(t || '');
   const looksLikeVideoType = (t) => /^video\//i.test(t || '') || /matroska|mp4|webm|quicktime/i.test(t || '');
-  
+
   function isM3U8Url(url) {
     return /\.m3u8(\b|[\?#]|$)/i.test(url);
   }
 
   function isVideoUrl(url) {
-    return /\.(mp4|mkv|webm|avi|mov|flv|m4v|ts|mpr)(\?|#|$)/i.test(url);
+    // Remove the "mpr" typo and keep common containers; avoid m4s to not pick HLS chunks.
+    return /\.(mp4|mkv|webm|avi|mov|flv|m4v|ts|m2ts|ogg|ogv)(\?|#|$)/i.test(url);
   }
 
   function guessExtFromType(t) {
@@ -70,6 +71,7 @@
     if (/quicktime|mov/.test(t)) return 'mov';
     if (/avi/.test(t)) return 'avi';
     if (/mp2t|mpegts/.test(t)) return 'ts';
+    if (/ogg/.test(t)) return 'ogg';
     return 'mp4';
   }
 
@@ -274,7 +276,10 @@
         await navigator.clipboard.writeText(sourceUrl || '');
         copyBtn.querySelector('.lbl').textContent = '✓';
         setTimeout(() => (copyBtn.querySelector('.lbl').textContent = 'Copy'), 1200);
-      } catch {}
+      } catch {
+        copyBtn.querySelector('.lbl').textContent = 'Err';
+        setTimeout(() => (copyBtn.querySelector('.lbl').textContent = 'Copy'), 1200);
+      }
     };
 
     return {
@@ -510,9 +515,14 @@
     return arr;
   }
 
+  // Proper 128-bit big-endian IV from sequence
   function ivFromSeq(seq) {
+    let n = BigInt(seq >>> 0);
     const iv = new Uint8Array(16);
-    new DataView(iv.buffer).setUint32(12, seq >>> 0, false);
+    for (let i = 15; i >= 0; i--) {
+      iv[i] = Number(n & 0xffn);
+      n >>= 8n;
+    }
     return iv;
   }
 
@@ -522,11 +532,12 @@
   }
 
   // ========================
-  // Network (Blob-Aware)
+  // Network (Blob-Aware, abortable)
   // ========================
   function gmRequest({ url, responseType = 'text', headers = {}, timeout = REQ_TIMEOUT, onprogress }) {
-    return new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
+    let req;
+    const promise = new Promise((resolve, reject) => {
+      req = GM_xmlhttpRequest({
         method: 'GET',
         url,
         headers,
@@ -538,6 +549,8 @@
         ontimeout: () => reject(new Error('Timeout'))
       });
     });
+    promise.abort = () => { try { req?.abort(); } catch {} };
+    return promise;
   }
 
   function parseRangeHeader(range) {
@@ -570,8 +583,34 @@
       }
       return slice.arrayBuffer();
     }
-    return gmRequest({ url, responseType: 'arraybuffer', headers, timeout, onprogress });
+    const req = gmRequest({ url, responseType: 'arraybuffer', headers, timeout, onprogress });
+    // return abortable promise
+    return req;
   };
+
+  // HEAD to get Content-Length and Content-Type
+  async function headMeta(url) {
+    try {
+      const resp = await new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+          method: 'HEAD',
+          url,
+          timeout: REQ_TIMEOUT,
+          onload: r => resolve(r),
+          onerror: () => reject(new Error('HEAD failed')),
+          ontimeout: () => reject(new Error('HEAD timeout'))
+        });
+      });
+      const headers = resp.responseHeaders || '';
+      const lenMatch = /(^|\r?\n)content-length:\s*(\d+)/i.exec(headers);
+      const typeMatch = /(^|\r?\n)content-type:\s*([^\r\n]+)/i.exec(headers);
+      const length = lenMatch ? parseInt(lenMatch[2], 10) : null;
+      const type = typeMatch ? typeMatch[2].trim() : null;
+      return { length, type };
+    } catch {
+      return { length: null, type: null };
+    }
+  }
 
   // ========================
   // Detection System
@@ -674,14 +713,19 @@
   // Hook: fetch & XMLHttpRequest
   // ========================
   const _fetch = window.fetch;
-  window.fetch = function (input, init) {
-    try {
-      const url = typeof input === 'string' ? input : input?.url;
-      if (isM3U8Url(url)) detectedM3U8(url);
-      else if (isVideoUrl(url)) detectedVideo(url);
-    } catch {}
-    return _fetch.apply(this, arguments);
-  };
+  window.fetch = new Proxy(_fetch, {
+    apply(target, thisArg, args) {
+      try {
+        const input = args[0];
+        const url = typeof input === 'string' ? input : input?.url;
+        if (url) {
+          if (isM3U8Url(url)) detectedM3U8(url);
+          else if (isVideoUrl(url)) detectedVideo(url);
+        }
+      } catch {}
+      return Reflect.apply(target, thisArg, args);
+    }
+  });
 
   const _open = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url) {
@@ -714,20 +758,21 @@
       if (video.__m3u8dl_monitored) return;
       video.__m3u8dl_monitored = true;
 
+      const handleUrl = (u) => {
+        if (!u) return;
+        if (isM3U8Url(u)) return detectedM3U8(u);
+        if (isVideoUrl(u)) return detectedVideo(u);
+        if (isBlob(u)) {
+          const info = blobStore.get(u);
+          if (info?.kind === 'm3u8') detectedM3U8(u);
+          else if (info?.kind === 'video') detectedVideo(u);
+        }
+      };
+
       const checkSrc = () => {
         const src = video.currentSrc || video.src;
-        if (src) {
-          if (isM3U8Url(src) || isBlob(src)) detectedM3U8(src);
-          else if (isVideoUrl(src) || isBlob(src)) detectedVideo(src);
-        }
-
-        video.querySelectorAll('source').forEach(source => {
-          const srcUrl = source.src;
-          if (srcUrl) {
-            if (isM3U8Url(srcUrl) || isBlob(srcUrl)) detectedM3U8(srcUrl);
-            else if (isVideoUrl(srcUrl)) detectedVideo(srcUrl);
-          }
-        });
+        handleUrl(src);
+        video.querySelectorAll('source').forEach(source => handleUrl(source.src));
       };
 
       checkSrc();
@@ -737,7 +782,7 @@
     });
   }
 
-  setInterval(monitorVideoElements, 1000);
+  // Removed 1s polling; rely on observer + initial scan
 
   // ========================
   // Video.js Button Injection
@@ -839,7 +884,7 @@
   }
 
   // ========================
-  // Direct Video Download
+  // Direct Video Download (with HEAD and abort)
   // ========================
   async function downloadDirectVideo(url) {
     log('Downloading direct video:', url);
@@ -854,32 +899,75 @@
       filename = `${sanitize(document.title)}.${ext}`;
     } else {
       // HTTP source
+      let inferredExt = 'mp4';
       const match = url.match(/\.([a-z0-9]+)(\?|#|$)/i);
-      ext = match ? match[1].toLowerCase() : 'mp4';
+      if (match) inferredExt = match[1].toLowerCase();
+
+      // Try HEAD for size and content type
+      let headLen = null;
+      let headType = null;
+      try {
+        const meta = await headMeta(url);
+        headLen = meta.length;
+        headType = meta.type;
+        if (headType) inferredExt = guessExtFromType(headType);
+      } catch {}
+
+      ext = inferredExt;
       filename = `${sanitize(document.title)}.${ext}`;
 
       let cancelled = false;
+      let totalKnown = headLen || 0;
+
       const card = createProgressCard(
         filename,
         url,
         null,
-        () => { cancelled = true; }
+        () => {
+          cancelled = true;
+          try { req?.abort?.(); } catch {}
+        }
       );
 
-      const arrayBuffer = await getBuffer(url, {}, REQ_TIMEOUT, (e) => {
-        if (cancelled) throw new Error('Cancelled');
-        if (e && e.total > 0) {
-          const pct = (e.loaded / e.total) * 100;
-          card.update(pct, `(${formatBytes(e.loaded)}/${formatBytes(e.total)})`);
+      // Kick off GET with progress and allow abort
+      let lastLoaded = 0;
+      const req = gmRequest({
+        url,
+        responseType: 'arraybuffer',
+        timeout: REQ_TIMEOUT,
+        onprogress: (e) => {
+          if (cancelled) return;
+          const loaded = e?.loaded ?? 0;
+          const total = totalKnown || e?.total || 0;
+          // If HEAD didn't return length but progress reports a total later, adopt it
+          if (!totalKnown && e?.total) totalKnown = e.total;
+          if (total > 0) {
+            const pct = (loaded / total) * 100;
+            card.update(pct, `(${formatBytes(loaded)}/${formatBytes(total)})`);
+          } else {
+            // Fallback text-only update
+            if (loaded > lastLoaded + 512 * 1024) { // reduce repaint noise
+              card.update(0, `(${formatBytes(loaded)})`);
+              lastLoaded = loaded;
+            }
+          }
         }
       });
+
+      let arrayBuffer;
+      try {
+        arrayBuffer = await req;
+      } catch (e) {
+        if (cancelled) { card.remove(); return; }
+        throw e;
+      }
 
       if (cancelled) {
         card.remove();
         return;
       }
 
-      blob = new Blob([arrayBuffer], { type: `video/${ext}` });
+      blob = new Blob([arrayBuffer], { type: headType || `video/${ext}` });
       card.done(true);
     }
 
