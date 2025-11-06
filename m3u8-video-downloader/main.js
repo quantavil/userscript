@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Universal M3U8 Downloader (Ultimate Edition, Refactored)
+// @name         Universal M3U8 + Blob Downloader 
 // @namespace    https://github.com/m3u8dl-userscripts
-// @version      1.4.1
-// @description  Download HLS (.m3u8) streams — optimized, robust, and cleaner
+// @version      2.0.0
+// @description  Download HLS (.m3u8) streams and direct video blobs
 // @match        *://*/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
@@ -13,32 +13,87 @@
 (() => {
   'use strict';
 
-  // Config
-  const MAX_RETRIES = 5;
-  const CONCURRENCY = 6; // tune as needed
+  // ========================
+  // Configuration
+  // ========================
+  const MAX_RETRIES = 3;
+  const CONCURRENCY = 6;
   const REQ_TIMEOUT = 60000;
   const MANIFEST_TIMEOUT = 30000;
   const MAX_MANIFESTS = 50;
 
-  // Logger
-  const log = (...args) => console.log('[m3u8dl]', ...args);
-  const err = (...args) => console.error('[m3u8dl]', ...args);
+  // ========================
+  // Logging
+  // ========================
+  const log = (...args) => console.log('[MediaDL]', ...args);
+  const err = (...args) => console.error('[MediaDL]', ...args);
 
-  // State
+  // ========================
+  // State Management
+  // ========================
   const state = {
     latestM3U8: null,
+    latestVideo: null,
     manifests: new Set(),
+    videos: new Set(),
     idleTimer: null
   };
 
+  // Blob registry: blob: url => {blob, type, size, kind: 'm3u8'|'video'|'other'}
+  const blobStore = new Map();
+
+  // ========================
+  // Utilities
+  // ========================
+  const isHttp = (url) => /^https?:/i.test(url);
+  const isBlob = (url) => /^blob:/i.test(url);
+  const isMaster = (txt) => /#EXT-X-STREAM-INF/i.test(txt);
+  const isMedia = (txt) => /#EXTINF:/i.test(txt) || /#EXT-X-TARGETDURATION:/i.test(txt);
+  const sanitize = (s) => (s || 'video').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120).trim() || 'video';
+  const toAbs = (url, base) => { try { return new URL(url, base).href; } catch { return url; } };
+  const looksLikeM3U8Type = (t) => /mpegurl|application\/x-mpegurl|vnd\.apple\.mpegurl/i.test(t || '');
+  const looksLikeVideoType = (t) => /^video\//i.test(t || '') || /matroska|mp4|webm|quicktime/i.test(t || '');
+  
+  function isM3U8Url(url) {
+    return /\.m3u8(\b|[\?#]|$)/i.test(url);
+  }
+
+  function isVideoUrl(url) {
+    return /\.(mp4|mkv|webm|avi|mov|flv|m4v|ts|mpr)(\?|#|$)/i.test(url);
+  }
+
+  function guessExtFromType(t) {
+    t = (t || '').toLowerCase();
+    if (/mp4/.test(t)) return 'mp4';
+    if (/matroska|mkv/.test(t)) return 'mkv';
+    if (/webm/.test(t)) return 'webm';
+    if (/quicktime|mov/.test(t)) return 'mov';
+    if (/avi/.test(t)) return 'avi';
+    if (/mp2t|mpegts/.test(t)) return 'ts';
+    return 'mp4';
+  }
+
+  function formatBytes(n) {
+    if (!n && n !== 0) return '';
+    const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0, v = n;
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
+  }
+
+  // ========================
+  // UI Assets
+  // ========================
   const DOWNLOAD_ICON_SVG = `
-    <svg class="m3u8dl-icon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" aria-hidden="true">
+    <svg class="m3u8dl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
       <polyline points="7 10 12 15 17 10"/>
       <line x1="12" y1="15" x2="12" y2="3"/>
     </svg>`;
 
-  // Styles
+  // ========================
+  // Styles (Enhanced)
+  // ========================
   GM_addStyle(`
     .m3u8dl-btn{display:inline-flex;align-items:center;justify-content:center;height:2em;width:2.25em;border:none;cursor:pointer;background:transparent;color:inherit;padding:0;transition:opacity .25s ease}
     .m3u8dl-btn .m3u8dl-icon{width:18px;height:18px}
@@ -47,6 +102,11 @@
     .m3u8dl-floating.idle{opacity:.28}
     .m3u8dl-floating.idle:hover{opacity:1}
     .m3u8dl-floating:hover{filter:brightness(1.12)}
+    .m3u8dl-floating.detected{animation:m3u8-pulse .5s ease}
+    .m3u8dl-badge{position:absolute;top:-4px;right:-4px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:8px;min-width:16px;text-align:center;box-shadow:0 2px 8px rgba(239,68,68,.4);display:none}
+    .m3u8dl-badge.show{display:block}
+    @keyframes m3u8-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+    
     #m3u8dl-progress-container{position:fixed;bottom:5rem;right:1rem;z-index:2147483646;display:flex;flex-direction:column;gap:.75rem;max-width:360px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
     .m3u8dl-card{background:rgba(17,17,17,.97);color:#e5e7eb;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px;min-width:260px;box-shadow:0 8px 32px rgba(0,0,0,.5);opacity:0;transform:translateX(100%);transition:opacity .28s ease,transform .28s ease}
     .m3u8dl-card.show{opacity:1;transform:translateX(0)}
@@ -61,21 +121,34 @@
     .m3u8dl-fill.ok{background:linear-gradient(90deg,#10b981,#34d399)}
     .m3u8dl-fill.err{background:linear-gradient(90deg,#ef4444,#f87171)}
     .m3u8dl-text{text-align:right;color:#d1d5db;font-size:12px;font-weight:500;min-height:17px}
+    
     .m3u8dl-variant-popup{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
     .m3u8dl-variant-popup.show{display:flex}
-    .m3u8dl-variant-card{background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.15);padding:16px;border-radius:12px;width:min(340px,92vw);max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
-    .m3u8dl-variant-card h4{margin:0 0 14px;font-size:15px;font-weight:600}
+    .m3u8dl-variant-card{background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.15);padding:16px;border-radius:12px;width:min(400px,92vw);max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+    .m3u8dl-variant-card h4{margin:0 0 4px;font-size:15px;font-weight:600}
+    .m3u8dl-variant-card .subtitle{font-size:12px;color:#9ca3af;margin-bottom:14px}
     .m3u8dl-var-list{display:flex;flex-direction:column;gap:8px}
-    .m3u8dl-var-btn{background:#1f2937;border:1px solid rgba(255,255,255,.14);color:#e5e7eb;border-radius:8px;padding:11px 13px;text-align:left;cursor:pointer;font-size:13px;transition:all .2s ease}
+    .m3u8dl-var-btn{background:#1f2937;border:1px solid rgba(255,255,255,.14);color:#e5e7eb;border-radius:8px;padding:11px 13px;text-align:left;cursor:pointer;font-size:13px;transition:all .2s ease;position:relative}
     .m3u8dl-var-btn:hover,.m3u8dl-var-btn:focus{background:#374151;border-color:rgba(255,255,255,.25);transform:translateX(2px);outline:none}
-    .m3u8dl-floating.detected{animation:m3u8-pulse .5s ease}
-    @keyframes m3u8-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+    .m3u8dl-var-btn.video-direct{background:linear-gradient(135deg,#065f46,#047857);border-color:#10b981}
+    .m3u8dl-var-btn.video-direct:hover{background:linear-gradient(135deg,#047857,#059669);border-color:#34d399}
+    .m3u8dl-var-btn .badge{position:absolute;top:8px;right:8px;background:#3b82f6;color:#fff;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;text-transform:uppercase}
+    .m3u8dl-var-btn.video-direct .badge{background:#10b981}
+    .m3u8dl-var-btn .title{font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+    .m3u8dl-var-btn .subtitle{font-size:11px;opacity:0.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .m3u8dl-variant-card::-webkit-scrollbar{width:6px}
     .m3u8dl-variant-card::-webkit-scrollbar-thumb{background:rgba(255,255,255,.25);border-radius:6px}
-    @media (max-width:480px){#m3u8dl-progress-container{left:1rem;right:1rem;max-width:none}.m3u8dl-card{min-width:auto}}
+    
+    @media (max-width:480px){
+      #m3u8dl-progress-container{left:1rem;right:1rem;max-width:none}
+      .m3u8dl-card{min-width:auto}
+      .m3u8dl-variant-card{width:min(340px,92vw)}
+    }
   `);
 
-  // Elements
+  // ========================
+  // UI Components
+  // ========================
   const floatingBtn = createFloatingButton();
   const progressContainer = createProgressContainer();
   const variantPopup = createVariantPopup();
@@ -83,9 +156,13 @@
   function createFloatingButton() {
     const btn = document.createElement('button');
     btn.className = 'm3u8dl-floating';
-    btn.title = 'Download detected HLS (m3u8)';
-    btn.setAttribute('aria-label', 'Download HLS stream');
+    btn.title = 'Download detected media (HLS/Video/Blob)';
+    btn.setAttribute('aria-label', 'Download media');
     btn.innerHTML = DOWNLOAD_ICON_SVG;
+
+    const badge = document.createElement('span');
+    badge.className = 'm3u8dl-badge';
+    btn.appendChild(badge);
 
     const startIdle = () => {
       clearTimeout(state.idleTimer);
@@ -99,16 +176,30 @@
     btn.onclick = (e) => {
       stopIdle();
       startIdle();
-      startDownload({ showVariantPicker: e.altKey });
+      const totalSources = state.manifests.size + state.videos.size;
+      chooseDownloadFlow({ showVariantPicker: e.altKey || totalSources > 1 });
     };
+
     btn.onmouseenter = stopIdle;
     btn.onmouseleave = startIdle;
     btn.startIdleTimer = startIdle;
     btn.stopIdle = stopIdle;
+    
+    btn.updateBadge = () => {
+      const count = state.manifests.size + state.videos.size;
+      if (count > 1) {
+        badge.textContent = count;
+        badge.classList.add('show');
+      } else {
+        badge.classList.remove('show');
+      }
+    };
+
     btn.cleanup = () => {
       clearTimeout(state.idleTimer);
-      try { mo.disconnect(); } catch {}
+      try { mo?.disconnect(); } catch {}
     };
+
     return btn;
   }
 
@@ -122,8 +213,9 @@
     const popup = document.createElement('div');
     popup.className = 'm3u8dl-variant-popup';
     popup.innerHTML = `
-      <div class="m3u8dl-variant-card" role="dialog" aria-label="Select video quality">
-        <h4>Choose Quality</h4>
+      <div class="m3u8dl-variant-card" role="dialog" aria-label="Select media">
+        <h4>Choose Media</h4>
+        <div class="subtitle">Select quality or source to download</div>
         <div class="m3u8dl-var-list"></div>
       </div>`;
     return popup;
@@ -152,19 +244,19 @@
       <div class="m3u8dl-header">
         <div class="m3u8dl-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
         <div class="m3u8dl-actions">
-          <button class="m3u8dl-mini-btn copy-btn" title="Copy playlist URL" aria-label="Copy playlist URL">
-            <span class="ico">📋</span><span class="lbl">Copy URL</span>
+          <button class="m3u8dl-mini-btn copy-btn" title="Copy URL" aria-label="Copy URL">
+            <span class="ico">📋</span><span class="lbl">Copy</span>
           </button>
-          <button class="m3u8dl-mini-btn stop-btn" title="Stop" aria-label="Stop or resume download">
+          ${onStopResume ? `<button class="m3u8dl-mini-btn stop-btn" title="Stop" aria-label="Stop/Resume">
             <span class="ico">⏸</span><span class="lbl">Stop</span>
-          </button>
-          <button class="m3u8dl-mini-btn close-btn" title="Cancel" aria-label="Cancel download">
+          </button>` : ''}
+          <button class="m3u8dl-mini-btn close-btn" title="Cancel" aria-label="Cancel">
             <span class="ico">✕</span>
           </button>
         </div>
       </div>
       <div class="m3u8dl-bar"><div class="m3u8dl-fill"></div></div>
-      <div class="m3u8dl-text">0% (0/0)</div>
+      <div class="m3u8dl-text">0%</div>
     `;
     progressContainer.appendChild(card);
     requestAnimationFrame(() => card.classList.add('show'));
@@ -175,18 +267,19 @@
     const fill = card.querySelector('.m3u8dl-fill');
     const text = card.querySelector('.m3u8dl-text');
 
-    stopBtn.onclick = onStopResume;
+    if (stopBtn && onStopResume) stopBtn.onclick = onStopResume;
     closeBtn.onclick = onCancel;
     copyBtn.onclick = async () => {
       try {
-        await navigator.clipboard.writeText(sourceUrl || state.latestM3U8 || '');
-        copyBtn.querySelector('.lbl').textContent = 'Copied';
-        setTimeout(() => (copyBtn.querySelector('.lbl').textContent = 'Copy URL'), 1200);
+        await navigator.clipboard.writeText(sourceUrl || '');
+        copyBtn.querySelector('.lbl').textContent = '✓';
+        setTimeout(() => (copyBtn.querySelector('.lbl').textContent = 'Copy'), 1200);
       } catch {}
     };
 
     return {
       setStopped(stopped) {
+        if (!stopBtn) return;
         const ico = stopBtn.querySelector('.ico');
         const lbl = stopBtn.querySelector('.lbl');
         stopBtn.title = stopped ? 'Resume' : 'Stop';
@@ -198,10 +291,10 @@
         fill.style.width = `${percent}%`;
         text.textContent = `${percent}%${extraText ? ' ' + extraText : ''}`;
       },
-      done(ok = true) {
+      done(ok = true, msg) {
         fill.classList.add(ok ? 'ok' : 'err');
         fill.style.width = '100%';
-        text.textContent = ok ? '✓ Complete' : '✗ Failed';
+        text.textContent = msg || (ok ? '✓ Complete' : '✗ Failed');
         setTimeout(() => card.remove(), 2500);
       },
       remove() {
@@ -211,7 +304,7 @@
     };
   }
 
-  function showVariantPicker(variants) {
+  function showMediaPicker(items) {
     return new Promise(resolve => {
       const list = variantPopup.querySelector('.m3u8dl-var-list');
       list.innerHTML = '';
@@ -221,6 +314,7 @@
         document.removeEventListener('keydown', onKey);
         variantPopup.removeEventListener('click', onBackdrop);
       };
+
       const onBackdrop = (e) => {
         if (e.target === variantPopup) {
           cleanup();
@@ -229,19 +323,25 @@
       };
 
       let buttons = [];
-      variants.forEach((v, i) => {
+      items.forEach((item, i) => {
         const btn = document.createElement('button');
         btn.className = 'm3u8dl-var-btn';
+        if (item.category === 'video') btn.classList.add('video-direct');
         btn.setAttribute('role', 'button');
-        const parts = [
-          v.resolution,
-          v.bandwidth ? `${Math.round(v.bandwidth / 1000)} kbps` : null,
-          v.codecs
-        ].filter(Boolean);
-        btn.textContent = parts.length ? parts.join(' • ') : `Variant ${i + 1}`;
+
+        const badgeText = item.category === 'video' ? 'Direct' : 'HLS';
+        const titleText = item.label || `Option ${i + 1}`;
+        const subtitleText = item.url.slice(0, 80) + (item.url.length > 80 ? '...' : '');
+
+        btn.innerHTML = `
+          <div class="badge">${escapeHtml(badgeText)}</div>
+          <div class="title">${escapeHtml(titleText)}</div>
+          <div class="subtitle">${escapeHtml(subtitleText)}</div>
+        `;
+
         btn.onclick = () => {
           cleanup();
-          resolve(v);
+          resolve(item);
         };
         list.appendChild(btn);
         buttons.push(btn);
@@ -278,12 +378,9 @@
     });
   }
 
-  // Helpers
-  const isMaster = (txt) => /#EXT-X-STREAM-INF/i.test(txt);
-  const isMedia = (txt) => /#EXTINF:/i.test(txt) || /#EXT-X-TARGETDURATION:/i.test(txt);
-  const sanitize = (s) => (s || 'video').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120).trim() || 'video';
-  const toAbs = (url, base) => { try { return new URL(url, base).href; } catch { return url; } };
-
+  // ========================
+  // Playlist Parsing
+  // ========================
   function parseAttrs(str) {
     const attrs = {};
     const re = /([A-Z0-9-]+)=(?:"([^"]*)"|([^,]*))/gi;
@@ -324,7 +421,8 @@
           url,
           bandwidth: attrs.BANDWIDTH ? parseInt(attrs.BANDWIDTH, 10) : (attrs['AVERAGE-BANDWIDTH'] ? parseInt(attrs['AVERAGE-BANDWIDTH'], 10) : null),
           resolution: res || null,
-          width: w, height: h,
+          width: w,
+          height: h,
           codecs: attrs.CODECS || null
         });
       }
@@ -332,7 +430,6 @@
     return variants;
   }
 
-  // Parse media, capturing per-segment key/map to support rotation
   function parseMedia(text, base) {
     const lines = text.split(/\r?\n/);
     const segments = [];
@@ -391,7 +488,6 @@
       }
     }
 
-    // Mark where init-map must be injected
     let lastMapKey = null;
     for (let i = 0; i < segments.length; i++) {
       const m = segments[i].map;
@@ -403,7 +499,9 @@
     return { segments, mediaSeq };
   }
 
-  // Crypto helpers
+  // ========================
+  // Crypto
+  // ========================
   function hexToU8(hex) {
     hex = String(hex || '').replace(/^0x/i, '').replace(/[^0-9a-f]/gi, '');
     if (hex.length % 2) hex = '0' + hex;
@@ -411,22 +509,29 @@
     for (let i = 0; i < arr.length; i++) arr[i] = parseInt(hex.substr(i * 2, 2), 16);
     return arr;
   }
+
   function ivFromSeq(seq) {
     const iv = new Uint8Array(16);
     new DataView(iv.buffer).setUint32(12, seq >>> 0, false);
     return iv;
   }
+
   async function decryptAesCbc(data, keyBytes, iv) {
     const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['decrypt']);
     return crypto.subtle.decrypt({ name: 'AES-CBC', iv }, cryptoKey, data);
   }
 
-  // Network
+  // ========================
+  // Network (Blob-Aware)
+  // ========================
   function gmRequest({ url, responseType = 'text', headers = {}, timeout = REQ_TIMEOUT, onprogress }) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method: 'GET',
-        url, headers, timeout, responseType,
+        url,
+        headers,
+        timeout,
+        responseType,
         onprogress: onprogress ? (e) => onprogress(e) : undefined,
         onload: r => (r.status >= 200 && r.status < 300) ? resolve(r.response) : reject(new Error(`HTTP ${r.status}`)),
         onerror: () => reject(new Error('Network error')),
@@ -434,140 +539,432 @@
       });
     });
   }
-  const getText = (url) => gmRequest({ url, responseType: 'text', timeout: MANIFEST_TIMEOUT });
-  const getBuffer = (url, headers = {}, timeout = REQ_TIMEOUT, onprogress) =>
-    gmRequest({ url, responseType: 'arraybuffer', headers, timeout, onprogress });
 
-  // Detection
-  function detected(url) {
+  function parseRangeHeader(range) {
+    if (!range) return null;
+    const m = /bytes=(\d+)-(\d+)?/i.exec(range);
+    if (!m) return null;
+    const start = parseInt(m[1], 10);
+    const end = m[2] != null ? parseInt(m[2], 10) : null;
+    return { start, end };
+  }
+
+  const getText = async (url) => {
+    if (isBlob(url)) {
+      const info = blobStore.get(url);
+      if (!info || !info.blob) throw new Error('Blob not available');
+      return info.blob.text();
+    }
+    return gmRequest({ url, responseType: 'text', timeout: MANIFEST_TIMEOUT });
+  };
+
+  const getBuffer = async (url, headers = {}, timeout = REQ_TIMEOUT, onprogress) => {
+    if (isBlob(url)) {
+      const info = blobStore.get(url);
+      if (!info || !info.blob) throw new Error('Blob not available');
+      const blob = info.blob;
+      const r = parseRangeHeader(headers.Range);
+      const slice = r ? blob.slice(r.start, r.end != null ? (r.end + 1) : blob.size) : blob;
+      if (onprogress) {
+        setTimeout(() => onprogress({ loaded: slice.size, total: slice.size }), 0);
+      }
+      return slice.arrayBuffer();
+    }
+    return gmRequest({ url, responseType: 'arraybuffer', headers, timeout, onprogress });
+  };
+
+  // ========================
+  // Detection System
+  // ========================
+  function showButton() {
+    mountUI();
+    floatingBtn.classList.add('show', 'detected');
+    setTimeout(() => floatingBtn.classList.remove('detected'), 500);
+    floatingBtn.updateBadge();
+    floatingBtn.stopIdle();
+    floatingBtn.startIdleTimer();
+    attachButtons();
+  }
+
+  function detectedM3U8(url) {
     if (typeof url !== 'string') return;
-    if (!/^https?:/i.test(url)) return;
-    // Fix: allow plain ".m3u8" endings
-    if (!/\.m3u8(\b|[\?#]|$)/i.test(url)) return;
+    if (!isHttp(url) && !isBlob(url)) return;
+    if (isHttp(url) && !isM3U8Url(url)) return;
     if (state.manifests.has(url)) return;
 
     state.latestM3U8 = url;
     state.manifests.add(url);
-    // Cap memory
+
     if (state.manifests.size > MAX_MANIFESTS) {
       const first = state.manifests.values().next().value;
       state.manifests.delete(first);
     }
 
-    mountUI();
-    floatingBtn.classList.add('show', 'detected');
-    setTimeout(() => floatingBtn.classList.remove('detected'), 500);
-    floatingBtn.stopIdle();
-    floatingBtn.startIdleTimer();
-    attachButtons();
-    log('Detected:', url);
+    showButton();
+    log('M3U8 detected:', url);
   }
 
-  // Hooks
+  function detectedVideo(url) {
+    if (typeof url !== 'string') return;
+    if (!isHttp(url) && !isBlob(url)) return;
+    if (isHttp(url) && !isVideoUrl(url)) return;
+    if (state.videos.has(url)) return;
+
+    state.latestVideo = url;
+    state.videos.add(url);
+
+    if (state.videos.size > MAX_MANIFESTS) {
+      const first = state.videos.values().next().value;
+      state.videos.delete(first);
+    }
+
+    showButton();
+    log('Video detected:', url);
+  }
+
+  // ========================
+  // Hook: URL.createObjectURL (CRITICAL)
+  // ========================
+  (function hookCreateObjectURL() {
+    const orig = URL.createObjectURL;
+    URL.createObjectURL = function (obj) {
+      const href = orig.call(this, obj);
+      try {
+        if (obj instanceof Blob) {
+          const type = obj.type || '';
+          const info = { blob: obj, type, size: obj.size, kind: 'other' };
+
+          if (looksLikeM3U8Type(type)) {
+            info.kind = 'm3u8';
+            blobStore.set(href, info);
+            detectedM3U8(href);
+          } else if (looksLikeVideoType(type)) {
+            info.kind = 'video';
+            blobStore.set(href, info);
+            detectedVideo(href);
+          } else {
+            // Content sniffing for unknown types
+            const needSniff = /text\/plain|application\/octet-stream|^$/.test(type);
+            if (needSniff && obj.size > 0) {
+              obj.slice(0, Math.min(2048, obj.size)).text().then(head => {
+                if (/^#EXTM3U/i.test(head)) {
+                  info.kind = 'm3u8';
+                  blobStore.set(href, info);
+                  detectedM3U8(href);
+                } else {
+                  blobStore.set(href, info);
+                }
+              }).catch(() => blobStore.set(href, info));
+            } else {
+              blobStore.set(href, info);
+            }
+          }
+        } else {
+          // MediaSource, etc.
+          blobStore.set(href, { blob: null, type: 'other', size: 0, kind: 'other' });
+        }
+      } catch (e) {
+        err('createObjectURL hook error:', e);
+      }
+      return href;
+    };
+  })();
+
+  // ========================
+  // Hook: fetch & XMLHttpRequest
+  // ========================
   const _fetch = window.fetch;
   window.fetch = function (input, init) {
-    try { detected(typeof input === 'string' ? input : input?.url); } catch {}
+    try {
+      const url = typeof input === 'string' ? input : input?.url;
+      if (isM3U8Url(url)) detectedM3U8(url);
+      else if (isVideoUrl(url)) detectedVideo(url);
+    } catch {}
     return _fetch.apply(this, arguments);
   };
+
   const _open = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url) {
-    try { detected(url); } catch {}
+    try {
+      if (isM3U8Url(url)) detectedM3U8(url);
+      else if (isVideoUrl(url)) detectedVideo(url);
+    } catch {}
     return _open.apply(this, arguments);
   };
+
+  // ========================
+  // Hook: PerformanceObserver
+  // ========================
   try {
     const po = new PerformanceObserver(list => {
-      for (const e of list.getEntries()) detected(e.name);
+      for (const e of list.getEntries()) {
+        const url = e.name;
+        if (isM3U8Url(url)) detectedM3U8(url);
+        else if (isVideoUrl(url)) detectedVideo(url);
+      }
     });
     po.observe({ entryTypes: ['resource'] });
   } catch {}
 
-  // Attach to Video.js (debounced to reduce observer churn)
+  // ========================
+  // Video Element Monitoring
+  // ========================
+  function monitorVideoElements() {
+    document.querySelectorAll('video').forEach(video => {
+      if (video.__m3u8dl_monitored) return;
+      video.__m3u8dl_monitored = true;
+
+      const checkSrc = () => {
+        const src = video.currentSrc || video.src;
+        if (src) {
+          if (isM3U8Url(src) || isBlob(src)) detectedM3U8(src);
+          else if (isVideoUrl(src) || isBlob(src)) detectedVideo(src);
+        }
+
+        video.querySelectorAll('source').forEach(source => {
+          const srcUrl = source.src;
+          if (srcUrl) {
+            if (isM3U8Url(srcUrl) || isBlob(srcUrl)) detectedM3U8(srcUrl);
+            else if (isVideoUrl(srcUrl)) detectedVideo(srcUrl);
+          }
+        });
+      };
+
+      checkSrc();
+      video.addEventListener('loadedmetadata', checkSrc);
+      video.addEventListener('loadstart', checkSrc);
+      video.addEventListener('canplay', checkSrc);
+    });
+  }
+
+  setInterval(monitorVideoElements, 1000);
+
+  // ========================
+  // Video.js Button Injection
+  // ========================
   function attachButtons() {
     document.querySelectorAll('.video-js .vjs-control-bar').forEach(bar => {
       if (bar.querySelector('.m3u8dl-btn')) return;
       const btn = document.createElement('button');
       btn.className = 'vjs-control vjs-button m3u8dl-btn';
-      btn.title = 'Download M3U8';
-      btn.setAttribute('aria-label', 'Download HLS stream');
+      btn.title = 'Download Media';
+      btn.setAttribute('aria-label', 'Download media');
       btn.innerHTML = DOWNLOAD_ICON_SVG;
       btn.onclick = (e) => {
         e.stopPropagation();
         floatingBtn.stopIdle();
         floatingBtn.startIdleTimer();
-        startDownload({ showVariantPicker: e.altKey });
+        const totalSources = state.manifests.size + state.videos.size;
+        chooseDownloadFlow({ showVariantPicker: e.altKey || totalSources > 1 });
       };
       bar.appendChild(btn);
     });
   }
+
   let attachDebounce;
   const mo = new MutationObserver(() => {
     clearTimeout(attachDebounce);
-    attachDebounce = setTimeout(attachButtons, 250);
+    attachDebounce = setTimeout(() => {
+      attachButtons();
+      monitorVideoElements();
+    }, 250);
   });
+
   document.addEventListener('DOMContentLoaded', () => {
     mountUI();
     mo.observe(document.documentElement, { childList: true, subtree: true });
+    monitorVideoElements();
   });
+
   window.addEventListener('beforeunload', () => {
     try { floatingBtn.cleanup?.(); } catch {}
   });
 
-  // Download flow
-  async function startDownload(opts = {}) {
+  // ========================
+  // Download Flow Controller
+  // ========================
+  async function chooseDownloadFlow(opts = {}) {
     mountUI();
+    const oldOpacity = floatingBtn.style.opacity;
     try {
-      if (!state.latestM3U8) {
-        alert('No m3u8 detected. Play the video, then try again.');
+      floatingBtn.style.opacity = '0.55';
+
+      const allMedia = [];
+
+      // Collect M3U8 sources
+      state.manifests.forEach(url => {
+        const info = blobStore.get(url);
+        const label = info ? `HLS Stream (blob, ${formatBytes(info.size)})` : 'HLS Stream';
+        allMedia.push({ type: 'm3u8', category: 'm3u8', url, label });
+      });
+
+      // Collect video sources
+      state.videos.forEach(url => {
+        const info = blobStore.get(url);
+        let ext = 'video';
+        if (info) {
+          ext = guessExtFromType(info.type).toUpperCase();
+        } else if (isHttp(url)) {
+          const match = url.match(/\.([a-z0-9]+)(\?|#|$)/i);
+          if (match) ext = match[1].toUpperCase();
+        }
+        const size = info ? ` (${formatBytes(info.size)})` : '';
+        allMedia.push({ type: 'video', category: 'video', url, label: `Direct Video (${ext})${size}` });
+      });
+
+      if (!allMedia.length) {
+        alert('No media detected. Play the video and try again.');
         return;
       }
 
-      // Loading feedback
-      const oldOpacity = floatingBtn.style.opacity;
-      floatingBtn.style.opacity = '0.55';
+      let selected = allMedia[allMedia.length - 1]; // Latest by default
 
-      const url = state.latestM3U8;
-      log('Downloading:', url);
-      const masterTxt = await getText(url);
-
-      let mediaUrl = url;
-      let variant = null;
-
-      if (isMaster(masterTxt)) {
-        const vars = parseMaster(masterTxt, url);
-        if (!vars.length) throw new Error('No variants found');
-        vars.sort((a, b) => (b.height || 0) - (a.height || 0) || (b.bandwidth || 0) - (a.bandwidth || 0));
-        variant = opts.showVariantPicker ? await showVariantPicker(vars) : vars[0];
-        if (!variant) return; // canceled
-        mediaUrl = variant.url;
-        if (!opts.showVariantPicker) {
-          const pick = variant.resolution || `${Math.round((variant.bandwidth || 0) / 1000)} kbps`;
-          log('Auto-selected variant:', pick);
-        }
-      } else if (!isMedia(masterTxt)) {
-        throw new Error('Invalid playlist');
+      if (opts.showVariantPicker && allMedia.length > 1) {
+        selected = await showMediaPicker(allMedia);
+        if (!selected) return; // Cancelled
       }
 
-      const mediaTxt = isMedia(masterTxt) ? masterTxt : await getText(mediaUrl);
-      const parsed = parseMedia(mediaTxt, mediaUrl);
-      if (!parsed.segments.length) throw new Error('No segments found');
+      if (selected.type === 'video') {
+        await downloadDirectVideo(selected.url);
+      } else {
+        await downloadHLS(selected.url);
+      }
 
-      const isFmp4 = parsed.segments.some(s => s.map) || /\.m4s(\?|$)/i.test(parsed.segments[0].uri);
-      const ext = isFmp4 ? 'mp4' : 'ts';
-      const name = sanitize(document.title);
-      const qual = variant?.resolution ? `_${variant.resolution}` : '';
-      const filename = `${name}${qual}.${ext}`;
-
-      await download(parsed, filename, ext, isFmp4, url);
-      // restore button
-      floatingBtn.style.opacity = oldOpacity || '1';
     } catch (e) {
-      floatingBtn.style.opacity = '1';
       err(e);
       alert(`Error: ${e.message || e}`);
+    } finally {
+      floatingBtn.style.opacity = oldOpacity || '1';
     }
   }
 
-  async function download(parsed, filename, ext, isFmp4, sourceUrl) {
+  // ========================
+  // Direct Video Download
+  // ========================
+  async function downloadDirectVideo(url) {
+    log('Downloading direct video:', url);
+
+    const info = blobStore.get(url);
+    let blob, ext, filename;
+
+    if (info && info.blob) {
+      // Blob source
+      blob = info.blob;
+      ext = guessExtFromType(info.type);
+      filename = `${sanitize(document.title)}.${ext}`;
+    } else {
+      // HTTP source
+      const match = url.match(/\.([a-z0-9]+)(\?|#|$)/i);
+      ext = match ? match[1].toLowerCase() : 'mp4';
+      filename = `${sanitize(document.title)}.${ext}`;
+
+      let cancelled = false;
+      const card = createProgressCard(
+        filename,
+        url,
+        null,
+        () => { cancelled = true; }
+      );
+
+      const arrayBuffer = await getBuffer(url, {}, REQ_TIMEOUT, (e) => {
+        if (cancelled) throw new Error('Cancelled');
+        if (e && e.total > 0) {
+          const pct = (e.loaded / e.total) * 100;
+          card.update(pct, `(${formatBytes(e.loaded)}/${formatBytes(e.total)})`);
+        }
+      });
+
+      if (cancelled) {
+        card.remove();
+        return;
+      }
+
+      blob = new Blob([arrayBuffer], { type: `video/${ext}` });
+      card.done(true);
+    }
+
+    // Save blob
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        log('Saved via File System API');
+        return;
+      } catch {}
+    }
+
+    // Fallback: <a> download
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    log('Downloaded via anchor');
+  }
+
+  // ========================
+  // HLS Download
+  // ========================
+  async function downloadHLS(url) {
+    log('Downloading HLS:', url);
+
+    const masterTxt = await getText(url);
+    let mediaUrl = url;
+    let variant = null;
+
+    if (isMaster(masterTxt)) {
+      const vars = parseMaster(masterTxt, url);
+      if (!vars.length) throw new Error('No variants found');
+      vars.sort((a, b) => (b.height || 0) - (a.height || 0) || (b.bandwidth || 0) - (a.bandwidth || 0));
+
+      const pickerItems = vars.map(v => {
+        const parts = [
+          v.resolution,
+          v.bandwidth ? `${Math.round(v.bandwidth / 1000)} kbps` : null,
+          v.codecs
+        ].filter(Boolean);
+        return {
+          type: 'variant',
+          category: 'm3u8',
+          url: v.url,
+          label: parts.join(' • ') || 'Variant',
+          variant: v
+        };
+      });
+
+      const selected = await showMediaPicker(pickerItems);
+      if (!selected) return;
+      variant = selected.variant;
+      mediaUrl = variant.url;
+    } else if (!isMedia(masterTxt)) {
+      throw new Error('Invalid playlist');
+    }
+
+    const mediaTxt = isMedia(masterTxt) ? masterTxt : await getText(mediaUrl);
+    const parsed = parseMedia(mediaTxt, mediaUrl);
+    if (!parsed.segments.length) throw new Error('No segments found');
+
+    const isFmp4 = parsed.segments.some(s => s.map) || /\.m4s(\?|$)/i.test(parsed.segments[0].uri);
+    const ext = isFmp4 ? 'mp4' : 'ts';
+    const name = sanitize(document.title);
+    const qual = variant?.resolution ? `_${variant.resolution}` : '';
+    const filename = `${name}${qual}.${ext}`;
+
+    await downloadSegments(parsed, filename, ext, isFmp4, url);
+  }
+
+  // ========================
+  // Segment Downloader
+  // ========================
+  async function downloadSegments(parsed, filename, ext, isFmp4, sourceUrl) {
     const { segments, mediaSeq } = parsed;
     const total = segments.length;
 
@@ -577,24 +974,31 @@
     const card = createProgressCard(
       filename,
       sourceUrl,
-      () => { stopped = !stopped; card.setStopped(stopped); if (!stopped) schedule(); else abortAll({ resetQueued: true }); },
-      () => { cancelled = true; abortAll({ resetQueued: false }); finalize(false); }
+      () => {
+        stopped = !stopped;
+        card.setStopped(stopped);
+        if (!stopped) schedule();
+        else abortAll({ resetQueued: true });
+      },
+      () => {
+        cancelled = true;
+        abortAll({ resetQueued: false });
+        finalize(false);
+      }
     );
 
-    // Caches for keys and init maps
-    const keyCache = new Map();            // keyUri -> Uint8Array
-    const keyPending = new Map();          // keyUri -> Promise<Uint8Array>
-    const mapCache = new Map();            // mapKey (uri|range) -> Uint8Array
+    const keyCache = new Map();
+    const keyPending = new Map();
+    const mapCache = new Map();
 
-    const active = new Map();              // index -> reqHandle
-    const pending = new Map();             // index -> Uint8Array
-    const progress = new Map();            // index -> { loaded, size }
-    const attempts = new Uint8Array(total);// segment retries
-    const status = new Int8Array(total);   // 0=not started,1=downloading,2=done,-1=failed
+    const active = new Map();
+    const pending = new Map();
+    const progress = new Map();
+    const attempts = new Uint8Array(total);
+    const status = new Int8Array(total);
     let nextWrite = 0, nextIndex = 0, doneCount = 0;
     let bytesCompleted = 0, avgSegSize = 0;
 
-    // Stats & throttled draw
     let drawScheduled = false;
     function scheduleDraw() {
       if (drawScheduled) return;
@@ -604,6 +1008,7 @@
         draw();
       });
     }
+
     function draw() {
       let partial = 0;
       progress.forEach(({ loaded, size }) => {
@@ -611,9 +1016,7 @@
         else if (avgSegSize > 0) partial += Math.min(1, loaded / avgSegSize);
       });
       const pct = ((doneCount + partial) / total) * 100;
-
-      const extra = `(${doneCount}/${total})`;
-      card.update(pct, extra);
+      card.update(pct, `(${doneCount}/${total})`);
     }
 
     function shouldAbort() {
@@ -629,7 +1032,7 @@
       active.clear();
       for (const i of toReset) {
         progress.delete(i);
-        if (resetQueued && status[i] === 1) status[i] = 0; // allow re-scheduling on resume
+        if (resetQueued && status[i] === 1) status[i] = 0;
       }
     }
 
@@ -681,7 +1084,6 @@
       const seg = segments[i];
       let data = response;
 
-      // Decrypt if necessary
       const keyBytes = await getKeyBytes(seg);
       if (keyBytes) {
         const iv = seg.key.iv ? hexToU8(seg.key.iv) : ivFromSeq(mediaSeq + i);
@@ -689,7 +1091,6 @@
       }
       let u8 = new Uint8Array(data);
 
-      // Prepend init map if needed
       if (seg.needsMap) {
         const mapBytes = await getMapBytes(seg);
         if (mapBytes && mapBytes.length) {
@@ -715,14 +1116,14 @@
     function handleFail(i, why) {
       active.delete(i);
       progress.delete(i);
-      if (shouldAbort()) return; // paused/stopped or cancelled; do not change status/attempts
+      if (shouldAbort()) return;
       const a = attempts[i] + 1;
       attempts[i] = a;
       if (a > MAX_RETRIES) {
         status[i] = -1;
-        err(`Segment ${i} failed permanently after ${MAX_RETRIES} attempts (${why})`);
+        err(`Segment ${i} failed permanently (${why})`);
       } else {
-        status[i] = 0; // ready to retry
+        status[i] = 0;
       }
       schedule();
       checkFinalize();
@@ -739,19 +1140,19 @@
 
     function schedule() {
       if (shouldAbort()) return;
-      // Fill pipeline
       while (active.size < CONCURRENCY) {
-        // Prefer retries first
         let i = -1;
         for (let j = 0; j < total; j++) {
-          if (status[j] === 0 && attempts[j] > 0) { i = j; break; }
+          if (status[j] === 0 && attempts[j] > 0) {
+            i = j;
+            break;
+          }
         }
-        // Otherwise pick next new
         if (i === -1) {
           while (nextIndex < total && status[nextIndex] !== 0) nextIndex++;
           if (nextIndex < total) i = nextIndex++;
         }
-        if (i === -1) break; // nothing to schedule
+        if (i === -1) break;
         downloadSeg(i);
       }
     }
@@ -787,7 +1188,6 @@
       active.set(i, req);
     }
 
-    // Output sink
     let writable = null;
     let useFS = false;
     const chunks = [];
@@ -801,9 +1201,7 @@
         writable = await handle.createWritable();
         useFS = true;
         log('Using File System Access API');
-      } catch {
-        // user canceled picker; fall back to blob
-      }
+      } catch {}
     }
 
     async function finalize(ok) {
@@ -816,7 +1214,8 @@
             const blob = new Blob(chunks, { type: isFmp4 ? 'video/mp4' : 'video/mp2t' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = filename;
+            a.href = url;
+            a.download = filename;
             document.body.appendChild(a);
             a.click();
             a.remove();
@@ -840,10 +1239,11 @@
       }
     }
 
-    // Kickoff
     schedule();
   }
 
-  // Mount at start
+  // ========================
+  // Initialize
+  // ========================
   mountUI();
 })();
