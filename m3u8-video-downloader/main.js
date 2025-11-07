@@ -327,7 +327,7 @@
   .umdl-fab.idle{opacity:.5}
   .umdl-fab:hover{background:#353535}
   .umdl-fab.busy svg{opacity:0}
-  .umdl-fab.busy::after{content:'';width:18px;height:18px;border:2px solid #404040;border-top-color:#fff;border-radius:50%;animation:umdl-spin .6s linear infinite}
+  .umdl-fab.busy::after{content:'';position:absolute;width:18px;height:18px;border:2px solid #404040;border-top-color:#fff;border-radius:50%;animation:umdl-spin .6s linear infinite}
   .umdl-badge{position:absolute;top:-3px;right:-3px;background:#dc3545;color:#fff;font-weight:600;font-size:9px;padding:3px 6px;border-radius:10px;display:none;line-height:1;border:1.5px solid #1e1e1e}
   .umdl-fab svg{width:16px;height:16px}
   
@@ -367,10 +367,10 @@
   .umdl-toast::-webkit-scrollbar-thumb{background:#404040;border-radius:3px}
   
   .umdl-job{background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:10px;padding:13px 15px;min-width:280px}
-  .umdl-job.minimized{padding:10px 12px;min-width:200px}
-  .umdl-job.minimized .umdl-bar,.umdl-job.minimized .umdl-row:last-child,.umdl-job.minimized .btn-stop,.umdl-job.minimized .btn-x{display:none}
+  .umdl-job.minimized{padding:6px;min-width:unset;width:auto}
+  .umdl-job.minimized .umdl-bar,.umdl-job.minimized .umdl-row:last-child,.umdl-job.minimized .btn-stop,.umdl-job.minimized .btn-x,.umdl-job.minimized .name{display:none}
   .umdl-job.minimized .umdl-row:first-child{margin-bottom:0}
-  .umdl-job.minimized .name{max-width:180px;font-size:12px;color:#aaa}
+  .umdl-job.minimized .umdl-ctrls{margin:0;gap:0}
   .umdl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
   .umdl-row .name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px;color:#fff}
   .umdl-ctrls{display:flex;gap:6px}
