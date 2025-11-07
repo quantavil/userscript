@@ -323,13 +323,13 @@
   GM_addStyle(`
   @keyframes umdl-spin { to { transform: rotate(360deg); } }
   
-  .umdl-fab{position:fixed;right:16px;bottom:16px;z-index:2147483647;width:48px;height:48px;border-radius:50%;display:none;align-items:center;justify-content:center;background:#2d2d2d;color:#fff;border:1px solid #404040;cursor:pointer}
+  .umdl-fab{position:fixed;right:16px;bottom:16px;z-index:2147483647;width:48px;height:48px;border-radius:50%;display:none;align-items:center;justify-content:center;background:#2d2d2d;color:#fff;border:1px solid #404040;cursor:pointer;overflow:visible}
   .umdl-fab.show{display:flex}
   .umdl-fab.idle{opacity:.5}
   .umdl-fab:hover{background:#353535}
   .umdl-fab.busy svg{opacity:0}
   .umdl-fab.busy::after{content:'';position:absolute;width:18px;height:18px;border:2px solid #404040;border-top-color:#fff;border-radius:50%;animation:umdl-spin .6s linear infinite}
-  .umdl-badge{position:absolute;top:-8px;right:-8px;background:#dc3545;color:#fff;font-weight:600;font-size:9px;padding:3px 6px;border-radius:10px;display:none;line-height:1;border:1.5px solid #1e1e1e}
+  .umdl-badge{position:absolute;top:-6px;right:-6px;background:#dc3545;color:#fff;font-weight:600;font-size:10px;padding:3px 5px;border-radius:10px;display:none;line-height:1;border:2px solid #1e1e1e;min-width:18px;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,0.3)}
   .umdl-fab svg{width:16px;height:16px}
   
   .umdl-pick{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.75);backdrop-filter:blur(4px)}
@@ -382,13 +382,15 @@
   .umdl-bar{height:7px;background:#252525;border-radius:4px;overflow:hidden;border:1px solid #353535}
   .umdl-fill{height:7px;width:0;background:#fff}
   
-  @media (max-width:640px){
+ @media (max-width:640px){
     .umdl-fab{right:12px;bottom:12px;width:46px;height:46px}
     .umdl-fab svg{width:15px;height:15px}
     .umdl-toast{left:12px;right:12px;bottom:68px;max-width:none}
     .umdl-card{max-height:90vh;border-radius:10px}
     .umdl-body{max-height:calc(90vh - 100px)}
-  }
+    .umdl-job.minimized{padding:6px;min-width:unset;width:auto}
+    .umdl-job.minimized .btn-hide svg{width:14px;height:14px}
+}
 `);
 
   // SVG Icons
