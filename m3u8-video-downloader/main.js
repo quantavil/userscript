@@ -1,1279 +1,982 @@
 // ==UserScript==
-// @name         Universal M3U8 + Blob Downloader
-// @namespace    https://github.com/m3u8dl-userscripts
-// @version      2.6.2
-// @description  Download HLS (.m3u8) streams and direct video blobs with smart filtering and size estimation 
+// @name         StreamGrabber
+// @namespace    https://github.com/streamgrabber-lite
+// @version      1.0.3
+// @description  Lightweight downloader for HLS (.m3u8), video blobs, and direct videos. Mobile + Desktop. Pause/Resume. AES-128. fMP4. Minimal UI. UMDL-styled UI.
 // @match        *://*/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @connect      *
 // ==/UserScript==
-
 (() => {
   'use strict';
-
-  // ========================
-  // Configuration
-  // ========================
-  const MAX_RETRIES = 3;
-  const CONCURRENCY = 6;
-  const REQ_TIMEOUT = 60000;
-  const MANIFEST_TIMEOUT = 30000;
-  const MAX_MANIFESTS = 50;
-  const SMALL_FILE_THRESHOLD = 1024 * 1024; // 1 MB
-  const EXCLUDE_SMALL_DEFAULT = true;
-
-  // ========================
-  // Logging
-  // ========================
-  const log = (...a) => console.log('[MediaDL]', ...a);
-  const err = (...a) => console.error('[MediaDL]', ...a);
-
-  // ========================
-  // State
-  // ========================
-  const state = {
-    latestM3U8: null,
-    latestVideo: null,
-    manifests: new Set(),
-    videos: new Set(),
-    idleTimer: null,
-    progressHidden: false
+  // =========================
+  // Config
+  // =========================
+  const CFG = {
+    RETRIES: 3,
+    CONC: 6,
+    REQ_MS: 60000,
+    MAN_MS: 30000,
+    SMALL_BYTES: 1 * 1024 * 1024, // 1MB
+    UI_IDLE_MS: 5000, // idle fade delay
   };
-  const blobStore = new Map();
-
-  // Persistent settings
-  const settings = {
+  const CACHE = {
+    TEXT_MAX: 256,
+    HEAD_MAX: 256,
+    DB_MAX: 120,        // bound detected URL sets
+    CLEAR_MS: 120000    // 2 min passive trim
+  };
+  // =========================
+  // State & caches
+  // =========================
+  const DB = {
+    m3u8: new Set(),
+    vid: new Set(),
+    lastM3U8: null,
+    lastVid: null,
+    hiddenProgress: false
+  };
+  const BLOBS = new Map(); // blobUrl -> { blob, type, size, kind }
+  const textCache = new Map(); // url -> text
+  const inflightText = new Map(); // url -> Promise<string>
+  const headCache = new Map(); // url -> { length, type }
+  const inflightHead = new Map(); // url -> Promise<meta>
+  const watchedVideos = new Set();
+  // Settings
+  const SETTINGS = {
     excludeSmall: (() => {
-      try {
-        const v = localStorage.getItem('m3u8dl_exclude_small');
-        return v == null ? EXCLUDE_SMALL_DEFAULT : v === 'true';
-      } catch { return EXCLUDE_SMALL_DEFAULT; }
-    })()
+      try { const v = localStorage.getItem('sg_exclude_small'); return v == null ? true : v === 'true'; } catch { return true; }
+    })(),
   };
-  const setExcludeSmall = (v) => { settings.excludeSmall = !!v; try { localStorage.setItem('m3u8dl_exclude_small', String(!!v)); } catch { } };
+  const setExcludeSmall = (v) => { SETTINGS.excludeSmall = !!v; try { localStorage.setItem('sg_exclude_small', String(!!v)); } catch {} };
 
-  // ========================
-  // Caches & helpers
-  // ========================
-  const manifestCache = new Map();     // url -> text
-  const manifestPending = new Map();   // url -> Promise<string>
-  const headCache = new Map();         // url -> { length, type }
-  const headPending = new Map();       // url -> Promise<{length,type}>
-  const monitoredVideos = new Set();
-
-  function evictOldest(set, max) {
+  // bounded add helper for DB sets
+  function boundedAdd(set, value, max = CACHE.DB_MAX) {
+    if (set.has(value)) return;
+    set.add(value);
     while (set.size > max) {
       const first = set.values().next().value;
       set.delete(first);
     }
   }
+  // passive cache trim to prevent leaks on long sessions
+  function trimCaches() {
+    if (textCache.size > CACHE.TEXT_MAX) textCache.clear();
+    if (headCache.size > CACHE.HEAD_MAX) headCache.clear();
+    // stale videos in Set are cleaned via mutation observer, but still bound sizes
+    while (DB.m3u8.size > CACHE.DB_MAX) DB.m3u8.delete(DB.m3u8.values().next().value);
+    while (DB.vid.size > CACHE.DB_MAX) DB.vid.delete(DB.vid.values().next().value);
+  }
+  setInterval(trimCaches, CACHE.CLEAR_MS);
+  window.addEventListener('pagehide', trimCaches);
+  window.addEventListener('beforeunload', trimCaches);
 
-  // Promise de-duplicator (cache + in-flight)
-  function ensureOnce(cache, pending, key, loader) {
-    if (cache.has(key)) return cache.get(key);
-    if (pending.has(key)) return pending.get(key);
+  // =========================
+  // Utilities
+  // =========================
+  const log = (...x) => console.log('[SG]', ...x);
+  const err = (...x) => console.error('[SG]', ...x);
+  const isHttp = (u) => typeof u === 'string' && /^https?:/i.test(u);
+  const isBlob = (u) => typeof u === 'string' && /^blob:/i.test(u);
+  const isM3U8Url = (u) => /\.m3u8(\b|[?#]|$)/i.test(u || '');
+  const isVideoUrl = (u) => /\.(mp4|mkv|webm|avi|mov|m4v|ts|m2ts|flv|ogv|ogg)([?#]|$)/i.test(u || '');
+  const looksM3U8Type = (t='') => /mpegurl|vnd\.apple\.mpegurl|application\/x-mpegurl/i.test(t);
+  const looksVideoType = (t='') => /^video\//i.test(t) || /(matroska|mp4|webm|quicktime)/i.test(t);
+  const safeAbs = (u, b) => { try { return new URL(u, b).href; } catch { return u; } };
+  const cleanName = (s) => (s||'video').replace(/[\\/:*?"<>|]/g, '_').slice(0,120).trim() || 'video';
+  const fmtBytes = (n) => { if (n == null) return ''; const u=['B','KB','MB','GB','TB']; let i=0,v=n; while (v>=1024 && i<u.length-1) { v/=1024; i++; } return `${v.toFixed(v<10&&i>0?1:0)} ${u[i]}`; };
+  const extFromType = (t='') => {
+    t = t.toLowerCase();
+    if (t.includes('webm')) return 'webm';
+    if (t.includes('matroska') || t.includes('mkv')) return 'mkv';
+    if (t.includes('quicktime') || t.includes('mov')) return 'mov';
+    if (t.includes('mp2t') || t.includes('mpegts')) return 'ts';
+    if (t.includes('ogg')) return 'ogg';
+    if (t.includes('mp4')) return 'mp4';
+    return 'mp4';
+  };
+  const guessExt = (url, type) => {
+    const m = /(?:\.([a-z0-9]+))([?#]|$)/i.exec(url||''); return m ? m[1].toLowerCase() : (type ? extFromType(type) : 'mp4');
+  };
+  function once(cache, inflight, key, loader) {
+    if (cache.has(key)) return Promise.resolve(cache.get(key));
+    if (inflight.has(key)) return inflight.get(key);
     const p = (async () => {
-      try {
-        const val = await loader();
-        cache.set(key, val);
-        return val;
-      } finally {
-        pending.delete(key);
-      }
+      try { const v = await loader(); cache.set(key, v); return v; }
+      finally { inflight.delete(key); }
     })();
-    pending.set(key, p);
+    inflight.set(key, p);
     return p;
   }
 
-  // De-duplicated, cached manifest fetch
-  const getManifest = (url) =>
-    ensureOnce(manifestCache, manifestPending, url, () => getText(url));
-
-  function revokeLater(blobUrl, ms = 30000) {
-    try {
-      setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch {} }, ms);
-      window.addEventListener('pagehide', () => {
-        try { URL.revokeObjectURL(blobUrl); } catch {}
-      }, { once: true });
-    } catch {}
-  }
-
-  // ========================
-  // Utilities
-  // ========================
-  const isHttp = (u) => /^https?:/i.test(u);
-  const isBlob = (u) => /^blob:/i.test(u);
-  const isMaster = (t) => /#EXT-X-STREAM-INF/i.test(t);
-  const isMedia = (t) => /#EXTINF:/i.test(t) || /#EXT-X-TARGETDURATION:/i.test(t);
-  const hasEndlist = (t) => /#EXT-X-ENDLIST\b/i.test(t);
-  const sanitize = (s) => (s || 'video').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120).trim() || 'video';
-  const toAbs = (u, b) => { try { return new URL(u, b).href; } catch { return u; } };
-  const looksLikeM3U8Type = (t) => /mpegurl|application\/x-mpegurl|vnd\.apple\.mpegurl/i.test(t || '');
-  const looksLikeVideoType = (t) => /^video\//i.test(t || '') || /matroska|mp4|webm|quicktime/i.test(t || '');
-  const isM3U8Url = (u) => /\.m3u8(\b|[\?#]|$)/i.test(u || '');
-  const isVideoUrl = (u) => /\.(mp4|mkv|webm|avi|mov|flv|m4v|ts|m2ts|ogg|ogv)(\?|#|$)/i.test(u || '');
-  const guessExtFromType = (t = '') => (t = t.toLowerCase(), /mp4/.test(t) ? 'mp4' : /matroska|mkv/.test(t) ? 'mkv' : /webm/.test(t) ? 'webm' : /quicktime|mov/.test(t) ? 'mov' : /avi/.test(t) ? 'avi' : /mp2t|mpegts/.test(t) ? 'ts' : /ogg/.test(t) ? 'ogg' : 'mp4');
-  const formatBytes = (n) => { if (n == null) return ''; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0, v = n; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`; };
-
-  const guessExt = (url, type) =>
-    type ? guessExtFromType(type)
-         : ((url || '').match(/\.([a-z0-9]+)(\?|#|$)/i)?.[1]?.toLowerCase() || 'mp4');
-
-  const filterBySmall = (items, enabled) =>
-    enabled ? items.filter(it => it.size == null || it.size >= SMALL_FILE_THRESHOLD) : items;
-
-  const escapeEl = document.createElement('div');
-  const escapeHtml = (str) => { escapeEl.textContent = str == null ? '' : String(str); return escapeEl.innerHTML; };
-
-  // compact size label for HLS estimation
-  const sizeLabel = (est) => est?.bytes != null
-    ? `${est.method === 'byterange' ? '' : '~'}${formatBytes(est.bytes)}`
-    : '';
-
-  // Unified URL detector used everywhere
-  const detectFromUrl = (u) => {
-    try {
-      if (!u || typeof u !== 'string') return;
-      if (!isHttp(u) && !isBlob(u)) return;
-      if (isM3U8Url(u)) return detectedM3U8(u);
-      if (isVideoUrl(u)) return detectedVideo(u);
-      if (isBlob(u)) {
-        const info = blobStore.get(u);
-        if (info?.kind === 'm3u8') return detectedM3U8(u);
-        if (info?.kind === 'video') return detectedVideo(u);
-      }
-    } catch {}
-  };
-
-  // Unified save to disk. Uses FS Access API when available, otherwise anchor fallback
-  async function saveBlob(blob, filename, extHint) {
-    try {
-      if ('showSaveFilePicker' in window) {
-        const ext = (extHint || '').replace(/^\./, '') || (blob.type.split('/').pop() || 'bin');
-        const handle = await window.showSaveFilePicker({
-          suggestedName: filename,
-          types: [{ description: 'Media', accept: { [blob.type || 'video/*']: [`.${ext}`] } }]
-        });
-        const writable = await handle.createWritable();
-        await writable.write(blob);
-        await writable.close();
-        return true;
-      }
-    } catch (e) {
-      if (e?.name === 'AbortError') throw e;
-    }
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = blobUrl; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    revokeLater(blobUrl);
-    return true;
-  }
-
-  // Single click handler used by all buttons
-  function triggerDownload(e) {
-    try {
-      floatingBtn.stopIdle?.();
-      floatingBtn.startIdleTimer?.();
-    } catch {}
-    const totalSources = state.manifests.size + state.videos.size;
-    chooseDownloadFlow({ showVariantPicker: e?.altKey || totalSources > 1 });
-  }
-
-  let mo = null;
-
-  // ========================
-  // Styles
-  // ========================
-  GM_addStyle(`
-    .m3u8dl-btn{display:inline-flex;align-items:center;justify-content:center;height:2em;width:2.25em;border:none;cursor:pointer;background:transparent;color:inherit;padding:0;transition:opacity .25s}
-    .m3u8dl-btn .m3u8dl-icon{width:18px;height:18px}
-    
-    .m3u8dl-floating{position:fixed;right:12px;bottom:12px;z-index:2147483647;width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.75);color:#fff;border:1px solid rgba(255,255,255,.12);box-shadow:0 1px 4px rgba(0,0,0,.2);display:none;align-items:center;justify-content:center;cursor:pointer;transition:opacity .2s,transform .15s,background .2s} 
-    .m3u8dl-floating.show{display:flex}
-    .m3u8dl-floating.idle{opacity:.28}
-    .m3u8dl-floating.idle:hover{opacity:1}
-    .m3u8dl-floating:hover{background:rgba(30,30,30,.9);transform:scale(1.04)}
-    .m3u8dl-floating.detected{animation:m3u8-pulse .5s ease}
-    
-    .m3u8dl-badge{position:absolute;top:4px;right:6px;background:transparent;color:#fff;font-size:10px;font-weight:700;padding:0;border:none;border-radius:0;min-width:auto;text-align:center;box-shadow:none;display:none;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,.9)}
-    .m3u8dl-badge.show{display:block}
-    
-    @keyframes m3u8-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
-
-    #m3u8dl-progress-container{position:fixed;bottom:70px;right:12px;z-index:2147483646;display:flex;flex-direction:column;gap:10px;max-width:340px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;transition:transform .3s ease,opacity .3s ease}
-    #m3u8dl-progress-container.hidden{transform:translateY(calc(100% + 70px));opacity:0;pointer-events:none}
-    
-    .m3u8dl-toggle-btn{position:fixed;bottom:20px;right:70px;z-index:2147483646;width:32px;height:32px;border-radius:50%;background:rgba(17,17,17,.92);color:#fff;border:1px solid rgba(255,255,255,.2);box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;display:none;align-items:center;justify-content:center;font-size:16px;transition:all .2s}
-    .m3u8dl-toggle-btn.show{display:flex}
-    .m3u8dl-toggle-btn:hover{background:rgba(30,30,30,.95);transform:scale(1.08)}
-    
-    .m3u8dl-card{background:rgba(17,17,17,.97);color:#e5e7eb;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;min-width:240px;box-shadow:0 4px 20px rgba(0,0,0,.5);opacity:0;transform:translateX(100%);transition:opacity .28s,transform .28s}
-    .m3u8dl-card.show{opacity:1;transform:translateX(0)}
-    
-    .m3u8dl-header{display:flex;align-items:center;gap:6px;justify-content:space-between;margin-bottom:8px}
-    .m3u8dl-title{font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .m3u8dl-actions{display:flex;gap:4px}
-    
-    .m3u8dl-mini-btn{background:transparent;border:none;color:#a3a3a3;cursor:pointer;padding:3px 5px;border-radius:5px;display:inline-flex;align-items:center;gap:3px;font-size:10px;transition:all .2s}
-    .m3u8dl-mini-btn:hover{color:#fff;background:rgba(255,255,255,.1)}
-    .m3u8dl-mini-btn .ico{font-size:12px}
-    
-    .m3u8dl-bar{height:5px;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden;margin-bottom:6px}
-    .m3u8dl-fill{height:100%;width:0;background:linear-gradient(90deg,#3b82f6,#60a5fa);transition:width .2s}
-    .m3u8dl-fill.ok{background:linear-gradient(90deg,#10b981,#34d399)}
-    .m3u8dl-fill.err{background:linear-gradient(90deg,#ef4444,#f87171)}
-    
-    .m3u8dl-text{text-align:right;color:#d1d5db;font-size:11px;font-weight:500;min-height:16px}
-    
-    .m3u8dl-variant-popup{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(3px)}
-    .m3u8dl-variant-popup.show{display:flex}
-    
-    .m3u8dl-variant-card{background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.15);padding:16px;border-radius:12px;width:min(400px,90vw);max-height:80vh;overflow-y:auto;scrollbar-width:thin;position:relative}
-    
-    .m3u8dl-close-popup{position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:50%;background:#ef4444;color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;transition:all .2s;box-shadow:0 2px 8px rgba(239,68,68,.4);z-index:1}
-    .m3u8dl-close-popup:hover{background:#dc2626;transform:scale(1.1)}
-    
-    .m3u8dl-variant-card h4{margin:0 0 4px;font-size:15px;font-weight:600;padding-right:30px}
-    .m3u8dl-variant-card .subtitle{font-size:11px;color:#9ca3af;margin-bottom:10px}
-    
-    .m3u8dl-opt{display:flex;user-select:none;cursor:pointer;font-size:11px;color:#9ca3af;margin:6px 0 10px;gap:.4rem;align-items:center}
-    
-    .m3u8dl-var-list{display:flex;flex-direction:column;gap:8px}
-    
-    .m3u8dl-var-btn{background:#1f2937;border:1px solid rgba(255,255,255,.12);color:#e5e7eb;border-radius:8px;padding:10px 12px;text-align:left;cursor:pointer;font-size:12px;transition:all .2s;position:relative}
-    .m3u8dl-var-btn:hover,.m3u8dl-var-btn:focus{background:#374151;border-color:rgba(255,255,255,.22);transform:translateX(2px);outline:none}
-    .m3u8dl-var-btn.video-direct{background:linear-gradient(135deg,#065f46,#047857);border-color:#10b981}
-    .m3u8dl-var-btn.video-direct:hover{background:linear-gradient(135deg,#047857,#059669);border-color:#34d399}
-    
-    .m3u8dl-var-btn .badge{position:absolute;top:8px;right:8px;background:#3b82f6;color:#fff;font-size:8px;padding:2px 5px;border-radius:4px;font-weight:600;text-transform:uppercase}
-    .m3u8dl-var-btn.video-direct .badge{background:#10b981}
-    .m3u8dl-var-btn .title{font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:5px}
-    .m3u8dl-var-btn .subtitle{font-size:10px;opacity:0.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    
-    .m3u8dl-variant-card::-webkit-scrollbar{width:5px}
-    .m3u8dl-variant-card::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:5px}
-    
-    @media (max-width:640px){
-      .m3u8dl-floating{right:10px;bottom:10px;width:44px;height:44px}
-      #m3u8dl-progress-container{left:10px;right:10px;max-width:none;bottom:65px}
-      .m3u8dl-toggle-btn{right:60px;bottom:18px}
-      .m3u8dl-card{min-width:auto;padding:8px 10px}
-      .m3u8dl-variant-card{width:min(340px,90vw);padding:14px}
-      .m3u8dl-title{font-size:11px}
-      .m3u8dl-text{font-size:10px}
-    }
-  `);
-
-  // ========================
-  // UI Assets
-  // ========================
-  const DOWNLOAD_ICON_SVG = `
-    <svg class="m3u8dl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-      <polyline points="7 10 12 15 17 10"/>
-      <line x1="12" y1="15" x2="12" y2="3"/>
-    </svg>`;
-
-  // ========================
-  // UI Components
-  // ========================
-  function createFloatingButton() {
-    const btn = document.createElement('button');
-    btn.className = 'm3u8dl-floating';
-    btn.title = 'Download detected media (HLS/Video/Blob)';
-    btn.setAttribute('aria-label', 'Download media');
-    btn.innerHTML = DOWNLOAD_ICON_SVG;
-
-    const badge = document.createElement('span');
-    badge.className = 'm3u8dl-badge';
-    btn.appendChild(badge);
-
-    const startIdle = () => { clearTimeout(state.idleTimer); state.idleTimer = setTimeout(() => btn.classList.add('idle'), 15000); };
-    const stopIdle = () => { btn.classList.remove('idle'); clearTimeout(state.idleTimer); };
-
-    btn.onclick = triggerDownload;
-    btn.onmouseenter = stopIdle;
-    btn.onmouseleave = startIdle;
-    btn.startIdleTimer = startIdle;
-    btn.stopIdle = stopIdle;
-    btn.updateBadge = () => {
-      const count = state.manifests.size + state.videos.size;
-      if (count > 1) { badge.textContent = count; badge.classList.add('show'); }
-      else badge.classList.remove('show');
-    };
-    btn.cleanup = () => { clearTimeout(state.idleTimer); try { mo?.disconnect(); } catch { } };
-    return btn;
-  }
-
-  function createProgressContainer() {
-    const div = document.createElement('div');
-    div.id = 'm3u8dl-progress-container';
-    return div;
-  }
-
-  function createToggleButton() {
-    const btn = document.createElement('button');
-    btn.className = 'm3u8dl-toggle-btn';
-    btn.title = 'Toggle progress visibility';
-    btn.setAttribute('aria-label', 'Toggle progress');
-    btn.innerHTML = '▼';
-    btn.onclick = () => {
-      state.progressHidden = !state.progressHidden;
-      if (state.progressHidden) {
-        progressContainer.classList.add('hidden');
-        btn.innerHTML = '▲';
-        btn.title = 'Show progress';
-      } else {
-        progressContainer.classList.remove('hidden');
-        btn.innerHTML = '▼';
-        btn.title = 'Hide progress';
-      }
-    };
-    return btn;
-  }
-
-  function createVariantPopup() {
-    const popup = document.createElement('div');
-    popup.className = 'm3u8dl-variant-popup';
-    popup.innerHTML = `
-      <div class="m3u8dl-variant-card" role="dialog" aria-label="Select media">
-        <button class="m3u8dl-close-popup" aria-label="Close">✕</button>
-        <h4>Choose Media</h4>
-        <div class="subtitle">Select quality or source to download</div>
-        <label class="m3u8dl-opt">
-          <input type="checkbox" class="m3u8dl-exclude-small"> Exclude small files (&lt; 1 MB)
-        </label>
-        <div class="m3u8dl-var-list"></div>
-      </div>`;
-    return popup;
-  }
-
-  const floatingBtn = createFloatingButton();
-  const progressContainer = createProgressContainer();
-  const toggleBtn = createToggleButton();
-  const variantPopup = createVariantPopup();
-
-  function mountUI() {
-    if (!document.body) { document.addEventListener('DOMContentLoaded', mountUI, { once: true }); return; }
-    if (!progressContainer.parentNode) document.body.appendChild(progressContainer);
-    if (!toggleBtn.parentNode) document.body.appendChild(toggleBtn);
-    if (!floatingBtn.parentNode) document.body.appendChild(floatingBtn);
-    if (!variantPopup.parentNode) document.body.appendChild(variantPopup);
-  }
-
-  function createProgressCard(title, sourceUrl, onStopResume, onCancel) {
-    const card = document.createElement('div');
-    card.className = 'm3u8dl-card';
-    card.innerHTML = `
-      <div class="m3u8dl-header">
-        <div class="m3u8dl-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
-        <div class="m3u8dl-actions">
-          <button class="m3u8dl-mini-btn copy-btn" title="Copy URL" aria-label="Copy URL"><span class="ico">📋</span><span class="lbl">Copy</span></button>
-          ${onStopResume ? `<button class="m3u8dl-mini-btn stop-btn" title="Stop" aria-label="Stop/Resume"><span class="ico">⏸</span><span class="lbl">Stop</span></button>` : ''}
-          <button class="m3u8dl-mini-btn close-btn" title="Cancel" aria-label="Cancel"><span class="ico">✕</span></button>
-        </div>
-      </div>
-      <div class="m3u8dl-bar"><div class="m3u8dl-fill"></div></div>
-      <div class="m3u8dl-text">0%</div>`;
-    progressContainer.appendChild(card);
-    toggleBtn.classList.add('show');
-    requestAnimationFrame(() => card.classList.add('show'));
-
-    const stopBtn = card.querySelector('.stop-btn');
-    const closeBtn = card.querySelector('.close-btn');
-    const copyBtn = card.querySelector('.copy-btn');
-    const fill = card.querySelector('.m3u8dl-fill');
-    const text = card.querySelector('.m3u8dl-text');
-
-    if (stopBtn && onStopResume) stopBtn.onclick = onStopResume;
-    closeBtn.onclick = onCancel;
-    copyBtn.onclick = async () => {
-      try { await navigator.clipboard.writeText(sourceUrl || ''); copyBtn.querySelector('.lbl').textContent = '✓'; setTimeout(() => (copyBtn.querySelector('.lbl').textContent = 'Copy'), 1200); }
-      catch { copyBtn.querySelector('.lbl').textContent = 'Err'; setTimeout(() => (copyBtn.querySelector('.lbl').textContent = 'Copy'), 1200); }
-    };
-    return {
-      setStopped(stopped) {
-        if (!stopBtn) return;
-        const ico = stopBtn.querySelector('.ico'), lbl = stopBtn.querySelector('.lbl');
-        stopBtn.title = stopped ? 'Resume' : 'Stop'; ico.textContent = stopped ? '▶' : '⏸'; lbl.textContent = stopped ? 'Resume' : 'Stop';
-      },
-      update(pct, extraText = '') {
-        const percent = Math.max(0, Math.min(100, Math.floor(pct)));
-        fill.style.width = `${percent}%`;
-        text.textContent = `${percent}%${extraText ? ' ' + extraText : ''}`;
-      },
-      done(ok = true, msg) {
-        fill.classList.add(ok ? 'ok' : 'err');
-        fill.style.width = '100%';
-        text.textContent = msg || (ok ? '✓ Complete' : '✗ Failed');
-        setTimeout(() => {
-          card.remove();
-          if (!progressContainer.querySelector('.m3u8dl-card')) {
-            toggleBtn.classList.remove('show');
-          }
-        }, 2500);
-      },
-      remove() { 
-        card.classList.remove('show'); 
-        setTimeout(() => {
-          card.remove();
-          if (!progressContainer.querySelector('.m3u8dl-card')) {
-            toggleBtn.classList.remove('show');
-          }
-        }, 300);
-      }
-    };
-  }
-
-  // ========================
-  // Playlist Parsing
-  // ========================
-  const parseAttrs = (str) => {
-    const attrs = {}; const re = /([A-Z0-9-]+)=(?:"([^"]*)"|([^,]*))/gi; let m;
-    while ((m = re.exec(str))) attrs[m[1].toUpperCase()] = m[2] !== undefined ? m[2] : m[3];
-    return attrs;
-  };
-  const parseByteRange = (str, lastEndExclusive = 0) => {
-    if (!str) return null; const [lenPart, offPart] = String(str).split('@');
-    const len = parseInt(lenPart, 10);
-    const hasOffset = offPart !== undefined && offPart !== '';
-    const start = hasOffset ? parseInt(offPart, 10) : lastEndExclusive;
-    const endInclusive = start + len - 1; const nextStart = start + len;
-    return { len, start, endInclusive, nextStart };
-  };
-  const parseRangeHeader = (range) => { if (!range) return null; const m = /bytes=(\d+)-(\d+)?/i.exec(range); if (!m) return null; const start = parseInt(m[1], 10); const end = m[2] != null ? parseInt(m[2], 10) : null; return { start, end }; };
-
-  function parseMaster(text, base) {
-    const lines = text.split(/\r?\n/), variants = [];
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim(); if (!line.startsWith('#EXT-X-STREAM-INF:')) continue;
-      const attrs = parseAttrs(line.slice(18)); let url = null;
-      for (let j = i + 1; j < lines.length; j++) { const next = lines[j].trim(); if (!next || next.startsWith('#')) continue; url = toAbs(next, base); break; }
-      if (url) {
-        const res = attrs.RESOLUTION || ''; const [w, h] = res ? res.split('x').map(n => parseInt(n, 10)) : [null, null];
-        const peakBw = attrs.BANDWIDTH ? parseInt(attrs.BANDWIDTH, 10) : null;
-        const avgBw = attrs['AVERAGE-BANDWIDTH'] ? parseInt(attrs['AVERAGE-BANDWIDTH'], 10) : null;
-        variants.push({ url, peakBandwidth: peakBw, avgBandwidth: avgBw, resolution: res || null, width: w, height: h, codecs: attrs.CODECS || null });
-      }
-    }
-    return variants;
-  }
-
-  function parseMedia(text, base) {
-    const lines = text.split(/\r?\n/), segments = [];
-    let currentKey = { method: 'NONE', uri: null, iv: null }, currentMap = null, mediaSeq = 0;
-    let pendingDuration = 0, pendingByteRange = null, lastRangeNextStart = 0;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim(); if (!line) continue;
-      if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) mediaSeq = parseInt(line.split(':')[1], 10) || 0;
-      else if (line.startsWith('#EXT-X-KEY:')) { const attrs = parseAttrs(line.slice(11)); currentKey = { method: (attrs.METHOD || 'NONE').toUpperCase(), uri: attrs.URI ? toAbs(attrs.URI, base) : null, iv: attrs.IV || null }; }
-      else if (line.startsWith('#EXT-X-MAP:')) { const attrs = parseAttrs(line.slice(11)); if (attrs.URI) { let rangeHeader = null; if (attrs.BYTERANGE) { const br = parseByteRange(attrs.BYTERANGE, 0); if (br) rangeHeader = `bytes=${br.start}-${br.endInclusive}`; } currentMap = { uri: toAbs(attrs.URI, base), rangeHeader }; } }
-      else if (line.startsWith('#EXT-X-BYTERANGE:')) pendingByteRange = parseByteRange(line.split(':')[1], lastRangeNextStart);
-      else if (line.startsWith('#EXTINF:')) pendingDuration = parseFloat(line.split(':')[1]) || 0;
-      else if (!line.startsWith('#')) {
-        let rangeHeader = null;
-        if (pendingByteRange) { rangeHeader = `bytes=${pendingByteRange.start}-${pendingByteRange.endInclusive}`; lastRangeNextStart = pendingByteRange.nextStart; } else lastRangeNextStart = 0;
-        segments.push({ uri: toAbs(line, base), duration: pendingDuration, rangeHeader, key: currentKey && currentKey.method !== 'NONE' ? { ...currentKey } : null, map: currentMap ? { ...currentMap } : null });
-        pendingDuration = 0; pendingByteRange = null;
-      }
-    }
-    let lastMapKey = null;
-    for (let i = 0; i < segments.length; i++) {
-      const m = segments[i].map; const mapKey = m ? `${m.uri}|${m.rangeHeader || ''}` : null;
-      segments[i].needsMap = !!(mapKey && mapKey !== lastMapKey); if (mapKey) lastMapKey = mapKey;
-    }
-    return { segments, mediaSeq };
-  }
-
-  // ========================
-  // HLS Size Estimation
-  // ========================
-  const sumDuration = (parsed) => parsed.segments.reduce((a, s) => a + (s.duration || 0), 0);
-
-  function bytesFromByterange(parsed) {
-    let total = 0, exact = true;
-    const seenMaps = new Set();
-    for (const s of parsed.segments) {
-      if (s.rangeHeader) {
-        const r = parseRangeHeader(s.rangeHeader);
-        if (r && r.end != null) total += (r.end - r.start + 1);
-        else exact = false;
-      } else exact = false;
-      if (s.needsMap && s.map?.rangeHeader) {
-        const key = `${s.map.uri}|${s.map.rangeHeader}`;
-        if (!seenMaps.has(key)) {
-          seenMaps.add(key);
-          const mr = parseRangeHeader(s.map.rangeHeader);
-          if (mr && mr.end != null) total += (mr.end - mr.start + 1);
-          else exact = false;
-        }
-      } else if (s.needsMap && s.map && !s.map.rangeHeader) {
-        exact = false;
-      }
-    }
-    return exact ? total : null;
-  }
-
-  async function estimateHlsSize(mediaTxt, mediaUrl, variantMeta) {
-    const parsed = parseMedia(mediaTxt, mediaUrl);
-    const durationSec = sumDuration(parsed);
-    const vod = hasEndlist(mediaTxt);
-
-    // A) Exact from BYTERANGE
-    const brBytes = bytesFromByterange(parsed);
-    if (brBytes != null) return { bytes: brBytes, durationSec, vod, method: 'byterange' };
-
-    // B) Duration × AVERAGE-BANDWIDTH (or peak BANDWIDTH)
-    const bw = variantMeta?.avgBandwidth ?? variantMeta?.peakBandwidth ?? null;
-    if (vod && bw && durationSec > 0) {
-      const bytes = Math.round((bw / 8) * durationSec);
-      return { bytes, durationSec, vod, method: 'avg-bw' };
-    }
-
-    // C) For non-VOD or no bandwidth info, return unknown
-    return { bytes: null, durationSec, vod, method: 'unknown' };
-  }
-
-  // ========================
-  // Crypto
-  // ========================
-  const hexToU8 = (hex) => { hex = String(hex || '').replace(/^0x/i, '').replace(/[^0-9a-f]/gi, ''); if (hex.length % 2) hex = '0' + hex; const arr = new Uint8Array(hex.length / 2); for (let i = 0; i < arr.length; i++) arr[i] = parseInt(hex.substr(i * 2, 2), 16); return arr; };
-  const ivFromSeq = (seq) => { let n = BigInt(seq >>> 0); const iv = new Uint8Array(16); for (let i = 15; i >= 0; i--) { iv[i] = Number(n & 0xffn); n >>= 8n; } return iv; };
-  async function decryptAesCbc(data, keyBytes, iv) {
-    const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['decrypt']);
-    return crypto.subtle.decrypt({ name: 'AES-CBC', iv }, cryptoKey, data);
-  }
-
-  // ========================
-  // Network
-  // ========================
-  function gmRequest({ url, responseType = 'text', headers = {}, timeout = REQ_TIMEOUT, onprogress }) {
-    let reqRef;
+  // =========================
+  // Network helpers
+  // =========================
+  function gmGet({ url, responseType='text', headers={}, timeout=CFG.REQ_MS, onprogress }) {
+    let ref;
     const p = new Promise((resolve, reject) => {
-      reqRef = GM_xmlhttpRequest({
+      ref = GM_xmlhttpRequest({
         method: 'GET',
-        url, headers, timeout, responseType,
-        onprogress: onprogress ? (e) => onprogress(e) : undefined,
-        onload: r => (r.status >= 200 && r.status < 300) ? resolve(r.response) : reject(new Error(`HTTP ${r.status}`)),
+        url, responseType, headers, timeout,
+        onprogress: e => onprogress?.(e),
+        onload: r => (r.status>=200 && r.status<300) ? resolve(r.response) : reject(new Error(`HTTP ${r.status}`)),
         onerror: () => reject(new Error('Network error')),
         ontimeout: () => reject(new Error('Timeout'))
       });
     });
-    p.abort = () => { try { reqRef?.abort(); } catch { } };
+    p.abort = () => { try { ref?.abort(); } catch{} };
     return p;
   }
-
-  function getData(url, responseType, { headers = {}, timeout = REQ_TIMEOUT, onprogress } = {}) {
+  const getText = (url) => once(textCache, inflightText, url, async () => {
     if (isBlob(url)) {
-      const info = blobStore.get(url);
-      if (!info?.blob) return Promise.reject(new Error('Blob not available'));
-      if (responseType === 'text') {
-        return info.blob.text();
-      }
-      const r = parseRangeHeader(headers.Range);
-      const slice = r ? info.blob.slice(r.start, r.end != null ? (r.end + 1) : info.blob.size) : info.blob;
-      if (onprogress) setTimeout(() => onprogress({ loaded: slice.size, total: slice.size }), 0);
-      return slice.arrayBuffer();
+      const info = BLOBS.get(url);
+      if (!info?.blob) throw new Error('Blob not found');
+      return info.blob.text();
     }
-    return gmRequest({ url, responseType, headers, timeout, onprogress });
+    return gmGet({ url, responseType: 'text', timeout: CFG.MAN_MS });
+  });
+  function getBin(url, headers={}, timeout=CFG.REQ_MS, onprogress) {
+    if (isBlob(url)) {
+      const info = BLOBS.get(url);
+      if (!info?.blob) return Promise.reject(new Error('Blob not found'));
+      const range = parseRange(headers.Range);
+      const part = range ? info.blob.slice(range.start, (range.end==null?info.blob.size:range.end+1)) : info.blob;
+      if (onprogress) setTimeout(() => onprogress({ loaded: part.size, total: part.size }), 0);
+      return part.arrayBuffer();
+    }
+    return gmGet({ url, responseType: 'arraybuffer', headers, timeout, onprogress });
   }
-
-  const getText = (url) => getData(url, 'text', { timeout: MANIFEST_TIMEOUT });
-  const getBuffer = (url, headers = {}, timeout = REQ_TIMEOUT, onprogress) =>
-    getData(url, 'arraybuffer', { headers, timeout, onprogress });
-
-  // HEAD request caching (refactored: single ensureOnce consumer)
-  const getHeadCached = (url) => ensureOnce(
-    headCache, headPending, url,
-    async () => {
-      try {
-        const resp = await new Promise((resolve, reject) => {
-          GM_xmlhttpRequest({
-            method: 'HEAD',
-            url,
-            timeout: REQ_TIMEOUT,
-            onload: resolve,
-            onerror: () => reject(new Error('HEAD failed')),
-            ontimeout: () => reject(new Error('HEAD timeout'))
-          });
+  const headMeta = (url) => once(headCache, inflightHead, url, async () => {
+    try {
+      const resp = await new Promise((res, rej) => {
+        GM_xmlhttpRequest({
+          method: 'HEAD', url, timeout: CFG.REQ_MS,
+          onload: res, onerror: () => rej(new Error('HEAD failed')),
+          ontimeout: () => rej(new Error('HEAD timeout'))
         });
-        const h = resp.responseHeaders || '';
-        const length = +(/(^|\r?\n)content-length:\s*(\d+)/i.exec(h)?.[2] || 0) || null;
-        const type = (/(^|\r?\n)content-type:\s*([^\r\n]+)/i.exec(h)?.[2] || '').trim() || null;
-        return { length, type };
-      } catch {
-        return { length: null, type: null };
+      });
+      const h = resp.responseHeaders || '';
+      const length = +(/(^|\n)content-length:\s*(\d+)/i.exec(h)?.[2] || 0) || null;
+      const type = (/(^|\n)content-type:\s*([^\n]+)/i.exec(h)?.[2] || '').trim() || null;
+      return { length, type };
+    } catch { return { length: null, type: null }; }
+  });
+
+  // =========================
+  // M3U8 parsing & math
+  // =========================
+  const isMasterText = (t) => /#EXT-X-STREAM-INF/i.test(t);
+  const isMediaText = (t) => /#EXTINF:|#EXT-X-TARGETDURATION:/i.test(t);
+  const hasEndlist = (t) => /#EXT-X-ENDLIST\b/i.test(t);
+  const parseAttrs = (s) => {
+    const r = {}; const re = /([A-Z0-9-]+)=(?:"([^"]*)"|([^,]*))/gi; let m;
+    while ((m = re.exec(s))) r[m[1].toUpperCase()] = m[2] !== undefined ? m[2] : m[3];
+    return r;
+  };
+  const parseRange = (v) => { if (!v) return null; const m=/bytes=(\d+)-(\d+)?/i.exec(v); if(!m) return null; return { start:+m[1], end: m[2]!=null? +m[2]:null }; };
+  const parseByterange = (s, fallbackStart=0) => {
+    if (!s) return null;
+    const [lenStr, offStr] = String(s).split('@');
+    const len = parseInt(lenStr, 10);
+    const start = (offStr!=null && offStr!=='') ? parseInt(offStr,10) : fallbackStart;
+    return { start, end: start + len - 1, next: start + len };
+  };
+  function parseMaster(m3u, base) {
+    const lines = m3u.split(/\r?\n/); const out = [];
+    for (let i=0;i<lines.length;i++) {
+      const line = lines[i].trim();
+      if (!line.startsWith('#EXT-X-STREAM-INF:')) continue;
+      const a = parseAttrs(line.slice(18));
+      let uri = null;
+      for (let j=i+1; j<lines.length; j++) {
+        const n = lines[j].trim(); if (!n || n.startsWith('#')) continue; uri = safeAbs(n, base); break;
+      }
+      if (uri) {
+        const res = a.RESOLUTION || '';
+        const [w, h] = res ? res.split('x').map(x=>parseInt(x,10)) : [null, null];
+        out.push({
+          url: uri,
+          res: res || null,
+          w, h,
+          peak: a.BANDWIDTH ? parseInt(a.BANDWIDTH,10) : null,
+          avg: a['AVERAGE-BANDWIDTH'] ? parseInt(a['AVERAGE-BANDWIDTH'],10) : null,
+          codecs: a.CODECS || null
+        });
       }
     }
-  );
+    return out;
+  }
+  function parseMedia(m3u, base) {
+    const lines = m3u.split(/\r?\n/);
+    const segs = [];
+    let mediaSeq = 0;
+    let key = { method:'NONE', uri:null, iv:null };
+    let map = null;
+    let pendingDur = 0;
+    let pendingBR = null;
+    let lastNext = 0;
+    for (let i=0;i<lines.length;i++) {
+      const L = lines[i].trim();
+      if (!L) continue;
+      if (L.startsWith('#EXT-X-MEDIA-SEQUENCE:')) mediaSeq = parseInt(L.split(':')[1], 10) || 0;
+      else if (L.startsWith('#EXT-X-KEY:')) { const a = parseAttrs(L.slice(11)); key = { method:(a.METHOD||'NONE').toUpperCase(), uri: a.URI? safeAbs(a.URI, base):null, iv: a.IV || null }; }
+      else if (L.startsWith('#EXT-X-MAP:')) {
+        const a = parseAttrs(L.slice(11));
+        if (a.URI) {
+          let rangeHeader = null;
+          if (a.BYTERANGE) {
+            const br = parseByterange(a.BYTERANGE, 0);
+            if (br) rangeHeader = `bytes=${br.start}-${br.end}`;
+          }
+          map = { uri: safeAbs(a.URI, base), rangeHeader };
+        }
+      }
+      else if (L.startsWith('#EXT-X-BYTERANGE:')) { pendingBR = parseByterange(L.split(':')[1], lastNext); }
+      else if (L.startsWith('#EXTINF:')) { pendingDur = parseFloat(L.split(':')[1]) || 0; }
+      else if (!L.startsWith('#')) {
+        let rangeHeader = null;
+        if (pendingBR) {
+          rangeHeader = `bytes=${pendingBR.start}-${pendingBR.end}`;
+          lastNext = pendingBR.next;
+        } else lastNext = 0;
+        segs.push({
+          uri: safeAbs(L, base),
+          dur: pendingDur,
+          range: rangeHeader,
+          key: key && key.method !== 'NONE' ? { ...key } : null,
+          map: map ? { ...map } : null
+        });
+        pendingDur = 0; pendingBR = null;
+      }
+    }
+    // mark map changes
+    let prevMapSig = null;
+    for (const s of segs) {
+      const sig = s.map ? `${s.map.uri}|${s.map.range || ''}` : null;
+      s.needMap = !!(sig && sig !== prevMapSig);
+      if (sig) prevMapSig = sig;
+    }
+    return { segs, mediaSeq };
+  }
+  function sumDur(parsed) {
+    let t=0; for (const s of parsed.segs) t += (s.dur || 0); return t;
+  }
+  function byterangeBytes(parsed) {
+    let exact = true, total = 0;
+    const seenInit = new Set();
+    for (const s of parsed.segs) {
+      if (s.range) {
+        const r = parseRange(s.range);
+        if (!r || r.end == null) { exact=false; } else total += (r.end - r.start + 1);
+      } else exact=false;
+      if (s.needMap && s.map) {
+        if (s.map.rangeHeader) {
+          const key = `${s.map.uri}|${s.map.rangeHeader}`;
+          if (!seenInit.has(key)) {
+            seenInit.add(key);
+            const mr = parseRange(s.map.rangeHeader);
+            if (!mr || mr.end == null) exact = false;
+            else total += (mr.end - mr.start + 1);
+          }
+        } else exact=false;
+      }
+    }
+    return exact ? total : null;
+  }
+  async function estimateHls(m3u, url, v) {
+    const p = parseMedia(m3u, url);
+    const vod = hasEndlist(m3u);
+    const seconds = sumDur(p);
+    const brBytes = byterangeBytes(p);
+    if (brBytes != null) return { bytes: brBytes, seconds, vod, via: 'byterange' };
+    const bw = v?.avg ?? v?.peak ?? null;
+    if (vod && bw && seconds>0) return { bytes: Math.round((bw/8)*seconds), seconds, vod, via: 'avg-bw' };
+    return { bytes: null, seconds, vod, via: 'unknown' };
+  }
 
-  // ========================
-  // Detection & Hooks
-  // ========================
-  const showButton = () => {
-    mountUI(); floatingBtn.classList.add('show', 'detected'); setTimeout(() => floatingBtn.classList.remove('detected'), 500);
-    floatingBtn.updateBadge(); floatingBtn.stopIdle(); floatingBtn.startIdleTimer(); attachButtons();
+  // =========================
+  // Crypto helpers (AES-128/CBC)
+  // =========================
+  const hexToU8 = (hex) => {
+    hex = String(hex || '').replace(/^0x/i,'').replace(/[^0-9a-f]/gi,'');
+    if (hex.length % 2) hex = '0' + hex;
+    const out = new Uint8Array(hex.length/2);
+    for (let i=0;i<out.length;i++) out[i] = parseInt(hex.substr(i*2,2),16);
+    return out;
   };
-
-  function detectedM3U8(url) {
-    if (typeof url !== 'string') return; if (!isHttp(url) && !isBlob(url)) return; if (isHttp(url) && !isM3U8Url(url)) return; if (state.manifests.has(url)) return;
-    state.latestM3U8 = url; state.manifests.add(url);
-    evictOldest(state.manifests, MAX_MANIFESTS);
-    showButton(); log('M3U8 detected:', url);
-  }
-  function detectedVideo(url) {
-    if (typeof url !== 'string') return; if (!isHttp(url) && !isBlob(url)) return; if (isHttp(url) && !isVideoUrl(url)) return; if (state.videos.has(url)) return;
-    state.latestVideo = url; state.videos.add(url);
-    evictOldest(state.videos, MAX_MANIFESTS);
-    showButton(); log('Video detected:', url);
+  const ivFromSeq = (n) => {
+    n = BigInt(n>>>0); const iv = new Uint8Array(16);
+    for (let i=15;i>=0;i--) { iv[i] = Number(n & 0xffn); n >>= 8n; }
+    return iv;
+  };
+  async function aesCbcDec(buf, keyBytes, iv) {
+    const k = await crypto.subtle.importKey('raw', keyBytes, { name:'AES-CBC' }, false, ['decrypt']);
+    return crypto.subtle.decrypt({ name:'AES-CBC', iv }, k, buf);
   }
 
-  // Hook: URL.createObjectURL
+  // =========================
+  // UI (UMDL style)
+  // =========================
+  GM_addStyle(`
+    @keyframes umdl-spin { to { transform: rotate(360deg); } }
+    .umdl-fab{position:fixed;right:12px;bottom:12px;z-index:2147483647;width:56px;height:56px;border-radius:12px;display:none;align-items:center;justify-content:center;background:rgba(22,22,22,.92);color:#fff;border:1px solid rgba(255,255,255,.15);box-shadow:0 6px 18px rgba(0,0,0,.4);cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;transition:opacity .2s}
+    .umdl-fab.show{display:flex}
+    .umdl-fab.idle{opacity:.35}
+    .umdl-fab:hover{opacity:1}
+    .umdl-fab.busy{opacity:1}
+    .umdl-fab.busy svg{opacity:0}
+    .umdl-fab.busy::after{content:'';width:22px;height:22px;border:2px solid rgba(255,255,255,.35);border-left-color:#fff;border-radius:50%;animation:umdl-spin 1s linear infinite}
+    .umdl-badge{position:absolute;top:6px;left:6px;background:#2563eb;color:#fff;font-weight:700;font-size:10px;padding:2px 6px;border-radius:999px;display:none}
+    .umdl-fab svg{width:22px;height:22px}
+    .umdl-pick{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.7);backdrop-filter:blur(3px)}
+    .umdl-pick.show{display:flex}
+    .umdl-card{background:#0f172a;color:#e5e7eb;border:1px solid rgba(255,255,255,.12);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.6);width:min(460px,92vw);max-height:80vh;overflow:auto}
+    .umdl-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08);gap:8px}
+    .umdl-head .ttl{font-size:15px;font-weight:700}
+    .umdl-x{background:#334155;border:none;color:#fff;border-radius:12px;padding:10px 14px;cursor:pointer;min-height:44px;min-width:44px}
+    .umdl-body{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+    .umdl-opt{display:flex;align-items:center;gap:8px;font-size:14px;color:#cbd5e1}
+    .umdl-list{display:flex;flex-direction:column;gap:8px}
+    .umdl-item{background:#111827;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:6px}
+    .umdl-item:hover{background:#1f2937;border-color:rgba(255,255,255,.2)}
+    .umdl-item .t{font-weight:700;font-size:14px}
+    .umdl-item .s{font-size:12px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .umdl-empty{padding:16px;color:#cbd5e1;font-size:14px;text-align:center}
+    .umdl-toast{position:fixed;right:12px;bottom:76px;z-index:2147483646;display:flex;flex-direction:column;gap:10px;max-width:360px;font:14px system-ui,-apple-system,Segoe UI,Roboto,Arial;max-height:70vh;overflow-y:auto}
+    .umdl-job{background:#0b1020;color:#e5e7eb;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:10px 12px;min-width:260px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+    .umdl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+    .umdl-row .name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
+    .umdl-ctrls{display:flex;gap:8px}
+    .umdl-mini{background:#182037;color:#cbd5e1;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 12px;cursor:pointer;min-height:44px;min-width:44px}
+    .umdl-bar{height:8px;background:#1f2937;border-radius:12px;overflow:hidden}
+    .umdl-fill{height:8px;width:0;background:#3b82f6}
+    @media (max-width:640px){
+      .umdl-fab{right:10px;bottom:10px;width:56px;height:56px}
+      .umdl-toast{left:10px;right:10px;bottom:70px;max-width:none}
+      .umdl-head .ttl{font-size:16px}
+    }
+  `);
+  const $ = (sel,root=document) => root.querySelector(sel);
+  const DL_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>`;
+  // root UI
+  const FAB = document.createElement('button');
+  FAB.className = 'umdl-fab'; FAB.innerHTML = DL_SVG; FAB.title = 'Download detected media';
+  const BADGE = document.createElement('span'); BADGE.className = 'umdl-badge'; BADGE.style.display = 'none'; FAB.appendChild(BADGE);
+  const PICK = document.createElement('div'); PICK.className = 'umdl-pick';
+  PICK.innerHTML = `
+    <div class="umdl-card">
+      <div class="umdl-head">
+        <div class="ttl">Select media to download</div>
+        <button class="umdl-x">Close</button>
+      </div>
+      <div class="umdl-body">
+        <label class="umdl-opt"><input type="checkbox" class="umdl-excl"> Exclude small files (< 1 MB)</label>
+        <div class="umdl-list"></div>
+      </div>
+    </div>`;
+  const TOAST = document.createElement('div'); TOAST.className = 'umdl-toast';
+  const PANEL = PICK;
+  const PROG_WRAP = TOAST;
+  function mountUI() {
+    if (!document.body) { document.addEventListener('DOMContentLoaded', mountUI, { once:true }); return; }
+    if (!FAB.parentNode) document.body.appendChild(FAB);
+    if (!PANEL.parentNode) document.body.appendChild(PANEL);
+    if (!PROG_WRAP.parentNode) document.body.appendChild(PROG_WRAP);
+  }
+  mountUI();
+  function setBadge() {
+    const n = DB.m3u8.size + DB.vid.size;
+    if (n > 1) {
+      BADGE.textContent = String(n);
+      BADGE.style.display = 'inline-block';
+    } else BADGE.style.display = 'none';
+  }
+  let idleT;
+  function setIdle() { clearTimeout(idleT); idleT = setTimeout(()=> FAB.classList.add('idle'), CFG.UI_IDLE_MS); }
+  function clearIdle() { FAB.classList.remove('idle'); clearTimeout(idleT); }
+  function showFab() { mountUI(); FAB.classList.add('show'); setBadge(); clearIdle(); setIdle(); }
+  function closePanel() { PANEL.classList.remove('show'); }
+  function setFabBusy(b) {
+    if (b) { FAB.classList.add('busy'); FAB.disabled = true; }
+    else { FAB.classList.remove('busy'); FAB.disabled = false; }
+  }
+  FAB.addEventListener('mouseenter', clearIdle);
+  FAB.addEventListener('mouseleave', setIdle);
+
+  // =========================
+  // Detection
+  // =========================
+  function take(url) {
+    try {
+      if (!url || (!isHttp(url) && !isBlob(url))) return;
+      if (isM3U8Url(url) || (isBlob(url) && BLOBS.get(url)?.kind==='m3u8')) {
+        if (!DB.m3u8.has(url)) { boundedAdd(DB.m3u8, url); DB.lastM3U8 = url; showFab(); }
+      } else if (isVideoUrl(url) || (isBlob(url) && BLOBS.get(url)?.kind==='video')) {
+        if (!DB.vid.has(url)) { boundedAdd(DB.vid, url); DB.lastVid = url; showFab(); }
+      }
+      setBadge();
+    } catch {}
+  }
+  // Hook: createObjectURL
   (() => {
-    const orig = URL.createObjectURL;
-    URL.createObjectURL = function (obj) {
-      const href = orig.call(this, obj);
+    const bak = URL.createObjectURL;
+    URL.createObjectURL = function(obj) {
+      const href = bak.call(this, obj);
       try {
         if (obj instanceof Blob) {
-          const type = obj.type || ''; const info = { blob: obj, type, size: obj.size, kind: 'other' };
-          if (looksLikeM3U8Type(type)) { info.kind = 'm3u8'; blobStore.set(href, info); detectedM3U8(href); }
-          else if (looksLikeVideoType(type)) { info.kind = 'video'; blobStore.set(href, info); detectedVideo(href); }
+          const type = obj.type || '';
+          const info = { blob: obj, type, size: obj.size, kind: 'other' };
+          if (looksM3U8Type(type)) { info.kind = 'm3u8'; BLOBS.set(href, info); take(href); }
+          else if (looksVideoType(type)) { info.kind = 'video'; BLOBS.set(href, info); take(href); }
           else {
-            const needSniff = /text\/plain|application\/octet-stream|^$/.test(type);
-            if (needSniff && obj.size > 0) {
-              obj.slice(0, Math.min(2048, obj.size)).text().then(head => {
-                if (/^#EXTM3U/i.test(head)) { info.kind = 'm3u8'; blobStore.set(href, info); detectedM3U8(href); }
-                else blobStore.set(href, info);
-              }).catch(() => blobStore.set(href, info));
-            } else blobStore.set(href, info);
+            const need = /octet-stream|text\/plain|^$/.test(type);
+            if (need && obj.size>0) {
+              obj.slice(0, Math.min(2048, obj.size)).text().then(t=>{
+                if (/^#EXTM3U/i.test(t)) info.kind='m3u8';
+                else info.kind='other';
+                BLOBS.set(href, info);
+                take(href);
+              }).catch(()=>BLOBS.set(href, info));
+            } else BLOBS.set(href, info);
           }
-        } else blobStore.set(href, { blob: null, type: 'other', size: 0, kind: 'other' });
-      } catch (e) { err('createObjectURL hook error:', e); }
+        } else BLOBS.set(href, { blob:null, type:'other', size:0, kind:'other' });
+      } catch(e) { err('createObjectURL', e); }
       return href;
     };
-  })();
-
-  // Hook: URL.revokeObjectURL
-  (() => {
-    const _revoke = URL.revokeObjectURL;
-    URL.revokeObjectURL = function (href) {
+    const r = URL.revokeObjectURL;
+    URL.revokeObjectURL = function(href){
       try {
-        blobStore.delete(href);
-        state.manifests.delete(href);
-        state.videos.delete(href);
-        floatingBtn.updateBadge?.();
+        BLOBS.delete(href);
+        DB.m3u8.delete(href);
+        DB.vid.delete(href);
+        setBadge();
       } catch {}
-      return _revoke.call(this, href);
+      return r.call(this, href);
     };
   })();
-
-  // Hook: fetch & XMLHttpRequest
-  const _fetch = window.fetch;
-  window.fetch = new Proxy(_fetch, {
-    apply(target, thisArg, args) {
-      try {
-        const input = args[0];
-        detectFromUrl(typeof input === 'string' ? input : input?.url);
-      } catch { }
-      return Reflect.apply(target, thisArg, args);
+  // Hook: fetch
+  (() => {
+    const f = window.fetch;
+    if (typeof f === 'function') {
+      window.fetch = function(...args) {
+        try {
+          const u = typeof args[0] === 'string' ? args[0] : args[0]?.url;
+          take(u);
+        } catch {}
+        return f.apply(this, args);
+      };
     }
-  });
-  const _open = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function (method, url) {
-    try { detectFromUrl(url); } catch { }
-    return _open.apply(this, arguments);
-  };
-
-  // PerformanceObserver
+  })();
+  // Hook: XHR
+  (() => {
+    const o = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+      try { take(url); } catch {}
+      return o.call(this, method, url, ...rest);
+    };
+  })();
+  // PerfObserver
   try {
-    const po = new PerformanceObserver(list => {
-      for (const e of list.getEntries()) detectFromUrl(e.name);
-    });
+    const po = new PerformanceObserver(list => list.getEntries().forEach(e=>take(e.name)));
     po.observe({ entryTypes: ['resource'] });
-  } catch { }
-
-  // Video element scanning with cleanup
-  function monitorVideoElements() {
-    document.querySelectorAll('video').forEach(video => {
-      if (video.__m3u8dl_monitored) return; video.__m3u8dl_monitored = true;
-
-      const checkSrc = () => {
-        const srcs = [
-          video.currentSrc || video.src,
-          ...Array.from(video.querySelectorAll('source')).map(s => s.src)
-        ];
-        srcs.forEach(detectFromUrl);
+  } catch {}
+  // Video tags scanning
+  function scanVideos() {
+    document.querySelectorAll('video').forEach(v => {
+      if (v.__sg_watch) return;
+      v.__sg_watch = true;
+      const cb = () => {
+        const srcs = [v.currentSrc || v.src, ...Array.from(v.querySelectorAll('source')).map(s=>s.src)];
+        srcs.forEach(take);
       };
-
-      const evs = ['loadedmetadata', 'loadstart', 'canplay'];
-      evs.forEach(ev => video.addEventListener(ev, checkSrc));
-
-      video.__m3u8dl_cleanup = () => {
-        try { evs.forEach(ev => video.removeEventListener(ev, checkSrc)); } catch {}
-        video.__m3u8dl_monitored = false;
-      };
-
-      monitoredVideos.add(video);
-      checkSrc();
+      ['loadstart','loadedmetadata','canplay'].forEach(ev => v.addEventListener(ev, cb));
+      watchedVideos.add(v);
+      cb();
     });
   }
-
-  // Video.js control button
-  function attachButtons() {
-    document.querySelectorAll('.video-js .vjs-control-bar').forEach(bar => {
-      if (bar.querySelector('.m3u8dl-btn')) return;
-      const btn = document.createElement('button');
-      btn.className = 'vjs-control vjs-button m3u8dl-btn';
-      btn.title = 'Download Media'; btn.setAttribute('aria-label', 'Download media');
-      btn.innerHTML = DOWNLOAD_ICON_SVG;
-      btn.onclick = (e) => { e.stopPropagation(); triggerDownload(e); };
-      bar.appendChild(btn);
-    });
-  }
-
-  // DOM observers/init
+  let mo, _deb;
   document.addEventListener('DOMContentLoaded', () => {
-    mountUI();
+    scanVideos();
     mo = new MutationObserver(() => {
-      clearTimeout(attachDebounce);
-      attachDebounce = setTimeout(() => {
-        attachButtons();
-        monitorVideoElements();
-
-        // Cleanup removed videos to prevent leaks
-        for (const v of Array.from(monitoredVideos)) {
-          if (!v.isConnected) {
-            try { v.__m3u8dl_cleanup?.(); } catch {}
-            monitoredVideos.delete(v);
-          }
-        }
+      clearTimeout(_deb); _deb = setTimeout(() => {
+        scanVideos();
+        for (const v of Array.from(watchedVideos)) if (!v.isConnected) watchedVideos.delete(v);
       }, 250);
     });
-    mo.observe(document.documentElement, { childList: true, subtree: true });
-    monitorVideoElements();
+    mo.observe(document.documentElement, { childList:true, subtree:true });
   });
-  window.addEventListener('beforeunload', () => { try { floatingBtn.cleanup?.(); } catch { } });
-  let attachDebounce;
 
-  // ========================
-  // Picker (refactored)
-  // ========================
-  function showMediaPicker(items) {
-    return new Promise(resolve => {
-      const list = variantPopup.querySelector('.m3u8dl-var-list');
-      const chk = variantPopup.querySelector('.m3u8dl-exclude-small');
-      const optRow = variantPopup.querySelector('.m3u8dl-opt');
-      const closeBtn = variantPopup.querySelector('.m3u8dl-close-popup');
+  // =========================
+  // Picker helpers
+  // =========================
+  function renderList(list) {
+    const listEl = PANEL.querySelector('.umdl-list');
+    listEl.innerHTML = '';
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'umdl-empty';
+      empty.textContent = 'No items match the current filter.';
+      listEl.appendChild(empty);
+      return;
+    }
+    list.forEach((it) => {
+      const div = document.createElement('div');
+      div.className = 'umdl-item';
+      div.innerHTML = `
+        <div class="t">${escapeHtml(it.label)}</div>
+        <div class="s" title="${escapeHtml(it.url)}">${escapeHtml(it.url.length>110?it.url.slice(0,110)+'…':it.url)}</div>
+      `;
+      div.onclick = () => resolvePicker(it);
+      listEl.appendChild(div);
+    });
+  }
+  let resolvePicker = () => {};
+  async function pickFromList(items, { title='Select media to download', filterable=true } = {}) {
+    return new Promise((resolve) => {
+      resolvePicker = (v) => { closePanel(); resolve(v ?? null); };
+      const ttl = PANEL.querySelector('.ttl');
+      const listEl = PANEL.querySelector('.umdl-list');
+      const exWrap = PANEL.querySelector('.umdl-opt');
+      const ex = PANEL.querySelector('.umdl-excl');
+      const x = PANEL.querySelector('.umdl-x');
 
-      const cleanup = () => {
-        variantPopup.classList.remove('show');
-        document.removeEventListener('keydown', onKey);
-        variantPopup.removeEventListener('click', onBackdrop);
-        if (chk) chk.onchange = null;
-        if (closeBtn) closeBtn.onclick = null;
-      };
-      
-      const onBackdrop = (e) => { if (e.target === variantPopup) { cleanup(); resolve(null); } };
-      
-      const onClose = () => { cleanup(); resolve(null); };
-
-      let idx = 0, buttons = [];
-      const render = (arr) => {
-        list.innerHTML = '';
-        buttons = arr.map((item, i) => {
-          const btn = document.createElement('button');
-          btn.className = `m3u8dl-var-btn${item.category === 'video' ? ' video-direct' : ''}`;
-          btn.setAttribute('role', 'button');
-          const badge = item.category === 'video' ? 'Direct' : 'HLS';
-          const title = item.label || `Option ${i + 1}`;
-          const sub = item.url.length > 80 ? item.url.slice(0, 80) + '...' : item.url;
-          btn.innerHTML = `
-            <div class="badge">${escapeHtml(badge)}</div>
-            <div class="title">${escapeHtml(title)}</div>
-            <div class="subtitle">${escapeHtml(sub)}</div>`;
-          btn.onclick = () => { cleanup(); resolve(item); };
-          list.appendChild(btn);
-          return btn;
-        });
-        if (!buttons.length) {
-          list.innerHTML = `<div style="font-size:11px;color:#9ca3af;padding:8px;">No items match the filter. Uncheck to show all.</div>`;
-        }
-        idx = 0; buttons[0]?.focus();
-      };
-
-      const apply = () => render(filterBySmall(items, chk?.checked ?? false));
-      const onKey = (e) => {
-        if (e.key === 'Escape') { cleanup(); resolve(null); }
-        else if (e.key === 'ArrowDown' && buttons.length) { e.preventDefault(); idx = (idx + 1) % buttons.length; buttons[idx].focus(); }
-        else if (e.key === 'ArrowUp' && buttons.length) { e.preventDefault(); idx = (idx - 1 + buttons.length) % buttons.length; buttons[idx].focus(); }
-        else if (e.key === 'Enter' && buttons.length) { e.preventDefault(); buttons[idx].click(); }
-      };
-
-      if (optRow) optRow.style.display = 'flex';
-      if (chk) {
-        chk.checked = settings.excludeSmall;
-        chk.onchange = () => { setExcludeSmall(chk.checked); apply(); };
+      ttl.textContent = title;
+      if (filterable) {
+        const anySizeKnown = items.some(i => i.size != null);
+        exWrap.style.display = anySizeKnown ? 'flex' : 'none';
+        ex.checked = SETTINGS.excludeSmall;
+        const apply = () => {
+          const listToUse = (SETTINGS.excludeSmall && anySizeKnown)
+            ? items.filter(x=> x.size == null || x.size >= CFG.SMALL_BYTES)
+            : items;
+          renderList(listToUse);
+        };
+        ex.onchange = () => { setExcludeSmall(ex.checked); apply(); };
+        apply();
+      } else {
+        exWrap.style.display = 'none';
+        renderList(items);
       }
-      if (closeBtn) closeBtn.onclick = onClose;
-
-      variantPopup.classList.add('show');
-      variantPopup.addEventListener('click', onBackdrop);
-      document.addEventListener('keydown', onKey);
-      apply();
+      x.onclick = () => resolvePicker(null);
+      PANEL.onclick = (e) => { if (e.target === PANEL) resolvePicker(null); };
+      PANEL.classList.add('show');
     });
   }
 
-  // ========================
-  // Media list builders (parallel, de-duplicated)
-  // ========================
-  async function buildHlsItem(url) {
-    const info = blobStore.get(url);
-    if (info) {
-      return { type: 'm3u8', category: 'm3u8', url, label: `HLS Stream (blob, ${formatBytes(info.size)})`, size: info.size };
-    }
+  // =========================
+  // UI interactions
+  // =========================
+  FAB.addEventListener('click', async (ev) => {
+    clearIdle(); setIdle();
+    let items = [];
     try {
-      const masterTxt = await getManifest(url);
-      if (isMaster(masterTxt)) {
-        const vars = parseMaster(masterTxt, url);
-        if (vars.length) {
-          vars.sort((a, b) => (b.height || 0) - (a.height || 0) ||
-                              (b.avgBandwidth || b.peakBandwidth || 0) - (a.avgBandwidth || a.peakBandwidth || 0));
-          const v = vars[0];
-          const mediaTxt = await getManifest(v.url);
-          const est = await estimateHlsSize(mediaTxt, v.url, v);
-          const sizeTxt = sizeLabel(est);
-          return { type: 'm3u8', category: 'm3u8', url, label: `HLS Stream${sizeTxt ? ` (${sizeTxt})` : ''}`, size: est?.bytes ?? null };
-        }
-      } else if (isMedia(masterTxt)) {
-        const est = await estimateHlsSize(masterTxt, url, null);
-        const sizeTxt = sizeLabel(est);
-        return { type: 'm3u8', category: 'm3u8', url, label: `HLS Stream${sizeTxt ? ` (${sizeTxt})` : ''}`, size: est.bytes ?? null };
-      }
-    } catch (e) {
-      log('Failed to estimate HLS size:', e);
-    }
-    return { type: 'm3u8', category: 'm3u8', url, label: 'HLS Stream', size: null };
-  }
-
-  function buildVideoItem(url) {
-    const info = blobStore.get(url);
-    const ext = guessExt(url, info?.type).toUpperCase();
-    const preSize = info?.size ?? null;
-    const sizeTxt = preSize != null ? ` (${formatBytes(preSize)})` : '';
-    return { type: 'video', category: 'video', url, label: `Direct Video (${ext})${sizeTxt}`, size: preSize };
-  }
-
-  async function buildMediaList() {
-    const m3u8s = Array.from(state.manifests);
-    const videos = Array.from(state.videos);
-    const items = await Promise.all([
-      ...m3u8s.map(buildHlsItem),
-      ...videos.map(u => Promise.resolve(buildVideoItem(u)))
-    ]);
-    return items.filter(Boolean);
-  }
-
-  // ========================
-  // Download Flow
-  // ========================
-  async function chooseDownloadFlow(opts = {}) {
-    mountUI();
-    const oldOpacity = floatingBtn.style.opacity;
-    try {
-      floatingBtn.style.opacity = '0.55';
-
-      const allMedia = await buildMediaList();
-      if (!allMedia.length) { alert('No media detected. Play the video and try again.'); return; }
-
-      const filteredAll = filterBySmall(allMedia, settings.excludeSmall);
-
-      let selected;
-      if (!filteredAll.length || opts.showVariantPicker || filteredAll.length > 1) {
-        const pick = await showMediaPicker(filteredAll.length ? filteredAll : allMedia);
-        if (!pick) return;
-        selected = pick;
-      } else {
-        selected = filteredAll[filteredAll.length - 1];
-      }
-
-      if (selected.type === 'video') await downloadDirectVideo(selected.url);
-      else await downloadHLS(selected.url);
-
-    } catch (e) {
-      err(e); alert(`Error: ${e.message || e}`);
+      setFabBusy(true);
+      items = await buildItems();
+    } catch(e) {
+      alert(e?.message || String(e));
+      setFabBusy(false);
+      return;
     } finally {
-      floatingBtn.style.opacity = oldOpacity || '1';
+      // let busy spinner linger only if we auto-continue to picker
     }
-  }
 
-  // ========================
-  // Direct Video Download (refactored)
-  // ========================
-  async function downloadDirectVideo(url) {
-    log('Downloading direct video:', url);
-    const info = blobStore.get(url);
-    const titleBase = sanitize(document.title);
-    const ext = guessExt(url, info?.type);
-    const filename = `${titleBase}.${ext}`;
-
-    // Case A: local blob present
-    if (info?.blob) {
-      const card = createProgressCard(filename, url, null, () => {});
-      try {
-        await saveBlob(info.blob, filename, ext);
-        card.update(100, '(local)');
-        card.done(true);
-      } catch (e) {
-        err('Blob save error:', e);
-        card.done(false, e?.message || 'Failed to save');
-      }
+    // Always confirm by default (fixes “auto-download surprises users”)
+    // Hold Alt to quick start when exactly 1 item
+    if (ev.altKey && items.length === 1) {
+      setFabBusy(false);
+      await handleItem(items[0]);
       return;
     }
 
-    // Case B: fetch over network
-    let cancelled = false, totalKnown = 0, lastLoaded = 0, req = null;
-    let headType = null;
+    const sel = await pickFromList(items, { title: 'Select media to download', filterable: true });
+    setFabBusy(false);
+    if (!sel) return;
+    await handleItem(sel);
+  });
 
-    try {
-      const meta = await getHeadCached(url);
-      totalKnown = meta.length || 0;
-      headType = meta.type || null;
-    } catch {}
-
-    const card = createProgressCard(filename, url, null, () => { cancelled = true; try { req?.abort?.(); } catch {} });
-
-    try {
-      req = gmRequest({
-        url,
-        responseType: 'arraybuffer',
-        timeout: REQ_TIMEOUT,
-        onprogress: (e) => {
-          if (cancelled) return;
-          const loaded = e?.loaded ?? 0;
-          const total = totalKnown || e?.total || 0;
-          if (!totalKnown && e?.total) totalKnown = e.total;
-          if (total > 0) {
-            card.update((loaded / total) * 100, `(${formatBytes(loaded)}/${formatBytes(total)})`);
-          } else if (loaded > lastLoaded + 512 * 1024) {
-            card.update(0, `(${formatBytes(loaded)})`);
-            lastLoaded = loaded;
-          }
-        }
-      });
-
-      const arrayBuffer = await req;
-      if (cancelled) { card.remove(); return; }
-
-      const blob = new Blob([arrayBuffer], { type: headType || `video/${ext}` });
-      await saveBlob(blob, filename, ext);
-      card.update(100, '(done)');
-      card.done(true);
-    } catch (e) {
-      if (cancelled) { card.remove(); return; }
-      err('Direct video save error:', e);
-      card.done(false, e?.message || 'Failed to save');
+  // Progress card
+  function makeProgress(title, src, { stoppable=false, onStop, onCancel, segs=0 } = {}) {
+    const div = document.createElement('div');
+    div.className = 'umdl-job';
+    div.innerHTML = `
+      <div class="umdl-row">
+        <div class="name" title="${escapeHtml(src)}">${escapeHtml(title)}</div>
+        <div class="umdl-ctrls">
+          ${stoppable?'<button class="umdl-mini btn-stop">Pause</button>':''}
+          <button class="umdl-mini btn-x">Cancel</button>
+        </div>
+      </div>
+      <div class="umdl-bar"><div class="umdl-fill"></div></div>
+      <div class="umdl-row" style="margin-top:6px"><span class="status">${segs ? `(${segs} segments)` : ''}</span><span class="pct">0%</span></div>
+    `;
+    PROG_WRAP.appendChild(div);
+    const fill = div.querySelector('.umdl-fill');
+    const pct = div.querySelector('.pct');
+    const btnX = div.querySelector('.btn-x');
+    const btnStop = div.querySelector('.btn-stop');
+    btnX.onclick = () => onCancel?.();
+    if (btnStop) {
+      btnStop.onclick = () => {
+        const v = onStop?.();
+        if (v === 'paused') btnStop.textContent = 'Resume';
+        else if (v === 'resumed') btnStop.textContent = 'Pause';
+      };
     }
+    return {
+      update(p, txt='') {
+        const pc = Math.max(0, Math.min(100, Math.floor(p)));
+        fill.style.width = pc + '%';
+        pct.textContent = `${pc}%${txt?' '+txt:''}`;
+      },
+      done(ok=true, msg) {
+        fill.style.background = ok ? '#10b981' : '#ef4444';
+        this.update(100, msg || (ok ? '(done)' : '(failed)'));
+        setTimeout(()=>div.remove(), 2500);
+      },
+      remove(){ div.remove(); }
+    };
   }
 
-  // ========================
-  // HLS Download
-  // ========================
-  async function downloadHLS(url) {
-    log('Downloading HLS:', url);
-    const masterTxt = await getManifest(url);
-    let mediaUrl = url, variant = null;
-
-    if (isMaster(masterTxt)) {
-      const vars = parseMaster(masterTxt, url);
-      if (!vars.length) throw new Error('No variants found');
-      vars.sort((a, b) => (b.height || 0) - (a.height || 0) || (b.avgBandwidth || b.peakBandwidth || 0) - (a.avgBandwidth || a.peakBandwidth || 0));
-
-      // Estimate sizes for variants
-      const pickerItems = [];
-      for (const v of vars) {
-        const bw = v.avgBandwidth || v.peakBandwidth;
-        const parts = [v.resolution, bw ? `${Math.round(bw / 1000)} kbps` : null, v.codecs].filter(Boolean);
-        let label = parts.join(' • ') || 'Variant';
-
-        try {
-          const mediaTxt = await getManifest(v.url);
-          const est = await estimateHlsSize(mediaTxt, v.url, v);
-          if (est.bytes != null) label += ` • ${sizeLabel(est)}`;
-          pickerItems.push({ type: 'variant', category: 'm3u8', url: v.url, label, variant: v, size: est.bytes });
-        } catch (e) {
-          log('Failed to estimate variant size:', e);
-          pickerItems.push({ type: 'variant', category: 'm3u8', url: v.url, label, variant: v, size: null });
+  // =========================
+  // Build items
+  // =========================
+  async function buildItems() {
+    const out = [];
+    // m3u8 sources
+    for (const u of DB.m3u8) {
+      const info = BLOBS.get(u);
+      try {
+        let label = 'HLS stream';
+        let size = null;
+        let mtxt = await getText(u);
+        if (isMasterText(mtxt)) {
+          const v = parseMaster(mtxt, u).sort((a,b)=>(b.h||0)-(a.h||0) || (b.avg||b.peak||0)-(a.avg||a.peak||0))[0];
+          if (v) {
+            const mediaTxt = await getText(v.url);
+            const est = await estimateHls(mediaTxt, v.url, v);
+            size = est.bytes ?? null;
+            label = `HLS (best) ${v.res? '• '+v.res : ''}${size ? ' • ~'+fmtBytes(size):''}`;
+          }
+        } else if (isMediaText(mtxt)) {
+          const est = await estimateHls(mtxt, u, null);
+          size = est.bytes ?? null;
+          label = `HLS ${size? '• ~'+fmtBytes(size):''}`;
         }
+        out.push({ kind:'hls', url: u, label, size });
+      } catch {
+        out.push({ kind:'hls', url: u, label: 'HLS stream', size: info?.size ?? null });
       }
+    }
+    // direct videos
+    for (const u of DB.vid) {
+      const info = BLOBS.get(u);
+      const ext = guessExt(u, info?.type).toUpperCase();
+      const size = info?.size ?? null;
+      out.push({ kind:'video', url: u, label: `Direct Video (${ext})${size?' • '+fmtBytes(size):''}`, size });
+    }
+    return out;
+  }
+  async function handleItem(it) {
+    if (it.kind === 'video') return downloadDirect(it.url);
+    if (it.kind === 'variant') return downloadHls(it.url, it.variant);
+    if (it.kind === 'hls') return downloadHls(it.url);
+  }
 
-      const selected = await showMediaPicker(pickerItems);
+  // =========================
+  // Save blob helper
+  // =========================
+  async function saveBlob(blob, filename, extHint) {
+    try {
+      if ('showSaveFilePicker' in window) {
+        const ext = (extHint||'').replace(/^\./,'') || (blob.type.split('/').pop()||'bin');
+        const h = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description:'Media', accept: { [blob.type || 'video/*']: [`.${ext}`] } }]
+        });
+        const w = await h.createWritable();
+        await w.write(blob); await w.close(); return true;
+      }
+    } catch(e) {
+      if (e?.name === 'AbortError') throw e;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 30000);
+    return true;
+  }
+
+  // =========================
+  // Direct video download
+  // =========================
+  async function downloadDirect(url) {
+    log('Direct:', url);
+    const info = BLOBS.get(url);
+    const ext = guessExt(url, info?.type);
+    const fn = `${cleanName(document.title)}.${ext}`;
+    // blob case
+    if (info?.blob) {
+      const card = makeProgress(fn, url, { onCancel: () => card.remove() });
+      try { await saveBlob(info.blob, fn, ext); card.update(100,'(local)'); card.done(true); } catch(e) { card.done(false, e?.message); }
+      return;
+    }
+    let total = 0, req = null, cancelled = false;
+    const card = makeProgress(fn, url, { onCancel: () => { cancelled=true; try{req?.abort?.();}catch{}; card.remove(); } });
+    try {
+      const meta = await headMeta(url);
+      total = meta.length || 0;
+      req = gmGet({
+        url, responseType:'arraybuffer', timeout: CFG.REQ_MS,
+        onprogress: (e) => {
+          if (cancelled) return;
+          const loaded = e?.loaded || 0;
+          if (total>0) card.update((loaded/total)*100, `(${fmtBytes(loaded)}/${fmtBytes(total)})`);
+          else card.update(0, `(${fmtBytes(loaded)})`);
+        }
+      });
+      const buf = await req; if (cancelled) return;
+      const blob = new Blob([buf], { type: meta.type || `video/${ext}` });
+      await saveBlob(blob, fn, ext);
+      card.update(100,'(done)'); card.done(true);
+    } catch(e) { card.done(false, e?.message||'Failed'); }
+  }
+
+  // =========================
+  // HLS download
+  // =========================
+  async function downloadHls(url, preVariant=null) {
+    log('HLS:', url);
+    const txt = await getText(url);
+    let mediaUrl = url, chosenVariant = preVariant;
+    if (isMasterText(txt)) {
+      const variants = parseMaster(txt, url).sort((a,b)=>(b.h||0)-(a.h||0) || (b.avg||b.peak||0)-(a.avg||a.peak||0));
+      if (!variants.length) throw new Error('No variants found');
+      // precompute size labels quickly and attach estimated sizes
+      const items = [];
+      for (const v of variants) {
+        let label = [v.res, (v.avg||v.peak)? `${Math.round((v.avg||v.peak)/1000)} kbps`:null, v.codecs].filter(Boolean).join(' • ') || 'Variant';
+        let size = null;
+        try {
+          const mediaTxt = await getText(v.url);
+          const est = await estimateHls(mediaTxt, v.url, v);
+          if (est.bytes != null) size = est.bytes;
+          if (size != null) label += ` • ~${fmtBytes(size)}`;
+        } catch {}
+        items.push({ kind:'variant', url:v.url, label, variant:v, size });
+      }
+      // picker (now filter works as sizes are known)
+      const selected = await pickFromList(items, { title: 'Select HLS quality', filterable: true });
       if (!selected) return;
-      variant = selected.variant; mediaUrl = variant.url;
-    } else if (!isMedia(masterTxt)) throw new Error('Invalid playlist');
-
-    const mediaTxt = isMedia(masterTxt) ? masterTxt : await getManifest(mediaUrl);
+      chosenVariant = selected.variant; mediaUrl = selected.url;
+    } else if (!isMediaText(txt)) throw new Error('Invalid playlist');
+    const mediaTxt = isMediaText(txt) ? txt : await getText(mediaUrl);
     const parsed = parseMedia(mediaTxt, mediaUrl);
-    if (!parsed.segments.length) throw new Error('No segments found');
-
-    const isFmp4 = parsed.segments.some(s => s.map) || /\.m4s(\?|$)/i.test(parsed.segments[0].uri);
+    if (!parsed.segs.length) throw new Error('No segments');
+    const isFmp4 = parsed.segs.some(s=>s.map) || /\.m4s(\?|$)/i.test(parsed.segs[0].uri);
     const ext = isFmp4 ? 'mp4' : 'ts';
-    const name = sanitize(document.title);
-    const qual = variant?.resolution ? `_${variant.resolution}` : '';
-    const filename = `${name}${qual}.${ext}`;
-
+    const name = cleanName(document.title);
+    const q = chosenVariant?.res ? `_${chosenVariant.res}` : '';
+    const filename = `${name}${q}.${ext}`;
     await downloadSegments(parsed, filename, ext, isFmp4, url);
   }
 
-  // ========================
-  // Segment Downloader (refactored)
-  // ========================
-  async function downloadSegments(parsed, filename, ext, isFmp4, sourceUrl) {
-    const { segments, mediaSeq } = parsed;
-    const total = segments.length;
-    let stopped = false, cancelled = false;
+  async function downloadSegments(parsed, filename, ext, isFmp4, srcUrl) {
+    const segs = parsed.segs;
+    const total = segs.length;
+    let paused = false, canceled = false, ended = false;
+    const attempts = new Uint8Array(total);
+    const status = new Int8Array(total); // 0=queued,1=loading,2=done,-1=failed
+    const inflight = new Map(); // idx -> req
+    const inprog = new Map(); // idx -> {loaded,total}
+    const buffers = new Map(); // idx -> Uint8Array (ready for ordered write)
+    let done = 0, active = 0, nextIdx = 0, writePtr = 0, byteDone = 0, avgLen = 0;
 
-    const card = createProgressCard(
-      filename,
-      sourceUrl,
-      () => { // stop/resume
-        stopped = !stopped;
-        card.setStopped(stopped);
-        if (stopped) abortAll();
-        else pump();
-      },
-      () => { // cancel
-        cancelled = true;
+    const card = makeProgress(filename, srcUrl, {
+      stoppable: true,
+      segs: total,
+      onStop() { paused = !paused; if (!paused) pump(); return paused ? 'paused' : 'resumed'; },
+      onCancel() { canceled = true; abortAll(); card.remove(); }
+    });
+
+    // file writer
+    let useFS = false, writer = null, chunks = [];
+    if ('showSaveFilePicker' in window) {
+      try {
+        const h = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description:`${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }]
+        });
+        writer = await h.createWritable(); useFS = true;
+      } catch {}
+    }
+    // caches for keys/maps
+    const keyCache = new Map(), keyInflight = new Map();
+    const mapCache = new Map(), mapInflight = new Map();
+    const onceKey = (k, fn) => once(keyCache, keyInflight, k, fn);
+    const onceMap = (k, fn) => once(mapCache, mapInflight, k, fn);
+
+    const draw = (() => {
+      let raf = 0;
+      return () => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          let partial = 0;
+          inprog.forEach(({loaded,total}) => {
+            if (total>0) partial += Math.min(1, loaded/total);
+            else if (avgLen>0) partial += Math.min(1, loaded/avgLen);
+          });
+          const pct = ((done + partial)/total)*100;
+          card.update(pct, `(${done}/${total})`);
+        });
+      };
+    })();
+
+    function abortAll() {
+      for (const [,r] of inflight) { try { r.abort?.(); } catch{} }
+      inflight.clear(); inprog.clear();
+    }
+    function maybeFailFast(i) {
+      // If the segment at the write head failed permanently, we can fail fast
+      if (status[i] === -1 && i === writePtr && !ended) {
         abortAll();
         finalize(false);
       }
-    );
-
-    const keyCache = new Map(), keyPending = new Map();
-    const mapCache = new Map(), mapPending = new Map();
-
-    const attempts = new Uint8Array(total);   // retries
-    const status = new Int8Array(total);      // 0=queued,1=loading,2=done,-1=failed
-    const active = new Map();                 // i -> req (with abort)
-    const progress = new Map();               // i -> { loaded,total }
-    const pending = new Map();                // i -> Uint8Array (awaiting ordered write)
-
-    let doneCount = 0, bytesCompleted = 0, avgSegSize = 0;
-    let nextWrite = 0, nextIndex = 0, inflight = 0;
-
-    const shouldAbort = () => cancelled || stopped;
-
-    function abortAll() {
-      for (const [i, req] of active) {
-        try { req.abort?.(); } catch {}
-        progress.delete(i);
-      }
-      active.clear();
     }
-
-    // Progress drawing (rAF coalesced)
-    let drawScheduled = false;
-    function rafDraw() {
-      if (drawScheduled) return; drawScheduled = true;
-      requestAnimationFrame(() => {
-        drawScheduled = false;
-        let partial = 0;
-        progress.forEach(({ loaded, total }) => {
-          if (total > 0) partial += Math.min(1, loaded / total);
-          else if (avgSegSize > 0) partial += Math.min(1, loaded / avgSegSize);
-        });
-        const pct = ((doneCount + partial) / total) * 100;
-        card.update(pct, `(${doneCount}/${total})`);
-      });
-    }
-
-    async function getKeyBytes(seg) {
-      if (!seg.key || seg.key.method !== 'AES-128' || !seg.key.uri) return null;
-      return ensureOnce(
-        keyCache, keyPending, seg.key.uri,
-        async () => new Uint8Array(await getBuffer(seg.key.uri))
-      );
-    }
-
-    async function getMapBytes(seg) {
-      if (!seg.needsMap || !seg.map?.uri) return null;
-      const k = `${seg.map.uri}|${seg.map.rangeHeader || ''}`;
-      return ensureOnce(
-        mapCache, mapPending, k,
-        async () => {
-          const headers = seg.map.rangeHeader ? { Range: seg.map.rangeHeader } : {};
-          return new Uint8Array(await getBuffer(seg.map.uri, headers));
-        }
-      );
-    }
-
-    // Ordered writer via a tiny promise chain
-    let writeChain = Promise.resolve();
-    function queueWrite(fn) { return (writeChain = writeChain.then(fn)); }
-
-    async function flushInOrder(writable, useFS, chunks) {
-      while (pending.has(nextWrite)) {
-        const data = pending.get(nextWrite);
-        pending.delete(nextWrite++);
-        if (useFS) await writable.write(data);
-        else chunks.push(data);
-      }
-    }
-
-    function handleFail(i, why) {
-      if (shouldAbort()) return;
+    function fail(i, why) {
       const a = ++attempts[i];
-      if (a > MAX_RETRIES) {
-        status[i] = -1;
-        err(`Segment ${i} failed permanently (${why})`);
-      } else {
-        status[i] = 0; // requeue
-      }
+      if (a > CFG.RETRIES) {
+        status[i] = -1; err(`Segment ${i} failed: ${why}`);
+        maybeFailFast(i);
+      } else status[i] = 0;
     }
-
-    function checkFinalize() {
-      if (doneCount === total) finalize(true);
-      else if (!inflight && !stopped && !cancelled) {
-        if (Array.prototype.some.call(status, v => v === -1)) finalize(false);
-      }
+    async function fetchKeyBytes(s) {
+      if (!s.key || s.key.method!=='AES-128' || !s.key.uri) return null;
+      return onceKey(s.key.uri, async () => new Uint8Array(await getBin(s.key.uri)));
     }
-
-    function start(i) {
-      if (shouldAbort()) return;
-      const seg = segments[i];
-      status[i] = 1; inflight++;
-
-      if (seg.key && seg.key.method && seg.key.method !== 'AES-128') {
-        inflight--; status[i] = -1; err(`Unsupported key method: ${seg.key.method}`); checkFinalize(); return;
-      }
-
-      const headers = seg.rangeHeader ? { Range: seg.rangeHeader } : {};
-      const req = gmRequest({
-        url: seg.uri,
-        headers,
-        responseType: 'arraybuffer',
-        timeout: REQ_TIMEOUT,
-        onprogress: (p) => {
-          if (p && typeof p.loaded === 'number') {
-            progress.set(i, { loaded: p.loaded, total: p.total || 0 });
-            rafDraw();
-          }
-        }
+    async function fetchMapBytes(s) {
+      if (!s.needMap || !s.map?.uri) return null;
+      const id = `${s.map.uri}|${s.map.rangeHeader||''}`;
+      return onceMap(id, async () => {
+        const headers = s.map.rangeHeader ? { Range: s.map.rangeHeader } : {};
+        return new Uint8Array(await getBin(s.map.uri, headers));
       });
-
-      active.set(i, req);
-      req.then(async (buf) => {
-        if (shouldAbort()) return;
-
-        // decrypt if needed
-        try {
-          const keyBytes = await getKeyBytes(seg);
-          if (keyBytes) {
-            const iv = seg.key.iv ? hexToU8(seg.key.iv) : ivFromSeq(mediaSeq + i);
-            buf = await decryptAesCbc(buf, keyBytes, iv);
-          }
-        } catch (e) { handleFail(i, e.message || 'decrypt'); return; }
-
-        // prepend init segment if needed
+    }
+    async function handleSeg(i) {
+      const s = segs[i];
+      status[i] = 1; active++;
+      if (s.key && s.key.method && s.key.method !== 'AES-128') {
+        active--; status[i] = -1; err('Unsupported key method', s.key.method); maybeFailFast(i); check(); return;
+      }
+      const headers = s.range ? { Range: s.range } : {};
+      const req = gmGet({
+        url: s.uri, responseType:'arraybuffer', headers, timeout: CFG.REQ_MS,
+        onprogress: (e) => { inprog.set(i, { loaded: e?.loaded || 0, total: e?.total || 0 }); draw(); }
+      });
+      inflight.set(i, req);
+      let buf;
+      try {
+        buf = await req;
+        // decrypt?
+        const kb = await fetchKeyBytes(s);
+        if (kb) {
+          const iv = s.key.iv ? hexToU8(s.key.iv) : ivFromSeq(parsed.mediaSeq + i);
+          buf = await aesCbcDec(buf, kb, iv);
+        }
         let u8 = new Uint8Array(buf);
-        try {
-          if (seg.needsMap) {
-            const mapBytes = await getMapBytes(seg);
-            if (mapBytes && mapBytes.length) {
-              const combined = new Uint8Array(mapBytes.length + u8.length);
-              combined.set(mapBytes, 0); combined.set(u8, mapBytes.length);
-              u8 = combined;
-            }
+        // prepend init map?
+        if (s.needMap) {
+          const mapBytes = await fetchMapBytes(s);
+          if (mapBytes?.length) {
+            const join = new Uint8Array(mapBytes.length + u8.length);
+            join.set(mapBytes, 0); join.set(u8, mapBytes.length);
+            u8 = join;
           }
-        } catch (e) { handleFail(i, e.message || 'init map'); return; }
-
-        pending.set(i, u8);
-        // schedule ordered write flush
-        queueWrite(() => flushInOrder(writable, useFS, chunks));
-
-        status[i] = 2;
-        doneCount++;
-        bytesCompleted += u8.length;
-        avgSegSize = bytesCompleted / Math.max(1, doneCount);
-        rafDraw();
-      }).catch((e) => {
-        handleFail(i, (e && e.message) || 'network');
-      }).finally(() => {
-        active.delete(i);
-        progress.delete(i);
-        inflight--;
-        pump();
-        checkFinalize();
-      });
-    }
-
-    function pump() {
-      if (shouldAbort()) return;
-      // Fill slots preferring retried items first
-      while (inflight < CONCURRENCY) {
-        let i = -1;
-        for (let j = 0; j < total; j++) { if (status[j] === 0 && attempts[j] > 0) { i = j; break; } }
-        if (i === -1) {
-          while (nextIndex < total && status[nextIndex] !== 0) nextIndex++;
-          if (nextIndex < total) i = nextIndex++;
         }
-        if (i === -1) break;
-        start(i);
+        buffers.set(i, u8);
+        inprog.delete(i);
+        inflight.delete(i);
+        status[i] = 2; active--; done++; byteDone += u8.length; avgLen = byteDone/Math.max(1, done);
+        draw();
+        // flush ordered
+        while (buffers.has(writePtr)) {
+          const chunk = buffers.get(writePtr); buffers.delete(writePtr);
+          if (useFS) await writer.write(chunk);
+          else chunks.push(chunk);
+          writePtr++;
+        }
+      } catch(e) {
+        inprog.delete(i);
+        inflight.delete(i);
+        active--;
+        fail(i, e?.message||'net/decrypt');
+      } finally {
+        pump();
+        check();
       }
     }
-
-    // File writing
-    let writable = null, useFS = false; const chunks = [];
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: filename,
-          types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }]
-        });
-        writable = await handle.createWritable();
-        useFS = true;
-        log('Using File System Access API');
-      } catch {}
+    function pump() {
+      if (paused || canceled || ended) return;
+      while (active < CFG.CONC) {
+        // retry first
+        let idx = -1;
+        for (let j=0;j<total;j++) if (status[j]===0 && attempts[j]>0) { idx=j; break; }
+        if (idx === -1) {
+          while (nextIdx<total && status[nextIdx] !== 0) nextIdx++;
+          if (nextIdx<total) idx = nextIdx++;
+        }
+        if (idx === -1) break;
+        handleSeg(idx);
+      }
     }
-
+    function check() {
+      if (ended) return;
+      if (done === total) return finalize(true);
+      if (!active && Array.prototype.some.call(status, v=>v===-1)) return finalize(false);
+    }
     async function finalize(ok) {
+      if (ended) return; ended = true;
       try {
-        // flush remaining buffered chunks in order
-        await queueWrite(() => flushInOrder(writable, useFS, chunks));
-
+        // flush any remaining in order up to first gap
+        while (buffers.has(writePtr)) {
+          const c = buffers.get(writePtr); buffers.delete(writePtr);
+          if (useFS) await writer.write(c);
+          else chunks.push(c);
+          writePtr++;
+        }
         if (ok) {
-          if (useFS) {
-            await writable.close();
-            log('Saved via File System API');
-          } else {
+          if (useFS) { await writer.close(); }
+          else {
             const blob = new Blob(chunks, { type: isFmp4 ? 'video/mp4' : 'video/mp2t' });
-            await saveBlob(blob, filename, isFmp4 ? 'mp4' : 'ts');
-            log('Downloaded via Blob');
+            await saveBlob(blob, filename, ext);
           }
-          card.update(100, '(done)');
-          card.done(true);
+          card.update(100,'(done)'); card.done(true);
         } else {
-          if (useFS) { try { await writable.truncate(0); } catch {} try { await writable.close(); } catch {} }
+          if (useFS) { try { await writer.truncate(0); } catch{} try { await writer.close(); } catch{} }
           card.done(false);
         }
-      } catch (e) {
-        err('Finalize error:', e);
+      } catch(e) {
+        err('finalize', e);
+        try { if (useFS) await writer.close(); } catch{}
         card.done(false);
       } finally {
-        abortAll();
+        for (const [,r] of inflight) { try { r.abort?.(); } catch{} }
+        inflight.clear(); inprog.clear();
       }
     }
-
-    // Start the download and write loop (writer runs as data arrives)
-    queueWrite(() => flushInOrder(writable, useFS, chunks));
     pump();
   }
 
-  // ========================
-  // Initialize
-  // ========================
+  // =========================
+  // Escape helper (UI)
+  // =========================
+  const _escapeDiv = document.createElement('div');
+  function escapeHtml(x) { _escapeDiv.textContent = x == null ? '' : String(x); return _escapeDiv.innerHTML; }
+
+  // show FAB once anything detected
+  function onDetect(url) { take(url); }
+  // startup
   mountUI();
 })();
