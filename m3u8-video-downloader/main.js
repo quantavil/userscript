@@ -319,7 +319,7 @@
   // =========================
   // UI (Compact Dark Minimal)
   // =========================
-GM_addStyle(`
+  GM_addStyle(`
   @keyframes umdl-spin { to { transform: rotate(360deg); } }
   
   .umdl-fab{position:fixed;right:16px;bottom:16px;z-index:2147483647;width:48px;height:48px;border-radius:50%;display:none;align-items:center;justify-content:center;background:#2d2d2d;color:#fff;border:1px solid #404040;cursor:pointer}
@@ -366,7 +366,11 @@ GM_addStyle(`
   .umdl-toast::-webkit-scrollbar{width:5px}
   .umdl-toast::-webkit-scrollbar-thumb{background:#404040;border-radius:3px}
   
-  .umdl-job{background:#1e1e1e;color:#e0e0e0;border:1px solid#404040;border-radius:10px;padding:13px 15px;min-width:280px}
+  .umdl-job{background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:10px;padding:13px 15px;min-width:280px}
+  .umdl-job.minimized{padding:10px 12px;min-width:200px}
+  .umdl-job.minimized .umdl-bar,.umdl-job.minimized .umdl-row:last-child,.umdl-job.minimized .btn-stop,.umdl-job.minimized .btn-x{display:none}
+  .umdl-job.minimized .umdl-row:first-child{margin-bottom:0}
+  .umdl-job.minimized .name{max-width:180px;font-size:12px;color:#aaa}
   .umdl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
   .umdl-row .name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px;color:#fff}
   .umdl-ctrls{display:flex;gap:6px}
@@ -394,7 +398,9 @@ GM_addStyle(`
     check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>`,
     pause: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`,
     play: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
-    cancel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>`
+    cancel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>`,
+    hide: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>`,
+    show: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 15l7-7 7 7"/></svg>`
   };
   const DL_SVG = ICONS.download;
 
@@ -696,22 +702,26 @@ GM_addStyle(`
     const div = document.createElement('div');
     div.className = 'umdl-job';
     div.innerHTML = `
-      <div class="umdl-row">
-        <div class="name" title="${escapeHtml(src)}">${escapeHtml(title)}</div>
-        <div class="umdl-ctrls">
-          ${stoppable ? `<button class="umdl-mini btn-stop" title="Pause">${ICONS.pause}</button>` : ''}
-          <button class="umdl-mini btn-x" title="Cancel">${ICONS.cancel}</button>
-        </div>
+    <div class="umdl-row">
+      <div class="name" title="${escapeHtml(src)}">${escapeHtml(title)}</div>
+      <div class="umdl-ctrls">
+        ${stoppable ? `<button class="umdl-mini btn-stop" title="Pause">${ICONS.pause}</button>` : ''}
+        <button class="umdl-mini btn-hide" title="Hide">${ICONS.hide}</button>
+        <button class="umdl-mini btn-x" title="Cancel">${ICONS.cancel}</button>
       </div>
-      <div class="umdl-bar"><div class="umdl-fill"></div></div>
-      <div class="umdl-row" style="margin-top:6px;font-size:11px"><span class="status" style="color:#999">${segs ? `${segs} segs` : ''}</span><span class="pct">0%</span></div>
-    `;
+    </div>
+    <div class="umdl-bar"><div class="umdl-fill"></div></div>
+    <div class="umdl-row" style="margin-top:6px;font-size:11px"><span class="status" style="color:#999">${segs ? `${segs} segs` : ''}</span><span class="pct">0%</span></div>
+  `;
     PROG_WRAP.appendChild(div);
     const fill = div.querySelector('.umdl-fill');
     const pct = div.querySelector('.pct');
     const btnX = div.querySelector('.btn-x');
     const btnStop = div.querySelector('.btn-stop');
+    const btnHide = div.querySelector('.btn-hide');
+
     btnX.onclick = () => onCancel?.();
+
     if (btnStop) {
       btnStop.onclick = () => {
         const v = onStop?.();
@@ -724,6 +734,13 @@ GM_addStyle(`
         }
       };
     }
+
+    btnHide.onclick = () => {
+      const isMinimized = div.classList.toggle('minimized');
+      btnHide.innerHTML = isMinimized ? ICONS.show : ICONS.hide;
+      btnHide.title = isMinimized ? 'Show' : 'Hide';
+    };
+
     return {
       update(p, txt = '') {
         const pc = Math.max(0, Math.min(100, Math.floor(p)));
@@ -732,7 +749,6 @@ GM_addStyle(`
       },
       done(ok = true, msg) {
         fill.style.background = ok ? '#10b981' : '#e74c3c';
-        fill.style.boxShadow = ok ? '0 0 8px rgba(16,185,129,.4)' : '0 0 8px rgba(231,76,60,.4)';
         this.update(100, msg || (ok ? '✓' : '✗'));
         setTimeout(() => div.remove(), 2200);
       },
