@@ -50,7 +50,7 @@
       try { const v = localStorage.getItem('sg_exclude_small'); return v == null ? true : v === 'true'; } catch { return true; }
     })(),
   };
-  const setExcludeSmall = (v) => { SETTINGS.excludeSmall = !!v; try { localStorage.setItem('sg_exclude_small', String(!!v)); } catch {} };
+  const setExcludeSmall = (v) => { SETTINGS.excludeSmall = !!v; try { localStorage.setItem('sg_exclude_small', String(!!v)); } catch { } };
 
   // bounded add helper for DB sets
   function boundedAdd(set, value, max = CACHE.DB_MAX) {
@@ -82,12 +82,12 @@
   const isBlob = (u) => typeof u === 'string' && /^blob:/i.test(u);
   const isM3U8Url = (u) => /\.m3u8(\b|[?#]|$)/i.test(u || '');
   const isVideoUrl = (u) => /\.(mp4|mkv|webm|avi|mov|m4v|ts|m2ts|flv|ogv|ogg)([?#]|$)/i.test(u || '');
-  const looksM3U8Type = (t='') => /mpegurl|vnd\.apple\.mpegurl|application\/x-mpegurl/i.test(t);
-  const looksVideoType = (t='') => /^video\//i.test(t) || /(matroska|mp4|webm|quicktime)/i.test(t);
+  const looksM3U8Type = (t = '') => /mpegurl|vnd\.apple\.mpegurl|application\/x-mpegurl/i.test(t);
+  const looksVideoType = (t = '') => /^video\//i.test(t) || /(matroska|mp4|webm|quicktime)/i.test(t);
   const safeAbs = (u, b) => { try { return new URL(u, b).href; } catch { return u; } };
-  const cleanName = (s) => (s||'video').replace(/[\\/:*?"<>|]/g, '_').slice(0,120).trim() || 'video';
-  const fmtBytes = (n) => { if (n == null) return ''; const u=['B','KB','MB','GB','TB']; let i=0,v=n; while (v>=1024 && i<u.length-1) { v/=1024; i++; } return `${v.toFixed(v<10&&i>0?1:0)} ${u[i]}`; };
-  const extFromType = (t='') => {
+  const cleanName = (s) => (s || 'video').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120).trim() || 'video';
+  const fmtBytes = (n) => { if (n == null) return ''; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0, v = n; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`; };
+  const extFromType = (t = '') => {
     t = t.toLowerCase();
     if (t.includes('webm')) return 'webm';
     if (t.includes('matroska') || t.includes('mkv')) return 'mkv';
@@ -98,7 +98,7 @@
     return 'mp4';
   };
   const guessExt = (url, type) => {
-    const m = /(?:\.([a-z0-9]+))([?#]|$)/i.exec(url||''); return m ? m[1].toLowerCase() : (type ? extFromType(type) : 'mp4');
+    const m = /(?:\.([a-z0-9]+))([?#]|$)/i.exec(url || ''); return m ? m[1].toLowerCase() : (type ? extFromType(type) : 'mp4');
   };
   function once(cache, inflight, key, loader) {
     if (cache.has(key)) return Promise.resolve(cache.get(key));
@@ -114,19 +114,19 @@
   // =========================
   // Network helpers
   // =========================
-  function gmGet({ url, responseType='text', headers={}, timeout=CFG.REQ_MS, onprogress }) {
+  function gmGet({ url, responseType = 'text', headers = {}, timeout = CFG.REQ_MS, onprogress }) {
     let ref;
     const p = new Promise((resolve, reject) => {
       ref = GM_xmlhttpRequest({
         method: 'GET',
         url, responseType, headers, timeout,
         onprogress: e => onprogress?.(e),
-        onload: r => (r.status>=200 && r.status<300) ? resolve(r.response) : reject(new Error(`HTTP ${r.status}`)),
+        onload: r => (r.status >= 200 && r.status < 300) ? resolve(r.response) : reject(new Error(`HTTP ${r.status}`)),
         onerror: () => reject(new Error('Network error')),
         ontimeout: () => reject(new Error('Timeout'))
       });
     });
-    p.abort = () => { try { ref?.abort(); } catch{} };
+    p.abort = () => { try { ref?.abort(); } catch { } };
     return p;
   }
   const getText = (url) => once(textCache, inflightText, url, async () => {
@@ -137,12 +137,12 @@
     }
     return gmGet({ url, responseType: 'text', timeout: CFG.MAN_MS });
   });
-  function getBin(url, headers={}, timeout=CFG.REQ_MS, onprogress) {
+  function getBin(url, headers = {}, timeout = CFG.REQ_MS, onprogress) {
     if (isBlob(url)) {
       const info = BLOBS.get(url);
       if (!info?.blob) return Promise.reject(new Error('Blob not found'));
       const range = parseRange(headers.Range);
-      const part = range ? info.blob.slice(range.start, (range.end==null?info.blob.size:range.end+1)) : info.blob;
+      const part = range ? info.blob.slice(range.start, (range.end == null ? info.blob.size : range.end + 1)) : info.blob;
       if (onprogress) setTimeout(() => onprogress({ loaded: part.size, total: part.size }), 0);
       return part.arrayBuffer();
     }
@@ -175,33 +175,33 @@
     while ((m = re.exec(s))) r[m[1].toUpperCase()] = m[2] !== undefined ? m[2] : m[3];
     return r;
   };
-  const parseRange = (v) => { if (!v) return null; const m=/bytes=(\d+)-(\d+)?/i.exec(v); if(!m) return null; return { start:+m[1], end: m[2]!=null? +m[2]:null }; };
-  const parseByterange = (s, fallbackStart=0) => {
+  const parseRange = (v) => { if (!v) return null; const m = /bytes=(\d+)-(\d+)?/i.exec(v); if (!m) return null; return { start: +m[1], end: m[2] != null ? +m[2] : null }; };
+  const parseByterange = (s, fallbackStart = 0) => {
     if (!s) return null;
     const [lenStr, offStr] = String(s).split('@');
     const len = parseInt(lenStr, 10);
-    const start = (offStr!=null && offStr!=='') ? parseInt(offStr,10) : fallbackStart;
+    const start = (offStr != null && offStr !== '') ? parseInt(offStr, 10) : fallbackStart;
     return { start, end: start + len - 1, next: start + len };
   };
   function parseMaster(m3u, base) {
     const lines = m3u.split(/\r?\n/); const out = [];
-    for (let i=0;i<lines.length;i++) {
+    for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line.startsWith('#EXT-X-STREAM-INF:')) continue;
       const a = parseAttrs(line.slice(18));
       let uri = null;
-      for (let j=i+1; j<lines.length; j++) {
+      for (let j = i + 1; j < lines.length; j++) {
         const n = lines[j].trim(); if (!n || n.startsWith('#')) continue; uri = safeAbs(n, base); break;
       }
       if (uri) {
         const res = a.RESOLUTION || '';
-        const [w, h] = res ? res.split('x').map(x=>parseInt(x,10)) : [null, null];
+        const [w, h] = res ? res.split('x').map(x => parseInt(x, 10)) : [null, null];
         out.push({
           url: uri,
           res: res || null,
           w, h,
-          peak: a.BANDWIDTH ? parseInt(a.BANDWIDTH,10) : null,
-          avg: a['AVERAGE-BANDWIDTH'] ? parseInt(a['AVERAGE-BANDWIDTH'],10) : null,
+          peak: a.BANDWIDTH ? parseInt(a.BANDWIDTH, 10) : null,
+          avg: a['AVERAGE-BANDWIDTH'] ? parseInt(a['AVERAGE-BANDWIDTH'], 10) : null,
           codecs: a.CODECS || null
         });
       }
@@ -212,16 +212,16 @@
     const lines = m3u.split(/\r?\n/);
     const segs = [];
     let mediaSeq = 0;
-    let key = { method:'NONE', uri:null, iv:null };
+    let key = { method: 'NONE', uri: null, iv: null };
     let map = null;
     let pendingDur = 0;
     let pendingBR = null;
     let lastNext = 0;
-    for (let i=0;i<lines.length;i++) {
+    for (let i = 0; i < lines.length; i++) {
       const L = lines[i].trim();
       if (!L) continue;
       if (L.startsWith('#EXT-X-MEDIA-SEQUENCE:')) mediaSeq = parseInt(L.split(':')[1], 10) || 0;
-      else if (L.startsWith('#EXT-X-KEY:')) { const a = parseAttrs(L.slice(11)); key = { method:(a.METHOD||'NONE').toUpperCase(), uri: a.URI? safeAbs(a.URI, base):null, iv: a.IV || null }; }
+      else if (L.startsWith('#EXT-X-KEY:')) { const a = parseAttrs(L.slice(11)); key = { method: (a.METHOD || 'NONE').toUpperCase(), uri: a.URI ? safeAbs(a.URI, base) : null, iv: a.IV || null }; }
       else if (L.startsWith('#EXT-X-MAP:')) {
         const a = parseAttrs(L.slice(11));
         if (a.URI) {
@@ -261,7 +261,7 @@
     return { segs, mediaSeq };
   }
   function sumDur(parsed) {
-    let t=0; for (const s of parsed.segs) t += (s.dur || 0); return t;
+    let t = 0; for (const s of parsed.segs) t += (s.dur || 0); return t;
   }
   function byterangeBytes(parsed) {
     let exact = true, total = 0;
@@ -269,8 +269,8 @@
     for (const s of parsed.segs) {
       if (s.range) {
         const r = parseRange(s.range);
-        if (!r || r.end == null) { exact=false; } else total += (r.end - r.start + 1);
-      } else exact=false;
+        if (!r || r.end == null) { exact = false; } else total += (r.end - r.start + 1);
+      } else exact = false;
       if (s.needMap && s.map) {
         if (s.map.rangeHeader) {
           const key = `${s.map.uri}|${s.map.rangeHeader}`;
@@ -280,7 +280,7 @@
             if (!mr || mr.end == null) exact = false;
             else total += (mr.end - mr.start + 1);
           }
-        } else exact=false;
+        } else exact = false;
       }
     }
     return exact ? total : null;
@@ -292,7 +292,7 @@
     const brBytes = byterangeBytes(p);
     if (brBytes != null) return { bytes: brBytes, seconds, vod, via: 'byterange' };
     const bw = v?.avg ?? v?.peak ?? null;
-    if (vod && bw && seconds>0) return { bytes: Math.round((bw/8)*seconds), seconds, vod, via: 'avg-bw' };
+    if (vod && bw && seconds > 0) return { bytes: Math.round((bw / 8) * seconds), seconds, vod, via: 'avg-bw' };
     return { bytes: null, seconds, vod, via: 'unknown' };
   }
 
@@ -300,99 +300,90 @@
   // Crypto helpers (AES-128/CBC)
   // =========================
   const hexToU8 = (hex) => {
-    hex = String(hex || '').replace(/^0x/i,'').replace(/[^0-9a-f]/gi,'');
+    hex = String(hex || '').replace(/^0x/i, '').replace(/[^0-9a-f]/gi, '');
     if (hex.length % 2) hex = '0' + hex;
-    const out = new Uint8Array(hex.length/2);
-    for (let i=0;i<out.length;i++) out[i] = parseInt(hex.substr(i*2,2),16);
+    const out = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
     return out;
   };
   const ivFromSeq = (n) => {
-    n = BigInt(n>>>0); const iv = new Uint8Array(16);
-    for (let i=15;i>=0;i--) { iv[i] = Number(n & 0xffn); n >>= 8n; }
+    n = BigInt(n >>> 0); const iv = new Uint8Array(16);
+    for (let i = 15; i >= 0; i--) { iv[i] = Number(n & 0xffn); n >>= 8n; }
     return iv;
   };
   async function aesCbcDec(buf, keyBytes, iv) {
-    const k = await crypto.subtle.importKey('raw', keyBytes, { name:'AES-CBC' }, false, ['decrypt']);
-    return crypto.subtle.decrypt({ name:'AES-CBC', iv }, k, buf);
+    const k = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['decrypt']);
+    return crypto.subtle.decrypt({ name: 'AES-CBC', iv }, k, buf);
   }
 
   // =========================
   // UI (Compact Dark Minimal)
   // =========================
   GM_addStyle(`
-    @keyframes umdl-spin { to { transform: rotate(360deg); } }
-    @keyframes umdl-slide-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    
-    .umdl-fab{position:fixed;right:14px;bottom:14px;z-index:2147483647;width:52px;height:52px;border-radius:12px;display:none;align-items:center;justify-content:center;background:#111;color:#fff;border:1px solid #222;box-shadow:0 4px 12px rgba(0,0,0,.5);cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;transition:all .2s ease}
-    .umdl-fab.show{display:flex}
-    .umdl-fab.idle{opacity:.3}
-    .umdl-fab:hover{opacity:1;background:#1a1a1a;border-color:#333;box-shadow:0 6px 16px rgba(0,0,0,.6)}
-    .umdl-fab:active{transform:scale(.96)}
-    .umdl-fab.busy{opacity:1;pointer-events:none}
-    .umdl-fab.busy svg{opacity:0}
-    .umdl-fab.busy::after{content:'';width:20px;height:20px;border:2px solid #333;border-top-color:#fff;border-radius:50%;animation:umdl-spin .7s linear infinite}
-    .umdl-badge{position:absolute;top:3px;right:3px;background:#e74c3c;color:#fff;font-weight:600;font-size:10px;padding:2px 5px;border-radius:8px;display:none;line-height:1}
-    .umdl-fab svg{width:20px;height:20px}
-    
-    .umdl-pick{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.85);backdrop-filter:blur(4px)}
-    .umdl-pick.show{display:flex}
-    .umdl-card{background:#0a0a0a;color:#e0e0e0;border:1px solid #222;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.8);width:min(480px,94vw);max-height:82vh;overflow:hidden;animation:umdl-slide-up .2s ease-out}
-    .umdl-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #1a1a1a;gap:10px}
-    .umdl-head .ttl{font-size:14px;font-weight:600;color:#fff;letter-spacing:-.01em}
-    .umdl-x{background:#1a1a1a;border:1px solid #2a2a2a;color:#aaa;border-radius:6px;padding:6px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px}
-    .umdl-x:hover{background:#222;border-color:#333;color:#fff}
-    .umdl-x:active{transform:scale(.94)}
-    .umdl-x svg{width:16px;height:16px}
-    
-    .umdl-body{padding:10px 14px 14px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:calc(82vh - 100px)}
-    .umdl-body::-webkit-scrollbar{width:6px}
-    .umdl-body::-webkit-scrollbar-track{background:transparent}
-    .umdl-body::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:3px}
-    .umdl-body::-webkit-scrollbar-thumb:hover{background:#333}
-    
-    .umdl-opt{display:flex;align-items:center;gap:8px;font-size:12px;color:#999;padding:8px 10px;background:#111;border-radius:6px;border:1px solid #1a1a1a}
-    .umdl-opt input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:#fff;margin:0}
-    
-    .umdl-list{display:flex;flex-direction:column;gap:6px}
-    .umdl-item{background:#111;border:1px solid #1a1a1a;border-radius:6px;padding:10px 12px;cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:all .15s}
-    .umdl-item:hover{background:#1a1a1a;border-color:#2a2a2a}
-    .umdl-item:active{transform:scale(.99)}
-    .umdl-item .t{font-weight:600;font-size:13px;color:#fff;line-height:1.3}
-    .umdl-item .s{font-size:11px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,monospace}
-    .umdl-item .actions{display:flex;gap:6px;margin-top:2px}
-    .umdl-copy-btn{background:#1a1a1a;border:1px solid #2a2a2a;color:#aaa;border-radius:5px;padding:5px 8px;cursor:pointer;font-size:11px;font-weight:500;transition:all .15s;display:flex;align-items:center;gap:5px;line-height:1}
-    .umdl-copy-btn:hover{background:#222;border-color:#333;color:#fff}
-    .umdl-copy-btn:active{transform:scale(.95)}
-    .umdl-copy-btn svg{width:12px;height:12px}
-    .umdl-copy-btn.copied{background:#1a2e1a;border-color:#2a4a2a;color:#5f5}
-    
-    .umdl-empty{padding:24px;color:#666;font-size:13px;text-align:center}
-    
-    .umdl-toast{position:fixed;right:14px;bottom:72px;z-index:2147483646;display:flex;flex-direction:column;gap:8px;max-width:360px;font:13px system-ui,-apple-system,Segoe UI,Roboto,Arial;max-height:68vh;overflow-y:auto}
-    .umdl-toast::-webkit-scrollbar{width:5px}
-    .umdl-toast::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
-    
-    .umdl-job{background:#0a0a0a;color:#e0e0e0;border:1px solid #222;border-radius:8px;padding:12px 14px;min-width:260px;box-shadow:0 6px 20px rgba(0,0,0,.7);animation:umdl-slide-up .2s ease-out}
-    .umdl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
-    .umdl-row .name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;color:#fff}
-    .umdl-ctrls{display:flex;gap:6px}
-    .umdl-mini{background:#1a1a1a;color:#aaa;border:1px solid #2a2a2a;border-radius:6px;padding:6px 8px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;min-width:32px;min-height:32px}
-    .umdl-mini:hover{background:#222;border-color:#333;color:#fff}
-    .umdl-mini:active{transform:scale(.94)}
-    .umdl-mini svg{width:14px;height:14px}
-    
-    .umdl-bar{height:6px;background:#1a1a1a;border-radius:3px;overflow:hidden;border:1px solid #222}
-    .umdl-fill{height:6px;width:0;background:#fff;transition:width .2s ease;box-shadow:0 0 8px rgba(255,255,255,.3)}
-    
-    @media (max-width:640px){
-      .umdl-fab{right:12px;bottom:12px;width:50px;height:50px}
-      .umdl-toast{left:12px;right:12px;bottom:70px;max-width:none}
-      .umdl-card{border-radius:6px;max-height:90vh}
-      .umdl-head{padding:10px 12px}
-      .umdl-head .ttl{font-size:13px}
-      .umdl-body{padding:8px 12px 12px;max-height:calc(90vh - 90px)}
-    }
-  `);
+  @keyframes umdl-spin { to { transform: rotate(360deg); } }
+  @keyframes umdl-slide { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  
+  .umdl-fab{position:fixed;right:14px;bottom:14px;z-index:2147483647;width:52px;height:52px;border-radius:12px;display:none;align-items:center;justify-content:center;background:#111;color:#fff;border:1px solid #222;box-shadow:0 4px 12px rgba(0,0,0,.5);cursor:pointer;transition:opacity .2s,background .2s}
+  .umdl-fab.show{display:flex}
+  .umdl-fab.idle{opacity:.3}
+  .umdl-fab:hover{opacity:1;background:#1a1a1a}
+  .umdl-fab.busy svg{opacity:0}
+  .umdl-fab.busy::after{content:'';width:20px;height:20px;border:2px solid #333;border-top-color:#fff;border-radius:50%;animation:umdl-spin .7s linear infinite}
+  .umdl-badge{position:absolute;top:3px;right:3px;background:#e74c3c;color:#fff;font-weight:600;font-size:10px;padding:2px 5px;border-radius:8px;display:none;line-height:1}
+  .umdl-fab svg{width:20px;height:20px}
+  
+  .umdl-pick{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.85);backdrop-filter:blur(4px)}
+  .umdl-pick.show{display:flex}
+  .umdl-card{background:#0a0a0a;color:#e0e0e0;border:1px solid #222;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.8);width:min(480px,94vw);max-height:82vh;overflow:hidden;animation:umdl-slide .2s ease}
+  .umdl-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #1a1a1a}
+  .umdl-head .ttl{font-size:14px;font-weight:600;color:#fff}
+  .umdl-x{background:#1a1a1a;border:1px solid #2a2a2a;color:#aaa;border-radius:6px;padding:6px;cursor:pointer;transition:background .15s,color .15s;display:flex;min-width:32px;min-height:32px}
+  .umdl-x:hover{background:#222;color:#fff}
+  .umdl-x svg{width:16px;height:16px}
+  
+  .umdl-body{padding:10px 14px 14px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:calc(82vh - 100px)}
+  .umdl-body::-webkit-scrollbar{width:6px}
+  .umdl-body::-webkit-scrollbar-track{background:transparent}
+  .umdl-body::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:3px}
+  
+  .umdl-opt{display:flex;align-items:center;gap:8px;font-size:12px;color:#999;padding:8px 10px;background:#111;border-radius:6px;border:1px solid #1a1a1a}
+  .umdl-opt input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:#fff;margin:0}
+  
+  .umdl-list{display:flex;flex-direction:column;gap:6px}
+  .umdl-item{background:#111;border:1px solid #1a1a1a;border-radius:6px;padding:10px 12px;cursor:pointer;transition:background .15s,border-color .15s}
+  .umdl-item:hover{background:#1a1a1a;border-color:#2a2a2a}
+  .umdl-item-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+  .umdl-item .t{font-weight:600;font-size:13px;color:#fff;line-height:1.3;flex:1}
+  .umdl-item .s{font-size:11px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,monospace}
+  .umdl-copy-btn{background:transparent;border:1px solid #2a2a2a;color:#aaa;border-radius:5px;padding:6px;cursor:pointer;transition:background .15s,color .15s;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .umdl-copy-btn:hover{background:#222;color:#fff}
+  .umdl-copy-btn svg{width:14px;height:14px}
+  .umdl-copy-btn.copied{background:#1a2e1a;border-color:#2a4a2a;color:#5f5}
+  
+  .umdl-empty{padding:24px;color:#666;font-size:13px;text-align:center}
+  
+  .umdl-toast{position:fixed;right:14px;bottom:72px;z-index:2147483646;display:flex;flex-direction:column;gap:8px;max-width:360px;font:13px system-ui,-apple-system,Segoe UI,Roboto,Arial;max-height:68vh;overflow-y:auto}
+  .umdl-toast::-webkit-scrollbar{width:5px}
+  .umdl-toast::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+  
+  .umdl-job{background:#0a0a0a;color:#e0e0e0;border:1px solid #222;border-radius:8px;padding:12px 14px;min-width:260px;box-shadow:0 6px 20px rgba(0,0,0,.7);animation:umdl-slide .2s ease}
+  .umdl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+  .umdl-row .name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;color:#fff}
+  .umdl-ctrls{display:flex;gap:6px}
+  .umdl-mini{background:#1a1a1a;color:#aaa;border:1px solid #2a2a2a;border-radius:6px;padding:6px 8px;cursor:pointer;transition:background .15s,color .15s;display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px}
+  .umdl-mini:hover{background:#222;color:#fff}
+  .umdl-mini svg{width:14px;height:14px}
+  
+  .umdl-bar{height:6px;background:#1a1a1a;border-radius:3px;overflow:hidden;border:1px solid #222}
+  .umdl-fill{height:6px;width:0;background:#fff;transition:width .2s;box-shadow:0 0 8px rgba(255,255,255,.3)}
+  
+  @media (max-width:640px){
+    .umdl-fab{right:12px;bottom:12px;width:50px;height:50px}
+    .umdl-toast{left:12px;right:12px;bottom:70px;max-width:none}
+    .umdl-card{max-height:90vh}
+    .umdl-body{max-height:calc(90vh - 90px)}
+  }
+`);
 
   // SVG Icons
   const ICONS = {
@@ -406,8 +397,8 @@
   };
   const DL_SVG = ICONS.download;
 
-  const $ = (sel,root=document) => root.querySelector(sel);
-  
+  const $ = (sel, root = document) => root.querySelector(sel);
+
   // root UI
   const FAB = document.createElement('button');
   FAB.className = 'umdl-fab'; FAB.innerHTML = DL_SVG; FAB.title = 'Download detected media';
@@ -427,15 +418,15 @@
   const TOAST = document.createElement('div'); TOAST.className = 'umdl-toast';
   const PANEL = PICK;
   const PROG_WRAP = TOAST;
-  
+
   function mountUI() {
-    if (!document.body) { document.addEventListener('DOMContentLoaded', mountUI, { once:true }); return; }
+    if (!document.body) { document.addEventListener('DOMContentLoaded', mountUI, { once: true }); return; }
     if (!FAB.parentNode) document.body.appendChild(FAB);
     if (!PANEL.parentNode) document.body.appendChild(PANEL);
     if (!PROG_WRAP.parentNode) document.body.appendChild(PROG_WRAP);
   }
   mountUI();
-  
+
   function setBadge() {
     const n = DB.m3u8.size + DB.vid.size;
     if (n > 1) {
@@ -443,9 +434,9 @@
       BADGE.style.display = 'inline-block';
     } else BADGE.style.display = 'none';
   }
-  
+
   let idleT;
-  function setIdle() { clearTimeout(idleT); idleT = setTimeout(()=> FAB.classList.add('idle'), CFG.UI_IDLE_MS); }
+  function setIdle() { clearTimeout(idleT); idleT = setTimeout(() => FAB.classList.add('idle'), CFG.UI_IDLE_MS); }
   function clearIdle() { FAB.classList.remove('idle'); clearTimeout(idleT); }
   function showFab() { mountUI(); FAB.classList.add('show'); setBadge(); clearIdle(); setIdle(); }
   function closePanel() { PANEL.classList.remove('show'); }
@@ -461,12 +452,12 @@
     try {
       await navigator.clipboard.writeText(text);
       const originalHTML = btn.innerHTML;
-      btn.innerHTML = `${ICONS.check}<span>Copied</span>`;
+      btn.innerHTML = ICONS.check;
       btn.classList.add('copied');
       setTimeout(() => {
         btn.innerHTML = originalHTML;
         btn.classList.remove('copied');
-      }, 1800);
+      }, 1500);
       return true;
     } catch (e) {
       // Fallback for older browsers
@@ -479,12 +470,12 @@
       try {
         document.execCommand('copy');
         const originalHTML = btn.innerHTML;
-        btn.innerHTML = `${ICONS.check}<span>Copied</span>`;
+        btn.innerHTML = ICONS.check;
         btn.classList.add('copied');
         setTimeout(() => {
           btn.innerHTML = originalHTML;
           btn.classList.remove('copied');
-        }, 1800);
+        }, 1500);
         return true;
       } catch (err) {
         console.error('Copy failed:', err);
@@ -494,25 +485,24 @@
       }
     }
   }
-
   // =========================
   // Detection
   // =========================
   function take(url) {
     try {
       if (!url || (!isHttp(url) && !isBlob(url))) return;
-      if (isM3U8Url(url) || (isBlob(url) && BLOBS.get(url)?.kind==='m3u8')) {
+      if (isM3U8Url(url) || (isBlob(url) && BLOBS.get(url)?.kind === 'm3u8')) {
         if (!DB.m3u8.has(url)) { boundedAdd(DB.m3u8, url); DB.lastM3U8 = url; showFab(); }
-      } else if (isVideoUrl(url) || (isBlob(url) && BLOBS.get(url)?.kind==='video')) {
+      } else if (isVideoUrl(url) || (isBlob(url) && BLOBS.get(url)?.kind === 'video')) {
         if (!DB.vid.has(url)) { boundedAdd(DB.vid, url); DB.lastVid = url; showFab(); }
       }
       setBadge();
-    } catch {}
+    } catch { }
   }
   // Hook: createObjectURL
   (() => {
     const bak = URL.createObjectURL;
-    URL.createObjectURL = function(obj) {
+    URL.createObjectURL = function (obj) {
       const href = bak.call(this, obj);
       try {
         if (obj instanceof Blob) {
@@ -522,27 +512,27 @@
           else if (looksVideoType(type)) { info.kind = 'video'; BLOBS.set(href, info); take(href); }
           else {
             const need = /octet-stream|text\/plain|^$/.test(type);
-            if (need && obj.size>0) {
-              obj.slice(0, Math.min(2048, obj.size)).text().then(t=>{
-                if (/^#EXTM3U/i.test(t)) info.kind='m3u8';
-                else info.kind='other';
+            if (need && obj.size > 0) {
+              obj.slice(0, Math.min(2048, obj.size)).text().then(t => {
+                if (/^#EXTM3U/i.test(t)) info.kind = 'm3u8';
+                else info.kind = 'other';
                 BLOBS.set(href, info);
                 take(href);
-              }).catch(()=>BLOBS.set(href, info));
+              }).catch(() => BLOBS.set(href, info));
             } else BLOBS.set(href, info);
           }
-        } else BLOBS.set(href, { blob:null, type:'other', size:0, kind:'other' });
-      } catch(e) { err('createObjectURL', e); }
+        } else BLOBS.set(href, { blob: null, type: 'other', size: 0, kind: 'other' });
+      } catch (e) { err('createObjectURL', e); }
       return href;
     };
     const r = URL.revokeObjectURL;
-    URL.revokeObjectURL = function(href){
+    URL.revokeObjectURL = function (href) {
       try {
         BLOBS.delete(href);
         DB.m3u8.delete(href);
         DB.vid.delete(href);
         setBadge();
-      } catch {}
+      } catch { }
       return r.call(this, href);
     };
   })();
@@ -550,11 +540,11 @@
   (() => {
     const f = window.fetch;
     if (typeof f === 'function') {
-      window.fetch = function(...args) {
+      window.fetch = function (...args) {
         try {
           const u = typeof args[0] === 'string' ? args[0] : args[0]?.url;
           take(u);
-        } catch {}
+        } catch { }
         return f.apply(this, args);
       };
     }
@@ -562,26 +552,26 @@
   // Hook: XHR
   (() => {
     const o = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-      try { take(url); } catch {}
+    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+      try { take(url); } catch { }
       return o.call(this, method, url, ...rest);
     };
   })();
   // PerfObserver
   try {
-    const po = new PerformanceObserver(list => list.getEntries().forEach(e=>take(e.name)));
+    const po = new PerformanceObserver(list => list.getEntries().forEach(e => take(e.name)));
     po.observe({ entryTypes: ['resource'] });
-  } catch {}
+  } catch { }
   // Video tags scanning
   function scanVideos() {
     document.querySelectorAll('video').forEach(v => {
       if (v.__sg_watch) return;
       v.__sg_watch = true;
       const cb = () => {
-        const srcs = [v.currentSrc || v.src, ...Array.from(v.querySelectorAll('source')).map(s=>s.src)];
+        const srcs = [v.currentSrc || v.src, ...Array.from(v.querySelectorAll('source')).map(s => s.src)];
         srcs.forEach(take);
       };
-      ['loadstart','loadedmetadata','canplay'].forEach(ev => v.addEventListener(ev, cb));
+      ['loadstart', 'loadedmetadata', 'canplay'].forEach(ev => v.addEventListener(ev, cb));
       watchedVideos.add(v);
       cb();
     });
@@ -595,7 +585,7 @@
         for (const v of Array.from(watchedVideos)) if (!v.isConnected) watchedVideos.delete(v);
       }, 250);
     });
-    mo.observe(document.documentElement, { childList:true, subtree:true });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
   });
 
   // =========================
@@ -616,31 +606,30 @@
       div.className = 'umdl-item';
       const shortUrl = it.url.length > 80 ? it.url.slice(0, 80) + '…' : it.url;
       div.innerHTML = `
+      <div class="umdl-item-top">
         <div class="t">${escapeHtml(it.label)}</div>
-        <div class="s" title="${escapeHtml(it.url)}">${escapeHtml(shortUrl)}</div>
-        <div class="actions">
-          <button class="umdl-copy-btn" title="Copy URL">${ICONS.copy}<span>Copy</span></button>
-        </div>
-      `;
-      
+        <button class="umdl-copy-btn" title="Copy URL">${ICONS.copy}</button>
+      </div>
+      <div class="s" title="${escapeHtml(it.url)}">${escapeHtml(shortUrl)}</div>
+    `;
+
       const copyBtn = div.querySelector('.umdl-copy-btn');
       copyBtn.onclick = (e) => {
         e.stopPropagation();
         copyToClipboard(it.url, copyBtn);
       };
-      
+
       div.onclick = (e) => {
         if (!e.target.closest('.umdl-copy-btn')) {
           resolvePicker(it);
         }
       };
-      
+
       listEl.appendChild(div);
     });
   }
-
-  let resolvePicker = () => {};
-  async function pickFromList(items, { title='Select Media', filterable=true } = {}) {
+  let resolvePicker = () => { };
+  async function pickFromList(items, { title = 'Select Media', filterable = true } = {}) {
     return new Promise((resolve) => {
       resolvePicker = (v) => { closePanel(); resolve(v ?? null); };
       const ttl = PANEL.querySelector('.ttl');
@@ -656,7 +645,7 @@
         ex.checked = SETTINGS.excludeSmall;
         const apply = () => {
           const listToUse = (SETTINGS.excludeSmall && anySizeKnown)
-            ? items.filter(x=> x.size == null || x.size >= CFG.SMALL_BYTES)
+            ? items.filter(x => x.size == null || x.size >= CFG.SMALL_BYTES)
             : items;
           renderList(listToUse);
         };
@@ -681,7 +670,7 @@
     try {
       setFabBusy(true);
       items = await buildItems();
-    } catch(e) {
+    } catch (e) {
       alert(e?.message || String(e));
       setFabBusy(false);
       return;
@@ -702,14 +691,14 @@
   });
 
   // Progress card
-  function makeProgress(title, src, { stoppable=false, onStop, onCancel, segs=0 } = {}) {
+  function makeProgress(title, src, { stoppable = false, onStop, onCancel, segs = 0 } = {}) {
     const div = document.createElement('div');
     div.className = 'umdl-job';
     div.innerHTML = `
       <div class="umdl-row">
         <div class="name" title="${escapeHtml(src)}">${escapeHtml(title)}</div>
         <div class="umdl-ctrls">
-          ${stoppable?`<button class="umdl-mini btn-stop" title="Pause">${ICONS.pause}</button>`:''}
+          ${stoppable ? `<button class="umdl-mini btn-stop" title="Pause">${ICONS.pause}</button>` : ''}
           <button class="umdl-mini btn-x" title="Cancel">${ICONS.cancel}</button>
         </div>
       </div>
@@ -735,18 +724,18 @@
       };
     }
     return {
-      update(p, txt='') {
+      update(p, txt = '') {
         const pc = Math.max(0, Math.min(100, Math.floor(p)));
         fill.style.width = pc + '%';
-        pct.textContent = `${pc}%${txt?' '+txt:''}`;
+        pct.textContent = `${pc}%${txt ? ' ' + txt : ''}`;
       },
-      done(ok=true, msg) {
+      done(ok = true, msg) {
         fill.style.background = ok ? '#10b981' : '#e74c3c';
         fill.style.boxShadow = ok ? '0 0 8px rgba(16,185,129,.4)' : '0 0 8px rgba(231,76,60,.4)';
         this.update(100, msg || (ok ? '✓' : '✗'));
-        setTimeout(()=>div.remove(), 2200);
+        setTimeout(() => div.remove(), 2200);
       },
-      remove(){ div.remove(); }
+      remove() { div.remove(); }
     };
   }
 
@@ -763,21 +752,21 @@
         let size = null;
         let mtxt = await getText(u);
         if (isMasterText(mtxt)) {
-          const v = parseMaster(mtxt, u).sort((a,b)=>(b.h||0)-(a.h||0) || (b.avg||b.peak||0)-(a.avg||a.peak||0))[0];
+          const v = parseMaster(mtxt, u).sort((a, b) => (b.h || 0) - (a.h || 0) || (b.avg || b.peak || 0) - (a.avg || a.peak || 0))[0];
           if (v) {
             const mediaTxt = await getText(v.url);
             const est = await estimateHls(mediaTxt, v.url, v);
             size = est.bytes ?? null;
-            label = `HLS${v.res? ' • '+v.res : ''}${size ? ' • ~'+fmtBytes(size):''}`;
+            label = `HLS${v.res ? ' • ' + v.res : ''}${size ? ' • ~' + fmtBytes(size) : ''}`;
           }
         } else if (isMediaText(mtxt)) {
           const est = await estimateHls(mtxt, u, null);
           size = est.bytes ?? null;
-          label = `HLS${size? ' • ~'+fmtBytes(size):''}`;
+          label = `HLS${size ? ' • ~' + fmtBytes(size) : ''}`;
         }
-        out.push({ kind:'hls', url: u, label, size });
+        out.push({ kind: 'hls', url: u, label, size });
       } catch {
-        out.push({ kind:'hls', url: u, label: 'HLS', size: info?.size ?? null });
+        out.push({ kind: 'hls', url: u, label: 'HLS', size: info?.size ?? null });
       }
     }
     // direct videos
@@ -785,7 +774,7 @@
       const info = BLOBS.get(u);
       const ext = guessExt(u, info?.type).toUpperCase();
       const size = info?.size ?? null;
-      out.push({ kind:'video', url: u, label: `${ext}${size?' • '+fmtBytes(size):''}`, size });
+      out.push({ kind: 'video', url: u, label: `${ext}${size ? ' • ' + fmtBytes(size) : ''}`, size });
     }
     return out;
   }
@@ -801,21 +790,21 @@
   async function saveBlob(blob, filename, extHint) {
     try {
       if ('showSaveFilePicker' in window) {
-        const ext = (extHint||'').replace(/^\./,'') || (blob.type.split('/').pop()||'bin');
+        const ext = (extHint || '').replace(/^\./, '') || (blob.type.split('/').pop() || 'bin');
         const h = await window.showSaveFilePicker({
           suggestedName: filename,
-          types: [{ description:'Media', accept: { [blob.type || 'video/*']: [`.${ext}`] } }]
+          types: [{ description: 'Media', accept: { [blob.type || 'video/*']: [`.${ext}`] } }]
         });
         const w = await h.createWritable();
         await w.write(blob); await w.close(); return true;
       }
-    } catch(e) {
+    } catch (e) {
       if (e?.name === 'AbortError') throw e;
     }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 30000);
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
     return true;
   }
 
@@ -830,52 +819,52 @@
     // blob case
     if (info?.blob) {
       const card = makeProgress(fn, url, { onCancel: () => card.remove() });
-      try { await saveBlob(info.blob, fn, ext); card.update(100,''); card.done(true); } catch(e) { card.done(false, e?.message); }
+      try { await saveBlob(info.blob, fn, ext); card.update(100, ''); card.done(true); } catch (e) { card.done(false, e?.message); }
       return;
     }
     let total = 0, req = null, cancelled = false;
-    const card = makeProgress(fn, url, { onCancel: () => { cancelled=true; try{req?.abort?.();}catch{}; card.remove(); } });
+    const card = makeProgress(fn, url, { onCancel: () => { cancelled = true; try { req?.abort?.(); } catch { }; card.remove(); } });
     try {
       const meta = await headMeta(url);
       total = meta.length || 0;
       req = gmGet({
-        url, responseType:'arraybuffer', timeout: CFG.REQ_MS,
+        url, responseType: 'arraybuffer', timeout: CFG.REQ_MS,
         onprogress: (e) => {
           if (cancelled) return;
           const loaded = e?.loaded || 0;
-          if (total>0) card.update((loaded/total)*100, `${fmtBytes(loaded)}/${fmtBytes(total)}`);
+          if (total > 0) card.update((loaded / total) * 100, `${fmtBytes(loaded)}/${fmtBytes(total)}`);
           else card.update(0, `${fmtBytes(loaded)}`);
         }
       });
       const buf = await req; if (cancelled) return;
       const blob = new Blob([buf], { type: meta.type || `video/${ext}` });
       await saveBlob(blob, fn, ext);
-      card.update(100,''); card.done(true);
-    } catch(e) { card.done(false, e?.message||'Failed'); }
+      card.update(100, ''); card.done(true);
+    } catch (e) { card.done(false, e?.message || 'Failed'); }
   }
 
   // =========================
   // HLS download
   // =========================
-  async function downloadHls(url, preVariant=null) {
+  async function downloadHls(url, preVariant = null) {
     log('HLS:', url);
     const txt = await getText(url);
     let mediaUrl = url, chosenVariant = preVariant;
     if (isMasterText(txt)) {
-      const variants = parseMaster(txt, url).sort((a,b)=>(b.h||0)-(a.h||0) || (b.avg||b.peak||0)-(a.avg||a.peak||0));
+      const variants = parseMaster(txt, url).sort((a, b) => (b.h || 0) - (a.h || 0) || (b.avg || b.peak || 0) - (a.avg || a.peak || 0));
       if (!variants.length) throw new Error('No variants found');
       // precompute size labels quickly and attach estimated sizes
       const items = [];
       for (const v of variants) {
-        let label = [v.res, (v.avg||v.peak)? `${Math.round((v.avg||v.peak)/1000)}k`:null].filter(Boolean).join(' • ') || 'Variant';
+        let label = [v.res, (v.avg || v.peak) ? `${Math.round((v.avg || v.peak) / 1000)}k` : null].filter(Boolean).join(' • ') || 'Variant';
         let size = null;
         try {
           const mediaTxt = await getText(v.url);
           const est = await estimateHls(mediaTxt, v.url, v);
           if (est.bytes != null) size = est.bytes;
           if (size != null) label += ` • ~${fmtBytes(size)}`;
-        } catch {}
-        items.push({ kind:'variant', url:v.url, label, variant:v, size });
+        } catch { }
+        items.push({ kind: 'variant', url: v.url, label, variant: v, size });
       }
       // picker (now filter works as sizes are known)
       const selected = await pickFromList(items, { title: 'Select Quality', filterable: true });
@@ -885,7 +874,7 @@
     const mediaTxt = isMediaText(txt) ? txt : await getText(mediaUrl);
     const parsed = parseMedia(mediaTxt, mediaUrl);
     if (!parsed.segs.length) throw new Error('No segments');
-    const isFmp4 = parsed.segs.some(s=>s.map) || /\.m4s(\?|$)/i.test(parsed.segs[0].uri);
+    const isFmp4 = parsed.segs.some(s => s.map) || /\.m4s(\?|$)/i.test(parsed.segs[0].uri);
     const ext = isFmp4 ? 'mp4' : 'ts';
     const name = cleanName(document.title);
     const q = chosenVariant?.res ? `_${chosenVariant.res}` : '';
@@ -917,10 +906,10 @@
       try {
         const h = await window.showSaveFilePicker({
           suggestedName: filename,
-          types: [{ description:`${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }]
+          types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }]
         });
         writer = await h.createWritable(); useFS = true;
-      } catch {}
+      } catch { }
     }
     // caches for keys/maps
     const keyCache = new Map(), keyInflight = new Map();
@@ -935,18 +924,18 @@
         raf = requestAnimationFrame(() => {
           raf = 0;
           let partial = 0;
-          inprog.forEach(({loaded,total}) => {
-            if (total>0) partial += Math.min(1, loaded/total);
-            else if (avgLen>0) partial += Math.min(1, loaded/avgLen);
+          inprog.forEach(({ loaded, total }) => {
+            if (total > 0) partial += Math.min(1, loaded / total);
+            else if (avgLen > 0) partial += Math.min(1, loaded / avgLen);
           });
-          const pct = ((done + partial)/total)*100;
+          const pct = ((done + partial) / total) * 100;
           card.update(pct, `${done}/${total}`);
         });
       };
     })();
 
     function abortAll() {
-      for (const [,r] of inflight) { try { r.abort?.(); } catch{} }
+      for (const [, r] of inflight) { try { r.abort?.(); } catch { } }
       inflight.clear(); inprog.clear();
     }
     function maybeFailFast(i) {
@@ -964,12 +953,12 @@
       } else status[i] = 0;
     }
     async function fetchKeyBytes(s) {
-      if (!s.key || s.key.method!=='AES-128' || !s.key.uri) return null;
+      if (!s.key || s.key.method !== 'AES-128' || !s.key.uri) return null;
       return onceKey(s.key.uri, async () => new Uint8Array(await getBin(s.key.uri)));
     }
     async function fetchMapBytes(s) {
       if (!s.needMap || !s.map?.uri) return null;
-      const id = `${s.map.uri}|${s.map.rangeHeader||''}`;
+      const id = `${s.map.uri}|${s.map.rangeHeader || ''}`;
       return onceMap(id, async () => {
         const headers = s.map.rangeHeader ? { Range: s.map.rangeHeader } : {};
         return new Uint8Array(await getBin(s.map.uri, headers));
@@ -983,7 +972,7 @@
       }
       const headers = s.range ? { Range: s.range } : {};
       const req = gmGet({
-        url: s.uri, responseType:'arraybuffer', headers, timeout: CFG.REQ_MS,
+        url: s.uri, responseType: 'arraybuffer', headers, timeout: CFG.REQ_MS,
         onprogress: (e) => { inprog.set(i, { loaded: e?.loaded || 0, total: e?.total || 0 }); draw(); }
       });
       inflight.set(i, req);
@@ -1009,7 +998,7 @@
         buffers.set(i, u8);
         inprog.delete(i);
         inflight.delete(i);
-        status[i] = 2; active--; done++; byteDone += u8.length; avgLen = byteDone/Math.max(1, done);
+        status[i] = 2; active--; done++; byteDone += u8.length; avgLen = byteDone / Math.max(1, done);
         draw();
         // flush ordered
         while (buffers.has(writePtr)) {
@@ -1018,11 +1007,11 @@
           else chunks.push(chunk);
           writePtr++;
         }
-      } catch(e) {
+      } catch (e) {
         inprog.delete(i);
         inflight.delete(i);
         active--;
-        fail(i, e?.message||'net/decrypt');
+        fail(i, e?.message || 'net/decrypt');
       } finally {
         pump();
         check();
@@ -1033,10 +1022,10 @@
       while (active < CFG.CONC) {
         // retry first
         let idx = -1;
-        for (let j=0;j<total;j++) if (status[j]===0 && attempts[j]>0) { idx=j; break; }
+        for (let j = 0; j < total; j++) if (status[j] === 0 && attempts[j] > 0) { idx = j; break; }
         if (idx === -1) {
-          while (nextIdx<total && status[nextIdx] !== 0) nextIdx++;
-          if (nextIdx<total) idx = nextIdx++;
+          while (nextIdx < total && status[nextIdx] !== 0) nextIdx++;
+          if (nextIdx < total) idx = nextIdx++;
         }
         if (idx === -1) break;
         handleSeg(idx);
@@ -1045,7 +1034,7 @@
     function check() {
       if (ended) return;
       if (done === total) return finalize(true);
-      if (!active && Array.prototype.some.call(status, v=>v===-1)) return finalize(false);
+      if (!active && Array.prototype.some.call(status, v => v === -1)) return finalize(false);
     }
     async function finalize(ok) {
       if (ended) return; ended = true;
@@ -1063,17 +1052,17 @@
             const blob = new Blob(chunks, { type: isFmp4 ? 'video/mp4' : 'video/mp2t' });
             await saveBlob(blob, filename, ext);
           }
-          card.update(100,''); card.done(true);
+          card.update(100, ''); card.done(true);
         } else {
-          if (useFS) { try { await writer.truncate(0); } catch{} try { await writer.close(); } catch{} }
+          if (useFS) { try { await writer.truncate(0); } catch { } try { await writer.close(); } catch { } }
           card.done(false);
         }
-      } catch(e) {
+      } catch (e) {
         err('finalize', e);
-        try { if (useFS) await writer.close(); } catch{}
+        try { if (useFS) await writer.close(); } catch { }
         card.done(false);
       } finally {
-        for (const [,r] of inflight) { try { r.abort?.(); } catch{} }
+        for (const [, r] of inflight) { try { r.abort?.(); } catch { } }
         inflight.clear(); inprog.clear();
       }
     }
