@@ -319,69 +319,70 @@
   // =========================
   // UI (Compact Dark Minimal)
   // =========================
-  GM_addStyle(`
+GM_addStyle(`
   @keyframes umdl-spin { to { transform: rotate(360deg); } }
-  @keyframes umdl-slide { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   
-  .umdl-fab{position:fixed;right:14px;bottom:14px;z-index:2147483647;width:52px;height:52px;border-radius:12px;display:none;align-items:center;justify-content:center;background:#111;color:#fff;border:1px solid #222;box-shadow:0 4px 12px rgba(0,0,0,.5);cursor:pointer;transition:opacity .2s,background .2s}
+  .umdl-fab{position:fixed;right:16px;bottom:16px;z-index:2147483647;width:48px;height:48px;border-radius:50%;display:none;align-items:center;justify-content:center;background:#2d2d2d;color:#fff;border:1px solid #404040;cursor:pointer}
   .umdl-fab.show{display:flex}
-  .umdl-fab.idle{opacity:.3}
-  .umdl-fab:hover{opacity:1;background:#1a1a1a}
+  .umdl-fab.idle{opacity:.5}
+  .umdl-fab:hover{background:#353535}
   .umdl-fab.busy svg{opacity:0}
-  .umdl-fab.busy::after{content:'';width:20px;height:20px;border:2px solid #333;border-top-color:#fff;border-radius:50%;animation:umdl-spin .7s linear infinite}
-  .umdl-badge{position:absolute;top:3px;right:3px;background:#e74c3c;color:#fff;font-weight:600;font-size:10px;padding:2px 5px;border-radius:8px;display:none;line-height:1}
-  .umdl-fab svg{width:20px;height:20px}
+  .umdl-fab.busy::after{content:'';width:18px;height:18px;border:2px solid #404040;border-top-color:#fff;border-radius:50%;animation:umdl-spin .6s linear infinite}
+  .umdl-badge{position:absolute;top:-3px;right:-3px;background:#dc3545;color:#fff;font-weight:600;font-size:9px;padding:3px 6px;border-radius:10px;display:none;line-height:1;border:1.5px solid #1e1e1e}
+  .umdl-fab svg{width:16px;height:16px}
   
-  .umdl-pick{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.85);backdrop-filter:blur(4px)}
+  .umdl-pick{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.75);backdrop-filter:blur(4px)}
   .umdl-pick.show{display:flex}
-  .umdl-card{background:#0a0a0a;color:#e0e0e0;border:1px solid #222;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.8);width:min(480px,94vw);max-height:82vh;overflow:hidden;animation:umdl-slide .2s ease}
-  .umdl-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #1a1a1a}
-  .umdl-head .ttl{font-size:14px;font-weight:600;color:#fff}
-  .umdl-x{background:#1a1a1a;border:1px solid #2a2a2a;color:#aaa;border-radius:6px;padding:6px;cursor:pointer;transition:background .15s,color .15s;display:flex;min-width:32px;min-height:32px}
-  .umdl-x:hover{background:#222;color:#fff}
+  .umdl-card{background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:10px;width:min(500px,94vw);max-height:84vh;overflow:hidden}
+  .umdl-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #2d2d2d}
+  .umdl-head .ttl{font-size:15px;font-weight:600;color:#fff}
+  .umdl-x{background:#2d2d2d;border:1px solid #404040;color:#aaa;border-radius:8px;padding:6px;cursor:pointer;display:flex;min-width:32px;min-height:32px}
+  .umdl-x:hover{background:#353535;color:#fff}
   .umdl-x svg{width:16px;height:16px}
   
-  .umdl-body{padding:10px 14px 14px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:calc(82vh - 100px)}
+  .umdl-body{padding:12px 16px 16px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:calc(84vh - 110px)}
   .umdl-body::-webkit-scrollbar{width:6px}
   .umdl-body::-webkit-scrollbar-track{background:transparent}
-  .umdl-body::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:3px}
+  .umdl-body::-webkit-scrollbar-thumb{background:#404040;border-radius:3px}
+  .umdl-body::-webkit-scrollbar-thumb:hover{background:#4a4a4a}
   
-  .umdl-opt{display:flex;align-items:center;gap:8px;font-size:12px;color:#999;padding:8px 10px;background:#111;border-radius:6px;border:1px solid #1a1a1a}
-  .umdl-opt input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:#fff;margin:0}
+  .umdl-opt{display:flex;align-items:center;gap:9px;font-size:12px;color:#aaa;padding:10px 12px;background:#252525;border-radius:8px;border:1px solid #353535}
+  .umdl-opt input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:#fff;margin:0}
   
-  .umdl-list{display:flex;flex-direction:column;gap:6px}
-  .umdl-item{background:#111;border:1px solid #1a1a1a;border-radius:6px;padding:10px 12px;cursor:pointer;transition:background .15s,border-color .15s}
-  .umdl-item:hover{background:#1a1a1a;border-color:#2a2a2a}
-  .umdl-item-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
-  .umdl-item .t{font-weight:600;font-size:13px;color:#fff;line-height:1.3;flex:1}
-  .umdl-item .s{font-size:11px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,monospace}
-  .umdl-copy-btn{background:transparent;border:1px solid #2a2a2a;color:#aaa;border-radius:5px;padding:6px;cursor:pointer;transition:background .15s,color .15s;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-  .umdl-copy-btn:hover{background:#222;color:#fff}
-  .umdl-copy-btn svg{width:14px;height:14px}
-  .umdl-copy-btn.copied{background:#1a2e1a;border-color:#2a4a2a;color:#5f5}
+  .umdl-list{display:flex;flex-direction:column;gap:8px}
+  .umdl-item{background:#252525;border:1px solid #353535;border-radius:8px;padding:12px 14px;cursor:pointer}
+  .umdl-item:hover{background:#2d2d2d;border-color:#404040}
+  .umdl-item-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+  .umdl-item .t{font-weight:600;font-size:13px;color:#fff;line-height:1.4;flex:1}
+  .umdl-item .s{font-size:11px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,SF Mono,Consolas,monospace}
+  .umdl-copy-btn{background:#2d2d2d;border:1px solid #404040;color:#aaa;border-radius:6px;padding:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .umdl-copy-btn:hover{background:#353535;color:#fff}
+  .umdl-copy-btn svg{width:13px;height:13px}
+  .umdl-copy-btn.copied{background:#28a745;border-color:#28a745;color:#fff}
   
-  .umdl-empty{padding:24px;color:#666;font-size:13px;text-align:center}
+  .umdl-empty{padding:32px;color:#888;font-size:13px;text-align:center}
   
-  .umdl-toast{position:fixed;right:14px;bottom:72px;z-index:2147483646;display:flex;flex-direction:column;gap:8px;max-width:360px;font:13px system-ui,-apple-system,Segoe UI,Roboto,Arial;max-height:68vh;overflow-y:auto}
+  .umdl-toast{position:fixed;right:16px;bottom:72px;z-index:2147483646;display:flex;flex-direction:column;gap:10px;max-width:380px;font:13px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-height:70vh;overflow-y:auto}
   .umdl-toast::-webkit-scrollbar{width:5px}
-  .umdl-toast::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+  .umdl-toast::-webkit-scrollbar-thumb{background:#404040;border-radius:3px}
   
-  .umdl-job{background:#0a0a0a;color:#e0e0e0;border:1px solid #222;border-radius:8px;padding:12px 14px;min-width:260px;box-shadow:0 6px 20px rgba(0,0,0,.7);animation:umdl-slide .2s ease}
-  .umdl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
-  .umdl-row .name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;color:#fff}
+  .umdl-job{background:#1e1e1e;color:#e0e0e0;border:1px solid#404040;border-radius:10px;padding:13px 15px;min-width:280px}
+  .umdl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+  .umdl-row .name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px;color:#fff}
   .umdl-ctrls{display:flex;gap:6px}
-  .umdl-mini{background:#1a1a1a;color:#aaa;border:1px solid #2a2a2a;border-radius:6px;padding:6px 8px;cursor:pointer;transition:background .15s,color .15s;display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px}
-  .umdl-mini:hover{background:#222;color:#fff}
-  .umdl-mini svg{width:14px;height:14px}
+  .umdl-mini{background:#2d2d2d;color:#aaa;border:1px solid #404040;border-radius:7px;padding:6px 8px;cursor:pointer;display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px}
+  .umdl-mini:hover{background:#353535;color:#fff}
+  .umdl-mini svg{width:13px;height:13px}
   
-  .umdl-bar{height:6px;background:#1a1a1a;border-radius:3px;overflow:hidden;border:1px solid #222}
-  .umdl-fill{height:6px;width:0;background:#fff;transition:width .2s;box-shadow:0 0 8px rgba(255,255,255,.3)}
+  .umdl-bar{height:7px;background:#252525;border-radius:4px;overflow:hidden;border:1px solid #353535}
+  .umdl-fill{height:7px;width:0;background:#fff}
   
   @media (max-width:640px){
-    .umdl-fab{right:12px;bottom:12px;width:50px;height:50px}
-    .umdl-toast{left:12px;right:12px;bottom:70px;max-width:none}
-    .umdl-card{max-height:90vh}
-    .umdl-body{max-height:calc(90vh - 90px)}
+    .umdl-fab{right:12px;bottom:12px;width:46px;height:46px}
+    .umdl-fab svg{width:15px;height:15px}
+    .umdl-toast{left:12px;right:12px;bottom:68px;max-width:none}
+    .umdl-card{max-height:90vh;border-radius:10px}
+    .umdl-body{max-height:calc(90vh - 100px)}
   }
 `);
 
