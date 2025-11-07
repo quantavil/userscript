@@ -191,18 +191,18 @@
     .m3u8dl-btn{display:inline-flex;align-items:center;justify-content:center;height:2em;width:2.25em;border:none;cursor:pointer;background:transparent;color:inherit;padding:0;transition:opacity .25s}
     .m3u8dl-btn .m3u8dl-icon{width:18px;height:18px}
     
-    .m3u8dl-floating{position:fixed;right:12px;bottom:12px;z-index:2147483647;width:48px;height:48px;border-radius:50%;background:rgba(17,17,17,.95);color:#fff;border:1px solid rgba(255,255,255,.2);box-shadow:0 4px 16px rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;cursor:pointer;transition:opacity .25s,filter .2s,transform .2s}
+    .m3u8dl-floating{position:fixed;right:12px;bottom:12px;z-index:2147483647;width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.75);color:#fff;border:1px solid rgba(255,255,255,.12);box-shadow:0 1px 4px rgba(0,0,0,.2);display:none;align-items:center;justify-content:center;cursor:pointer;transition:opacity .2s,transform .15s,background .2s} 
     .m3u8dl-floating.show{display:flex}
     .m3u8dl-floating.idle{opacity:.28}
     .m3u8dl-floating.idle:hover{opacity:1}
-    .m3u8dl-floating:hover{filter:brightness(1.15);transform:scale(1.05)}
+    .m3u8dl-floating:hover{background:rgba(30,30,30,.9);transform:scale(1.04)}
     .m3u8dl-floating.detected{animation:m3u8-pulse .5s ease}
     
-    .m3u8dl-badge{position:absolute;top:-3px;right:-3px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:10px;min-width:16px;text-align:center;box-shadow:0 2px 6px rgba(239,68,68,.5);display:none}
+    .m3u8dl-badge{position:absolute;top:4px;right:6px;background:transparent;color:#fff;font-size:10px;font-weight:700;padding:0;border:none;border-radius:0;min-width:auto;text-align:center;box-shadow:none;display:none;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,.9)}
     .m3u8dl-badge.show{display:block}
     
-    @keyframes m3u8-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
-    
+    @keyframes m3u8-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+
     #m3u8dl-progress-container{position:fixed;bottom:70px;right:12px;z-index:2147483646;display:flex;flex-direction:column;gap:10px;max-width:340px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;transition:transform .3s ease,opacity .3s ease}
     #m3u8dl-progress-container.hidden{transform:translateY(calc(100% + 70px));opacity:0;pointer-events:none}
     
