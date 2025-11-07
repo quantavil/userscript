@@ -321,76 +321,157 @@
   // UI (Compact Dark Minimal)
   // =========================
   GM_addStyle(`
-  @keyframes umdl-spin { to { transform: rotate(360deg); } }
-  
-  .umdl-fab{position:fixed;right:16px;bottom:16px;z-index:2147483647;width:48px;height:48px;border-radius:50%;display:none;align-items:center;justify-content:center;background:#2d2d2d;color:#fff;border:1px solid #404040;cursor:pointer;overflow:visible}
+  :root{
+    --sg-bg:#1e1e1e;
+    --sg-bg-2:#252525;
+    --sg-bg-3:#2d2d2d;
+    --sg-border:#353535;
+    --sg-border-2:#404040;
+    --sg-fg:#e0e0e0;
+    --sg-fg-dim:#aaa;
+    --sg-fg-dimmer:#888;
+    --sg-ok:#10b981;
+    --sg-bad:#e74c3c;
+    --sg-badge:#dc3545;
+  }
+
+  @keyframes umdl-spin{to{transform:rotate(360deg)}}
+
+  /* FAB */
+  .umdl-fab{
+    position:fixed;right:16px;bottom:16px;z-index:2147483647;
+    width:48px;height:48px;border-radius:50%;
+    display:none;align-items:center;justify-content:center;
+    background:var(--sg-bg-3);color:#fff;border:1px solid var(--sg-border-2);
+    cursor:pointer;overflow:visible
+  }
   .umdl-fab.show{display:flex}
   .umdl-fab.idle{opacity:.5}
   .umdl-fab:hover{background:#353535}
   .umdl-fab.busy svg{opacity:0}
-  .umdl-fab.busy::after{content:'';position:absolute;width:18px;height:18px;border:2px solid #404040;border-top-color:#fff;border-radius:50%;animation:umdl-spin .6s linear infinite}
-  .umdl-badge{position:absolute;top:-6px;right:-6px;background:#dc3545;color:#fff;font-weight:600;font-size:10px;padding:3px 5px;border-radius:10px;display:none;line-height:1;border:2px solid #1e1e1e;min-width:18px;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,0.3)}
+  .umdl-fab.busy::after{
+    content:'';position:absolute;width:18px;height:18px;border:2px solid var(--sg-border-2);
+    border-top-color:#fff;border-radius:50%;animation:umdl-spin .6s linear infinite
+  }
   .umdl-fab svg{width:16px;height:16px}
-  
+  .umdl-badge{
+    position:absolute;top:-6px;right:-6px;background:var(--sg-badge);color:#fff;
+    font-weight:600;font-size:10px;padding:3px 5px;border-radius:10px;display:none;
+    line-height:1;border:2px solid var(--sg-bg);min-width:18px;text-align:center;
+    box-shadow:0 2px 4px rgba(0,0,0,.3)
+  }
+
+  /* Picker overlay */
   .umdl-pick{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.75);backdrop-filter:blur(4px)}
   .umdl-pick.show{display:flex}
-  .umdl-card{background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:10px;width:min(500px,94vw);max-height:84vh;overflow:hidden}
+  .umdl-card{
+    background:var(--sg-bg);color:var(--sg-fg);border:1px solid var(--sg-border-2);
+    border-radius:10px;width:min(500px,94vw);max-height:84vh;overflow:hidden
+  }
   .umdl-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #2d2d2d}
   .umdl-head .ttl{font-size:15px;font-weight:600;color:#fff}
-  .umdl-x{background:#2d2d2d;border:1px solid #404040;color:#aaa;border-radius:8px;padding:6px;cursor:pointer;display:flex;min-width:32px;min-height:32px}
+  .umdl-x{
+    background:var(--sg-bg-3);border:1px solid var(--sg-border-2);color:var(--sg-fg-dim);
+    border-radius:8px;padding:6px;cursor:pointer;display:flex;min-width:32px;min-height:32px
+  }
   .umdl-x:hover{background:#353535;color:#fff}
   .umdl-x svg{width:16px;height:16px}
-  
-  .umdl-body{padding:12px 16px 16px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:calc(84vh - 110px)}
+
+  .umdl-body{
+    padding:12px 16px 16px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;max-height:calc(84vh - 110px)
+  }
   .umdl-body::-webkit-scrollbar{width:6px}
   .umdl-body::-webkit-scrollbar-track{background:transparent}
-  .umdl-body::-webkit-scrollbar-thumb{background:#404040;border-radius:3px}
+  .umdl-body::-webkit-scrollbar-thumb{background:var(--sg-border-2);border-radius:3px}
   .umdl-body::-webkit-scrollbar-thumb:hover{background:#4a4a4a}
-  
-  .umdl-opt{display:flex;align-items:center;gap:9px;font-size:12px;color:#aaa;padding:10px 12px;background:#252525;border-radius:8px;border:1px solid #353535}
+
+  .umdl-opt{
+    display:flex;align-items:center;gap:9px;font-size:12px;color:var(--sg-fg-dim);
+    padding:10px 12px;background:var(--sg-bg-2);border-radius:8px;border:1px solid var(--sg-border)
+  }
   .umdl-opt input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:#fff;margin:0}
-  
+
+  /* Item list */
   .umdl-list{display:flex;flex-direction:column;gap:8px}
-  .umdl-item{background:#252525;border:1px solid #353535;border-radius:8px;padding:12px 14px;cursor:pointer}
-  .umdl-item:hover{background:#2d2d2d;border-color:#404040}
+  .umdl-item{
+    background:var(--sg-bg-2);border:1px solid var(--sg-border);border-radius:8px;
+    padding:12px 14px;cursor:pointer
+  }
+  .umdl-item:hover{background:#2d2d2d;border-color:var(--sg-border-2)}
   .umdl-item-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
   .umdl-item .t{font-weight:600;font-size:13px;color:#fff;line-height:1.4;flex:1}
-  .umdl-item .s{font-size:11px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,SF Mono,Consolas,monospace}
-  .umdl-copy-btn{background:#2d2d2d;border:1px solid #404040;color:#aaa;border-radius:6px;padding:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .umdl-item .s{
+    font-size:11px;color:var(--sg-fg-dimmer);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    font-family:ui-monospace,SF Mono,Consolas,monospace
+  }
+  .umdl-copy-btn{
+    background:var(--sg-bg-3);border:1px solid var(--sg-border-2);color:var(--sg-fg-dim);
+    border-radius:6px;padding:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0
+  }
   .umdl-copy-btn:hover{background:#353535;color:#fff}
   .umdl-copy-btn svg{width:13px;height:13px}
   .umdl-copy-btn.copied{background:#28a745;border-color:#28a745;color:#fff}
-  
-  .umdl-empty{padding:32px;color:#888;font-size:13px;text-align:center}
-  
-  .umdl-toast{position:fixed;right:16px;bottom:72px;z-index:2147483646;display:flex;flex-direction:column;gap:10px;max-width:380px;font:13px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-height:70vh;overflow-y:auto}
+
+  .umdl-empty{padding:32px;color:var(--sg-fg-dimmer);font-size:13px;text-align:center}
+
+  /* Toast (progress stack) */
+  .umdl-toast{
+    position:fixed;right:16px;bottom:72px;z-index:2147483646;
+    display:flex;flex-direction:column;gap:10px;
+    max-width:380px;max-height:70vh;overflow-y:auto;
+    /* Prevent children from stretching full width so minimized fits to content */
+    align-items:flex-end;
+    font:13px system-ui,-apple-system,Segoe UI,Roboto,sans-serif
+  }
   .umdl-toast::-webkit-scrollbar{width:5px}
-  .umdl-toast::-webkit-scrollbar-thumb{background:#404040;border-radius:3px}
-  
-  .umdl-job{background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:10px;padding:13px 15px;min-width:280px}
-  .umdl-job.minimized{padding:6px;min-width:unset;width:auto}
-  .umdl-job.minimized .umdl-bar,.umdl-job.minimized .umdl-row:last-child,.umdl-job.minimized .btn-stop,.umdl-job.minimized .btn-x,.umdl-job.minimized .name{display:none}
-  .umdl-job.minimized .umdl-row:first-child{margin-bottom:0}
-  .umdl-job.minimized .umdl-ctrls{margin:0;gap:0}
+  .umdl-toast::-webkit-scrollbar-thumb{background:var(--sg-border-2);border-radius:3px}
+
+  /* Progress card */
+  .umdl-job{
+    background:var(--sg-bg);color:var(--sg-fg);border:1px solid var(--sg-border-2);border-radius:10px;
+    padding:13px 15px;min-width:280px;display:flex;flex-direction:column
+  }
   .umdl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
-  .umdl-row .name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px;color:#fff}
-  .umdl-ctrls{display:flex;gap:6px}
-  .umdl-mini{background:#2d2d2d;color:#aaa;border:1px solid #404040;border-radius:7px;padding:6px 8px;cursor:pointer;display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px}
+  .umdl-row .name{
+    font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    max-width:230px;color:#fff
+  }
+  .umdl-ctrls{display:flex;gap:6px;margin-left:auto}
+  .umdl-mini{
+    background:var(--sg-bg-3);color:var(--sg-fg-dim);border:1px solid var(--sg-border-2);
+    border-radius:7px;padding:6px 8px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    min-width:32px;min-height:32px
+  }
   .umdl-mini:hover{background:#353535;color:#fff}
   .umdl-mini svg{width:13px;height:13px}
-  
-  .umdl-bar{height:7px;background:#252525;border-radius:4px;overflow:hidden;border:1px solid #353535}
+
+  .umdl-bar{height:7px;background:var(--sg-bg-2);border-radius:4px;overflow:hidden;border:1px solid var(--sg-border)}
   .umdl-fill{height:7px;width:0;background:#fff}
-  
- @media (max-width:640px){
+
+  /* Minimized: collapse to a single icon (the toggle) */
+  .umdl-job.minimized{
+    padding:6px;min-width:auto;width:auto;display:inline-flex
+  }
+  .umdl-job.minimized .umdl-bar,
+  .umdl-job.minimized .umdl-row:last-child,
+  .umdl-job.minimized .name{display:none!important}
+  .umdl-job.minimized .umdl-row:first-child{margin-bottom:0;justify-content:center}
+  .umdl-job.minimized .umdl-ctrls{margin:0;gap:0}
+  .umdl-job.minimized .umdl-ctrls > :not(.btn-hide){display:none!important}
+  .umdl-job.minimized .btn-hide{min-width:32px;min-height:32px;padding:6px}
+  .umdl-job.minimized .btn-hide svg{width:14px;height:14px}
+
+  /* Responsive */
+  @media (max-width:640px){
     .umdl-fab{right:12px;bottom:12px;width:46px;height:46px}
     .umdl-fab svg{width:15px;height:15px}
     .umdl-toast{left:12px;right:12px;bottom:68px;max-width:none}
     .umdl-card{max-height:90vh;border-radius:10px}
     .umdl-body{max-height:calc(90vh - 100px)}
-    .umdl-job.minimized{padding:6px;min-width:unset;width:auto}
+    .umdl-job.minimized{padding:6px}
     .umdl-job.minimized .btn-hide svg{width:14px;height:14px}
-}
+  }
 `);
 
   // SVG Icons
