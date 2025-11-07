@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         StreamGrabber
 // @namespace    https://github.com/streamgrabber-lite
-// @version      1.0.3
-// @description  Lightweight downloader for HLS (.m3u8), video blobs, and direct videos. Mobile + Desktop. Pause/Resume. AES-128. fMP4. Minimal UI. UMDL-styled UI.
+// @version      1.0.5
+// @description  Lightweight downloader for HLS (.m3u8), video blobs, and direct videos. Mobile + Desktop. Pause/Resume. AES-128. fMP4. Minimal UI.
 // @match        *://*/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
@@ -317,49 +317,97 @@
   }
 
   // =========================
-  // UI (UMDL style)
+  // UI (Compact Dark Minimal)
   // =========================
   GM_addStyle(`
     @keyframes umdl-spin { to { transform: rotate(360deg); } }
-    .umdl-fab{position:fixed;right:12px;bottom:12px;z-index:2147483647;width:56px;height:56px;border-radius:12px;display:none;align-items:center;justify-content:center;background:rgba(22,22,22,.92);color:#fff;border:1px solid rgba(255,255,255,.15);box-shadow:0 6px 18px rgba(0,0,0,.4);cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;transition:opacity .2s}
+    @keyframes umdl-slide-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    
+    .umdl-fab{position:fixed;right:14px;bottom:14px;z-index:2147483647;width:52px;height:52px;border-radius:12px;display:none;align-items:center;justify-content:center;background:#111;color:#fff;border:1px solid #222;box-shadow:0 4px 12px rgba(0,0,0,.5);cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;transition:all .2s ease}
     .umdl-fab.show{display:flex}
-    .umdl-fab.idle{opacity:.35}
-    .umdl-fab:hover{opacity:1}
-    .umdl-fab.busy{opacity:1}
+    .umdl-fab.idle{opacity:.3}
+    .umdl-fab:hover{opacity:1;background:#1a1a1a;border-color:#333;box-shadow:0 6px 16px rgba(0,0,0,.6)}
+    .umdl-fab:active{transform:scale(.96)}
+    .umdl-fab.busy{opacity:1;pointer-events:none}
     .umdl-fab.busy svg{opacity:0}
-    .umdl-fab.busy::after{content:'';width:22px;height:22px;border:2px solid rgba(255,255,255,.35);border-left-color:#fff;border-radius:50%;animation:umdl-spin 1s linear infinite}
-    .umdl-badge{position:absolute;top:6px;left:6px;background:#2563eb;color:#fff;font-weight:700;font-size:10px;padding:2px 6px;border-radius:999px;display:none}
-    .umdl-fab svg{width:22px;height:22px}
-    .umdl-pick{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.7);backdrop-filter:blur(3px)}
+    .umdl-fab.busy::after{content:'';width:20px;height:20px;border:2px solid #333;border-top-color:#fff;border-radius:50%;animation:umdl-spin .7s linear infinite}
+    .umdl-badge{position:absolute;top:3px;right:3px;background:#e74c3c;color:#fff;font-weight:600;font-size:10px;padding:2px 5px;border-radius:8px;display:none;line-height:1}
+    .umdl-fab svg{width:20px;height:20px}
+    
+    .umdl-pick{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.85);backdrop-filter:blur(4px)}
     .umdl-pick.show{display:flex}
-    .umdl-card{background:#0f172a;color:#e5e7eb;border:1px solid rgba(255,255,255,.12);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.6);width:min(460px,92vw);max-height:80vh;overflow:auto}
-    .umdl-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08);gap:8px}
-    .umdl-head .ttl{font-size:15px;font-weight:700}
-    .umdl-x{background:#334155;border:none;color:#fff;border-radius:12px;padding:10px 14px;cursor:pointer;min-height:44px;min-width:44px}
-    .umdl-body{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
-    .umdl-opt{display:flex;align-items:center;gap:8px;font-size:14px;color:#cbd5e1}
-    .umdl-list{display:flex;flex-direction:column;gap:8px}
-    .umdl-item{background:#111827;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:6px}
-    .umdl-item:hover{background:#1f2937;border-color:rgba(255,255,255,.2)}
-    .umdl-item .t{font-weight:700;font-size:14px}
-    .umdl-item .s{font-size:12px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .umdl-empty{padding:16px;color:#cbd5e1;font-size:14px;text-align:center}
-    .umdl-toast{position:fixed;right:12px;bottom:76px;z-index:2147483646;display:flex;flex-direction:column;gap:10px;max-width:360px;font:14px system-ui,-apple-system,Segoe UI,Roboto,Arial;max-height:70vh;overflow-y:auto}
-    .umdl-job{background:#0b1020;color:#e5e7eb;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:10px 12px;min-width:260px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+    .umdl-card{background:#0a0a0a;color:#e0e0e0;border:1px solid #222;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.8);width:min(480px,94vw);max-height:82vh;overflow:hidden;animation:umdl-slide-up .2s ease-out}
+    .umdl-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #1a1a1a;gap:10px}
+    .umdl-head .ttl{font-size:14px;font-weight:600;color:#fff;letter-spacing:-.01em}
+    .umdl-x{background:#1a1a1a;border:1px solid #2a2a2a;color:#aaa;border-radius:6px;padding:6px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px}
+    .umdl-x:hover{background:#222;border-color:#333;color:#fff}
+    .umdl-x:active{transform:scale(.94)}
+    .umdl-x svg{width:16px;height:16px}
+    
+    .umdl-body{padding:10px 14px 14px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:calc(82vh - 100px)}
+    .umdl-body::-webkit-scrollbar{width:6px}
+    .umdl-body::-webkit-scrollbar-track{background:transparent}
+    .umdl-body::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:3px}
+    .umdl-body::-webkit-scrollbar-thumb:hover{background:#333}
+    
+    .umdl-opt{display:flex;align-items:center;gap:8px;font-size:12px;color:#999;padding:8px 10px;background:#111;border-radius:6px;border:1px solid #1a1a1a}
+    .umdl-opt input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:#fff;margin:0}
+    
+    .umdl-list{display:flex;flex-direction:column;gap:6px}
+    .umdl-item{background:#111;border:1px solid #1a1a1a;border-radius:6px;padding:10px 12px;cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:all .15s}
+    .umdl-item:hover{background:#1a1a1a;border-color:#2a2a2a}
+    .umdl-item:active{transform:scale(.99)}
+    .umdl-item .t{font-weight:600;font-size:13px;color:#fff;line-height:1.3}
+    .umdl-item .s{font-size:11px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,monospace}
+    .umdl-item .actions{display:flex;gap:6px;margin-top:2px}
+    .umdl-copy-btn{background:#1a1a1a;border:1px solid #2a2a2a;color:#aaa;border-radius:5px;padding:5px 8px;cursor:pointer;font-size:11px;font-weight:500;transition:all .15s;display:flex;align-items:center;gap:5px;line-height:1}
+    .umdl-copy-btn:hover{background:#222;border-color:#333;color:#fff}
+    .umdl-copy-btn:active{transform:scale(.95)}
+    .umdl-copy-btn svg{width:12px;height:12px}
+    .umdl-copy-btn.copied{background:#1a2e1a;border-color:#2a4a2a;color:#5f5}
+    
+    .umdl-empty{padding:24px;color:#666;font-size:13px;text-align:center}
+    
+    .umdl-toast{position:fixed;right:14px;bottom:72px;z-index:2147483646;display:flex;flex-direction:column;gap:8px;max-width:360px;font:13px system-ui,-apple-system,Segoe UI,Roboto,Arial;max-height:68vh;overflow-y:auto}
+    .umdl-toast::-webkit-scrollbar{width:5px}
+    .umdl-toast::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+    
+    .umdl-job{background:#0a0a0a;color:#e0e0e0;border:1px solid #222;border-radius:8px;padding:12px 14px;min-width:260px;box-shadow:0 6px 20px rgba(0,0,0,.7);animation:umdl-slide-up .2s ease-out}
     .umdl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
-    .umdl-row .name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
-    .umdl-ctrls{display:flex;gap:8px}
-    .umdl-mini{background:#182037;color:#cbd5e1;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 12px;cursor:pointer;min-height:44px;min-width:44px}
-    .umdl-bar{height:8px;background:#1f2937;border-radius:12px;overflow:hidden}
-    .umdl-fill{height:8px;width:0;background:#3b82f6}
+    .umdl-row .name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;color:#fff}
+    .umdl-ctrls{display:flex;gap:6px}
+    .umdl-mini{background:#1a1a1a;color:#aaa;border:1px solid #2a2a2a;border-radius:6px;padding:6px 8px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;min-width:32px;min-height:32px}
+    .umdl-mini:hover{background:#222;border-color:#333;color:#fff}
+    .umdl-mini:active{transform:scale(.94)}
+    .umdl-mini svg{width:14px;height:14px}
+    
+    .umdl-bar{height:6px;background:#1a1a1a;border-radius:3px;overflow:hidden;border:1px solid #222}
+    .umdl-fill{height:6px;width:0;background:#fff;transition:width .2s ease;box-shadow:0 0 8px rgba(255,255,255,.3)}
+    
     @media (max-width:640px){
-      .umdl-fab{right:10px;bottom:10px;width:56px;height:56px}
-      .umdl-toast{left:10px;right:10px;bottom:70px;max-width:none}
-      .umdl-head .ttl{font-size:16px}
+      .umdl-fab{right:12px;bottom:12px;width:50px;height:50px}
+      .umdl-toast{left:12px;right:12px;bottom:70px;max-width:none}
+      .umdl-card{border-radius:6px;max-height:90vh}
+      .umdl-head{padding:10px 12px}
+      .umdl-head .ttl{font-size:13px}
+      .umdl-body{padding:8px 12px 12px;max-height:calc(90vh - 90px)}
     }
   `);
+
+  // SVG Icons
+  const ICONS = {
+    download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>`,
+    close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>`,
+    copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`,
+    check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>`,
+    pause: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`,
+    play: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
+    cancel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>`
+  };
+  const DL_SVG = ICONS.download;
+
   const $ = (sel,root=document) => root.querySelector(sel);
-  const DL_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>`;
+  
   // root UI
   const FAB = document.createElement('button');
   FAB.className = 'umdl-fab'; FAB.innerHTML = DL_SVG; FAB.title = 'Download detected media';
@@ -368,17 +416,18 @@
   PICK.innerHTML = `
     <div class="umdl-card">
       <div class="umdl-head">
-        <div class="ttl">Select media to download</div>
-        <button class="umdl-x">Close</button>
+        <div class="ttl">Select Media</div>
+        <button class="umdl-x" title="Close">${ICONS.close}</button>
       </div>
       <div class="umdl-body">
-        <label class="umdl-opt"><input type="checkbox" class="umdl-excl"> Exclude small files (< 1 MB)</label>
+        <label class="umdl-opt"><input type="checkbox" class="umdl-excl"> Exclude small (&lt; 1MB)</label>
         <div class="umdl-list"></div>
       </div>
     </div>`;
   const TOAST = document.createElement('div'); TOAST.className = 'umdl-toast';
   const PANEL = PICK;
   const PROG_WRAP = TOAST;
+  
   function mountUI() {
     if (!document.body) { document.addEventListener('DOMContentLoaded', mountUI, { once:true }); return; }
     if (!FAB.parentNode) document.body.appendChild(FAB);
@@ -386,6 +435,7 @@
     if (!PROG_WRAP.parentNode) document.body.appendChild(PROG_WRAP);
   }
   mountUI();
+  
   function setBadge() {
     const n = DB.m3u8.size + DB.vid.size;
     if (n > 1) {
@@ -393,6 +443,7 @@
       BADGE.style.display = 'inline-block';
     } else BADGE.style.display = 'none';
   }
+  
   let idleT;
   function setIdle() { clearTimeout(idleT); idleT = setTimeout(()=> FAB.classList.add('idle'), CFG.UI_IDLE_MS); }
   function clearIdle() { FAB.classList.remove('idle'); clearTimeout(idleT); }
@@ -404,6 +455,45 @@
   }
   FAB.addEventListener('mouseenter', clearIdle);
   FAB.addEventListener('mouseleave', setIdle);
+
+  // Copy to clipboard helper
+  async function copyToClipboard(text, btn) {
+    try {
+      await navigator.clipboard.writeText(text);
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = `${ICONS.check}<span>Copied</span>`;
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.innerHTML = originalHTML;
+        btn.classList.remove('copied');
+      }, 1800);
+      return true;
+    } catch (e) {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = `${ICONS.check}<span>Copied</span>`;
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.innerHTML = originalHTML;
+          btn.classList.remove('copied');
+        }, 1800);
+        return true;
+      } catch (err) {
+        console.error('Copy failed:', err);
+        return false;
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    }
+  }
 
   // =========================
   // Detection
@@ -517,23 +607,40 @@
     if (!list.length) {
       const empty = document.createElement('div');
       empty.className = 'umdl-empty';
-      empty.textContent = 'No items match the current filter.';
+      empty.textContent = 'No items match the filter.';
       listEl.appendChild(empty);
       return;
     }
     list.forEach((it) => {
       const div = document.createElement('div');
       div.className = 'umdl-item';
+      const shortUrl = it.url.length > 80 ? it.url.slice(0, 80) + '…' : it.url;
       div.innerHTML = `
         <div class="t">${escapeHtml(it.label)}</div>
-        <div class="s" title="${escapeHtml(it.url)}">${escapeHtml(it.url.length>110?it.url.slice(0,110)+'…':it.url)}</div>
+        <div class="s" title="${escapeHtml(it.url)}">${escapeHtml(shortUrl)}</div>
+        <div class="actions">
+          <button class="umdl-copy-btn" title="Copy URL">${ICONS.copy}<span>Copy</span></button>
+        </div>
       `;
-      div.onclick = () => resolvePicker(it);
+      
+      const copyBtn = div.querySelector('.umdl-copy-btn');
+      copyBtn.onclick = (e) => {
+        e.stopPropagation();
+        copyToClipboard(it.url, copyBtn);
+      };
+      
+      div.onclick = (e) => {
+        if (!e.target.closest('.umdl-copy-btn')) {
+          resolvePicker(it);
+        }
+      };
+      
       listEl.appendChild(div);
     });
   }
+
   let resolvePicker = () => {};
-  async function pickFromList(items, { title='Select media to download', filterable=true } = {}) {
+  async function pickFromList(items, { title='Select Media', filterable=true } = {}) {
     return new Promise((resolve) => {
       resolvePicker = (v) => { closePanel(); resolve(v ?? null); };
       const ttl = PANEL.querySelector('.ttl');
@@ -578,11 +685,9 @@
       alert(e?.message || String(e));
       setFabBusy(false);
       return;
-    } finally {
-      // let busy spinner linger only if we auto-continue to picker
     }
 
-    // Always confirm by default (fixes “auto-download surprises users”)
+    // Always confirm by default (fixes "auto-download surprises users")
     // Hold Alt to quick start when exactly 1 item
     if (ev.altKey && items.length === 1) {
       setFabBusy(false);
@@ -590,7 +695,7 @@
       return;
     }
 
-    const sel = await pickFromList(items, { title: 'Select media to download', filterable: true });
+    const sel = await pickFromList(items, { title: 'Select Media', filterable: true });
     setFabBusy(false);
     if (!sel) return;
     await handleItem(sel);
@@ -604,12 +709,12 @@
       <div class="umdl-row">
         <div class="name" title="${escapeHtml(src)}">${escapeHtml(title)}</div>
         <div class="umdl-ctrls">
-          ${stoppable?'<button class="umdl-mini btn-stop">Pause</button>':''}
-          <button class="umdl-mini btn-x">Cancel</button>
+          ${stoppable?`<button class="umdl-mini btn-stop" title="Pause">${ICONS.pause}</button>`:''}
+          <button class="umdl-mini btn-x" title="Cancel">${ICONS.cancel}</button>
         </div>
       </div>
       <div class="umdl-bar"><div class="umdl-fill"></div></div>
-      <div class="umdl-row" style="margin-top:6px"><span class="status">${segs ? `(${segs} segments)` : ''}</span><span class="pct">0%</span></div>
+      <div class="umdl-row" style="margin-top:6px;font-size:11px"><span class="status" style="color:#999">${segs ? `${segs} segs` : ''}</span><span class="pct">0%</span></div>
     `;
     PROG_WRAP.appendChild(div);
     const fill = div.querySelector('.umdl-fill');
@@ -620,8 +725,13 @@
     if (btnStop) {
       btnStop.onclick = () => {
         const v = onStop?.();
-        if (v === 'paused') btnStop.textContent = 'Resume';
-        else if (v === 'resumed') btnStop.textContent = 'Pause';
+        if (v === 'paused') {
+          btnStop.innerHTML = ICONS.play;
+          btnStop.title = 'Resume';
+        } else if (v === 'resumed') {
+          btnStop.innerHTML = ICONS.pause;
+          btnStop.title = 'Pause';
+        }
       };
     }
     return {
@@ -631,9 +741,10 @@
         pct.textContent = `${pc}%${txt?' '+txt:''}`;
       },
       done(ok=true, msg) {
-        fill.style.background = ok ? '#10b981' : '#ef4444';
-        this.update(100, msg || (ok ? '(done)' : '(failed)'));
-        setTimeout(()=>div.remove(), 2500);
+        fill.style.background = ok ? '#10b981' : '#e74c3c';
+        fill.style.boxShadow = ok ? '0 0 8px rgba(16,185,129,.4)' : '0 0 8px rgba(231,76,60,.4)';
+        this.update(100, msg || (ok ? '✓' : '✗'));
+        setTimeout(()=>div.remove(), 2200);
       },
       remove(){ div.remove(); }
     };
@@ -648,7 +759,7 @@
     for (const u of DB.m3u8) {
       const info = BLOBS.get(u);
       try {
-        let label = 'HLS stream';
+        let label = 'HLS';
         let size = null;
         let mtxt = await getText(u);
         if (isMasterText(mtxt)) {
@@ -657,16 +768,16 @@
             const mediaTxt = await getText(v.url);
             const est = await estimateHls(mediaTxt, v.url, v);
             size = est.bytes ?? null;
-            label = `HLS (best) ${v.res? '• '+v.res : ''}${size ? ' • ~'+fmtBytes(size):''}`;
+            label = `HLS${v.res? ' • '+v.res : ''}${size ? ' • ~'+fmtBytes(size):''}`;
           }
         } else if (isMediaText(mtxt)) {
           const est = await estimateHls(mtxt, u, null);
           size = est.bytes ?? null;
-          label = `HLS ${size? '• ~'+fmtBytes(size):''}`;
+          label = `HLS${size? ' • ~'+fmtBytes(size):''}`;
         }
         out.push({ kind:'hls', url: u, label, size });
       } catch {
-        out.push({ kind:'hls', url: u, label: 'HLS stream', size: info?.size ?? null });
+        out.push({ kind:'hls', url: u, label: 'HLS', size: info?.size ?? null });
       }
     }
     // direct videos
@@ -674,7 +785,7 @@
       const info = BLOBS.get(u);
       const ext = guessExt(u, info?.type).toUpperCase();
       const size = info?.size ?? null;
-      out.push({ kind:'video', url: u, label: `Direct Video (${ext})${size?' • '+fmtBytes(size):''}`, size });
+      out.push({ kind:'video', url: u, label: `${ext}${size?' • '+fmtBytes(size):''}`, size });
     }
     return out;
   }
@@ -719,7 +830,7 @@
     // blob case
     if (info?.blob) {
       const card = makeProgress(fn, url, { onCancel: () => card.remove() });
-      try { await saveBlob(info.blob, fn, ext); card.update(100,'(local)'); card.done(true); } catch(e) { card.done(false, e?.message); }
+      try { await saveBlob(info.blob, fn, ext); card.update(100,''); card.done(true); } catch(e) { card.done(false, e?.message); }
       return;
     }
     let total = 0, req = null, cancelled = false;
@@ -732,14 +843,14 @@
         onprogress: (e) => {
           if (cancelled) return;
           const loaded = e?.loaded || 0;
-          if (total>0) card.update((loaded/total)*100, `(${fmtBytes(loaded)}/${fmtBytes(total)})`);
-          else card.update(0, `(${fmtBytes(loaded)})`);
+          if (total>0) card.update((loaded/total)*100, `${fmtBytes(loaded)}/${fmtBytes(total)}`);
+          else card.update(0, `${fmtBytes(loaded)}`);
         }
       });
       const buf = await req; if (cancelled) return;
       const blob = new Blob([buf], { type: meta.type || `video/${ext}` });
       await saveBlob(blob, fn, ext);
-      card.update(100,'(done)'); card.done(true);
+      card.update(100,''); card.done(true);
     } catch(e) { card.done(false, e?.message||'Failed'); }
   }
 
@@ -756,7 +867,7 @@
       // precompute size labels quickly and attach estimated sizes
       const items = [];
       for (const v of variants) {
-        let label = [v.res, (v.avg||v.peak)? `${Math.round((v.avg||v.peak)/1000)} kbps`:null, v.codecs].filter(Boolean).join(' • ') || 'Variant';
+        let label = [v.res, (v.avg||v.peak)? `${Math.round((v.avg||v.peak)/1000)}k`:null].filter(Boolean).join(' • ') || 'Variant';
         let size = null;
         try {
           const mediaTxt = await getText(v.url);
@@ -767,7 +878,7 @@
         items.push({ kind:'variant', url:v.url, label, variant:v, size });
       }
       // picker (now filter works as sizes are known)
-      const selected = await pickFromList(items, { title: 'Select HLS quality', filterable: true });
+      const selected = await pickFromList(items, { title: 'Select Quality', filterable: true });
       if (!selected) return;
       chosenVariant = selected.variant; mediaUrl = selected.url;
     } else if (!isMediaText(txt)) throw new Error('Invalid playlist');
@@ -829,7 +940,7 @@
             else if (avgLen>0) partial += Math.min(1, loaded/avgLen);
           });
           const pct = ((done + partial)/total)*100;
-          card.update(pct, `(${done}/${total})`);
+          card.update(pct, `${done}/${total}`);
         });
       };
     })();
@@ -952,7 +1063,7 @@
             const blob = new Blob(chunks, { type: isFmp4 ? 'video/mp4' : 'video/mp2t' });
             await saveBlob(blob, filename, ext);
           }
-          card.update(100,'(done)'); card.done(true);
+          card.update(100,''); card.done(true);
         } else {
           if (useFS) { try { await writer.truncate(0); } catch{} try { await writer.close(); } catch{} }
           card.done(false);
@@ -975,8 +1086,6 @@
   const _escapeDiv = document.createElement('div');
   function escapeHtml(x) { _escapeDiv.textContent = x == null ? '' : String(x); return _escapeDiv.innerHTML; }
 
-  // show FAB once anything detected
-  function onDetect(url) { take(url); }
   // startup
   mountUI();
 })();
