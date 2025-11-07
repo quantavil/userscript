@@ -1,14 +1,13 @@
 // ==UserScript==
 // @name         Universal M3U8 + Blob Downloader
 // @namespace    https://github.com/m3u8dl-userscripts
-// @version      2.6.1
+// @version      2.6.2
 // @description  Download HLS (.m3u8) streams and direct video blobs with smart filtering and size estimation 
 // @match        *://*/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @connect      *
-// @license      MIT
 // ==/UserScript==
 
 (() => {
@@ -39,7 +38,8 @@
     latestVideo: null,
     manifests: new Set(),
     videos: new Set(),
-    idleTimer: null
+    idleTimer: null,
+    progressHidden: false
   };
   const blobStore = new Map();
 
@@ -93,11 +93,11 @@
 
   function revokeLater(blobUrl, ms = 30000) {
     try {
-      setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch { } }, ms);
+      setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch {} }, ms);
       window.addEventListener('pagehide', () => {
-        try { URL.revokeObjectURL(blobUrl); } catch { }
+        try { URL.revokeObjectURL(blobUrl); } catch {}
       }, { once: true });
-    } catch { }
+    } catch {}
   }
 
   // ========================
@@ -119,7 +119,7 @@
 
   const guessExt = (url, type) =>
     type ? guessExtFromType(type)
-      : ((url || '').match(/\.([a-z0-9]+)(\?|#|$)/i)?.[1]?.toLowerCase() || 'mp4');
+         : ((url || '').match(/\.([a-z0-9]+)(\?|#|$)/i)?.[1]?.toLowerCase() || 'mp4');
 
   const filterBySmall = (items, enabled) =>
     enabled ? items.filter(it => it.size == null || it.size >= SMALL_FILE_THRESHOLD) : items;
@@ -144,7 +144,7 @@
         if (info?.kind === 'm3u8') return detectedM3U8(u);
         if (info?.kind === 'video') return detectedVideo(u);
       }
-    } catch { }
+    } catch {}
   };
 
   // Unified save to disk. Uses FS Access API when available, otherwise anchor fallback
@@ -177,7 +177,7 @@
     try {
       floatingBtn.stopIdle?.();
       floatingBtn.startIdleTimer?.();
-    } catch { }
+    } catch {}
     const totalSources = state.manifests.size + state.videos.size;
     chooseDownloadFlow({ showVariantPicker: e?.altKey || totalSources > 1 });
   }
@@ -185,170 +185,97 @@
   let mo = null;
 
   // ========================
-  // Styles (overhauled)
+  // Styles
   // ========================
   GM_addStyle(`
-  :root {
-    --m3u8-bg: rgba(17, 17, 17, .95);
-    --m3u8-fg: #e5e7eb;
-    --m3u8-muted: #9ca3af;
-    --m3u8-border: rgba(255,255,255,.14);
-    --m3u8-shadow: 0 8px 32px rgba(0,0,0,.5);
-    --m3u8-accent: #3b82f6;
-    --m3u8-accent-2: #60a5fa;
-    --m3u8-ok: #10b981;
-    --m3u8-danger: #ef4444;
-  }
-  @media (prefers-color-scheme: light) {
-    :root {
-      --m3u8-bg: rgba(255,255,255,.98);
-      --m3u8-fg: #111827;
-      --m3u8-muted: #6b7280;
-      --m3u8-border: rgba(0,0,0,.1);
-      --m3u8-shadow: 0 8px 32px rgba(0,0,0,.15);
+    .m3u8dl-btn{display:inline-flex;align-items:center;justify-content:center;height:2em;width:2.25em;border:none;cursor:pointer;background:transparent;color:inherit;padding:0;transition:opacity .25s}
+    .m3u8dl-btn .m3u8dl-icon{width:18px;height:18px}
+    
+    .m3u8dl-floating{position:fixed;right:12px;bottom:12px;z-index:2147483647;width:48px;height:48px;border-radius:50%;background:rgba(17,17,17,.95);color:#fff;border:1px solid rgba(255,255,255,.2);box-shadow:0 4px 16px rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;cursor:pointer;transition:opacity .25s,filter .2s,transform .2s}
+    .m3u8dl-floating.show{display:flex}
+    .m3u8dl-floating.idle{opacity:.28}
+    .m3u8dl-floating.idle:hover{opacity:1}
+    .m3u8dl-floating:hover{filter:brightness(1.15);transform:scale(1.05)}
+    .m3u8dl-floating.detected{animation:m3u8-pulse .5s ease}
+    
+    .m3u8dl-badge{position:absolute;top:-3px;right:-3px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:10px;min-width:16px;text-align:center;box-shadow:0 2px 6px rgba(239,68,68,.5);display:none}
+    .m3u8dl-badge.show{display:block}
+    
+    @keyframes m3u8-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+    
+    #m3u8dl-progress-container{position:fixed;bottom:70px;right:12px;z-index:2147483646;display:flex;flex-direction:column;gap:10px;max-width:340px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;transition:transform .3s ease,opacity .3s ease}
+    #m3u8dl-progress-container.hidden{transform:translateY(calc(100% + 70px));opacity:0;pointer-events:none}
+    
+    .m3u8dl-toggle-btn{position:fixed;bottom:20px;right:70px;z-index:2147483646;width:32px;height:32px;border-radius:50%;background:rgba(17,17,17,.92);color:#fff;border:1px solid rgba(255,255,255,.2);box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;display:none;align-items:center;justify-content:center;font-size:16px;transition:all .2s}
+    .m3u8dl-toggle-btn.show{display:flex}
+    .m3u8dl-toggle-btn:hover{background:rgba(30,30,30,.95);transform:scale(1.08)}
+    
+    .m3u8dl-card{background:rgba(17,17,17,.97);color:#e5e7eb;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;min-width:240px;box-shadow:0 4px 20px rgba(0,0,0,.5);opacity:0;transform:translateX(100%);transition:opacity .28s,transform .28s}
+    .m3u8dl-card.show{opacity:1;transform:translateX(0)}
+    
+    .m3u8dl-header{display:flex;align-items:center;gap:6px;justify-content:space-between;margin-bottom:8px}
+    .m3u8dl-title{font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .m3u8dl-actions{display:flex;gap:4px}
+    
+    .m3u8dl-mini-btn{background:transparent;border:none;color:#a3a3a3;cursor:pointer;padding:3px 5px;border-radius:5px;display:inline-flex;align-items:center;gap:3px;font-size:10px;transition:all .2s}
+    .m3u8dl-mini-btn:hover{color:#fff;background:rgba(255,255,255,.1)}
+    .m3u8dl-mini-btn .ico{font-size:12px}
+    
+    .m3u8dl-bar{height:5px;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden;margin-bottom:6px}
+    .m3u8dl-fill{height:100%;width:0;background:linear-gradient(90deg,#3b82f6,#60a5fa);transition:width .2s}
+    .m3u8dl-fill.ok{background:linear-gradient(90deg,#10b981,#34d399)}
+    .m3u8dl-fill.err{background:linear-gradient(90deg,#ef4444,#f87171)}
+    
+    .m3u8dl-text{text-align:right;color:#d1d5db;font-size:11px;font-weight:500;min-height:16px}
+    
+    .m3u8dl-variant-popup{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(3px)}
+    .m3u8dl-variant-popup.show{display:flex}
+    
+    .m3u8dl-variant-card{background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.15);padding:16px;border-radius:12px;width:min(400px,90vw);max-height:80vh;overflow-y:auto;scrollbar-width:thin;position:relative}
+    
+    .m3u8dl-close-popup{position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:50%;background:#ef4444;color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;transition:all .2s;box-shadow:0 2px 8px rgba(239,68,68,.4);z-index:1}
+    .m3u8dl-close-popup:hover{background:#dc2626;transform:scale(1.1)}
+    
+    .m3u8dl-variant-card h4{margin:0 0 4px;font-size:15px;font-weight:600;padding-right:30px}
+    .m3u8dl-variant-card .subtitle{font-size:11px;color:#9ca3af;margin-bottom:10px}
+    
+    .m3u8dl-opt{display:flex;user-select:none;cursor:pointer;font-size:11px;color:#9ca3af;margin:6px 0 10px;gap:.4rem;align-items:center}
+    
+    .m3u8dl-var-list{display:flex;flex-direction:column;gap:8px}
+    
+    .m3u8dl-var-btn{background:#1f2937;border:1px solid rgba(255,255,255,.12);color:#e5e7eb;border-radius:8px;padding:10px 12px;text-align:left;cursor:pointer;font-size:12px;transition:all .2s;position:relative}
+    .m3u8dl-var-btn:hover,.m3u8dl-var-btn:focus{background:#374151;border-color:rgba(255,255,255,.22);transform:translateX(2px);outline:none}
+    .m3u8dl-var-btn.video-direct{background:linear-gradient(135deg,#065f46,#047857);border-color:#10b981}
+    .m3u8dl-var-btn.video-direct:hover{background:linear-gradient(135deg,#047857,#059669);border-color:#34d399}
+    
+    .m3u8dl-var-btn .badge{position:absolute;top:8px;right:8px;background:#3b82f6;color:#fff;font-size:8px;padding:2px 5px;border-radius:4px;font-weight:600;text-transform:uppercase}
+    .m3u8dl-var-btn.video-direct .badge{background:#10b981}
+    .m3u8dl-var-btn .title{font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:5px}
+    .m3u8dl-var-btn .subtitle{font-size:10px;opacity:0.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    
+    .m3u8dl-variant-card::-webkit-scrollbar{width:5px}
+    .m3u8dl-variant-card::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:5px}
+    
+    @media (max-width:640px){
+      .m3u8dl-floating{right:10px;bottom:10px;width:44px;height:44px}
+      #m3u8dl-progress-container{left:10px;right:10px;max-width:none;bottom:65px}
+      .m3u8dl-toggle-btn{right:60px;bottom:18px}
+      .m3u8dl-card{min-width:auto;padding:8px 10px}
+      .m3u8dl-variant-card{width:min(340px,90vw);padding:14px}
+      .m3u8dl-title{font-size:11px}
+      .m3u8dl-text{font-size:10px}
     }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    * { transition: none !important; animation: none !important; }
-  }
-
-  .m3u8dl-btn{display:inline-flex;align-items:center;justify-content:center;height:2em;width:2.25em;border:none;cursor:pointer;background:transparent;color:inherit;padding:0}
-  .m3u8dl-btn .m3u8dl-icon{width:18px;height:18px}
-
-  /* Floating action button */
-  .m3u8dl-floating{
-    position:fixed;
-    right:calc(16px + env(safe-area-inset-right, 0px));
-    bottom:calc(16px + env(safe-area-inset-bottom, 0px));
-    z-index:2147483647;
-    width:48px;height:48px;border-radius:50%;
-    background:var(--m3u8-bg); color:var(--m3u8-fg);
-    border:1px solid var(--m3u8-border);
-    box-shadow:var(--m3u8-shadow);
-    display:none;align-items:center;justify-content:center;
-    cursor:pointer;transition:opacity .2s,filter .2s,transform .08s;
-  }
-  .m3u8dl-floating.show{display:flex}
-  .m3u8dl-floating.idle{opacity:.35}
-  .m3u8dl-floating:hover{filter:brightness(1.08)}
-  .m3u8dl-floating:active{transform:scale(.98)}
-  .m3u8dl-floating.detected{animation:m3u8-pulse .5s ease}
-  @keyframes m3u8-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
-
-  .m3u8dl-badge{
-    position:absolute;top:-4px;right:-4px;
-    background:linear-gradient(135deg,#ef4444,#dc2626);
-    color:#fff;font-size:10px;font-weight:700;
-    padding:2px 6px;border-radius:999px;min-width:18px;text-align:center;
-    box-shadow:0 2px 8px rgba(239,68,68,.4);display:none
-  }
-  .m3u8dl-badge.show{display:block}
-
-  /* Progress stack */
-  #m3u8dl-progress-container{
-    position:fixed;
-    right:calc(12px + env(safe-area-inset-right, 0px));
-    bottom:calc(80px + env(safe-area-inset-bottom, 0px));
-    z-index:2147483646;
-    display:flex;flex-direction:column;gap:.6rem;
-    max-width:min(360px, 92vw);
-    font-family:system-ui,-apple-system,'Segoe UI',Roboto,Inter,Arial,sans-serif
-  }
-
-  .m3u8dl-card{
-    background:var(--m3u8-bg);color:var(--m3u8-fg);
-    border:1px solid var(--m3u8-border);
-    border-radius:12px;padding:10px 12px;min-width:260px;
-    box-shadow:var(--m3u8-shadow);
-    opacity:0;transform:translateY(8px);
-    transition:opacity .2s,transform .2s
-  }
-  .m3u8dl-card.show{opacity:1;transform:translateY(0)}
-
-  .m3u8dl-header{display:flex;align-items:center;gap:8px;justify-content:space-between;margin-bottom:8px}
-  .m3u8dl-title{font-size:13px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .m3u8dl-actions{display:flex;gap:6px}
-  .m3u8dl-mini-btn{
-    background:transparent;border:none;color:var(--m3u8-muted);
-    cursor:pointer;padding:4px 6px;border-radius:6px;display:inline-flex;
-    align-items:center;gap:4px;font-size:11px;transition:all .15s
-  }
-  .m3u8dl-mini-btn:hover{color:var(--m3u8-fg);background:rgba(127,127,127,.12)}
-  .m3u8dl-mini-btn .ico{font-size:13px}
-
-  .m3u8dl-bar{height:6px;background:rgba(127,127,127,.18);border-radius:999px;overflow:hidden;margin-bottom:6px}
-  .m3u8dl-fill{height:100%;width:0;background:linear-gradient(90deg,var(--m3u8-accent),var(--m3u8-accent-2));transition:width .18s}
-  .m3u8dl-fill.ok{background:linear-gradient(90deg,var(--m3u8-ok),#34d399)}
-  .m3u8dl-fill.err{background:linear-gradient(90deg,#ef4444,#f87171)}
-  .m3u8dl-text{text-align:right;color:var(--m3u8-muted);font-size:12px;font-weight:600;min-height:17px}
-
-  /* Variant picker anchored bottom-right */
-  .m3u8dl-variant-popup{
-    position:fixed;inset:0;z-index:2147483647;display:none;
-    align-items:flex-end;justify-content:flex-end;
-    background:rgba(0,0,0,.4);backdrop-filter:blur(2px);
-    padding:12px calc(12px + env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) 12px;
-  }
-  .m3u8dl-variant-popup.show{display:flex}
-
-  .m3u8dl-variant-card{
-    position:relative;
-    background:var(--m3u8-bg);color:var(--m3u8-fg);
-    border:1px solid var(--m3u8-border);
-    padding:14px 14px 12px 14px;border-radius:12px;
-    width:min(420px,92vw);max-height:70vh;overflow:auto;
-    box-shadow:var(--m3u8-shadow);
-    transform:translateY(8px);opacity:0;transition:opacity .18s, transform .18s;
-  }
-  .m3u8dl-variant-popup.show .m3u8dl-variant-card{opacity:1;transform:translateY(0)}
-
-  .m3u8dl-variant-card h4{margin:0 0 2px;font-size:14px;font-weight:700}
-  .m3u8dl-variant-card .subtitle{font-size:12px;color:var(--m3u8-muted);margin-bottom:8px}
-
-  .m3u8dl-opt{
-    display:flex;user-select:none;cursor:pointer;font-size:12px;
-    color:var(--m3u8-muted);margin:4px 0 10px;gap:.5rem;align-items:center
-  }
-  .m3u8dl-opt input{margin-right:.5rem}
-
-  .m3u8dl-var-list{display:flex;flex-direction:column;gap:8px}
-
-  .m3u8dl-var-btn{
-    background:#1f2937;border:1px solid rgba(255,255,255,.14);
-    color:#e5e7eb;border-radius:8px;padding:10px 12px;text-align:left;
-    cursor:pointer;font-size:13px;transition:all .15s;position:relative
-  }
-  .m3u8dl-var-btn:hover,.m3u8dl-var-btn:focus{background:#2b3544;border-color:rgba(255,255,255,.2);transform:translateX(2px);outline:none}
-  .m3u8dl-var-btn .badge{position:absolute;top:8px;right:8px;background:var(--m3u8-accent);color:#fff;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700;text-transform:uppercase}
-  .m3u8dl-var-btn.video-direct{background:linear-gradient(135deg,#0b3b2f,#0a5c4a);border-color:#10b981}
-  .m3u8dl-var-btn.video-direct:hover{background:linear-gradient(135deg,#0a5c4a,#0b8a6c);border-color:#34d399}
-
-  /* Tiny red close button inside the card */
-  .m3u8dl-x{
-    position:absolute;top:6px;right:6px;width:16px;height:16px;
-    display:grid;place-items:center;border:none;border-radius:50%;
-    background:var(--m3u8-danger);color:#fff;cursor:pointer;
-    font-size:12px;line-height:1;padding:0;opacity:0.9;transition:opacity .15s, transform .05s
-  }
-  .m3u8dl-x:hover{opacity:1}
-  .m3u8dl-x:active{transform:scale(.95)}
-
-  @media (max-width:480px){
-    #m3u8dl-progress-container{left:12px;right:auto;max-width:calc(100vw - 24px)}
-    .m3u8dl-card{min-width:auto}
-    .m3u8dl-variant-card{width:min(360px,92vw)}
-  }
-`);
+  `);
 
   // ========================
-  // UI Assets 
+  // UI Assets
   // ========================
   const DOWNLOAD_ICON_SVG = `
-  <svg class="m3u8dl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-    <polyline points="7 10 12 15 17 10"/>
-    <line x1="12" y1="15" x2="12" y2="3"/>
-  </svg>`;
+    <svg class="m3u8dl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>`;
 
   // ========================
   // UI Components
@@ -387,55 +314,118 @@
     return div;
   }
 
+  function createToggleButton() {
+    const btn = document.createElement('button');
+    btn.className = 'm3u8dl-toggle-btn';
+    btn.title = 'Toggle progress visibility';
+    btn.setAttribute('aria-label', 'Toggle progress');
+    btn.innerHTML = '▼';
+    btn.onclick = () => {
+      state.progressHidden = !state.progressHidden;
+      if (state.progressHidden) {
+        progressContainer.classList.add('hidden');
+        btn.innerHTML = '▲';
+        btn.title = 'Show progress';
+      } else {
+        progressContainer.classList.remove('hidden');
+        btn.innerHTML = '▼';
+        btn.title = 'Hide progress';
+      }
+    };
+    return btn;
+  }
+
   function createVariantPopup() {
     const popup = document.createElement('div');
     popup.className = 'm3u8dl-variant-popup';
     popup.innerHTML = `
-    <div class="m3u8dl-variant-card" role="dialog" aria-modal="true" aria-label="Select media">
-      <button class="m3u8dl-x" title="Close" aria-label="Close">×</button>
-      <h4>Choose Media</h4>
-      <div class="subtitle">Select quality or source to download</div>
-      <label class="m3u8dl-opt">
-        <input type="checkbox" class="m3u8dl-exclude-small" style="margin-right:.5rem;"> Exclude small files (&lt; 1 MB)
-      </label>
-      <div class="m3u8dl-var-list"></div>
-    </div>`;
-    return popup;
-  }
-
-  function wireVariantPopup(popup) {
-    const card = popup.querySelector('.m3u8dl-variant-card');
-    const closeBtn = popup.querySelector('.m3u8dl-x');
-
-    function close() { popup.classList.remove('show'); }
-    function open() { popup.classList.add('show'); }
-
-    // Expose helpers if other parts want to use them
-    popup.open = open;
-    popup.close = close;
-
-    closeBtn?.addEventListener('click', (e) => { e.stopPropagation(); close(); });
-    popup.addEventListener('click', (e) => { if (e.target === popup) close(); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && popup.classList.contains('show')) close(); });
-
+      <div class="m3u8dl-variant-card" role="dialog" aria-label="Select media">
+        <button class="m3u8dl-close-popup" aria-label="Close">✕</button>
+        <h4>Choose Media</h4>
+        <div class="subtitle">Select quality or source to download</div>
+        <label class="m3u8dl-opt">
+          <input type="checkbox" class="m3u8dl-exclude-small"> Exclude small files (&lt; 1 MB)
+        </label>
+        <div class="m3u8dl-var-list"></div>
+      </div>`;
     return popup;
   }
 
   const floatingBtn = createFloatingButton();
   const progressContainer = createProgressContainer();
-  const variantPopup = wireVariantPopup(createVariantPopup());
+  const toggleBtn = createToggleButton();
+  const variantPopup = createVariantPopup();
 
-  // Mount UI and make the floating button visible (bottom-right on mobile + desktop)
   function mountUI() {
     if (!document.body) { document.addEventListener('DOMContentLoaded', mountUI, { once: true }); return; }
     if (!progressContainer.parentNode) document.body.appendChild(progressContainer);
-    if (!floatingBtn.parentNode) {
-      document.body.appendChild(floatingBtn);
-      // Always show the button; remove this line if you only want it after detection
-      floatingBtn.classList.add('show');
-      floatingBtn.startIdleTimer?.();
-    }
+    if (!toggleBtn.parentNode) document.body.appendChild(toggleBtn);
+    if (!floatingBtn.parentNode) document.body.appendChild(floatingBtn);
     if (!variantPopup.parentNode) document.body.appendChild(variantPopup);
+  }
+
+  function createProgressCard(title, sourceUrl, onStopResume, onCancel) {
+    const card = document.createElement('div');
+    card.className = 'm3u8dl-card';
+    card.innerHTML = `
+      <div class="m3u8dl-header">
+        <div class="m3u8dl-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+        <div class="m3u8dl-actions">
+          <button class="m3u8dl-mini-btn copy-btn" title="Copy URL" aria-label="Copy URL"><span class="ico">📋</span><span class="lbl">Copy</span></button>
+          ${onStopResume ? `<button class="m3u8dl-mini-btn stop-btn" title="Stop" aria-label="Stop/Resume"><span class="ico">⏸</span><span class="lbl">Stop</span></button>` : ''}
+          <button class="m3u8dl-mini-btn close-btn" title="Cancel" aria-label="Cancel"><span class="ico">✕</span></button>
+        </div>
+      </div>
+      <div class="m3u8dl-bar"><div class="m3u8dl-fill"></div></div>
+      <div class="m3u8dl-text">0%</div>`;
+    progressContainer.appendChild(card);
+    toggleBtn.classList.add('show');
+    requestAnimationFrame(() => card.classList.add('show'));
+
+    const stopBtn = card.querySelector('.stop-btn');
+    const closeBtn = card.querySelector('.close-btn');
+    const copyBtn = card.querySelector('.copy-btn');
+    const fill = card.querySelector('.m3u8dl-fill');
+    const text = card.querySelector('.m3u8dl-text');
+
+    if (stopBtn && onStopResume) stopBtn.onclick = onStopResume;
+    closeBtn.onclick = onCancel;
+    copyBtn.onclick = async () => {
+      try { await navigator.clipboard.writeText(sourceUrl || ''); copyBtn.querySelector('.lbl').textContent = '✓'; setTimeout(() => (copyBtn.querySelector('.lbl').textContent = 'Copy'), 1200); }
+      catch { copyBtn.querySelector('.lbl').textContent = 'Err'; setTimeout(() => (copyBtn.querySelector('.lbl').textContent = 'Copy'), 1200); }
+    };
+    return {
+      setStopped(stopped) {
+        if (!stopBtn) return;
+        const ico = stopBtn.querySelector('.ico'), lbl = stopBtn.querySelector('.lbl');
+        stopBtn.title = stopped ? 'Resume' : 'Stop'; ico.textContent = stopped ? '▶' : '⏸'; lbl.textContent = stopped ? 'Resume' : 'Stop';
+      },
+      update(pct, extraText = '') {
+        const percent = Math.max(0, Math.min(100, Math.floor(pct)));
+        fill.style.width = `${percent}%`;
+        text.textContent = `${percent}%${extraText ? ' ' + extraText : ''}`;
+      },
+      done(ok = true, msg) {
+        fill.classList.add(ok ? 'ok' : 'err');
+        fill.style.width = '100%';
+        text.textContent = msg || (ok ? '✓ Complete' : '✗ Failed');
+        setTimeout(() => {
+          card.remove();
+          if (!progressContainer.querySelector('.m3u8dl-card')) {
+            toggleBtn.classList.remove('show');
+          }
+        }, 2500);
+      },
+      remove() { 
+        card.classList.remove('show'); 
+        setTimeout(() => {
+          card.remove();
+          if (!progressContainer.querySelector('.m3u8dl-card')) {
+            toggleBtn.classList.remove('show');
+          }
+        }, 300);
+      }
+    };
   }
 
   // ========================
@@ -676,7 +666,7 @@
         state.manifests.delete(href);
         state.videos.delete(href);
         floatingBtn.updateBadge?.();
-      } catch { }
+      } catch {}
       return _revoke.call(this, href);
     };
   })();
@@ -723,7 +713,7 @@
       evs.forEach(ev => video.addEventListener(ev, checkSrc));
 
       video.__m3u8dl_cleanup = () => {
-        try { evs.forEach(ev => video.removeEventListener(ev, checkSrc)); } catch { }
+        try { evs.forEach(ev => video.removeEventListener(ev, checkSrc)); } catch {}
         video.__m3u8dl_monitored = false;
       };
 
@@ -757,7 +747,7 @@
         // Cleanup removed videos to prevent leaks
         for (const v of Array.from(monitoredVideos)) {
           if (!v.isConnected) {
-            try { v.__m3u8dl_cleanup?.(); } catch { }
+            try { v.__m3u8dl_cleanup?.(); } catch {}
             monitoredVideos.delete(v);
           }
         }
@@ -777,14 +767,19 @@
       const list = variantPopup.querySelector('.m3u8dl-var-list');
       const chk = variantPopup.querySelector('.m3u8dl-exclude-small');
       const optRow = variantPopup.querySelector('.m3u8dl-opt');
+      const closeBtn = variantPopup.querySelector('.m3u8dl-close-popup');
 
       const cleanup = () => {
         variantPopup.classList.remove('show');
         document.removeEventListener('keydown', onKey);
         variantPopup.removeEventListener('click', onBackdrop);
         if (chk) chk.onchange = null;
+        if (closeBtn) closeBtn.onclick = null;
       };
+      
       const onBackdrop = (e) => { if (e.target === variantPopup) { cleanup(); resolve(null); } };
+      
+      const onClose = () => { cleanup(); resolve(null); };
 
       let idx = 0, buttons = [];
       const render = (arr) => {
@@ -805,7 +800,7 @@
           return btn;
         });
         if (!buttons.length) {
-          list.innerHTML = `<div style="font-size:12px;color:#9ca3af;padding:8px;">No items match the filter. Uncheck to show all.</div>`;
+          list.innerHTML = `<div style="font-size:11px;color:#9ca3af;padding:8px;">No items match the filter. Uncheck to show all.</div>`;
         }
         idx = 0; buttons[0]?.focus();
       };
@@ -823,6 +818,7 @@
         chk.checked = settings.excludeSmall;
         chk.onchange = () => { setExcludeSmall(chk.checked); apply(); };
       }
+      if (closeBtn) closeBtn.onclick = onClose;
 
       variantPopup.classList.add('show');
       variantPopup.addEventListener('click', onBackdrop);
@@ -845,7 +841,7 @@
         const vars = parseMaster(masterTxt, url);
         if (vars.length) {
           vars.sort((a, b) => (b.height || 0) - (a.height || 0) ||
-            (b.avgBandwidth || b.peakBandwidth || 0) - (a.avgBandwidth || a.peakBandwidth || 0));
+                              (b.avgBandwidth || b.peakBandwidth || 0) - (a.avgBandwidth || a.peakBandwidth || 0));
           const v = vars[0];
           const mediaTxt = await getManifest(v.url);
           const est = await estimateHlsSize(mediaTxt, v.url, v);
@@ -926,7 +922,7 @@
 
     // Case A: local blob present
     if (info?.blob) {
-      const card = createProgressCard(filename, url, null, () => { });
+      const card = createProgressCard(filename, url, null, () => {});
       try {
         await saveBlob(info.blob, filename, ext);
         card.update(100, '(local)');
@@ -946,9 +942,9 @@
       const meta = await getHeadCached(url);
       totalKnown = meta.length || 0;
       headType = meta.type || null;
-    } catch { }
+    } catch {}
 
-    const card = createProgressCard(filename, url, null, () => { cancelled = true; try { req?.abort?.(); } catch { } });
+    const card = createProgressCard(filename, url, null, () => { cancelled = true; try { req?.abort?.(); } catch {} });
 
     try {
       req = gmRequest({
@@ -1072,7 +1068,7 @@
 
     function abortAll() {
       for (const [i, req] of active) {
-        try { req.abort?.(); } catch { }
+        try { req.abort?.(); } catch {}
         progress.delete(i);
       }
       active.clear();
@@ -1240,7 +1236,7 @@
         writable = await handle.createWritable();
         useFS = true;
         log('Using File System Access API');
-      } catch { }
+      } catch {}
     }
 
     async function finalize(ok) {
@@ -1260,7 +1256,7 @@
           card.update(100, '(done)');
           card.done(true);
         } else {
-          if (useFS) { try { await writable.truncate(0); } catch { } try { await writable.close(); } catch { } }
+          if (useFS) { try { await writable.truncate(0); } catch {} try { await writable.close(); } catch {} }
           card.done(false);
         }
       } catch (e) {
