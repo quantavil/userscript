@@ -8,6 +8,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @connect      *
+// @license      MIT
 // ==/UserScript==
 (() => {
   'use strict';
@@ -328,7 +329,7 @@
   .umdl-fab:hover{background:#353535}
   .umdl-fab.busy svg{opacity:0}
   .umdl-fab.busy::after{content:'';position:absolute;width:18px;height:18px;border:2px solid #404040;border-top-color:#fff;border-radius:50%;animation:umdl-spin .6s linear infinite}
-  .umdl-badge{position:absolute;top:-3px;right:-3px;background:#dc3545;color:#fff;font-weight:600;font-size:9px;padding:3px 6px;border-radius:10px;display:none;line-height:1;border:1.5px solid #1e1e1e}
+  .umdl-badge{position:absolute;top:-8px;right:-8px;background:#dc3545;color:#fff;font-weight:600;font-size:9px;padding:3px 6px;border-radius:10px;display:none;line-height:1;border:1.5px solid #1e1e1e}
   .umdl-fab svg{width:16px;height:16px}
   
   .umdl-pick{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.75);backdrop-filter:blur(4px)}
