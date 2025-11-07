@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         StreamGrabber
 // @namespace    https://github.com/streamgrabber-lite
-// @version      1.0.5
+// @version      1.0.6
 // @description  Lightweight downloader for HLS (.m3u8), video blobs, and direct videos. Mobile + Desktop. Pause/Resume. AES-128. fMP4. Minimal UI.
 // @match        *://*/*
 // @run-at       document-start
@@ -39,10 +39,10 @@
     lastVid: null,
     hiddenProgress: false
   };
-  const BLOBS = new Map(); // blobUrl -> { blob, type, size, kind }
-  const textCache = new Map(); // url -> text
+  const BLOBS = new Map(); // blobUrl -> { blob, type, size, kind, ts }
+  const textCache = new Map(); // url -> text (LRU-ish via bump)
   const inflightText = new Map(); // url -> Promise<string>
-  const headCache = new Map(); // url -> { length, type }
+  const headCache = new Map(); // url -> { length, type } (LRU-ish via bump)
   const inflightHead = new Map(); // url -> Promise<meta>
   const watchedVideos = new Set();
   // Settings
@@ -55,20 +55,39 @@
 
   // bounded add helper for DB sets
   function boundedAdd(set, value, max = CACHE.DB_MAX) {
-    if (set.has(value)) return;
+    if (set.has(value)) return false;
     set.add(value);
     while (set.size > max) {
       const first = set.values().next().value;
       set.delete(first);
     }
+    return true;
   }
+
+  // LRU-ish helpers for Maps (bump on get, trim on set)
+  function lruGet(map, key) {
+    if (!map.has(key)) return undefined;
+    const v = map.get(key);
+    map.delete(key); // bump to end
+    map.set(key, v);
+    return v;
+  }
+  function lruSet(map, key, val, max) {
+    if (map.has(key)) map.delete(key);
+    map.set(key, val);
+    if (typeof max === 'number' && isFinite(max)) {
+      while (map.size > max) {
+        map.delete(map.keys().next().value);
+      }
+    }
+  }
+
   // passive cache trim to prevent leaks on long sessions
   function trimCaches() {
-    if (textCache.size > CACHE.TEXT_MAX) textCache.clear();
-    if (headCache.size > CACHE.HEAD_MAX) headCache.clear();
-    // stale videos in Set are cleaned via mutation observer, but still bound sizes
+    // LRU-like trim for text/head caches (already enforced on set)
     while (DB.m3u8.size > CACHE.DB_MAX) DB.m3u8.delete(DB.m3u8.values().next().value);
     while (DB.vid.size > CACHE.DB_MAX) DB.vid.delete(DB.vid.values().next().value);
+    // Note: BLOBS intentionally not aggressively trimmed to avoid breaking blob: reads
   }
   setInterval(trimCaches, CACHE.CLEAR_MS);
   window.addEventListener('pagehide', trimCaches);
@@ -101,11 +120,12 @@
   const guessExt = (url, type) => {
     const m = /(?:\.([a-z0-9]+))([?#]|$)/i.exec(url || ''); return m ? m[1].toLowerCase() : (type ? extFromType(type) : 'mp4');
   };
-  function once(cache, inflight, key, loader) {
-    if (cache.has(key)) return Promise.resolve(cache.get(key));
+  function once(cache, inflight, key, loader, max) {
+    const inC = lruGet(cache, key);
+    if (inC !== undefined) return Promise.resolve(inC);
     if (inflight.has(key)) return inflight.get(key);
     const p = (async () => {
-      try { const v = await loader(); cache.set(key, v); return v; }
+      try { const v = await loader(); lruSet(cache, key, v, max); return v; }
       finally { inflight.delete(key); }
     })();
     inflight.set(key, p);
@@ -134,14 +154,16 @@
     if (isBlob(url)) {
       const info = BLOBS.get(url);
       if (!info?.blob) throw new Error('Blob not found');
+      info.ts = Date.now();
       return info.blob.text();
     }
     return gmGet({ url, responseType: 'text', timeout: CFG.MAN_MS });
-  });
+  }, CACHE.TEXT_MAX);
   function getBin(url, headers = {}, timeout = CFG.REQ_MS, onprogress) {
     if (isBlob(url)) {
       const info = BLOBS.get(url);
       if (!info?.blob) return Promise.reject(new Error('Blob not found'));
+      info.ts = Date.now();
       const range = parseRange(headers.Range);
       const part = range ? info.blob.slice(range.start, (range.end == null ? info.blob.size : range.end + 1)) : info.blob;
       if (onprogress) setTimeout(() => onprogress({ loaded: part.size, total: part.size }), 0);
@@ -163,7 +185,7 @@
       const type = (/(^|\n)content-type:\s*([^\n]+)/i.exec(h)?.[2] || '').trim() || null;
       return { length, type };
     } catch { return { length: null, type: null }; }
-  });
+  }, CACHE.HEAD_MAX);
 
   // =========================
   // M3U8 parsing & math
@@ -518,12 +540,23 @@
   }
   mountUI();
 
+  // Badge updates: only when count changes + raf throttle
+  let lastBadgeCount = -1, badgeRaf = 0, badgeWanted = 0;
+  function flushBadge() {
+    badgeRaf = 0;
+    if (badgeWanted > 1) {
+      BADGE.textContent = String(badgeWanted);
+      BADGE.style.display = 'inline-block';
+    } else {
+      BADGE.style.display = 'none';
+    }
+  }
   function setBadge() {
     const n = DB.m3u8.size + DB.vid.size;
-    if (n > 1) {
-      BADGE.textContent = String(n);
-      BADGE.style.display = 'inline-block';
-    } else BADGE.style.display = 'none';
+    if (n === lastBadgeCount) return;
+    lastBadgeCount = n;
+    badgeWanted = n;
+    if (!badgeRaf) badgeRaf = requestAnimationFrame(flushBadge);
   }
 
   let idleT;
@@ -582,12 +615,13 @@
   function take(url) {
     try {
       if (!url || (!isHttp(url) && !isBlob(url))) return;
+      let changed = false;
       if (isM3U8Url(url) || (isBlob(url) && BLOBS.get(url)?.kind === 'm3u8')) {
-        if (!DB.m3u8.has(url)) { boundedAdd(DB.m3u8, url); DB.lastM3U8 = url; showFab(); }
+        if (boundedAdd(DB.m3u8, url)) { DB.lastM3U8 = url; showFab(); changed = true; }
       } else if (isVideoUrl(url) || (isBlob(url) && BLOBS.get(url)?.kind === 'video')) {
-        if (!DB.vid.has(url)) { boundedAdd(DB.vid, url); DB.lastVid = url; showFab(); }
+        if (boundedAdd(DB.vid, url)) { DB.lastVid = url; showFab(); changed = true; }
       }
-      setBadge();
+      if (changed) setBadge();
     } catch { }
   }
   // Hook: createObjectURL
@@ -596,9 +630,10 @@
     URL.createObjectURL = function (obj) {
       const href = bak.call(this, obj);
       try {
+        const now = Date.now();
         if (obj instanceof Blob) {
           const type = obj.type || '';
-          const info = { blob: obj, type, size: obj.size, kind: 'other' };
+          const info = { blob: obj, type, size: obj.size, kind: 'other', ts: now };
           if (looksM3U8Type(type)) { info.kind = 'm3u8'; BLOBS.set(href, info); take(href); }
           else if (looksVideoType(type)) { info.kind = 'video'; BLOBS.set(href, info); take(href); }
           else {
@@ -612,7 +647,7 @@
               }).catch(() => BLOBS.set(href, info));
             } else BLOBS.set(href, info);
           }
-        } else BLOBS.set(href, { blob: null, type: 'other', size: 0, kind: 'other' });
+        } else BLOBS.set(href, { blob: null, type: 'other', size: 0, kind: 'other', ts: now });
       } catch (e) { err('createObjectURL', e); }
       return href;
     };
@@ -654,27 +689,36 @@
     po.observe({ entryTypes: ['resource'] });
   } catch { }
   // Video tags scanning
-  function scanVideos() {
-    document.querySelectorAll('video').forEach(v => {
-      if (v.__sg_watch) return;
-      v.__sg_watch = true;
-      const cb = () => {
-        const srcs = [v.currentSrc || v.src, ...Array.from(v.querySelectorAll('source')).map(s => s.src)];
-        srcs.forEach(take);
-      };
-      ['loadstart', 'loadedmetadata', 'canplay'].forEach(ev => v.addEventListener(ev, cb));
-      watchedVideos.add(v);
-      cb();
-    });
+  function watchVideo(v) {
+    if (v.__sg_watch) return;
+    v.__sg_watch = true;
+    const cb = () => {
+      const srcs = [v.currentSrc || v.src, ...Array.from(v.querySelectorAll('source')).map(s => s.src)];
+      srcs.forEach(take);
+    };
+    ['loadstart', 'loadedmetadata', 'canplay'].forEach(ev => v.addEventListener(ev, cb));
+    watchedVideos.add(v);
+    cb();
   }
-  let mo, _deb;
+  function scanVideos() {
+    document.querySelectorAll('video').forEach(watchVideo);
+  }
+  let mo;
   document.addEventListener('DOMContentLoaded', () => {
     scanVideos();
-    mo = new MutationObserver(() => {
-      clearTimeout(_deb); _deb = setTimeout(() => {
-        scanVideos();
-        for (const v of Array.from(watchedVideos)) if (!v.isConnected) watchedVideos.delete(v);
-      }, 250);
+    mo = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.tagName === 'VIDEO') {
+            watchVideo(node);
+          } else {
+            node.querySelectorAll?.('video')?.forEach(watchVideo);
+          }
+        }
+      }
+      // cleanup disconnected watched videos
+      for (const v of Array.from(watchedVideos)) if (!v.isConnected) watchedVideos.delete(v);
     });
     mo.observe(document.documentElement, { childList: true, subtree: true });
   });
@@ -758,27 +802,24 @@
   FAB.addEventListener('click', async (ev) => {
     clearIdle(); setIdle();
     let items = [];
+    setFabBusy(true);
     try {
-      setFabBusy(true);
       items = await buildItems();
+
+      // Hold Alt to quick start when exactly 1 item
+      if (ev.altKey && items.length === 1) {
+        await handleItem(items[0]);
+        return;
+      }
+
+      const sel = await pickFromList(items, { title: 'Select Media', filterable: true });
+      if (!sel) return;
+      await handleItem(sel);
     } catch (e) {
       alert(e?.message || String(e));
+    } finally {
       setFabBusy(false);
-      return;
     }
-
-    // Always confirm by default (fixes "auto-download surprises users")
-    // Hold Alt to quick start when exactly 1 item
-    if (ev.altKey && items.length === 1) {
-      setFabBusy(false);
-      await handleItem(items[0]);
-      return;
-    }
-
-    const sel = await pickFromList(items, { title: 'Select Media', filterable: true });
-    setFabBusy(false);
-    if (!sel) return;
-    await handleItem(sel);
   });
 
   // Progress card
@@ -851,15 +892,11 @@
       try {
         let label = 'HLS';
         let size = null;
+        // Only fetch the playlist to decide master vs media and possibly size for media playlists.
         let mtxt = await getText(u);
         if (isMasterText(mtxt)) {
-          const v = parseMaster(mtxt, u).sort((a, b) => (b.h || 0) - (a.h || 0) || (b.avg || b.peak || 0) - (a.avg || a.peak || 0))[0];
-          if (v) {
-            const mediaTxt = await getText(v.url);
-            const est = await estimateHls(mediaTxt, v.url, v);
-            size = est.bytes ?? null;
-            label = `HLS${v.res ? ' • ' + v.res : ''}${size ? ' • ~' + fmtBytes(size) : ''}`;
-          }
+          // Do not fetch a variant here (avoid extra requests). Sizes shown per-quality later.
+          label = 'HLS';
         } else if (isMediaText(mtxt)) {
           const est = await estimateHls(mtxt, u, null);
           size = est.bytes ?? null;
@@ -889,6 +926,7 @@
   // Save blob helper
   // =========================
   async function saveBlob(blob, filename, extHint) {
+    // Try File System Access API first (if available)
     try {
       if ('showSaveFilePicker' in window) {
         const ext = (extHint || '').replace(/^\./, '') || (blob.type.split('/').pop() || 'bin');
@@ -897,16 +935,27 @@
           types: [{ description: 'Media', accept: { [blob.type || 'video/*']: [`.${ext}`] } }]
         });
         const w = await h.createWritable();
-        await w.write(blob); await w.close(); return true;
+        await w.write(blob);
+        await w.close();
+        return { ok: true, via: 'fs' };
       }
     } catch (e) {
-      if (e?.name === 'AbortError') throw e;
+      if (e?.name === 'AbortError') {
+        return { ok: false, abort: true, via: 'fs' };
+      }
+      // else fall through to fallback method
     }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
-    return true;
+
+    // Fallback: object URL + <a download>
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      return { ok: true, via: 'url' };
+    } catch (e2) {
+      return { ok: false, via: 'url', error: e2 };
+    }
   }
 
   // =========================
@@ -920,7 +969,11 @@
     // blob case
     if (info?.blob) {
       const card = makeProgress(fn, url, { onCancel: () => card.remove() });
-      try { await saveBlob(info.blob, fn, ext); card.update(100, ''); card.done(true); } catch (e) { card.done(false, e?.message); }
+      try {
+        const res = await saveBlob(info.blob, fn, ext);
+        if (!res.ok) throw new Error(res.abort ? 'Save canceled' : 'Save failed');
+        card.update(100, ''); card.done(true);
+      } catch (e) { card.done(false, e?.message); }
       return;
     }
     let total = 0, req = null, cancelled = false;
@@ -939,7 +992,8 @@
       });
       const buf = await req; if (cancelled) return;
       const blob = new Blob([buf], { type: meta.type || `video/${ext}` });
-      await saveBlob(blob, fn, ext);
+      const res = await saveBlob(blob, fn, ext);
+      if (!res.ok) throw new Error(res.abort ? 'Save canceled' : 'Save failed');
       card.update(100, ''); card.done(true);
     } catch (e) { card.done(false, e?.message || 'Failed'); }
   }
@@ -994,6 +1048,17 @@
     const buffers = new Map(); // idx -> Uint8Array (ready for ordered write)
     let done = 0, active = 0, nextIdx = 0, writePtr = 0, byteDone = 0, avgLen = 0;
 
+    // retry queue to avoid full array scans each time
+    const retryQ = new Set();
+    const enqueueRetry = (i) => { retryQ.add(i); };
+    const takeRetry = () => {
+      const it = retryQ.values().next();
+      if (it.done) return -1;
+      const v = it.value;
+      retryQ.delete(v);
+      return v;
+    };
+
     const card = makeProgress(filename, srcUrl, {
       stoppable: true,
       segs: total,
@@ -1015,8 +1080,8 @@
     // caches for keys/maps
     const keyCache = new Map(), keyInflight = new Map();
     const mapCache = new Map(), mapInflight = new Map();
-    const onceKey = (k, fn) => once(keyCache, keyInflight, k, fn);
-    const onceMap = (k, fn) => once(mapCache, mapInflight, k, fn);
+    const onceKey = (k, fn) => once(keyCache, keyInflight, k, fn); // small, no max
+    const onceMap = (k, fn) => once(mapCache, mapInflight, k, fn); // small, no max
 
     const draw = (() => {
       let raf = 0;
@@ -1051,7 +1116,10 @@
       if (a > CFG.RETRIES) {
         status[i] = -1; err(`Segment ${i} failed: ${why}`);
         maybeFailFast(i);
-      } else status[i] = 0;
+      } else {
+        status[i] = 0;
+        enqueueRetry(i);
+      }
     }
     async function fetchKeyBytes(s) {
       if (!s.key || s.key.method !== 'AES-128' || !s.key.uri) return null;
@@ -1121,10 +1189,10 @@
     function pump() {
       if (paused || canceled || ended) return;
       while (active < CFG.CONC) {
-        // retry first
-        let idx = -1;
-        for (let j = 0; j < total; j++) if (status[j] === 0 && attempts[j] > 0) { idx = j; break; }
+        // pick retry first (no full scan)
+        let idx = takeRetry();
         if (idx === -1) {
+          // pick next fresh
           while (nextIdx < total && status[nextIdx] !== 0) nextIdx++;
           if (nextIdx < total) idx = nextIdx++;
         }
@@ -1134,6 +1202,11 @@
     }
     function check() {
       if (ended) return;
+      // Early fail if the write head segment has already failed
+      if (status[writePtr] === -1) {
+        abortAll();
+        return finalize(false);
+      }
       if (done === total) return finalize(true);
       if (!active && Array.prototype.some.call(status, v => v === -1)) return finalize(false);
     }
@@ -1151,7 +1224,8 @@
           if (useFS) { await writer.close(); }
           else {
             const blob = new Blob(chunks, { type: isFmp4 ? 'video/mp4' : 'video/mp2t' });
-            await saveBlob(blob, filename, ext);
+            const res = await saveBlob(blob, filename, ext);
+            if (!res.ok) throw new Error(res.abort ? 'Save canceled' : 'Save failed');
           }
           card.update(100, ''); card.done(true);
         } else {
