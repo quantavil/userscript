@@ -1,9 +1,23 @@
 // ==UserScript==
 // @name         StreamGrabber
 // @namespace    https://github.com/streamgrabber-lite
-// @version      1.2.1
+// @version      1.2.2
 // @description  Lightweight downloader for HLS (.m3u8 via m3u8-parser), video blobs, and direct videos. Mobile + Desktop. Pause/Resume. AES-128. fMP4. Minimal UI.
 // @match        *://*/*
+// @exclude      *://*.youtube.com/*
+// @exclude      *://*.youtu.be/*
+// @exclude      *://*.x.com/*
+// @exclude      *://*.twitch.tv/*
+// @exclude      *://*.reddit.com/*
+// @exclude      *://*.redd.it/*
+// @exclude      *://*.facebook.com/*
+// @exclude      *://*.instagram.com/*
+// @exclude      *://*.tiktok.com/*
+// @exclude      *://*.netflix.com/*
+// @exclude      *://*.hulu.com/*
+// @exclude      *://*.disneyplus.com/*
+// @exclude      *://*.primevideo.com/*
+// @exclude      *://*.spotify.com/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
