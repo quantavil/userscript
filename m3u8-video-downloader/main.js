@@ -1,17 +1,19 @@
 // ==UserScript==
 // @name         StreamGrabber
 // @namespace    https://github.com/streamgrabber-lite
-// @version      1.0.6
-// @description  Lightweight downloader for HLS (.m3u8), video blobs, and direct videos. Mobile + Desktop. Pause/Resume. AES-128. fMP4. Minimal UI.
+// @version      1.1.0
+// @description  Lightweight downloader for HLS (.m3u8 via m3u8-parser), video blobs, and direct videos. Mobile + Desktop. Pause/Resume. AES-128. fMP4. Minimal UI.
 // @match        *://*/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @connect      *
 // @license      MIT
+// @require      https://cdnjs.cloudflare.com/ajax/libs/m3u8-parser/7.2.0/m3u8-parser.min.js
 // ==/UserScript==
 (() => {
   'use strict';
+
   // =========================
   // Config
   // =========================
@@ -26,18 +28,16 @@
   const CACHE = {
     TEXT_MAX: 256,
     HEAD_MAX: 256,
-    DB_MAX: 120,        // bound detected URL sets
-    CLEAR_MS: 120000    // 2 min passive trim
+    DB_MAX: 120,
+    CLEAR_MS: 120000
   };
+
   // =========================
   // State & caches
   // =========================
   const DB = {
     m3u8: new Set(),
     vid: new Set(),
-    lastM3U8: null,
-    lastVid: null,
-    hiddenProgress: false
   };
   const BLOBS = new Map(); // blobUrl -> { blob, type, size, kind, ts }
   const textCache = new Map(); // url -> text (LRU-ish via bump)
@@ -45,6 +45,7 @@
   const headCache = new Map(); // url -> { length, type } (LRU-ish via bump)
   const inflightHead = new Map(); // url -> Promise<meta>
   const watchedVideos = new Set();
+
   // Settings
   const SETTINGS = {
     excludeSmall: (() => {
@@ -52,46 +53,6 @@
     })(),
   };
   const setExcludeSmall = (v) => { SETTINGS.excludeSmall = !!v; try { localStorage.setItem('sg_exclude_small', String(!!v)); } catch { } };
-
-  // bounded add helper for DB sets
-  function boundedAdd(set, value, max = CACHE.DB_MAX) {
-    if (set.has(value)) return false;
-    set.add(value);
-    while (set.size > max) {
-      const first = set.values().next().value;
-      set.delete(first);
-    }
-    return true;
-  }
-
-  // LRU-ish helpers for Maps (bump on get, trim on set)
-  function lruGet(map, key) {
-    if (!map.has(key)) return undefined;
-    const v = map.get(key);
-    map.delete(key); // bump to end
-    map.set(key, v);
-    return v;
-  }
-  function lruSet(map, key, val, max) {
-    if (map.has(key)) map.delete(key);
-    map.set(key, val);
-    if (typeof max === 'number' && isFinite(max)) {
-      while (map.size > max) {
-        map.delete(map.keys().next().value);
-      }
-    }
-  }
-
-  // passive cache trim to prevent leaks on long sessions
-  function trimCaches() {
-    // LRU-like trim for text/head caches (already enforced on set)
-    while (DB.m3u8.size > CACHE.DB_MAX) DB.m3u8.delete(DB.m3u8.values().next().value);
-    while (DB.vid.size > CACHE.DB_MAX) DB.vid.delete(DB.vid.values().next().value);
-    // Note: BLOBS intentionally not aggressively trimmed to avoid breaking blob: reads
-  }
-  setInterval(trimCaches, CACHE.CLEAR_MS);
-  window.addEventListener('pagehide', trimCaches);
-  window.addEventListener('beforeunload', trimCaches);
 
   // =========================
   // Utilities
@@ -131,6 +92,48 @@
     inflight.set(key, p);
     return p;
   }
+  const parseRange = (v) => {
+    if (!v) return null;
+    const m = /bytes=(\d+)-(\d+)?/i.exec(v);
+    if (!m) return null;
+    return { start: +m[1], end: m[2] != null ? +m[2] : null };
+  };
+
+  // bounded add helper for DB sets
+  function boundedAdd(set, value, max = CACHE.DB_MAX) {
+    if (set.has(value)) return false;
+    set.add(value);
+    while (set.size > max) {
+      const first = set.values().next().value;
+      set.delete(first);
+    }
+    return true;
+  }
+  // LRU-ish helpers for Maps (bump on get, trim on set)
+  function lruGet(map, key) {
+    if (!map.has(key)) return undefined;
+    const v = map.get(key);
+    map.delete(key); // bump to end
+    map.set(key, v);
+    return v;
+  }
+  function lruSet(map, key, val, max) {
+    if (map.has(key)) map.delete(key);
+    map.set(key, val);
+    if (typeof max === 'number' && isFinite(max)) {
+      while (map.size > max) {
+        map.delete(map.keys().next().value);
+      }
+    }
+  }
+  // passive cache trim
+  function trimCaches() {
+    while (DB.m3u8.size > CACHE.DB_MAX) DB.m3u8.delete(DB.m3u8.values().next().value);
+    while (DB.vid.size > CACHE.DB_MAX) DB.vid.delete(DB.vid.values().next().value);
+  }
+  setInterval(trimCaches, CACHE.CLEAR_MS);
+  window.addEventListener('pagehide', trimCaches);
+  window.addEventListener('beforeunload', trimCaches);
 
   // =========================
   // Network helpers
@@ -188,138 +191,6 @@
   }, CACHE.HEAD_MAX);
 
   // =========================
-  // M3U8 parsing & math
-  // =========================
-  const isMasterText = (t) => /#EXT-X-STREAM-INF/i.test(t);
-  const isMediaText = (t) => /#EXTINF:|#EXT-X-TARGETDURATION:/i.test(t);
-  const hasEndlist = (t) => /#EXT-X-ENDLIST\b/i.test(t);
-  const parseAttrs = (s) => {
-    const r = {}; const re = /([A-Z0-9-]+)=(?:"([^"]*)"|([^,]*))/gi; let m;
-    while ((m = re.exec(s))) r[m[1].toUpperCase()] = m[2] !== undefined ? m[2] : m[3];
-    return r;
-  };
-  const parseRange = (v) => { if (!v) return null; const m = /bytes=(\d+)-(\d+)?/i.exec(v); if (!m) return null; return { start: +m[1], end: m[2] != null ? +m[2] : null }; };
-  const parseByterange = (s, fallbackStart = 0) => {
-    if (!s) return null;
-    const [lenStr, offStr] = String(s).split('@');
-    const len = parseInt(lenStr, 10);
-    const start = (offStr != null && offStr !== '') ? parseInt(offStr, 10) : fallbackStart;
-    return { start, end: start + len - 1, next: start + len };
-  };
-  function parseMaster(m3u, base) {
-    const lines = m3u.split(/\r?\n/); const out = [];
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line.startsWith('#EXT-X-STREAM-INF:')) continue;
-      const a = parseAttrs(line.slice(18));
-      let uri = null;
-      for (let j = i + 1; j < lines.length; j++) {
-        const n = lines[j].trim(); if (!n || n.startsWith('#')) continue; uri = safeAbs(n, base); break;
-      }
-      if (uri) {
-        const res = a.RESOLUTION || '';
-        const [w, h] = res ? res.split('x').map(x => parseInt(x, 10)) : [null, null];
-        out.push({
-          url: uri,
-          res: res || null,
-          w, h,
-          peak: a.BANDWIDTH ? parseInt(a.BANDWIDTH, 10) : null,
-          avg: a['AVERAGE-BANDWIDTH'] ? parseInt(a['AVERAGE-BANDWIDTH'], 10) : null,
-          codecs: a.CODECS || null
-        });
-      }
-    }
-    return out;
-  }
-  function parseMedia(m3u, base) {
-    const lines = m3u.split(/\r?\n/);
-    const segs = [];
-    let mediaSeq = 0;
-    let key = { method: 'NONE', uri: null, iv: null };
-    let map = null;
-    let pendingDur = 0;
-    let pendingBR = null;
-    let lastNext = 0;
-    for (let i = 0; i < lines.length; i++) {
-      const L = lines[i].trim();
-      if (!L) continue;
-      if (L.startsWith('#EXT-X-MEDIA-SEQUENCE:')) mediaSeq = parseInt(L.split(':')[1], 10) || 0;
-      else if (L.startsWith('#EXT-X-KEY:')) { const a = parseAttrs(L.slice(11)); key = { method: (a.METHOD || 'NONE').toUpperCase(), uri: a.URI ? safeAbs(a.URI, base) : null, iv: a.IV || null }; }
-      else if (L.startsWith('#EXT-X-MAP:')) {
-        const a = parseAttrs(L.slice(11));
-        if (a.URI) {
-          let rangeHeader = null;
-          if (a.BYTERANGE) {
-            const br = parseByterange(a.BYTERANGE, 0);
-            if (br) rangeHeader = `bytes=${br.start}-${br.end}`;
-          }
-          map = { uri: safeAbs(a.URI, base), rangeHeader };
-        }
-      }
-      else if (L.startsWith('#EXT-X-BYTERANGE:')) { pendingBR = parseByterange(L.split(':')[1], lastNext); }
-      else if (L.startsWith('#EXTINF:')) { pendingDur = parseFloat(L.split(':')[1]) || 0; }
-      else if (!L.startsWith('#')) {
-        let rangeHeader = null;
-        if (pendingBR) {
-          rangeHeader = `bytes=${pendingBR.start}-${pendingBR.end}`;
-          lastNext = pendingBR.next;
-        } else lastNext = 0;
-        segs.push({
-          uri: safeAbs(L, base),
-          dur: pendingDur,
-          range: rangeHeader,
-          key: key && key.method !== 'NONE' ? { ...key } : null,
-          map: map ? { ...map } : null
-        });
-        pendingDur = 0; pendingBR = null;
-      }
-    }
-    // mark map changes
-    let prevMapSig = null;
-    for (const s of segs) {
-      const sig = s.map ? `${s.map.uri}|${s.map.range || ''}` : null;
-      s.needMap = !!(sig && sig !== prevMapSig);
-      if (sig) prevMapSig = sig;
-    }
-    return { segs, mediaSeq };
-  }
-  function sumDur(parsed) {
-    let t = 0; for (const s of parsed.segs) t += (s.dur || 0); return t;
-  }
-  function byterangeBytes(parsed) {
-    let exact = true, total = 0;
-    const seenInit = new Set();
-    for (const s of parsed.segs) {
-      if (s.range) {
-        const r = parseRange(s.range);
-        if (!r || r.end == null) { exact = false; } else total += (r.end - r.start + 1);
-      } else exact = false;
-      if (s.needMap && s.map) {
-        if (s.map.rangeHeader) {
-          const key = `${s.map.uri}|${s.map.rangeHeader}`;
-          if (!seenInit.has(key)) {
-            seenInit.add(key);
-            const mr = parseRange(s.map.rangeHeader);
-            if (!mr || mr.end == null) exact = false;
-            else total += (mr.end - mr.start + 1);
-          }
-        } else exact = false;
-      }
-    }
-    return exact ? total : null;
-  }
-  async function estimateHls(m3u, url, v) {
-    const p = parseMedia(m3u, url);
-    const vod = hasEndlist(m3u);
-    const seconds = sumDur(p);
-    const brBytes = byterangeBytes(p);
-    if (brBytes != null) return { bytes: brBytes, seconds, vod, via: 'byterange' };
-    const bw = v?.avg ?? v?.peak ?? null;
-    if (vod && bw && seconds > 0) return { bytes: Math.round((bw / 8) * seconds), seconds, vod, via: 'avg-bw' };
-    return { bytes: null, seconds, vod, via: 'unknown' };
-  }
-
-  // =========================
   // Crypto helpers (AES-128/CBC)
   // =========================
   const hexToU8 = (hex) => {
@@ -356,10 +227,7 @@
     --sg-bad:#e74c3c;
     --sg-badge:#dc3545;
   }
-
   @keyframes umdl-spin{to{transform:rotate(360deg)}}
-
-  /* FAB */
   .umdl-fab{
     position:fixed;right:16px;bottom:16px;z-index:2147483647;
     width:48px;height:48px;border-radius:50%;
@@ -382,8 +250,6 @@
     line-height:1;border:2px solid var(--sg-bg);min-width:18px;text-align:center;
     box-shadow:0 2px 4px rgba(0,0,0,.3)
   }
-
-  /* Picker overlay */
   .umdl-pick{position:fixed;inset:0;z-index:2147483647;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.75);backdrop-filter:blur(4px)}
   .umdl-pick.show{display:flex}
   .umdl-card{
@@ -398,23 +264,17 @@
   }
   .umdl-x:hover{background:#353535;color:#fff}
   .umdl-x svg{width:16px;height:16px}
-
   .umdl-body{
     padding:12px 16px 16px;display:flex;flex-direction:column;gap:10px;
     overflow-y:auto;max-height:calc(84vh - 110px)
   }
   .umdl-body::-webkit-scrollbar{width:6px}
-  .umdl-body::-webkit-scrollbar-track{background:transparent}
   .umdl-body::-webkit-scrollbar-thumb{background:var(--sg-border-2);border-radius:3px}
-  .umdl-body::-webkit-scrollbar-thumb:hover{background:#4a4a4a}
-
   .umdl-opt{
     display:flex;align-items:center;gap:9px;font-size:12px;color:var(--sg-fg-dim);
     padding:10px 12px;background:var(--sg-bg-2);border-radius:8px;border:1px solid var(--sg-border)
   }
   .umdl-opt input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:#fff;margin:0}
-
-  /* Item list */
   .umdl-list{display:flex;flex-direction:column;gap:8px}
   .umdl-item{
     background:var(--sg-bg-2);border:1px solid var(--sg-border);border-radius:8px;
@@ -434,22 +294,16 @@
   .umdl-copy-btn:hover{background:#353535;color:#fff}
   .umdl-copy-btn svg{width:13px;height:13px}
   .umdl-copy-btn.copied{background:#28a745;border-color:#28a745;color:#fff}
-
   .umdl-empty{padding:32px;color:var(--sg-fg-dimmer);font-size:13px;text-align:center}
-
-  /* Toast (progress stack) */
   .umdl-toast{
     position:fixed;right:16px;bottom:72px;z-index:2147483646;
     display:flex;flex-direction:column;gap:10px;
     max-width:380px;max-height:70vh;overflow-y:auto;
-    /* Prevent children from stretching full width so minimized fits to content */
     align-items:flex-end;
     font:13px system-ui,-apple-system,Segoe UI,Roboto,sans-serif
   }
   .umdl-toast::-webkit-scrollbar{width:5px}
   .umdl-toast::-webkit-scrollbar-thumb{background:var(--sg-border-2);border-radius:3px}
-
-  /* Progress card */
   .umdl-job{
     background:var(--sg-bg);color:var(--sg-fg);border:1px solid var(--sg-border-2);border-radius:10px;
     padding:13px 15px;min-width:280px;display:flex;flex-direction:column
@@ -467,11 +321,8 @@
   }
   .umdl-mini:hover{background:#353535;color:#fff}
   .umdl-mini svg{width:13px;height:13px}
-
   .umdl-bar{height:7px;background:var(--sg-bg-2);border-radius:4px;overflow:hidden;border:1px solid var(--sg-border)}
   .umdl-fill{height:7px;width:0;background:#fff}
-
-  /* Minimized: collapse to a single icon (the toggle) */
   .umdl-job.minimized{
     padding:6px;min-width:auto;width:auto;display:inline-flex
   }
@@ -483,8 +334,6 @@
   .umdl-job.minimized .umdl-ctrls > :not(.btn-hide){display:none!important}
   .umdl-job.minimized .btn-hide{min-width:32px;min-height:32px;padding:6px}
   .umdl-job.minimized .btn-hide svg{width:14px;height:14px}
-
-  /* Responsive */
   @media (max-width:640px){
     .umdl-fab{right:12px;bottom:12px;width:46px;height:46px}
     .umdl-fab svg{width:15px;height:15px}
@@ -509,7 +358,6 @@
     show: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 15l7-7 7 7"/></svg>`
   };
   const DL_SVG = ICONS.download;
-
   const $ = (sel, root = document) => root.querySelector(sel);
 
   // root UI
@@ -540,7 +388,7 @@
   }
   mountUI();
 
-  // Badge updates: only when count changes + raf throttle
+  // Badge updates
   let lastBadgeCount = -1, badgeRaf = 0, badgeWanted = 0;
   function flushBadge() {
     badgeRaf = 0;
@@ -609,6 +457,7 @@
       }
     }
   }
+
   // =========================
   // Detection
   // =========================
@@ -617,9 +466,9 @@
       if (!url || (!isHttp(url) && !isBlob(url))) return;
       let changed = false;
       if (isM3U8Url(url) || (isBlob(url) && BLOBS.get(url)?.kind === 'm3u8')) {
-        if (boundedAdd(DB.m3u8, url)) { DB.lastM3U8 = url; showFab(); changed = true; }
+        if (boundedAdd(DB.m3u8, url)) { showFab(); changed = true; }
       } else if (isVideoUrl(url) || (isBlob(url) && BLOBS.get(url)?.kind === 'video')) {
-        if (boundedAdd(DB.vid, url)) { DB.lastVid = url; showFab(); changed = true; }
+        if (boundedAdd(DB.vid, url)) { showFab(); changed = true; }
       }
       if (changed) setBadge();
     } catch { }
@@ -717,7 +566,6 @@
           }
         }
       }
-      // cleanup disconnected watched videos
       for (const v of Array.from(watchedVideos)) if (!v.isConnected) watchedVideos.delete(v);
     });
     mo.observe(document.documentElement, { childList: true, subtree: true });
@@ -768,7 +616,6 @@
     return new Promise((resolve) => {
       resolvePicker = (v) => { closePanel(); resolve(v ?? null); };
       const ttl = PANEL.querySelector('.ttl');
-      const listEl = PANEL.querySelector('.umdl-list');
       const exWrap = PANEL.querySelector('.umdl-opt');
       const ex = PANEL.querySelector('.umdl-excl');
       const x = PANEL.querySelector('.umdl-x');
@@ -806,7 +653,7 @@
     try {
       items = await buildItems();
 
-      // Hold Alt to quick start when exactly 1 item
+      // Alt-click: quick start when exactly 1 item
       if (ev.altKey && items.length === 1) {
         await handleItem(items[0]);
         return;
@@ -882,6 +729,132 @@
   }
 
   // =========================
+  // M3U8 parsing via m3u8-parser
+  // =========================
+  const M3U8 = (typeof m3u8Parser !== 'undefined' ? m3u8Parser : (window.m3u8Parser || globalThis.m3u8Parser));
+  function parseManifest(text) {
+    if (!M3U8?.Parser) throw new Error('m3u8-parser not available');
+    const parser = new M3U8.Parser();
+    parser.push(text);
+    parser.end();
+    return parser.manifest;
+  }
+  function buildVariantsFromManifest(man, base) {
+    const out = [];
+    const pls = Array.isArray(man.playlists) ? man.playlists : [];
+    for (const p of pls) {
+      if (!p?.uri) continue;
+      const a = p.attributes || {};
+      const w = a.RESOLUTION?.width ?? null;
+      const h = a.RESOLUTION?.height ?? null;
+      const res = (w && h) ? `${w}x${h}` : null;
+      out.push({
+        url: safeAbs(p.uri, base),
+        res, w, h,
+        peak: a.BANDWIDTH != null ? parseInt(a.BANDWIDTH, 10) : null,
+        avg: a['AVERAGE-BANDWIDTH'] != null ? parseInt(a['AVERAGE-BANDWIDTH'], 10) : null,
+        codecs: a.CODECS || null,
+      });
+    }
+    return out;
+  }
+  function rangeHeaderFromByterange(br, fallbackStart = 0) {
+    if (!br || typeof br.length !== 'number') return { header: null, next: fallbackStart };
+    const start = (typeof br.offset === 'number') ? br.offset : fallbackStart;
+    const end = start + br.length - 1;
+    return { header: `bytes=${start}-${end}`, next: end + 1 };
+  }
+  function buildMediaFromManifest(man, base) {
+    const segs = [];
+    const srcSegs = Array.isArray(man.segments) ? man.segments : [];
+    let lastNext = 0;
+    let prevMapSig = null;
+    for (let i = 0; i < srcSegs.length; i++) {
+      const s = srcSegs[i];
+
+      // Segment byterange -> Range header
+      let rangeHeader = null;
+      if (s.byterange) {
+        const r = rangeHeaderFromByterange(s.byterange, lastNext);
+        rangeHeader = r.header;
+        lastNext = r.next;
+      } else {
+        lastNext = 0;
+      }
+
+      // Init map (fMP4)
+      let map = null;
+      let needMap = false;
+      if (s.map?.uri) {
+        const mapUri = safeAbs(s.map.uri, base);
+        let mRange = null;
+        if (s.map.byterange) {
+          const mr = rangeHeaderFromByterange(s.map.byterange, 0);
+          mRange = mr.header;
+        }
+        map = { uri: mapUri, rangeHeader: mRange };
+        const sig = `${mapUri}|${mRange || ''}`;
+        needMap = (sig !== prevMapSig);
+        if (needMap) prevMapSig = sig;
+      }
+
+      // Key
+      let key = null;
+      if (s.key?.method && s.key.method !== 'NONE') {
+        key = {
+          method: String(s.key.method).toUpperCase(),
+          uri: s.key.uri ? safeAbs(s.key.uri, base) : null,
+          iv: s.key.iv || null
+        };
+      }
+
+      segs.push({
+        uri: safeAbs(s.uri, base),
+        dur: s.duration || 0,
+        range: rangeHeader,
+        key,
+        map,
+        needMap
+      });
+    }
+    return { segs, mediaSeq: man.mediaSequence || 0, endList: !!man.endList };
+  }
+  function computeExactBytesFromSegments(parsed) {
+    let exact = true;
+    let total = 0;
+    const seenInit = new Set();
+    for (const s of parsed.segs) {
+      if (s.range) {
+        const r = parseRange(s.range);
+        if (!r || r.end == null) { exact = false; } else { total += (r.end - r.start + 1); }
+      } else exact = false;
+
+      if (s.needMap && s.map) {
+        if (s.map.rangeHeader) {
+          const key = `${s.map.uri}|${s.map.rangeHeader}`;
+          if (!seenInit.has(key)) {
+            seenInit.add(key);
+            const mr = parseRange(s.map.rangeHeader);
+            if (!mr || mr.end == null) exact = false;
+            else total += (mr.end - mr.start + 1);
+          }
+        } else exact = false;
+      }
+    }
+    return exact ? total : null;
+  }
+  function estimateHlsFromManifest(man, base, variant = null) {
+    const parsed = buildMediaFromManifest(man, base);
+    const seconds = (Array.isArray(man.segments) ? man.segments : []).reduce((a, s) => a + (s.duration || 0), 0);
+    const vod = !!man.endList;
+    const brBytes = computeExactBytesFromSegments(parsed);
+    if (brBytes != null) return { bytes: brBytes, seconds, vod, via: 'byterange' };
+    const bw = variant?.avg ?? variant?.peak ?? null;
+    if (vod && bw && seconds > 0) return { bytes: Math.round((bw / 8) * seconds), seconds, vod, via: 'avg-bw' };
+    return { bytes: null, seconds, vod, via: 'unknown' };
+  }
+
+  // =========================
   // Build items
   // =========================
   async function buildItems() {
@@ -890,19 +863,18 @@
     for (const u of DB.m3u8) {
       const info = BLOBS.get(u);
       try {
-        let label = 'HLS';
-        let size = null;
-        // Only fetch the playlist to decide master vs media and possibly size for media playlists.
-        let mtxt = await getText(u);
-        if (isMasterText(mtxt)) {
-          // Do not fetch a variant here (avoid extra requests). Sizes shown per-quality later.
-          label = 'HLS';
-        } else if (isMediaText(mtxt)) {
-          const est = await estimateHls(mtxt, u, null);
-          size = est.bytes ?? null;
-          label = `HLS${size ? ' • ~' + fmtBytes(size) : ''}`;
+        const mtxt = await getText(u);
+        const man = parseManifest(mtxt);
+        if (Array.isArray(man.playlists) && man.playlists.length > 0) {
+          out.push({ kind: 'hls', url: u, label: 'HLS', size: null });
+        } else if (Array.isArray(man.segments) && man.segments.length > 0) {
+          const est = estimateHlsFromManifest(man, u, null);
+          const size = est.bytes ?? null;
+          const label = `HLS${size ? ' • ~' + fmtBytes(size) : ''}`;
+          out.push({ kind: 'hls', url: u, label, size });
+        } else {
+          out.push({ kind: 'hls', url: u, label: 'HLS', size: info?.size ?? null });
         }
-        out.push({ kind: 'hls', url: u, label, size });
       } catch {
         out.push({ kind: 'hls', url: u, label: 'HLS', size: info?.size ?? null });
       }
@@ -943,9 +915,7 @@
       if (e?.name === 'AbortError') {
         return { ok: false, abort: true, via: 'fs' };
       }
-      // else fall through to fallback method
     }
-
     // Fallback: object URL + <a download>
     try {
       const url = URL.createObjectURL(blob);
@@ -999,36 +969,46 @@
   }
 
   // =========================
-  // HLS download
+  // HLS download (via m3u8-parser)
   // =========================
   async function downloadHls(url, preVariant = null) {
     log('HLS:', url);
     const txt = await getText(url);
+    const man = parseManifest(txt);
+
     let mediaUrl = url, chosenVariant = preVariant;
-    if (isMasterText(txt)) {
-      const variants = parseMaster(txt, url).sort((a, b) => (b.h || 0) - (a.h || 0) || (b.avg || b.peak || 0) - (a.avg || a.peak || 0));
+
+    // Master playlist: prompt for variant
+    if (Array.isArray(man.playlists) && man.playlists.length > 0) {
+      const variants = buildVariantsFromManifest(man, url).sort((a, b) => (b.h || 0) - (a.h || 0) || (b.avg || b.peak || 0) - (a.avg || a.peak || 0));
       if (!variants.length) throw new Error('No variants found');
-      // precompute size labels quickly and attach estimated sizes
+
       const items = [];
       for (const v of variants) {
         let label = [v.res, (v.avg || v.peak) ? `${Math.round((v.avg || v.peak) / 1000)}k` : null].filter(Boolean).join(' • ') || 'Variant';
         let size = null;
         try {
           const mediaTxt = await getText(v.url);
-          const est = await estimateHls(mediaTxt, v.url, v);
+          const vMan = parseManifest(mediaTxt);
+          const est = estimateHlsFromManifest(vMan, v.url, v);
           if (est.bytes != null) size = est.bytes;
           if (size != null) label += ` • ~${fmtBytes(size)}`;
         } catch { }
         items.push({ kind: 'variant', url: v.url, label, variant: v, size });
       }
-      // picker (now filter works as sizes are known)
+
       const selected = await pickFromList(items, { title: 'Select Quality', filterable: true });
       if (!selected) return;
       chosenVariant = selected.variant; mediaUrl = selected.url;
-    } else if (!isMediaText(txt)) throw new Error('Invalid playlist');
-    const mediaTxt = isMediaText(txt) ? txt : await getText(mediaUrl);
-    const parsed = parseMedia(mediaTxt, mediaUrl);
+    }
+
+    // Media playlist
+    const mediaTxt = await getText(mediaUrl);
+    const mediaMan = parseManifest(mediaTxt);
+    if (!Array.isArray(mediaMan.segments) || mediaMan.segments.length === 0) throw new Error('Invalid playlist');
+    const parsed = buildMediaFromManifest(mediaMan, mediaUrl);
     if (!parsed.segs.length) throw new Error('No segments');
+
     const isFmp4 = parsed.segs.some(s => s.map) || /\.m4s(\?|$)/i.test(parsed.segs[0].uri);
     const ext = isFmp4 ? 'mp4' : 'ts';
     const name = cleanName(document.title);
@@ -1048,7 +1028,6 @@
     const buffers = new Map(); // idx -> Uint8Array (ready for ordered write)
     let done = 0, active = 0, nextIdx = 0, writePtr = 0, byteDone = 0, avgLen = 0;
 
-    // retry queue to avoid full array scans each time
     const retryQ = new Set();
     const enqueueRetry = (i) => { retryQ.add(i); };
     const takeRetry = () => {
@@ -1080,8 +1059,8 @@
     // caches for keys/maps
     const keyCache = new Map(), keyInflight = new Map();
     const mapCache = new Map(), mapInflight = new Map();
-    const onceKey = (k, fn) => once(keyCache, keyInflight, k, fn); // small, no max
-    const onceMap = (k, fn) => once(mapCache, mapInflight, k, fn); // small, no max
+    const onceKey = (k, fn) => once(keyCache, keyInflight, k, fn);
+    const onceMap = (k, fn) => once(mapCache, mapInflight, k, fn);
 
     const draw = (() => {
       let raf = 0;
@@ -1105,7 +1084,6 @@
       inflight.clear(); inprog.clear();
     }
     function maybeFailFast(i) {
-      // If the segment at the write head failed permanently, we can fail fast
       if (status[i] === -1 && i === writePtr && !ended) {
         abortAll();
         finalize(false);
@@ -1189,10 +1167,8 @@
     function pump() {
       if (paused || canceled || ended) return;
       while (active < CFG.CONC) {
-        // pick retry first (no full scan)
         let idx = takeRetry();
         if (idx === -1) {
-          // pick next fresh
           while (nextIdx < total && status[nextIdx] !== 0) nextIdx++;
           if (nextIdx < total) idx = nextIdx++;
         }
@@ -1202,7 +1178,6 @@
     }
     function check() {
       if (ended) return;
-      // Early fail if the write head segment has already failed
       if (status[writePtr] === -1) {
         abortAll();
         return finalize(false);
@@ -1213,7 +1188,6 @@
     async function finalize(ok) {
       if (ended) return; ended = true;
       try {
-        // flush any remaining in order up to first gap
         while (buffers.has(writePtr)) {
           const c = buffers.get(writePtr); buffers.delete(writePtr);
           if (useFS) await writer.write(c);
