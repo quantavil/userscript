@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         StreamGrabber
 // @namespace    https://github.com/streamgrabber-lite
-// @version      1.2.0
+// @version      1.2.1
 // @description  Lightweight downloader for HLS (.m3u8 via m3u8-parser), video blobs, and direct videos. Mobile + Desktop. Pause/Resume. AES-128. fMP4. Minimal UI.
 // @match        *://*/*
 // @run-at       document-start
@@ -40,7 +40,7 @@
     m3u8: new Set(),
     vid: new Set(),
   };
-  const BLOBS = new Map(); // blobUrl -> { blob, type, size, kind, ts }
+  const BLOBS = new Map(); // blobUrl -> { blob, type, size, kind, ts, revoked? }
   const textCache = new Map(); // url -> text (LRU-ish via bump)
   const inflightText = new Map(); // url -> Promise<string>
   const headCache = new Map(); // url -> { length, type } (LRU-ish via bump)
@@ -127,10 +127,19 @@
       }
     }
   }
-  // passive cache trim
+  // passive cache trim (+prune revoked blobs)
   function trimCaches() {
     while (DB.m3u8.size > CACHE.DB_MAX) DB.m3u8.delete(DB.m3u8.values().next().value);
     while (DB.vid.size > CACHE.DB_MAX) DB.vid.delete(DB.vid.values().next().value);
+    const now = Date.now();
+    for (const [href, info] of BLOBS) {
+      const idle = now - (info.ts || 0);
+      if (info.revoked && idle > CACHE.CLEAR_MS) {
+        BLOBS.delete(href);
+        DB.m3u8.delete(href);
+        DB.vid.delete(href);
+      }
+    }
   }
   setInterval(trimCaches, CACHE.CLEAR_MS);
   window.addEventListener('pagehide', trimCaches);
@@ -386,6 +395,14 @@
     if (!FAB.parentNode) document.body.appendChild(FAB);
     if (!PANEL.parentNode) document.body.appendChild(PANEL);
     if (!PROG_WRAP.parentNode) document.body.appendChild(PROG_WRAP);
+    try {
+      const cardEl = PANEL.querySelector('.umdl-card');
+      cardEl?.setAttribute('role', 'dialog');
+      cardEl?.setAttribute('aria-modal', 'true');
+      const ttlEl = PANEL.querySelector('.ttl');
+      if (ttlEl) cardEl?.setAttribute('aria-labelledby', 'sg-ttl');
+      if (ttlEl) ttlEl.id = 'sg-ttl';
+    } catch { }
   }
   mountUI();
 
@@ -503,10 +520,8 @@
     const r = URL.revokeObjectURL;
     URL.revokeObjectURL = function (href) {
       try {
-        BLOBS.delete(href);
-        DB.m3u8.delete(href);
-        DB.vid.delete(href);
-        setBadge();
+        const info = BLOBS.get(href);
+        if (info) { info.revoked = true; info.ts = Date.now(); }
       } catch { }
       return r.call(this, href);
     };
@@ -587,6 +602,8 @@
     list.forEach((it) => {
       const div = document.createElement('div');
       div.className = 'umdl-item';
+      div.setAttribute('role', 'button');
+      div.tabIndex = 0;
       const shortUrl = it.url.length > 80 ? it.url.slice(0, 80) + '…' : it.url;
       div.innerHTML = `
       <div class="umdl-item-top">
@@ -602,9 +619,16 @@
         copyToClipboard(it.url, copyBtn);
       };
 
+      const act = () => resolvePicker(it);
       div.onclick = (e) => {
         if (!e.target.closest('.umdl-copy-btn')) {
-          resolvePicker(it);
+          act();
+        }
+      };
+      div.onkeydown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          act();
         }
       };
 
@@ -939,7 +963,36 @@
   }
 
   // =========================
-  // HLS download (via m3u8-parser, FileSaver)
+  // File writer (stream to disk when supported)
+  // =========================
+  async function makeFileWriter(suggestedName, mime) {
+    if (typeof window.showSaveFilePicker === 'function') {
+      try {
+        const handle = await window.showSaveFilePicker({ suggestedName });
+        const stream = await handle.createWritable();
+        return {
+          write: (chunk) => stream.write(chunk),
+          close: () => stream.close(),
+          abort: () => stream.abort?.()
+        };
+      } catch {
+        // fallthrough to in-memory
+      }
+    }
+    // Fallback: in-memory (FileSaver)
+    const chunks = [];
+    return {
+      write: (chunk) => { chunks.push(chunk); return Promise.resolve(); },
+      close: () => {
+        const blob = new Blob(chunks, { type: mime });
+        window.saveAs(blob, suggestedName);
+      },
+      abort: () => { chunks.length = 0; }
+    };
+  }
+
+  // =========================
+  // HLS download (via m3u8-parser, streamed writer)
   // =========================
   async function downloadHls(url, preVariant = null) {
     log('HLS:', url);
@@ -1008,11 +1061,19 @@
       return v;
     };
 
+    const mime = isFmp4 ? 'video/mp4' : 'video/mp2t';
+    const writer = await makeFileWriter(filename, mime);
+
     const card = makeProgress(filename, srcUrl, {
       stoppable: true,
       segs: total,
       onStop() { paused = !paused; if (!paused) pump(); return paused ? 'paused' : 'resumed'; },
-      onCancel() { canceled = true; abortAll(); card.remove(); }
+      onCancel() {
+        canceled = true;
+        abortAll();
+        try { writer.abort?.(); } catch { }
+        card.remove();
+      }
     });
 
     // caches for keys/maps
@@ -1070,6 +1131,19 @@
         return new Uint8Array(await getBin(s.map.uri, headers));
       });
     }
+
+    let writing = Promise.resolve();
+    function queueFlush() {
+      writing = writing.then(async () => {
+        while (buffers.has(writePtr)) {
+          const chunk = buffers.get(writePtr);
+          buffers.delete(writePtr);
+          await writer.write(chunk);
+          writePtr++;
+        }
+      });
+    }
+
     async function handleSeg(i) {
       const s = segs[i];
       status[i] = 1; active++;
@@ -1106,13 +1180,7 @@
         inflight.delete(i);
         status[i] = 2; active--; done++; byteDone += u8.length; avgLen = byteDone / Math.max(1, done);
         draw();
-        // flush ordered
-        while (buffers.has(writePtr)) {
-          const chunk = buffers.get(writePtr); buffers.delete(writePtr);
-          // collect chunks (to save at the end)
-          chunks.push(chunk);
-          writePtr++;
-        }
+        queueFlush();
       } catch (e) {
         inprog.delete(i);
         inflight.delete(i);
@@ -1123,9 +1191,6 @@
         check();
       }
     }
-
-    // collected chunks for final Blob
-    const chunks = [];
 
     function pump() {
       if (paused || canceled || ended) return;
@@ -1151,16 +1216,13 @@
     async function finalize(ok) {
       if (ended) return; ended = true;
       try {
-        while (buffers.has(writePtr)) {
-          const c = buffers.get(writePtr); buffers.delete(writePtr);
-          chunks.push(c);
-          writePtr++;
-        }
+        queueFlush();
+        await writing;
         if (ok) {
-          const blob = new Blob(chunks, { type: isFmp4 ? 'video/mp4' : 'video/mp2t' });
-          window.saveAs(blob, filename);
+          await writer.close();
           card.update(100, ''); card.done(true);
         } else {
+          try { await writer.abort?.(); } catch { }
           card.done(false);
         }
       } catch (e) {
