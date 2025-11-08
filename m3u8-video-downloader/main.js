@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         StreamGrabber
 // @namespace    https://github.com/streamgrabber-lite
-// @version      1.1.0
+// @version      1.2.0
 // @description  Lightweight downloader for HLS (.m3u8 via m3u8-parser), video blobs, and direct videos. Mobile + Desktop. Pause/Resume. AES-128. fMP4. Minimal UI.
 // @match        *://*/*
 // @run-at       document-start
@@ -10,6 +10,7 @@
 // @connect      *
 // @license      MIT
 // @require      https://cdnjs.cloudflare.com/ajax/libs/m3u8-parser/7.2.0/m3u8-parser.min.js
+// @require      https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js
 // ==/UserScript==
 (() => {
   'use strict';
@@ -432,7 +433,6 @@
       }, 1500);
       return true;
     } catch (e) {
-      // Fallback for older browsers
       const textarea = document.createElement('textarea');
       textarea.value = text;
       textarea.style.position = 'fixed';
@@ -895,57 +895,26 @@
   }
 
   // =========================
-  // Save blob helper
-  // =========================
-  async function saveBlob(blob, filename, extHint) {
-    // Try File System Access API first (if available)
-    try {
-      if ('showSaveFilePicker' in window) {
-        const ext = (extHint || '').replace(/^\./, '') || (blob.type.split('/').pop() || 'bin');
-        const h = await window.showSaveFilePicker({
-          suggestedName: filename,
-          types: [{ description: 'Media', accept: { [blob.type || 'video/*']: [`.${ext}`] } }]
-        });
-        const w = await h.createWritable();
-        await w.write(blob);
-        await w.close();
-        return { ok: true, via: 'fs' };
-      }
-    } catch (e) {
-      if (e?.name === 'AbortError') {
-        return { ok: false, abort: true, via: 'fs' };
-      }
-    }
-    // Fallback: object URL + <a download>
-    try {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
-      return { ok: true, via: 'url' };
-    } catch (e2) {
-      return { ok: false, via: 'url', error: e2 };
-    }
-  }
-
-  // =========================
-  // Direct video download
+  // Direct video download (FileSaver)
   // =========================
   async function downloadDirect(url) {
     log('Direct:', url);
     const info = BLOBS.get(url);
     const ext = guessExt(url, info?.type);
     const fn = `${cleanName(document.title)}.${ext}`;
+
     // blob case
     if (info?.blob) {
       const card = makeProgress(fn, url, { onCancel: () => card.remove() });
       try {
-        const res = await saveBlob(info.blob, fn, ext);
-        if (!res.ok) throw new Error(res.abort ? 'Save canceled' : 'Save failed');
+        window.saveAs(info.blob, fn);
         card.update(100, ''); card.done(true);
-      } catch (e) { card.done(false, e?.message); }
+      } catch (e) {
+        card.done(false, e?.message);
+      }
       return;
     }
+
     let total = 0, req = null, cancelled = false;
     const card = makeProgress(fn, url, { onCancel: () => { cancelled = true; try { req?.abort?.(); } catch { }; card.remove(); } });
     try {
@@ -962,14 +931,15 @@
       });
       const buf = await req; if (cancelled) return;
       const blob = new Blob([buf], { type: meta.type || `video/${ext}` });
-      const res = await saveBlob(blob, fn, ext);
-      if (!res.ok) throw new Error(res.abort ? 'Save canceled' : 'Save failed');
+      window.saveAs(blob, fn);
       card.update(100, ''); card.done(true);
-    } catch (e) { card.done(false, e?.message || 'Failed'); }
+    } catch (e) {
+      card.done(false, e?.message || 'Failed');
+    }
   }
 
   // =========================
-  // HLS download (via m3u8-parser)
+  // HLS download (via m3u8-parser, FileSaver)
   // =========================
   async function downloadHls(url, preVariant = null) {
     log('HLS:', url);
@@ -1045,17 +1015,6 @@
       onCancel() { canceled = true; abortAll(); card.remove(); }
     });
 
-    // file writer
-    let useFS = false, writer = null, chunks = [];
-    if ('showSaveFilePicker' in window) {
-      try {
-        const h = await window.showSaveFilePicker({
-          suggestedName: filename,
-          types: [{ description: `${ext.toUpperCase()} Video`, accept: { 'video/*': [`.${ext}`] } }]
-        });
-        writer = await h.createWritable(); useFS = true;
-      } catch { }
-    }
     // caches for keys/maps
     const keyCache = new Map(), keyInflight = new Map();
     const mapCache = new Map(), mapInflight = new Map();
@@ -1150,8 +1109,8 @@
         // flush ordered
         while (buffers.has(writePtr)) {
           const chunk = buffers.get(writePtr); buffers.delete(writePtr);
-          if (useFS) await writer.write(chunk);
-          else chunks.push(chunk);
+          // collect chunks (to save at the end)
+          chunks.push(chunk);
           writePtr++;
         }
       } catch (e) {
@@ -1164,6 +1123,10 @@
         check();
       }
     }
+
+    // collected chunks for final Blob
+    const chunks = [];
+
     function pump() {
       if (paused || canceled || ended) return;
       while (active < CFG.CONC) {
@@ -1190,25 +1153,18 @@
       try {
         while (buffers.has(writePtr)) {
           const c = buffers.get(writePtr); buffers.delete(writePtr);
-          if (useFS) await writer.write(c);
-          else chunks.push(c);
+          chunks.push(c);
           writePtr++;
         }
         if (ok) {
-          if (useFS) { await writer.close(); }
-          else {
-            const blob = new Blob(chunks, { type: isFmp4 ? 'video/mp4' : 'video/mp2t' });
-            const res = await saveBlob(blob, filename, ext);
-            if (!res.ok) throw new Error(res.abort ? 'Save canceled' : 'Save failed');
-          }
+          const blob = new Blob(chunks, { type: isFmp4 ? 'video/mp4' : 'video/mp2t' });
+          window.saveAs(blob, filename);
           card.update(100, ''); card.done(true);
         } else {
-          if (useFS) { try { await writer.truncate(0); } catch { } try { await writer.close(); } catch { } }
           card.done(false);
         }
       } catch (e) {
         err('finalize', e);
-        try { if (useFS) await writer.close(); } catch { }
         card.done(false);
       } finally {
         for (const [, r] of inflight) { try { r.abort?.(); } catch { } }
