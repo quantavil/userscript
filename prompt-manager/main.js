@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         My Prompt
 // @namespace    https://github.com/quantavil
-// @version      2.1
+// @version      2.2
 // @description  Save and use your prompts quickly and easily with one click! Compatible with ChatGPT, DeepSeek, Gemini, Claude, Kimi, Qwen, LMArena, Z.ai, Google AI Studio, and Grok.
 // @author       quantavil
 // @homepage     https://github.com/0H4S
@@ -55,6 +55,29 @@
     enablePlaceholders: 'Enable interactive placeholders: [...]',
     fileName: 'My_Prompts.json'
   };
+
+  // =========================
+  // SVG Icons (constants)
+  // =========================
+  const ICON_MENU = `
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  `;
+  const ICON_EDIT = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M14.06 6.19l3.75 3.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+  const ICON_DELETE = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M3 6h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  `;
 
   const PROMPT_STORAGE_KEY = 'Prompts';
 
@@ -212,9 +235,34 @@
       .prompt-title { font-size: 14px; font-weight: 500; flex: 1; padding-right: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mp-text-secondary); }
       .prompt-item-row:hover .prompt-title { color: var(--mp-text-primary); }
       .prompt-actions { display: flex; align-items: center; gap: 4px; }
-      .action-btn { background: none; border: none; cursor: pointer; font-size: 13px; font-weight: 500; padding: 4px 8px; border-radius: var(--mp-border-radius-sm); }
-      .action-btn.edit { color: var(--mp-accent-yellow); } .action-btn.edit:hover { background: var(--mp-accent-yellow); color: var(--mp-bg-primary); }
-      .action-btn.delete{ color: var(--mp-accent-red); } .action-btn.delete:hover{ background: var(--mp-accent-red); color: var(--mp-bg-primary); }
+
+      .action-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        width: 28px;
+        height: 28px;
+        border-radius: var(--mp-border-radius-sm);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--mp-text-secondary);
+        transition: background-color .15s, color .15s;
+      }
+      .action-btn svg { width: 16px; height: 16px; }
+
+      .action-btn.edit { color: var(--mp-accent-yellow); }
+      .action-btn.edit:hover {
+        background: color-mix(in srgb, var(--mp-accent-yellow) 18%, transparent);
+        color: var(--mp-bg-primary);
+      }
+      .action-btn.delete { color: var(--mp-accent-red); }
+      .action-btn.delete:hover {
+        background: color-mix(in srgb, var(--mp-accent-red) 18%, transparent);
+        color: var(--mp-bg-primary);
+      }
+
       .menu-section, .menu-footer { border-top: 1px solid var(--mp-border-primary); padding: 4px; }
       .menu-button { display: flex; align-items: center; justify-content: center; padding: 8px 12px; cursor: pointer; color: var(--mp-text-secondary); border-radius: var(--mp-border-radius-md); font-size: 14px; font-weight: 500; transition: background-color .15s ease; }
       .menu-button:hover { background: var(--mp-bg-tertiary); color: var(--mp-text-primary); }
@@ -308,7 +356,7 @@
     setHTML(btnSettings, `
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
         <path d="M11.983 13.893a1.893 1.893 0 1 0 0-3.786 1.893 1.893 0 0 0 0 3.786Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M20.5 12a8.5 8.5 0 0 1-.09 1.227l1.498 1.164a.75.75 0 0 1 .18.969l-1.42 2.46a.75.75 0 0 1-.902.344l-1.764-.588a8.46 8.46 0 0 1-1.06.616l-.267 1.844a.75.75 0 0 1-.744.636h-2.84a.75.75 0 0 1-.744-.636l-.267-1.844a8.46 8.46 0 0 1-1.06-.616l-1.764.588a.75.75 0 0 1-.902-.345l-1.42-2.46a.75.75 0 0 1 .18-.968l1.498-1.164A8.5 8.5 0 0 1 3.5 12c0-.413.031-.818.09-1.217L2.092 9.619a.75.75 0 0 1-.18-.968l1.42-2.46a.75.75 0 0 1 .902-.345l1.764.588c.333-.227.691-.43 1.06-.616l.267-1.844A.75.75 0 0 1 8.067 3h2.84a.75.75 0 0 1 .744.636l.267 1.844c.369.186.727.389 1.06.616l1.764-.588a.75.75 0 0 1 .902.345l1.42 2.46a.75.75 0 0 1-.18.968l-1.498 1.164c.06.399.09.804.09 1.217Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M20.5 12a8.5 8.5 0 0 1-.09 1.227l1.498 1.164a.75.75 0 0 1 .18.969l-1.42 2.46a.75.75 0 0 1-.902.344l-1.764-.588a8.46 8.46 0 0 1-1.06.616l-.267 1.844a.75.75 0 0 1-.744.636h-2.84a.75.75 0 0 1-.744-.636l-.267-1.844a8.46 8.46 0 0 1-1.06-.616l-1.764.588a.75.75 0 0 1-.902.345l-1.42-2.46a.75.75 0 0 1 .18-.968l1.498-1.164A8.5 8.5 0 0 1 3.5 12c0-.413.031-.818.09-1.217L2.092 9.619a.75.75 0 0 1-.18-.968l1.42-2.46a.75.75 0 0 1 .902-.345l1.764.588c.333-.227.691-.43 1.06-.616l.267-1.844A.75.75 0 0 1 8.067 3h2.84a.75.75 0 0 1 .744.636l.267 1.844c.369.186.727.389 1.06.616l1.764-.588a.75.75 0 0 1 .902.345l1.42 2.46a.75.75 0 0 1-.18.968l-1.498 1.164c.06.399.09.804.09 1.217Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     `);
 
@@ -486,19 +534,7 @@
     menu.style.left = `${Math.max(m, Math.min(left, vw - menuWidth - m))}px`;
   }
 
-  // Single SVG icon generator
-  function createIconSVG({ size = 20, className = '' } = {}) {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', String(size));
-    svg.setAttribute('height', String(size));
-    svg.setAttribute('viewBox', '0 0 20 20');
-    svg.setAttribute('fill', 'currentColor');
-    if (className) svg.setAttribute('class', className);
-    setHTML(svg, `<path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"/>`);
-    return svg;
-  }
-
-  // Abstracted button factory
+  // Abstracted button factory (uses SVG constants)
   function createButton({
     tag = 'button',
     className = '',
@@ -509,7 +545,8 @@
     iconSize = 20,
     attrs = {},
     style = {},
-    title = STR.prompts
+    title = STR.prompts,
+    icon = ICON_MENU,
   } = {}) {
     const el = document.createElement(tag);
     if (tag === 'button') el.type = 'button';
@@ -518,7 +555,6 @@
     if (className) el.className = className;
     for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
 
-    // Base inline style (non-invasive)
     Object.assign(el.style, {
       display: 'inline-flex',
       alignItems: 'center',
@@ -528,14 +564,20 @@
       ...style,
     });
 
-    const icon = createIconSVG({ size: iconSize, className: iconClass });
-    el.appendChild(icon);
+    setHTML(el, icon || '');
+    const svg = el.querySelector('svg');
+    if (svg) {
+      if (iconClass) svg.classList.add(iconClass);
+      if (iconSize) {
+        svg.setAttribute('width', String(iconSize));
+        svg.setAttribute('height', String(iconSize));
+      }
+    }
 
     if (label) {
       const span = document.createElement('span');
       if (labelClass) span.className = labelClass;
       span.textContent = label;
-      // small spacing if not handled by className
       if (!className.includes('gap') && !labelClass) span.style.marginLeft = '6px';
       el.appendChild(span);
     }
@@ -625,13 +667,17 @@
       actionsDiv.className = 'prompt-actions';
 
       const btnE = document.createElement('button');
-      btnE.textContent = STR.edit;
       btnE.className = 'action-btn edit';
+      btnE.setAttribute('aria-label', STR.edit);
+      btnE.setAttribute('title', STR.edit);
+      setHTML(btnE, ICON_EDIT);
       btnE.onclick = (e) => { e.stopPropagation(); openPromptModal(p, index); };
 
       const btnD = document.createElement('button');
-      btnD.textContent = STR.delete;
       btnD.className = 'action-btn delete';
+      btnD.setAttribute('aria-label', STR.delete);
+      btnD.setAttribute('title', STR.delete);
+      setHTML(btnD, ICON_DELETE);
       btnD.onclick = (e) => {
         e.stopPropagation();
         if (confirm(STR.confirmDelete.replace('{title}', p.title))) removeItem(index).then(refreshMenu);
