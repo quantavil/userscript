@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         My Prompt
 // @namespace    https://github.com/quantavil
-// @version      2.0
+// @version      2.1
 // @description  Save and use your prompts quickly and easily with one click! Compatible with ChatGPT, DeepSeek, Gemini, Claude, Kimi, Qwen, LMArena, Z.ai, Google AI Studio, and Grok.
 // @author       quantavil
 // @homepage     https://github.com/0H4S
@@ -17,11 +17,8 @@
 // @match        https://chat.z.ai/*
 // @match        https://claude.ai/*
 // @match        https://grok.com/*
-// @require      https://update.greasyfork.org/scripts/549920.js
 // @grant        GM_getValue
 // @grant        GM_setValue
-// @grant        GM_xmlhttpRequest
-// @grant        GM_registerMenuCommand
 // @run-at       document-end
 // @noframes
 // ==/UserScript==
@@ -59,23 +56,25 @@
     fileName: 'My_Prompts.json'
   };
 
-  const SCRIPT_CONFIG = {
-    notificationsUrl: 'https://gist.github.com/0H4S/b2f9a9f92259deadc35bdccb11cd9a75',
-    scriptVersion: '2.0',
-  };
-  const notifier = new ScriptNotifier(SCRIPT_CONFIG);
-  notifier.run();
-
   const PROMPT_STORAGE_KEY = 'Prompts';
 
-  let currentPlatform = null;     // { name, editorSelector, insertButton() }
-  let currentButtonEl = null;     // The element inserted (wrapper or button) used for presence checks
-  let clickableButton = null;     // The actual clickable button element
-  let currentMenu = null;
-  let currentModal = null;
-  let currentPlaceholderModal = null;
-  let pageObserver = null;
-  let isInitializing = false;
+  // Consolidated state object
+  const state = {
+    platform: null, // { name, editorSelector, mount(), getEditor? }
+    elements: {
+      wrapper: null,            // inserted wrapper or button used for presence checks
+      button: null,             // the actual clickable button
+      menu: null,
+      modal: null,
+      placeholderModal: null,
+    },
+    observers: {
+      page: null,
+    },
+    flags: {
+      initializing: false,
+    },
+  };
 
   const policy = window.trustedTypes
     ? window.trustedTypes.createPolicy('MyPromptPolicy', { createHTML: s => s })
@@ -241,21 +240,12 @@
       .form-checkbox-group label { font-size: 13px; font-weight: 500; color: var(--mp-text-secondary); cursor: pointer; margin-bottom: 0; }
       .form-checkbox-group input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; accent-color: var(--mp-accent-primary); }
 
-      .mp-tooltip {
-        position: fixed; z-index: 2147483647; border-radius: var(--mp-border-radius-sm); padding: 6px 12px; pointer-events: none; white-space: nowrap;
-        font-family: var(--mp-font-family-base); font-size: 14px; font-weight: 500;
-        background: var(--mp-text-primary); color: var(--mp-bg-primary); border: 1px solid var(--mp-bg-tertiary);
-        opacity: 0; transform: scale(0.95); transition: opacity 150ms cubic-bezier(0.4,0,0.2,1), transform 150ms cubic-bezier(0.4,0,0.2,1);
-      }
-      .mp-tooltip.visible { opacity: 1; transform: scale(1); }
-
       #__ap_placeholders_container { max-height: 350px; overflow-y: auto; padding-right: 12px; margin-right: -12px; scrollbar-width: thin; scrollbar-color: var(--mp-border-secondary) var(--mp-bg-tertiary); }
       #__ap_placeholders_container::-webkit-scrollbar { width: 10px; height: 10px; }
       #__ap_placeholders_container::-webkit-scrollbar-track { background: var(--mp-bg-tertiary); border-radius: 10px; }
       #__ap_placeholders_container::-webkit-scrollbar-thumb { background: var(--mp-border-secondary); border-radius: 10px; border: 2px solid var(--mp-bg-primary); }
       #__ap_placeholders_container::-webkit-scrollbar-thumb:hover { background: var(--mp-text-tertiary); }
 
-      /* New header and settings panel */
       .menu-header {
         display: flex; align-items: center; justify-content: space-between;
         padding: 8px; border-bottom: 1px solid var(--mp-border-primary);
@@ -270,41 +260,14 @@
       }
       .icon-btn:hover { background: var(--mp-bg-tertiary); color: var(--mp-text-primary); }
       .settings-panel { padding: 4px; border-top: 1px solid var(--mp-border-primary); }
+
+      /* Small hover fix for Google AI Studio */
+      button[data-testid="composer-button-prompts"]:hover { background-color: rgba(60,64,67,0.08) !important; }
+      @media (prefers-color-scheme: dark) {
+        button[data-testid="composer-button-prompts"]:hover { background-color: rgba(232,234,237,0.08) !important; }
+      }
     `);
     document.head.appendChild(style);
-  }
-
-  // =========================
-  // Tooltip
-  // =========================
-  function createTooltip(button, text, position = 'top') {
-    let tt = null;
-    const show = () => {
-      if (tt) return;
-      tt = document.createElement('div');
-      tt.className = 'mp-tooltip';
-      tt.textContent = text;
-      document.body.appendChild(tt);
-      const b = button.getBoundingClientRect();
-      const r = tt.getBoundingClientRect();
-      const margin = 8;
-      let top = position === 'bottom' ? b.bottom + margin : b.top - r.height - margin;
-      if (top < 0) top = b.bottom + margin;
-      let left = b.left + b.width / 2 - r.width / 2;
-      left = Math.max(margin, Math.min(left, window.innerWidth - r.width - margin));
-      tt.style.left = `${left}px`;
-      tt.style.top = `${top}px`;
-      requestAnimationFrame(() => tt.classList.add('visible'));
-    };
-    const hide = () => {
-      if (!tt) return;
-      const el = tt; tt = null;
-      el.classList.remove('visible');
-      setTimeout(() => el.remove(), 150);
-    };
-    button.addEventListener('mouseenter', show);
-    button.addEventListener('mouseleave', hide);
-    button.addEventListener('mousedown', hide);
   }
 
   // =========================
@@ -330,6 +293,7 @@
     btnAdd.className = 'icon-btn';
     btnAdd.id = 'mp-btn-add';
     btnAdd.setAttribute('aria-label', STR.addPrompt);
+    btnAdd.setAttribute('title', STR.addPrompt);
     setHTML(btnAdd, `
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
         <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -340,6 +304,7 @@
     btnSettings.className = 'icon-btn';
     btnSettings.id = 'mp-btn-settings';
     btnSettings.setAttribute('aria-label', 'Settings');
+    btnSettings.setAttribute('title', 'Settings');
     setHTML(btnSettings, `
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
         <path d="M11.983 13.893a1.893 1.893 0 1 0 0-3.786 1.893 1.893 0 0 0 0 3.786Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -448,23 +413,23 @@
   }
 
   function openPromptModal(item = null, index = -1) {
-    if (!currentModal) return;
+    if (!state.elements.modal) return;
     const isEditing = !!item;
-    currentModal.dataset.index = index;
-    currentModal.querySelector('.modal-title').textContent = isEditing ? STR.editPrompt : STR.newPrompt;
+    state.elements.modal.dataset.index = index;
+    state.elements.modal.querySelector('.modal-title').textContent = isEditing ? STR.editPrompt : STR.newPrompt;
     document.getElementById('__ap_title').value = item?.title || '';
     document.getElementById('__ap_text').value = item?.text || '';
     document.getElementById('__ap_use_placeholders').checked = item?.usePlaceholders || false;
-    showModal(currentModal);
+    showModal(state.elements.modal);
     setTimeout(() => document.getElementById('__ap_title').focus(), 100);
   }
 
   function openPlaceholderModal(item, index, placeholders) {
-    if (!currentPlaceholderModal) return;
+    if (!state.elements.placeholderModal) return;
     const container = document.getElementById('__ap_placeholders_container');
     setHTML(container, '');
-    currentPlaceholderModal.dataset.prompt = JSON.stringify(item);
-    currentPlaceholderModal.dataset.index = index;
+    state.elements.placeholderModal.dataset.prompt = JSON.stringify(item);
+    state.elements.placeholderModal.dataset.index = index;
 
     const unique = [...new Map(placeholders.map(p => [p[1], p])).values()];
     unique.forEach(match => {
@@ -490,7 +455,7 @@
       container.appendChild(group);
     });
 
-    showModal(currentPlaceholderModal);
+    showModal(state.elements.placeholderModal);
     setTimeout(() => container.querySelector('textarea')?.focus(), 100);
   }
 
@@ -498,7 +463,7 @@
   // Helpers
   // =========================
   function closeMenu() {
-    if (currentMenu?.classList.contains('visible')) currentMenu.classList.remove('visible');
+    if (state.elements.menu?.classList.contains('visible')) state.elements.menu.classList.remove('visible');
   }
 
   function positionMenu(menu, buttonEl) {
@@ -521,31 +486,60 @@
     menu.style.left = `${Math.max(m, Math.min(left, vw - menuWidth - m))}px`;
   }
 
-  function createIconButtonBase() {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.setAttribute('data-testid', 'composer-button-prompts');
-    setHTML(btn, `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"/></svg>`);
-    return btn;
+  // Single SVG icon generator
+  function createIconSVG({ size = 20, className = '' } = {}) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('viewBox', '0 0 20 20');
+    svg.setAttribute('fill', 'currentColor');
+    if (className) svg.setAttribute('class', className);
+    setHTML(svg, `<path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"/>`);
+    return svg;
   }
 
-  function createMenuButtonWrapper(withTooltip = true, position = 'top') {
-    const btn = createIconButtonBase();
-    btn.style.background = 'transparent';
-    btn.style.border = 'none';
-    btn.style.boxShadow = 'none';
-    btn.style.borderRadius = '50%';
-    btn.style.width = '32px';
-    btn.style.height = '32px';
-    btn.style.padding = '0';
-    btn.style.margin = '0';
-    btn.style.cursor = 'pointer';
-    btn.style.display = 'inline-flex';
-    btn.style.alignItems = 'center';
-    btn.style.justifyContent = 'center';
-    btn.style.transition = 'background-color 150ms ease-in-out';
-    if (withTooltip) createTooltip(btn, STR.prompts, position);
-    return btn;
+  // Abstracted button factory
+  function createButton({
+    tag = 'button',
+    className = '',
+    label = null,
+    labelClass = '',
+    iconClass = '',
+    size = 32,
+    iconSize = 20,
+    attrs = {},
+    style = {},
+    title = STR.prompts
+  } = {}) {
+    const el = document.createElement(tag);
+    if (tag === 'button') el.type = 'button';
+    el.setAttribute('data-testid', 'composer-button-prompts');
+    el.setAttribute('title', title);
+    if (className) el.className = className;
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+
+    // Base inline style (non-invasive)
+    Object.assign(el.style, {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      cursor: 'pointer',
+      ...(size ? { width: `${size}px`, height: `${size}px` } : {}),
+      ...style,
+    });
+
+    const icon = createIconSVG({ size: iconSize, className: iconClass });
+    el.appendChild(icon);
+
+    if (label) {
+      const span = document.createElement('span');
+      if (labelClass) span.className = labelClass;
+      span.textContent = label;
+      // small spacing if not handled by className
+      if (!className.includes('gap') && !labelClass) span.style.marginLeft = '6px';
+      el.appendChild(span);
+    }
+    return el;
   }
 
   function editorIsContentEditable(editor) {
@@ -591,12 +585,12 @@
   // Menu Renderer
   // =========================
   async function refreshMenu() {
-    if (!currentMenu) return;
-    const list = currentMenu.querySelector('#mp-list') || (() => {
+    if (!state.elements.menu) return;
+    const list = state.elements.menu.querySelector('#mp-list') || (() => {
       const l = document.createElement('div');
       l.className = 'prompt-menu-list';
       l.id = 'mp-list';
-      currentMenu.appendChild(l);
+      state.elements.menu.appendChild(l);
       return l;
     })();
 
@@ -700,10 +694,10 @@
   async function insertPrompt(promptItem, index) {
     // Get editor
     let editor = null;
-    if (currentPlatform?.getEditor) editor = currentPlatform.getEditor();
-    if (!editor && currentPlatform?.editorSelector) editor = document.querySelector(currentPlatform.editorSelector);
+    if (state.platform?.getEditor) editor = state.platform.getEditor();
+    if (!editor && state.platform?.editorSelector) editor = document.querySelector(state.platform.editorSelector);
 
-    if (!editor) { alert(STR.editorNotFound.replace('{platform}', currentPlatform?.name || 'this platform')); return; }
+    if (!editor) { alert(STR.editorNotFound.replace('{platform}', state.platform?.name || 'this platform')); return; }
 
     editor.focus();
     setTimeout(() => {
@@ -712,21 +706,17 @@
       const isCE = editorIsContentEditable(editor);
 
       if (isCE) {
-        // Standard contenteditable handling (ProseMirror/Tiptap/Gemini/Claude/Kimi/Grok)
         setContentEditableText(editor, promptItem.text);
-      } else if (isFirefox && currentPlatform?.name === 'chatgpt') {
-        // Firefox + ChatGPT contenteditable used to require special handling; ChatGPT now uses textarea
+      } else if (isFirefox && state.platform?.name === 'chatgpt') {
         editor.value = promptItem.text;
         editor.dispatchEvent(new Event('input', { bubbles: true }));
       } else {
-        // Try paste event (covers most)
         try {
           const dt = new DataTransfer();
           dt.setData('text/plain', promptItem.text);
           editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
         } catch (_) { /* fallback below */ }
 
-        // Fallback for textarea-like editors
         if (typeof editor.value === 'string' && editor.value !== promptItem.text) {
           const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
           setter ? setter.call(editor, promptItem.text) : (editor.value = promptItem.text);
@@ -746,126 +736,17 @@
   }
 
   // =========================
-  // Platform Integrations
+  // Platform Integrations (data-driven)
   // =========================
-  function createChatGPTButton() {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.setAttribute('data-testid', 'composer-button-prompts');
-    btn.className = 'composer-btn';
-    setHTML(btn, `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"/></svg>`);
-    createTooltip(btn, STR.prompts);
-    return btn;
-  }
-  function createDeepSeekButton() {
-    const btn = document.createElement('button');
-    btn.setAttribute('role', 'button');
-    btn.setAttribute('aria-disabled', 'false');
-    btn.setAttribute('tabindex', '0');
-    btn.style.transform = 'translateZ(0px)';
-    btn.setAttribute('data-testid', 'composer-button-prompts');
-    setHTML(btn, `
-      <div style="font-size:14px;width:14px;height:14px;color:var(--dsw-alias-label-primary);margin-right:0;">
-        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"></path></svg>
-      </div>
-      <span><span>${STR.prompt}</span></span>
-    `);
-    return btn;
-  }
-  function createGoogleStudioButton() {
-    const styleId = 'my-prompt-gstudio-hover-fix';
-    if (!document.getElementById(styleId)) {
-      const s = document.createElement('style');
-      s.id = styleId;
-      setHTML(s, `
-        button[data-testid="composer-button-prompts"]:hover { background-color: rgba(60,64,67,0.08) !important; }
-        @media (prefers-color-scheme: dark) {
-          button[data-testid="composer-button-prompts"]:hover { background-color: rgba(232,234,237,0.08) !important; }
-        }
-      `);
-      document.head.appendChild(s);
-    }
-    const btn = createMenuButtonWrapper(true);
-    btn.style.width = '48px';
-    btn.style.height = '48px';
-    return btn;
-  }
-  function createQwenButton() {
-    const btn = document.createElement('button');
-    btn.className = 'chat-input-feature-btn';
-    btn.setAttribute('data-testid', 'composer-button-prompts');
-    setHTML(btn, `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" class="chat-input-feature-btn-icon" style="font-size:16px;"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"/></svg><span class="chat-input-feature-btn-text">${STR.prompt}</span>`);
-    return btn;
-  }
-  function createZaiButton() {
-    const wrap = document.createElement('div');
-    setHTML(wrap, `<button type="button" class="px-2 @xl:px-3 py-1.5 flex gap-1.5 items-center text-sm rounded-lg border transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden bg-transparent dark:text-gray-300 border-[#E5E5E5] dark:border-[#3C3E3F] hover:bg-black/5 dark:hover:bg-white/5"><svg class="size-4" stroke-width="2" viewBox="0 0 24 24" fill="none"><path d="M9 17L3 12L9 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M15 17L21 12L15 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="hidden @sm:block whitespace-nowrap overflow-hidden text-ellipsis translate-y-[0.5px] mr-0.5">${STR.prompt}</span></button>`);
-    const btn = wrap.firstElementChild;
-    btn.setAttribute('data-testid', 'composer-button-prompts');
-    return btn;
-  }
-  function createGeminiButton() {
-    const btn = document.createElement('button');
-    btn.setAttribute('data-testid', 'composer-button-prompts');
-    btn.className = 'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-primary mat-mdc-tooltip-trigger';
-    setHTML(btn, `<span class="mat-mdc-button-persistent-ripple mdc-icon-button__ripple"></span><span class="mat-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg style="width:24px;height:24px;" viewBox="0 0 20 20" fill="currentColor"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"></path></svg></span><span class="mat-focus-indicator"></span><span class="mat-mdc-button-touch-target"></span><span class="mat-ripple mat-mdc-button-ripple"></span>`);
-    createTooltip(btn, STR.prompt, 'bottom');
-    return btn;
-  }
-  function createLmarenaButton() {
-    const btn = document.createElement('button');
-    btn.setAttribute('data-testid', 'composer-button-prompts');
-    btn.className = 'inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium focus-visible:outline-none focus-visible:ring-2 ring-offset-2 disabled:pointer-events-none disabled:opacity-50 text-interactive-active border border-border-faint bg-transparent hover:text-interactive-normal active:text-text-tertiary h-8 w-8 p-2 rounded-md active:scale-[0.96] transition-colors duration-150 ease-out hover:shadow-sm hover:bg-interactive-normal/10 hover:border-interactive-normal/10';
-    btn.type = 'button';
-    setHTML(btn, `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"/></svg>`);
-    createTooltip(btn, STR.prompt);
-    return btn;
-  }
-  function createKimiButton() {
-    const ref = document.querySelector('.deep-research-switch.normal');
-    if (!ref) return null;
-    const btn = ref.cloneNode(true);
-    btn.setAttribute('data-testid', 'composer-button-prompts');
-    const oldSvg = btn.querySelector('svg');
-    const textSpan = btn.querySelector('span');
-    const newSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    if (oldSvg) newSvg.setAttribute('class', oldSvg.getAttribute('class'));
-    newSvg.setAttribute('width', '1em');
-    newSvg.setAttribute('height', '1em');
-    newSvg.setAttribute('viewBox', '0 0 20 20');
-    newSvg.setAttribute('fill', 'currentColor');
-    setHTML(newSvg, `<path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"/>`);
-    if (oldSvg) oldSvg.replaceWith(newSvg);
-    if (textSpan) textSpan.textContent = STR.prompt;
-    return btn;
-  }
-  function createClaudeButton() {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'relative shrink-0';
-    setHTML(wrapper, `<button class="border-0.5 transition-all h-8 min-w-8 rounded-lg flex items-center px-[7.5px] group !pointer-events-auto !outline-offset-1 text-text-300 border-border-300 hover:text-text-200/90 hover:bg-bg-100 active:scale-[0.98]" data-testid="composer-button-prompts" type="button"><div class="flex flex-row items-center justify-center gap-1"><div style="transform:none;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"></path></svg></div></div></button>`);
-    const btn = wrapper.querySelector('button');
-    createTooltip(btn, STR.prompts);
-    return wrapper;
-  }
-
-  // New: Grok (grok.com) button
-  function createGrokButton() {
-    const btn = createMenuButtonWrapper(true);
-    btn.style.width = '40px';
-    btn.style.height = '40px';
-    return btn;
-  }
-
   const PLATFORMS = [
     {
       name: 'chatgpt',
       test: () => location.hostname.includes('chatgpt.com'),
       editorSelector: '#prompt-textarea',
-      insertButton: async () => {
+      mount: async () => {
         const container = await waitFor('div[class*="[grid-area:leading]"]');
-        container.style.display = 'flex';
-        container.style.alignItems = 'center';
-        const btn = createChatGPTButton();
+        Object.assign(container.style, { display: 'flex', alignItems: 'center' });
+        const btn = createButton({ className: 'composer-btn', size: 32 });
         container.appendChild(btn);
         return { wrapper: btn, clickable: btn };
       },
@@ -874,12 +755,17 @@
       name: 'deepseek',
       test: () => location.hostname.includes('deepseek.com'),
       editorSelector: 'textarea.ds-scroll-area',
-      insertButton: async () => {
+      mount: async () => {
         const container = (await waitFor('div:has(> input[type="file"])')).parentElement;
         const refButtons = Array.from(container.querySelectorAll('button:not([data-testid="composer-button-prompts"])'));
         const ref = refButtons[refButtons.length - 1];
-        const btn = createDeepSeekButton();
-        if (ref) btn.className = ref.className;
+        const btn = createButton({
+          className: ref ? ref.className : '',
+          label: STR.prompt,
+          attrs: { role: 'button', 'aria-disabled': 'false', tabindex: '0' },
+          size: 32,
+          iconSize: 20,
+        });
         ref?.insertAdjacentElement('afterend', btn);
         return { wrapper: container, clickable: btn };
       },
@@ -888,11 +774,11 @@
       name: 'googlestudio',
       test: () => location.hostname.includes('aistudio.google.com'),
       editorSelector: 'ms-autosize-textarea textarea',
-      insertButton: async () => {
+      mount: async () => {
         const insertionPoint = (await waitFor('ms-add-chunk-menu', 5000)).closest('.button-wrapper');
         const wrapper = document.createElement('div');
         wrapper.className = 'button-wrapper';
-        const btn = createGoogleStudioButton();
+        const btn = createButton({ size: 48 });
         wrapper.appendChild(btn);
         insertionPoint.parentElement?.appendChild(wrapper);
         const parent = insertionPoint.closest('.prompt-input-wrapper-container');
@@ -904,10 +790,16 @@
       name: 'qwen',
       test: () => location.hostname.includes('chat.qwen.ai'),
       editorSelector: 'textarea#chat-input',
-      insertButton: async () => {
+      mount: async () => {
         const ref = await waitFor('button.websearch_button', 5000);
         const container = ref.parentElement;
-        const btn = createQwenButton();
+        const btn = createButton({
+          className: 'chat-input-feature-btn',
+          label: STR.prompt,
+          labelClass: 'chat-input-feature-btn-text',
+          iconClass: 'chat-input-feature-btn-icon',
+          size: undefined, // let site CSS drive dimensions
+        });
         container.prepend(btn);
         // Keep it first
         const obs = new MutationObserver(() => {
@@ -922,10 +814,14 @@
       name: 'zai',
       test: () => location.hostname.includes('chat.z.ai'),
       editorSelector: 'textarea#chat-input',
-      insertButton: async () => {
+      mount: async () => {
         const referenceElement = await waitFor('button[data-autothink="true"]', 8000);
         const container = referenceElement.closest('div');
-        const btn = createZaiButton();
+        const btn = createButton({
+          className: 'px-2 @xl:px-3 py-1.5 flex gap-1.5 items-center text-sm rounded-lg border transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden bg-transparent dark:text-gray-300 border-[#E5E5E5] dark:border-[#3C3E3F] hover:bg-black/5 dark:hover:bg-white/5',
+          label: STR.prompt,
+          size: undefined,
+        });
         container.appendChild(btn);
         return { wrapper: container, clickable: btn };
       },
@@ -934,15 +830,17 @@
       name: 'gemini',
       test: () => location.hostname.includes('gemini.google.com'),
       editorSelector: 'div.ql-editor[contenteditable="true"]',
-      insertButton: async () => {
+      mount: async () => {
         const ref = await waitFor('uploader', 8000);
-        const btn = createGeminiButton();
+        const btn = createButton({
+          className: 'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-primary mat-mdc-tooltip-trigger',
+          size: 40,
+          iconSize: 24,
+        });
         ref.parentNode.insertBefore(btn, ref.nextSibling);
         const wrapper = ref.parentElement;
         if (wrapper) {
-          wrapper.style.display = 'flex';
-          wrapper.style.alignItems = 'center';
-          wrapper.style.gap = '3px';
+          Object.assign(wrapper.style, { display: 'flex', alignItems: 'center', gap: '3px' });
         }
         return { wrapper, clickable: btn };
       },
@@ -951,9 +849,12 @@
       name: 'lmarena',
       test: () => location.hostname.includes('lmarena.ai'),
       editorSelector: 'textarea[name="message"]',
-      insertButton: async () => {
+      mount: async () => {
         const container = await waitFor('div[data-sentry-component="SelectChatModality"]', 8000);
-        const btn = createLmarenaButton();
+        const btn = createButton({
+          className: 'inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium focus-visible:outline-none focus-visible:ring-2 ring-offset-2 disabled:pointer-events-none disabled:opacity-50 text-interactive-active border border-border-faint bg-transparent hover:text-interactive-normal active:text-text-tertiary h-8 w-8 p-2 rounded-md active:scale-[0.96] transition-colors duration-150 ease-out hover:shadow-sm hover:bg-interactive-normal/10 hover:border-interactive-normal/10',
+          size: undefined,
+        });
         container.appendChild(btn);
         return { wrapper: container, clickable: btn };
       },
@@ -962,10 +863,13 @@
       name: 'kimi',
       test: () => location.hostname.includes('kimi.com'),
       editorSelector: 'div.chat-input-editor[contenteditable="true"]',
-      insertButton: async () => {
+      mount: async () => {
         const container = await waitFor('div.left-area', 8000);
-        const btn = createKimiButton();
-        if (!btn) return { wrapper: container, clickable: null };
+        const btn = createButton({
+          className: 'deep-research-switch normal',
+          label: STR.prompt,
+          size: undefined,
+        });
         const ensure = () => { if (!container.contains(btn)) container.appendChild(btn); };
         ensure();
         const obs = new MutationObserver(ensure);
@@ -977,28 +881,29 @@
       name: 'claude',
       test: () => location.hostname.includes('claude.ai'),
       editorSelector: 'div.ProseMirror[contenteditable="true"]',
-      insertButton: async () => {
+      mount: async () => {
         const ref = await waitFor('button[data-testid="input-menu-plus"]', 8000);
-        const mount = ref.closest('div.relative.shrink-0');
-        const wrapper = createClaudeButton();
-        mount.parentNode.insertBefore(wrapper, mount.nextSibling);
-        const btn = wrapper.querySelector('button');
-        return { wrapper, clickable: btn };
+        const mountEl = ref.closest('div.relative.shrink-0');
+        const btn = createButton({
+          className: 'border-0.5 transition-all h-8 min-w-8 rounded-lg flex items-center px-[7.5px] group !pointer-events-auto !outline-offset-1 text-text-300 border-border-300 hover:text-text-200/90 hover:bg-bg-100 active:scale-[0.98]',
+          size: undefined,
+          iconSize: 16,
+        });
+        mountEl.parentNode.insertBefore(btn, mountEl.nextSibling);
+        return { wrapper: btn, clickable: btn };
       },
     },
     {
       name: 'grok',
       test: () => location.hostname.includes('grok.com'),
       editorSelector: 'div.tiptap.ProseMirror[contenteditable="true"]',
-      insertButton: async () => {
-        // Attach next to the "Attach" button in the bottom controls
+      mount: async () => {
         const attachBtn = await waitFor('button[aria-label="Attach"]', 8000);
         const bar = attachBtn.parentElement;
-        const btn = createGrokButton();
+        const btn = createButton({ size: 40, iconSize: 20 });
         bar.appendChild(btn);
         return { wrapper: bar, clickable: btn };
       },
-      // Optional: if DOM is dynamic and editor is nested, provide a getter:
       getEditor: () => document.querySelector('div.tiptap.ProseMirror[contenteditable="true"]'),
     },
   ];
@@ -1013,36 +918,34 @@
 
   async function initUI() {
     cleanup();
-    currentPlatform = detectPlatform();
-    if (!currentPlatform) return;
+    state.platform = detectPlatform();
+    if (!state.platform) return;
 
     try {
-      const { wrapper, clickable } = await currentPlatform.insertButton();
+      const { wrapper, clickable } = await state.platform.mount();
       if (!wrapper || !clickable) return;
-      currentButtonEl = wrapper;
-      clickableButton = clickable;
+      state.elements.wrapper = wrapper;
+      state.elements.button = clickable;
 
-      currentMenu = createPromptMenu();
-      currentModal = createPromptModal();
-      currentPlaceholderModal = createPlaceholderModal();
-      document.body.append(currentMenu, currentModal, currentPlaceholderModal);
+      state.elements.menu = createPromptMenu();
+      state.elements.modal = createPromptModal();
+      state.elements.placeholderModal = createPlaceholderModal();
+      document.body.append(state.elements.menu, state.elements.modal, state.elements.placeholderModal);
 
-      // Wire top header buttons once
-      const addBtnTop = currentMenu.querySelector('#mp-btn-add');
-      const settingsBtn = currentMenu.querySelector('#mp-btn-settings');
-      const settingsPanel = currentMenu.querySelector('#mp-settings-panel');
-      const importBtn = currentMenu.querySelector('#mp-btn-import');
-      const exportBtn = currentMenu.querySelector('#mp-btn-export');
+      // Wire top header buttons
+      const addBtnTop = state.elements.menu.querySelector('#mp-btn-add');
+      const settingsBtn = state.elements.menu.querySelector('#mp-btn-settings');
+      const settingsPanel = state.elements.menu.querySelector('#mp-settings-panel');
+      const importBtn = state.elements.menu.querySelector('#mp-btn-import');
+      const exportBtn = state.elements.menu.querySelector('#mp-btn-export');
 
       if (addBtnTop) {
-        createTooltip(addBtnTop, STR.addPrompt);
         addBtnTop.addEventListener('click', (e) => {
           e.stopPropagation();
           openPromptModal();
         });
       }
       if (settingsBtn) {
-        createTooltip(settingsBtn, 'Settings');
         settingsBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           settingsPanel?.classList.toggle('mp-hidden');
@@ -1062,37 +965,36 @@
       }
 
       // Open/close menu
-      clickableButton.addEventListener('click', (e) => {
+      state.elements.button.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        if (currentMenu.classList.contains('visible')) { closeMenu(); return; }
+        if (state.elements.menu.classList.contains('visible')) { closeMenu(); return; }
         refreshMenu().then(() => {
-          // collapse settings each open
-          currentMenu.querySelector('#mp-settings-panel')?.classList.add('mp-hidden');
-          positionMenu(currentMenu, clickableButton);
-          currentMenu.classList.add('visible');
+          state.elements.menu.querySelector('#mp-settings-panel')?.classList.add('mp-hidden');
+          positionMenu(state.elements.menu, state.elements.button);
+          state.elements.menu.classList.add('visible');
         });
       });
 
       // Modal events
-      currentModal.querySelector('#__ap_save').onclick = async (e) => {
+      state.elements.modal.querySelector('#__ap_save').onclick = async (e) => {
         e.stopPropagation();
-        const index = parseInt(currentModal.dataset.index, 10);
+        const index = parseInt(state.elements.modal.dataset.index, 10);
         const title = document.getElementById('__ap_title').value.trim();
         const text = document.getElementById('__ap_text').value.trim();
         const usePlaceholders = document.getElementById('__ap_use_placeholders').checked;
         if (!title || !text) { alert(STR.requiredFields); return; }
         const op = index > -1 ? updateItem(index, { title, text, usePlaceholders }) : addItem({ title, text, usePlaceholders });
-        op.then(() => { hideModal(currentModal); refreshMenu(); });
+        op.then(() => { hideModal(state.elements.modal); refreshMenu(); });
       };
-      currentModal.querySelector('#__ap_close_prompt').onclick = (e) => { e.stopPropagation(); hideModal(currentModal); };
+      state.elements.modal.querySelector('#__ap_close_prompt').onclick = (e) => { e.stopPropagation(); hideModal(state.elements.modal); };
 
-      currentPlaceholderModal.querySelector('#__ap_insert_prompt').onclick = async (e) => {
+      state.elements.placeholderModal.querySelector('#__ap_insert_prompt').onclick = async (e) => {
         e.stopPropagation();
-        const item = JSON.parse(currentPlaceholderModal.dataset.prompt);
-        const idx = parseInt(currentPlaceholderModal.dataset.index, 10);
+        const item = JSON.parse(state.elements.placeholderModal.dataset.prompt);
+        const idx = parseInt(state.elements.placeholderModal.dataset.index, 10);
         let completedText = item.text;
-        const fields = currentPlaceholderModal.querySelectorAll('#__ap_placeholders_container textarea');
+        const fields = state.elements.placeholderModal.querySelectorAll('#__ap_placeholders_container textarea');
         fields.forEach(t => {
           const ph = t.dataset.placeholder;
           const userValue = t.value;
@@ -1100,9 +1002,9 @@
           completedText = completedText.replace(regex, userValue);
         });
         await insertPrompt({ ...item, text: completedText }, idx);
-        hideModal(currentPlaceholderModal);
+        hideModal(state.elements.placeholderModal);
       };
-      currentPlaceholderModal.querySelector('#__ap_close_placeholder').onclick = (e) => { e.stopPropagation(); hideModal(currentPlaceholderModal); };
+      state.elements.placeholderModal.querySelector('#__ap_close_placeholder').onclick = (e) => { e.stopPropagation(); hideModal(state.elements.placeholderModal); };
     } catch (_) {
       cleanup();
     } finally {
@@ -1113,24 +1015,22 @@
   const debouncedTryInit = debounce(tryInit, 400);
 
   function setupPageObserver() {
-    if (pageObserver) pageObserver.disconnect();
-    pageObserver = new MutationObserver(() => {
-      if (currentButtonEl && !document.body.contains(currentButtonEl)) debouncedTryInit();
+    if (state.observers.page) state.observers.page.disconnect();
+    state.observers.page = new MutationObserver(() => {
+      if (state.elements.wrapper && !document.body.contains(state.elements.wrapper)) debouncedTryInit();
     });
-    pageObserver.observe(document.body, { childList: true, subtree: true });
+    state.observers.page.observe(document.body, { childList: true, subtree: true });
   }
 
   function setupGlobalListeners() {
     document.addEventListener('click', (ev) => {
-      if (!currentMenu || !clickableButton) return;
+      if (!state.elements.menu || !state.elements.button) return;
 
-      // Close settings panel if clicking outside it and its toggle
       const settingsPanel = document.getElementById('mp-settings-panel');
       if (settingsPanel && !ev.target.closest('#mp-settings-panel, #mp-btn-settings')) {
         settingsPanel.classList.add('mp-hidden');
       }
 
-      // Close menu if clicking outside
       if (ev.target.closest('#prompt-menu-container, [data-testid="composer-button-prompts"]')) return;
       closeMenu();
     });
@@ -1138,26 +1038,26 @@
       if (ev.key === 'Escape') {
         closeMenu();
         document.getElementById('mp-settings-panel')?.classList.add('mp-hidden');
-        if (currentModal?.classList.contains('visible')) hideModal(currentModal);
-        if (currentPlaceholderModal?.classList.contains('visible')) hideModal(currentPlaceholderModal);
+        if (state.elements.modal?.classList.contains('visible')) hideModal(state.elements.modal);
+        if (state.elements.placeholderModal?.classList.contains('visible')) hideModal(state.elements.placeholderModal);
       }
     });
     window.addEventListener('resize', debounce(() => {
-      if (currentMenu?.classList.contains('visible') && clickableButton) positionMenu(currentMenu, clickableButton);
+      if (state.elements.menu?.classList.contains('visible') && state.elements.button) positionMenu(state.elements.menu, state.elements.button);
     }, 120));
   }
 
   function tryInit() {
-    if (isInitializing) return;
-    isInitializing = true;
-    initUI().finally(() => { isInitializing = false; });
+    if (state.flags.initializing) return;
+    state.flags.initializing = true;
+    initUI().finally(() => { state.flags.initializing = false; });
   }
 
   function cleanup() {
-    if (currentButtonEl) { currentButtonEl.remove(); currentButtonEl = null; }
-    if (currentMenu) { currentMenu.remove(); currentMenu = null; }
-    if (currentModal) { currentModal.remove(); currentModal = null; }
-    if (currentPlaceholderModal) { currentPlaceholderModal.remove(); currentPlaceholderModal = null; }
+    if (state.elements.wrapper) { state.elements.wrapper.remove(); state.elements.wrapper = null; }
+    if (state.elements.menu) { state.elements.menu.remove(); state.elements.menu = null; }
+    if (state.elements.modal) { state.elements.modal.remove(); state.elements.modal = null; }
+    if (state.elements.placeholderModal) { state.elements.placeholderModal.remove(); state.elements.placeholderModal = null; }
   }
 
   // =========================
