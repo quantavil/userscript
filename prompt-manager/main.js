@@ -1,13 +1,12 @@
 // ==UserScript==
 // @name         My Prompt
-// @namespace    https://github.com/0H4S
+// @namespace    https://github.com/quantavil
 // @version      2.0
 // @description  Save and use your prompts quickly and easily with one click! Compatible with ChatGPT, DeepSeek, Gemini, Claude, Kimi, Qwen, LMArena, Z.ai, Google AI Studio, and Grok.
-// @author       OHAS
+// @author       quantavil
 // @homepage     https://github.com/0H4S
 // @icon         https://cdn-icons-png.flaticon.com/512/4997/4997543.png
-// @license      CC-BY-NC-ND-4.0
-// @copyright    2025 OHAS. All Rights Reserved.
+// @license      MIT
 // @match        https://aistudio.google.com/*
 // @match        https://gemini.google.com/*
 // @match        https://chat.deepseek.com/*
@@ -19,19 +18,12 @@
 // @match        https://claude.ai/*
 // @match        https://grok.com/*
 // @require      https://update.greasyfork.org/scripts/549920.js
-// @connect      gist.github.com
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
 // @run-at       document-end
 // @noframes
-// @compatible   chrome
-// @compatible   firefox
-// @compatible   edge
-// @compatible   opera
-// @downloadURL  https://update.greasyfork.org/scripts/549921/My%20Prompt.user.js
-// @updateURL    https://update.greasyfork.org/scripts/549921/My%20Prompt.meta.js
 // ==/UserScript==
 
 (function () {
@@ -262,6 +254,22 @@
       #__ap_placeholders_container::-webkit-scrollbar-track { background: var(--mp-bg-tertiary); border-radius: 10px; }
       #__ap_placeholders_container::-webkit-scrollbar-thumb { background: var(--mp-border-secondary); border-radius: 10px; border: 2px solid var(--mp-bg-primary); }
       #__ap_placeholders_container::-webkit-scrollbar-thumb:hover { background: var(--mp-text-tertiary); }
+
+      /* New header and settings panel */
+      .menu-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 8px; border-bottom: 1px solid var(--mp-border-primary);
+      }
+      .menu-title { font-size: 14px; font-weight: 600; color: var(--mp-text-secondary); }
+      .menu-icons { display: flex; align-items: center; gap: 6px; }
+      .icon-btn {
+        width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+        border: none; background: transparent; color: var(--mp-text-tertiary);
+        border-radius: var(--mp-border-radius-md); cursor: pointer;
+        transition: background-color .15s ease, color .15s ease;
+      }
+      .icon-btn:hover { background: var(--mp-bg-tertiary); color: var(--mp-text-primary); }
+      .settings-panel { padding: 4px; border-top: 1px solid var(--mp-border-primary); }
     `);
     document.head.appendChild(style);
   }
@@ -306,6 +314,72 @@
     const menu = document.createElement('div');
     menu.className = 'prompt-menu';
     menu.id = 'prompt-menu-container';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'menu-header';
+
+    const title = document.createElement('div');
+    title.className = 'menu-title';
+    title.textContent = STR.prompts;
+
+    const icons = document.createElement('div');
+    icons.className = 'menu-icons';
+
+    const btnAdd = document.createElement('button');
+    btnAdd.className = 'icon-btn';
+    btnAdd.id = 'mp-btn-add';
+    btnAdd.setAttribute('aria-label', STR.addPrompt);
+    setHTML(btnAdd, `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    `);
+
+    const btnSettings = document.createElement('button');
+    btnSettings.className = 'icon-btn';
+    btnSettings.id = 'mp-btn-settings';
+    btnSettings.setAttribute('aria-label', 'Settings');
+    setHTML(btnSettings, `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M11.983 13.893a1.893 1.893 0 1 0 0-3.786 1.893 1.893 0 0 0 0 3.786Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M20.5 12a8.5 8.5 0 0 1-.09 1.227l1.498 1.164a.75.75 0 0 1 .18.969l-1.42 2.46a.75.75 0 0 1-.902.344l-1.764-.588a8.46 8.46 0 0 1-1.06.616l-.267 1.844a.75.75 0 0 1-.744.636h-2.84a.75.75 0 0 1-.744-.636l-.267-1.844a8.46 8.46 0 0 1-1.06-.616l-1.764.588a.75.75 0 0 1-.902-.345l-1.42-2.46a.75.75 0 0 1 .18-.968l1.498-1.164A8.5 8.5 0 0 1 3.5 12c0-.413.031-.818.09-1.217L2.092 9.619a.75.75 0 0 1-.18-.968l1.42-2.46a.75.75 0 0 1 .902-.345l1.764.588c.333-.227.691-.43 1.06-.616l.267-1.844A.75.75 0 0 1 8.067 3h2.84a.75.75 0 0 1 .744.636l.267 1.844c.369.186.727.389 1.06.616l1.764-.588a.75.75 0 0 1 .902.345l1.42 2.46a.75.75 0 0 1-.18.968l-1.498 1.164c.06.399.09.804.09 1.217Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `);
+
+    icons.append(btnAdd, btnSettings);
+    header.append(title, icons);
+
+    // List container
+    const list = document.createElement('div');
+    list.className = 'prompt-menu-list';
+    list.id = 'mp-list';
+
+    // Settings panel (hidden by default)
+    const settingsPanel = document.createElement('div');
+    settingsPanel.className = 'settings-panel mp-hidden';
+    settingsPanel.id = 'mp-settings-panel';
+
+    const ie = document.createElement('div');
+    ie.className = 'import-export-container';
+
+    const exportBtn = document.createElement('div');
+    exportBtn.className = 'menu-button';
+    exportBtn.id = 'mp-btn-export';
+    exportBtn.textContent = STR.export;
+
+    const importBtn = document.createElement('div');
+    importBtn.className = 'menu-button';
+    importBtn.id = 'mp-btn-import';
+    importBtn.textContent = STR.import;
+
+    const divider = document.createElement('div');
+    divider.className = 'divider';
+
+    ie.append(exportBtn, divider, importBtn);
+    settingsPanel.appendChild(ie);
+
+    menu.append(header, list, settingsPanel);
     return menu;
   }
 
@@ -479,7 +553,6 @@
   }
 
   function setContentEditableText(editor, text) {
-    // Replace content with paragraphs for each line to suit ProseMirror/Tiptap/Gemini
     editor.focus();
     setHTML(editor, '');
     const lines = String(text).split('\n');
@@ -519,85 +592,61 @@
   // =========================
   async function refreshMenu() {
     if (!currentMenu) return;
-    const list = document.createElement('div');
-    list.className = 'prompt-menu-list';
+    const list = currentMenu.querySelector('#mp-list') || (() => {
+      const l = document.createElement('div');
+      l.className = 'prompt-menu-list';
+      l.id = 'mp-list';
+      currentMenu.appendChild(l);
+      return l;
+    })();
 
+    setHTML(list, '');
     const items = await getAll();
+
     if (!items.length) {
       setHTML(list, `<div class="empty-state">${STR.noSavedPrompts}</div>`);
-    } else {
-      items.forEach((p, index) => {
-        const row = document.createElement('div');
-        row.className = 'prompt-item-row';
-
-        const titleDiv = document.createElement('div');
-        titleDiv.className = 'prompt-title';
-        titleDiv.textContent = p.title;
-
-        titleDiv.onclick = (e) => {
-          e.stopPropagation();
-          if (p.usePlaceholders) {
-            const placeholderRegex = /\[([^\]]+)\]/g;
-            const matches = [...p.text.matchAll(placeholderRegex)];
-            if (matches.length > 0) openPlaceholderModal(p, index, matches);
-            else insertPrompt(p, index);
-          } else insertPrompt(p, index);
-          closeMenu();
-        };
-
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'prompt-actions';
-
-        const btnE = document.createElement('button');
-        btnE.textContent = STR.edit;
-        btnE.className = 'action-btn edit';
-        btnE.onclick = (e) => { e.stopPropagation(); openPromptModal(p, index); };
-
-        const btnD = document.createElement('button');
-        btnD.textContent = STR.delete;
-        btnD.className = 'action-btn delete';
-        btnD.onclick = (e) => {
-          e.stopPropagation();
-          if (confirm(STR.confirmDelete.replace('{title}', p.title))) removeItem(index).then(refreshMenu);
-        };
-
-        actionsDiv.append(btnE, btnD);
-        row.append(titleDiv, actionsDiv);
-        list.appendChild(row);
-      });
+      return;
     }
 
-    const addSection = document.createElement('div');
-    addSection.className = 'menu-section';
-    const addBtn = document.createElement('div');
-    addBtn.className = 'menu-button';
-    setHTML(addBtn, `<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>${STR.addPrompt}`);
-    addBtn.onclick = (e) => { e.stopPropagation(); openPromptModal(); };
-    addSection.appendChild(addBtn);
+    items.forEach((p, index) => {
+      const row = document.createElement('div');
+      row.className = 'prompt-item-row';
 
-    const footer = document.createElement('div');
-    footer.className = 'menu-footer';
-    const ie = document.createElement('div');
-    ie.className = 'import-export-container';
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'prompt-title';
+      titleDiv.textContent = p.title;
 
-    const exportBtn = document.createElement('div');
-    exportBtn.className = 'menu-button';
-    exportBtn.textContent = STR.export;
-    exportBtn.onclick = (e) => { e.stopPropagation(); exportPrompts(); };
+      titleDiv.onclick = (e) => {
+        e.stopPropagation();
+        if (p.usePlaceholders) {
+          const placeholderRegex = /\[([^\]]+)\]/g;
+          const matches = [...p.text.matchAll(placeholderRegex)];
+          if (matches.length > 0) openPlaceholderModal(p, index, matches);
+          else insertPrompt(p, index);
+        } else insertPrompt(p, index);
+        closeMenu();
+      };
 
-    const importBtn = document.createElement('div');
-    importBtn.className = 'menu-button';
-    importBtn.textContent = STR.import;
-    importBtn.onclick = (e) => { e.stopPropagation(); importPrompts(); };
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'prompt-actions';
 
-    const divider = document.createElement('div');
-    divider.className = 'divider';
+      const btnE = document.createElement('button');
+      btnE.textContent = STR.edit;
+      btnE.className = 'action-btn edit';
+      btnE.onclick = (e) => { e.stopPropagation(); openPromptModal(p, index); };
 
-    ie.append(exportBtn, divider, importBtn);
-    footer.appendChild(ie);
+      const btnD = document.createElement('button');
+      btnD.textContent = STR.delete;
+      btnD.className = 'action-btn delete';
+      btnD.onclick = (e) => {
+        e.stopPropagation();
+        if (confirm(STR.confirmDelete.replace('{title}', p.title))) removeItem(index).then(refreshMenu);
+      };
 
-    setHTML(currentMenu, '');
-    currentMenu.append(list, addSection, footer);
+      actionsDiv.append(btnE, btnD);
+      row.append(titleDiv, actionsDiv);
+      list.appendChild(row);
+    });
   }
 
   // =========================
@@ -978,11 +1027,48 @@
       currentPlaceholderModal = createPlaceholderModal();
       document.body.append(currentMenu, currentModal, currentPlaceholderModal);
 
+      // Wire top header buttons once
+      const addBtnTop = currentMenu.querySelector('#mp-btn-add');
+      const settingsBtn = currentMenu.querySelector('#mp-btn-settings');
+      const settingsPanel = currentMenu.querySelector('#mp-settings-panel');
+      const importBtn = currentMenu.querySelector('#mp-btn-import');
+      const exportBtn = currentMenu.querySelector('#mp-btn-export');
+
+      if (addBtnTop) {
+        createTooltip(addBtnTop, STR.addPrompt);
+        addBtnTop.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openPromptModal();
+        });
+      }
+      if (settingsBtn) {
+        createTooltip(settingsBtn, 'Settings');
+        settingsBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          settingsPanel?.classList.toggle('mp-hidden');
+        });
+      }
+      if (importBtn) {
+        importBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          importPrompts();
+        });
+      }
+      if (exportBtn) {
+        exportBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          exportPrompts();
+        });
+      }
+
+      // Open/close menu
       clickableButton.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
         if (currentMenu.classList.contains('visible')) { closeMenu(); return; }
         refreshMenu().then(() => {
+          // collapse settings each open
+          currentMenu.querySelector('#mp-settings-panel')?.classList.add('mp-hidden');
           positionMenu(currentMenu, clickableButton);
           currentMenu.classList.add('visible');
         });
@@ -1037,12 +1123,21 @@
   function setupGlobalListeners() {
     document.addEventListener('click', (ev) => {
       if (!currentMenu || !clickableButton) return;
+
+      // Close settings panel if clicking outside it and its toggle
+      const settingsPanel = document.getElementById('mp-settings-panel');
+      if (settingsPanel && !ev.target.closest('#mp-settings-panel, #mp-btn-settings')) {
+        settingsPanel.classList.add('mp-hidden');
+      }
+
+      // Close menu if clicking outside
       if (ev.target.closest('#prompt-menu-container, [data-testid="composer-button-prompts"]')) return;
       closeMenu();
     });
     document.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') {
         closeMenu();
+        document.getElementById('mp-settings-panel')?.classList.add('mp-hidden');
         if (currentModal?.classList.contains('visible')) hideModal(currentModal);
         if (currentPlaceholderModal?.classList.contains('visible')) hideModal(currentPlaceholderModal);
       }
