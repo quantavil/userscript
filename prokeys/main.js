@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Smart Abbreviation Expander (Shift+Space) — No Preview, Alt+P Palette + Gemini Correct (Alt+G)
+// @name         Smart Abbreviation Expander (Shift+Space) — No Preview, Alt+P Palette + Gemini Correct (Alt+G) + FAB + Hotkey Settings
 // @namespace    https://github.com/your-namespace
-// @version      1.7.1
-// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Now with inline editing and settings panel.
+// @version      1.9.1
+// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Inline editing, in-panel settings screen, top-right FAB toggle, and hotkey customization. Fallback: if no caret, insert at end-of-line in a reasonable field.
 // @author       You
 // @match        *://*/*
 // @grant        GM_getValue
@@ -22,14 +22,20 @@
   // Config
   // ----------------------
   const CONFIG = {
-    trigger: { shift: true, alt: false, ctrl: false, meta: false },      // Shift+Space
+    trigger: { shift: true, alt: false, ctrl: false, meta: false },      // Shift+Space (Space-based)
     palette: { code: 'KeyP', alt: true, shift: false, ctrl: false, meta: false }, // Alt+P
     correct: { code: 'KeyG', alt: true, shift: false, ctrl: false, meta: false }, // Alt+G
     maxAbbrevLen: 80,
     styleId: 'sae-styles',
-    storeKeys: { dict: 'sae.dict.v1', tone: 'sae.gemini.tone.v1' },
+    storeKeys: {
+      dict: 'sae.dict.v1',
+      tone: 'sae.gemini.tone.v1',
+      keys: 'sae.keys.v1',
+      fab: 'sae.ui.fabEnabled.v1',
+    },
     toast: { throttleMs: 3000 },
     clipboardReadTimeoutMs: 350,
+    searchDebounceMs: 150,
     gemini: {
       endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
       model: 'gemini-2.5-flash-lite',
@@ -86,26 +92,35 @@
   // ----------------------
   // State
   // ----------------------
-  const state = { dict: null, lastEditable: null, _lastToastAt: 0, tone: 'neutral' };
+  const state = { 
+    dict: null, 
+    lastEditable: null, 
+    _lastToastAt: 0, 
+    tone: 'neutral', 
+    fabEnabled: true, 
+    _lastFocusedEditable: null,
+    activeIndex: 0,
+  };
+  let paletteEl = null;
+  let fabEl = null;
+  let hotkeyCapture = null; // { kind: 'spaceOnly' | 'code', resolve, bubble }
+  let toastEl = null;
+  let toastTimer = null;
+  let searchTimeout = null;
 
   // ----------------------
   // Styles
   // ----------------------
-  GMX.addStyle(`
+  const STYLES = `
     .sae-bubble{position:fixed;z-index:2147483647;max-width:min(560px,80vw);box-shadow:0 8px 24px rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.1);border-radius:8px;background:#111;color:#fff;padding:10px 12px;font:13px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;white-space:pre-wrap;pointer-events:auto}
     .sae-palette{position:fixed;z-index:2147483647;inset:0;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px);background:rgba(0,0,0,.25)}
     .sae-palette.open{display:flex}
     .sae-panel{width:min(720px,92vw);max-height:78vh;overflow:hidden;background:#111;color:#fff;border:1px solid rgba(255,255,255,.08);border-radius:10px;box-shadow:0 12px 36px rgba(0,0,0,.35);display:flex;flex-direction:column;font:13px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-    .sae-panel-header{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:8px;padding:10px;border-bottom:1px solid rgba(255,255,255,.06)}
+    .sae-panel-header{display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:8px;padding:10px;border-bottom:1px solid rgba(255,255,255,.06)}
     .sae-search{width:100%;background:#1b1b1b;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;outline:none}
     .sae-icon-btn{padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease}
     .sae-icon-btn:hover{background:#252525;border-color:rgba(255,255,255,.2)}
     .sae-icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-    .sae-settings-dropdown{position:relative}
-    .sae-settings-menu{position:absolute;top:calc(100% + 4px);right:0;background:#1b1b1b;border:1px solid rgba(255,255,255,.12);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.3);min-width:160px;display:none;flex-direction:column;padding:4px;z-index:10}
-    .sae-settings-menu.open{display:flex}
-    .sae-settings-menu button{padding:8px 12px;border:none;background:transparent;color:#fff;cursor:pointer;text-align:left;border-radius:4px;font:inherit;transition:background .15s ease}
-    .sae-settings-menu button:hover{background:#252525}
     .sae-list{overflow:auto;padding:6px}
     .sae-item{display:grid;grid-template-columns:160px 1fr auto;gap:10px;padding:8px;border-radius:6px;border:1px solid transparent;cursor:pointer;align-items:center}
     .sae-item:hover,.sae-item.active{background:#1b1b1b;border-color:rgba(255,255,255,.08)}
@@ -122,7 +137,39 @@
     .sae-add-new button{padding:8px 16px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#86b7ff;cursor:pointer;font-weight:600}
     .sae-add-new button:hover{background:#252525}
     .sae-footer{padding:8px 10px;border-top:1px solid rgba(255,255,255,.06);opacity:.8}
-  `);
+
+    /* Settings screen inside palette */
+    .sae-panel.settings-open .sae-list,
+    .sae-panel.settings-open .sae-add-new,
+    .sae-panel.settings-open .sae-search { display: none; }
+    .sae-settings-view{display:none;padding:8px 10px;overflow:auto;max-height:78vh}
+    .sae-panel.settings-open .sae-settings-view{display:block}
+    .sae-hrow{display:grid;grid-template-columns:180px 1fr auto;align-items:center;gap:10px;padding:8px;border-bottom:1px solid rgba(255,255,255,.06)}
+    .sae-hrow:last-child{border-bottom:none}
+    .sae-select{background:#1b1b1b;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;font:inherit}
+    .sae-btn{padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#fff;cursor:pointer}
+    .sae-btn:hover{background:#252525}
+    .sae-chip{display:inline-block;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#ddd;margin-right:8px}
+    .sae-settings-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .sae-settings-footer{padding-top:8px;display:flex;justify-content:flex-end}
+
+    /* Minimal FAB at top-right edge */
+    .sae-fab{
+      position:fixed;
+      top:0;
+      right:0;
+      width:40px;height:40px;
+      display:flex;align-items:center;justify-content:center;
+      border:1px solid rgba(255,255,255,.12);
+      border-right:none;
+      border-radius:6px 0 0 6px;
+      background:#111;color:#fff;
+      box-shadow:0 6px 18px rgba(0,0,0,.35);
+      cursor:pointer;z-index:2147483647;
+      user-select:none
+    }
+    .sae-fab:hover{background:#1b1b1b}
+  `;
 
   // ----------------------
   // Boot
@@ -133,8 +180,36 @@
     state.dict = normalizeDict(await GMX.getValue(CONFIG.storeKeys.dict, DEFAULT_DICT)) || normalizeDict(DEFAULT_DICT);
     state.tone = await GMX.getValue(CONFIG.storeKeys.tone, 'neutral');
 
+    // Load saved hotkeys
+    const savedKeys = await GMX.getValue(CONFIG.storeKeys.keys, null);
+    if (savedKeys?.trigger) Object.assign(CONFIG.trigger, savedKeys.trigger);
+    if (savedKeys?.palette) Object.assign(CONFIG.palette, savedKeys.palette);
+    if (savedKeys?.correct) Object.assign(CONFIG.correct, savedKeys.correct);
+
+    // Load FAB enable flag
+    state.fabEnabled = await GMX.getValue(CONFIG.storeKeys.fab, true);
+    
+    // Wait for DOM before adding styles and FAB
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initDOM);
+    } else {
+      initDOM();
+    }
+
+    // Remember last focused editable
+    document.addEventListener('focusin', (e) => {
+      const el = isEditable(e.target);
+      if (el) state._lastFocusedEditable = el;
+    }, true);
+
     // Menu commands
-    GMX.registerMenuCommand('Open Abbreviation Palette', openPalette);
+    GMX.registerMenuCommand('Open Abbreviation Palette', () => {
+      state.lastEditable = captureEditableContext();
+      openPalette();
+    });
+    GMX.registerMenuCommand(`Toggle FAB (${state.fabEnabled ? 'on' : 'off'})`, async () => {
+      await toggleFabSetting();
+    });
     GMX.registerMenuCommand('Export Dictionary (.json)', exportDict);
     GMX.registerMenuCommand('Import Dictionary', () => importDict());
     GMX.registerMenuCommand('Reset Dictionary to Defaults', async () => {
@@ -155,6 +230,11 @@
     });
 
     document.addEventListener('keydown', onKeyDownCapture, true);
+  }
+
+  function initDOM() {
+    GMX.addStyle(STYLES);
+    if (state.fabEnabled) ensureFab();
   }
 
   // ----------------------
@@ -183,11 +263,53 @@
 
   async function onKeyDownCapture(e) {
     if (e.defaultPrevented || e.isComposing) return;
+
+    // Intercept for hotkey capture (Settings → Hotkeys)
+    if (hotkeyCapture) {
+      // Don't block typing in normal inputs outside the capture flow
+      if (e.target.matches('input, textarea, [contenteditable]') && !e.target.closest('.sae-bubble')) {
+        return;
+      }
+      
+      e.preventDefault(); 
+      e.stopPropagation();
+      
+      if (e.key === 'Escape') {
+        hotkeyCapture.bubble?.update('Canceled.');
+        setTimeout(() => hotkeyCapture.bubble?.close(), 600);
+        hotkeyCapture.resolve(null);
+        hotkeyCapture = null;
+        return;
+      }
+      if (hotkeyCapture.kind === 'spaceOnly') {
+        if (e.code !== 'Space') {
+          hotkeyCapture.bubble?.update('Expand hotkey must include Space (e.g., Shift+Space). Esc to cancel.');
+          return;
+        }
+        const spec = { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey };
+        hotkeyCapture.bubble?.update(`Set: ${hotkeyToString(spec, true)}`);
+        setTimeout(() => hotkeyCapture.bubble?.close(), 600);
+        hotkeyCapture.resolve(spec);
+        hotkeyCapture = null;
+        return;
+      } else {
+        if (/^Shift|Alt|Control|Meta$/.test(e.key)) {
+          hotkeyCapture.bubble?.update('Press a non-modifier key (with modifiers if you want).');
+          return;
+        }
+        const spec = { code: e.code, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey };
+        hotkeyCapture.bubble?.update(`Set: ${hotkeyToString(spec, false)}`);
+        setTimeout(() => hotkeyCapture.bubble?.close(), 600);
+        hotkeyCapture.resolve(spec);
+        hotkeyCapture = null;
+        return;
+      }
+    }
+
     if (paletteEl && paletteEl.classList.contains('open') && paletteEl.contains(e.target)) return;
 
     // Palette (Alt+P)
     if (matchCodeHotkey(e, CONFIG.palette)) {
-      const target = isEditable(e.target); if (!target) return;
       e.preventDefault(); e.stopPropagation();
       state.lastEditable = captureEditableContext();
       openPalette(); return;
@@ -198,7 +320,7 @@
       e.preventDefault(); e.stopPropagation();
       triggerGeminiCorrection(); return;
     }
-    // Expand (Shift+Space)
+    // Expand (Shift+Space or changed via settings)
     if (matchSpaceHotkey(e, CONFIG.trigger)) {
       const target = isEditable(e.target); if (!target) return;
       e.preventDefault(); e.stopPropagation();
@@ -315,13 +437,34 @@
     return `${pad2(h)}:${m} ${ampm}`;
   }
   function formatDay(d, arg) { return d.toLocaleDateString(undefined, (!arg || arg.toLowerCase()==='long') ? { weekday:'long' } : { weekday:'short' }); }
+  
   async function readClipboardSafe() {
-    let timedOut = false;
-    const timeout = new Promise(r => setTimeout(() => { timedOut = true; r(''); }, CONFIG.clipboardReadTimeoutMs));
+    let resolved = false;
+    const timeout = new Promise(r => setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        r('');
+      }
+    }, CONFIG.clipboardReadTimeoutMs));
+    
     const read = (async () => {
-      try { if (!navigator.clipboard?.readText) return ''; const t = await navigator.clipboard.readText(); return t ?? ''; }
-      catch { if (!timedOut) throttledToast('Clipboard read blocked — allow permission to use {{clipboard}}.'); return ''; }
+      try { 
+        if (!navigator.clipboard?.readText) return '';
+        const t = await navigator.clipboard.readText();
+        if (!resolved) {
+          resolved = true;
+          return t ?? '';
+        }
+        return '';
+      } catch { 
+        if (!resolved) {
+          resolved = true;
+          throttledToast('Clipboard read blocked — allow permission to use {{clipboard}}.');
+        }
+        return '';
+      }
     })();
+    
     return await Promise.race([read, timeout]);
   }
 
@@ -444,10 +587,8 @@
   }
 
   // ----------------------
-  // Palette UI + dict management (Export/Import)
+  // Palette UI + dict management (Export/Import) + FAB + Hotkeys
   // ----------------------
-  let paletteEl = null;
-
   async function setDict(obj, msg) {
     state.dict = normalizeDict(obj);
     await GMX.setValue(CONFIG.storeKeys.dict, state.dict);
@@ -468,7 +609,7 @@
     const file = await pickFile('.json'); if (!file) return;
     try {
       const text = await file.text(); let obj = JSON.parse(text);
-      if (obj && typeof obj === 'object' && obj.dict && typeof obj.dict === 'object') obj = obj.dict; // allow { dict: {...} }
+      if (obj && typeof obj === 'object' && obj.dict && typeof obj.dict === 'object') obj = obj.dict;
       const imported = normalizeDict(obj); const count = Object.keys(imported).length;
       if (!count) return toast('Import failed: no entries detected.');
       const next = { ...state.dict, ...imported };
@@ -478,25 +619,23 @@
 
   function ensurePalette() {
     if (paletteEl) return paletteEl;
-    const wrap = document.createElement('div'); wrap.className = 'sae-palette';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'sae-palette';
     wrap.innerHTML = `
       <div class="sae-panel" role="dialog" aria-label="Abbreviation Palette">
         <div class="sae-panel-header">
           <input class="sae-search" type="search" placeholder="Search abbreviations…" />
-          <div class="sae-settings-dropdown">
-            <button class="sae-icon-btn" data-action="settings" title="Settings">
-              <svg viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M12 1v6m0 6v10M1 12h6m6 0h10"></path>
-                <path d="m4.93 4.93 4.24 4.24m5.66 5.66 4.24 4.24M19.07 4.93l-4.24 4.24m-5.66 5.66-4.24 4.24"></path>
-              </svg>
-            </button>
-            <div class="sae-settings-menu">
-              <button data-action="export">📤 Export Dictionary</button>
-              <button data-action="import">📥 Import Dictionary</button>
-              <button data-action="reset">🔄 Reset to Defaults</button>
-            </div>
-          </div>
+          <button class="sae-icon-btn" data-action="settings" title="Settings">
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M12 1v6m0 6v10M1 12h6m6 0h10"></path>
+              <path d="m4.93 4.93 4.24 4.24m5.66 5.66 4.24 4.24M19.07 4.93l-4.24 4.24m-5.66 5.66-4.24 4.24"></path>
+            </svg>
+          </button>
+          <button class="sae-icon-btn" data-action="back" title="Back" style="display:none">
+            <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
           <button class="sae-icon-btn" data-action="close" title="Close">
             <svg viewBox="0 0 24 24">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -504,6 +643,7 @@
             </svg>
           </button>
         </div>
+        <div class="sae-settings-view"></div>
         <div class="sae-list" tabindex="0"></div>
         <div class="sae-add-new">
           <button data-action="add">+ Add New Abbreviation</button>
@@ -513,64 +653,54 @@
     `;
     document.documentElement.appendChild(wrap);
 
+    const panel = wrap.querySelector('.sae-panel');
     const search = wrap.querySelector('.sae-search');
     const list = wrap.querySelector('.sae-list');
     const settingsBtn = wrap.querySelector('[data-action="settings"]');
-    const settingsMenu = wrap.querySelector('.sae-settings-menu');
+    const backBtn = wrap.querySelector('[data-action="back"]');
     const closeBtn = wrap.querySelector('[data-action="close"]');
     const addNewBtn = wrap.querySelector('.sae-add-new button');
-
-    // Toggle settings menu
-    settingsBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      settingsMenu.classList.toggle('open');
-    });
-
-    // Close settings menu when clicking outside
-    document.addEventListener('click', (e) => {
-      if (!settingsMenu.contains(e.target) && !settingsBtn.contains(e.target)) {
-        settingsMenu.classList.remove('open');
-      }
-    });
+    const settingsView = wrap.querySelector('.sae-settings-view');
 
     function renderList(filter = '') {
       const q = filter.trim().toLowerCase();
       const keys = Object.keys(state.dict).sort();
       const items = q ? keys.filter(k => k.includes(q) || state.dict[k].toLowerCase().includes(q)) : keys;
+      
+      // Clamp active index
+      if (state.activeIndex >= items.length) state.activeIndex = Math.max(0, items.length - 1);
+      
       list.innerHTML = items.map((k, i) => `
-        <div class="sae-item${i === 0 ? ' active' : ''}" data-key="${escapeHtml(k)}">
+        <div class="sae-item${i === state.activeIndex ? ' active' : ''}" data-key="${escapeHtml(k)}" data-index="${i}">
           <div class="sae-key">${escapeHtml(k)}</div>
           <div class="sae-val">${escapeHtml(state.dict[k])}</div>
           <div class="sae-item-actions">
-            <button data-action="edit" data-key="${escapeHtml(k)}">Edit</button>
-            <button data-action="delete" data-key="${escapeHtml(k)}">Delete</button>
+            <button data-action="edit">Edit</button>
+            <button data-action="delete">Delete</button>
           </div>
         </div>`).join('');
-      
-      // Re-attach event listeners
-      list.querySelectorAll('.sae-item').forEach(div => {
-        const keyEl = div.querySelector('.sae-key');
-        const valEl = div.querySelector('.sae-val');
-        
-        keyEl.addEventListener('click', () => !div.classList.contains('editing') && selectAndInsert(div.dataset.key));
-        valEl.addEventListener('click', () => !div.classList.contains('editing') && selectAndInsert(div.dataset.key));
-        
-        div.querySelector('[data-action="edit"]').addEventListener('click', (e) => {
-          e.stopPropagation();
-          editItem(div);
-        });
-        
-        div.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
-          e.stopPropagation();
-          deleteItem(div.dataset.key);
-        });
-      });
     }
+
+    // Event delegation for list items
+    list.addEventListener('click', (e) => {
+      const item = e.target.closest('.sae-item:not(.editing)');
+      if (!item) return;
+      
+      const action = e.target.closest('[data-action]')?.dataset.action;
+      if (action === 'edit') {
+        e.stopPropagation();
+        editItem(item);
+      } else if (action === 'delete') {
+        e.stopPropagation();
+        deleteItem(item.dataset.key);
+      } else if (e.target.closest('.sae-key, .sae-val')) {
+        selectAndInsert(item.dataset.key);
+      }
+    });
 
     function editItem(itemDiv) {
       const key = itemDiv.dataset.key;
       const value = state.dict[key];
-      
       itemDiv.classList.add('editing');
       itemDiv.innerHTML = `
         <div class="sae-key"><input type="text" class="edit-key" value="${escapeHtml(key)}" /></div>
@@ -580,45 +710,29 @@
           <button data-action="cancel">Cancel</button>
         </div>
       `;
-      
       const keyInput = itemDiv.querySelector('.edit-key');
       const valInput = itemDiv.querySelector('.edit-val');
       const saveBtn = itemDiv.querySelector('[data-action="save"]');
       const cancelBtn = itemDiv.querySelector('[data-action="cancel"]');
-      
+
       keyInput.focus();
       keyInput.select();
-      
+
       const save = async () => {
         const newKey = keyInput.value.trim().toLowerCase();
         const newVal = valInput.value.trim();
-        
-        if (!newKey || !newVal) {
-          toast('Key and value cannot be empty.');
-          return;
-        }
-        
+        if (!newKey || !newVal) return toast('Key and value cannot be empty.');
         const updated = { ...state.dict };
         if (newKey !== key) delete updated[key];
         updated[newKey] = newVal;
-        
         await setDict(updated, 'Abbreviation saved.');
       };
-      
       const cancel = () => renderList(search.value);
-      
+
       saveBtn.addEventListener('click', save);
       cancelBtn.addEventListener('click', cancel);
-      
-      keyInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); save(); }
-        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-      });
-      
-      valInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); save(); }
-        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-      });
+      keyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); valInput.focus(); } if (e.key === 'Escape') { e.preventDefault(); cancel(); } });
+      valInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } if (e.key === 'Escape') { e.preventDefault(); cancel(); } });
     }
 
     function deleteItem(key) {
@@ -639,181 +753,439 @@
           <button data-action="cancel">Cancel</button>
         </div>
       `;
-      
       list.insertBefore(tempDiv, list.firstChild);
-      
       const keyInput = tempDiv.querySelector('.edit-key');
       const valInput = tempDiv.querySelector('.edit-val');
       const saveBtn = tempDiv.querySelector('[data-action="save"]');
       const cancelBtn = tempDiv.querySelector('[data-action="cancel"]');
-      
       keyInput.focus();
-      
+
       const save = async () => {
         const newKey = keyInput.value.trim().toLowerCase();
         const newVal = valInput.value.trim();
-        
-        if (!newKey || !newVal) {
-          toast('Key and value cannot be empty.');
-          return;
-        }
-        
+        if (!newKey || !newVal) return toast('Key and value cannot be empty.');
         const updated = { ...state.dict, [newKey]: newVal };
         await setDict(updated, 'Abbreviation added.');
       };
-      
-      const cancel = () => {
-        tempDiv.remove();
-        renderList(search.value);
-      };
-      
+      const cancel = () => { tempDiv.remove(); renderList(search.value); };
+
       saveBtn.addEventListener('click', save);
       cancelBtn.addEventListener('click', cancel);
-      
-      keyInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); valInput.focus(); }
-        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-      });
-      
-      valInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); save(); }
-        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-      });
+      keyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); valInput.focus(); } if (e.key === 'Escape') { e.preventDefault(); cancel(); } });
+      valInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } if (e.key === 'Escape') { e.preventDefault(); cancel(); } });
     }
 
-    const handlers = {
-      close: closePalette,
-      reset: () => {
-        if (confirm('Reset dictionary to defaults?')) {
-          setDict(DEFAULT_DICT, 'Dictionary reset.');
-          settingsMenu.classList.remove('open');
-        }
-      },
-      export: () => {
-        exportDict();
-        settingsMenu.classList.remove('open');
-      },
-      'import': () => {
-        importDict();
-        settingsMenu.classList.remove('open');
-      },
-    };
-
-    settingsMenu.addEventListener('click', (e) => {
-      const btn = e.target.closest('button'); if (!btn) return;
-      const fn = handlers[btn.dataset.action]; if (fn) fn();
-    });
-
-    closeBtn.addEventListener('click', closePalette);
-    addNewBtn.addEventListener('click', addNewItem);
-
     async function selectAndInsert(key) {
-      if (!state.lastEditable) state.lastEditable = captureEditableContext();
-      const ctx = state.lastEditable || captureEditableContext();
+      const ctx = getBestInsertionContext();
       closePalette();
-      const tmpl = state.dict[key]; if (!tmpl || !ctx) return;
+
+      const tmpl = state.dict[key];
+      if (!tmpl || !ctx) { if (!ctx) toast('No editable field found.'); return; }
       const rendered = await renderTemplate(tmpl);
 
       if (ctx.kind === 'input') {
         const { el } = ctx;
-        const posStart = el.selectionStart ?? ctx.start ?? 0;
+        const posStart = el.selectionStart ?? ctx.start ?? el.value.length;
         const posEnd = el.selectionEnd ?? ctx.end ?? posStart;
-        el.setRangeText(rendered.text, posStart, posEnd, 'end');
-        const caret = posStart + (rendered.cursorIndex ?? rendered.text.length);
+        const start = (posStart === undefined ? el.value.length : posStart);
+        const end = (posEnd === undefined ? el.value.length : posEnd);
+        el.setRangeText(rendered.text, start, end, 'end');
+        const caret = start + (rendered.cursorIndex ?? rendered.text.length);
         el.selectionStart = el.selectionEnd = caret;
-        dispatchInput(el, (posEnd > posStart ? 'insertReplacementText' : 'insertText'), rendered.text);
+        dispatchInput(el, (end > start ? 'insertReplacementText' : 'insertText'), rendered.text);
       } else {
-        const sel = getSafeSelection();
-        const r = (ctx.range && ctx.range.cloneRange()) || (sel && sel.getRangeAt(0).cloneRange()); if (!r) return;
+        const r = ctx.range.cloneRange();
         r.deleteContents();
         const { fragment, cursorNode, cursorOffset, lastNode } = buildFragment(rendered.text, rendered.cursorIndex);
         r.insertNode(fragment);
-        placeCaretAfterInsertion(sel || getSafeSelection(), r, cursorNode, cursorOffset, lastNode);
+        const sel = window.getSelection();
+        placeCaretAfterInsertion(sel, r, cursorNode, cursorOffset, lastNode);
         dispatchInput(ctx.root, 'insertText', rendered.text);
       }
     }
 
-    search.addEventListener('input', () => renderList(search.value));
+    function openSettingsView() {
+      panel.classList.add('settings-open');
+      backBtn.style.display = 'flex';
+      renderSettingsView();
+    }
+    function closeSettingsView() {
+      panel.classList.remove('settings-open');
+      backBtn.style.display = 'none';
+      search.focus({ preventScroll: true });
+    }
+
+    function renderSettingsView() {
+      const hkExpand = hotkeyToString(CONFIG.trigger, true);
+      const hkPalette = hotkeyToString(CONFIG.palette, false);
+      const hkCorrect = hotkeyToString(CONFIG.correct, false);
+      const tones = ['neutral', 'friendly', 'formal', 'casual', 'concise'];
+
+      settingsView.innerHTML = `
+        <div class="sae-hrow">
+          <div>FAB (top-right)</div>
+          <div><label><input type="checkbox" class="fab-toggle"${state.fabEnabled ? ' checked' : ''}/> Show floating button</label></div>
+          <div></div>
+        </div>
+        <div class="sae-hrow">
+          <div>Tone (Gemini)</div>
+          <div><select class="sae-select tone-select">
+            ${tones.map(t => `<option value="${t}" ${t === state.tone ? 'selected' : ''}>${t}</option>`).join('')}
+          </select></div>
+          <div></div>
+        </div>
+        <div class="sae-hrow">
+          <div>Hotkeys</div>
+          <div>
+            <div style="margin-bottom:6px">
+              <span class="sae-chip">Expand: ${hkExpand}</span>
+              <button class="sae-btn" data-hk="expand">Change</button>
+            </div>
+            <div style="margin-bottom:6px">
+              <span class="sae-chip">Palette: ${hkPalette}</span>
+              <button class="sae-btn" data-hk="palette">Change</button>
+            </div>
+            <div>
+              <span class="sae-chip">Correct: ${hkCorrect}</span>
+              <button class="sae-btn" data-hk="correct">Change</button>
+            </div>
+          </div>
+          <div></div>
+        </div>
+        <div class="sae-hrow">
+          <div>Dictionary</div>
+          <div class="sae-settings-actions">
+            <button class="sae-btn" data-action="export">Export JSON</button>
+            <button class="sae-btn" data-action="import">Import JSON</button>
+            <button class="sae-btn" data-action="reset">Reset to Defaults</button>
+          </div>
+          <div></div>
+        </div>
+        <div class="sae-settings-footer">
+          <button class="sae-btn" data-action="done">Done</button>
+        </div>
+      `;
+
+      settingsView.querySelector('.fab-toggle').addEventListener('change', () => toggleFabSetting());
+      settingsView.querySelector('.tone-select').addEventListener('change', async (e) => {
+        state.tone = e.target.value;
+        await GMX.setValue(CONFIG.storeKeys.tone, state.tone);
+        toast(`Tone set to ${state.tone}.`);
+      });
+
+      const hkMap = {
+        expand: async () => { await setExpandHotkey(); renderSettingsView(); },
+        palette: async () => { await setPaletteHotkey(); renderSettingsView(); },
+        correct: async () => { await setCorrectHotkey(); renderSettingsView(); },
+      };
+      settingsView.querySelectorAll('[data-hk]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const kind = btn.getAttribute('data-hk');
+          await hkMap[kind]?.();
+        });
+      });
+
+      settingsView.querySelector('[data-action="export"]').addEventListener('click', () => exportDict());
+      settingsView.querySelector('[data-action="import"]').addEventListener('click', () => importDict());
+      settingsView.querySelector('[data-action="reset"]').addEventListener('click', () => {
+        if (confirm('Reset dictionary to defaults?')) setDict(DEFAULT_DICT, 'Dictionary reset.');
+      });
+      settingsView.querySelector('[data-action="done"]').addEventListener('click', () => closeSettingsView());
+    }
+
+    settingsBtn.addEventListener('click', () => openSettingsView());
+    backBtn.addEventListener('click', () => closeSettingsView());
+    closeBtn.addEventListener('click', closePalette);
+    addNewBtn.addEventListener('click', addNewItem);
+
+    // Search with debouncing
+    search.addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        state.activeIndex = 0;
+        renderList(search.value);
+      }, CONFIG.searchDebounceMs);
+    });
+
+    // Keyboard handling (list view only)
     wrap.addEventListener('keydown', (e) => {
-      if (e.target.closest('.sae-item.editing')) {
-        // Allow normal input in edit mode
+      if (panel.classList.contains('settings-open')) return;
+      if (e.target.closest('.sae-item.editing')) return;
+      if (e.key === 'Escape') { e.preventDefault(); closePalette(); return; }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const active = wrap.querySelector('.sae-item.active:not(.editing)');
+        if (active) selectAndInsert(active.dataset.key);
         return;
       }
-      if (e.key === 'Escape') { e.preventDefault(); closePalette(); return; }
-      if (e.key === 'Enter') { 
-        e.preventDefault(); 
-        const active = wrap.querySelector('.sae-item.active:not(.editing)'); 
-        if (active) selectAndInsert(active.dataset.key);
-        return; 
-      }
-      const items = [...wrap.querySelectorAll('.sae-item:not(.editing)')]; if (!items.length) return;
-      let idx = Math.max(0, items.findIndex(n => n.classList.contains('active')));
-      if (e.key === 'ArrowDown') { 
-        e.preventDefault(); 
-        items[idx].classList.remove('active'); 
-        idx = Math.min(items.length - 1, idx + 1); 
-        items[idx].classList.add('active'); 
-        items[idx].scrollIntoView({ block: 'nearest' }); 
-      }
-      else if (e.key === 'ArrowUp') { 
-        e.preventDefault(); 
-        items[idx].classList.remove('active'); 
-        idx = Math.max(0, idx - 1); 
-        items[idx].classList.add('active'); 
-        items[idx].scrollIntoView({ block: 'nearest' }); 
+      const items = [...wrap.querySelectorAll('.sae-item:not(.editing)')];
+      if (!items.length) return;
+      
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[state.activeIndex]?.classList.remove('active');
+        state.activeIndex = Math.min(items.length - 1, state.activeIndex + 1);
+        items[state.activeIndex]?.classList.add('active');
+        items[state.activeIndex]?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[state.activeIndex]?.classList.remove('active');
+        state.activeIndex = Math.max(0, state.activeIndex - 1);
+        items[state.activeIndex]?.classList.add('active');
+        items[state.activeIndex]?.scrollIntoView({ block: 'nearest' });
       }
     });
 
     renderList();
     wrap.__render = () => renderList(search.value);
-    paletteEl = wrap; return wrap;
+    paletteEl = wrap;
+    return wrap;
   }
 
   function openPalette() {
-    const p = ensurePalette(); 
+    const p = ensurePalette();
     p.classList.add('open');
-    const search = p.querySelector('.sae-search'); 
-    search.value = ''; 
-    p.__render?.(); 
+    document.body.style.overflow = 'hidden';
+    const panel = p.querySelector('.sae-panel');
+    panel.classList.remove('settings-open');
+    const backBtn = p.querySelector('[data-action="back"]');
+    if (backBtn) backBtn.style.display = 'none';
+    const search = p.querySelector('.sae-search');
+    search.value = '';
+    state.activeIndex = 0;
+    p.__render?.();
     search.focus({ preventScroll: true });
   }
 
   function closePalette() {
     if (!paletteEl) return;
-    const settingsMenu = paletteEl.querySelector('.sae-settings-menu');
-    if (settingsMenu) settingsMenu.classList.remove('open');
+    document.body.style.overflow = '';
+    const panel = paletteEl.querySelector('.sae-panel');
+    if (panel) panel.classList.remove('settings-open');
+    const backBtn = paletteEl.querySelector('[data-action="back"]');
+    if (backBtn) backBtn.style.display = 'none';
     paletteEl.classList.remove('open');
+  }
+
+  // ----------------------
+  // FAB helpers
+  // ----------------------
+  function ensureFab() {
+    if (fabEl) return;
+    fabEl = document.createElement('button');
+    fabEl.className = 'sae-fab';
+    fabEl.type = 'button';
+    fabEl.title = 'Abbreviation Palette';
+    fabEl.textContent = '⋯';
+
+    fabEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.lastEditable = captureEditableContext();
+      openPalette();
+    });
+
+    document.documentElement.appendChild(fabEl);
+  }
+
+  function updateFabVisibility() {
+    if (!fabEl) {
+      if (state.fabEnabled) ensureFab();
+      return;
+    }
+    fabEl.style.display = state.fabEnabled ? 'flex' : 'none';
+  }
+
+  async function toggleFabSetting() {
+    state.fabEnabled = !state.fabEnabled;
+    await GMX.setValue(CONFIG.storeKeys.fab, state.fabEnabled);
+    updateFabVisibility();
+    toast(`FAB ${state.fabEnabled ? 'enabled' : 'disabled'}.`);
+  }
+
+  // ----------------------
+  // Hotkey helpers (Settings)
+  // ----------------------
+  function captureHotkey(kind) {
+    return new Promise((resolve) => {
+      const bubble = showBubble(kind === 'spaceOnly'
+        ? 'Press new Expand hotkey (must include Space). Esc to cancel.'
+        : 'Press new hotkey. Use modifiers if you want. Esc to cancel.');
+      hotkeyCapture = { kind, resolve, bubble };
+    });
+  }
+
+  async function setExpandHotkey() {
+    const spec = await captureHotkey('spaceOnly');
+    if (!spec) return;
+    CONFIG.trigger = spec;
+    const keys = await GMX.getValue(CONFIG.storeKeys.keys, {});
+    keys.trigger = spec;
+    await GMX.setValue(CONFIG.storeKeys.keys, keys);
+    toast(`Expand hotkey set to ${hotkeyToString(spec, true)}`);
+  }
+
+  async function setPaletteHotkey() {
+    const spec = await captureHotkey('code');
+    if (!spec) return;
+    CONFIG.palette = spec;
+    const keys = await GMX.getValue(CONFIG.storeKeys.keys, {});
+    keys.palette = spec;
+    await GMX.setValue(CONFIG.storeKeys.keys, keys);
+    toast(`Palette hotkey set to ${hotkeyToString(spec, false)}`);
+  }
+
+  async function setCorrectHotkey() {
+    const spec = await captureHotkey('code');
+    if (!spec) return;
+    CONFIG.correct = spec;
+    const keys = await GMX.getValue(CONFIG.storeKeys.keys, {});
+    keys.correct = spec;
+    await GMX.setValue(CONFIG.storeKeys.keys, keys);
+    toast(`Correct hotkey set to ${hotkeyToString(spec, false)}`);
   }
 
   // ----------------------
   // Toast/bubble helpers
   // ----------------------
-  let toastTimer = null;
   function toast(msg, ms = 2200) {
-    const el = document.createElement('div'); el.className = 'sae-bubble'; el.textContent = msg;
-    document.documentElement.appendChild(el);
+    if (toastEl) toastEl.remove();
+    toastEl = document.createElement('div'); 
+    toastEl.className = 'sae-bubble'; 
+    toastEl.textContent = msg;
+    document.documentElement.appendChild(toastEl);
     const left = Math.max(8, window.innerWidth - 320), top = Math.max(8, window.innerHeight - 80);
-    el.style.left = `${left}px`; el.style.top = `${top}px`;
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.remove(), ms);
+    toastEl.style.left = `${left}px`; 
+    toastEl.style.top = `${top}px`;
+    clearTimeout(toastTimer); 
+    toastTimer = setTimeout(() => {
+      toastEl?.remove();
+      toastEl = null;
+    }, ms);
   }
+  
   function throttledToast(msg, ms = 2200) {
-    const now = Date.now(); if (now - state._lastToastAt < CONFIG.toast.throttleMs) return;
-    state._lastToastAt = now; toast(msg, ms);
+    const now = Date.now(); 
+    if (now - state._lastToastAt < CONFIG.toast.throttleMs) return;
+    state._lastToastAt = now; 
+    toast(msg, ms);
   }
+  
   function showBubble(msg) {
-    const el = document.createElement('div'); el.className = 'sae-bubble'; el.textContent = msg;
+    const el = document.createElement('div'); 
+    el.className = 'sae-bubble'; 
+    el.textContent = msg;
     document.documentElement.appendChild(el);
     const left = Math.max(8, window.innerWidth - 320), top = Math.max(8, window.innerHeight - 80);
-    el.style.left = `${left}px`; el.style.top = `${top}px`;
-    return { update: (m) => { el.textContent = m; }, close: () => el.remove() };
+    el.style.left = `${left}px`; 
+    el.style.top = `${top}px`;
+    return { 
+      update: (m) => { el.textContent = m; }, 
+      close: () => el.remove() 
+    };
+  }
+
+  // ----------------------
+  // Fallback helpers (paste at end-of-line if no caret)
+  // ----------------------
+  function elementIsVisible(el) {
+    if (!el || !(el instanceof Element)) return false;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
+    const r = el.getBoundingClientRect();
+    if ((r.width === 0 && r.height === 0) || (r.bottom < 0 || r.right < 0 || r.top > window.innerHeight || r.left > window.innerWidth)) return false;
+    return true;
+  }
+
+  function fallbackFindEditable() {
+    const lf = state._lastFocusedEditable && isEditable(state._lastFocusedEditable);
+    if (lf && elementIsVisible(lf)) return lf;
+
+    const ae = isEditable(document.activeElement);
+    if (ae && elementIsVisible(ae)) return ae;
+
+    const sel = 'textarea, input[type="text"], input[type="search"], input[type="url"], input[type="email"], input[type="tel"], [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]';
+    const nodes = Array.from(document.querySelectorAll(sel));
+    for (const n of nodes) {
+      const ed = isEditable(n);
+      if (ed && elementIsVisible(ed) && !(ed instanceof HTMLInputElement && ed.disabled)) {
+        return ed;
+      }
+    }
+    return null;
+  }
+
+  function buildEndContextForEl(el) {
+    if (!el) return null;
+    if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
+      const pos = el.value.length;
+      try { el.focus({ preventScroll: true }); } catch {}
+      return { kind: 'input', el, start: pos, end: pos, collapsed: true };
+    }
+    let root = el;
+    for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+      if (n.isContentEditable) { root = n; break; }
+    }
+    try { root.focus({ preventScroll: true }); } catch {}
+    const range = document.createRange();
+    range.selectNodeContents(root);
+    range.collapse(false);
+    return { kind: 'ce', root, range, collapsed: true };
+  }
+
+  function getBestInsertionContext() {
+    const ctx = captureEditableContext();
+    if (ctx) return ctx;
+
+    if (state.lastEditable && ((state.lastEditable.kind === 'input' && state.lastEditable.el?.isConnected) ||
+                               (state.lastEditable.kind === 'ce' && state.lastEditable.root?.isConnected))) {
+      const el = (state.lastEditable.kind === 'input') ? state.lastEditable.el : state.lastEditable.root;
+      return buildEndContextForEl(el);
+    }
+
+    const el = fallbackFindEditable();
+    if (!el) return null;
+    return buildEndContextForEl(el);
   }
 
   // ----------------------
   // Utils
   // ----------------------
-  function escapeHtml(s) { return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+  function escapeHtml(s) { 
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); 
+  }
+  
   function normalizeDict(obj) {
-    const out = {}; for (const [k, v] of Object.entries(obj || {})) if (typeof k === 'string' && typeof v === 'string' && k.trim()) out[k.trim().toLowerCase()] = v;
+    const out = {}; 
+    let dropped = 0;
+    for (const [k, v] of Object.entries(obj || {})) {
+      if (typeof k === 'string' && typeof v === 'string' && k.trim()) {
+        out[k.trim().toLowerCase()] = v;
+      } else {
+        dropped++;
+      }
+    }
+    if (dropped > 0) {
+      console.warn(`SAE: Dropped ${dropped} invalid dictionary entries during normalization.`);
+    }
     return out;
+  }
+  
+  function hotkeyToString(spec, isSpace) {
+    const parts = [];
+    if (spec.ctrl) parts.push('Ctrl');
+    if (spec.meta) parts.push('Meta');
+    if (spec.alt) parts.push('Alt');
+    if (spec.shift) parts.push('Shift');
+    if (isSpace) parts.push('Space');
+    else parts.push(codeToHuman(spec.code));
+    return parts.join('+');
+  }
+  
+  function codeToHuman(code) {
+    if (!code) return '';
+    if (code.startsWith('Key')) return code.slice(3);
+    if (code.startsWith('Digit')) return code.slice(5);
+    if (code === 'Space') return 'Space';
+    return code;
   }
 })();
