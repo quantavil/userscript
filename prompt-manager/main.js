@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         My Prompt
 // @namespace    https://github.com/quantavil
-// @version      2.2
+// @version      2.4
 // @description  Save and use your prompts quickly and easily with one click! Compatible with ChatGPT, DeepSeek, Gemini, Claude, Kimi, Qwen, LMArena, Z.ai, Google AI Studio, and Grok.
 // @author       quantavil
 // @homepage     https://github.com/0H4S
@@ -53,12 +53,14 @@
     fillPlaceholders: 'Fill in the Information',
     insert: 'Insert',
     enablePlaceholders: 'Enable interactive placeholders: [...]',
-    fileName: 'My_Prompts.json'
+    fileName: 'My_Prompts.json',
+    settings: 'Settings',
+    insertionMode: 'Insertion mode',
+    modeInsert: 'Insert at cursor',
+    modeAppend: 'Append to end',
+    modeReplace: 'Replace all'
   };
 
-  // =========================
-  // SVG Icons (constants)
-  // =========================
   const ICON_MENU = `
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
       <path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -80,50 +82,61 @@
   `;
 
   const PROMPT_STORAGE_KEY = 'Prompts';
+  const SETTINGS_KEY = 'Settings';
+  const DEFAULT_SETTINGS = { insertMode: 'insert' }; // 'insert' | 'append' | 'replace'
 
-  // Consolidated state object
+  // Consolidated state
   const state = {
     platform: null, // { name, editorSelector, mount(), getEditor? }
     elements: {
-      wrapper: null,            // inserted wrapper or button used for presence checks
-      button: null,             // the actual clickable button
+      wrapper: null,
+      button: null,
       menu: null,
       modal: null,
       placeholderModal: null,
     },
     observers: {
       page: null,
+      platform: [], // per-platform observers
     },
-    flags: {
-      initializing: false,
-    },
+    flags: { initializing: false },
   };
 
+  // TrustedTypes for static HTML
   const policy = window.trustedTypes
     ? window.trustedTypes.createPolicy('MyPromptPolicy', { createHTML: s => s })
     : null;
-
   const setHTML = (el, html) => { if (el) el.innerHTML = policy ? policy.createHTML(html) : html; };
 
-  const debounce = (fn, wait) => {
-    let t;
-    return (...args) => {
-      clearTimeout(t);
-      t = setTimeout(() => fn(...args), wait);
-    };
+  // Storage helpers
+  const getAll = async () => await GM_getValue(PROMPT_STORAGE_KEY, []);
+  const setAll = async (arr) => await GM_setValue(PROMPT_STORAGE_KEY, arr);
+  const addItem = async (item) => { const arr = await getAll(); arr.unshift(item); await setAll(arr); };
+  const updateItem = async (index, item) => { const arr = await getAll(); if (arr[index]) { arr[index] = item; await setAll(arr); } };
+  const removeItem = async (index) => { const arr = await getAll(); arr.splice(index, 1); await setAll(arr); };
+
+  const getSettings = async () => {
+    const s = await GM_getValue(SETTINGS_KEY, {});
+    return { ...DEFAULT_SETTINGS, ...s };
+  };
+  const setSettings = async (patch) => {
+    const s = await getSettings();
+    const next = { ...s, ...patch };
+    await GM_setValue(SETTINGS_KEY, next);
+    return next;
   };
 
+  // Utils
+  const debounce = (fn, wait = 200) => {
+    let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
+  };
   function waitFor(selector, timeout = 8000) {
     return new Promise((resolve, reject) => {
       const found = document.querySelector(selector);
       if (found) return resolve(found);
-
-      const timer = setTimeout(() => {
-        obs.disconnect();
-        reject(`Timeout waiting for ${selector}`);
-      }, timeout);
-
-      const obs = new MutationObserver(() => {
+      let obs;
+      const timer = setTimeout(() => { try { obs?.disconnect(); } catch (_) {} reject(`Timeout waiting for ${selector}`); }, timeout);
+      obs = new MutationObserver(() => {
         const el = document.querySelector(selector);
         if (el) {
           clearTimeout(timer);
@@ -131,25 +144,12 @@
           resolve(el);
         }
       });
-
       const startObs = () => obs.observe(document.body, { childList: true, subtree: true });
-      if (document.body) startObs();
-      else document.addEventListener('DOMContentLoaded', startObs);
+      if (document.body) startObs(); else document.addEventListener('DOMContentLoaded', startObs);
     });
   }
+  const addPlatformObserver = (obs) => { state.observers.platform.push(obs); return obs; };
 
-  // =========================
-  // Storage
-  // =========================
-  const getAll = async () => await GM_getValue(PROMPT_STORAGE_KEY, []);
-  const setAll = async (arr) => await GM_setValue(PROMPT_STORAGE_KEY, arr);
-  const addItem = async (item) => { const arr = await getAll(); arr.unshift(item); await setAll(arr); };
-  const updateItem = async (index, item) => { const arr = await getAll(); if (arr[index]) { arr[index] = item; await setAll(arr); } };
-  const removeItem = async (index) => { const arr = await getAll(); arr.splice(index, 1); await setAll(arr); };
-
-  // =========================
-  // Styles
-  // =========================
   function injectGlobalStyles() {
     const styleId = 'my-prompt-styles';
     if (document.getElementById(styleId)) return;
@@ -195,84 +195,63 @@
         }
       }
       .mp-hidden{display:none!important}
-      .mp-overlay {
-        position: fixed; inset: 0; background: var(--mp-bg-overlay);
+      .mp-overlay { position: fixed; inset: 0; background: var(--mp-bg-overlay);
         z-index: 2147483647; display: flex; justify-content: center; align-items: center;
         backdrop-filter: blur(4px); opacity: 0; visibility: hidden;
-        transition: opacity var(--mp-transition-fast), visibility var(--mp-transition-fast);
-      }
+        transition: opacity var(--mp-transition-fast), visibility var(--mp-transition-fast); }
       .mp-overlay.visible { opacity: 1; visibility: visible; }
-      .mp-modal-box {
-        font-family: var(--mp-font-family-base);
-        background: var(--mp-bg-primary); color: var(--mp-text-primary);
+      .mp-modal-box { font-family: var(--mp-font-family-base); background: var(--mp-bg-primary); color: var(--mp-text-primary);
         border-radius: var(--mp-border-radius-lg); padding: 24px; box-shadow: var(--mp-shadow-lg);
         width: min(90vw, 520px); border: 1px solid var(--mp-border-primary);
         transform: scale(.95) translateY(10px); opacity: 0;
-        transition: transform var(--mp-transition-fast), opacity var(--mp-transition-fast);
-        position: relative;
-      }
+        transition: transform var(--mp-transition-fast), opacity var(--mp-transition-fast); position: relative; }
       .mp-overlay.visible .mp-modal-box { transform: scale(1) translateY(0); opacity: 1; }
-      .mp-modal-close-btn {
-        position: absolute; top: 12px; right: 12px; background: none; border: none; color: var(--mp-text-tertiary);
+      .mp-modal-close-btn { position: absolute; top: 12px; right: 12px; background: none; border: none; color: var(--mp-text-tertiary);
         font-size: 22px; cursor: pointer; width: 32px; height: 32px; border-radius: 50%;
-        display: flex; align-items: center; justify-content: center; line-height: 1;
-        transition: transform .3s ease, color .3s ease, background-color .3s ease;
-      }
+        display: flex; align-items: center; justify-content: center; transition: transform .3s ease, color .3s ease, background-color .3s ease; }
       .mp-modal-close-btn:hover { transform: rotate(90deg); color: var(--mp-accent-red); background-color: color-mix(in srgb, var(--mp-accent-red) 15%, transparent); }
 
-      .prompt-menu {
-        position: fixed; min-width: 320px; max-width: 420px; background: var(--mp-bg-primary);
+      .prompt-menu { position: fixed; min-width: 320px; max-width: 420px; background: var(--mp-bg-primary);
         border: 1px solid var(--mp-border-primary); border-radius: var(--mp-border-radius-lg);
         box-shadow: var(--mp-shadow-lg); z-index: 2147483647; display: flex; flex-direction: column; overflow: hidden;
-        color: var(--mp-text-primary); font-family: var(--mp-font-family-base);
-        opacity: 0; visibility: hidden; transform: scale(.95); transform-origin: top left;
-        transition: opacity .2s ease, transform .2s ease, visibility 0s linear .2s;
-      }
+        color: var(--mp-text-primary); font-family: var(--mp-font-family-base); opacity: 0; visibility: hidden; transform: scale(.95);
+        transform-origin: top left; transition: opacity .2s ease, transform .2s ease, visibility 0s linear .2s; }
       .prompt-menu.visible { opacity: 1; visibility: visible; transform: scale(1); transition-delay: 0s; }
       .prompt-menu-list { max-height: 220px; overflow-y: auto; padding: 4px; }
-      .prompt-item-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--mp-border-radius-md); cursor: pointer; transition: background-color .15s; }
+      .prompt-item-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--mp-border-radius-md);
+        cursor: pointer; transition: background-color .15s; }
       .prompt-item-row:hover { background: var(--mp-bg-tertiary); }
       .prompt-title { font-size: 14px; font-weight: 500; flex: 1; padding-right: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mp-text-secondary); }
       .prompt-item-row:hover .prompt-title { color: var(--mp-text-primary); }
       .prompt-actions { display: flex; align-items: center; gap: 4px; }
 
-      .action-btn {
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 4px;
-        width: 28px;
-        height: 28px;
-        border-radius: var(--mp-border-radius-sm);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--mp-text-secondary);
-        transition: background-color .15s, color .15s;
-      }
+      .action-btn { background: none; border: none; cursor: pointer; padding: 4px; width: 28px; height: 28px; border-radius: var(--mp-border-radius-sm);
+        display: inline-flex; align-items: center; justify-content: center; color: var(--mp-text-secondary); transition: background-color .15s, color .15s; }
       .action-btn svg { width: 16px; height: 16px; }
-
       .action-btn.edit { color: var(--mp-accent-yellow); }
-      .action-btn.edit:hover {
-        background: color-mix(in srgb, var(--mp-accent-yellow) 18%, transparent);
-        color: var(--mp-bg-primary);
-      }
+      .action-btn.edit:hover { background: color-mix(in srgb, var(--mp-accent-yellow) 18%, transparent); color: var(--mp-bg-primary); }
       .action-btn.delete { color: var(--mp-accent-red); }
-      .action-btn.delete:hover {
-        background: color-mix(in srgb, var(--mp-accent-red) 18%, transparent);
-        color: var(--mp-bg-primary);
-      }
+      .action-btn.delete:hover { background: color-mix(in srgb, var(--mp-accent-red) 18%, transparent); color: var(--mp-bg-primary); }
 
-      .menu-section, .menu-footer { border-top: 1px solid var(--mp-border-primary); padding: 4px; }
-      .menu-button { display: flex; align-items: center; justify-content: center; padding: 8px 12px; cursor: pointer; color: var(--mp-text-secondary); border-radius: var(--mp-border-radius-md); font-size: 14px; font-weight: 500; transition: background-color .15s ease; }
+      .menu-header { display: flex; align-items: center; justify-content: space-between; padding: 8px; border-bottom: 1px solid var(--mp-border-primary); }
+      .menu-title { font-size: 14px; font-weight: 600; color: var(--mp-text-secondary); }
+      .menu-icons { display: flex; align-items: center; gap: 6px; }
+      .icon-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--mp-text-tertiary);
+        border-radius: var(--mp-border-radius-md); cursor: pointer; transition: background-color .15s ease, color .15s ease; }
+      .icon-btn:hover { background: var(--mp-bg-tertiary); color: var(--mp-text-primary); }
+      .settings-panel { padding: 4px; border-top: 1px solid var(--mp-border-primary); }
+      .menu-button { display: flex; align-items: center; justify-content: center; padding: 8px 12px; cursor: pointer; color: var(--mp-text-secondary);
+        border-radius: var(--mp-border-radius-md); font-size: 14px; font-weight: 500; transition: background-color .15s ease; }
       .menu-button:hover { background: var(--mp-bg-tertiary); color: var(--mp-text-primary); }
-      .menu-button svg { margin-right: 8px; }
       .import-export-container { display: flex; }
       .import-export-container .menu-button { flex: 1; }
       .divider { border-left: 1px solid var(--mp-border-primary); height: 24px; align-self: center; }
       .empty-state { padding: 24px 16px; text-align: center; color: var(--mp-text-tertiary); font-size: 14px; }
-      .form-group { display: flex; flex-direction: column; margin-bottom: 16px; }
-      .form-label { margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--mp-text-secondary); }
+
+      .form-group { display: flex; flex-direction: column; gap: 8px; padding: 6px; }
+      .form-label { font-size: 13px; font-weight: 600; color: var(--mp-text-secondary); }
+      .radio-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .radio-row label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; color: var(--mp-text-secondary); }
       .form-input, .form-textarea {
         background: var(--mp-bg-secondary); color: var(--mp-text-primary); border: 1px solid var(--mp-border-primary)!important;
         border-radius: var(--mp-border-radius-md); padding: 10px; width: 100%; box-sizing: border-box; outline: 0!important;
@@ -284,30 +263,6 @@
       .modal-footer { display: flex; justify-content: flex-end; }
       .save-button { padding: 10px 28px; border-radius: var(--mp-border-radius-md); background: var(--mp-accent-primary); color: #fff; border: none; font-weight: 600; cursor: pointer; transition: all .2s; font-family: var(--mp-font-family-base);}
       .save-button:hover { background: var(--mp-accent-primary-hover); transform: translateY(-1px); }
-      .form-checkbox-group { display: flex; align-items: center; gap: 10px; margin-top: -8px; margin-bottom: 20px; }
-      .form-checkbox-group label { font-size: 13px; font-weight: 500; color: var(--mp-text-secondary); cursor: pointer; margin-bottom: 0; }
-      .form-checkbox-group input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; accent-color: var(--mp-accent-primary); }
-
-      #__ap_placeholders_container { max-height: 350px; overflow-y: auto; padding-right: 12px; margin-right: -12px; scrollbar-width: thin; scrollbar-color: var(--mp-border-secondary) var(--mp-bg-tertiary); }
-      #__ap_placeholders_container::-webkit-scrollbar { width: 10px; height: 10px; }
-      #__ap_placeholders_container::-webkit-scrollbar-track { background: var(--mp-bg-tertiary); border-radius: 10px; }
-      #__ap_placeholders_container::-webkit-scrollbar-thumb { background: var(--mp-border-secondary); border-radius: 10px; border: 2px solid var(--mp-bg-primary); }
-      #__ap_placeholders_container::-webkit-scrollbar-thumb:hover { background: var(--mp-text-tertiary); }
-
-      .menu-header {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 8px; border-bottom: 1px solid var(--mp-border-primary);
-      }
-      .menu-title { font-size: 14px; font-weight: 600; color: var(--mp-text-secondary); }
-      .menu-icons { display: flex; align-items: center; gap: 6px; }
-      .icon-btn {
-        width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
-        border: none; background: transparent; color: var(--mp-text-tertiary);
-        border-radius: var(--mp-border-radius-md); cursor: pointer;
-        transition: background-color .15s ease, color .15s ease;
-      }
-      .icon-btn:hover { background: var(--mp-bg-tertiary); color: var(--mp-text-primary); }
-      .settings-panel { padding: 4px; border-top: 1px solid var(--mp-border-primary); }
 
       /* Small hover fix for Google AI Studio */
       button[data-testid="composer-button-prompts"]:hover { background-color: rgba(60,64,67,0.08) !important; }
@@ -321,77 +276,98 @@
   // =========================
   // UI Elements
   // =========================
+  function createButton({
+    tag = 'button',
+    className = '',
+    label = null,
+    labelClass = '',
+    iconClass = '',
+    size = 32,
+    iconSize = 20,
+    attrs = {},
+    style = {},
+    title = STR.prompts,
+    icon = ICON_MENU,
+  } = {}) {
+    const el = document.createElement(tag);
+    if (tag === 'button') el.type = 'button';
+    el.setAttribute('data-testid', 'composer-button-prompts');
+    el.setAttribute('title', title);
+    if (className) el.className = className;
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    Object.assign(el.style, {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+      ...(size ? { width: `${size}px`, height: `${size}px` } : {}),
+      ...style,
+    });
+    setHTML(el, icon || '');
+    const svg = el.querySelector('svg');
+    if (svg) {
+      if (iconClass) svg.classList.add(iconClass);
+      if (iconSize) { svg.setAttribute('width', String(iconSize)); svg.setAttribute('height', String(iconSize)); }
+    }
+    if (label) {
+      const span = document.createElement('span');
+      if (labelClass) span.className = labelClass;
+      span.textContent = label;
+      if (!className.includes('gap') && !labelClass) span.style.marginLeft = '6px';
+      el.appendChild(span);
+    }
+    return el;
+  }
+  const createIconButton = (opts = {}) => createButton({ size: 32, iconSize: 20, ...opts });
+  const createLabeledButton = (label, className = '', opts = {}) => createButton({ label, className, size: undefined, ...opts });
+
   function createPromptMenu() {
     const menu = document.createElement('div');
     menu.className = 'prompt-menu';
     menu.id = 'prompt-menu-container';
 
     // Header
-    const header = document.createElement('div');
-    header.className = 'menu-header';
-
-    const title = document.createElement('div');
-    title.className = 'menu-title';
-    title.textContent = STR.prompts;
-
-    const icons = document.createElement('div');
-    icons.className = 'menu-icons';
+    const header = document.createElement('div'); header.className = 'menu-header';
+    const title = document.createElement('div'); title.className = 'menu-title'; title.textContent = STR.prompts;
+    const icons = document.createElement('div'); icons.className = 'menu-icons';
 
     const btnAdd = document.createElement('button');
-    btnAdd.className = 'icon-btn';
-    btnAdd.id = 'mp-btn-add';
-    btnAdd.setAttribute('aria-label', STR.addPrompt);
-    btnAdd.setAttribute('title', STR.addPrompt);
-    setHTML(btnAdd, `
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      </svg>
-    `);
-
+    btnAdd.className = 'icon-btn'; btnAdd.id = 'mp-btn-add';
+    btnAdd.setAttribute('aria-label', STR.addPrompt); btnAdd.setAttribute('title', STR.addPrompt);
+    setHTML(btnAdd, `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`);
     const btnSettings = document.createElement('button');
-    btnSettings.className = 'icon-btn';
-    btnSettings.id = 'mp-btn-settings';
-    btnSettings.setAttribute('aria-label', 'Settings');
-    btnSettings.setAttribute('title', 'Settings');
+    btnSettings.className = 'icon-btn'; btnSettings.id = 'mp-btn-settings';
+    btnSettings.setAttribute('aria-label', STR.settings); btnSettings.setAttribute('title', STR.settings);
     setHTML(btnSettings, `
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
         <path d="M11.983 13.893a1.893 1.893 0 1 0 0-3.786 1.893 1.893 0 0 0 0 3.786Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M20.5 12a8.5 8.5 0 0 1-.09 1.227l1.498 1.164a.75.75 0 0 1 .18.969l-1.42 2.46a.75.75 0 0 1-.902.344l-1.764-.588a8.46 8.46 0 0 1-1.06.616l-.267 1.844a.75.75 0 0 1-.744.636h-2.84a.75.75 0 0 1-.744-.636l-.267-1.844a8.46 8.46 0 0 1-1.06-.616l-1.764.588a.75.75 0 0 1-.902.345l-1.42-2.46a.75.75 0 0 1 .18-.968l1.498-1.164A8.5 8.5 0 0 1 3.5 12c0-.413.031-.818.09-1.217L2.092 9.619a.75.75 0 0 1-.18-.968l1.42-2.46a.75.75 0 0 1 .902-.345l1.764.588c.333-.227.691-.43 1.06-.616l.267-1.844A.75.75 0 0 1 8.067 3h2.84a.75.75 0 0 1 .744.636l.267 1.844c.369.186.727.389 1.06.616l1.764-.588a.75.75 0 0 1 .902.345l1.42 2.46a.75.75 0 0 1-.18.968l-1.498 1.164c.06.399.09.804.09 1.217Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M20.5 12a8.5 8.5 0 0 1-.09 1.227l1.498 1.164a.75.75 0 0 1 .18.969l-1.42 2.46a.75.75 0 0 1-.902.344l-1.764-.588a8.46 8.46 0 0 1-1.06.616l-.267 1.844a.75.75 0 0 1-.744.636h-2.84a.75.75 0 0 1-.744-.636l-.267-1.844a8.46 8.46 0 0 1-1.06-.616l-1.764.588a.75.75 0 0 1-.902.345l-1.42-2.46a.75.75 0 0 1-.18.968l-1.498 1.164c.06.399.09.804.09 1.217Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     `);
-
     icons.append(btnAdd, btnSettings);
     header.append(title, icons);
 
-    // List container
-    const list = document.createElement('div');
-    list.className = 'prompt-menu-list';
-    list.id = 'mp-list';
+    // List
+    const list = document.createElement('div'); list.className = 'prompt-menu-list'; list.id = 'mp-list';
 
-    // Settings panel (hidden by default)
-    const settingsPanel = document.createElement('div');
-    settingsPanel.className = 'settings-panel mp-hidden';
-    settingsPanel.id = 'mp-settings-panel';
+    // Settings panel
+    const settingsPanel = document.createElement('div'); settingsPanel.className = 'settings-panel mp-hidden'; settingsPanel.id = 'mp-settings-panel';
 
-    const ie = document.createElement('div');
-    ie.className = 'import-export-container';
-
-    const exportBtn = document.createElement('div');
-    exportBtn.className = 'menu-button';
-    exportBtn.id = 'mp-btn-export';
-    exportBtn.textContent = STR.export;
-
-    const importBtn = document.createElement('div');
-    importBtn.className = 'menu-button';
-    importBtn.id = 'mp-btn-import';
-    importBtn.textContent = STR.import;
-
-    const divider = document.createElement('div');
-    divider.className = 'divider';
-
+    const ie = document.createElement('div'); ie.className = 'import-export-container';
+    const exportBtn = document.createElement('div'); exportBtn.className = 'menu-button'; exportBtn.id = 'mp-btn-export'; exportBtn.textContent = STR.export;
+    const divider = document.createElement('div'); divider.className = 'divider';
+    const importBtn = document.createElement('div'); importBtn.className = 'menu-button'; importBtn.id = 'mp-btn-import'; importBtn.textContent = STR.import;
     ie.append(exportBtn, divider, importBtn);
-    settingsPanel.appendChild(ie);
 
+    // Insertion mode controls
+    const modeGroup = document.createElement('div'); modeGroup.className = 'form-group';
+    const modeLabel = document.createElement('div'); modeLabel.className = 'form-label'; modeLabel.textContent = STR.insertionMode;
+    const radioRow = document.createElement('div'); radioRow.className = 'radio-row';
+    radioRow.innerHTML = `
+      <label><input type="radio" name="mp-insert-mode" value="insert"> ${STR.modeInsert}</label>
+      <label><input type="radio" name="mp-insert-mode" value="append"> ${STR.modeAppend}</label>
+      <label><input type="radio" name="mp-insert-mode" value="replace"> ${STR.modeReplace}</label>
+    `;
+    modeGroup.append(modeLabel, radioRow);
+
+    settingsPanel.append(modeGroup, ie);
     menu.append(header, list, settingsPanel);
     return menu;
   }
@@ -416,9 +392,11 @@
         <label for="__ap_text" class="form-label">${STR.text}</label>
         <textarea id="__ap_text" class="form-textarea"></textarea>
       </div>
-      <div class="form-checkbox-group">
-        <input type="checkbox" id="__ap_use_placeholders" />
-        <label for="__ap_use_placeholders">${STR.enablePlaceholders}</label>
+      <div class="form-group" style="margin-top: -4px;">
+        <label class="form-label">
+          <input type="checkbox" id="__ap_use_placeholders" />
+          ${STR.enablePlaceholders}
+        </label>
       </div>
       <div class="modal-footer">
         <button id="__ap_save" class="save-button">${STR.save}</button>
@@ -449,16 +427,8 @@
     return overlay;
   }
 
-  function showModal(modal) {
-    if (!modal) return;
-    modal.classList.remove('mp-hidden');
-    setTimeout(() => modal.classList.add('visible'), 10);
-  }
-  function hideModal(modal) {
-    if (!modal) return;
-    modal.classList.remove('visible');
-    setTimeout(() => modal.classList.add('mp-hidden'), 200);
-  }
+  function showModal(modal) { if (modal) { modal.classList.remove('mp-hidden'); setTimeout(() => modal.classList.add('visible'), 10); } }
+  function hideModal(modal) { if (modal) { modal.classList.remove('visible'); setTimeout(() => modal.classList.add('mp-hidden'), 200); } }
 
   function openPromptModal(item = null, index = -1) {
     if (!state.elements.modal) return;
@@ -493,10 +463,7 @@
       textarea.rows = 1;
       textarea.style.resize = 'vertical';
       textarea.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          document.getElementById('__ap_insert_prompt').click();
-        }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('__ap_insert_prompt').click(); }
       });
       group.appendChild(label);
       group.appendChild(textarea);
@@ -534,63 +501,12 @@
     menu.style.left = `${Math.max(m, Math.min(left, vw - menuWidth - m))}px`;
   }
 
-  // Abstracted button factory (uses SVG constants)
-  function createButton({
-    tag = 'button',
-    className = '',
-    label = null,
-    labelClass = '',
-    iconClass = '',
-    size = 32,
-    iconSize = 20,
-    attrs = {},
-    style = {},
-    title = STR.prompts,
-    icon = ICON_MENU,
-  } = {}) {
-    const el = document.createElement(tag);
-    if (tag === 'button') el.type = 'button';
-    el.setAttribute('data-testid', 'composer-button-prompts');
-    el.setAttribute('title', title);
-    if (className) el.className = className;
-    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-
-    Object.assign(el.style, {
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      cursor: 'pointer',
-      ...(size ? { width: `${size}px`, height: `${size}px` } : {}),
-      ...style,
-    });
-
-    setHTML(el, icon || '');
-    const svg = el.querySelector('svg');
-    if (svg) {
-      if (iconClass) svg.classList.add(iconClass);
-      if (iconSize) {
-        svg.setAttribute('width', String(iconSize));
-        svg.setAttribute('height', String(iconSize));
-      }
-    }
-
-    if (label) {
-      const span = document.createElement('span');
-      if (labelClass) span.className = labelClass;
-      span.textContent = label;
-      if (!className.includes('gap') && !labelClass) span.style.marginLeft = '6px';
-      el.appendChild(span);
-    }
-    return el;
-  }
-
-  function editorIsContentEditable(editor) {
-    return editor && editor.nodeType === 1 && editor.isContentEditable;
-  }
+  const editorIsContentEditable = (editor) => editor && editor.nodeType === 1 && editor.isContentEditable;
 
   function setContentEditableText(editor, text) {
     editor.focus();
-    setHTML(editor, '');
+    // Clear and rebuild as safe text nodes with <p>/<br>
+    editor.innerHTML = '';
     const lines = String(text).split('\n');
     lines.forEach(line => {
       const p = document.createElement('p');
@@ -601,26 +517,99 @@
     editor.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
   }
 
+  // Insert helpers with mode: 'insert' | 'append' | 'replace'
+  function insertIntoTextInput(el, text, mode = 'insert') {
+    const old = String(el.value ?? '');
+    let start = typeof el.selectionStart === 'number' ? el.selectionStart : old.length;
+    let end = typeof el.selectionEnd === 'number' ? el.selectionEnd : old.length;
+
+    if (mode === 'append') { start = end = old.length; }
+    if (mode === 'replace') { start = 0; end = old.length; }
+
+    const next = old.slice(0, start) + text + old.slice(end);
+    const tag = (el.tagName || '').toUpperCase();
+    const proto = tag === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    setter ? setter.call(el, next) : (el.value = next);
+
+    const caret = start + text.length;
+    el.selectionStart = el.selectionEnd = caret;
+    el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  }
+
+  function insertPlainTextFragment(text) {
+    const frag = document.createDocumentFragment();
+    const parts = String(text).split('\n');
+    parts.forEach((line, i) => {
+      if (i) frag.appendChild(document.createElement('br'));
+      frag.appendChild(document.createTextNode(line));
+    });
+    return frag;
+  }
+
+  function getRangeInsideEditor(editor, preferEnd = false) {
+    const sel = window.getSelection();
+    let range = document.createRange();
+    if (sel && sel.rangeCount && editor.contains(sel.anchorNode)) {
+      range = sel.getRangeAt(0);
+    } else {
+      range.selectNodeContents(editor);
+      range.collapse(preferEnd); // false: start, true: end
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    return { sel, range };
+  }
+
+  function insertIntoContentEditable(editor, text, mode = 'insert') {
+    editor.focus();
+    if (mode === 'replace') {
+      setContentEditableText(editor, text);
+      // Caret to end
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      sel.removeAllRanges(); sel.addRange(range);
+      return;
+    }
+
+    const preferEnd = mode === 'append';
+    const { sel, range } = getRangeInsideEditor(editor, preferEnd);
+
+    // Try paste path first (rich editors handle better)
+    try {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', text);
+      const ok = editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      if (ok) return;
+    } catch (_) { /* Firefox blocks synthetic; fallback */ }
+
+    // Plain text insertion
+    const frag = insertPlainTextFragment(text);
+    range.deleteContents();
+    range.insertNode(frag);
+    range.collapse(false);
+    sel.removeAllRanges(); sel.addRange(range);
+
+    editor.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  }
+
   function moveCursorToEnd(editor) {
-    setTimeout(() => {
-      try {
-        if (editorIsContentEditable(editor)) {
-          const range = document.createRange();
-          range.selectNodeContents(editor);
-          range.collapse(false);
-          const sel = window.getSelection();
-          sel.removeAllRanges();
-          sel.addRange(range);
-          editor.scrollTop = editor.scrollHeight;
-        } else if (editor && typeof editor.value === 'string') {
-          const len = editor.value.length;
-          editor.selectionStart = editor.selectionEnd = len;
-          editor.scrollTop = editor.scrollHeight;
-        } else {
-          editor?.focus();
-        }
-      } catch (_) { /* noop */ }
-    }, 10);
+    try {
+      if (editorIsContentEditable(editor)) {
+        const range = document.createRange();
+        range.selectNodeContents(editor); range.collapse(false);
+        const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+        editor.scrollTop = editor.scrollHeight;
+      } else if (editor && typeof editor.value === 'string') {
+        const len = editor.value.length;
+        editor.selectionStart = editor.selectionEnd = len;
+        editor.scrollTop = editor.scrollHeight;
+      } else {
+        editor?.focus();
+      }
+    } catch (_) { /* noop */ }
   }
 
   // =========================
@@ -629,11 +618,7 @@
   async function refreshMenu() {
     if (!state.elements.menu) return;
     const list = state.elements.menu.querySelector('#mp-list') || (() => {
-      const l = document.createElement('div');
-      l.className = 'prompt-menu-list';
-      l.id = 'mp-list';
-      state.elements.menu.appendChild(l);
-      return l;
+      const l = document.createElement('div'); l.className = 'prompt-menu-list'; l.id = 'mp-list'; state.elements.menu.appendChild(l); return l;
     })();
 
     setHTML(list, '');
@@ -737,40 +722,42 @@
   // =========================
   // Insertion Logic
   // =========================
+  const resolveEditor = () => {
+    if (state.platform?.getEditor) {
+      const e = state.platform.getEditor();
+      if (e) return e;
+    }
+    if (state.platform?.editorSelector) return document.querySelector(state.platform.editorSelector);
+    return null;
+  };
+
   async function insertPrompt(promptItem, index) {
-    // Get editor
-    let editor = null;
-    if (state.platform?.getEditor) editor = state.platform.getEditor();
-    if (!editor && state.platform?.editorSelector) editor = document.querySelector(state.platform.editorSelector);
+    const editor = resolveEditor();
 
     if (!editor) { alert(STR.editorNotFound.replace('{platform}', state.platform?.name || 'this platform')); return; }
+    const { insertMode } = await getSettings();
 
     editor.focus();
     setTimeout(() => {
-      const ua = navigator.userAgent.toLowerCase();
-      const isFirefox = ua.includes('firefox');
       const isCE = editorIsContentEditable(editor);
+      const isTextInput = typeof editor.value === 'string';
 
       if (isCE) {
-        setContentEditableText(editor, promptItem.text);
-      } else if (isFirefox && state.platform?.name === 'chatgpt') {
-        editor.value = promptItem.text;
-        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        insertIntoContentEditable(editor, promptItem.text, insertMode);
+      } else if (isTextInput) {
+        insertIntoTextInput(editor, promptItem.text, insertMode);
       } else {
+        // Exotic editors: best-effort paste
         try {
           const dt = new DataTransfer();
           dt.setData('text/plain', promptItem.text);
           editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-        } catch (_) { /* fallback below */ }
-
-        if (typeof editor.value === 'string' && editor.value !== promptItem.text) {
-          const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-          setter ? setter.call(editor, promptItem.text) : (editor.value = promptItem.text);
-          editor.dispatchEvent(new Event('input', { bubbles: true }));
+        } catch (_) {
+          // If replace requested but paste failed, last resort: try to move cursor end (no destructive clear)
+          if (insertMode !== 'insert') moveCursorToEnd(editor);
         }
       }
-      moveCursorToEnd(editor);
-    }, 50);
+    }, 30);
 
     // Move used prompt to top
     const prompts = await getAll();
@@ -782,7 +769,7 @@
   }
 
   // =========================
-  // Platform Integrations (data-driven)
+  // Platform Integrations
   // =========================
   const PLATFORMS = [
     {
@@ -792,7 +779,7 @@
       mount: async () => {
         const container = await waitFor('div[class*="[grid-area:leading]"]');
         Object.assign(container.style, { display: 'flex', alignItems: 'center' });
-        const btn = createButton({ className: 'composer-btn', size: 32 });
+        const btn = createIconButton({ className: 'composer-btn' });
         container.appendChild(btn);
         return { wrapper: btn, clickable: btn };
       },
@@ -805,13 +792,11 @@
         const container = (await waitFor('div:has(> input[type="file"])')).parentElement;
         const refButtons = Array.from(container.querySelectorAll('button:not([data-testid="composer-button-prompts"])'));
         const ref = refButtons[refButtons.length - 1];
-        const btn = createButton({
-          className: ref ? ref.className : '',
-          label: STR.prompt,
-          attrs: { role: 'button', 'aria-disabled': 'false', tabindex: '0' },
-          size: 32,
-          iconSize: 20,
-        });
+        const btn = createLabeledButton(
+          STR.prompt,
+          ref ? ref.className : '',
+          { attrs: { role: 'button', 'aria-disabled': 'false', tabindex: '0' }, size: 32, iconSize: 20 }
+        );
         ref?.insertAdjacentElement('afterend', btn);
         return { wrapper: container, clickable: btn };
       },
@@ -822,13 +807,12 @@
       editorSelector: 'ms-autosize-textarea textarea',
       mount: async () => {
         const insertionPoint = (await waitFor('ms-add-chunk-menu', 5000)).closest('.button-wrapper');
-        const wrapper = document.createElement('div');
-        wrapper.className = 'button-wrapper';
-        const btn = createButton({ size: 48 });
+        const wrapper = document.createElement('div'); wrapper.className = 'button-wrapper';
+        const btn = createIconButton({ size: 48 });
         wrapper.appendChild(btn);
         insertionPoint.parentElement?.appendChild(wrapper);
         const parent = insertionPoint.closest('.prompt-input-wrapper-container');
-        if (parent) parent.style.alignItems = 'center';
+        if (parent) { parent.style.alignItems = 'center'; }
         return { wrapper, clickable: btn };
       },
     },
@@ -839,19 +823,12 @@
       mount: async () => {
         const ref = await waitFor('button.websearch_button', 5000);
         const container = ref.parentElement;
-        const btn = createButton({
-          className: 'chat-input-feature-btn',
-          label: STR.prompt,
-          labelClass: 'chat-input-feature-btn-text',
-          iconClass: 'chat-input-feature-btn-icon',
-          size: undefined, // let site CSS drive dimensions
-        });
+        const btn = createLabeledButton(STR.prompt, 'chat-input-feature-btn', { iconClass: 'chat-input-feature-btn-icon' });
         container.prepend(btn);
-        // Keep it first
-        const obs = new MutationObserver(() => {
+        const obs = addPlatformObserver(new MutationObserver(() => {
           const myBtn = container.querySelector('button[data-testid="composer-button-prompts"]');
           if (myBtn && container.firstElementChild !== myBtn) container.prepend(myBtn);
-        });
+        }));
         obs.observe(container, { childList: true });
         return { wrapper: container, clickable: btn };
       },
@@ -863,11 +840,10 @@
       mount: async () => {
         const referenceElement = await waitFor('button[data-autothink="true"]', 8000);
         const container = referenceElement.closest('div');
-        const btn = createButton({
-          className: 'px-2 @xl:px-3 py-1.5 flex gap-1.5 items-center text-sm rounded-lg border transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden bg-transparent dark:text-gray-300 border-[#E5E5E5] dark:border-[#3C3E3F] hover:bg-black/5 dark:hover:bg-white/5',
-          label: STR.prompt,
-          size: undefined,
-        });
+        const btn = createLabeledButton(
+          STR.prompt,
+          'px-2 @xl:px-3 py-1.5 flex gap-1.5 items-center text-sm rounded-lg border transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden bg-transparent dark:text-gray-300 border-[#E5E5E5] dark:border-[#3C3E3F] hover:bg-black/5 dark:hover:bg-white/5'
+        );
         container.appendChild(btn);
         return { wrapper: container, clickable: btn };
       },
@@ -878,15 +854,16 @@
       editorSelector: 'div.ql-editor[contenteditable="true"]',
       mount: async () => {
         const ref = await waitFor('uploader', 8000);
-        const btn = createButton({
+        const btn = createIconButton({
           className: 'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-primary mat-mdc-tooltip-trigger',
-          size: 40,
-          iconSize: 24,
+          size: 40, iconSize: 24,
         });
         ref.parentNode.insertBefore(btn, ref.nextSibling);
         const wrapper = ref.parentElement;
         if (wrapper) {
-          Object.assign(wrapper.style, { display: 'flex', alignItems: 'center', gap: '3px' });
+          wrapper.style.display = 'flex';
+          wrapper.style.alignItems = 'center';
+          wrapper.style.gap = '3px';
         }
         return { wrapper, clickable: btn };
       },
@@ -897,9 +874,8 @@
       editorSelector: 'textarea[name="message"]',
       mount: async () => {
         const container = await waitFor('div[data-sentry-component="SelectChatModality"]', 8000);
-        const btn = createButton({
+        const btn = createIconButton({
           className: 'inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium focus-visible:outline-none focus-visible:ring-2 ring-offset-2 disabled:pointer-events-none disabled:opacity-50 text-interactive-active border border-border-faint bg-transparent hover:text-interactive-normal active:text-text-tertiary h-8 w-8 p-2 rounded-md active:scale-[0.96] transition-colors duration-150 ease-out hover:shadow-sm hover:bg-interactive-normal/10 hover:border-interactive-normal/10',
-          size: undefined,
         });
         container.appendChild(btn);
         return { wrapper: container, clickable: btn };
@@ -911,14 +887,10 @@
       editorSelector: 'div.chat-input-editor[contenteditable="true"]',
       mount: async () => {
         const container = await waitFor('div.left-area', 8000);
-        const btn = createButton({
-          className: 'deep-research-switch normal',
-          label: STR.prompt,
-          size: undefined,
-        });
+        const btn = createLabeledButton(STR.prompt, 'deep-research-switch normal');
         const ensure = () => { if (!container.contains(btn)) container.appendChild(btn); };
         ensure();
-        const obs = new MutationObserver(ensure);
+        const obs = addPlatformObserver(new MutationObserver(ensure));
         obs.observe(container, { childList: true });
         return { wrapper: container, clickable: btn };
       },
@@ -930,9 +902,8 @@
       mount: async () => {
         const ref = await waitFor('button[data-testid="input-menu-plus"]', 8000);
         const mountEl = ref.closest('div.relative.shrink-0');
-        const btn = createButton({
+        const btn = createIconButton({
           className: 'border-0.5 transition-all h-8 min-w-8 rounded-lg flex items-center px-[7.5px] group !pointer-events-auto !outline-offset-1 text-text-300 border-border-300 hover:text-text-200/90 hover:bg-bg-100 active:scale-[0.98]',
-          size: undefined,
           iconSize: 16,
         });
         mountEl.parentNode.insertBefore(btn, mountEl.nextSibling);
@@ -946,7 +917,7 @@
       mount: async () => {
         const attachBtn = await waitFor('button[aria-label="Attach"]', 8000);
         const bar = attachBtn.parentElement;
-        const btn = createButton({ size: 40, iconSize: 20 });
+        const btn = createIconButton({ size: 40, iconSize: 20 });
         bar.appendChild(btn);
         return { wrapper: bar, clickable: btn };
       },
@@ -957,10 +928,7 @@
   // =========================
   // Init & Observers
   // =========================
-  function detectPlatform() {
-    for (const p of PLATFORMS) if (p.test()) return p;
-    return null;
-  }
+  function detectPlatform() { for (const p of PLATFORMS) if (p.test()) return p; return null; }
 
   async function initUI() {
     cleanup();
@@ -978,42 +946,30 @@
       state.elements.placeholderModal = createPlaceholderModal();
       document.body.append(state.elements.menu, state.elements.modal, state.elements.placeholderModal);
 
-      // Wire top header buttons
-      const addBtnTop = state.elements.menu.querySelector('#mp-btn-add');
+      // Settings init
       const settingsBtn = state.elements.menu.querySelector('#mp-btn-settings');
       const settingsPanel = state.elements.menu.querySelector('#mp-settings-panel');
+      const addBtnTop = state.elements.menu.querySelector('#mp-btn-add');
       const importBtn = state.elements.menu.querySelector('#mp-btn-import');
       const exportBtn = state.elements.menu.querySelector('#mp-btn-export');
 
-      if (addBtnTop) {
-        addBtnTop.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openPromptModal();
-        });
-      }
-      if (settingsBtn) {
-        settingsBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          settingsPanel?.classList.toggle('mp-hidden');
-        });
-      }
-      if (importBtn) {
-        importBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          importPrompts();
-        });
-      }
-      if (exportBtn) {
-        exportBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          exportPrompts();
-        });
-      }
+      // Wire menu header buttons
+      addBtnTop?.addEventListener('click', (e) => { e.stopPropagation(); openPromptModal(); });
+      settingsBtn?.addEventListener('click', (e) => { e.stopPropagation(); settingsPanel?.classList.toggle('mp-hidden'); });
+      importBtn?.addEventListener('click', (e) => { e.stopPropagation(); importPrompts(); });
+      exportBtn?.addEventListener('click', (e) => { e.stopPropagation(); exportPrompts(); });
+
+      // Wire insertion mode radios
+      const radios = state.elements.menu.querySelectorAll('input[name="mp-insert-mode"]');
+      const s = await getSettings();
+      radios.forEach(r => {
+        r.checked = r.value === s.insertMode;
+        r.addEventListener('change', async () => { if (r.checked) await setSettings({ insertMode: r.value }); });
+      });
 
       // Open/close menu
       state.elements.button.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
+        e.stopPropagation(); e.preventDefault();
         if (state.elements.menu.classList.contains('visible')) { closeMenu(); return; }
         refreshMenu().then(() => {
           state.elements.menu.querySelector('#mp-settings-panel')?.classList.add('mp-hidden');
@@ -1071,12 +1027,10 @@
   function setupGlobalListeners() {
     document.addEventListener('click', (ev) => {
       if (!state.elements.menu || !state.elements.button) return;
-
       const settingsPanel = document.getElementById('mp-settings-panel');
       if (settingsPanel && !ev.target.closest('#mp-settings-panel, #mp-btn-settings')) {
         settingsPanel.classList.add('mp-hidden');
       }
-
       if (ev.target.closest('#prompt-menu-container, [data-testid="composer-button-prompts"]')) return;
       closeMenu();
     });
@@ -1100,19 +1054,24 @@
   }
 
   function cleanup() {
-    if (state.elements.wrapper) { state.elements.wrapper.remove(); state.elements.wrapper = null; }
-    if (state.elements.menu) { state.elements.menu.remove(); state.elements.menu = null; }
-    if (state.elements.modal) { state.elements.modal.remove(); state.elements.modal = null; }
-    if (state.elements.placeholderModal) { state.elements.placeholderModal.remove(); state.elements.placeholderModal = null; }
+    // Disconnect observers first
+    try { state.observers.page?.disconnect(); } catch (_) {}
+    state.observers.page = null;
+    if (state.observers.platform?.length) {
+      state.observers.platform.forEach(o => { try { o.disconnect(); } catch (_) {} });
+      state.observers.platform = [];
+    }
+    // Remove DOM
+    state.elements.wrapper?.remove(); state.elements.wrapper = null;
+    state.elements.menu?.remove(); state.elements.menu = null;
+    state.elements.modal?.remove(); state.elements.modal = null;
+    state.elements.placeholderModal?.remove(); state.elements.placeholderModal = null;
+    state.elements.button = null;
   }
 
   // =========================
   // Start
   // =========================
-  function start() {
-    injectGlobalStyles();
-    setupGlobalListeners();
-    tryInit();
-  }
+  function start() { injectGlobalStyles(); setupGlobalListeners(); tryInit(); }
   start();
 })();
