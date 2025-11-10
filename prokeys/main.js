@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Smart Abbreviation Expander (AI)
-// @namespace    https://github.com/your-namespace
-// @version      1.9.1
-// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Inline editing, in-panel settings screen, top-right FAB toggle, and hotkey customization. Fallback: if no caret, insert at end-of-line in a reasonable field.
+// @namespace    https://github.com/quantavil
+// @version      1.10.0
+// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Inline editing, in-panel settings screen, top-right FAB toggle, hotkey customization, and API key input in Settings. Fallback: if no caret, insert at end-of-line in a reasonable field.
 // @author       You
 // @match        *://*/*
 // @grant        GM_getValue
@@ -22,7 +22,7 @@
   // Config
   // ----------------------
   const CONFIG = {
-    trigger: { shift: true, alt: false, ctrl: false, meta: false },      // Shift+Space (Space-based)
+    trigger: { shift: true, alt: false, ctrl: false, meta: false }, // Space-based (Shift+Space)
     palette: { code: 'KeyP', alt: true, shift: false, ctrl: false, meta: false }, // Alt+P
     correct: { code: 'KeyG', alt: true, shift: false, ctrl: false, meta: false }, // Alt+G
     maxAbbrevLen: 80,
@@ -32,6 +32,7 @@
       tone: 'sae.gemini.tone.v1',
       keys: 'sae.keys.v1',
       fab: 'sae.ui.fabEnabled.v1',
+      apiKey: 'sae.gemini.apiKey.v1',
     },
     toast: { throttleMs: 3000 },
     clipboardReadTimeoutMs: 350,
@@ -42,7 +43,7 @@
       temperature: 0.15,
       timeoutMs: 20000,
       maxInputChars: 32000,
-      apiKey: 'AIzaSyBkbDlwdw4xUB9_wiwcNvXYnEGrLSlJcwU'
+      apiKey: '' // user-configurable via Settings; do not hardcode keys here
     },
   };
 
@@ -90,6 +91,56 @@
   };
 
   // ----------------------
+  // Small utilities
+  // ----------------------
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const debounce = (fn, wait) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; };
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const pad2 = n => String(n).padStart(2, '0');
+
+  // ----------------------
+  // Notifier (toast + busy bubble)
+  // ----------------------
+  function notifier() {
+    let el = null, timer = null;
+    const place = () => {
+      const left = Math.max(8, window.innerWidth - 320);
+      const top = Math.max(8, window.innerHeight - 80);
+      el.style.left = `${left}px`; el.style.top = `${top}px`;
+    };
+    return {
+      toast(msg, ms = 2200) {
+        this.close();
+        el = document.createElement('div');
+        el.className = 'sae-bubble';
+        el.textContent = msg;
+        document.documentElement.appendChild(el);
+        place();
+        timer = setTimeout(() => this.close(), ms);
+      },
+      busy(msg) {
+        this.close();
+        el = document.createElement('div');
+        el.className = 'sae-bubble';
+        el.textContent = msg;
+        document.documentElement.appendChild(el);
+        place();
+        return {
+          update: (m) => { el.textContent = m; },
+          close: () => this.close()
+        };
+      },
+      close() {
+        if (timer) clearTimeout(timer);
+        el?.remove();
+        el = timer = null;
+      }
+    };
+  }
+  const notify = notifier();
+
+  // ----------------------
   // State
   // ----------------------
   const state = {
@@ -100,12 +151,11 @@
     fabEnabled: true,
     _lastFocusedEditable: null,
     activeIndex: 0,
+    apiKey: '',
   };
   let paletteEl = null;
   let fabEl = null;
   let hotkeyCapture = null; // { kind: 'spaceOnly' | 'code', resolve, bubble }
-  let toastEl = null;
-  let toastTimer = null;
   let searchTimeout = null;
 
   // ----------------------
@@ -146,7 +196,7 @@
     .sae-panel.settings-open .sae-settings-view{display:block}
     .sae-hrow{display:grid;grid-template-columns:180px 1fr auto;align-items:center;gap:10px;padding:8px;border-bottom:1px solid rgba(255,255,255,.06)}
     .sae-hrow:last-child{border-bottom:none}
-    .sae-select{background:#1b1b1b;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;font:inherit}
+    .sae-select,.sae-text{background:#1b1b1b;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;font:inherit;width:100%}
     .sae-btn{padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#fff;cursor:pointer}
     .sae-btn:hover{background:#252525}
     .sae-chip{display:inline-block;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#ddd;margin-right:8px}
@@ -189,6 +239,9 @@
     // Load FAB enable flag
     state.fabEnabled = await GMX.getValue(CONFIG.storeKeys.fab, true);
 
+    // Load API key
+    state.apiKey = await GMX.getValue(CONFIG.storeKeys.apiKey, CONFIG.gemini.apiKey || '');
+
     // Wait for DOM before adding styles and FAB
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initDOM);
@@ -198,7 +251,6 @@
 
     // Remember last focused editable (but ignore palette UI)
     document.addEventListener('focusin', (e) => {
-      // Don't track focus inside the palette or FAB
       if (e.target.closest('.sae-palette, .sae-fab')) return;
       const el = isEditable(e.target);
       if (el) state._lastFocusedEditable = el;
@@ -230,6 +282,13 @@
       await GMX.setValue(CONFIG.storeKeys.tone, state.tone);
       toast(`Tone set to ${state.tone}.`);
     });
+    GMX.registerMenuCommand('Gemini: Set API Key', async () => {
+      const val = prompt('Enter your Gemini API key:', state.apiKey || '');
+      if (val == null) return;
+      state.apiKey = val.trim();
+      await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
+      toast(state.apiKey ? 'API key saved.' : 'API key cleared.');
+    });
 
     document.addEventListener('keydown', onKeyDownCapture, true);
   }
@@ -240,41 +299,43 @@
   }
 
   // ----------------------
-  // Key handling
+  // Hotkeys
   // ----------------------
-  function matchSpaceHotkey(e, spec) {
-    return (e.key === ' ' || e.code === 'Space' || e.key === 'Spacebar')
-      && !!e.shiftKey === !!spec.shift && !!e.altKey === !!spec.alt && !!e.ctrlKey === !!spec.ctrl && !!e.metaKey === !!spec.meta;
+  function matchHotkey(e, spec) {
+    const mods = (e.shiftKey === !!spec.shift) && (e.altKey === !!spec.alt) && (e.ctrlKey === !!spec.ctrl) && (e.metaKey === !!spec.meta);
+    if (!mods) return false;
+    if (spec.code) return e.code === spec.code;
+    return e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar';
   }
-  function matchCodeHotkey(e, spec) {
-    return e.code === spec.code
-      && !!e.shiftKey === !!spec.shift && !!e.altKey === !!spec.alt && !!e.ctrlKey === !!spec.ctrl && !!e.metaKey === !!spec.meta;
-  }
-  function isEditable(el) {
-    if (!el) return null;
-    if (el instanceof HTMLTextAreaElement) return el;
-    if (el instanceof HTMLInputElement) {
-      const type = (el.type || 'text').toLowerCase();
-      if (type === 'password') return null;
-      if (['text', 'search', 'url', 'email', 'tel'].includes(type)) return el;
-      return null;
-    }
-    for (let n = el; n && n !== document.documentElement; n = n.parentElement) if (n.nodeType === 1 && n.isContentEditable) return n;
-    return null;
-  }
+
+  const HOTKEYS = [
+    {
+      spec: () => CONFIG.palette,
+      needsEditable: false,
+      handler: () => {
+        state.lastEditable = captureEditableContext();
+        openPalette();
+      }
+    },
+    {
+      spec: () => CONFIG.correct,
+      needsEditable: true,
+      handler: () => triggerGeminiCorrection(),
+    },
+    {
+      spec: () => CONFIG.trigger,
+      needsEditable: true,
+      handler: () => doExpansion(),
+    },
+  ];
 
   async function onKeyDownCapture(e) {
     if (e.defaultPrevented || e.isComposing) return;
 
-    // Intercept for hotkey capture (Settings → Hotkeys)
+    // Intercept when capturing hotkeys in settings
     if (hotkeyCapture) {
-      // Don't block typing in normal inputs outside the capture flow
-      if (e.target.matches('input, textarea, [contenteditable]') && !e.target.closest('.sae-bubble')) {
-        return;
-      }
-
-      e.preventDefault();
-      e.stopPropagation();
+      if (e.target.matches('input, textarea, [contenteditable]') && !e.target.closest('.sae-bubble')) return;
+      e.preventDefault(); e.stopPropagation();
 
       if (e.key === 'Escape') {
         hotkeyCapture.bubble?.update('Canceled.');
@@ -283,6 +344,7 @@
         hotkeyCapture = null;
         return;
       }
+
       if (hotkeyCapture.kind === 'spaceOnly') {
         if (e.code !== 'Space') {
           hotkeyCapture.bubble?.update('Expand hotkey must include Space (e.g., Shift+Space). Esc to cancel.');
@@ -310,34 +372,53 @@
 
     if (paletteEl && paletteEl.classList.contains('open') && paletteEl.contains(e.target)) return;
 
-    // Palette (Alt+P)
-    if (matchCodeHotkey(e, CONFIG.palette)) {
-      e.preventDefault(); e.stopPropagation();
-      state.lastEditable = captureEditableContext();
-      openPalette(); return;
-    }
-    // Gemini Correct (Alt+G)
-    if (matchCodeHotkey(e, CONFIG.correct)) {
-      const target = isEditable(e.target); if (!target) return;
-      e.preventDefault(); e.stopPropagation();
-      triggerGeminiCorrection(); return;
-    }
-    // Expand (Shift+Space or changed via settings)
-    if (matchSpaceHotkey(e, CONFIG.trigger)) {
-      const target = isEditable(e.target); if (!target) return;
-      e.preventDefault(); e.stopPropagation();
-      const ctx = captureEditableContext(); if (!ctx || !ctx.collapsed) return;
-      const tokenInfo = extractAbbrevBeforeCaret(ctx); if (!tokenInfo || !tokenInfo.token) return;
-      if (tokenInfo.token.length > CONFIG.maxAbbrevLen) return;
-      const tmpl = state.dict[tokenInfo.token.toLowerCase()]; if (!tmpl) return;
-      try { const rendered = await renderTemplate(tmpl); await performExpansion(ctx, tokenInfo, rendered); }
-      catch (err) { console.warn('SAE expand error:', err); }
+    for (const hk of HOTKEYS) {
+      const spec = hk.spec();
+      if (matchHotkey(e, spec)) {
+        if (hk.needsEditable && !isEditable(e.target)) return;
+        e.preventDefault(); e.stopPropagation();
+        hk.handler();
+        return;
+      }
     }
   }
 
+  function captureHotkey(kind) {
+    return new Promise((resolve) => {
+      const bubble = notify.busy(kind === 'spaceOnly'
+        ? 'Press new Expand hotkey (must include Space). Esc to cancel.'
+        : 'Press new hotkey. Use modifiers if you want. Esc to cancel.');
+      hotkeyCapture = { kind, resolve, bubble };
+    });
+  }
+
+  async function setHotkey(name, captureKind /* 'spaceOnly' | 'code' */) {
+    const spec = await captureHotkey(captureKind);
+    if (!spec) return;
+    CONFIG[name] = spec;
+    const keys = await GMX.getValue(CONFIG.storeKeys.keys, {});
+    keys[name] = spec;
+    await GMX.setValue(CONFIG.storeKeys.keys, keys);
+    toast(`${name} hotkey set to ${hotkeyToString(spec, captureKind === 'spaceOnly')}`);
+  }
+
   // ----------------------
-  // Context extraction
+  // Editable detection & selection helpers
   // ----------------------
+  function isEditable(el) {
+    if (!el) return null;
+    if (el instanceof HTMLTextAreaElement) return el;
+    if (el instanceof HTMLInputElement) {
+      const type = (el.type || 'text').toLowerCase();
+      if (type === 'password') return null;
+      if (['text', 'search', 'url', 'email', 'tel'].includes(type)) return el;
+      return null;
+    }
+    for (let n = el; n && n !== document.documentElement; n = n.parentElement) if (n.nodeType === 1 && n.isContentEditable) return n;
+    return null;
+  }
+  function getSafeSelection() { const sel = window.getSelection?.(); return (!sel || sel.rangeCount === 0) ? null : sel; }
+
   function captureEditableContext() {
     const active = document.activeElement; const el = isEditable(active); if (!el) return null;
     if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
@@ -349,7 +430,82 @@
     }
   }
 
-  const isWordChar = (() => { try { const re = new RegExp('[\\p{L}\\p{N}_-]', 'u'); return ch => re.test(ch); } catch { return ch => /[A-Za-z0-9_-]/.test(ch); } })();
+  // ----------------------
+  // Editor abstraction (unifies input and contenteditable)
+  // ----------------------
+  function makeEditor(ctx) {
+    if (ctx.kind === 'input') {
+      const el = ctx.el;
+      return {
+        getSelectionRange() {
+          const start = el.selectionStart ?? 0, end = el.selectionEnd ?? 0;
+          return { start, end, collapsed: start === end };
+        },
+        getSelectedText() {
+          const { start, end } = this.getSelectionRange();
+          return el.value.slice(start, end);
+        },
+        getAllText() { return el.value; },
+        replaceRange(text, start, end, caretIndex = text.length) {
+          el.setRangeText(text, start, end, 'end');
+          el.selectionStart = el.selectionEnd = start + caretIndex;
+          dispatchInput(el, (end > start ? 'insertReplacementText' : 'insertText'), text);
+        },
+        replaceSelection(text, caretIndex) {
+          const { start, end } = this.getSelectionRange();
+          this.replaceRange(text, start, end, caretIndex);
+        }
+      };
+    } else {
+      const root = ctx.root;
+      return {
+        getSelectionRange() {
+          const sel = getSafeSelection();
+          let range = sel?.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+          return { range, collapsed: !!range?.collapsed };
+        },
+        getSelectedText() {
+          const { range } = this.getSelectionRange();
+          return range ? range.toString() : '';
+        },
+        getAllText() {
+          const r = document.createRange(); r.selectNodeContents(root);
+          return r.toString();
+        },
+        replaceRangeWithText(range, text, caretIndex = text.length) {
+          range.deleteContents();
+          const { fragment, cursorNode, cursorOffset, lastNode } = buildFragment(text, caretIndex);
+          range.insertNode(fragment);
+          const sel = getSafeSelection(); placeCaretAfterInsertion(sel, range, cursorNode, cursorOffset, lastNode);
+          dispatchInput(root, 'insertReplacementText', text);
+        },
+        replaceSelection(text, caretIndex) {
+          const { range } = this.getSelectionRange();
+          if (!range) return;
+          this.replaceRangeWithText(range, text, caretIndex);
+        }
+      };
+    }
+  }
+
+  function applyRendered(ctx, rendered, opts = {}) {
+    const editor = makeEditor(ctx);
+    if (ctx.kind === 'input' && typeof opts.start === 'number' && typeof opts.end === 'number') {
+      editor.replaceRange(rendered.text, opts.start, opts.end, rendered.cursorIndex);
+    } else if (ctx.kind === 'ce' && opts.range instanceof Range) {
+      editor.replaceRangeWithText(opts.range, rendered.text, rendered.cursorIndex);
+    } else {
+      editor.replaceSelection(rendered.text, rendered.cursorIndex);
+    }
+  }
+
+  // ----------------------
+  // Abbreviation token extraction
+  // ----------------------
+  const isWordChar = (() => {
+    try { const re = new RegExp('[\\p{L}\\p{N}_-]', 'u'); return ch => re.test(ch); }
+    catch { return ch => /[A-Za-z0-9_-]/.test(ch); }
+  })();
 
   function extractAbbrevBeforeCaret(ctx) {
     if (ctx.kind === 'input') {
@@ -399,28 +555,34 @@
     for (let n = walker.nextNode(); n; n = walker.nextNode()) last = n;
     return last;
   }
-  function getSafeSelection() { const sel = window.getSelection?.(); return (!sel || sel.rangeCount === 0) ? null : sel; }
 
   // ----------------------
-  // Template rendering
+  // Template rendering (plugin-based tags)
   // ----------------------
+  const TAGS = {
+    cursor: async () => ({ text: '', cursor: true }),
+    date: async (arg, now) => ({ text: formatDate(now, arg) }),
+    time: async (arg, now) => ({ text: formatTime(now, arg) }),
+    day: async (arg, now) => ({ text: formatDay(now, arg) }),
+    clipboard: async () => ({ text: await readClipboardSafe() || '' }),
+  };
+
   async function renderTemplate(template) {
     const now = new Date(); let out = '', cursorIndex = -1;
-    const re = /{{\s*([a-zA-Z]+)(?::([^}]+))?\s*}}/g; let idx = 0;
-    for (; ;) {
-      const m = re.exec(template); if (!m) { out += template.slice(idx); break; }
+    const re = /{{\s*([a-zA-Z]+)(?::([^}]+))?\s*}}/g; let idx = 0; let m;
+    while ((m = re.exec(template))) {
       out += template.slice(idx, m.index); idx = m.index + m[0].length;
-      const tag = m[1].toLowerCase(), arg = (m[2] || '').trim();
-      if (tag === 'cursor') { if (cursorIndex === -1) cursorIndex = out.length; continue; }
-      if (tag === 'date') { out += formatDate(now, arg); continue; }
-      if (tag === 'time') { out += formatTime(now, arg); continue; }
-      if (tag === 'day') { out += formatDay(now, arg); continue; }
-      if (tag === 'clipboard') { out += await readClipboardSafe() ?? ''; continue; }
-      out += m[0];
+      const tag = (m[1] || '').toLowerCase(), arg = (m[2] || '').trim();
+      const handler = TAGS[tag];
+      if (!handler) { out += m[0]; continue; }
+      const res = await handler(arg, now);
+      if (res.cursor && cursorIndex === -1) cursorIndex = out.length;
+      out += res.text ?? '';
     }
+    out += template.slice(idx);
     return { text: out, cursorIndex: cursorIndex >= 0 ? cursorIndex : out.length };
   }
-  const pad2 = n => String(n).padStart(2, '0');
+
   function formatDate(d, arg) {
     const a = (arg || 'iso').toLowerCase();
     switch (a) {
@@ -438,31 +600,22 @@
     let h = d.getHours(); const m = pad2(d.getMinutes()), ampm = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
     return `${pad2(h)}:${m} ${ampm}`;
   }
-  function formatDay(d, arg) { return d.toLocaleDateString(undefined, (!arg || arg.toLowerCase() === 'long') ? { weekday: 'long' } : { weekday: 'short' }); }
+  function formatDay(d, arg) {
+    return d.toLocaleDateString(undefined, (!arg || arg.toLowerCase() === 'long') ? { weekday: 'long' } : { weekday: 'short' });
+  }
 
   async function readClipboardSafe() {
     let resolved = false;
-    const timeout = new Promise(r => setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        r('');
-      }
-    }, CONFIG.clipboardReadTimeoutMs));
+    const timeout = new Promise(r => setTimeout(() => { if (!resolved) { resolved = true; r(''); } }, CONFIG.clipboardReadTimeoutMs));
 
     const read = (async () => {
       try {
         if (!navigator.clipboard?.readText) return '';
         const t = await navigator.clipboard.readText();
-        if (!resolved) {
-          resolved = true;
-          return t ?? '';
-        }
+        if (!resolved) { resolved = true; return t ?? ''; }
         return '';
       } catch {
-        if (!resolved) {
-          resolved = true;
-          throttledToast('Clipboard read blocked — allow permission to use {{clipboard}}.');
-        }
+        if (!resolved) { resolved = true; throttledToast('Clipboard read blocked — allow permission to use {{clipboard}}.'); }
         return '';
       }
     })();
@@ -471,24 +624,8 @@
   }
 
   // ----------------------
-  // Perform abbreviation expansion
+  // Build/insert fragments + dispatch input
   // ----------------------
-  async function performExpansion(ctx, tokenInfo, rendered) {
-    if (ctx.kind === 'input') {
-      const { el } = ctx, start = tokenInfo.tokenStart, end = tokenInfo.tokenEnd;
-      el.setRangeText(rendered.text, start, end, 'end');
-      const caret = start + (rendered.cursorIndex ?? rendered.text.length);
-      el.selectionStart = el.selectionEnd = caret;
-      dispatchInput(el, 'insertText', rendered.text);
-    } else {
-      const sel = getSafeSelection(); if (!sel) return;
-      const r = tokenInfo.tokenRange.cloneRange(); r.deleteContents();
-      const { fragment, cursorNode, cursorOffset, lastNode } = buildFragment(rendered.text, rendered.cursorIndex);
-      r.insertNode(fragment);
-      placeCaretAfterInsertion(sel, r, cursorNode, cursorOffset, lastNode);
-      dispatchInput(ctx.root, 'insertText', rendered.text);
-    }
-  }
   function buildFragment(text, cursorIndex) {
     const frag = document.createDocumentFragment(); let pos = 0, cursorNode = null, cursorOffset = 0;
     const parts = String(text).split('\n'); let lastNode = null;
@@ -501,6 +638,7 @@
     if (!cursorNode && lastNode) { cursorNode = lastNode; cursorOffset = lastNode.nodeValue.length; }
     return { fragment: frag, cursorNode, cursorOffset, lastNode };
   }
+
   function placeCaretAfterInsertion(sel, refRange, cursorNode, cursorOffset, lastNode) {
     const newRange = document.createRange();
     if (cursorNode) newRange.setStart(cursorNode, cursorOffset);
@@ -508,10 +646,30 @@
     else newRange.setStart(refRange.startContainer, refRange.startOffset);
     newRange.collapse(true); sel.removeAllRanges(); sel.addRange(newRange);
   }
-  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
   function dispatchInput(node, inputType, data) {
     try { node.dispatchEvent(new InputEvent('input', { bubbles: true, inputType, data })); }
     catch { node.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
+
+  // ----------------------
+  // Expansion
+  // ----------------------
+  async function doExpansion() {
+    const ctx = captureEditableContext(); if (!ctx || !ctx.collapsed) return;
+    const tokenInfo = extractAbbrevBeforeCaret(ctx); if (!tokenInfo || !tokenInfo.token) return;
+    if (tokenInfo.token.length > CONFIG.maxAbbrevLen) return;
+    const tmpl = state.dict[tokenInfo.token.toLowerCase()]; if (!tmpl) return;
+    try {
+      const rendered = await renderTemplate(tmpl);
+      if (ctx.kind === 'input') {
+        applyRendered(ctx, rendered, { start: tokenInfo.tokenStart, end: tokenInfo.tokenEnd });
+      } else {
+        applyRendered(ctx, rendered, { range: tokenInfo.tokenRange });
+      }
+    } catch (err) {
+      console.warn('SAE expand error:', err);
+    }
   }
 
   // ----------------------
@@ -519,43 +677,37 @@
   // ----------------------
   async function triggerGeminiCorrection() {
     const ctx = captureEditableContext(); if (!ctx) return;
-    const bubble = showBubble('Polishing text with Gemini…');
+    const bubble = notify.busy('Polishing text with Gemini…');
     try {
-      if (ctx.kind === 'input') {
-        const el = ctx.el; let { selectionStart: start = 0, selectionEnd: end = 0 } = el;
-        if (start === end) { start = 0; end = el.value.length; }
-        const srcText = el.value.slice(start, end); if (!srcText) return done('Nothing to rewrite.', 1200);
-        const truncated = maybeTruncate(srcText, CONFIG.gemini.maxInputChars); if (truncated.truncated) throttledToast(`Note: input truncated to ${CONFIG.gemini.maxInputChars} chars for correction.`);
-        const correctedRaw = await correctWithGemini(truncated.text, bubble); if (correctedRaw == null) return;
-        const corrected = stripModelArtifacts(correctedRaw);
-        el.setRangeText(corrected, start, end, 'end');
-        el.selectionStart = el.selectionEnd = start + corrected.length;
-        dispatchInput(el, 'insertReplacementText', corrected);
-        return done('Rewritten ✓', 900);
-      } else {
-        const root = ctx.root, sel = getSafeSelection(); if (!sel || sel.rangeCount === 0) return done('', 0);
-        let range = sel.getRangeAt(0).cloneRange(); if (range.collapsed) { range = document.createRange(); range.selectNodeContents(root); }
-        const srcText = range.toString(); if (!srcText) return done('Nothing to rewrite.', 1200);
-        const truncated = maybeTruncate(srcText, CONFIG.gemini.maxInputChars); if (truncated.truncated) throttledToast(`Note: input truncated to ${CONFIG.gemini.maxInputChars} chars for correction.`);
-        const correctedRaw = await correctWithGemini(truncated.text, bubble); if (correctedRaw == null) return;
-        const corrected = stripModelArtifacts(correctedRaw);
-        range.deleteContents();
-        const { fragment, lastNode } = buildFragment(corrected, corrected.length);
-        range.insertNode(fragment);
-        const newRange = document.createRange(); if (lastNode) newRange.setStartAfter(lastNode); else newRange.setStart(range.startContainer, range.startOffset);
-        newRange.collapse(true); sel.removeAllRanges(); sel.addRange(newRange);
-        dispatchInput(root, 'insertReplacementText', corrected);
-        return done('Rewritten ✓', 900);
-      }
+      const editor = makeEditor(ctx);
+      let text = editor.getSelectedText();
+      if (!text) text = editor.getAllText();
+      if (!text) { bubble.update('Nothing to rewrite.'); return setTimeout(() => bubble.close(), 1200); }
+      const truncated = maybeTruncate(text, CONFIG.gemini.maxInputChars);
+      if (truncated.truncated) throttledToast(`Note: input truncated to ${CONFIG.gemini.maxInputChars} chars for correction.`);
+      const correctedRaw = await correctWithGemini(truncated.text, bubble);
+      if (correctedRaw == null) return;
+      const corrected = stripModelArtifacts(correctedRaw);
+      editor.replaceSelection(corrected, corrected.length);
+      bubble.update('Rewritten ✓');
+      setTimeout(() => bubble.close(), 900);
     } catch (err) {
-      console.warn('Gemini correction error:', err); return done('AI Fix failed — check console.', 1400);
+      console.warn('Gemini correction error:', err);
+      bubble.update('AI Fix failed — check console.');
+      setTimeout(() => bubble.close(), 1400);
     }
-    function done(msg, ms) { if (msg) bubble.update(msg); setTimeout(() => bubble.close(), ms || 0); }
   }
+
   function maybeTruncate(text, max) { return text.length <= max ? { text, truncated: false } : { text: text.slice(0, max), truncated: true }; }
+
   async function correctWithGemini(text, bubble) {
-    const key = (CONFIG.gemini.apiKey || '').trim();
-    if (!key) { bubble?.update('Add your Gemini API key in CONFIG.gemini.apiKey (userscript).'); throttledToast('No Gemini API key set in script (CONFIG.gemini.apiKey).'); setTimeout(() => bubble && bubble.close(), 1400); return null; }
+    const key = String(state.apiKey || CONFIG.gemini.apiKey || '').trim();
+    if (!key) {
+      bubble?.update('Set your Gemini API key in Settings.');
+      throttledToast('No Gemini API key set. Open Palette → Settings to add it.');
+      setTimeout(() => bubble && bubble.close(), 1400);
+      return null;
+    }
     const url = `${CONFIG.gemini.endpoint}/${encodeURIComponent(CONFIG.gemini.model)}:generateContent?key=${encodeURIComponent(key)}`;
     const tone = (state.tone || 'neutral').toLowerCase();
     const prompt = [
@@ -566,21 +718,45 @@
       `Keep line breaks where reasonable.`,
       ``, `Text:`, text
     ].join('\n');
+
     try {
       const res = await GMX.request({
         method: 'POST', url, headers: { 'Content-Type': 'application/json' },
         data: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: CONFIG.gemini.temperature } }),
         timeout: CONFIG.gemini.timeoutMs,
       });
-      if (res.status < 200 || res.status >= 300) { console.warn('Gemini error HTTP', res.status, res.text); bubble?.update(`Gemini error: HTTP ${res.status}`); throttledToast(`Gemini error: HTTP ${res.status}`); setTimeout(() => bubble && bubble.close(), 1400); return null; }
-      let json; try { json = JSON.parse(res.text); } catch { bubble?.update('Gemini: Parse error.'); throttledToast('Gemini: Failed to parse response.'); setTimeout(() => bubble && bubble.close(), 1400); return null; }
-      const cand = json.candidates && json.candidates[0]; const parts = (cand && cand.content && cand.content.parts) || []; const out = parts.map(p => p.text || '').join('').trim();
-      if (!out) { bubble?.update('Gemini: Empty response.'); throttledToast('Gemini: Empty response.'); setTimeout(() => bubble && bubble.close(), 1400); return null; }
+      if (res.status < 200 || res.status >= 300) {
+        console.warn('Gemini error HTTP', res.status, res.text);
+        bubble?.update(`Gemini error: HTTP ${res.status}`);
+        throttledToast(`Gemini error: HTTP ${res.status}`);
+        setTimeout(() => bubble && bubble.close(), 1400);
+        return null;
+      }
+      let json; try { json = JSON.parse(res.text); } catch {
+        bubble?.update('Gemini: Parse error.');
+        throttledToast('Gemini: Failed to parse response.');
+        setTimeout(() => bubble && bubble.close(), 1400);
+        return null;
+      }
+      const cand = json.candidates && json.candidates[0];
+      const parts = (cand && cand.content && cand.content.parts) || [];
+      const out = parts.map(p => p.text || '').join('').trim();
+      if (!out) {
+        bubble?.update('Gemini: Empty response.');
+        throttledToast('Gemini: Empty response.');
+        setTimeout(() => bubble && bubble.close(), 1400);
+        return null;
+      }
       return out;
     } catch (err) {
-      console.warn('Gemini request failed:', err); bubble?.update('Gemini request failed.'); throttledToast('Gemini request failed. Check connection.'); setTimeout(() => bubble && bubble.close(), 1400); return null;
+      console.warn('Gemini request failed:', err);
+      bubble?.update('Gemini request failed.');
+      throttledToast('Gemini request failed. Check connection.');
+      setTimeout(() => bubble && bubble.close(), 1400);
+      return null;
     }
   }
+
   function stripModelArtifacts(s) {
     if (!s) return s; let out = String(s).trim();
     const m = out.match(/^\s*```(?:\w+)?\s*([\s\S]*?)\s*```\s*$/); if (m) out = m[1].trim();
@@ -589,13 +765,14 @@
   }
 
   // ----------------------
-  // Palette UI + dict management (Export/Import) + FAB + Hotkeys
+  // Palette UI + dict management + FAB + Hotkeys + Settings
   // ----------------------
   async function setDict(obj, msg) {
     state.dict = normalizeDict(obj);
     await GMX.setValue(CONFIG.storeKeys.dict, state.dict);
     paletteEl?.__render?.(); toast(msg || 'Dictionary updated.');
   }
+
   function pickFile(accept = '.json') {
     return new Promise(resolve => { const input = document.createElement('input'); input.type = 'file'; input.accept = accept; input.onchange = () => resolve(input.files?.[0] || null); input.click(); });
   }
@@ -617,6 +794,33 @@
       const next = { ...state.dict, ...imported };
       await setDict(next, `Imported ${count} entr${count === 1 ? 'y' : 'ies'}.`);
     } catch (err) { console.warn('Import failed:', err); toast('Import failed: invalid JSON.'); }
+  }
+
+  function mountRowEditor(container, { key = '', val = '', onSave, onCancel }) {
+    container.classList.add('editing');
+    container.innerHTML = `
+      <div class="sae-key"><input type="text" class="edit-key" value="${escapeHtml(key)}" placeholder="abbreviation" /></div>
+      <div class="sae-val"><input type="text" class="edit-val" value="${escapeHtml(val)}" placeholder="Expansion text..." /></div>
+      <div class="sae-item-actions">
+        <button data-action="save">Save</button>
+        <button data-action="cancel">Cancel</button>
+      </div>
+    `;
+    const keyInput = $('.edit-key', container);
+    const valInput = $('.edit-val', container);
+    const save = async () => onSave?.(keyInput.value.trim().toLowerCase(), valInput.value.trim());
+    const cancel = () => onCancel?.();
+
+    $('[data-action="save"]', container).addEventListener('click', save);
+    $('[data-action="cancel"]', container).addEventListener('click', cancel);
+
+    [keyInput, valInput].forEach(inp => inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); (inp === keyInput ? valInput.focus() : save()); }
+      if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    }));
+
+    keyInput.focus();
+    keyInput.select?.();
   }
 
   function ensurePalette() {
@@ -655,14 +859,14 @@
     `;
     document.documentElement.appendChild(wrap);
 
-    const panel = wrap.querySelector('.sae-panel');
-    const search = wrap.querySelector('.sae-search');
-    const list = wrap.querySelector('.sae-list');
-    const settingsBtn = wrap.querySelector('[data-action="settings"]');
-    const backBtn = wrap.querySelector('[data-action="back"]');
-    const closeBtn = wrap.querySelector('[data-action="close"]');
-    const addNewBtn = wrap.querySelector('.sae-add-new button');
-    const settingsView = wrap.querySelector('.sae-settings-view');
+    const panel = $('.sae-panel', wrap);
+    const search = $('.sae-search', wrap);
+    const list = $('.sae-list', wrap);
+    const settingsBtn = $('[data-action="settings"]', wrap);
+    const backBtn = $('[data-action="back"]', wrap);
+    const closeBtn = $('[data-action="close"]', wrap);
+    const addNewBtn = $('.sae-add-new button', wrap);
+    const settingsView = $('.sae-settings-view', wrap);
 
     function renderList(filter = '') {
       const q = filter.trim().toLowerCase();
@@ -685,57 +889,35 @@
 
     // Event delegation for list items
     list.addEventListener('click', (e) => {
-      const item = e.target.closest('.sae-item:not(.editing)');
+      const item = e.target.closest('.sae-item');
       if (!item) return;
-
       const action = e.target.closest('[data-action]')?.dataset.action;
+      const key = item.dataset.key;
+
+      if (item.classList.contains('editing')) return;
+
       if (action === 'edit') {
         e.stopPropagation();
-        editItem(item);
+        const value = state.dict[key];
+        item.classList.add('editing');
+        mountRowEditor(item, {
+          key, val: value,
+          onSave: async (newKey, newVal) => {
+            if (!newKey || !newVal) return toast('Key and value cannot be empty.');
+            const updated = { ...state.dict };
+            if (newKey !== key) delete updated[key];
+            updated[newKey] = newVal;
+            await setDict(updated, 'Abbreviation saved.');
+          },
+          onCancel: () => renderList(search.value),
+        });
       } else if (action === 'delete') {
         e.stopPropagation();
-        deleteItem(item.dataset.key);
+        deleteItem(key);
       } else if (e.target.closest('.sae-key, .sae-val')) {
-        selectAndInsert(item.dataset.key);
+        selectAndInsert(key);
       }
     });
-
-    function editItem(itemDiv) {
-      const key = itemDiv.dataset.key;
-      const value = state.dict[key];
-      itemDiv.classList.add('editing');
-      itemDiv.innerHTML = `
-        <div class="sae-key"><input type="text" class="edit-key" value="${escapeHtml(key)}" /></div>
-        <div class="sae-val"><input type="text" class="edit-val" value="${escapeHtml(value)}" /></div>
-        <div class="sae-item-actions">
-          <button data-action="save">Save</button>
-          <button data-action="cancel">Cancel</button>
-        </div>
-      `;
-      const keyInput = itemDiv.querySelector('.edit-key');
-      const valInput = itemDiv.querySelector('.edit-val');
-      const saveBtn = itemDiv.querySelector('[data-action="save"]');
-      const cancelBtn = itemDiv.querySelector('[data-action="cancel"]');
-
-      keyInput.focus();
-      keyInput.select();
-
-      const save = async () => {
-        const newKey = keyInput.value.trim().toLowerCase();
-        const newVal = valInput.value.trim();
-        if (!newKey || !newVal) return toast('Key and value cannot be empty.');
-        const updated = { ...state.dict };
-        if (newKey !== key) delete updated[key];
-        updated[newKey] = newVal;
-        await setDict(updated, 'Abbreviation saved.');
-      };
-      const cancel = () => renderList(search.value);
-
-      saveBtn.addEventListener('click', save);
-      cancelBtn.addEventListener('click', cancel);
-      keyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); valInput.focus(); } if (e.key === 'Escape') { e.preventDefault(); cancel(); } });
-      valInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } if (e.key === 'Escape') { e.preventDefault(); cancel(); } });
-    }
 
     function deleteItem(key) {
       if (!confirm(`Delete abbreviation "${key}"?`)) return;
@@ -747,34 +929,15 @@
     function addNewItem() {
       const tempDiv = document.createElement('div');
       tempDiv.className = 'sae-item editing';
-      tempDiv.innerHTML = `
-        <div class="sae-key"><input type="text" class="edit-key" placeholder="abbreviation" /></div>
-        <div class="sae-val"><input type="text" class="edit-val" placeholder="Expansion text..." /></div>
-        <div class="sae-item-actions">
-          <button data-action="save">Save</button>
-          <button data-action="cancel">Cancel</button>
-        </div>
-      `;
       list.insertBefore(tempDiv, list.firstChild);
-      const keyInput = tempDiv.querySelector('.edit-key');
-      const valInput = tempDiv.querySelector('.edit-val');
-      const saveBtn = tempDiv.querySelector('[data-action="save"]');
-      const cancelBtn = tempDiv.querySelector('[data-action="cancel"]');
-      keyInput.focus();
-
-      const save = async () => {
-        const newKey = keyInput.value.trim().toLowerCase();
-        const newVal = valInput.value.trim();
-        if (!newKey || !newVal) return toast('Key and value cannot be empty.');
-        const updated = { ...state.dict, [newKey]: newVal };
-        await setDict(updated, 'Abbreviation added.');
-      };
-      const cancel = () => { tempDiv.remove(); renderList(search.value); };
-
-      saveBtn.addEventListener('click', save);
-      cancelBtn.addEventListener('click', cancel);
-      keyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); valInput.focus(); } if (e.key === 'Escape') { e.preventDefault(); cancel(); } });
-      valInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } if (e.key === 'Escape') { e.preventDefault(); cancel(); } });
+      mountRowEditor(tempDiv, {
+        onSave: async (newKey, newVal) => {
+          if (!newKey || !newVal) return toast('Key and value cannot be empty.');
+          const updated = { ...state.dict, [newKey]: newVal };
+          await setDict(updated, 'Abbreviation added.');
+        },
+        onCancel: () => { tempDiv.remove(); renderList(search.value); }
+      });
     }
 
     async function selectAndInsert(key) {
@@ -784,26 +947,7 @@
       const tmpl = state.dict[key];
       if (!tmpl || !ctx) { if (!ctx) toast('No editable field found.'); return; }
       const rendered = await renderTemplate(tmpl);
-
-      if (ctx.kind === 'input') {
-        const { el } = ctx;
-        const posStart = el.selectionStart ?? ctx.start ?? el.value.length;
-        const posEnd = el.selectionEnd ?? ctx.end ?? posStart;
-        const start = (posStart === undefined ? el.value.length : posStart);
-        const end = (posEnd === undefined ? el.value.length : posEnd);
-        el.setRangeText(rendered.text, start, end, 'end');
-        const caret = start + (rendered.cursorIndex ?? rendered.text.length);
-        el.selectionStart = el.selectionEnd = caret;
-        dispatchInput(el, (end > start ? 'insertReplacementText' : 'insertText'), rendered.text);
-      } else {
-        const r = ctx.range.cloneRange();
-        r.deleteContents();
-        const { fragment, cursorNode, cursorOffset, lastNode } = buildFragment(rendered.text, rendered.cursorIndex);
-        r.insertNode(fragment);
-        const sel = window.getSelection();
-        placeCaretAfterInsertion(sel, r, cursorNode, cursorOffset, lastNode);
-        dispatchInput(ctx.root, 'insertText', rendered.text);
-      }
+      applyRendered(ctx, rendered);
     }
 
     function openSettingsView() {
@@ -837,11 +981,18 @@
           <div></div>
         </div>
         <div class="sae-hrow">
+          <div>Gemini API Key</div>
+          <div>
+            <input type="password" class="sae-text api-key-input" placeholder="Enter API key" value="${escapeHtml(state.apiKey || '')}" />
+          </div>
+          <div><button class="sae-btn save-api">Save</button></div>
+        </div>
+        <div class="sae-hrow">
           <div>Hotkeys</div>
           <div>
             <div style="margin-bottom:6px">
               <span class="sae-chip">Expand: ${hkExpand}</span>
-              <button class="sae-btn" data-hk="expand">Change</button>
+              <button class="sae-btn" data-hk="trigger">Change</button>
             </div>
             <div style="margin-bottom:6px">
               <span class="sae-chip">Palette: ${hkPalette}</span>
@@ -868,31 +1019,34 @@
         </div>
       `;
 
-      settingsView.querySelector('.fab-toggle').addEventListener('change', () => toggleFabSetting());
-      settingsView.querySelector('.tone-select').addEventListener('change', async (e) => {
+      $('.fab-toggle', settingsView).addEventListener('change', () => toggleFabSetting());
+      $('.tone-select', settingsView).addEventListener('change', async (e) => {
         state.tone = e.target.value;
         await GMX.setValue(CONFIG.storeKeys.tone, state.tone);
         toast(`Tone set to ${state.tone}.`);
       });
+      $('.save-api', settingsView).addEventListener('click', async () => {
+        const input = $('.api-key-input', settingsView);
+        state.apiKey = (input.value || '').trim();
+        await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
+        toast(state.apiKey ? 'API key saved.' : 'API key cleared.');
+      });
 
-      const hkMap = {
-        expand: async () => { await setExpandHotkey(); renderSettingsView(); },
-        palette: async () => { await setPaletteHotkey(); renderSettingsView(); },
-        correct: async () => { await setCorrectHotkey(); renderSettingsView(); },
-      };
       settingsView.querySelectorAll('[data-hk]').forEach(btn => {
         btn.addEventListener('click', async () => {
-          const kind = btn.getAttribute('data-hk');
-          await hkMap[kind]?.();
+          const name = btn.getAttribute('data-hk');
+          const kind = (name === 'trigger') ? 'spaceOnly' : 'code';
+          await setHotkey(name, kind);
+          renderSettingsView();
         });
       });
 
-      settingsView.querySelector('[data-action="export"]').addEventListener('click', () => exportDict());
-      settingsView.querySelector('[data-action="import"]').addEventListener('click', () => importDict());
-      settingsView.querySelector('[data-action="reset"]').addEventListener('click', () => {
+      $('[data-action="export"]', settingsView).addEventListener('click', () => exportDict());
+      $('[data-action="import"]', settingsView).addEventListener('click', () => importDict());
+      $('[data-action="reset"]', settingsView).addEventListener('click', () => {
         if (confirm('Reset dictionary to defaults?')) setDict(DEFAULT_DICT, 'Dictionary reset.');
       });
-      settingsView.querySelector('[data-action="done"]').addEventListener('click', () => closeSettingsView());
+      $('[data-action="done"]', settingsView).addEventListener('click', () => closeSettingsView());
     }
 
     settingsBtn.addEventListener('click', () => openSettingsView());
@@ -982,7 +1136,6 @@
 
     fabEl.addEventListener('click', (e) => {
       e.stopPropagation();
-      // Capture context from last focused editable before palette opens
       if (state._lastFocusedEditable && state._lastFocusedEditable.isConnected) {
         state.lastEditable = buildEndContextForEl(state._lastFocusedEditable);
       } else {
@@ -1007,88 +1160,6 @@
     await GMX.setValue(CONFIG.storeKeys.fab, state.fabEnabled);
     updateFabVisibility();
     toast(`FAB ${state.fabEnabled ? 'enabled' : 'disabled'}.`);
-  }
-
-  // ----------------------
-  // Hotkey helpers (Settings)
-  // ----------------------
-  function captureHotkey(kind) {
-    return new Promise((resolve) => {
-      const bubble = showBubble(kind === 'spaceOnly'
-        ? 'Press new Expand hotkey (must include Space). Esc to cancel.'
-        : 'Press new hotkey. Use modifiers if you want. Esc to cancel.');
-      hotkeyCapture = { kind, resolve, bubble };
-    });
-  }
-
-  async function setExpandHotkey() {
-    const spec = await captureHotkey('spaceOnly');
-    if (!spec) return;
-    CONFIG.trigger = spec;
-    const keys = await GMX.getValue(CONFIG.storeKeys.keys, {});
-    keys.trigger = spec;
-    await GMX.setValue(CONFIG.storeKeys.keys, keys);
-    toast(`Expand hotkey set to ${hotkeyToString(spec, true)}`);
-  }
-
-  async function setPaletteHotkey() {
-    const spec = await captureHotkey('code');
-    if (!spec) return;
-    CONFIG.palette = spec;
-    const keys = await GMX.getValue(CONFIG.storeKeys.keys, {});
-    keys.palette = spec;
-    await GMX.setValue(CONFIG.storeKeys.keys, keys);
-    toast(`Palette hotkey set to ${hotkeyToString(spec, false)}`);
-  }
-
-  async function setCorrectHotkey() {
-    const spec = await captureHotkey('code');
-    if (!spec) return;
-    CONFIG.correct = spec;
-    const keys = await GMX.getValue(CONFIG.storeKeys.keys, {});
-    keys.correct = spec;
-    await GMX.setValue(CONFIG.storeKeys.keys, keys);
-    toast(`Correct hotkey set to ${hotkeyToString(spec, false)}`);
-  }
-
-  // ----------------------
-  // Toast/bubble helpers
-  // ----------------------
-  function toast(msg, ms = 2200) {
-    if (toastEl) toastEl.remove();
-    toastEl = document.createElement('div');
-    toastEl.className = 'sae-bubble';
-    toastEl.textContent = msg;
-    document.documentElement.appendChild(toastEl);
-    const left = Math.max(8, window.innerWidth - 320), top = Math.max(8, window.innerHeight - 80);
-    toastEl.style.left = `${left}px`;
-    toastEl.style.top = `${top}px`;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      toastEl?.remove();
-      toastEl = null;
-    }, ms);
-  }
-
-  function throttledToast(msg, ms = 2200) {
-    const now = Date.now();
-    if (now - state._lastToastAt < CONFIG.toast.throttleMs) return;
-    state._lastToastAt = now;
-    toast(msg, ms);
-  }
-
-  function showBubble(msg) {
-    const el = document.createElement('div');
-    el.className = 'sae-bubble';
-    el.textContent = msg;
-    document.documentElement.appendChild(el);
-    const left = Math.max(8, window.innerWidth - 320), top = Math.max(8, window.innerHeight - 80);
-    el.style.left = `${left}px`;
-    el.style.top = `${top}px`;
-    return {
-      update: (m) => { el.textContent = m; },
-      close: () => el.remove()
-    };
   }
 
   // ----------------------
@@ -1171,9 +1242,7 @@
         dropped++;
       }
     }
-    if (dropped > 0) {
-      console.warn(`SAE: Dropped ${dropped} invalid dictionary entries during normalization.`);
-    }
+    if (dropped > 0) console.warn(`SAE: Dropped ${dropped} invalid dictionary entries during normalization.`);
     return out;
   }
 
@@ -1183,16 +1252,30 @@
     if (spec.meta) parts.push('Meta');
     if (spec.alt) parts.push('Alt');
     if (spec.shift) parts.push('Shift');
-    if (isSpace) parts.push('Space');
+    if (isSpace || !spec.code) parts.push('Space');
     else parts.push(codeToHuman(spec.code));
     return parts.join('+');
   }
 
   function codeToHuman(code) {
-    if (!code) return '';
+    if (!code) return 'Space';
     if (code.startsWith('Key')) return code.slice(3);
     if (code.startsWith('Digit')) return code.slice(5);
     if (code === 'Space') return 'Space';
     return code;
   }
+
+  function toast(msg, ms = 2200) { notify.toast(msg, ms); }
+  function throttledToast(msg, ms = 2200) {
+    const now = Date.now();
+    if (now - state._lastToastAt < CONFIG.toast.throttleMs) return;
+    state._lastToastAt = now;
+    toast(msg, ms);
+  }
+
+  // ----------------------
+  // Styles injection
+  // ----------------------
+  GMX.addStyle(STYLES);
+
 })();
