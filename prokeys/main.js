@@ -2,7 +2,7 @@
 // @name         Smart Abbreviation Expander (AI)
 // @namespace    https://github.com/quantavil
 // @version      1.12.0
-// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Inline editing, in-panel settings, hotkey customization, API key input + Verify, and FAB whitelist. FAB is SVG and only shows on whitelisted sites when enabled.
+// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Inline editing, in-panel settings, top-right SVG FAB with site filter, hotkey customization, and API key verify+save. Fallback: if no caret, insert at end-of-line in a reasonable field.
 // @author       You
 // @match        *://*/*
 // @grant        GM_getValue
@@ -33,7 +33,7 @@
       keys: 'sae.keys.v1',
       fab: 'sae.ui.fabEnabled.v1',
       apiKey: 'sae.gemini.apiKey.v1',
-      fabSites: 'sae.ui.fabSites.v1', // whitelist of hostnames / patterns
+      fabSites: 'sae.ui.fabSites.v1', // array of host patterns
     },
     toast: { throttleMs: 3000 },
     clipboardReadTimeoutMs: 350,
@@ -45,7 +45,7 @@
       timeoutMs: 20000,
       maxInputChars: 32000,
       apiKey: '' // user-configurable via Settings; do not hardcode keys here
-    },
+    }
   };
 
   // ----------------------
@@ -134,16 +134,9 @@
         el.textContent = msg;
         document.documentElement.appendChild(el);
         place();
-        return {
-          update: (m) => { el.textContent = m; },
-          close: () => this.close()
-        };
+        return { update: (m) => { el.textContent = m; }, close: () => this.close() };
       },
-      close() {
-        if (timer) clearTimeout(timer);
-        el?.remove();
-        el = timer = null;
-      }
+      close() { if (timer) clearTimeout(timer); el?.remove(); el = timer = null; }
     };
   }
   const notify = notifier();
@@ -160,12 +153,12 @@
     _lastFocusedEditable: null,
     activeIndex: 0,
     apiKey: '',
-    allowedSites: [], // whitelist for FAB
+    fabSites: ['*'], // list of host patterns; * means all
   };
   let paletteEl = null;
   let fabEl = null;
   let hotkeyCapture = null; // { kind: 'spaceOnly' | 'code', resolve, bubble }
-  let prevOverflow = ''; // preserve body overflow when palette opens
+  let prevOverflow = '';
 
   // ----------------------
   // Styles
@@ -205,31 +198,29 @@
     .sae-panel.settings-open .sae-settings-view{display:block}
     .sae-hrow{display:grid;grid-template-columns:180px 1fr auto;align-items:center;gap:10px;padding:8px;border-bottom:1px solid rgba(255,255,255,.06)}
     .sae-hrow:last-child{border-bottom:none}
-    .sae-select,.sae-text{background:#1b1b1b;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;font:inherit;width:100%}
-    .sae-textarea{background:#1b1b1b;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;font:inherit;width:100%;min-height:96px;resize:vertical}
-    .sae-btn{padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#fff;cursor:pointer}
+    .sae-select,.sae-text,.sae-textarea{background:#1b1b1b;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;font:inherit;width:100%}
+    .sae-textarea{min-height:88px;resize:vertical}
+    .sae-btn{padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#fff;cursor:pointer;transition:all .15s ease}
     .sae-btn:hover{background:#252525}
+    .sae-btn.ok{background:#174f2b;border-color:#2b9a4a;color:#eaffea}
     .sae-chip{display:inline-block;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#ddd;margin-right:8px}
     .sae-settings-actions{display:flex;gap:8px;flex-wrap:wrap}
     .sae-settings-footer{padding-top:8px;display:flex;justify-content:flex-end}
-    .sae-verify.ok{background:#0c3f0c;border-color:#1f8f1f;color:#bfffbf}
-    .sae-verify.err{background:#5a0c0c;border-color:#9f1f1f;color:#ffb7b7}
 
-    /* Robust FAB at top-right edge (SVG icon) */
+    /* FAB (SVG) at top-right edge */
     .sae-fab{
       position:fixed !important; top:0 !important; right:0 !important;
       width:40px !important;height:40px !important;
       display:flex !important;align-items:center !important;justify-content:center !important;
-      border:1px solid rgba(255,255,255,.12) !important; border-right:none !important;
-      border-radius:6px 0 0 6px !important;
+      border:1px solid rgba(255,255,255,.12) !important;
+      border-right:none !important;border-radius:6px 0 0 6px !important;
       background:#111 !important;color:#fff !important;
       box-shadow:0 6px 18px rgba(0,0,0,.35) !important;
       cursor:pointer !important;z-index:2147483647 !important;
-      user-select:none !important;opacity:1 !important;visibility:visible !important;
-      pointer-events:auto !important; box-sizing:border-box !important;
+      user-select:none !important; pointer-events:auto !important; box-sizing:border-box !important;
     }
     .sae-fab:hover{background:#1b1b1b !important}
-    .sae-fab svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+    .sae-fab svg{width:20px;height:20px;fill:currentColor}
   `;
 
   // ----------------------
@@ -247,11 +238,11 @@
     if (savedKeys?.palette) Object.assign(CONFIG.palette, savedKeys.palette);
     if (savedKeys?.correct) Object.assign(CONFIG.correct, savedKeys.correct);
 
-    // Load FAB enable flag and whitelist
+    // FAB flag + site list
     state.fabEnabled = await GMX.getValue(CONFIG.storeKeys.fab, true);
-    state.allowedSites = (await GMX.getValue(CONFIG.storeKeys.fabSites, []) || []).map(String).map(s => s.trim()).filter(Boolean);
+    state.fabSites = await GMX.getValue(CONFIG.storeKeys.fabSites, ['*']);
 
-    // Load API key
+    // API key
     state.apiKey = await GMX.getValue(CONFIG.storeKeys.apiKey, CONFIG.gemini.apiKey || '');
 
     // Wait for DOM before adding FAB
@@ -260,8 +251,9 @@
     } else {
       initDOM();
     }
+    window.addEventListener('load', () => refreshFab());
 
-    // Remember last focused editable (but ignore palette UI)
+    // Remember last focused editable (ignore palette UI)
     document.addEventListener('focusin', (e) => {
       if (e.target.closest('.sae-palette, .sae-fab')) return;
       const el = isEditable(e.target);
@@ -269,19 +261,12 @@
     }, true);
 
     // Menu commands
-    GMX.registerMenuCommand('Open Abbreviation Palette', () => {
-      state.lastEditable = captureEditableContext();
-      openPalette();
-    });
-    GMX.registerMenuCommand(`Toggle FAB (${state.fabEnabled ? 'on' : 'off'})`, async () => {
-      await toggleFabSetting();
-    });
+    GMX.registerMenuCommand('Open Abbreviation Palette', () => { state.lastEditable = captureEditableContext(); openPalette(); });
+    GMX.registerMenuCommand(`Toggle FAB (${state.fabEnabled ? 'on' : 'off'})`, async () => { await toggleFabSetting(); });
     GMX.registerMenuCommand('Export Dictionary (.json)', exportDict);
     GMX.registerMenuCommand('Import Dictionary', () => importDict());
     GMX.registerMenuCommand('Reset Dictionary to Defaults', async () => {
-      if (confirm('Reset dictionary to defaults?')) {
-        await setDict(DEFAULT_DICT, 'Dictionary reset to defaults.');
-      }
+      if (confirm('Reset dictionary to defaults?')) await setDict(DEFAULT_DICT, 'Dictionary reset to defaults.');
     });
     GMX.registerMenuCommand('Gemini: Correct Selection/Field (Alt+G)', triggerGeminiCorrection);
     GMX.registerMenuCommand('Gemini: Set Tone (neutral/friendly/formal/casual/concise)', async () => {
@@ -295,28 +280,18 @@
       toast(`Tone set to ${state.tone}.`);
     });
     GMX.registerMenuCommand('Gemini: Set API Key', async () => {
-      const val = prompt('Enter your Gemini API key (will be saved if valid):', state.apiKey || '');
+      const val = prompt('Enter your Gemini API key:', state.apiKey || '');
       if (val == null) return;
-      const k = val.trim();
-      const bubble = notify.busy('Verifying key…');
-      const ok = await verifyGeminiKey(k);
-      bubble.update(ok ? 'Key verified ✓' : 'Invalid key.');
-      setTimeout(() => bubble.close(), 900);
-      if (ok) {
-        state.apiKey = k;
-        await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
-        toast('API key verified and saved.');
-      } else {
-        toast('API key invalid — not saved.');
-      }
+      state.apiKey = val.trim();
+      await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
+      toast(state.apiKey ? 'API key saved.' : 'API key cleared.');
     });
 
     document.addEventListener('keydown', onKeyDownCapture, true);
   }
 
   function initDOM() {
-    if (state.fabEnabled && hostAllowed()) ensureFab();
-    updateFabVisibility();
+    refreshFab();
   }
 
   // ----------------------
@@ -330,64 +305,26 @@
   }
 
   const HOTKEYS = [
-    {
-      spec: () => CONFIG.palette,
-      needsEditable: false,
-      handler: () => {
-        state.lastEditable = captureEditableContext();
-        openPalette();
-      }
-    },
-    {
-      spec: () => CONFIG.correct,
-      needsEditable: true,
-      handler: () => triggerGeminiCorrection(),
-    },
-    {
-      spec: () => CONFIG.trigger,
-      needsEditable: true,
-      handler: () => doExpansion(),
-    },
+    { spec: () => CONFIG.palette, needsEditable: false, handler: () => { state.lastEditable = captureEditableContext(); openPalette(); } },
+    { spec: () => CONFIG.correct, needsEditable: true, handler: () => triggerGeminiCorrection() },
+    { spec: () => CONFIG.trigger, needsEditable: true, handler: () => doExpansion() },
   ];
 
   async function onKeyDownCapture(e) {
     if (e.defaultPrevented || e.isComposing) return;
 
-    // Intercept when capturing hotkeys in settings
+    // Capturing hotkeys in settings
     if (hotkeyCapture) {
-      e.preventDefault();
-      e.stopPropagation();
-
-      if (e.key === 'Escape') {
-        hotkeyCapture.bubble?.update('Canceled.');
-        setTimeout(() => hotkeyCapture.bubble?.close(), 600);
-        hotkeyCapture.resolve(null);
-        hotkeyCapture = null;
-        return;
-      }
-
+      e.preventDefault(); e.stopPropagation();
+      if (e.key === 'Escape') { hotkeyCapture.bubble?.update('Canceled.'); setTimeout(() => hotkeyCapture.bubble?.close(), 600); hotkeyCapture.resolve(null); hotkeyCapture = null; return; }
       if (hotkeyCapture.kind === 'spaceOnly') {
-        if (e.code !== 'Space') {
-          hotkeyCapture.bubble?.update('Expand hotkey must include Space (e.g., Shift+Space). Esc to cancel.');
-          return;
-        }
+        if (e.code !== 'Space') { hotkeyCapture.bubble?.update('Expand hotkey must include Space (e.g., Shift+Space). Esc to cancel.'); return; }
         const spec = { shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey };
-        hotkeyCapture.bubble?.update(`Set: ${hotkeyToString(spec, true)}`);
-        setTimeout(() => hotkeyCapture.bubble?.close(), 600);
-        hotkeyCapture.resolve(spec);
-        hotkeyCapture = null;
-        return;
+        hotkeyCapture.bubble?.update(`Set: ${hotkeyToString(spec, true)}`); setTimeout(() => hotkeyCapture.bubble?.close(), 600); hotkeyCapture.resolve(spec); hotkeyCapture = null; return;
       } else {
-        if (/^Shift|Alt|Control|Meta$/.test(e.key)) {
-          hotkeyCapture.bubble?.update('Press a non-modifier key (with modifiers if you want).');
-          return;
-        }
+        if (/^Shift|Alt|Control|Meta$/.test(e.key)) { hotkeyCapture.bubble?.update('Press a non-modifier key (with modifiers if you want).'); return; }
         const spec = { code: e.code, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey };
-        hotkeyCapture.bubble?.update(`Set: ${hotkeyToString(spec, false)}`);
-        setTimeout(() => hotkeyCapture.bubble?.close(), 600);
-        hotkeyCapture.resolve(spec);
-        hotkeyCapture = null;
-        return;
+        hotkeyCapture.bubble?.update(`Set: ${hotkeyToString(spec, false)}`); setTimeout(() => hotkeyCapture.bubble?.close(), 600); hotkeyCapture.resolve(spec); hotkeyCapture = null; return;
       }
     }
 
@@ -404,16 +341,8 @@
     }
   }
 
-  function captureHotkey(kind) {
-    return new Promise((resolve) => {
-      const bubble = notify.busy(kind === 'spaceOnly'
-        ? 'Press new Expand hotkey (must include Space). Esc to cancel.'
-        : 'Press new hotkey. Use modifiers if you want. Esc to cancel.');
-      hotkeyCapture = { kind, resolve, bubble };
-    });
-  }
-
-  async function setHotkey(name, captureKind /* 'spaceOnly' | 'code' */) {
+  function captureHotkey(kind) { return new Promise((resolve) => { const bubble = notify.busy(kind === 'spaceOnly' ? 'Press new Expand hotkey (must include Space). Esc to cancel.' : 'Press new hotkey. Use modifiers if you want. Esc to cancel.'); hotkeyCapture = { kind, resolve, bubble }; }); }
+  async function setHotkey(name, captureKind) {
     const spec = await captureHotkey(captureKind);
     if (!spec) return;
     CONFIG[name] = spec;
@@ -458,41 +387,22 @@
     if (ctx.kind === 'input') {
       const el = ctx.el;
       return {
-        getSelectionRange() {
-          const start = el.selectionStart ?? 0, end = el.selectionEnd ?? 0;
-          return { start, end, collapsed: start === end };
-        },
-        getSelectedText() {
-          const { start, end } = this.getSelectionRange();
-          return el.value.slice(start, end);
-        },
+        getSelectionRange() { const start = el.selectionStart ?? 0, end = el.selectionEnd ?? 0; return { start, end, collapsed: start === end }; },
+        getSelectedText() { const { start, end } = this.getSelectionRange(); return el.value.slice(start, end); },
         getAllText() { return el.value; },
         replaceRange(text, start, end, caretIndex = text.length) {
           el.setRangeText(text, start, end, 'end');
           el.selectionStart = el.selectionEnd = start + caretIndex;
           dispatchInput(el, (end > start ? 'insertReplacementText' : 'insertText'), text);
         },
-        replaceSelection(text, caretIndex) {
-          const { start, end } = this.getSelectionRange();
-          this.replaceRange(text, start, end, caretIndex);
-        }
+        replaceSelection(text, caretIndex) { const { start, end } = this.getSelectionRange(); this.replaceRange(text, start, end, caretIndex); }
       };
     } else {
       const root = ctx.root;
       return {
-        getSelectionRange() {
-          const sel = getSafeSelection();
-          let range = sel?.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
-          return { range, collapsed: !!range?.collapsed };
-        },
-        getSelectedText() {
-          const { range } = this.getSelectionRange();
-          return range ? range.toString() : '';
-        },
-        getAllText() {
-          const r = document.createRange(); r.selectNodeContents(root);
-          return r.toString();
-        },
+        getSelectionRange() { const sel = getSafeSelection(); let range = sel?.rangeCount ? sel.getRangeAt(0).cloneRange() : null; return { range, collapsed: !!range?.collapsed }; },
+        getSelectedText() { const { range } = this.getSelectionRange(); return range ? range.toString() : ''; },
+        getAllText() { const r = document.createRange(); r.selectNodeContents(root); return r.toString(); },
         replaceRangeWithText(range, text, caretIndex = text.length) {
           range.deleteContents();
           const { fragment, cursorNode, cursorOffset, lastNode } = buildFragment(text, caretIndex);
@@ -500,11 +410,7 @@
           const sel = getSafeSelection(); placeCaretAfterInsertion(sel, range, cursorNode, cursorOffset, lastNode);
           dispatchInput(root, 'insertReplacementText', text);
         },
-        replaceSelection(text, caretIndex) {
-          const { range } = this.getSelectionRange();
-          if (!range) return;
-          this.replaceRangeWithText(range, text, caretIndex);
-        }
+        replaceSelection(text, caretIndex) { const { range } = this.getSelectionRange(); if (!range) return; this.replaceRangeWithText(range, text, caretIndex); }
       };
     }
   }
@@ -565,17 +471,8 @@
       }
     }
   }
-  function previousTextNode(root, node) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let prev = null;
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) { if (n === node) return prev; prev = n; }
-    return null;
-  }
-  function lastTextDescendant(start) {
-    if (!start) return null; if (start.nodeType === Node.TEXT_NODE) return start;
-    let walker = document.createTreeWalker(start, NodeFilter.SHOW_TEXT), last = null;
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) last = n;
-    return last;
-  }
+  function previousTextNode(root, node) { const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let prev = null; for (let n = walker.nextNode(); n; n = walker.nextNode()) { if (n === node) return prev; prev = n; } return null; }
+  function lastTextDescendant(start) { if (!start) return null; if (start.nodeType === Node.TEXT_NODE) return start; let walker = document.createTreeWalker(start, NodeFilter.SHOW_TEXT), last = null; for (let n = walker.nextNode(); n; n = walker.nextNode()) last = n; return last; }
 
   // ----------------------
   // Template rendering (plugin-based tags)
@@ -628,7 +525,6 @@
   async function readClipboardSafe() {
     let resolved = false;
     const timeout = new Promise(r => setTimeout(() => { if (!resolved) { resolved = true; r(''); } }, CONFIG.clipboardReadTimeoutMs));
-
     const read = (async () => {
       try {
         if (!navigator.clipboard?.readText) return '';
@@ -640,7 +536,6 @@
         return '';
       }
     })();
-
     return await Promise.race([read, timeout]);
   }
 
@@ -688,9 +583,7 @@
       } else {
         applyRendered(ctx, rendered, { range: tokenInfo.tokenRange });
       }
-    } catch (err) {
-      console.warn('SAE expand error:', err);
-    }
+    } catch (err) { console.warn('SAE expand error:', err); }
   }
 
   // ----------------------
@@ -783,19 +676,6 @@
     const m = out.match(/^\s*```(?:\w+)?\s*([\s\S]*?)\s*```\s*$/); if (m) out = m[1].trim();
     if ((out.startsWith('"') && out.endsWith('"')) || (out.startsWith("'") && out.endsWith("'"))) out = out.slice(1, -1);
     return out;
-  }
-
-  // Verify API key quickly (cheap GET to model info)
-  async function verifyGeminiKey(key) {
-    const k = String(key || '').trim();
-    if (!k) return false;
-    const url = `${CONFIG.gemini.endpoint}/${encodeURIComponent(CONFIG.gemini.model)}?key=${encodeURIComponent(k)}`;
-    try {
-      const res = await GMX.request({ method: 'GET', url, timeout: 10000 });
-      return (res.status >= 200 && res.status < 300);
-    } catch {
-      return false;
-    }
   }
 
   // ----------------------
@@ -920,6 +800,7 @@
         </div>`).join('');
     }
 
+    // Event delegation for list items
     list.addEventListener('click', (e) => {
       const item = e.target.closest('.sae-item');
       if (!item) return;
@@ -973,13 +854,42 @@
     }
 
     async function selectAndInsert(key) {
-      const ctx = getBestInsertionContext();
+      // Prefer the saved context captured when opening palette/FAB click
+      let ctx = null;
+      const saved = state.lastEditable;
+      if (saved && (
+        (saved.kind === 'input' && saved.el?.isConnected) ||
+        (saved.kind === 'ce' && saved.root?.isConnected)
+      )) {
+        ctx = saved;
+      } else {
+        // Fallback if no saved context or it’s gone
+        ctx = getBestInsertionContext();
+      }
+
+      // Close palette before writing
       closePalette();
 
       const tmpl = state.dict[key];
       if (!tmpl || !ctx) { if (!ctx) toast('No editable field found.'); return; }
+
+      // Focus target to keep frameworks happy
+      try { (ctx.kind === 'input' ? ctx.el : ctx.root).focus({ preventScroll: true }); } catch { }
+
+      // Render and insert exactly at the saved range (not whole field)
       const rendered = await renderTemplate(tmpl);
-      applyRendered(ctx, rendered);
+
+      if (ctx.kind === 'input') {
+        // Use the captured start/end if available; fall back to cursor at end
+        const start = typeof ctx.start === 'number' ? ctx.start : (ctx.el.selectionStart ?? ctx.el.value.length);
+        const end = typeof ctx.end === 'number' ? ctx.end : (ctx.el.selectionEnd ?? ctx.el.value.length);
+        applyRendered(ctx, rendered, { start, end });
+      } else if (ctx.kind === 'ce' && ctx.range instanceof Range) {
+        applyRendered(ctx, rendered, { range: ctx.range });
+      } else {
+        // Last resort
+        applyRendered(ctx, rendered);
+      }
     }
 
     function openSettingsView() {
@@ -998,8 +908,7 @@
       const hkPalette = hotkeyToString(CONFIG.palette, false);
       const hkCorrect = hotkeyToString(CONFIG.correct, false);
       const tones = ['neutral', 'friendly', 'formal', 'casual', 'concise'];
-      const sitesText = (state.allowedSites || []).join('\n');
-      const currentHost = location.hostname;
+      const sitesList = escapeHtml((state.fabSites || ['*']).join('\n'));
 
       settingsView.innerHTML = `
         <div class="sae-hrow">
@@ -1008,16 +917,14 @@
           <div></div>
         </div>
         <div class="sae-hrow">
-          <div>FAB Sites</div>
+          <div>Show FAB on websites</div>
           <div>
-            <textarea class="sae-textarea fab-sites" placeholder="One hostname per line (e.g., example.com or *.example.com)">${escapeHtml(sitesText)}</textarea>
-            <div class="sae-settings-actions" style="margin-top:6px">
-              <button class="sae-btn add-current">Add current site (${escapeHtml(currentHost)})</button>
-              <button class="sae-btn save-sites">Save Sites</button>
-            </div>
-            <div style="opacity:.7;margin-top:4px">FAB shows only on these sites when enabled.</div>
+            <textarea class="sae-textarea fab-sites-textarea" placeholder="One per line. Examples:\n*\nexample.com\n*.example.com\nhttps://app.example.com">${sitesList}</textarea>
           </div>
-          <div></div>
+          <div class="sae-settings-actions">
+            <button class="sae-btn add-site">Add current site</button>
+            <button class="sae-btn save-sites">Save list</button>
+          </div>
         </div>
         <div class="sae-hrow">
           <div>Tone (Gemini)</div>
@@ -1028,11 +935,10 @@
         </div>
         <div class="sae-hrow">
           <div>Gemini API Key</div>
-          <div style="display:flex;gap:8px;align-items:center">
+          <div>
             <input type="text" class="sae-text api-key-input" placeholder="Enter API key" value="${escapeHtml(state.apiKey || '')}" />
-            <button class="sae-btn sae-verify" data-action="verify">Verify</button>
           </div>
-          <div></div>
+          <div><button class="sae-btn verify-api">Verify</button></div>
         </div>
         <div class="sae-hrow">
           <div>Hotkeys</div>
@@ -1066,38 +972,48 @@
         </div>
       `;
 
+      // FAB toggle
       $('.fab-toggle', settingsView).addEventListener('change', () => toggleFabSetting());
+
+      // Site list actions
+      $('.add-site', settingsView).addEventListener('click', () => {
+        const ta = $('.fab-sites-textarea', settingsView);
+        const host = location.hostname;
+        const lines = normalizeFabSites(ta.value);
+        if (!lines.includes(host)) {
+          ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + host;
+          toast(`Added "${host}"`);
+        } else {
+          toast(`"${host}" already in list.`);
+        }
+      });
+      $('.save-sites', settingsView).addEventListener('click', async () => {
+        const ta = $('.fab-sites-textarea', settingsView);
+        const next = normalizeFabSites(ta.value);
+        state.fabSites = next.length ? next : ['*'];
+        await GMX.setValue(CONFIG.storeKeys.fabSites, state.fabSites);
+        refreshFab();
+        toast('FAB site list saved.');
+      });
+
+      // Tone change
       $('.tone-select', settingsView).addEventListener('change', async (e) => {
         state.tone = e.target.value;
         await GMX.setValue(CONFIG.storeKeys.tone, state.tone);
         toast(`Tone set to ${state.tone}.`);
       });
 
-      // Verify API key (visible, no masking). Saves on success.
-      $('[data-action="verify"]', settingsView).addEventListener('click', async (e) => {
-        const btn = e.currentTarget;
-        btn.classList.remove('ok','err');
-        const input = $('.api-key-input', settingsView);
-        const k = (input.value || '').trim();
-        const bubble = notify.busy('Verifying key…');
-        const ok = await verifyGeminiKey(k);
-        bubble.update(ok ? 'Key verified ✓' : 'Invalid key.');
-        setTimeout(() => bubble.close(), 900);
-        if (ok) {
-          state.apiKey = k;
-          await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
-          btn.classList.add('ok');
-          btn.textContent = 'Verified ✓';
-          toast('API key verified and saved.');
-        } else {
-          btn.classList.add('err');
-          btn.textContent = 'Invalid ✗';
-          toast('API key invalid — not saved.');
-        }
-        setTimeout(() => { btn.classList.remove('ok','err'); btn.textContent = 'Verify'; }, 2200);
+      // Verify API key
+      const verifyBtn = $('.verify-api', settingsView);
+      const apiInput = $('.api-key-input', settingsView);
+      verifyBtn.addEventListener('click', async () => {
+        await verifyAndSaveApiKey(apiInput.value.trim(), verifyBtn);
+      });
+      apiInput.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); await verifyAndSaveApiKey(apiInput.value.trim(), verifyBtn); }
       });
 
-      // Hotkey changers
+      // Hotkeys
       settingsView.querySelectorAll('[data-hk]').forEach(btn => {
         btn.addEventListener('click', async () => {
           const name = btn.getAttribute('data-hk');
@@ -1107,23 +1023,7 @@
         });
       });
 
-      // FAB sites management
-      $('.add-current', settingsView).addEventListener('click', () => {
-        const ta = $('.fab-sites', settingsView);
-        const host = location.hostname;
-        const lines = ta.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-        if (!lines.includes(host)) lines.push(host);
-        ta.value = lines.join('\n');
-      });
-      $('.save-sites', settingsView).addEventListener('click', async () => {
-        const ta = $('.fab-sites', settingsView);
-        const list = normalizeSitesList(ta.value);
-        state.allowedSites = list;
-        await GMX.setValue(CONFIG.storeKeys.fabSites, state.allowedSites);
-        updateFabVisibility();
-        toast('FAB sites saved.');
-      });
-
+      // Dict actions
       $('[data-action="export"]', settingsView).addEventListener('click', () => exportDict());
       $('[data-action="import"]', settingsView).addEventListener('click', () => importDict());
       $('[data-action="reset"]', settingsView).addEventListener('click', () => {
@@ -1132,19 +1032,17 @@
       $('[data-action="done"]', settingsView).addEventListener('click', () => closeSettingsView());
     }
 
-    const renderListDebounced = debounce(() => {
-      state.activeIndex = 0;
-      renderList(search.value);
-    }, CONFIG.searchDebounceMs);
-
+    const renderListDebounced = debounce(() => { state.activeIndex = 0; renderList(search.value); }, CONFIG.searchDebounceMs);
     search.addEventListener('input', () => renderListDebounced());
+
     settingsBtn.addEventListener('click', () => openSettingsView());
     backBtn.addEventListener('click', () => closeSettingsView());
     closeBtn.addEventListener('click', closePalette);
     addNewBtn.addEventListener('click', addNewItem);
 
-    // Keyboard handling (list view only)
+    // Keyboard (list view only)
     wrap.addEventListener('keydown', (e) => {
+      const panel = $('.sae-panel', wrap);
       if (panel.classList.contains('settings-open')) return;
       if (e.target.closest('.sae-item.editing')) return;
       if (e.key === 'Escape') { e.preventDefault(); closePalette(); return; }
@@ -1198,9 +1096,7 @@
 
   function closePalette() {
     if (!paletteEl) return;
-    document.body.style.overflow = prevOverflow;
-    prevOverflow = '';
-
+    document.body.style.overflow = prevOverflow; prevOverflow = '';
     const panel = paletteEl.querySelector('.sae-panel');
     if (panel) panel.classList.remove('settings-open');
     const backBtn = paletteEl.querySelector('[data-action="back"]');
@@ -1209,58 +1105,23 @@
   }
 
   // ----------------------
-  // FAB helpers (no watcher, whitelist-aware)
+  // FAB helpers (no watcher)
   // ----------------------
-  function hostAllowed(host = location.hostname) {
-    const list = (state.allowedSites || []).map(s => s.toLowerCase());
-    if (!list.length) return false; // show only on listed websites
-    const h = (host || '').toLowerCase();
-    return list.some(p => {
-      if (!p) return false;
-      let pat = p;
-      // normalize inputs like URLs
-      try {
-        if (p.includes('/') || p.includes(':')) pat = new URL(p.includes('://') ? p : ('https://' + p)).hostname.toLowerCase();
-      } catch { pat = p; }
-      if (pat.startsWith('*.')) {
-        const base = pat.slice(2);
-        return h === base || h.endsWith('.' + base);
-      }
-      return h === pat;
-    });
-  }
-
-  function normalizeSitesList(text) {
-    return (text || '')
-      .split(/\r?\n/)
-      .map(s => s.trim())
-      .map(s => {
-        if (!s) return '';
-        try {
-          if (s.includes('/') || s.includes(':')) return new URL(s.includes('://') ? s : ('https://' + s)).hostname.trim();
-        } catch { /* ignore */ }
-        return s;
-      })
-      .filter(Boolean)
-      .filter((v, i, a) => a.indexOf(v) === i);
-  }
+  function shouldShowFab() { return !!(state.fabEnabled && isFabHostAllowed(state.fabSites, location.hostname)); }
+  function refreshFab() { if (shouldShowFab()) ensureFab(); else removeFab(); }
+  function removeFab() { try { fabEl?.remove(); } catch { } fabEl = null; }
 
   function ensureFab() {
-    if (!hostAllowed()) return null;
-
-    if (fabEl && fabEl.isConnected) {
-      fabEl.style.display = 'flex';
-      return fabEl;
-    }
+    if (fabEl && fabEl.isConnected) { fabEl.style.display = 'flex'; return; }
     fabEl = document.createElement('button');
     fabEl.className = 'sae-fab';
     fabEl.type = 'button';
     fabEl.title = 'Abbreviation Palette';
-    fabEl.setAttribute('aria-label', 'Abbreviation Palette');
     fabEl.innerHTML = `
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 3l2.3 4.7L19 10l-4.7 2.3L12 17l-2.3-4.7L5 10l4.7-2.3L12 3z"></path>
-        <path d="M3 21l6-6" />
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="5" r="2"></circle>
+        <circle cx="12" cy="12" r="2"></circle>
+        <circle cx="12" cy="19" r="2"></circle>
       </svg>
     `;
 
@@ -1275,37 +1136,17 @@
     });
 
     document.documentElement.appendChild(fabEl);
-    updateFabVisibility();
-    return fabEl;
-  }
-
-  function updateFabVisibility() {
-    const shouldShow = state.fabEnabled && hostAllowed();
-    if (shouldShow) {
-      if (!fabEl || !fabEl.isConnected) ensureFab();
-      if (fabEl) {
-        fabEl.style.display = 'flex';
-        fabEl.style.visibility = 'visible';
-        fabEl.style.opacity = '1';
-      }
-    } else {
-      if (fabEl) {
-        fabEl.style.display = 'none';
-        fabEl.style.visibility = 'hidden';
-        fabEl.style.opacity = '0';
-      }
-    }
   }
 
   async function toggleFabSetting() {
     state.fabEnabled = !state.fabEnabled;
     await GMX.setValue(CONFIG.storeKeys.fab, state.fabEnabled);
-    updateFabVisibility();
+    refreshFab();
     toast(`FAB ${state.fabEnabled ? 'enabled' : 'disabled'}.`);
   }
 
   // ----------------------
-  // Fallback helpers (paste at end-of-line if no caret)
+  // Fallback helpers
   // ----------------------
   function elementIsVisible(el) {
     if (!el || !(el instanceof Element)) return false;
@@ -1370,49 +1211,72 @@
   // ----------------------
   // Utils
   // ----------------------
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  }
-
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
   function normalizeDict(obj) {
-    const out = {};
-    let dropped = 0;
+    const out = {}; let dropped = 0;
     for (const [k, v] of Object.entries(obj || {})) {
-      if (typeof k === 'string' && typeof v === 'string' && k.trim()) {
-        out[k.trim().toLowerCase()] = v;
-      } else {
-        dropped++;
-      }
+      if (typeof k === 'string' && typeof v === 'string' && k.trim()) out[k.trim().toLowerCase()] = v;
+      else dropped++;
     }
     if (dropped > 0) console.warn(`SAE: Dropped ${dropped} invalid dictionary entries during normalization.`);
     return out;
   }
-
   function hotkeyToString(spec, isSpace) {
     const parts = [];
     if (spec.ctrl) parts.push('Ctrl');
     if (spec.meta) parts.push('Meta');
     if (spec.alt) parts.push('Alt');
     if (spec.shift) parts.push('Shift');
-    if (isSpace || !spec.code) parts.push('Space');
-    else parts.push(codeToHuman(spec.code));
+    if (isSpace || !spec.code) parts.push('Space'); else parts.push(codeToHuman(spec.code));
     return parts.join('+');
   }
+  function codeToHuman(code) { if (!code) return 'Space'; if (code.startsWith('Key')) return code.slice(3); if (code.startsWith('Digit')) return code.slice(5); if (code === 'Space') return 'Space'; return code; }
+  function toast(msg, ms = 2200) { notify.toast(msg, ms); }
+  function throttledToast(msg, ms = 2200) { const now = Date.now(); if (now - state._lastToastAt < CONFIG.toast.throttleMs) return; state._lastToastAt = now; toast(msg, ms); }
 
-  function codeToHuman(code) {
-    if (!code) return 'Space';
-    if (code.startsWith('Key')) return code.slice(3);
-    if (code.startsWith('Digit')) return code.slice(5);
-    if (code === 'Space') return 'Space';
-    return code;
+  // FAB site matching
+  function normalizeFabSites(input) {
+    return String(input || '').split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
+  }
+  function isFabHostAllowed(list, host) {
+    if (!Array.isArray(list) || list.length === 0) return false; // only show on listed sites
+    host = (host || '').toLowerCase();
+    return list.some(p => matchHostPattern(p, host));
+  }
+  function matchHostPattern(p, host) {
+    p = String(p || '').trim().toLowerCase();
+    if (!p) return false;
+    if (p === '*' || p === 'all') return true;
+    try { if (p.includes('://')) p = new URL(p).hostname.toLowerCase(); } catch { }
+    if (p.startsWith('*.')) { const base = p.slice(2); return host === base || host.endsWith('.' + base); }
+    return host === p || host.endsWith('.' + p);
   }
 
-  function toast(msg, ms = 2200) { notify.toast(msg, ms); }
-  function throttledToast(msg, ms = 2200) {
-    const now = Date.now();
-    if (now - state._lastToastAt < CONFIG.toast.throttleMs) return;
-    state._lastToastAt = now;
-    toast(msg, ms);
+  // API key verify + save
+  async function verifyAndSaveApiKey(key, btn) {
+    if (!key) { toast('Enter an API key first.'); return; }
+    const oldText = btn.textContent;
+    btn.textContent = 'Verifying…'; btn.disabled = true; btn.classList.remove('ok');
+    try {
+      const url = `${CONFIG.gemini.endpoint}?key=${encodeURIComponent(key)}`; // GET models list
+      const res = await GMX.request({ method: 'GET', url, timeout: CONFIG.gemini.timeoutMs });
+      if (res.status >= 200 && res.status < 300) {
+        state.apiKey = key;
+        await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
+        btn.classList.add('ok'); btn.textContent = 'Verified ✓';
+        toast('API key verified and saved.');
+      } else {
+        console.warn('Verify key HTTP error', res.status, res.text);
+        btn.textContent = 'Verify';
+        toast(`Verification failed (HTTP ${res.status}).`);
+      }
+    } catch (err) {
+      console.warn('Verify key failed:', err);
+      btn.textContent = 'Verify';
+      toast('Verification failed — check console/network.');
+    } finally {
+      setTimeout(() => { btn.disabled = false; if (!btn.classList.contains('ok')) btn.textContent = oldText; }, 800);
+    }
   }
 
   // ----------------------
