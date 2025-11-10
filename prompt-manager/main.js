@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         My Prompt
 // @namespace    https://github.com/quantavil
-// @version      2.4
+// @version      2.0
 // @description  Save and use your prompts quickly and easily with one click! Compatible with ChatGPT, DeepSeek, Gemini, Claude, Kimi, Qwen, LMArena, Z.ai, Google AI Studio, and Grok.
 // @author       quantavil
 // @homepage     https://github.com/0H4S
@@ -19,6 +19,8 @@
 // @match        https://grok.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_xmlhttpRequest
+// @grant        GM_registerMenuCommand
 // @run-at       document-end
 // @noframes
 // ==/UserScript==
@@ -53,90 +55,52 @@
     fillPlaceholders: 'Fill in the Information',
     insert: 'Insert',
     enablePlaceholders: 'Enable interactive placeholders: [...]',
-    fileName: 'My_Prompts.json',
-    settings: 'Settings',
-    insertionMode: 'Insertion mode',
-    modeInsert: 'Insert at cursor',
-    modeAppend: 'Append to end',
-    modeReplace: 'Replace all'
+    fileName: 'My_Prompts.json'
   };
 
-  const ICON_MENU = `
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-  `;
-  const ICON_EDIT = `
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-      <path d="M14.06 6.19l3.75 3.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  `;
-  const ICON_DELETE = `
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <path d="M3 6h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-  `;
+  const SCRIPT_CONFIG = {
+    notificationsUrl: 'https://gist.github.com/0H4S/b2f9a9f92259deadc35bdccb11cd9a75',
+    scriptVersion: '2.0',
+  };
+  const notifier = new ScriptNotifier(SCRIPT_CONFIG);
+  notifier.run();
 
   const PROMPT_STORAGE_KEY = 'Prompts';
-  const SETTINGS_KEY = 'Settings';
-  const DEFAULT_SETTINGS = { insertMode: 'insert' }; // 'insert' | 'append' | 'replace'
 
-  // Consolidated state
-  const state = {
-    platform: null, // { name, editorSelector, mount(), getEditor? }
-    elements: {
-      wrapper: null,
-      button: null,
-      menu: null,
-      modal: null,
-      placeholderModal: null,
-    },
-    observers: {
-      page: null,
-      platform: [], // per-platform observers
-    },
-    flags: { initializing: false },
-  };
+  let currentPlatform = null;     // { name, editorSelector, insertButton() }
+  let currentButtonEl = null;     // The element inserted (wrapper or button) used for presence checks
+  let clickableButton = null;     // The actual clickable button element
+  let currentMenu = null;
+  let currentModal = null;
+  let currentPlaceholderModal = null;
+  let pageObserver = null;
+  let isInitializing = false;
 
-  // TrustedTypes for static HTML
   const policy = window.trustedTypes
     ? window.trustedTypes.createPolicy('MyPromptPolicy', { createHTML: s => s })
     : null;
+
   const setHTML = (el, html) => { if (el) el.innerHTML = policy ? policy.createHTML(html) : html; };
 
-  // Storage helpers
-  const getAll = async () => await GM_getValue(PROMPT_STORAGE_KEY, []);
-  const setAll = async (arr) => await GM_setValue(PROMPT_STORAGE_KEY, arr);
-  const addItem = async (item) => { const arr = await getAll(); arr.unshift(item); await setAll(arr); };
-  const updateItem = async (index, item) => { const arr = await getAll(); if (arr[index]) { arr[index] = item; await setAll(arr); } };
-  const removeItem = async (index) => { const arr = await getAll(); arr.splice(index, 1); await setAll(arr); };
-
-  const getSettings = async () => {
-    const s = await GM_getValue(SETTINGS_KEY, {});
-    return { ...DEFAULT_SETTINGS, ...s };
-  };
-  const setSettings = async (patch) => {
-    const s = await getSettings();
-    const next = { ...s, ...patch };
-    await GM_setValue(SETTINGS_KEY, next);
-    return next;
+  const debounce = (fn, wait) => {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), wait);
+    };
   };
 
-  // Utils
-  const debounce = (fn, wait = 200) => {
-    let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
-  };
   function waitFor(selector, timeout = 8000) {
     return new Promise((resolve, reject) => {
       const found = document.querySelector(selector);
       if (found) return resolve(found);
-      let obs;
-      const timer = setTimeout(() => { try { obs?.disconnect(); } catch (_) {} reject(`Timeout waiting for ${selector}`); }, timeout);
-      obs = new MutationObserver(() => {
+
+      const timer = setTimeout(() => {
+        obs.disconnect();
+        reject(`Timeout waiting for ${selector}`);
+      }, timeout);
+
+      const obs = new MutationObserver(() => {
         const el = document.querySelector(selector);
         if (el) {
           clearTimeout(timer);
@@ -144,12 +108,25 @@
           resolve(el);
         }
       });
+
       const startObs = () => obs.observe(document.body, { childList: true, subtree: true });
-      if (document.body) startObs(); else document.addEventListener('DOMContentLoaded', startObs);
+      if (document.body) startObs();
+      else document.addEventListener('DOMContentLoaded', startObs);
     });
   }
-  const addPlatformObserver = (obs) => { state.observers.platform.push(obs); return obs; };
 
+  // =========================
+  // Storage
+  // =========================
+  const getAll = async () => await GM_getValue(PROMPT_STORAGE_KEY, []);
+  const setAll = async (arr) => await GM_setValue(PROMPT_STORAGE_KEY, arr);
+  const addItem = async (item) => { const arr = await getAll(); arr.unshift(item); await setAll(arr); };
+  const updateItem = async (index, item) => { const arr = await getAll(); if (arr[index]) { arr[index] = item; await setAll(arr); } };
+  const removeItem = async (index) => { const arr = await getAll(); arr.splice(index, 1); await setAll(arr); };
+
+  // =========================
+  // Styles
+  // =========================
   function injectGlobalStyles() {
     const styleId = 'my-prompt-styles';
     if (document.getElementById(styleId)) return;
@@ -195,63 +172,59 @@
         }
       }
       .mp-hidden{display:none!important}
-      .mp-overlay { position: fixed; inset: 0; background: var(--mp-bg-overlay);
+      .mp-overlay {
+        position: fixed; inset: 0; background: var(--mp-bg-overlay);
         z-index: 2147483647; display: flex; justify-content: center; align-items: center;
         backdrop-filter: blur(4px); opacity: 0; visibility: hidden;
-        transition: opacity var(--mp-transition-fast), visibility var(--mp-transition-fast); }
+        transition: opacity var(--mp-transition-fast), visibility var(--mp-transition-fast);
+      }
       .mp-overlay.visible { opacity: 1; visibility: visible; }
-      .mp-modal-box { font-family: var(--mp-font-family-base); background: var(--mp-bg-primary); color: var(--mp-text-primary);
+      .mp-modal-box {
+        font-family: var(--mp-font-family-base);
+        background: var(--mp-bg-primary); color: var(--mp-text-primary);
         border-radius: var(--mp-border-radius-lg); padding: 24px; box-shadow: var(--mp-shadow-lg);
         width: min(90vw, 520px); border: 1px solid var(--mp-border-primary);
         transform: scale(.95) translateY(10px); opacity: 0;
-        transition: transform var(--mp-transition-fast), opacity var(--mp-transition-fast); position: relative; }
+        transition: transform var(--mp-transition-fast), opacity var(--mp-transition-fast);
+        position: relative;
+      }
       .mp-overlay.visible .mp-modal-box { transform: scale(1) translateY(0); opacity: 1; }
-      .mp-modal-close-btn { position: absolute; top: 12px; right: 12px; background: none; border: none; color: var(--mp-text-tertiary);
+      .mp-modal-close-btn {
+        position: absolute; top: 12px; right: 12px; background: none; border: none; color: var(--mp-text-tertiary);
         font-size: 22px; cursor: pointer; width: 32px; height: 32px; border-radius: 50%;
-        display: flex; align-items: center; justify-content: center; transition: transform .3s ease, color .3s ease, background-color .3s ease; }
+        display: flex; align-items: center; justify-content: center; line-height: 1;
+        transition: transform .3s ease, color .3s ease, background-color .3s ease;
+      }
       .mp-modal-close-btn:hover { transform: rotate(90deg); color: var(--mp-accent-red); background-color: color-mix(in srgb, var(--mp-accent-red) 15%, transparent); }
 
-      .prompt-menu { position: fixed; min-width: 320px; max-width: 420px; background: var(--mp-bg-primary);
+      .prompt-menu {
+        position: fixed; min-width: 320px; max-width: 420px; background: var(--mp-bg-primary);
         border: 1px solid var(--mp-border-primary); border-radius: var(--mp-border-radius-lg);
         box-shadow: var(--mp-shadow-lg); z-index: 2147483647; display: flex; flex-direction: column; overflow: hidden;
-        color: var(--mp-text-primary); font-family: var(--mp-font-family-base); opacity: 0; visibility: hidden; transform: scale(.95);
-        transform-origin: top left; transition: opacity .2s ease, transform .2s ease, visibility 0s linear .2s; }
+        color: var(--mp-text-primary); font-family: var(--mp-font-family-base);
+        opacity: 0; visibility: hidden; transform: scale(.95); transform-origin: top left;
+        transition: opacity .2s ease, transform .2s ease, visibility 0s linear .2s;
+      }
       .prompt-menu.visible { opacity: 1; visibility: visible; transform: scale(1); transition-delay: 0s; }
       .prompt-menu-list { max-height: 220px; overflow-y: auto; padding: 4px; }
-      .prompt-item-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--mp-border-radius-md);
-        cursor: pointer; transition: background-color .15s; }
+      .prompt-item-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--mp-border-radius-md); cursor: pointer; transition: background-color .15s; }
       .prompt-item-row:hover { background: var(--mp-bg-tertiary); }
       .prompt-title { font-size: 14px; font-weight: 500; flex: 1; padding-right: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mp-text-secondary); }
       .prompt-item-row:hover .prompt-title { color: var(--mp-text-primary); }
       .prompt-actions { display: flex; align-items: center; gap: 4px; }
-
-      .action-btn { background: none; border: none; cursor: pointer; padding: 4px; width: 28px; height: 28px; border-radius: var(--mp-border-radius-sm);
-        display: inline-flex; align-items: center; justify-content: center; color: var(--mp-text-secondary); transition: background-color .15s, color .15s; }
-      .action-btn svg { width: 16px; height: 16px; }
-      .action-btn.edit { color: var(--mp-accent-yellow); }
-      .action-btn.edit:hover { background: color-mix(in srgb, var(--mp-accent-yellow) 18%, transparent); color: var(--mp-bg-primary); }
-      .action-btn.delete { color: var(--mp-accent-red); }
-      .action-btn.delete:hover { background: color-mix(in srgb, var(--mp-accent-red) 18%, transparent); color: var(--mp-bg-primary); }
-
-      .menu-header { display: flex; align-items: center; justify-content: space-between; padding: 8px; border-bottom: 1px solid var(--mp-border-primary); }
-      .menu-title { font-size: 14px; font-weight: 600; color: var(--mp-text-secondary); }
-      .menu-icons { display: flex; align-items: center; gap: 6px; }
-      .icon-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--mp-text-tertiary);
-        border-radius: var(--mp-border-radius-md); cursor: pointer; transition: background-color .15s ease, color .15s ease; }
-      .icon-btn:hover { background: var(--mp-bg-tertiary); color: var(--mp-text-primary); }
-      .settings-panel { padding: 4px; border-top: 1px solid var(--mp-border-primary); }
-      .menu-button { display: flex; align-items: center; justify-content: center; padding: 8px 12px; cursor: pointer; color: var(--mp-text-secondary);
-        border-radius: var(--mp-border-radius-md); font-size: 14px; font-weight: 500; transition: background-color .15s ease; }
+      .action-btn { background: none; border: none; cursor: pointer; font-size: 13px; font-weight: 500; padding: 4px 8px; border-radius: var(--mp-border-radius-sm); }
+      .action-btn.edit { color: var(--mp-accent-yellow); } .action-btn.edit:hover { background: var(--mp-accent-yellow); color: var(--mp-bg-primary); }
+      .action-btn.delete{ color: var(--mp-accent-red); } .action-btn.delete:hover{ background: var(--mp-accent-red); color: var(--mp-bg-primary); }
+      .menu-section, .menu-footer { border-top: 1px solid var(--mp-border-primary); padding: 4px; }
+      .menu-button { display: flex; align-items: center; justify-content: center; padding: 8px 12px; cursor: pointer; color: var(--mp-text-secondary); border-radius: var(--mp-border-radius-md); font-size: 14px; font-weight: 500; transition: background-color .15s ease; }
       .menu-button:hover { background: var(--mp-bg-tertiary); color: var(--mp-text-primary); }
+      .menu-button svg { margin-right: 8px; }
       .import-export-container { display: flex; }
       .import-export-container .menu-button { flex: 1; }
       .divider { border-left: 1px solid var(--mp-border-primary); height: 24px; align-self: center; }
       .empty-state { padding: 24px 16px; text-align: center; color: var(--mp-text-tertiary); font-size: 14px; }
-
-      .form-group { display: flex; flex-direction: column; gap: 8px; padding: 6px; }
-      .form-label { font-size: 13px; font-weight: 600; color: var(--mp-text-secondary); }
-      .radio-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-      .radio-row label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; color: var(--mp-text-secondary); }
+      .form-group { display: flex; flex-direction: column; margin-bottom: 16px; }
+      .form-label { margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--mp-text-secondary); }
       .form-input, .form-textarea {
         background: var(--mp-bg-secondary); color: var(--mp-text-primary); border: 1px solid var(--mp-border-primary)!important;
         border-radius: var(--mp-border-radius-md); padding: 10px; width: 100%; box-sizing: border-box; outline: 0!important;
@@ -263,111 +236,148 @@
       .modal-footer { display: flex; justify-content: flex-end; }
       .save-button { padding: 10px 28px; border-radius: var(--mp-border-radius-md); background: var(--mp-accent-primary); color: #fff; border: none; font-weight: 600; cursor: pointer; transition: all .2s; font-family: var(--mp-font-family-base);}
       .save-button:hover { background: var(--mp-accent-primary-hover); transform: translateY(-1px); }
+      .form-checkbox-group { display: flex; align-items: center; gap: 10px; margin-top: -8px; margin-bottom: 20px; }
+      .form-checkbox-group label { font-size: 13px; font-weight: 500; color: var(--mp-text-secondary); cursor: pointer; margin-bottom: 0; }
+      .form-checkbox-group input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; accent-color: var(--mp-accent-primary); }
 
-      /* Small hover fix for Google AI Studio */
-      button[data-testid="composer-button-prompts"]:hover { background-color: rgba(60,64,67,0.08) !important; }
-      @media (prefers-color-scheme: dark) {
-        button[data-testid="composer-button-prompts"]:hover { background-color: rgba(232,234,237,0.08) !important; }
+      .mp-tooltip {
+        position: fixed; z-index: 2147483647; border-radius: var(--mp-border-radius-sm); padding: 6px 12px; pointer-events: none; white-space: nowrap;
+        font-family: var(--mp-font-family-base); font-size: 14px; font-weight: 500;
+        background: var(--mp-text-primary); color: var(--mp-bg-primary); border: 1px solid var(--mp-bg-tertiary);
+        opacity: 0; transform: scale(0.95); transition: opacity 150ms cubic-bezier(0.4,0,0.2,1), transform 150ms cubic-bezier(0.4,0,0.2,1);
       }
+      .mp-tooltip.visible { opacity: 1; transform: scale(1); }
+
+      #__ap_placeholders_container { max-height: 350px; overflow-y: auto; padding-right: 12px; margin-right: -12px; scrollbar-width: thin; scrollbar-color: var(--mp-border-secondary) var(--mp-bg-tertiary); }
+      #__ap_placeholders_container::-webkit-scrollbar { width: 10px; height: 10px; }
+      #__ap_placeholders_container::-webkit-scrollbar-track { background: var(--mp-bg-tertiary); border-radius: 10px; }
+      #__ap_placeholders_container::-webkit-scrollbar-thumb { background: var(--mp-border-secondary); border-radius: 10px; border: 2px solid var(--mp-bg-primary); }
+      #__ap_placeholders_container::-webkit-scrollbar-thumb:hover { background: var(--mp-text-tertiary); }
+
+      /* New header and settings panel */
+      .menu-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 8px; border-bottom: 1px solid var(--mp-border-primary);
+      }
+      .menu-title { font-size: 14px; font-weight: 600; color: var(--mp-text-secondary); }
+      .menu-icons { display: flex; align-items: center; gap: 6px; }
+      .icon-btn {
+        width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+        border: none; background: transparent; color: var(--mp-text-tertiary);
+        border-radius: var(--mp-border-radius-md); cursor: pointer;
+        transition: background-color .15s ease, color .15s ease;
+      }
+      .icon-btn:hover { background: var(--mp-bg-tertiary); color: var(--mp-text-primary); }
+      .settings-panel { padding: 4px; border-top: 1px solid var(--mp-border-primary); }
     `);
     document.head.appendChild(style);
   }
 
   // =========================
+  // Tooltip
+  // =========================
+  function createTooltip(button, text, position = 'top') {
+    let tt = null;
+    const show = () => {
+      if (tt) return;
+      tt = document.createElement('div');
+      tt.className = 'mp-tooltip';
+      tt.textContent = text;
+      document.body.appendChild(tt);
+      const b = button.getBoundingClientRect();
+      const r = tt.getBoundingClientRect();
+      const margin = 8;
+      let top = position === 'bottom' ? b.bottom + margin : b.top - r.height - margin;
+      if (top < 0) top = b.bottom + margin;
+      let left = b.left + b.width / 2 - r.width / 2;
+      left = Math.max(margin, Math.min(left, window.innerWidth - r.width - margin));
+      tt.style.left = `${left}px`;
+      tt.style.top = `${top}px`;
+      requestAnimationFrame(() => tt.classList.add('visible'));
+    };
+    const hide = () => {
+      if (!tt) return;
+      const el = tt; tt = null;
+      el.classList.remove('visible');
+      setTimeout(() => el.remove(), 150);
+    };
+    button.addEventListener('mouseenter', show);
+    button.addEventListener('mouseleave', hide);
+    button.addEventListener('mousedown', hide);
+  }
+
+  // =========================
   // UI Elements
   // =========================
-  function createButton({
-    tag = 'button',
-    className = '',
-    label = null,
-    labelClass = '',
-    iconClass = '',
-    size = 32,
-    iconSize = 20,
-    attrs = {},
-    style = {},
-    title = STR.prompts,
-    icon = ICON_MENU,
-  } = {}) {
-    const el = document.createElement(tag);
-    if (tag === 'button') el.type = 'button';
-    el.setAttribute('data-testid', 'composer-button-prompts');
-    el.setAttribute('title', title);
-    if (className) el.className = className;
-    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-    Object.assign(el.style, {
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-      ...(size ? { width: `${size}px`, height: `${size}px` } : {}),
-      ...style,
-    });
-    setHTML(el, icon || '');
-    const svg = el.querySelector('svg');
-    if (svg) {
-      if (iconClass) svg.classList.add(iconClass);
-      if (iconSize) { svg.setAttribute('width', String(iconSize)); svg.setAttribute('height', String(iconSize)); }
-    }
-    if (label) {
-      const span = document.createElement('span');
-      if (labelClass) span.className = labelClass;
-      span.textContent = label;
-      if (!className.includes('gap') && !labelClass) span.style.marginLeft = '6px';
-      el.appendChild(span);
-    }
-    return el;
-  }
-  const createIconButton = (opts = {}) => createButton({ size: 32, iconSize: 20, ...opts });
-  const createLabeledButton = (label, className = '', opts = {}) => createButton({ label, className, size: undefined, ...opts });
-
   function createPromptMenu() {
     const menu = document.createElement('div');
     menu.className = 'prompt-menu';
     menu.id = 'prompt-menu-container';
 
     // Header
-    const header = document.createElement('div'); header.className = 'menu-header';
-    const title = document.createElement('div'); title.className = 'menu-title'; title.textContent = STR.prompts;
-    const icons = document.createElement('div'); icons.className = 'menu-icons';
+    const header = document.createElement('div');
+    header.className = 'menu-header';
+
+    const title = document.createElement('div');
+    title.className = 'menu-title';
+    title.textContent = STR.prompts;
+
+    const icons = document.createElement('div');
+    icons.className = 'menu-icons';
 
     const btnAdd = document.createElement('button');
-    btnAdd.className = 'icon-btn'; btnAdd.id = 'mp-btn-add';
-    btnAdd.setAttribute('aria-label', STR.addPrompt); btnAdd.setAttribute('title', STR.addPrompt);
-    setHTML(btnAdd, `<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`);
+    btnAdd.className = 'icon-btn';
+    btnAdd.id = 'mp-btn-add';
+    btnAdd.setAttribute('aria-label', STR.addPrompt);
+    setHTML(btnAdd, `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    `);
+
     const btnSettings = document.createElement('button');
-    btnSettings.className = 'icon-btn'; btnSettings.id = 'mp-btn-settings';
-    btnSettings.setAttribute('aria-label', STR.settings); btnSettings.setAttribute('title', STR.settings);
+    btnSettings.className = 'icon-btn';
+    btnSettings.id = 'mp-btn-settings';
+    btnSettings.setAttribute('aria-label', 'Settings');
     setHTML(btnSettings, `
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
         <path d="M11.983 13.893a1.893 1.893 0 1 0 0-3.786 1.893 1.893 0 0 0 0 3.786Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M20.5 12a8.5 8.5 0 0 1-.09 1.227l1.498 1.164a.75.75 0 0 1 .18.969l-1.42 2.46a.75.75 0 0 1-.902.344l-1.764-.588a8.46 8.46 0 0 1-1.06.616l-.267 1.844a.75.75 0 0 1-.744.636h-2.84a.75.75 0 0 1-.744-.636l-.267-1.844a8.46 8.46 0 0 1-1.06-.616l-1.764.588a.75.75 0 0 1-.902.345l-1.42-2.46a.75.75 0 0 1-.18.968l-1.498 1.164c.06.399.09.804.09 1.217Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M20.5 12a8.5 8.5 0 0 1-.09 1.227l1.498 1.164a.75.75 0 0 1 .18.969l-1.42 2.46a.75.75 0 0 1-.902.344l-1.764-.588a8.46 8.46 0 0 1-1.06.616l-.267 1.844a.75.75 0 0 1-.744.636h-2.84a.75.75 0 0 1-.744-.636l-.267-1.844a8.46 8.46 0 0 1-1.06-.616l-1.764.588a.75.75 0 0 1-.902-.345l-1.42-2.46a.75.75 0 0 1 .18-.968l1.498-1.164A8.5 8.5 0 0 1 3.5 12c0-.413.031-.818.09-1.217L2.092 9.619a.75.75 0 0 1-.18-.968l1.42-2.46a.75.75 0 0 1 .902-.345l1.764.588c.333-.227.691-.43 1.06-.616l.267-1.844A.75.75 0 0 1 8.067 3h2.84a.75.75 0 0 1 .744.636l.267 1.844c.369.186.727.389 1.06.616l1.764-.588a.75.75 0 0 1 .902.345l1.42 2.46a.75.75 0 0 1-.18.968l-1.498 1.164c.06.399.09.804.09 1.217Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     `);
+
     icons.append(btnAdd, btnSettings);
     header.append(title, icons);
 
-    // List
-    const list = document.createElement('div'); list.className = 'prompt-menu-list'; list.id = 'mp-list';
+    // List container
+    const list = document.createElement('div');
+    list.className = 'prompt-menu-list';
+    list.id = 'mp-list';
 
-    // Settings panel
-    const settingsPanel = document.createElement('div'); settingsPanel.className = 'settings-panel mp-hidden'; settingsPanel.id = 'mp-settings-panel';
+    // Settings panel (hidden by default)
+    const settingsPanel = document.createElement('div');
+    settingsPanel.className = 'settings-panel mp-hidden';
+    settingsPanel.id = 'mp-settings-panel';
 
-    const ie = document.createElement('div'); ie.className = 'import-export-container';
-    const exportBtn = document.createElement('div'); exportBtn.className = 'menu-button'; exportBtn.id = 'mp-btn-export'; exportBtn.textContent = STR.export;
-    const divider = document.createElement('div'); divider.className = 'divider';
-    const importBtn = document.createElement('div'); importBtn.className = 'menu-button'; importBtn.id = 'mp-btn-import'; importBtn.textContent = STR.import;
+    const ie = document.createElement('div');
+    ie.className = 'import-export-container';
+
+    const exportBtn = document.createElement('div');
+    exportBtn.className = 'menu-button';
+    exportBtn.id = 'mp-btn-export';
+    exportBtn.textContent = STR.export;
+
+    const importBtn = document.createElement('div');
+    importBtn.className = 'menu-button';
+    importBtn.id = 'mp-btn-import';
+    importBtn.textContent = STR.import;
+
+    const divider = document.createElement('div');
+    divider.className = 'divider';
+
     ie.append(exportBtn, divider, importBtn);
+    settingsPanel.appendChild(ie);
 
-    // Insertion mode controls
-    const modeGroup = document.createElement('div'); modeGroup.className = 'form-group';
-    const modeLabel = document.createElement('div'); modeLabel.className = 'form-label'; modeLabel.textContent = STR.insertionMode;
-    const radioRow = document.createElement('div'); radioRow.className = 'radio-row';
-    radioRow.innerHTML = `
-      <label><input type="radio" name="mp-insert-mode" value="insert"> ${STR.modeInsert}</label>
-      <label><input type="radio" name="mp-insert-mode" value="append"> ${STR.modeAppend}</label>
-      <label><input type="radio" name="mp-insert-mode" value="replace"> ${STR.modeReplace}</label>
-    `;
-    modeGroup.append(modeLabel, radioRow);
-
-    settingsPanel.append(modeGroup, ie);
     menu.append(header, list, settingsPanel);
     return menu;
   }
@@ -392,11 +402,9 @@
         <label for="__ap_text" class="form-label">${STR.text}</label>
         <textarea id="__ap_text" class="form-textarea"></textarea>
       </div>
-      <div class="form-group" style="margin-top: -4px;">
-        <label class="form-label">
-          <input type="checkbox" id="__ap_use_placeholders" />
-          ${STR.enablePlaceholders}
-        </label>
+      <div class="form-checkbox-group">
+        <input type="checkbox" id="__ap_use_placeholders" />
+        <label for="__ap_use_placeholders">${STR.enablePlaceholders}</label>
       </div>
       <div class="modal-footer">
         <button id="__ap_save" class="save-button">${STR.save}</button>
@@ -427,27 +435,35 @@
     return overlay;
   }
 
-  function showModal(modal) { if (modal) { modal.classList.remove('mp-hidden'); setTimeout(() => modal.classList.add('visible'), 10); } }
-  function hideModal(modal) { if (modal) { modal.classList.remove('visible'); setTimeout(() => modal.classList.add('mp-hidden'), 200); } }
+  function showModal(modal) {
+    if (!modal) return;
+    modal.classList.remove('mp-hidden');
+    setTimeout(() => modal.classList.add('visible'), 10);
+  }
+  function hideModal(modal) {
+    if (!modal) return;
+    modal.classList.remove('visible');
+    setTimeout(() => modal.classList.add('mp-hidden'), 200);
+  }
 
   function openPromptModal(item = null, index = -1) {
-    if (!state.elements.modal) return;
+    if (!currentModal) return;
     const isEditing = !!item;
-    state.elements.modal.dataset.index = index;
-    state.elements.modal.querySelector('.modal-title').textContent = isEditing ? STR.editPrompt : STR.newPrompt;
+    currentModal.dataset.index = index;
+    currentModal.querySelector('.modal-title').textContent = isEditing ? STR.editPrompt : STR.newPrompt;
     document.getElementById('__ap_title').value = item?.title || '';
     document.getElementById('__ap_text').value = item?.text || '';
     document.getElementById('__ap_use_placeholders').checked = item?.usePlaceholders || false;
-    showModal(state.elements.modal);
+    showModal(currentModal);
     setTimeout(() => document.getElementById('__ap_title').focus(), 100);
   }
 
   function openPlaceholderModal(item, index, placeholders) {
-    if (!state.elements.placeholderModal) return;
+    if (!currentPlaceholderModal) return;
     const container = document.getElementById('__ap_placeholders_container');
     setHTML(container, '');
-    state.elements.placeholderModal.dataset.prompt = JSON.stringify(item);
-    state.elements.placeholderModal.dataset.index = index;
+    currentPlaceholderModal.dataset.prompt = JSON.stringify(item);
+    currentPlaceholderModal.dataset.index = index;
 
     const unique = [...new Map(placeholders.map(p => [p[1], p])).values()];
     unique.forEach(match => {
@@ -463,14 +479,17 @@
       textarea.rows = 1;
       textarea.style.resize = 'vertical';
       textarea.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('__ap_insert_prompt').click(); }
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          document.getElementById('__ap_insert_prompt').click();
+        }
       });
       group.appendChild(label);
       group.appendChild(textarea);
       container.appendChild(group);
     });
 
-    showModal(state.elements.placeholderModal);
+    showModal(currentPlaceholderModal);
     setTimeout(() => container.querySelector('textarea')?.focus(), 100);
   }
 
@@ -478,7 +497,7 @@
   // Helpers
   // =========================
   function closeMenu() {
-    if (state.elements.menu?.classList.contains('visible')) state.elements.menu.classList.remove('visible');
+    if (currentMenu?.classList.contains('visible')) currentMenu.classList.remove('visible');
   }
 
   function positionMenu(menu, buttonEl) {
@@ -501,12 +520,40 @@
     menu.style.left = `${Math.max(m, Math.min(left, vw - menuWidth - m))}px`;
   }
 
-  const editorIsContentEditable = (editor) => editor && editor.nodeType === 1 && editor.isContentEditable;
+  function createIconButtonBase() {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.setAttribute('data-testid', 'composer-button-prompts');
+    setHTML(btn, `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"/></svg>`);
+    return btn;
+  }
+
+  function createMenuButtonWrapper(withTooltip = true, position = 'top') {
+    const btn = createIconButtonBase();
+    btn.style.background = 'transparent';
+    btn.style.border = 'none';
+    btn.style.boxShadow = 'none';
+    btn.style.borderRadius = '50%';
+    btn.style.width = '32px';
+    btn.style.height = '32px';
+    btn.style.padding = '0';
+    btn.style.margin = '0';
+    btn.style.cursor = 'pointer';
+    btn.style.display = 'inline-flex';
+    btn.style.alignItems = 'center';
+    btn.style.justifyContent = 'center';
+    btn.style.transition = 'background-color 150ms ease-in-out';
+    if (withTooltip) createTooltip(btn, STR.prompts, position);
+    return btn;
+  }
+
+  function editorIsContentEditable(editor) {
+    return editor && editor.nodeType === 1 && editor.isContentEditable;
+  }
 
   function setContentEditableText(editor, text) {
     editor.focus();
-    // Clear and rebuild as safe text nodes with <p>/<br>
-    editor.innerHTML = '';
+    setHTML(editor, '');
     const lines = String(text).split('\n');
     lines.forEach(line => {
       const p = document.createElement('p');
@@ -517,108 +564,39 @@
     editor.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
   }
 
-  // Insert helpers with mode: 'insert' | 'append' | 'replace'
-  function insertIntoTextInput(el, text, mode = 'insert') {
-    const old = String(el.value ?? '');
-    let start = typeof el.selectionStart === 'number' ? el.selectionStart : old.length;
-    let end = typeof el.selectionEnd === 'number' ? el.selectionEnd : old.length;
-
-    if (mode === 'append') { start = end = old.length; }
-    if (mode === 'replace') { start = 0; end = old.length; }
-
-    const next = old.slice(0, start) + text + old.slice(end);
-    const tag = (el.tagName || '').toUpperCase();
-    const proto = tag === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-    setter ? setter.call(el, next) : (el.value = next);
-
-    const caret = start + text.length;
-    el.selectionStart = el.selectionEnd = caret;
-    el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-  }
-
-  function insertPlainTextFragment(text) {
-    const frag = document.createDocumentFragment();
-    const parts = String(text).split('\n');
-    parts.forEach((line, i) => {
-      if (i) frag.appendChild(document.createElement('br'));
-      frag.appendChild(document.createTextNode(line));
-    });
-    return frag;
-  }
-
-  function getRangeInsideEditor(editor, preferEnd = false) {
-    const sel = window.getSelection();
-    let range = document.createRange();
-    if (sel && sel.rangeCount && editor.contains(sel.anchorNode)) {
-      range = sel.getRangeAt(0);
-    } else {
-      range.selectNodeContents(editor);
-      range.collapse(preferEnd); // false: start, true: end
-      sel.removeAllRanges();
-      sel.addRange(range);
-    }
-    return { sel, range };
-  }
-
-  function insertIntoContentEditable(editor, text, mode = 'insert') {
-    editor.focus();
-    if (mode === 'replace') {
-      setContentEditableText(editor, text);
-      // Caret to end
-      const sel = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(editor);
-      range.collapse(false);
-      sel.removeAllRanges(); sel.addRange(range);
-      return;
-    }
-
-    const preferEnd = mode === 'append';
-    const { sel, range } = getRangeInsideEditor(editor, preferEnd);
-
-    // Try paste path first (rich editors handle better)
-    try {
-      const dt = new DataTransfer();
-      dt.setData('text/plain', text);
-      const ok = editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-      if (ok) return;
-    } catch (_) { /* Firefox blocks synthetic; fallback */ }
-
-    // Plain text insertion
-    const frag = insertPlainTextFragment(text);
-    range.deleteContents();
-    range.insertNode(frag);
-    range.collapse(false);
-    sel.removeAllRanges(); sel.addRange(range);
-
-    editor.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-  }
-
   function moveCursorToEnd(editor) {
-    try {
-      if (editorIsContentEditable(editor)) {
-        const range = document.createRange();
-        range.selectNodeContents(editor); range.collapse(false);
-        const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
-        editor.scrollTop = editor.scrollHeight;
-      } else if (editor && typeof editor.value === 'string') {
-        const len = editor.value.length;
-        editor.selectionStart = editor.selectionEnd = len;
-        editor.scrollTop = editor.scrollHeight;
-      } else {
-        editor?.focus();
-      }
-    } catch (_) { /* noop */ }
+    setTimeout(() => {
+      try {
+        if (editorIsContentEditable(editor)) {
+          const range = document.createRange();
+          range.selectNodeContents(editor);
+          range.collapse(false);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          editor.scrollTop = editor.scrollHeight;
+        } else if (editor && typeof editor.value === 'string') {
+          const len = editor.value.length;
+          editor.selectionStart = editor.selectionEnd = len;
+          editor.scrollTop = editor.scrollHeight;
+        } else {
+          editor?.focus();
+        }
+      } catch (_) { /* noop */ }
+    }, 10);
   }
 
   // =========================
   // Menu Renderer
   // =========================
   async function refreshMenu() {
-    if (!state.elements.menu) return;
-    const list = state.elements.menu.querySelector('#mp-list') || (() => {
-      const l = document.createElement('div'); l.className = 'prompt-menu-list'; l.id = 'mp-list'; state.elements.menu.appendChild(l); return l;
+    if (!currentMenu) return;
+    const list = currentMenu.querySelector('#mp-list') || (() => {
+      const l = document.createElement('div');
+      l.className = 'prompt-menu-list';
+      l.id = 'mp-list';
+      currentMenu.appendChild(l);
+      return l;
     })();
 
     setHTML(list, '');
@@ -652,17 +630,13 @@
       actionsDiv.className = 'prompt-actions';
 
       const btnE = document.createElement('button');
+      btnE.textContent = STR.edit;
       btnE.className = 'action-btn edit';
-      btnE.setAttribute('aria-label', STR.edit);
-      btnE.setAttribute('title', STR.edit);
-      setHTML(btnE, ICON_EDIT);
       btnE.onclick = (e) => { e.stopPropagation(); openPromptModal(p, index); };
 
       const btnD = document.createElement('button');
+      btnD.textContent = STR.delete;
       btnD.className = 'action-btn delete';
-      btnD.setAttribute('aria-label', STR.delete);
-      btnD.setAttribute('title', STR.delete);
-      setHTML(btnD, ICON_DELETE);
       btnD.onclick = (e) => {
         e.stopPropagation();
         if (confirm(STR.confirmDelete.replace('{title}', p.title))) removeItem(index).then(refreshMenu);
@@ -722,42 +696,44 @@
   // =========================
   // Insertion Logic
   // =========================
-  const resolveEditor = () => {
-    if (state.platform?.getEditor) {
-      const e = state.platform.getEditor();
-      if (e) return e;
-    }
-    if (state.platform?.editorSelector) return document.querySelector(state.platform.editorSelector);
-    return null;
-  };
-
   async function insertPrompt(promptItem, index) {
-    const editor = resolveEditor();
+    // Get editor
+    let editor = null;
+    if (currentPlatform?.getEditor) editor = currentPlatform.getEditor();
+    if (!editor && currentPlatform?.editorSelector) editor = document.querySelector(currentPlatform.editorSelector);
 
-    if (!editor) { alert(STR.editorNotFound.replace('{platform}', state.platform?.name || 'this platform')); return; }
-    const { insertMode } = await getSettings();
+    if (!editor) { alert(STR.editorNotFound.replace('{platform}', currentPlatform?.name || 'this platform')); return; }
 
     editor.focus();
     setTimeout(() => {
+      const ua = navigator.userAgent.toLowerCase();
+      const isFirefox = ua.includes('firefox');
       const isCE = editorIsContentEditable(editor);
-      const isTextInput = typeof editor.value === 'string';
 
       if (isCE) {
-        insertIntoContentEditable(editor, promptItem.text, insertMode);
-      } else if (isTextInput) {
-        insertIntoTextInput(editor, promptItem.text, insertMode);
+        // Standard contenteditable handling (ProseMirror/Tiptap/Gemini/Claude/Kimi/Grok)
+        setContentEditableText(editor, promptItem.text);
+      } else if (isFirefox && currentPlatform?.name === 'chatgpt') {
+        // Firefox + ChatGPT contenteditable used to require special handling; ChatGPT now uses textarea
+        editor.value = promptItem.text;
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
       } else {
-        // Exotic editors: best-effort paste
+        // Try paste event (covers most)
         try {
           const dt = new DataTransfer();
           dt.setData('text/plain', promptItem.text);
           editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-        } catch (_) {
-          // If replace requested but paste failed, last resort: try to move cursor end (no destructive clear)
-          if (insertMode !== 'insert') moveCursorToEnd(editor);
+        } catch (_) { /* fallback below */ }
+
+        // Fallback for textarea-like editors
+        if (typeof editor.value === 'string' && editor.value !== promptItem.text) {
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+          setter ? setter.call(editor, promptItem.text) : (editor.value = promptItem.text);
+          editor.dispatchEvent(new Event('input', { bubbles: true }));
         }
       }
-    }, 30);
+      moveCursorToEnd(editor);
+    }, 50);
 
     // Move used prompt to top
     const prompts = await getAll();
@@ -771,15 +747,124 @@
   // =========================
   // Platform Integrations
   // =========================
+  function createChatGPTButton() {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.setAttribute('data-testid', 'composer-button-prompts');
+    btn.className = 'composer-btn';
+    setHTML(btn, `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"/></svg>`);
+    createTooltip(btn, STR.prompts);
+    return btn;
+  }
+  function createDeepSeekButton() {
+    const btn = document.createElement('button');
+    btn.setAttribute('role', 'button');
+    btn.setAttribute('aria-disabled', 'false');
+    btn.setAttribute('tabindex', '0');
+    btn.style.transform = 'translateZ(0px)';
+    btn.setAttribute('data-testid', 'composer-button-prompts');
+    setHTML(btn, `
+      <div style="font-size:14px;width:14px;height:14px;color:var(--dsw-alias-label-primary);margin-right:0;">
+        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"></path></svg>
+      </div>
+      <span><span>${STR.prompt}</span></span>
+    `);
+    return btn;
+  }
+  function createGoogleStudioButton() {
+    const styleId = 'my-prompt-gstudio-hover-fix';
+    if (!document.getElementById(styleId)) {
+      const s = document.createElement('style');
+      s.id = styleId;
+      setHTML(s, `
+        button[data-testid="composer-button-prompts"]:hover { background-color: rgba(60,64,67,0.08) !important; }
+        @media (prefers-color-scheme: dark) {
+          button[data-testid="composer-button-prompts"]:hover { background-color: rgba(232,234,237,0.08) !important; }
+        }
+      `);
+      document.head.appendChild(s);
+    }
+    const btn = createMenuButtonWrapper(true);
+    btn.style.width = '48px';
+    btn.style.height = '48px';
+    return btn;
+  }
+  function createQwenButton() {
+    const btn = document.createElement('button');
+    btn.className = 'chat-input-feature-btn';
+    btn.setAttribute('data-testid', 'composer-button-prompts');
+    setHTML(btn, `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" class="chat-input-feature-btn-icon" style="font-size:16px;"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"/></svg><span class="chat-input-feature-btn-text">${STR.prompt}</span>`);
+    return btn;
+  }
+  function createZaiButton() {
+    const wrap = document.createElement('div');
+    setHTML(wrap, `<button type="button" class="px-2 @xl:px-3 py-1.5 flex gap-1.5 items-center text-sm rounded-lg border transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden bg-transparent dark:text-gray-300 border-[#E5E5E5] dark:border-[#3C3E3F] hover:bg-black/5 dark:hover:bg-white/5"><svg class="size-4" stroke-width="2" viewBox="0 0 24 24" fill="none"><path d="M9 17L3 12L9 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M15 17L21 12L15 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="hidden @sm:block whitespace-nowrap overflow-hidden text-ellipsis translate-y-[0.5px] mr-0.5">${STR.prompt}</span></button>`);
+    const btn = wrap.firstElementChild;
+    btn.setAttribute('data-testid', 'composer-button-prompts');
+    return btn;
+  }
+  function createGeminiButton() {
+    const btn = document.createElement('button');
+    btn.setAttribute('data-testid', 'composer-button-prompts');
+    btn.className = 'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-primary mat-mdc-tooltip-trigger';
+    setHTML(btn, `<span class="mat-mdc-button-persistent-ripple mdc-icon-button__ripple"></span><span class="mat-icon" style="display:inline-flex;align-items:center;justify-content:center;"><svg style="width:24px;height:24px;" viewBox="0 0 20 20" fill="currentColor"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"></path></svg></span><span class="mat-focus-indicator"></span><span class="mat-mdc-button-touch-target"></span><span class="mat-ripple mat-mdc-button-ripple"></span>`);
+    createTooltip(btn, STR.prompt, 'bottom');
+    return btn;
+  }
+  function createLmarenaButton() {
+    const btn = document.createElement('button');
+    btn.setAttribute('data-testid', 'composer-button-prompts');
+    btn.className = 'inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium focus-visible:outline-none focus-visible:ring-2 ring-offset-2 disabled:pointer-events-none disabled:opacity-50 text-interactive-active border border-border-faint bg-transparent hover:text-interactive-normal active:text-text-tertiary h-8 w-8 p-2 rounded-md active:scale-[0.96] transition-colors duration-150 ease-out hover:shadow-sm hover:bg-interactive-normal/10 hover:border-interactive-normal/10';
+    btn.type = 'button';
+    setHTML(btn, `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"/></svg>`);
+    createTooltip(btn, STR.prompt);
+    return btn;
+  }
+  function createKimiButton() {
+    const ref = document.querySelector('.deep-research-switch.normal');
+    if (!ref) return null;
+    const btn = ref.cloneNode(true);
+    btn.setAttribute('data-testid', 'composer-button-prompts');
+    const oldSvg = btn.querySelector('svg');
+    const textSpan = btn.querySelector('span');
+    const newSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    if (oldSvg) newSvg.setAttribute('class', oldSvg.getAttribute('class'));
+    newSvg.setAttribute('width', '1em');
+    newSvg.setAttribute('height', '1em');
+    newSvg.setAttribute('viewBox', '0 0 20 20');
+    newSvg.setAttribute('fill', 'currentColor');
+    setHTML(newSvg, `<path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"/>`);
+    if (oldSvg) oldSvg.replaceWith(newSvg);
+    if (textSpan) textSpan.textContent = STR.prompt;
+    return btn;
+  }
+  function createClaudeButton() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'relative shrink-0';
+    setHTML(wrapper, `<button class="border-0.5 transition-all h-8 min-w-8 rounded-lg flex items-center px-[7.5px] group !pointer-events-auto !outline-offset-1 text-text-300 border-border-300 hover:text-text-200/90 hover:bg-bg-100 active:scale-[0.98]" data-testid="composer-button-prompts" type="button"><div class="flex flex-row items-center justify-center gap-1"><div style="transform:none;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path d="M4 5h12M4 10h12M4 15h12" stroke="currentColor" stroke-width="2"></path></svg></div></div></button>`);
+    const btn = wrapper.querySelector('button');
+    createTooltip(btn, STR.prompts);
+    return wrapper;
+  }
+
+  // New: Grok (grok.com) button
+  function createGrokButton() {
+    const btn = createMenuButtonWrapper(true);
+    btn.style.width = '40px';
+    btn.style.height = '40px';
+    return btn;
+  }
+
   const PLATFORMS = [
     {
       name: 'chatgpt',
       test: () => location.hostname.includes('chatgpt.com'),
       editorSelector: '#prompt-textarea',
-      mount: async () => {
+      insertButton: async () => {
         const container = await waitFor('div[class*="[grid-area:leading]"]');
-        Object.assign(container.style, { display: 'flex', alignItems: 'center' });
-        const btn = createIconButton({ className: 'composer-btn' });
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        const btn = createChatGPTButton();
         container.appendChild(btn);
         return { wrapper: btn, clickable: btn };
       },
@@ -788,15 +873,12 @@
       name: 'deepseek',
       test: () => location.hostname.includes('deepseek.com'),
       editorSelector: 'textarea.ds-scroll-area',
-      mount: async () => {
+      insertButton: async () => {
         const container = (await waitFor('div:has(> input[type="file"])')).parentElement;
         const refButtons = Array.from(container.querySelectorAll('button:not([data-testid="composer-button-prompts"])'));
         const ref = refButtons[refButtons.length - 1];
-        const btn = createLabeledButton(
-          STR.prompt,
-          ref ? ref.className : '',
-          { attrs: { role: 'button', 'aria-disabled': 'false', tabindex: '0' }, size: 32, iconSize: 20 }
-        );
+        const btn = createDeepSeekButton();
+        if (ref) btn.className = ref.className;
         ref?.insertAdjacentElement('afterend', btn);
         return { wrapper: container, clickable: btn };
       },
@@ -805,14 +887,15 @@
       name: 'googlestudio',
       test: () => location.hostname.includes('aistudio.google.com'),
       editorSelector: 'ms-autosize-textarea textarea',
-      mount: async () => {
+      insertButton: async () => {
         const insertionPoint = (await waitFor('ms-add-chunk-menu', 5000)).closest('.button-wrapper');
-        const wrapper = document.createElement('div'); wrapper.className = 'button-wrapper';
-        const btn = createIconButton({ size: 48 });
+        const wrapper = document.createElement('div');
+        wrapper.className = 'button-wrapper';
+        const btn = createGoogleStudioButton();
         wrapper.appendChild(btn);
         insertionPoint.parentElement?.appendChild(wrapper);
         const parent = insertionPoint.closest('.prompt-input-wrapper-container');
-        if (parent) { parent.style.alignItems = 'center'; }
+        if (parent) parent.style.alignItems = 'center';
         return { wrapper, clickable: btn };
       },
     },
@@ -820,15 +903,16 @@
       name: 'qwen',
       test: () => location.hostname.includes('chat.qwen.ai'),
       editorSelector: 'textarea#chat-input',
-      mount: async () => {
+      insertButton: async () => {
         const ref = await waitFor('button.websearch_button', 5000);
         const container = ref.parentElement;
-        const btn = createLabeledButton(STR.prompt, 'chat-input-feature-btn', { iconClass: 'chat-input-feature-btn-icon' });
+        const btn = createQwenButton();
         container.prepend(btn);
-        const obs = addPlatformObserver(new MutationObserver(() => {
+        // Keep it first
+        const obs = new MutationObserver(() => {
           const myBtn = container.querySelector('button[data-testid="composer-button-prompts"]');
           if (myBtn && container.firstElementChild !== myBtn) container.prepend(myBtn);
-        }));
+        });
         obs.observe(container, { childList: true });
         return { wrapper: container, clickable: btn };
       },
@@ -837,13 +921,10 @@
       name: 'zai',
       test: () => location.hostname.includes('chat.z.ai'),
       editorSelector: 'textarea#chat-input',
-      mount: async () => {
+      insertButton: async () => {
         const referenceElement = await waitFor('button[data-autothink="true"]', 8000);
         const container = referenceElement.closest('div');
-        const btn = createLabeledButton(
-          STR.prompt,
-          'px-2 @xl:px-3 py-1.5 flex gap-1.5 items-center text-sm rounded-lg border transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden bg-transparent dark:text-gray-300 border-[#E5E5E5] dark:border-[#3C3E3F] hover:bg-black/5 dark:hover:bg-white/5'
-        );
+        const btn = createZaiButton();
         container.appendChild(btn);
         return { wrapper: container, clickable: btn };
       },
@@ -852,12 +933,9 @@
       name: 'gemini',
       test: () => location.hostname.includes('gemini.google.com'),
       editorSelector: 'div.ql-editor[contenteditable="true"]',
-      mount: async () => {
+      insertButton: async () => {
         const ref = await waitFor('uploader', 8000);
-        const btn = createIconButton({
-          className: 'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-primary mat-mdc-tooltip-trigger',
-          size: 40, iconSize: 24,
-        });
+        const btn = createGeminiButton();
         ref.parentNode.insertBefore(btn, ref.nextSibling);
         const wrapper = ref.parentElement;
         if (wrapper) {
@@ -872,11 +950,9 @@
       name: 'lmarena',
       test: () => location.hostname.includes('lmarena.ai'),
       editorSelector: 'textarea[name="message"]',
-      mount: async () => {
+      insertButton: async () => {
         const container = await waitFor('div[data-sentry-component="SelectChatModality"]', 8000);
-        const btn = createIconButton({
-          className: 'inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium focus-visible:outline-none focus-visible:ring-2 ring-offset-2 disabled:pointer-events-none disabled:opacity-50 text-interactive-active border border-border-faint bg-transparent hover:text-interactive-normal active:text-text-tertiary h-8 w-8 p-2 rounded-md active:scale-[0.96] transition-colors duration-150 ease-out hover:shadow-sm hover:bg-interactive-normal/10 hover:border-interactive-normal/10',
-        });
+        const btn = createLmarenaButton();
         container.appendChild(btn);
         return { wrapper: container, clickable: btn };
       },
@@ -885,12 +961,13 @@
       name: 'kimi',
       test: () => location.hostname.includes('kimi.com'),
       editorSelector: 'div.chat-input-editor[contenteditable="true"]',
-      mount: async () => {
+      insertButton: async () => {
         const container = await waitFor('div.left-area', 8000);
-        const btn = createLabeledButton(STR.prompt, 'deep-research-switch normal');
+        const btn = createKimiButton();
+        if (!btn) return { wrapper: container, clickable: null };
         const ensure = () => { if (!container.contains(btn)) container.appendChild(btn); };
         ensure();
-        const obs = addPlatformObserver(new MutationObserver(ensure));
+        const obs = new MutationObserver(ensure);
         obs.observe(container, { childList: true });
         return { wrapper: container, clickable: btn };
       },
@@ -899,28 +976,28 @@
       name: 'claude',
       test: () => location.hostname.includes('claude.ai'),
       editorSelector: 'div.ProseMirror[contenteditable="true"]',
-      mount: async () => {
+      insertButton: async () => {
         const ref = await waitFor('button[data-testid="input-menu-plus"]', 8000);
-        const mountEl = ref.closest('div.relative.shrink-0');
-        const btn = createIconButton({
-          className: 'border-0.5 transition-all h-8 min-w-8 rounded-lg flex items-center px-[7.5px] group !pointer-events-auto !outline-offset-1 text-text-300 border-border-300 hover:text-text-200/90 hover:bg-bg-100 active:scale-[0.98]',
-          iconSize: 16,
-        });
-        mountEl.parentNode.insertBefore(btn, mountEl.nextSibling);
-        return { wrapper: btn, clickable: btn };
+        const mount = ref.closest('div.relative.shrink-0');
+        const wrapper = createClaudeButton();
+        mount.parentNode.insertBefore(wrapper, mount.nextSibling);
+        const btn = wrapper.querySelector('button');
+        return { wrapper, clickable: btn };
       },
     },
     {
       name: 'grok',
       test: () => location.hostname.includes('grok.com'),
       editorSelector: 'div.tiptap.ProseMirror[contenteditable="true"]',
-      mount: async () => {
+      insertButton: async () => {
+        // Attach next to the "Attach" button in the bottom controls
         const attachBtn = await waitFor('button[aria-label="Attach"]', 8000);
         const bar = attachBtn.parentElement;
-        const btn = createIconButton({ size: 40, iconSize: 20 });
+        const btn = createGrokButton();
         bar.appendChild(btn);
         return { wrapper: bar, clickable: btn };
       },
+      // Optional: if DOM is dynamic and editor is nested, provide a getter:
       getEditor: () => document.querySelector('div.tiptap.ProseMirror[contenteditable="true"]'),
     },
   ];
@@ -928,75 +1005,93 @@
   // =========================
   // Init & Observers
   // =========================
-  function detectPlatform() { for (const p of PLATFORMS) if (p.test()) return p; return null; }
+  function detectPlatform() {
+    for (const p of PLATFORMS) if (p.test()) return p;
+    return null;
+  }
 
   async function initUI() {
     cleanup();
-    state.platform = detectPlatform();
-    if (!state.platform) return;
+    currentPlatform = detectPlatform();
+    if (!currentPlatform) return;
 
     try {
-      const { wrapper, clickable } = await state.platform.mount();
+      const { wrapper, clickable } = await currentPlatform.insertButton();
       if (!wrapper || !clickable) return;
-      state.elements.wrapper = wrapper;
-      state.elements.button = clickable;
+      currentButtonEl = wrapper;
+      clickableButton = clickable;
 
-      state.elements.menu = createPromptMenu();
-      state.elements.modal = createPromptModal();
-      state.elements.placeholderModal = createPlaceholderModal();
-      document.body.append(state.elements.menu, state.elements.modal, state.elements.placeholderModal);
+      currentMenu = createPromptMenu();
+      currentModal = createPromptModal();
+      currentPlaceholderModal = createPlaceholderModal();
+      document.body.append(currentMenu, currentModal, currentPlaceholderModal);
 
-      // Settings init
-      const settingsBtn = state.elements.menu.querySelector('#mp-btn-settings');
-      const settingsPanel = state.elements.menu.querySelector('#mp-settings-panel');
-      const addBtnTop = state.elements.menu.querySelector('#mp-btn-add');
-      const importBtn = state.elements.menu.querySelector('#mp-btn-import');
-      const exportBtn = state.elements.menu.querySelector('#mp-btn-export');
+      // Wire top header buttons once
+      const addBtnTop = currentMenu.querySelector('#mp-btn-add');
+      const settingsBtn = currentMenu.querySelector('#mp-btn-settings');
+      const settingsPanel = currentMenu.querySelector('#mp-settings-panel');
+      const importBtn = currentMenu.querySelector('#mp-btn-import');
+      const exportBtn = currentMenu.querySelector('#mp-btn-export');
 
-      // Wire menu header buttons
-      addBtnTop?.addEventListener('click', (e) => { e.stopPropagation(); openPromptModal(); });
-      settingsBtn?.addEventListener('click', (e) => { e.stopPropagation(); settingsPanel?.classList.toggle('mp-hidden'); });
-      importBtn?.addEventListener('click', (e) => { e.stopPropagation(); importPrompts(); });
-      exportBtn?.addEventListener('click', (e) => { e.stopPropagation(); exportPrompts(); });
-
-      // Wire insertion mode radios
-      const radios = state.elements.menu.querySelectorAll('input[name="mp-insert-mode"]');
-      const s = await getSettings();
-      radios.forEach(r => {
-        r.checked = r.value === s.insertMode;
-        r.addEventListener('change', async () => { if (r.checked) await setSettings({ insertMode: r.value }); });
-      });
+      if (addBtnTop) {
+        createTooltip(addBtnTop, STR.addPrompt);
+        addBtnTop.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openPromptModal();
+        });
+      }
+      if (settingsBtn) {
+        createTooltip(settingsBtn, 'Settings');
+        settingsBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          settingsPanel?.classList.toggle('mp-hidden');
+        });
+      }
+      if (importBtn) {
+        importBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          importPrompts();
+        });
+      }
+      if (exportBtn) {
+        exportBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          exportPrompts();
+        });
+      }
 
       // Open/close menu
-      state.elements.button.addEventListener('click', (e) => {
-        e.stopPropagation(); e.preventDefault();
-        if (state.elements.menu.classList.contains('visible')) { closeMenu(); return; }
+      clickableButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (currentMenu.classList.contains('visible')) { closeMenu(); return; }
         refreshMenu().then(() => {
-          state.elements.menu.querySelector('#mp-settings-panel')?.classList.add('mp-hidden');
-          positionMenu(state.elements.menu, state.elements.button);
-          state.elements.menu.classList.add('visible');
+          // collapse settings each open
+          currentMenu.querySelector('#mp-settings-panel')?.classList.add('mp-hidden');
+          positionMenu(currentMenu, clickableButton);
+          currentMenu.classList.add('visible');
         });
       });
 
       // Modal events
-      state.elements.modal.querySelector('#__ap_save').onclick = async (e) => {
+      currentModal.querySelector('#__ap_save').onclick = async (e) => {
         e.stopPropagation();
-        const index = parseInt(state.elements.modal.dataset.index, 10);
+        const index = parseInt(currentModal.dataset.index, 10);
         const title = document.getElementById('__ap_title').value.trim();
         const text = document.getElementById('__ap_text').value.trim();
         const usePlaceholders = document.getElementById('__ap_use_placeholders').checked;
         if (!title || !text) { alert(STR.requiredFields); return; }
         const op = index > -1 ? updateItem(index, { title, text, usePlaceholders }) : addItem({ title, text, usePlaceholders });
-        op.then(() => { hideModal(state.elements.modal); refreshMenu(); });
+        op.then(() => { hideModal(currentModal); refreshMenu(); });
       };
-      state.elements.modal.querySelector('#__ap_close_prompt').onclick = (e) => { e.stopPropagation(); hideModal(state.elements.modal); };
+      currentModal.querySelector('#__ap_close_prompt').onclick = (e) => { e.stopPropagation(); hideModal(currentModal); };
 
-      state.elements.placeholderModal.querySelector('#__ap_insert_prompt').onclick = async (e) => {
+      currentPlaceholderModal.querySelector('#__ap_insert_prompt').onclick = async (e) => {
         e.stopPropagation();
-        const item = JSON.parse(state.elements.placeholderModal.dataset.prompt);
-        const idx = parseInt(state.elements.placeholderModal.dataset.index, 10);
+        const item = JSON.parse(currentPlaceholderModal.dataset.prompt);
+        const idx = parseInt(currentPlaceholderModal.dataset.index, 10);
         let completedText = item.text;
-        const fields = state.elements.placeholderModal.querySelectorAll('#__ap_placeholders_container textarea');
+        const fields = currentPlaceholderModal.querySelectorAll('#__ap_placeholders_container textarea');
         fields.forEach(t => {
           const ph = t.dataset.placeholder;
           const userValue = t.value;
@@ -1004,9 +1099,9 @@
           completedText = completedText.replace(regex, userValue);
         });
         await insertPrompt({ ...item, text: completedText }, idx);
-        hideModal(state.elements.placeholderModal);
+        hideModal(currentPlaceholderModal);
       };
-      state.elements.placeholderModal.querySelector('#__ap_close_placeholder').onclick = (e) => { e.stopPropagation(); hideModal(state.elements.placeholderModal); };
+      currentPlaceholderModal.querySelector('#__ap_close_placeholder').onclick = (e) => { e.stopPropagation(); hideModal(currentPlaceholderModal); };
     } catch (_) {
       cleanup();
     } finally {
@@ -1017,20 +1112,24 @@
   const debouncedTryInit = debounce(tryInit, 400);
 
   function setupPageObserver() {
-    if (state.observers.page) state.observers.page.disconnect();
-    state.observers.page = new MutationObserver(() => {
-      if (state.elements.wrapper && !document.body.contains(state.elements.wrapper)) debouncedTryInit();
+    if (pageObserver) pageObserver.disconnect();
+    pageObserver = new MutationObserver(() => {
+      if (currentButtonEl && !document.body.contains(currentButtonEl)) debouncedTryInit();
     });
-    state.observers.page.observe(document.body, { childList: true, subtree: true });
+    pageObserver.observe(document.body, { childList: true, subtree: true });
   }
 
   function setupGlobalListeners() {
     document.addEventListener('click', (ev) => {
-      if (!state.elements.menu || !state.elements.button) return;
+      if (!currentMenu || !clickableButton) return;
+
+      // Close settings panel if clicking outside it and its toggle
       const settingsPanel = document.getElementById('mp-settings-panel');
       if (settingsPanel && !ev.target.closest('#mp-settings-panel, #mp-btn-settings')) {
         settingsPanel.classList.add('mp-hidden');
       }
+
+      // Close menu if clicking outside
       if (ev.target.closest('#prompt-menu-container, [data-testid="composer-button-prompts"]')) return;
       closeMenu();
     });
@@ -1038,40 +1137,35 @@
       if (ev.key === 'Escape') {
         closeMenu();
         document.getElementById('mp-settings-panel')?.classList.add('mp-hidden');
-        if (state.elements.modal?.classList.contains('visible')) hideModal(state.elements.modal);
-        if (state.elements.placeholderModal?.classList.contains('visible')) hideModal(state.elements.placeholderModal);
+        if (currentModal?.classList.contains('visible')) hideModal(currentModal);
+        if (currentPlaceholderModal?.classList.contains('visible')) hideModal(currentPlaceholderModal);
       }
     });
     window.addEventListener('resize', debounce(() => {
-      if (state.elements.menu?.classList.contains('visible') && state.elements.button) positionMenu(state.elements.menu, state.elements.button);
+      if (currentMenu?.classList.contains('visible') && clickableButton) positionMenu(currentMenu, clickableButton);
     }, 120));
   }
 
   function tryInit() {
-    if (state.flags.initializing) return;
-    state.flags.initializing = true;
-    initUI().finally(() => { state.flags.initializing = false; });
+    if (isInitializing) return;
+    isInitializing = true;
+    initUI().finally(() => { isInitializing = false; });
   }
 
   function cleanup() {
-    // Disconnect observers first
-    try { state.observers.page?.disconnect(); } catch (_) {}
-    state.observers.page = null;
-    if (state.observers.platform?.length) {
-      state.observers.platform.forEach(o => { try { o.disconnect(); } catch (_) {} });
-      state.observers.platform = [];
-    }
-    // Remove DOM
-    state.elements.wrapper?.remove(); state.elements.wrapper = null;
-    state.elements.menu?.remove(); state.elements.menu = null;
-    state.elements.modal?.remove(); state.elements.modal = null;
-    state.elements.placeholderModal?.remove(); state.elements.placeholderModal = null;
-    state.elements.button = null;
+    if (currentButtonEl) { currentButtonEl.remove(); currentButtonEl = null; }
+    if (currentMenu) { currentMenu.remove(); currentMenu = null; }
+    if (currentModal) { currentModal.remove(); currentModal = null; }
+    if (currentPlaceholderModal) { currentPlaceholderModal.remove(); currentPlaceholderModal = null; }
   }
 
   // =========================
   // Start
   // =========================
-  function start() { injectGlobalStyles(); setupGlobalListeners(); tryInit(); }
+  function start() {
+    injectGlobalStyles();
+    setupGlobalListeners();
+    tryInit();
+  }
   start();
 })();
