@@ -92,12 +92,12 @@
   // ----------------------
   // State
   // ----------------------
-  const state = { 
-    dict: null, 
-    lastEditable: null, 
-    _lastToastAt: 0, 
-    tone: 'neutral', 
-    fabEnabled: true, 
+  const state = {
+    dict: null,
+    lastEditable: null,
+    _lastToastAt: 0,
+    tone: 'neutral',
+    fabEnabled: true,
     _lastFocusedEditable: null,
     activeIndex: 0,
   };
@@ -188,7 +188,7 @@
 
     // Load FAB enable flag
     state.fabEnabled = await GMX.getValue(CONFIG.storeKeys.fab, true);
-    
+
     // Wait for DOM before adding styles and FAB
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initDOM);
@@ -196,8 +196,10 @@
       initDOM();
     }
 
-    // Remember last focused editable
+    // Remember last focused editable (but ignore palette UI)
     document.addEventListener('focusin', (e) => {
+      // Don't track focus inside the palette or FAB
+      if (e.target.closest('.sae-palette, .sae-fab')) return;
       const el = isEditable(e.target);
       if (el) state._lastFocusedEditable = el;
     }, true);
@@ -254,7 +256,7 @@
     if (el instanceof HTMLInputElement) {
       const type = (el.type || 'text').toLowerCase();
       if (type === 'password') return null;
-      if (['text','search','url','email','tel'].includes(type)) return el;
+      if (['text', 'search', 'url', 'email', 'tel'].includes(type)) return el;
       return null;
     }
     for (let n = el; n && n !== document.documentElement; n = n.parentElement) if (n.nodeType === 1 && n.isContentEditable) return n;
@@ -270,10 +272,10 @@
       if (e.target.matches('input, textarea, [contenteditable]') && !e.target.closest('.sae-bubble')) {
         return;
       }
-      
-      e.preventDefault(); 
+
+      e.preventDefault();
       e.stopPropagation();
-      
+
       if (e.key === 'Escape') {
         hotkeyCapture.bubble?.update('Canceled.');
         setTimeout(() => hotkeyCapture.bubble?.close(), 600);
@@ -347,7 +349,7 @@
     }
   }
 
-  const isWordChar = (() => { try { const re = new RegExp('[\\p{L}\\p{N}_-]','u'); return ch => re.test(ch); } catch { return ch => /[A-Za-z0-9_-]/.test(ch); } })();
+  const isWordChar = (() => { try { const re = new RegExp('[\\p{L}\\p{N}_-]', 'u'); return ch => re.test(ch); } catch { return ch => /[A-Za-z0-9_-]/.test(ch); } })();
 
   function extractAbbrevBeforeCaret(ctx) {
     if (ctx.kind === 'input') {
@@ -405,7 +407,7 @@
   async function renderTemplate(template) {
     const now = new Date(); let out = '', cursorIndex = -1;
     const re = /{{\s*([a-zA-Z]+)(?::([^}]+))?\s*}}/g; let idx = 0;
-    for (;;) {
+    for (; ;) {
       const m = re.exec(template); if (!m) { out += template.slice(idx); break; }
       out += template.slice(idx, m.index); idx = m.index + m[0].length;
       const tag = m[1].toLowerCase(), arg = (m[2] || '').trim();
@@ -422,12 +424,12 @@
   function formatDate(d, arg) {
     const a = (arg || 'iso').toLowerCase();
     switch (a) {
-      case 'iso': case 'ymd': return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
-      case 'mdy': case 'us': return `${pad2(d.getMonth()+1)}/${pad2(d.getDate())}/${d.getFullYear()}`;
-      case 'dmy': return `${pad2(d.getDate())}/${pad2(d.getMonth()+1)}/${d.getFullYear()}`;
-      case 'long': return d.toLocaleDateString(undefined, { year:'numeric', month:'long', day:'numeric' });
+      case 'iso': case 'ymd': return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      case 'mdy': case 'us': return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}/${d.getFullYear()}`;
+      case 'dmy': return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+      case 'long': return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
       case 'short': return d.toLocaleDateString();
-      default: return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+      default: return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
     }
   }
   function formatTime(d, arg) {
@@ -436,8 +438,8 @@
     let h = d.getHours(); const m = pad2(d.getMinutes()), ampm = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
     return `${pad2(h)}:${m} ${ampm}`;
   }
-  function formatDay(d, arg) { return d.toLocaleDateString(undefined, (!arg || arg.toLowerCase()==='long') ? { weekday:'long' } : { weekday:'short' }); }
-  
+  function formatDay(d, arg) { return d.toLocaleDateString(undefined, (!arg || arg.toLowerCase() === 'long') ? { weekday: 'long' } : { weekday: 'short' }); }
+
   async function readClipboardSafe() {
     let resolved = false;
     const timeout = new Promise(r => setTimeout(() => {
@@ -446,9 +448,9 @@
         r('');
       }
     }, CONFIG.clipboardReadTimeoutMs));
-    
+
     const read = (async () => {
-      try { 
+      try {
         if (!navigator.clipboard?.readText) return '';
         const t = await navigator.clipboard.readText();
         if (!resolved) {
@@ -456,7 +458,7 @@
           return t ?? '';
         }
         return '';
-      } catch { 
+      } catch {
         if (!resolved) {
           resolved = true;
           throttledToast('Clipboard read blocked — allow permission to use {{clipboard}}.');
@@ -464,7 +466,7 @@
         return '';
       }
     })();
-    
+
     return await Promise.race([read, timeout]);
   }
 
@@ -599,7 +601,7 @@
   }
   function exportDict() {
     const data = JSON.stringify(state.dict, null, 2);
-    const name = `sae-dict-${new Date().toISOString().slice(0,10)}.json`;
+    const name = `sae-dict-${new Date().toISOString().slice(0, 10)}.json`;
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name;
     document.documentElement.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -666,10 +668,10 @@
       const q = filter.trim().toLowerCase();
       const keys = Object.keys(state.dict).sort();
       const items = q ? keys.filter(k => k.includes(q) || state.dict[k].toLowerCase().includes(q)) : keys;
-      
+
       // Clamp active index
       if (state.activeIndex >= items.length) state.activeIndex = Math.max(0, items.length - 1);
-      
+
       list.innerHTML = items.map((k, i) => `
         <div class="sae-item${i === state.activeIndex ? ' active' : ''}" data-key="${escapeHtml(k)}" data-index="${i}">
           <div class="sae-key">${escapeHtml(k)}</div>
@@ -685,7 +687,7 @@
     list.addEventListener('click', (e) => {
       const item = e.target.closest('.sae-item:not(.editing)');
       if (!item) return;
-      
+
       const action = e.target.closest('[data-action]')?.dataset.action;
       if (action === 'edit') {
         e.stopPropagation();
@@ -920,7 +922,7 @@
       }
       const items = [...wrap.querySelectorAll('.sae-item:not(.editing)')];
       if (!items.length) return;
-      
+
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         items[state.activeIndex]?.classList.remove('active');
@@ -980,7 +982,12 @@
 
     fabEl.addEventListener('click', (e) => {
       e.stopPropagation();
-      state.lastEditable = captureEditableContext();
+      // Capture context from last focused editable before palette opens
+      if (state._lastFocusedEditable && state._lastFocusedEditable.isConnected) {
+        state.lastEditable = buildEndContextForEl(state._lastFocusedEditable);
+      } else {
+        state.lastEditable = captureEditableContext();
+      }
       openPalette();
     });
 
@@ -1049,38 +1056,38 @@
   // ----------------------
   function toast(msg, ms = 2200) {
     if (toastEl) toastEl.remove();
-    toastEl = document.createElement('div'); 
-    toastEl.className = 'sae-bubble'; 
+    toastEl = document.createElement('div');
+    toastEl.className = 'sae-bubble';
     toastEl.textContent = msg;
     document.documentElement.appendChild(toastEl);
     const left = Math.max(8, window.innerWidth - 320), top = Math.max(8, window.innerHeight - 80);
-    toastEl.style.left = `${left}px`; 
+    toastEl.style.left = `${left}px`;
     toastEl.style.top = `${top}px`;
-    clearTimeout(toastTimer); 
+    clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       toastEl?.remove();
       toastEl = null;
     }, ms);
   }
-  
+
   function throttledToast(msg, ms = 2200) {
-    const now = Date.now(); 
+    const now = Date.now();
     if (now - state._lastToastAt < CONFIG.toast.throttleMs) return;
-    state._lastToastAt = now; 
+    state._lastToastAt = now;
     toast(msg, ms);
   }
-  
+
   function showBubble(msg) {
-    const el = document.createElement('div'); 
-    el.className = 'sae-bubble'; 
+    const el = document.createElement('div');
+    el.className = 'sae-bubble';
     el.textContent = msg;
     document.documentElement.appendChild(el);
     const left = Math.max(8, window.innerWidth - 320), top = Math.max(8, window.innerHeight - 80);
-    el.style.left = `${left}px`; 
+    el.style.left = `${left}px`;
     el.style.top = `${top}px`;
-    return { 
-      update: (m) => { el.textContent = m; }, 
-      close: () => el.remove() 
+    return {
+      update: (m) => { el.textContent = m; },
+      close: () => el.remove()
     };
   }
 
@@ -1118,14 +1125,14 @@
     if (!el) return null;
     if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
       const pos = el.value.length;
-      try { el.focus({ preventScroll: true }); } catch {}
+      try { el.focus({ preventScroll: true }); } catch { }
       return { kind: 'input', el, start: pos, end: pos, collapsed: true };
     }
     let root = el;
     for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
       if (n.isContentEditable) { root = n; break; }
     }
-    try { root.focus({ preventScroll: true }); } catch {}
+    try { root.focus({ preventScroll: true }); } catch { }
     const range = document.createRange();
     range.selectNodeContents(root);
     range.collapse(false);
@@ -1137,7 +1144,7 @@
     if (ctx) return ctx;
 
     if (state.lastEditable && ((state.lastEditable.kind === 'input' && state.lastEditable.el?.isConnected) ||
-                               (state.lastEditable.kind === 'ce' && state.lastEditable.root?.isConnected))) {
+      (state.lastEditable.kind === 'ce' && state.lastEditable.root?.isConnected))) {
       const el = (state.lastEditable.kind === 'input') ? state.lastEditable.el : state.lastEditable.root;
       return buildEndContextForEl(el);
     }
@@ -1150,12 +1157,12 @@
   // ----------------------
   // Utils
   // ----------------------
-  function escapeHtml(s) { 
-    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); 
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
-  
+
   function normalizeDict(obj) {
-    const out = {}; 
+    const out = {};
     let dropped = 0;
     for (const [k, v] of Object.entries(obj || {})) {
       if (typeof k === 'string' && typeof v === 'string' && k.trim()) {
@@ -1169,7 +1176,7 @@
     }
     return out;
   }
-  
+
   function hotkeyToString(spec, isSpace) {
     const parts = [];
     if (spec.ctrl) parts.push('Ctrl');
@@ -1180,7 +1187,7 @@
     else parts.push(codeToHuman(spec.code));
     return parts.join('+');
   }
-  
+
   function codeToHuman(code) {
     if (!code) return '';
     if (code.startsWith('Key')) return code.slice(3);
