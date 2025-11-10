@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Smart Abbreviation Expander (AI)
 // @namespace    https://github.com/quantavil
-// @version      1.10.0
-// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Inline editing, in-panel settings screen, top-right FAB toggle, hotkey customization, and API key input in Settings. Fallback: if no caret, insert at end-of-line in a reasonable field.
+// @version      1.12.0
+// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Inline editing, in-panel settings, hotkey customization, API key input + Verify, and FAB whitelist. FAB is SVG and only shows on whitelisted sites when enabled.
 // @author       You
 // @match        *://*/*
 // @grant        GM_getValue
@@ -33,6 +33,7 @@
       keys: 'sae.keys.v1',
       fab: 'sae.ui.fabEnabled.v1',
       apiKey: 'sae.gemini.apiKey.v1',
+      fabSites: 'sae.ui.fabSites.v1', // whitelist of hostnames / patterns
     },
     toast: { throttleMs: 3000 },
     clipboardReadTimeoutMs: 350,
@@ -61,16 +62,23 @@
   };
 
   // ----------------------
-  // GM-safe helpers
+  // GM-safe helpers + style injection (idempotent)
   // ----------------------
+  function addStyleOnce(css) {
+    const id = CONFIG.styleId;
+    const existing = document.getElementById(id);
+    if (existing) return existing;
+    const s = document.createElement('style');
+    s.id = id;
+    s.textContent = css;
+    (document.head || document.documentElement).appendChild(s);
+    return s;
+  }
+
   const GMX = {
     getValue: (k, d) => (typeof window.GM_getValue === 'function' ? window.GM_getValue(k, d) : JSON.parse(localStorage.getItem(k) || JSON.stringify(d))),
     setValue: (k, v) => (typeof window.GM_setValue === 'function' ? window.GM_setValue(k, v) : localStorage.setItem(k, JSON.stringify(v))),
-    addStyle: (css) => {
-      if (typeof window.GM_addStyle === 'function') return window.GM_addStyle(css);
-      const s = document.createElement('style'); s.id = CONFIG.styleId; s.textContent = css;
-      (document.head || document.documentElement).appendChild(s);
-    },
+    addStyle: (css) => addStyleOnce(css),
     registerMenuCommand: (title, fn) => typeof window.GM_registerMenuCommand === 'function' && window.GM_registerMenuCommand(title, fn),
     request: (opts) => new Promise((resolve, reject) => {
       const { method = 'GET', url, headers = {}, data, timeout = CONFIG.gemini.timeoutMs } = opts;
@@ -152,11 +160,12 @@
     _lastFocusedEditable: null,
     activeIndex: 0,
     apiKey: '',
+    allowedSites: [], // whitelist for FAB
   };
   let paletteEl = null;
   let fabEl = null;
   let hotkeyCapture = null; // { kind: 'spaceOnly' | 'code', resolve, bubble }
-  let searchTimeout = null;
+  let prevOverflow = ''; // preserve body overflow when palette opens
 
   // ----------------------
   // Styles
@@ -188,7 +197,7 @@
     .sae-add-new button:hover{background:#252525}
     .sae-footer{padding:8px 10px;border-top:1px solid rgba(255,255,255,.06);opacity:.8}
 
-    /* Settings screen inside palette */
+    /* Settings screen */
     .sae-panel.settings-open .sae-list,
     .sae-panel.settings-open .sae-add-new,
     .sae-panel.settings-open .sae-search { display: none; }
@@ -197,28 +206,30 @@
     .sae-hrow{display:grid;grid-template-columns:180px 1fr auto;align-items:center;gap:10px;padding:8px;border-bottom:1px solid rgba(255,255,255,.06)}
     .sae-hrow:last-child{border-bottom:none}
     .sae-select,.sae-text{background:#1b1b1b;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;font:inherit;width:100%}
+    .sae-textarea{background:#1b1b1b;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;font:inherit;width:100%;min-height:96px;resize:vertical}
     .sae-btn{padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#fff;cursor:pointer}
     .sae-btn:hover{background:#252525}
     .sae-chip{display:inline-block;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#ddd;margin-right:8px}
     .sae-settings-actions{display:flex;gap:8px;flex-wrap:wrap}
     .sae-settings-footer{padding-top:8px;display:flex;justify-content:flex-end}
+    .sae-verify.ok{background:#0c3f0c;border-color:#1f8f1f;color:#bfffbf}
+    .sae-verify.err{background:#5a0c0c;border-color:#9f1f1f;color:#ffb7b7}
 
-    /* Minimal FAB at top-right edge */
+    /* Robust FAB at top-right edge (SVG icon) */
     .sae-fab{
-      position:fixed;
-      top:0;
-      right:0;
-      width:40px;height:40px;
-      display:flex;align-items:center;justify-content:center;
-      border:1px solid rgba(255,255,255,.12);
-      border-right:none;
-      border-radius:6px 0 0 6px;
-      background:#111;color:#fff;
-      box-shadow:0 6px 18px rgba(0,0,0,.35);
-      cursor:pointer;z-index:2147483647;
-      user-select:none
+      position:fixed !important; top:0 !important; right:0 !important;
+      width:40px !important;height:40px !important;
+      display:flex !important;align-items:center !important;justify-content:center !important;
+      border:1px solid rgba(255,255,255,.12) !important; border-right:none !important;
+      border-radius:6px 0 0 6px !important;
+      background:#111 !important;color:#fff !important;
+      box-shadow:0 6px 18px rgba(0,0,0,.35) !important;
+      cursor:pointer !important;z-index:2147483647 !important;
+      user-select:none !important;opacity:1 !important;visibility:visible !important;
+      pointer-events:auto !important; box-sizing:border-box !important;
     }
-    .sae-fab:hover{background:#1b1b1b}
+    .sae-fab:hover{background:#1b1b1b !important}
+    .sae-fab svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   `;
 
   // ----------------------
@@ -236,13 +247,14 @@
     if (savedKeys?.palette) Object.assign(CONFIG.palette, savedKeys.palette);
     if (savedKeys?.correct) Object.assign(CONFIG.correct, savedKeys.correct);
 
-    // Load FAB enable flag
+    // Load FAB enable flag and whitelist
     state.fabEnabled = await GMX.getValue(CONFIG.storeKeys.fab, true);
+    state.allowedSites = (await GMX.getValue(CONFIG.storeKeys.fabSites, []) || []).map(String).map(s => s.trim()).filter(Boolean);
 
     // Load API key
     state.apiKey = await GMX.getValue(CONFIG.storeKeys.apiKey, CONFIG.gemini.apiKey || '');
 
-    // Wait for DOM before adding styles and FAB
+    // Wait for DOM before adding FAB
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initDOM);
     } else {
@@ -283,19 +295,28 @@
       toast(`Tone set to ${state.tone}.`);
     });
     GMX.registerMenuCommand('Gemini: Set API Key', async () => {
-      const val = prompt('Enter your Gemini API key:', state.apiKey || '');
+      const val = prompt('Enter your Gemini API key (will be saved if valid):', state.apiKey || '');
       if (val == null) return;
-      state.apiKey = val.trim();
-      await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
-      toast(state.apiKey ? 'API key saved.' : 'API key cleared.');
+      const k = val.trim();
+      const bubble = notify.busy('Verifying key…');
+      const ok = await verifyGeminiKey(k);
+      bubble.update(ok ? 'Key verified ✓' : 'Invalid key.');
+      setTimeout(() => bubble.close(), 900);
+      if (ok) {
+        state.apiKey = k;
+        await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
+        toast('API key verified and saved.');
+      } else {
+        toast('API key invalid — not saved.');
+      }
     });
 
     document.addEventListener('keydown', onKeyDownCapture, true);
   }
 
   function initDOM() {
-    GMX.addStyle(STYLES);
-    if (state.fabEnabled) ensureFab();
+    if (state.fabEnabled && hostAllowed()) ensureFab();
+    updateFabVisibility();
   }
 
   // ----------------------
@@ -334,8 +355,8 @@
 
     // Intercept when capturing hotkeys in settings
     if (hotkeyCapture) {
-      if (e.target.matches('input, textarea, [contenteditable]') && !e.target.closest('.sae-bubble')) return;
-      e.preventDefault(); e.stopPropagation();
+      e.preventDefault();
+      e.stopPropagation();
 
       if (e.key === 'Escape') {
         hotkeyCapture.bubble?.update('Canceled.');
@@ -764,6 +785,19 @@
     return out;
   }
 
+  // Verify API key quickly (cheap GET to model info)
+  async function verifyGeminiKey(key) {
+    const k = String(key || '').trim();
+    if (!k) return false;
+    const url = `${CONFIG.gemini.endpoint}/${encodeURIComponent(CONFIG.gemini.model)}?key=${encodeURIComponent(k)}`;
+    try {
+      const res = await GMX.request({ method: 'GET', url, timeout: 10000 });
+      return (res.status >= 200 && res.status < 300);
+    } catch {
+      return false;
+    }
+  }
+
   // ----------------------
   // Palette UI + dict management + FAB + Hotkeys + Settings
   // ----------------------
@@ -873,7 +907,6 @@
       const keys = Object.keys(state.dict).sort();
       const items = q ? keys.filter(k => k.includes(q) || state.dict[k].toLowerCase().includes(q)) : keys;
 
-      // Clamp active index
       if (state.activeIndex >= items.length) state.activeIndex = Math.max(0, items.length - 1);
 
       list.innerHTML = items.map((k, i) => `
@@ -887,7 +920,6 @@
         </div>`).join('');
     }
 
-    // Event delegation for list items
     list.addEventListener('click', (e) => {
       const item = e.target.closest('.sae-item');
       if (!item) return;
@@ -966,11 +998,25 @@
       const hkPalette = hotkeyToString(CONFIG.palette, false);
       const hkCorrect = hotkeyToString(CONFIG.correct, false);
       const tones = ['neutral', 'friendly', 'formal', 'casual', 'concise'];
+      const sitesText = (state.allowedSites || []).join('\n');
+      const currentHost = location.hostname;
 
       settingsView.innerHTML = `
         <div class="sae-hrow">
           <div>FAB (top-right)</div>
           <div><label><input type="checkbox" class="fab-toggle"${state.fabEnabled ? ' checked' : ''}/> Show floating button</label></div>
+          <div></div>
+        </div>
+        <div class="sae-hrow">
+          <div>FAB Sites</div>
+          <div>
+            <textarea class="sae-textarea fab-sites" placeholder="One hostname per line (e.g., example.com or *.example.com)">${escapeHtml(sitesText)}</textarea>
+            <div class="sae-settings-actions" style="margin-top:6px">
+              <button class="sae-btn add-current">Add current site (${escapeHtml(currentHost)})</button>
+              <button class="sae-btn save-sites">Save Sites</button>
+            </div>
+            <div style="opacity:.7;margin-top:4px">FAB shows only on these sites when enabled.</div>
+          </div>
           <div></div>
         </div>
         <div class="sae-hrow">
@@ -982,10 +1028,11 @@
         </div>
         <div class="sae-hrow">
           <div>Gemini API Key</div>
-          <div>
-            <input type="password" class="sae-text api-key-input" placeholder="Enter API key" value="${escapeHtml(state.apiKey || '')}" />
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" class="sae-text api-key-input" placeholder="Enter API key" value="${escapeHtml(state.apiKey || '')}" />
+            <button class="sae-btn sae-verify" data-action="verify">Verify</button>
           </div>
-          <div><button class="sae-btn save-api">Save</button></div>
+          <div></div>
         </div>
         <div class="sae-hrow">
           <div>Hotkeys</div>
@@ -1025,13 +1072,32 @@
         await GMX.setValue(CONFIG.storeKeys.tone, state.tone);
         toast(`Tone set to ${state.tone}.`);
       });
-      $('.save-api', settingsView).addEventListener('click', async () => {
+
+      // Verify API key (visible, no masking). Saves on success.
+      $('[data-action="verify"]', settingsView).addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.classList.remove('ok','err');
         const input = $('.api-key-input', settingsView);
-        state.apiKey = (input.value || '').trim();
-        await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
-        toast(state.apiKey ? 'API key saved.' : 'API key cleared.');
+        const k = (input.value || '').trim();
+        const bubble = notify.busy('Verifying key…');
+        const ok = await verifyGeminiKey(k);
+        bubble.update(ok ? 'Key verified ✓' : 'Invalid key.');
+        setTimeout(() => bubble.close(), 900);
+        if (ok) {
+          state.apiKey = k;
+          await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
+          btn.classList.add('ok');
+          btn.textContent = 'Verified ✓';
+          toast('API key verified and saved.');
+        } else {
+          btn.classList.add('err');
+          btn.textContent = 'Invalid ✗';
+          toast('API key invalid — not saved.');
+        }
+        setTimeout(() => { btn.classList.remove('ok','err'); btn.textContent = 'Verify'; }, 2200);
       });
 
+      // Hotkey changers
       settingsView.querySelectorAll('[data-hk]').forEach(btn => {
         btn.addEventListener('click', async () => {
           const name = btn.getAttribute('data-hk');
@@ -1039,6 +1105,23 @@
           await setHotkey(name, kind);
           renderSettingsView();
         });
+      });
+
+      // FAB sites management
+      $('.add-current', settingsView).addEventListener('click', () => {
+        const ta = $('.fab-sites', settingsView);
+        const host = location.hostname;
+        const lines = ta.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        if (!lines.includes(host)) lines.push(host);
+        ta.value = lines.join('\n');
+      });
+      $('.save-sites', settingsView).addEventListener('click', async () => {
+        const ta = $('.fab-sites', settingsView);
+        const list = normalizeSitesList(ta.value);
+        state.allowedSites = list;
+        await GMX.setValue(CONFIG.storeKeys.fabSites, state.allowedSites);
+        updateFabVisibility();
+        toast('FAB sites saved.');
       });
 
       $('[data-action="export"]', settingsView).addEventListener('click', () => exportDict());
@@ -1049,19 +1132,16 @@
       $('[data-action="done"]', settingsView).addEventListener('click', () => closeSettingsView());
     }
 
+    const renderListDebounced = debounce(() => {
+      state.activeIndex = 0;
+      renderList(search.value);
+    }, CONFIG.searchDebounceMs);
+
+    search.addEventListener('input', () => renderListDebounced());
     settingsBtn.addEventListener('click', () => openSettingsView());
     backBtn.addEventListener('click', () => closeSettingsView());
     closeBtn.addEventListener('click', closePalette);
     addNewBtn.addEventListener('click', addNewItem);
-
-    // Search with debouncing
-    search.addEventListener('input', () => {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => {
-        state.activeIndex = 0;
-        renderList(search.value);
-      }, CONFIG.searchDebounceMs);
-    });
 
     // Keyboard handling (list view only)
     wrap.addEventListener('keydown', (e) => {
@@ -1101,7 +1181,10 @@
   function openPalette() {
     const p = ensurePalette();
     p.classList.add('open');
+
+    prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+
     const panel = p.querySelector('.sae-panel');
     panel.classList.remove('settings-open');
     const backBtn = p.querySelector('[data-action="back"]');
@@ -1115,7 +1198,9 @@
 
   function closePalette() {
     if (!paletteEl) return;
-    document.body.style.overflow = '';
+    document.body.style.overflow = prevOverflow;
+    prevOverflow = '';
+
     const panel = paletteEl.querySelector('.sae-panel');
     if (panel) panel.classList.remove('settings-open');
     const backBtn = paletteEl.querySelector('[data-action="back"]');
@@ -1124,15 +1209,60 @@
   }
 
   // ----------------------
-  // FAB helpers
+  // FAB helpers (no watcher, whitelist-aware)
   // ----------------------
+  function hostAllowed(host = location.hostname) {
+    const list = (state.allowedSites || []).map(s => s.toLowerCase());
+    if (!list.length) return false; // show only on listed websites
+    const h = (host || '').toLowerCase();
+    return list.some(p => {
+      if (!p) return false;
+      let pat = p;
+      // normalize inputs like URLs
+      try {
+        if (p.includes('/') || p.includes(':')) pat = new URL(p.includes('://') ? p : ('https://' + p)).hostname.toLowerCase();
+      } catch { pat = p; }
+      if (pat.startsWith('*.')) {
+        const base = pat.slice(2);
+        return h === base || h.endsWith('.' + base);
+      }
+      return h === pat;
+    });
+  }
+
+  function normalizeSitesList(text) {
+    return (text || '')
+      .split(/\r?\n/)
+      .map(s => s.trim())
+      .map(s => {
+        if (!s) return '';
+        try {
+          if (s.includes('/') || s.includes(':')) return new URL(s.includes('://') ? s : ('https://' + s)).hostname.trim();
+        } catch { /* ignore */ }
+        return s;
+      })
+      .filter(Boolean)
+      .filter((v, i, a) => a.indexOf(v) === i);
+  }
+
   function ensureFab() {
-    if (fabEl) return;
+    if (!hostAllowed()) return null;
+
+    if (fabEl && fabEl.isConnected) {
+      fabEl.style.display = 'flex';
+      return fabEl;
+    }
     fabEl = document.createElement('button');
     fabEl.className = 'sae-fab';
     fabEl.type = 'button';
     fabEl.title = 'Abbreviation Palette';
-    fabEl.textContent = '⋯';
+    fabEl.setAttribute('aria-label', 'Abbreviation Palette');
+    fabEl.innerHTML = `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3l2.3 4.7L19 10l-4.7 2.3L12 17l-2.3-4.7L5 10l4.7-2.3L12 3z"></path>
+        <path d="M3 21l6-6" />
+      </svg>
+    `;
 
     fabEl.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1145,14 +1275,26 @@
     });
 
     document.documentElement.appendChild(fabEl);
+    updateFabVisibility();
+    return fabEl;
   }
 
   function updateFabVisibility() {
-    if (!fabEl) {
-      if (state.fabEnabled) ensureFab();
-      return;
+    const shouldShow = state.fabEnabled && hostAllowed();
+    if (shouldShow) {
+      if (!fabEl || !fabEl.isConnected) ensureFab();
+      if (fabEl) {
+        fabEl.style.display = 'flex';
+        fabEl.style.visibility = 'visible';
+        fabEl.style.opacity = '1';
+      }
+    } else {
+      if (fabEl) {
+        fabEl.style.display = 'none';
+        fabEl.style.visibility = 'hidden';
+        fabEl.style.opacity = '0';
+      }
     }
-    fabEl.style.display = state.fabEnabled ? 'flex' : 'none';
   }
 
   async function toggleFabSetting() {
@@ -1274,7 +1416,7 @@
   }
 
   // ----------------------
-  // Styles injection
+  // Styles injection (once, at document-start)
   // ----------------------
   GMX.addStyle(STYLES);
 
