@@ -840,6 +840,9 @@
     }
 
     function addNewItem() {
+      search.value = ''; // ADD THIS LINE
+      renderList(''); // Pass empty string explicitly
+
       const tempDiv = document.createElement('div');
       tempDiv.className = 'sae-item editing';
       list.insertBefore(tempDiv, list.firstChild);
@@ -863,32 +866,44 @@
       )) {
         ctx = saved;
       } else {
-        // Fallback if no saved context or it’s gone
         ctx = getBestInsertionContext();
       }
 
-      // Close palette before writing
       closePalette();
 
       const tmpl = state.dict[key];
       if (!tmpl || !ctx) { if (!ctx) toast('No editable field found.'); return; }
 
-      // Focus target to keep frameworks happy
       try { (ctx.kind === 'input' ? ctx.el : ctx.root).focus({ preventScroll: true }); } catch { }
 
-      // Render and insert exactly at the saved range (not whole field)
       const rendered = await renderTemplate(tmpl);
 
-      if (ctx.kind === 'input') {
-        // Use the captured start/end if available; fall back to cursor at end
-        const start = typeof ctx.start === 'number' ? ctx.start : (ctx.el.selectionStart ?? ctx.el.value.length);
-        const end = typeof ctx.end === 'number' ? ctx.end : (ctx.el.selectionEnd ?? ctx.el.value.length);
-        applyRendered(ctx, rendered, { start, end });
-      } else if (ctx.kind === 'ce' && ctx.range instanceof Range) {
-        applyRendered(ctx, rendered, { range: ctx.range });
-      } else {
-        // Last resort
-        applyRendered(ctx, rendered);
+      // ADD TRY/CATCH HERE:
+      try {
+        if (ctx.kind === 'input') {
+          const start = typeof ctx.start === 'number' ? ctx.start : (ctx.el.selectionStart ?? ctx.el.value.length);
+          const end = typeof ctx.end === 'number' ? ctx.end : (ctx.el.selectionEnd ?? ctx.el.value.length);
+          applyRendered(ctx, rendered, { start, end });
+        } else if (ctx.kind === 'ce' && ctx.range instanceof Range) {
+          // Validate range before using
+          ctx.range.startContainer; // Throws if detached
+          applyRendered(ctx, rendered, { range: ctx.range });
+        } else {
+          applyRendered(ctx, rendered);
+        }
+      } catch (err) {
+        console.warn('SAE: Saved context invalid, using fallback insertion:', err);
+        // Fallback: try current selection or end-of-field
+        const freshCtx = captureEditableContext() || getBestInsertionContext();
+        if (freshCtx) {
+          try {
+            applyRendered(freshCtx, rendered);
+          } catch (e2) {
+            toast('Insertion failed — field may have changed.');
+          }
+        } else {
+          toast('No editable field available.');
+        }
       }
     }
 
