@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Smart Abbreviation Expander (Shift+Space) — No Preview, Alt+P Palette + Gemini Correct (Alt+G)
 // @namespace    https://github.com/your-namespace
-// @version      1.6.1
-// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Now with Export/Import of dictionary (imports are merged).
+// @version      1.7.1
+// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Now with inline editing and settings panel.
 // @author       You
 // @match        *://*/*
 // @grant        GM_getValue
@@ -96,17 +96,32 @@
     .sae-palette{position:fixed;z-index:2147483647;inset:0;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px);background:rgba(0,0,0,.25)}
     .sae-palette.open{display:flex}
     .sae-panel{width:min(720px,92vw);max-height:78vh;overflow:hidden;background:#111;color:#fff;border:1px solid rgba(255,255,255,.08);border-radius:10px;box-shadow:0 12px 36px rgba(0,0,0,.35);display:flex;flex-direction:column;font:13px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-    .sae-panel-header{display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;padding:10px;border-bottom:1px solid rgba(255,255,255,.06)}
+    .sae-panel-header{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:8px;padding:10px;border-bottom:1px solid rgba(255,255,255,.06)}
     .sae-search{width:100%;background:#1b1b1b;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:8px 10px;outline:none}
-    .sae-header-actions button{margin-left:6px;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#fff;cursor:pointer}
+    .sae-icon-btn{padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease}
+    .sae-icon-btn:hover{background:#252525;border-color:rgba(255,255,255,.2)}
+    .sae-icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+    .sae-settings-dropdown{position:relative}
+    .sae-settings-menu{position:absolute;top:calc(100% + 4px);right:0;background:#1b1b1b;border:1px solid rgba(255,255,255,.12);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.3);min-width:160px;display:none;flex-direction:column;padding:4px;z-index:10}
+    .sae-settings-menu.open{display:flex}
+    .sae-settings-menu button{padding:8px 12px;border:none;background:transparent;color:#fff;cursor:pointer;text-align:left;border-radius:4px;font:inherit;transition:background .15s ease}
+    .sae-settings-menu button:hover{background:#252525}
     .sae-list{overflow:auto;padding:6px}
-    .sae-item{display:grid;grid-template-columns:160px 1fr;gap:10px;padding:8px;border-radius:6px;border:1px solid transparent;cursor:pointer;align-items:start}
+    .sae-item{display:grid;grid-template-columns:160px 1fr auto;gap:10px;padding:8px;border-radius:6px;border:1px solid transparent;cursor:pointer;align-items:center}
     .sae-item:hover,.sae-item.active{background:#1b1b1b;border-color:rgba(255,255,255,.08)}
     .sae-key{opacity:.85;font-weight:600;color:#86b7ff}
     .sae-val{color:#ddd;white-space:pre-wrap}
+    .sae-item-actions{display:flex;gap:4px;margin-left:auto}
+    .sae-item-actions button{padding:4px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#fff;cursor:pointer;font-size:11px}
+    .sae-item-actions button:hover{background:#252525}
+    .sae-item.editing{background:#1a1a2e;border-color:#4a4aff}
+    .sae-item.editing input{background:#0c0c0c;color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:4px 6px;width:100%;font:inherit}
+    .sae-item.editing .sae-key{padding:0}
+    .sae-item.editing .sae-val{padding:0}
+    .sae-add-new{padding:10px;text-align:center;border-top:1px solid rgba(255,255,255,.06)}
+    .sae-add-new button{padding:8px 16px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#86b7ff;cursor:pointer;font-weight:600}
+    .sae-add-new button:hover{background:#252525}
     .sae-footer{padding:8px 10px;border-top:1px solid rgba(255,255,255,.06);opacity:.8}
-    .sae-editor{width:calc(100% - 20px);height:42vh;margin:10px;background:#0c0c0c;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;padding:10px;display:none}
-    .sae-editor.open{display:block}
   `);
 
   // ----------------------
@@ -120,10 +135,13 @@
 
     // Menu commands
     GMX.registerMenuCommand('Open Abbreviation Palette', openPalette);
-    GMX.registerMenuCommand('Edit Dictionary (JSON)', openPaletteEditor);
     GMX.registerMenuCommand('Export Dictionary (.json)', exportDict);
     GMX.registerMenuCommand('Import Dictionary', () => importDict());
-    GMX.registerMenuCommand('Reset Dictionary to Defaults', async () => setDict(DEFAULT_DICT, 'Dictionary reset to defaults.'));
+    GMX.registerMenuCommand('Reset Dictionary to Defaults', async () => {
+      if (confirm('Reset dictionary to defaults?')) {
+        await setDict(DEFAULT_DICT, 'Dictionary reset to defaults.');
+      }
+    });
     GMX.registerMenuCommand('Gemini: Correct Selection/Field (Alt+G)', triggerGeminiCorrection);
     GMX.registerMenuCommand('Gemini: Set Tone (neutral/friendly/formal/casual/concise)', async () => {
       const val = prompt('Tone (neutral, friendly, formal, casual, concise):', state.tone || 'neutral');
@@ -455,8 +473,6 @@
       if (!count) return toast('Import failed: no entries detected.');
       const next = { ...state.dict, ...imported };
       await setDict(next, `Imported ${count} entr${count === 1 ? 'y' : 'ies'}.`);
-      const editor = paletteEl?.querySelector('.sae-editor'); const editBtn = paletteEl?.querySelector('.sae-header-actions [data-action="edit"]');
-      if (editor?.classList.contains('open')) { editor.value = JSON.stringify(state.dict, null, 2); if (editBtn) editBtn.textContent = 'Save JSON'; }
     } catch (err) { console.warn('Import failed:', err); toast('Import failed: invalid JSON.'); }
   }
 
@@ -467,16 +483,31 @@
       <div class="sae-panel" role="dialog" aria-label="Abbreviation Palette">
         <div class="sae-panel-header">
           <input class="sae-search" type="search" placeholder="Search abbreviations…" />
-          <div class="sae-header-actions">
-            <button data-action="edit">Edit JSON</button>
-            <button data-action="export">Export</button>
-            <button data-action="import">Import</button>
-            <button data-action="reset">Reset</button>
-            <button data-action="close">Close</button>
+          <div class="sae-settings-dropdown">
+            <button class="sae-icon-btn" data-action="settings" title="Settings">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M12 1v6m0 6v10M1 12h6m6 0h10"></path>
+                <path d="m4.93 4.93 4.24 4.24m5.66 5.66 4.24 4.24M19.07 4.93l-4.24 4.24m-5.66 5.66-4.24 4.24"></path>
+              </svg>
+            </button>
+            <div class="sae-settings-menu">
+              <button data-action="export">📤 Export Dictionary</button>
+              <button data-action="import">📥 Import Dictionary</button>
+              <button data-action="reset">🔄 Reset to Defaults</button>
+            </div>
           </div>
+          <button class="sae-icon-btn" data-action="close" title="Close">
+            <svg viewBox="0 0 24 24">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
-        <textarea class="sae-editor" spellcheck="false"></textarea>
         <div class="sae-list" tabindex="0"></div>
+        <div class="sae-add-new">
+          <button data-action="add">+ Add New Abbreviation</button>
+        </div>
         <div class="sae-footer">Alt+P to open · Shift+Space to expand · Alt+G to correct grammar/tone</div>
       </div>
     `;
@@ -484,9 +515,23 @@
 
     const search = wrap.querySelector('.sae-search');
     const list = wrap.querySelector('.sae-list');
-    const editor = wrap.querySelector('.sae-editor');
-    const actions = wrap.querySelector('.sae-header-actions');
-    const editBtn = actions.querySelector('[data-action="edit"]');
+    const settingsBtn = wrap.querySelector('[data-action="settings"]');
+    const settingsMenu = wrap.querySelector('.sae-settings-menu');
+    const closeBtn = wrap.querySelector('[data-action="close"]');
+    const addNewBtn = wrap.querySelector('.sae-add-new button');
+
+    // Toggle settings menu
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      settingsMenu.classList.toggle('open');
+    });
+
+    // Close settings menu when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!settingsMenu.contains(e.target) && !settingsBtn.contains(e.target)) {
+        settingsMenu.classList.remove('open');
+      }
+    });
 
     function renderList(filter = '') {
       const q = filter.trim().toLowerCase();
@@ -496,32 +541,171 @@
         <div class="sae-item${i === 0 ? ' active' : ''}" data-key="${escapeHtml(k)}">
           <div class="sae-key">${escapeHtml(k)}</div>
           <div class="sae-val">${escapeHtml(state.dict[k])}</div>
+          <div class="sae-item-actions">
+            <button data-action="edit" data-key="${escapeHtml(k)}">Edit</button>
+            <button data-action="delete" data-key="${escapeHtml(k)}">Delete</button>
+          </div>
         </div>`).join('');
-      list.querySelectorAll('.sae-item').forEach(div => div.addEventListener('click', () => selectAndInsert(div.dataset.key)));
+      
+      // Re-attach event listeners
+      list.querySelectorAll('.sae-item').forEach(div => {
+        const keyEl = div.querySelector('.sae-key');
+        const valEl = div.querySelector('.sae-val');
+        
+        keyEl.addEventListener('click', () => !div.classList.contains('editing') && selectAndInsert(div.dataset.key));
+        valEl.addEventListener('click', () => !div.classList.contains('editing') && selectAndInsert(div.dataset.key));
+        
+        div.querySelector('[data-action="edit"]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          editItem(div);
+        });
+        
+        div.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteItem(div.dataset.key);
+        });
+      });
     }
 
-    function toggleEditor(save) {
-      if (save) {
-        try { const obj = JSON.parse(editor.value); setDict(obj, 'Dictionary saved.'); editor.classList.remove('open'); editBtn.textContent = 'Edit JSON'; }
-        catch (err) { alert('Invalid JSON: ' + err.message); }
-        return;
-      }
-      if (editor.classList.contains('open')) { editor.classList.remove('open'); editBtn.textContent = 'Edit JSON'; }
-      else { editor.value = JSON.stringify(state.dict, null, 2); editor.classList.add('open'); editBtn.textContent = 'Save JSON'; }
+    function editItem(itemDiv) {
+      const key = itemDiv.dataset.key;
+      const value = state.dict[key];
+      
+      itemDiv.classList.add('editing');
+      itemDiv.innerHTML = `
+        <div class="sae-key"><input type="text" class="edit-key" value="${escapeHtml(key)}" /></div>
+        <div class="sae-val"><input type="text" class="edit-val" value="${escapeHtml(value)}" /></div>
+        <div class="sae-item-actions">
+          <button data-action="save">Save</button>
+          <button data-action="cancel">Cancel</button>
+        </div>
+      `;
+      
+      const keyInput = itemDiv.querySelector('.edit-key');
+      const valInput = itemDiv.querySelector('.edit-val');
+      const saveBtn = itemDiv.querySelector('[data-action="save"]');
+      const cancelBtn = itemDiv.querySelector('[data-action="cancel"]');
+      
+      keyInput.focus();
+      keyInput.select();
+      
+      const save = async () => {
+        const newKey = keyInput.value.trim().toLowerCase();
+        const newVal = valInput.value.trim();
+        
+        if (!newKey || !newVal) {
+          toast('Key and value cannot be empty.');
+          return;
+        }
+        
+        const updated = { ...state.dict };
+        if (newKey !== key) delete updated[key];
+        updated[newKey] = newVal;
+        
+        await setDict(updated, 'Abbreviation saved.');
+      };
+      
+      const cancel = () => renderList(search.value);
+      
+      saveBtn.addEventListener('click', save);
+      cancelBtn.addEventListener('click', cancel);
+      
+      keyInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); save(); }
+        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      });
+      
+      valInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); save(); }
+        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      });
+    }
+
+    function deleteItem(key) {
+      if (!confirm(`Delete abbreviation "${key}"?`)) return;
+      const updated = { ...state.dict };
+      delete updated[key];
+      setDict(updated, 'Abbreviation deleted.');
+    }
+
+    function addNewItem() {
+      const tempDiv = document.createElement('div');
+      tempDiv.className = 'sae-item editing';
+      tempDiv.innerHTML = `
+        <div class="sae-key"><input type="text" class="edit-key" placeholder="abbreviation" /></div>
+        <div class="sae-val"><input type="text" class="edit-val" placeholder="Expansion text..." /></div>
+        <div class="sae-item-actions">
+          <button data-action="save">Save</button>
+          <button data-action="cancel">Cancel</button>
+        </div>
+      `;
+      
+      list.insertBefore(tempDiv, list.firstChild);
+      
+      const keyInput = tempDiv.querySelector('.edit-key');
+      const valInput = tempDiv.querySelector('.edit-val');
+      const saveBtn = tempDiv.querySelector('[data-action="save"]');
+      const cancelBtn = tempDiv.querySelector('[data-action="cancel"]');
+      
+      keyInput.focus();
+      
+      const save = async () => {
+        const newKey = keyInput.value.trim().toLowerCase();
+        const newVal = valInput.value.trim();
+        
+        if (!newKey || !newVal) {
+          toast('Key and value cannot be empty.');
+          return;
+        }
+        
+        const updated = { ...state.dict, [newKey]: newVal };
+        await setDict(updated, 'Abbreviation added.');
+      };
+      
+      const cancel = () => {
+        tempDiv.remove();
+        renderList(search.value);
+      };
+      
+      saveBtn.addEventListener('click', save);
+      cancelBtn.addEventListener('click', cancel);
+      
+      keyInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); valInput.focus(); }
+        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      });
+      
+      valInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); save(); }
+        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      });
     }
 
     const handlers = {
       close: closePalette,
-      edit: () => toggleEditor(editor.classList.contains('open')),
-      reset: () => setDict(DEFAULT_DICT, 'Dictionary reset.'),
-      export: exportDict,
-      'import': () => importDict(),
+      reset: () => {
+        if (confirm('Reset dictionary to defaults?')) {
+          setDict(DEFAULT_DICT, 'Dictionary reset.');
+          settingsMenu.classList.remove('open');
+        }
+      },
+      export: () => {
+        exportDict();
+        settingsMenu.classList.remove('open');
+      },
+      'import': () => {
+        importDict();
+        settingsMenu.classList.remove('open');
+      },
     };
 
-    actions.addEventListener('click', (e) => {
+    settingsMenu.addEventListener('click', (e) => {
       const btn = e.target.closest('button'); if (!btn) return;
       const fn = handlers[btn.dataset.action]; if (fn) fn();
     });
+
+    closeBtn.addEventListener('click', closePalette);
+    addNewBtn.addEventListener('click', addNewItem);
 
     async function selectAndInsert(key) {
       if (!state.lastEditable) state.lastEditable = captureEditableContext();
@@ -551,13 +735,33 @@
 
     search.addEventListener('input', () => renderList(search.value));
     wrap.addEventListener('keydown', (e) => {
-      if (e.target.closest('.sae-editor')) { if (e.key === 'Escape') { e.preventDefault(); closePalette(); } return; }
+      if (e.target.closest('.sae-item.editing')) {
+        // Allow normal input in edit mode
+        return;
+      }
       if (e.key === 'Escape') { e.preventDefault(); closePalette(); return; }
-      if (e.key === 'Enter') { e.preventDefault(); const active = wrap.querySelector('.sae-item.active'); if (active) active.click(); return; }
-      const items = [...wrap.querySelectorAll('.sae-item')]; if (!items.length) return;
+      if (e.key === 'Enter') { 
+        e.preventDefault(); 
+        const active = wrap.querySelector('.sae-item.active:not(.editing)'); 
+        if (active) selectAndInsert(active.dataset.key);
+        return; 
+      }
+      const items = [...wrap.querySelectorAll('.sae-item:not(.editing)')]; if (!items.length) return;
       let idx = Math.max(0, items.findIndex(n => n.classList.contains('active')));
-      if (e.key === 'ArrowDown') { e.preventDefault(); items[idx].classList.remove('active'); idx = Math.min(items.length - 1, idx + 1); items[idx].classList.add('active'); items[idx].scrollIntoView({ block: 'nearest' }); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); items[idx].classList.remove('active'); idx = Math.max(0, idx - 1); items[idx].classList.add('active'); items[idx].scrollIntoView({ block: 'nearest' }); }
+      if (e.key === 'ArrowDown') { 
+        e.preventDefault(); 
+        items[idx].classList.remove('active'); 
+        idx = Math.min(items.length - 1, idx + 1); 
+        items[idx].classList.add('active'); 
+        items[idx].scrollIntoView({ block: 'nearest' }); 
+      }
+      else if (e.key === 'ArrowUp') { 
+        e.preventDefault(); 
+        items[idx].classList.remove('active'); 
+        idx = Math.max(0, idx - 1); 
+        items[idx].classList.add('active'); 
+        items[idx].scrollIntoView({ block: 'nearest' }); 
+      }
     });
 
     renderList();
@@ -566,21 +770,18 @@
   }
 
   function openPalette() {
-    const p = ensurePalette(); p.classList.add('open');
-    const editor = p.querySelector('.sae-editor'); editor.classList.remove('open');
-    const editBtn = p.querySelector('.sae-header-actions [data-action="edit"]'); if (editBtn) editBtn.textContent = 'Edit JSON';
-    const search = p.querySelector('.sae-search'); search.value = ''; p.__render?.(); search.focus({ preventScroll: true });
+    const p = ensurePalette(); 
+    p.classList.add('open');
+    const search = p.querySelector('.sae-search'); 
+    search.value = ''; 
+    p.__render?.(); 
+    search.focus({ preventScroll: true });
   }
-  function openPaletteEditor() {
-    const p = ensurePalette(); p.classList.add('open');
-    const editor = p.querySelector('.sae-editor'); editor.value = JSON.stringify(state.dict, null, 2); editor.classList.add('open');
-    const editBtn = p.querySelector('.sae-header-actions [data-action="edit"]'); if (editBtn) editBtn.textContent = 'Save JSON';
-    editor.focus({ preventScroll: true });
-  }
+
   function closePalette() {
     if (!paletteEl) return;
-    const editor = paletteEl.querySelector('.sae-editor'); if (editor) editor.classList.remove('open');
-    const editBtn = paletteEl.querySelector('.sae-header-actions [data-action="edit"]'); if (editBtn) editBtn.textContent = 'Edit JSON';
+    const settingsMenu = paletteEl.querySelector('.sae-settings-menu');
+    if (settingsMenu) settingsMenu.classList.remove('open');
     paletteEl.classList.remove('open');
   }
 
