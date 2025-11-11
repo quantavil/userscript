@@ -6,6 +6,7 @@
 // @author       You
 // @match        https://www.youtube.com/*
 // @grant        GM_addStyle
+// @license      MIT
 // @run-at       document-end
 // ==/UserScript==
 
