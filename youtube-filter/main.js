@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Video Filter (Home + Search, optimized)
 // @namespace    https://github.com/quantavil
-// @version      2.2
+// @version      2.3
 // @description  Filter YouTube videos by views, age, and duration on Home/Search; ignores Shorts; optimized for SPA navigation
 // @author       You
 // @match        https://www.youtube.com/*
@@ -380,10 +380,16 @@
   // ---------- Filtering ----------
   const matches = (host) => {
     if (!filters.enabled) return true;
-    if (isShorts(host)) return false;
+    
+    // Ignore shorts (don't filter them)
+    if (isShorts(host)) return true;
 
     const { views, daysAgo, duration } = getVideoMeta(host);
 
+    // Ignore videos with unknown publish date
+    if (daysAgo === Infinity) return true;
+
+    // Apply filters
     if (views < filters.minViews || views > filters.maxViews) return false;
     if (daysAgo < filters.minDays || daysAgo > filters.maxDays) return false;
     if (duration > 0 && (duration < filters.minDuration || duration > filters.maxDuration)) return false;
@@ -438,18 +444,23 @@
   const validateNumber = (value, allowSuffix = false) => {
     if (value === '' || value == null) return { valid: true, value: null };
     
-    let numValue;
-    if (allowSuffix && /^[\d.]+\s*[KMB]$/i.test(value.toString())) {
-      numValue = parseNumberWithSuffix(value);
-    } else {
-      numValue = parseInt(value, 10);
+    const cleaned = value.replace(/[,\s]/g, ''); // Remove commas and spaces
+    
+    if (allowSuffix) {
+      // Accept: 1234, 1,234, 1.5K, 10M
+      if (!/^[\d.]+[KMB]?$/i.test(cleaned)) {
+        return { valid: false, error: 'Use format: 1.5K, 10M, or 1,234' };
+      }
+      return { valid: true, value: parseNumberWithSuffix(value) };
     }
     
-    if (!Number.isFinite(numValue) || numValue < 0) {
+    // Regular numbers: 123, 1,234
+    const num = parseInt(cleaned, 10);
+    if (!Number.isFinite(num) || num < 0) {
       return { valid: false, error: 'Must be a positive number' };
     }
     
-    return { valid: true, value: numValue };
+    return { valid: true, value: num };
   };
 
   const validateDate = (value) => {
@@ -461,7 +472,11 @@
     }
     
     const now = new Date();
-    if (d > now) {
+    now.setHours(0, 0, 0, 0); // Reset time for fair comparison
+    const inputDate = new Date(value);
+    inputDate.setHours(0, 0, 0, 0);
+    
+    if (inputDate > now) {
       return { valid: false, error: 'Date cannot be in the future' };
     }
     
@@ -488,6 +503,48 @@
     if (errorMsg) {
       errorMsg.classList.remove('show');
     }
+  };
+
+  const validateAllInputs = (minViews, maxViews, minDate, maxDate, minDur, maxDur) => {
+    const minViewsVal = validateNumber(minViews.value.trim(), true);
+    const maxViewsVal = validateNumber(maxViews.value.trim(), true);
+    const minDateVal = validateDate(minDate.value.trim());
+    const maxDateVal = validateDate(maxDate.value.trim());
+    const minDurVal = validateNumber(minDur.value.trim(), false);
+    const maxDurVal = validateNumber(maxDur.value.trim(), false);
+
+    // Clear previous errors
+    [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(clearError);
+
+    let hasError = false;
+
+    // Individual validation
+    if (!minViewsVal.valid) { showError(minViews, minViewsVal.error); hasError = true; }
+    if (!maxViewsVal.valid) { showError(maxViews, maxViewsVal.error); hasError = true; }
+    if (!minDateVal.valid) { showError(minDate, minDateVal.error); hasError = true; }
+    if (!maxDateVal.valid) { showError(maxDate, maxDateVal.error); hasError = true; }
+    if (!minDurVal.valid) { showError(minDur, minDurVal.error); hasError = true; }
+    if (!maxDurVal.valid) { showError(maxDur, maxDurVal.error); hasError = true; }
+
+    // Date range validation (From ≤ To)
+    if (minDateVal.valid && maxDateVal.valid && minDateVal.value && maxDateVal.value) {
+      const fromDate = new Date(minDateVal.value);
+      const toDate = new Date(maxDateVal.value);
+      if (fromDate > toDate) {
+        showError(minDate, 'From date must be before To date');
+        hasError = true;
+      }
+    }
+
+    return {
+      valid: !hasError,
+      minViews: minViewsVal.value,
+      maxViews: maxViewsVal.value,
+      minDate: minDateVal.value,
+      maxDate: maxDateVal.value,
+      minDur: minDurVal.value,
+      maxDur: maxDurVal.value,
+    };
   };
 
   const createUI = () => {
@@ -581,32 +638,20 @@
     const minDur  = iNum('minDuration', 'Min (mins)');
     const maxDur  = iNum('maxDuration', 'Max (mins)');
 
-    // Validation on input
-    const validateInput = (input, validator) => {
-      return () => {
-        const result = validator(input.value.trim());
-        if (result.valid) {
-          clearError(input);
-        } else {
-          showError(input, result.error);
-        }
-        updateApplyButton();
-      };
-    };
+    // Clear errors on input
+    [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(input => {
+      input.addEventListener('input', () => clearError(input));
+    });
 
-    minViews.addEventListener('input', validateInput(minViews, v => validateNumber(v, true)));
-    maxViews.addEventListener('input', validateInput(maxViews, v => validateNumber(v, true)));
-    minDate.addEventListener('input', validateInput(minDate, validateDate));
-    maxDate.addEventListener('input', validateInput(maxDate, validateDate));
-    minDur.addEventListener('input', validateInput(minDur, v => validateNumber(v, false)));
-    maxDur.addEventListener('input', validateInput(maxDur, v => validateNumber(v, false)));
-
-    // Hydrate inputs from state
+    // Hydrate inputs from state (only populate if actually set)
     const setVal = (el, v) => { el.value = (v === Infinity || v === 0) ? '' : String(v); };
     setVal(minViews, filters.minViews);
     setVal(maxViews, filters.maxViews);
-    minDate.value = daysAgoToDate(filters.maxDays);
-    maxDate.value = daysAgoToDate(filters.minDays);
+    
+    // Only populate dates if actually set
+    minDate.value = (filters.maxDays !== Infinity) ? daysAgoToDate(filters.maxDays) : '';
+    maxDate.value = (filters.minDays !== 0) ? daysAgoToDate(filters.minDays) : '';
+    
     setVal(minDur,  filters.minDuration);
     setVal(maxDur,  filters.maxDuration);
 
@@ -620,98 +665,67 @@
     const apply = document.createElement('button');
     apply.className = 'ytf-btn primary';
     apply.id = 'ytf-apply';
-    apply.textContent = filters.enabled ? 'Disable' : 'Apply';
+    apply.textContent = filters.enabled ? 'Disable Filter' : 'Apply Filter';
     if (filters.enabled) apply.classList.add('active');
     
-    const updateApplyButton = () => {
-      const hasErrors = panel.querySelectorAll('.ytf-input.error').length > 0;
-      apply.disabled = hasErrors;
-    };
-
     apply.addEventListener('click', () => {
-      // Validate all inputs
-      const viewsMinResult = validateNumber(minViews.value.trim(), true);
-      const viewsMaxResult = validateNumber(maxViews.value.trim(), true);
-      const dateMinResult = validateDate(minDate.value.trim());
-      const dateMaxResult = validateDate(maxDate.value.trim());
-      const durMinResult = validateNumber(minDur.value.trim(), false);
-      const durMaxResult = validateNumber(maxDur.value.trim(), false);
-
-      // Clear all errors first
-      [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(clearError);
-
-      // Show errors if any
-      let hasError = false;
-      if (!viewsMinResult.valid) { showError(minViews, viewsMinResult.error); hasError = true; }
-      if (!viewsMaxResult.valid) { showError(maxViews, viewsMaxResult.error); hasError = true; }
-      if (!dateMinResult.valid) { showError(minDate, dateMinResult.error); hasError = true; }
-      if (!dateMaxResult.valid) { showError(maxDate, dateMaxResult.error); hasError = true; }
-      if (!durMinResult.valid) { showError(minDur, durMinResult.error); hasError = true; }
-      if (!durMaxResult.valid) { showError(maxDur, durMaxResult.error); hasError = true; }
-
-      if (hasError) {
-        updateApplyButton();
-        return;
+      if (filters.enabled) {
+        // ===== DISABLE MODE =====
+        filters.enabled = false;
+        apply.textContent = 'Apply Filter';
+        apply.classList.remove('active');
+        persist();
+        scheduleApply();
+      } else {
+        // ===== APPLY MODE =====
+        const validation = validateAllInputs(minViews, maxViews, minDate, maxDate, minDur, maxDur);
+        if (!validation.valid) return; // Show errors, don't apply
+        
+        // Apply filter values
+        filters.minViews = validation.minViews ?? 0;
+        filters.maxViews = validation.maxViews ?? Infinity;
+        filters.maxDays = validation.minDate ? dateToDaysAgo(validation.minDate) : Infinity;
+        filters.minDays = validation.maxDate ? dateToDaysAgo(validation.maxDate) : 0;
+        filters.minDuration = validation.minDur ?? 0;
+        filters.maxDuration = validation.maxDur ?? Infinity;
+        
+        filters.enabled = true;
+        apply.textContent = 'Disable Filter';
+        apply.classList.add('active');
+        persist();
+        scheduleApply();
       }
-
-      // Apply filters
-      filters.minViews = viewsMinResult.value ?? 0;
-      filters.maxViews = viewsMaxResult.value ?? Infinity;
-      
-      const minDateVal = dateMinResult.value;
-      const maxDateVal = dateMaxResult.value;
-      filters.maxDays = minDateVal ? dateToDaysAgo(minDateVal) : Infinity;
-      filters.minDays = maxDateVal ? dateToDaysAgo(maxDateVal) : 0;
-      
-      filters.minDuration = durMinResult.value ?? 0;
-      filters.maxDuration = durMaxResult.value ?? Infinity;
-      filters.enabled = !filters.enabled;
-      
-      apply.classList.toggle('active', filters.enabled);
-      apply.textContent = filters.enabled ? 'Disable' : 'Apply';
-      persist();
-      scheduleApply();
     });
 
     const reset = document.createElement('button');
     reset.className = 'ytf-btn';
     reset.textContent = 'Reset';
     reset.addEventListener('click', () => {
+      // Clear all inputs
       [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(i => {
         i.value = '';
         clearError(i);
       });
-      if (filters.enabled) {
-        filters.minViews = 0; filters.maxViews = Infinity;
-        filters.minDays = 0; filters.maxDays = Infinity;
-        filters.minDuration = 0; filters.maxDuration = Infinity;
-        persist();
-        scheduleApply();
-      }
-      updateApplyButton();
-    });
-
-    const clear = document.createElement('button');
-    clear.className = 'ytf-btn';
-    clear.textContent = 'Clear';
-    clear.addEventListener('click', () => {
-      [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(i => {
-        i.value = '';
-        clearError(i);
-      });
-      if (filters.enabled) {
-        filters.enabled = false;
-        apply.classList.remove('active');
-        apply.textContent = 'Apply';
-        persist();
-        scheduleApply();
-      }
-      updateApplyButton();
+      
+      // Reset filter state
+      filters.minViews = 0;
+      filters.maxViews = Infinity;
+      filters.minDays = 0;
+      filters.maxDays = Infinity;
+      filters.minDuration = 0;
+      filters.maxDuration = Infinity;
+      filters.enabled = false;
+      
+      // Update UI
+      apply.textContent = 'Apply Filter';
+      apply.classList.remove('active');
+      
+      persist();
+      scheduleApply();
     });
 
     actions.appendChild(apply);
     actions.appendChild(reset);
-    actions.appendChild(clear);
     panel.appendChild(actions);
 
     const stats = document.createElement('div');
