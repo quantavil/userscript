@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         YouTube Video Filter (Home + Search, optimized)
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/quantavil
 // @version      2.0
 // @description  Filter YouTube videos by views, age, and duration on Home/Search; ignores Shorts; optimized for SPA navigation
 // @author       You
