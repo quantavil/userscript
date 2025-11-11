@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Video Filter (Home + Search, optimized)
 // @namespace    https://github.com/quantavil
-// @version      2.1
+// @version      2.2
 // @description  Filter YouTube videos by views, age, and duration on Home/Search; ignores Shorts; optimized for SPA navigation
 // @author       You
 // @match        https://www.youtube.com/*
@@ -146,36 +146,80 @@
       position: relative;
       z-index: 1;
     }
-    .ytf-input {
+    .ytf-input-wrapper {
       flex: 1;
+      position: relative;
+    }
+    .ytf-input {
+      width: 100%;
       padding: 10px 12px;
       border-radius: 6px;
       border: 1px solid #2a2a2a;
       background: #1a1a1a;
       color: #fff;
       font-size: 13px;
-      transition: border-color 0.2s;
+      transition: all 0.2s ease;
       position: relative;
       z-index: 2;
+      box-sizing: border-box;
     }
     .ytf-input:focus {
       outline: none;
       border-color: #3ea6ff;
       z-index: 3;
     }
+    .ytf-input.error {
+      border-color: #ff4444;
+      background: rgba(255, 68, 68, 0.1);
+    }
     .ytf-input::placeholder {
       color: #666;
     }
+    
     /* Date input styling */
     .ytf-input[type="date"] {
       position: relative;
       z-index: 2;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
     }
     .ytf-input[type="date"]::-webkit-calendar-picker-indicator {
       filter: invert(1);
       cursor: pointer;
       position: relative;
-      z-index: 3;
+      z-index: 4;
+      opacity: 0.7;
+      transition: opacity 0.2s ease;
+    }
+    .ytf-input[type="date"]::-webkit-calendar-picker-indicator:hover {
+      opacity: 1;
+    }
+    .ytf-input[type="date"]::-webkit-datetime-edit {
+      color: #fff;
+    }
+    .ytf-input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+      padding: 0;
+    }
+    .ytf-input[type="date"]::-webkit-inner-spin-button {
+      display: none;
+    }
+    
+    /* Error message styling */
+    .ytf-error-msg {
+      color: #ff4444;
+      font-size: 11px;
+      margin-top: 4px;
+      display: none;
+      animation: fadeIn 0.2s ease;
+    }
+    .ytf-error-msg.show {
+      display: block;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-2px); }
+      to { opacity: 1; transform: translateY(0); }
     }
     
     .ytf-actions {
@@ -195,22 +239,26 @@
       font-weight: 500;
       transition: all 0.2s;
     }
-    .ytf-btn:hover {
+    .ytf-btn:hover:not(:disabled) {
       background: #2a2a2a;
       transform: translateY(-1px);
+    }
+    .ytf-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
     .ytf-btn.primary {
       background: #3ea6ff;
       border: none;
       color: #000;
     }
-    .ytf-btn.primary:hover {
+    .ytf-btn.primary:hover:not(:disabled) {
       background: #4db8ff;
     }
     .ytf-btn.primary.active {
       background: #00c853;
     }
-    .ytf-btn.primary.active:hover {
+    .ytf-btn.primary.active:hover:not(:disabled) {
       background: #00e676;
     }
     
@@ -284,7 +332,6 @@
     if (parts.length === 3) seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
     else if (parts.length === 2) seconds = parts[0] * 60 + parts[1];
     else seconds = Number.isFinite(parts[0]) ? parts[0] : 0;
-    // Convert to minutes
     return Math.round(seconds / 60);
   };
 
@@ -299,6 +346,7 @@
   const dateToDaysAgo = (dateStr) => {
     if (!dateStr) return Infinity;
     const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return Infinity;
     const now = new Date();
     const diff = now - d;
     return Math.floor(diff / (24 * 3600 * 1000));
@@ -386,6 +434,62 @@
     } catch {}
   };
 
+  // Validation functions
+  const validateNumber = (value, allowSuffix = false) => {
+    if (value === '' || value == null) return { valid: true, value: null };
+    
+    let numValue;
+    if (allowSuffix && /^[\d.]+\s*[KMB]$/i.test(value.toString())) {
+      numValue = parseNumberWithSuffix(value);
+    } else {
+      numValue = parseInt(value, 10);
+    }
+    
+    if (!Number.isFinite(numValue) || numValue < 0) {
+      return { valid: false, error: 'Must be a positive number' };
+    }
+    
+    return { valid: true, value: numValue };
+  };
+
+  const validateDate = (value) => {
+    if (value === '' || value == null) return { valid: true, value: null };
+    
+    const d = new Date(value);
+    if (isNaN(d.getTime())) {
+      return { valid: false, error: 'Invalid date format' };
+    }
+    
+    const now = new Date();
+    if (d > now) {
+      return { valid: false, error: 'Date cannot be in the future' };
+    }
+    
+    return { valid: true, value: value };
+  };
+
+  const showError = (input, message) => {
+    input.classList.add('error');
+    const wrapper = input.closest('.ytf-input-wrapper');
+    let errorMsg = wrapper.querySelector('.ytf-error-msg');
+    if (!errorMsg) {
+      errorMsg = document.createElement('div');
+      errorMsg.className = 'ytf-error-msg';
+      wrapper.appendChild(errorMsg);
+    }
+    errorMsg.textContent = message;
+    errorMsg.classList.add('show');
+  };
+
+  const clearError = (input) => {
+    input.classList.remove('error');
+    const wrapper = input.closest('.ytf-input-wrapper');
+    const errorMsg = wrapper.querySelector('.ytf-error-msg');
+    if (errorMsg) {
+      errorMsg.classList.remove('show');
+    }
+  };
+
   const createUI = () => {
     const oldBtn = document.getElementById('yt-filter-toggle');
     const oldPanel = document.getElementById('yt-filter-panel');
@@ -421,14 +525,21 @@
       btn.classList.toggle('active', isVisible);
     });
 
-    const group = (labelTxt, children) => {
+    const group = (labelTxt, inputs) => {
       const g = document.createElement('div');
       g.className = 'ytf-group';
       const l = document.createElement('label');
       l.textContent = labelTxt;
       const row = document.createElement('div');
       row.className = 'ytf-row';
-      children.forEach(c => row.appendChild(c));
+      
+      inputs.forEach(input => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ytf-input-wrapper';
+        wrapper.appendChild(input);
+        row.appendChild(wrapper);
+      });
+      
       g.appendChild(l);
       g.appendChild(row);
       return g;
@@ -437,21 +548,29 @@
     const iText = (id, ph) => {
       const i = document.createElement('input');
       i.className = 'ytf-input';
-      i.id = id; i.placeholder = ph; i.type = 'text';
+      i.id = id;
+      i.placeholder = ph;
+      i.type = 'text';
       return i;
     };
     
     const iDate = (id, ph) => {
       const i = document.createElement('input');
       i.className = 'ytf-input';
-      i.id = id; i.placeholder = ph; i.type = 'date';
+      i.id = id;
+      i.placeholder = ph;
+      i.type = 'date';
       return i;
     };
     
     const iNum = (id, ph) => {
       const i = document.createElement('input');
       i.className = 'ytf-input';
-      i.id = id; i.placeholder = ph; i.type = 'number';
+      i.id = id;
+      i.placeholder = ph;
+      i.type = 'number';
+      i.min = '0';
+      i.step = '1';
       return i;
     };
 
@@ -462,12 +581,32 @@
     const minDur  = iNum('minDuration', 'Min (mins)');
     const maxDur  = iNum('maxDuration', 'Max (mins)');
 
+    // Validation on input
+    const validateInput = (input, validator) => {
+      return () => {
+        const result = validator(input.value.trim());
+        if (result.valid) {
+          clearError(input);
+        } else {
+          showError(input, result.error);
+        }
+        updateApplyButton();
+      };
+    };
+
+    minViews.addEventListener('input', validateInput(minViews, v => validateNumber(v, true)));
+    maxViews.addEventListener('input', validateInput(maxViews, v => validateNumber(v, true)));
+    minDate.addEventListener('input', validateInput(minDate, validateDate));
+    maxDate.addEventListener('input', validateInput(maxDate, validateDate));
+    minDur.addEventListener('input', validateInput(minDur, v => validateNumber(v, false)));
+    maxDur.addEventListener('input', validateInput(maxDur, v => validateNumber(v, false)));
+
     // Hydrate inputs from state
     const setVal = (el, v) => { el.value = (v === Infinity || v === 0) ? '' : String(v); };
     setVal(minViews, filters.minViews);
     setVal(maxViews, filters.maxViews);
-    minDate.value = daysAgoToDate(filters.maxDays); // max days = earliest date
-    maxDate.value = daysAgoToDate(filters.minDays); // min days = latest date
+    minDate.value = daysAgoToDate(filters.maxDays);
+    maxDate.value = daysAgoToDate(filters.minDays);
     setVal(minDur,  filters.minDuration);
     setVal(maxDur,  filters.maxDuration);
 
@@ -484,25 +623,48 @@
     apply.textContent = filters.enabled ? 'Disable' : 'Apply';
     if (filters.enabled) apply.classList.add('active');
     
+    const updateApplyButton = () => {
+      const hasErrors = panel.querySelectorAll('.ytf-input.error').length > 0;
+      apply.disabled = hasErrors;
+    };
+
     apply.addEventListener('click', () => {
-      const toNum = (v, def) => {
-        if (v === '' || v == null) return def;
-        if (v.toString().match(/^[\d.]+\s*[KMB]$/i)) return parseNumberWithSuffix(v);
-        const n = parseInt(v, 10);
-        return Number.isFinite(n) ? n : def;
-      };
+      // Validate all inputs
+      const viewsMinResult = validateNumber(minViews.value.trim(), true);
+      const viewsMaxResult = validateNumber(maxViews.value.trim(), true);
+      const dateMinResult = validateDate(minDate.value.trim());
+      const dateMaxResult = validateDate(maxDate.value.trim());
+      const durMinResult = validateNumber(minDur.value.trim(), false);
+      const durMaxResult = validateNumber(maxDur.value.trim(), false);
+
+      // Clear all errors first
+      [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(clearError);
+
+      // Show errors if any
+      let hasError = false;
+      if (!viewsMinResult.valid) { showError(minViews, viewsMinResult.error); hasError = true; }
+      if (!viewsMaxResult.valid) { showError(maxViews, viewsMaxResult.error); hasError = true; }
+      if (!dateMinResult.valid) { showError(minDate, dateMinResult.error); hasError = true; }
+      if (!dateMaxResult.valid) { showError(maxDate, dateMaxResult.error); hasError = true; }
+      if (!durMinResult.valid) { showError(minDur, durMinResult.error); hasError = true; }
+      if (!durMaxResult.valid) { showError(maxDur, durMaxResult.error); hasError = true; }
+
+      if (hasError) {
+        updateApplyButton();
+        return;
+      }
+
+      // Apply filters
+      filters.minViews = viewsMinResult.value ?? 0;
+      filters.maxViews = viewsMaxResult.value ?? Infinity;
       
-      filters.minViews    = toNum(minViews.value.trim(), 0);
-      filters.maxViews    = toNum(maxViews.value.trim(), Infinity);
-      
-      // Convert dates to days ago (swap min/max because earlier date = more days ago)
-      const minDateVal = minDate.value.trim();
-      const maxDateVal = maxDate.value.trim();
+      const minDateVal = dateMinResult.value;
+      const maxDateVal = dateMaxResult.value;
       filters.maxDays = minDateVal ? dateToDaysAgo(minDateVal) : Infinity;
       filters.minDays = maxDateVal ? dateToDaysAgo(maxDateVal) : 0;
       
-      filters.minDuration = toNum(minDur.value.trim(), 0);
-      filters.maxDuration = toNum(maxDur.value.trim(), Infinity);
+      filters.minDuration = durMinResult.value ?? 0;
+      filters.maxDuration = durMaxResult.value ?? Infinity;
       filters.enabled = !filters.enabled;
       
       apply.classList.toggle('active', filters.enabled);
@@ -515,7 +677,10 @@
     reset.className = 'ytf-btn';
     reset.textContent = 'Reset';
     reset.addEventListener('click', () => {
-      [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(i => i.value = '');
+      [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(i => {
+        i.value = '';
+        clearError(i);
+      });
       if (filters.enabled) {
         filters.minViews = 0; filters.maxViews = Infinity;
         filters.minDays = 0; filters.maxDays = Infinity;
@@ -523,13 +688,17 @@
         persist();
         scheduleApply();
       }
+      updateApplyButton();
     });
 
     const clear = document.createElement('button');
     clear.className = 'ytf-btn';
     clear.textContent = 'Clear';
     clear.addEventListener('click', () => {
-      [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(i => i.value = '');
+      [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(i => {
+        i.value = '';
+        clearError(i);
+      });
       if (filters.enabled) {
         filters.enabled = false;
         apply.classList.remove('active');
@@ -537,6 +706,7 @@
         persist();
         scheduleApply();
       }
+      updateApplyButton();
     });
 
     actions.appendChild(apply);
