@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         YouTube Video Filter (Home + Search, optimized)
+// @name         YouTube Video Filter (Fixed & Optimized)
 // @namespace    https://github.com/quantavil
-// @version      2.3
-// @description  Filter YouTube videos by views, age, and duration on Home/Search; ignores Shorts; optimized for SPA navigation
+// @version      3.0
+// @description  Filter YouTube videos by views, age, and duration; fixes Infinity storage, date UTC bugs, and unknown metadata handling
 // @author       You
 // @match        https://www.youtube.com/*
 // @grant        GM_addStyle
@@ -23,7 +23,7 @@
     enabled: false,
   };
 
-  const STORAGE_KEY = 'ytVideoFilter:v2';
+  const STORAGE_KEY = 'ytVideoFilter:v3';
   const VIDEO_HOST_SELECTORS = [
     'ytd-rich-item-renderer',
     'ytd-video-renderer',
@@ -176,7 +176,6 @@
       color: #666;
     }
     
-    /* Date input styling */
     .ytf-input[type="date"] {
       position: relative;
       z-index: 2;
@@ -205,7 +204,6 @@
       display: none;
     }
     
-    /* Error message styling */
     .ytf-error-msg {
       color: #ff4444;
       font-size: 11px;
@@ -306,7 +304,7 @@
   
   const parseDaysAgo = (txt) => {
     if (!txt) return Infinity;
-    const s = txt.toLowerCase().replace('streamed', '').trim();
+    const s = txt.toLowerCase().replace('streamed', '').replace('premiered', '').trim();
     const m = s.match(/(\d+)\s*(second|minute|hour|day|week|month|year)s?/);
     if (!m) return Infinity;
     const v = parseInt(m[1], 10);
@@ -323,33 +321,46 @@
     return v * mult;
   };
 
+  // ✅ FIXED: Use NaN for unknown, floor instead of round, handle LIVE
   const parseDuration = (txt) => {
-    if (!txt) return 0;
+    if (!txt) return NaN;
     const t = txt.trim();
-    if (/^live$/i.test(t)) return 0;
+    if (/^live$/i.test(t)) return NaN; // LIVE = unknown duration
+    
     const parts = t.split(':').map(x => parseInt(x, 10) || 0);
     let seconds = 0;
     if (parts.length === 3) seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
     else if (parts.length === 2) seconds = parts[0] * 60 + parts[1];
-    else seconds = Number.isFinite(parts[0]) ? parts[0] : 0;
-    return Math.round(seconds / 60);
+    else seconds = parts[0] || 0;
+    
+    return Math.floor(seconds / 60); // floor, not round
   };
 
-  // Date utility functions
+  // ✅ FIXED: Proper local date formatting (no UTC conversion)
+  const toLocalISODate = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  // ✅ FIXED: Normalize to local noon to avoid timezone issues
   const daysAgoToDate = (days) => {
     if (!Number.isFinite(days) || days === Infinity) return '';
     const d = new Date();
+    d.setHours(12, 0, 0, 0); // Normalize to noon
     d.setDate(d.getDate() - Math.floor(days));
-    return d.toISOString().split('T')[0];
+    return toLocalISODate(d);
   };
 
+  // ✅ FIXED: Force local noon on both sides to avoid DST/UTC issues
   const dateToDaysAgo = (dateStr) => {
     if (!dateStr) return Infinity;
-    const d = new Date(dateStr);
+    const d = new Date(dateStr + 'T12:00:00'); // Force local noon
     if (isNaN(d.getTime())) return Infinity;
     const now = new Date();
-    const diff = now - d;
-    return Math.floor(diff / (24 * 3600 * 1000));
+    now.setHours(12, 0, 0, 0); // Normalize current time
+    return Math.floor((now - d) / 86400000);
   };
 
   const isShorts = (host) => {
@@ -358,17 +369,29 @@
     return false;
   };
 
+  // ✅ IMPROVED: Enhanced selectors with fallbacks
   const getVideoMeta = (host) => {
     const metaLineSpans = qsa(host, '#metadata-line span, .inline-metadata-item');
     const cmvSpans = qsa(host, '.yt-content-metadata-view-model__metadata-row span');
     const allSpans = [...metaLineSpans, ...cmvSpans];
 
     const viewsTxt = byText(allSpans, t => /view/i.test(t) && !/watching/i.test(t));
-    const timeTxt = byText(allSpans, t => /(ago|streamed)/i.test(t));
+    const timeTxt = byText(allSpans, t => /(ago|streamed|premiered)/i.test(t));
 
-    const durationTxt =
+    // Enhanced duration detection with fallbacks
+    let durationTxt =
       (qs(host, 'ytd-thumbnail-overlay-time-status-renderer #text')?.textContent || '').trim() ||
-      (qs(host, '.yt-thumbnail-overlay-badge-view-model .yt-badge-shape__text')?.textContent || '').trim();
+      (qs(host, 'ytd-thumbnail-overlay-time-status-renderer [id="text"]')?.textContent || '').trim() ||
+      (qs(host, '.yt-thumbnail-overlay-badge-view-model .yt-badge-shape__text')?.textContent || '').trim() ||
+      '';
+
+    // Fallback: Try aria-label on thumbnail
+    if (!durationTxt) {
+      const thumb = qs(host, 'ytd-thumbnail[aria-label], a#thumbnail[aria-label]');
+      const ariaLabel = thumb?.getAttribute('aria-label') || '';
+      const match = ariaLabel.match(/(\d+:\d+(?::\d+)?)/);
+      if (match) durationTxt = match[1];
+    }
 
     return {
       views: parseViews(viewsTxt),
@@ -378,6 +401,7 @@
   };
 
   // ---------- Filtering ----------
+  // ✅ FIXED: Proper handling of unknown dates and durations
   const matches = (host) => {
     if (!filters.enabled) return true;
     
@@ -386,13 +410,19 @@
 
     const { views, daysAgo, duration } = getVideoMeta(host);
 
-    // Ignore videos with unknown publish date
-    if (daysAgo === Infinity) return true;
+    // ✅ NEW: Reject videos with unknown date if any date filter is active
+    const dateFilterActive = (filters.minDays > 0 || filters.maxDays < Infinity);
+    if (daysAgo === Infinity && dateFilterActive) return false;
 
-    // Apply filters
+    // Apply view filters
     if (views < filters.minViews || views > filters.maxViews) return false;
+    
+    // Apply date filters
     if (daysAgo < filters.minDays || daysAgo > filters.maxDays) return false;
-    if (duration > 0 && (duration < filters.minDuration || duration > filters.maxDuration)) return false;
+    
+    // ✅ FIXED: Only apply duration filter when duration is known and finite
+    const durationKnown = Number.isFinite(duration) && duration >= 0;
+    if (durationKnown && (duration < filters.minDuration || duration > filters.maxDuration)) return false;
 
     return true;
   };
@@ -419,42 +449,65 @@
     }
   };
 
+  // ✅ IMPROVED: Better debouncing for rapid mutations
   let raf = 0;
+  let debounceTimer = 0;
   const scheduleApply = () => {
     if (raf) cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(() => {
-      applyToAll();
-      raf = 0;
-    });
+    clearTimeout(debounceTimer);
+    
+    debounceTimer = setTimeout(() => {
+      raf = requestAnimationFrame(() => {
+        applyToAll();
+        raf = 0;
+      });
+    }, 100); // Wait 100ms for rapid mutations
   };
 
-  // ---------- UI ----------
+  // ---------- Storage ----------
+  // ✅ FIXED: Properly handle Infinity serialization
   const persist = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
+    const state = {
+      minViews: filters.minViews || 0,
+      maxViews: Number.isFinite(filters.maxViews) ? filters.maxViews : null,
+      minDays: filters.minDays || 0,
+      maxDays: Number.isFinite(filters.maxDays) ? filters.maxDays : null,
+      minDuration: filters.minDuration || 0,
+      maxDuration: Number.isFinite(filters.maxDuration) ? filters.maxDuration : null,
+      enabled: !!filters.enabled,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   };
   
+  // ✅ FIXED: Coerce null back to Infinity on load
   const load = () => {
     try {
-      const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      Object.assign(filters, data || {});
-    } catch {}
+      const d = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      filters.minViews = d.minViews ?? 0;
+      filters.maxViews = d.maxViews ?? Infinity;
+      filters.minDays = d.minDays ?? 0;
+      filters.maxDays = d.maxDays ?? Infinity;
+      filters.minDuration = d.minDuration ?? 0;
+      filters.maxDuration = d.maxDuration ?? Infinity;
+      filters.enabled = !!d.enabled;
+    } catch {
+      // Keep defaults on parse error
+    }
   };
 
-  // Validation functions
+  // ---------- Validation ----------
   const validateNumber = (value, allowSuffix = false) => {
     if (value === '' || value == null) return { valid: true, value: null };
     
-    const cleaned = value.replace(/[,\s]/g, ''); // Remove commas and spaces
+    const cleaned = value.replace(/[,\s]/g, '');
     
     if (allowSuffix) {
-      // Accept: 1234, 1,234, 1.5K, 10M
       if (!/^[\d.]+[KMB]?$/i.test(cleaned)) {
         return { valid: false, error: 'Use format: 1.5K, 10M, or 1,234' };
       }
       return { valid: true, value: parseNumberWithSuffix(value) };
     }
     
-    // Regular numbers: 123, 1,234
     const num = parseInt(cleaned, 10);
     if (!Number.isFinite(num) || num < 0) {
       return { valid: false, error: 'Must be a positive number' };
@@ -466,15 +519,14 @@
   const validateDate = (value) => {
     if (value === '' || value == null) return { valid: true, value: null };
     
-    const d = new Date(value);
+    const d = new Date(value + 'T00:00:00');
     if (isNaN(d.getTime())) {
       return { valid: false, error: 'Invalid date format' };
     }
     
     const now = new Date();
-    now.setHours(0, 0, 0, 0); // Reset time for fair comparison
-    const inputDate = new Date(value);
-    inputDate.setHours(0, 0, 0, 0);
+    now.setHours(0, 0, 0, 0);
+    const inputDate = new Date(value + 'T00:00:00');
     
     if (inputDate > now) {
       return { valid: false, error: 'Date cannot be in the future' };
@@ -513,12 +565,10 @@
     const minDurVal = validateNumber(minDur.value.trim(), false);
     const maxDurVal = validateNumber(maxDur.value.trim(), false);
 
-    // Clear previous errors
     [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(clearError);
 
     let hasError = false;
 
-    // Individual validation
     if (!minViewsVal.valid) { showError(minViews, minViewsVal.error); hasError = true; }
     if (!maxViewsVal.valid) { showError(maxViews, maxViewsVal.error); hasError = true; }
     if (!minDateVal.valid) { showError(minDate, minDateVal.error); hasError = true; }
@@ -526,7 +576,7 @@
     if (!minDurVal.valid) { showError(minDur, minDurVal.error); hasError = true; }
     if (!maxDurVal.valid) { showError(maxDur, maxDurVal.error); hasError = true; }
 
-    // Date range validation (From ≤ To)
+    // Date range validation
     if (minDateVal.valid && maxDateVal.valid && minDateVal.value && maxDateVal.value) {
       const fromDate = new Date(minDateVal.value);
       const toDate = new Date(maxDateVal.value);
@@ -547,6 +597,7 @@
     };
   };
 
+  // ---------- UI ----------
   const createUI = () => {
     const oldBtn = document.getElementById('yt-filter-toggle');
     const oldPanel = document.getElementById('yt-filter-panel');
@@ -576,7 +627,6 @@
     h.appendChild(close);
     panel.appendChild(h);
 
-    // Toggle panel visibility
     btn.addEventListener('click', () => {
       const isVisible = panel.classList.toggle('visible');
       btn.classList.toggle('active', isVisible);
@@ -638,17 +688,17 @@
     const minDur  = iNum('minDuration', 'Min (mins)');
     const maxDur  = iNum('maxDuration', 'Max (mins)');
 
-    // Clear errors on input
     [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(input => {
       input.addEventListener('input', () => clearError(input));
     });
 
-    // Hydrate inputs from state (only populate if actually set)
+    // Hydrate inputs from loaded state
     const setVal = (el, v) => { el.value = (v === Infinity || v === 0) ? '' : String(v); };
     setVal(minViews, filters.minViews);
     setVal(maxViews, filters.maxViews);
     
-    // Only populate dates if actually set
+    // Date mapping note: "From" (older) = maxDays, "To" (newer) = minDays
+    // (because older dates have larger daysAgo values)
     minDate.value = (filters.maxDays !== Infinity) ? daysAgoToDate(filters.maxDays) : '';
     maxDate.value = (filters.minDays !== 0) ? daysAgoToDate(filters.minDays) : '';
     
@@ -670,22 +720,26 @@
     
     apply.addEventListener('click', () => {
       if (filters.enabled) {
-        // ===== DISABLE MODE =====
+        // Disable mode
         filters.enabled = false;
         apply.textContent = 'Apply Filter';
         apply.classList.remove('active');
         persist();
         scheduleApply();
       } else {
-        // ===== APPLY MODE =====
+        // Apply mode
         const validation = validateAllInputs(minViews, maxViews, minDate, maxDate, minDur, maxDur);
-        if (!validation.valid) return; // Show errors, don't apply
+        if (!validation.valid) return;
         
-        // Apply filter values
         filters.minViews = validation.minViews ?? 0;
         filters.maxViews = validation.maxViews ?? Infinity;
+        
+        // Date range works inversely:
+        // - "From" (older date) = larger daysAgo = maxDays
+        // - "To" (newer date) = smaller daysAgo = minDays
         filters.maxDays = validation.minDate ? dateToDaysAgo(validation.minDate) : Infinity;
         filters.minDays = validation.maxDate ? dateToDaysAgo(validation.maxDate) : 0;
+        
         filters.minDuration = validation.minDur ?? 0;
         filters.maxDuration = validation.maxDur ?? Infinity;
         
@@ -701,13 +755,11 @@
     reset.className = 'ytf-btn';
     reset.textContent = 'Reset';
     reset.addEventListener('click', () => {
-      // Clear all inputs
       [minViews, maxViews, minDate, maxDate, minDur, maxDur].forEach(i => {
         i.value = '';
         clearError(i);
       });
       
-      // Reset filter state
       filters.minViews = 0;
       filters.maxViews = Infinity;
       filters.minDays = 0;
@@ -716,7 +768,6 @@
       filters.maxDuration = Infinity;
       filters.enabled = false;
       
-      // Update UI
       apply.textContent = 'Apply Filter';
       apply.classList.remove('active');
       
