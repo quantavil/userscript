@@ -11,8 +11,6 @@
 // @match        *://www.bing.com/search?*
 // @match        *://duckduckgo.com/?*
 // @match        *://www.google.com/search?*
-// @match        *://www.youtube.com/results?*
-// @match        *://m.youtube.com/results?*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
