@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Search Engine Quick Switcher (Dark & Minimal + Settings DnD)
-// @namespace    http://tampermonkey.net/
-// @version      3.7
-// @description  Minimal dark floating switcher with SVG icons + drag-and-drop reorder/disable settings
-// @author       optimized-edition (+settings & dnd)
+// @name         Search Engine Quick Switcher 
+// @namespace    https://github.com/quantavil
+// @version      3.8
+// @description  floating Search Engine Quick Switcher 
+// @author       quantavil
 // @license      MIT
 // @match        *://search.brave.com/search?*
 // @match        *://yandex.com/search?*
