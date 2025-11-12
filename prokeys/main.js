@@ -76,7 +76,7 @@
   const GMX = {
     getValue: (k, d) => (typeof window.GM_getValue === 'function' ? window.GM_getValue(k, d) : JSON.parse(localStorage.getItem(k) || JSON.stringify(d))),
     setValue: (k, v) => (typeof window.GM_setValue === 'function' ? window.GM_setValue(k, v) : localStorage.setItem(k, JSON.stringify(v))),
-    addStyle: (css) => addStyleOnce(css),
+    addStyle: addStyleOnce,
     registerMenuCommand: (title, fn) => typeof window.GM_registerMenuCommand === 'function' && window.GM_registerMenuCommand(title, fn),
     request: (opts) => new Promise((resolve, reject) => {
       const { method = 'GET', url, headers = {}, data, timeout = CONFIG.gemini.timeoutMs } = opts;
@@ -581,7 +581,7 @@
   function maybeTruncate(text, max) { return text.length <= max ? { text, truncated: false } : { text: text.slice(0, max), truncated: true }; }
 
   async function correctWithGemini(text, bubble) {
-    const key = String(state.apiKey || CONFIG.gemini.apiKey || '').trim();
+    const key = String(state.apiKey || '').trim();
     if (!key) {
       bubble?.update('Set your Gemini API key in Settings.');
       throttledToast('No Gemini API key set. Open Palette → Settings to add it.');
@@ -688,7 +688,7 @@
     `;
     const keyInput = $('.edit-key', container);
     const valInput = $('.edit-val', container);
-    const save = async () => onSave?.(keyInput.value.trim().toLowerCase(), valInput.value.trim());
+    const save = async () => { const k = keyInput.value.trim().toLowerCase(); if (!/^[\w-]+$/.test(k)) { toast('Invalid key — use letters, numbers, _ or -'); return; } await onSave?.(k, valInput.value.trim()); };
     const cancel = () => onCancel?.();
 
     $('[data-action="save"]', container).addEventListener('click', save);
@@ -989,6 +989,7 @@
       if (e.key === 'Escape') { e.preventDefault(); closePalette(); return; }
       if (e.key === 'Enter') {
         e.preventDefault();
+        renderList(search.value);
         const active = wrap.querySelector('.sae-item.active:not(.editing)');
         if (active) selectAndInsert(active.dataset.key);
         return;
@@ -1064,7 +1065,7 @@
     const ae = isEditable(document.activeElement);
     if (ae && elementIsVisible(ae)) return ae;
 
-    const sel = 'textarea, input[type="text"], input[type="search"], input[type="url"], input[type="email"], input[type="tel"], [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]';
+    const sel = 'textarea, input[type="text"], input[type="search"], input[type="url"], input[type="email"], input[type="tel"], [contenteditable]:not([contenteditable="false"])';
     const nodes = Array.from(document.querySelectorAll(sel));
     for (const n of nodes) {
       const ed = isEditable(n);
