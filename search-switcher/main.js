@@ -1,16 +1,19 @@
 // ==UserScript==
-// @name         Search Engine Quick Switcher 
+// @name         Search Engine Quick Switcher (Mobile-friendly)
 // @namespace    https://github.com/quantavil
-// @version      3.8
-// @description  floating Search Engine Quick Switcher 
+// @version      3.9
+// @description  Floating Search Engine Quick Switcher with mobile/touch support
 // @author       quantavil
 // @license      MIT
 // @match        *://search.brave.com/search?*
-// @match        *://yandex.com/search?*
-// @match        *://yandex.ru/search?*
+// @match        *://yandex.*/search*
+// @match        *://*.yandex.*/search*
+// @match        *://ya.ru/search*
+// @match        *://*.ya.ru/search*
 // @match        *://www.bing.com/search?*
 // @match        *://duckduckgo.com/?*
 // @match        *://www.google.com/search?*
+// @match        *://google.com/search?*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -18,20 +21,20 @@
 (function () {
   'use strict';
 
-  const PREF_KEY = 'seqs_prefs_v1';
+  const PREF_KEY = 'seqs_prefs_v2';
 
   const ENGINES = [
     {
       key: 'brave',
-      host: 'search.brave.com',
+      host: ['search.brave.com'],
       param: 'q',
       url: 'https://search.brave.com/search?q=',
       label: 'Brave',
-      icon: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><defs><linearGradient id="A" x1="-.031" y1="44.365" x2="26.596" y2="44.365" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f1562b"/><stop offset=".3" stop-color="#f1542b"/><stop offset=".41" stop-color="#f04d2a"/><stop offset=".49" stop-color="#ef4229"/><stop offset=".5" stop-color="#ef4029"/><stop offset=".56" stop-color="#e83e28"/><stop offset=".67" stop-color="#e13c26"/><stop offset="1" stop-color="#df3c26"/></linearGradient></defs><path d="M26.605 38.85l-.964-2.617.67-1.502c.086-.194.044-.42-.105-.572l-1.822-1.842a2.94 2.94 0 0 0-3.066-.712l-.5.177-2.783-3.016-4.752-.026-4.752.037-2.78 3.04-.495-.175a2.95 2.95 0 0 0-3.086.718L.304 34.237a.41.41 0 0 0-.083.456l.7 1.56-.96 2.615 3.447 13.107c.326 1.238 1.075 2.323 2.118 3.066l6.817 4.62a1.51 1.51 0 0 0 1.886 0l6.813-4.627c1.042-.743 1.8-1.828 2.115-3.066l2.812-10.752z" fill="url(#A)" transform="matrix(2.048177 0 0 2.048177 4.795481 -58.865395)"/><path d="M33.595 39.673a8.26 8.26 0 0 0-1.139-.413h-.686a8.26 8.26 0 0 0-1.139.413l-1.727.718-1.95.897-3.176 1.655c-.235.076-.4.288-.417.535s.118.48.34.586L26.458 46a21.86 21.86 0 0 1 1.695 1.346l.776.668 1.624 1.422.736.65a1.27 1.27 0 0 0 1.62 0l3.174-2.773 1.7-1.346 2.758-1.974a.6.6 0 0 0-.085-1.117l-3.17-1.6-1.96-.897zm19.555-17.77l.1-.287a7.73 7.73 0 0 0-.072-1.148c-.267-.68-.6-1.326-1.023-1.93l-1.794-2.633-1.278-1.736-2.404-3c-.22-.293-.458-.572-.713-.834h-.05l-1.068.197-5.284 1.018c-.535.025-1.07-.053-1.574-.23l-2.902-.937-2.077-.574a8.68 8.68 0 0 0-1.834 0l-2.077.58-2.902.942a4.21 4.21 0 0 1-1.574.23l-5.278-1-1.068-.197h-.05c-.256.262-.494.54-.713.834l-2.4 3a29.33 29.33 0 0 0-1.278 1.736l-1.794 2.633-.848 1.413c-.154.543-.235 1.104-.242 1.67l.1.287c.043.184.1.366.166.543l1.417 1.628 6.28 6.674a1.79 1.79 0 0 1 .318 1.794L18.178 35a3.16 3.16 0 0 0-.049 2.005l.206.565a5.45 5.45 0 0 0 1.673 2.346l.987.803c.52.376 1.2.457 1.794.215l3.508-1.673a8.79 8.79 0 0 0 1.794-1.19l2.808-2.534a1.12 1.12 0 0 0 .37-.795 1.13 1.13 0 0 0-.312-.82l-6.338-4.27a1.23 1.23 0 0 1-.386-1.556l2.458-4.62a2.4 2.4 0 0 0 .121-1.834 2.8 2.8 0 0 0-1.395-1.265l-7.706-2.9c-.556-.2-.525-.45.063-.484l4.526-.45a7.02 7.02 0 0 1 2.113.188l3.938 1.1c.578.174.94.75.843 1.346l-1.547 8.45a4.37 4.37 0 0 0-.076 1.426c.063.202.592.45 1.17.592l2.4.5a5.83 5.83 0 0 0 2.108 0l2.157-.5c.58-.13 1.103-.404 1.17-.606a4.38 4.38 0 0 0-.08-1.426l-1.556-8.45a1.21 1.21 0 0 1 .843-1.346l3.938-1.103a6.98 6.98 0 0 1 2.113-.188l4.526.422c.592.054.62.274.067.484l-7.7 2.92a2.76 2.76 0 0 0-1.395 1.265 2.41 2.41 0 0 0 .12 1.834l2.462 4.62a1.23 1.23 0 0 1-.386 1.556l-6.333 4.28a1.13 1.13 0 0 0 .058 1.615l2.812 2.534a8.89 8.89 0 0 0 1.794 1.184l3.508 1.67c.596.24 1.274.158 1.794-.22l.987-.807a5.44 5.44 0 0 0 1.673-2.35l.206-.565a3.16 3.16 0 0 0-.049-2.005l-1.032-2.436a1.8 1.8 0 0 1 .318-1.794l6.28-6.683 1.413-1.628a4.36 4.36 0 0 0 .193-.53z" fill="#fff"/></svg>'
+      icon: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><defs><linearGradient id="A" x1="-.031" y1="44.365" x2="26.596" y2="44.365" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f1562b"/><stop offset=".3" stop-color="#f1542b"/><stop offset=".41" stop-color="#f04d2a"/><stop offset=".49" stop-color="#ef4229"/><stop offset=".5" stop-color="#ef4029"/><stop offset=".56" stop-color="#e83e28"/><stop offset=".67" stop-color="#e13c26"/><stop offset="1" stop-color="#df3c26"/></linearGradient></defs><path d="M26.605 38.85l-.964-2.617.67-1.502c.086-.194.044-.42-.105-.572l-1.822-1.842a2.94 2.94 0 0 0-3.066-.712l-.5.177-2.783-3.016-4.752-.026-4.752.037-2.78 3.04-.495-.175a2.95 2.95 0 0 0-3.086.718L.304 34.237a.41.41 0 0 0-.083.456l.7 1.56-.96 2.615 3.447 13.107c.326 1.238 1.075 2.323 2.118 3.066l6.817 4.62a1.51 1.51 0 0 0 1.886 0l6.813-4.627c1.042-.743 1.8-1.828 2.115-3.066l2.812-10.752z" fill="url(#A)" transform="matrix(2.048177 0 0 2.048177 4.795481 -58.865395)"/><path d="M33.595 39.673a8.26 8.26 0 0 0-1.139-.413h-.686a8.26 8.26 0 0 0-1.139.413l-1.727.718-1.95.897-3.176 1.655c-.235.076-.4.288-.417.535s.118.48.34.586L26.458 46a21.86 21.86 0 0 1 1.695 1.346l.776.668 1.624 1.422.736.65a1.27 1.27 0 0 0 1.62 0l3.174-2.773 1.7-1.346 2.758-1.974a.6.6 0 0 0-.085-1.117l-3.17-1.6-1.96-.897zm19.555-17.77l.1-.287a7.73 7.73 0 0 0-.072-1.148c-.267-.68-.6-1.326-1.023-1.93l-1.794-2.633-1.278-1.736-2.404-3c-.22-.293-.458-.572-.713-.834h-.05l-1.068.197-5.284 1.018c-.535.025-1.07-.053-1.574-.23l-2.902-.937-2.077-.574a8.68 8.68 0 0 0-1.834 0l-2.077.58-2.902.942a4.21 4.21 0 0 1-1.574.23l-5.278-1-1.068-.197h-.05c-.256.262-.494.54-.713.834l-2.4 3a29.33 29.33 0 0 0-1.278 1.736l-1.794 2.633-.848 1.413c-.154.543-.235 1.104-.242 1.67l.1.287c.043.184.1.366.166.543l1.417 1.628 6.28 6.674a1.79 1.79 0 0 1 .318 1.794L18.178 35a3.16 3.16 0 0 0-.049 2.005l.206.565a5.45 5.45 0 0 0 1.673 2.346l.987.803c.52.376 1.2.457 1.794.215l3.508-1.673a8.79 8.79 0 0 0 1.794-1.19l2.808-2.534a1.12 1.12 0 0 0 .37-.795 1.13 1.13 0 0 0-.312-.82l-6.338-4.27a1.23 1.23 0 0 1-.386-1.556l2.458-4.62a2.4 2.4 0 0 0 .121-1.834 2.8 2.8 0 0 0-1.395-1.265l-7.706-2.9c-.556-.2-.525-.45.063-.484l4.526-.45a7.02 7.02 0 0 1 2.113.188l3.938 1.1c.578.174.94.75.843 1.346l-1.547 8.45a4.37 4.37 0 0 0-.076 1.426c.63.202.592.45 1.17.592l2.4.5a5.83 5.83 0 0 0 2.108 0l2.157-.5c.58-.13 1.103-.404 1.17-.606a4.38 4.38 0 0 0-.08-1.426l-1.556-8.45a1.21 1.21 0 0 1 .843-1.346l3.938-1.103a6.98 6.98 0 0 1 2.113-.188l4.526.422c.592.054.62.274.067.484l-7.7 2.92a2.76 2.76 0 0 0-1.395 1.265 2.41 2.41 0 0 0 .12 1.834l2.462 4.62a1.23 1.23 0 0 1-.386 1.556l-6.333 4.28a1.13 1.13 0 0 0 .058 1.615l2.812 2.534a8.89 8.89 0 0 0 1.794 1.184l3.508 1.67c.596.24 1.274.158 1.794-.22l.987-.807a5.44 5.44 0 0 0 1.673-2.35l.206-.565a3.16 3.16 0 0 0-.049-2.005l-1.032-2.436a1.8 1.8 0 0 1 .318-1.794l6.28-6.683 1.413-1.628a4.36 4.36 0 0 0 .193-.53z" fill="#fff"/></svg>'
     },
     {
       key: 'yandex',
-      host: 'yandex.',
+      host: ['yandex.', 'ya.ru'],
       param: 'text',
       url: 'https://yandex.com/search?text=',
       label: 'Yandex',
@@ -39,7 +42,7 @@
     },
     {
       key: 'bing',
-      host: 'bing.com',
+      host: ['bing.com'],
       param: 'q',
       url: 'https://www.bing.com/search?q=',
       label: 'Bing',
@@ -47,7 +50,7 @@
     },
     {
       key: 'ddg',
-      host: 'duckduckgo.com',
+      host: ['duckduckgo.com'],
       param: 'q',
       url: 'https://duckduckgo.com/?q=',
       label: 'DuckDuckGo',
@@ -55,7 +58,7 @@
     },
     {
       key: 'youtube',
-      host: 'youtube.com',
+      host: ['youtube.com', 'm.youtube.com'],
       param: 'search_query',
       url: 'https://www.youtube.com/results?search_query=',
       label: 'YouTube',
@@ -63,11 +66,10 @@
     },
     {
       key: 'google',
-      host: 'google.com',
+      host: ['google.', 'www.google.com', 'google.com', 'm.google.com'],
       param: 'q',
       url: 'https://www.google.com/search?q=',
       label: 'Google',
-      // Official multi-color "G"
       icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 262"><path fill="#4285F4" d="M255.68 133.49c0-10.87-.98-18.84-3.1-27.1H130.55v49.15h71.81c-1.45 12.3-9.29 30.84-26.67 43.27l-.24 1.6 38.72 30 .27.03c25.21-23.27 39.24-57.54 39.24-96.86"/><path fill="#34A853" d="M130.55 261.1c35.64 0 65.5-11.72 87.33-31.8l-41.62-32.24c-11.17 7.8-26.17 13.3-45.7 13.3-34.92 0-64.57-23.27-75.13-55.56l-1.55.13-40.72 31.5-.53.13C34.73 231.56 79.7 261.1 130.55 261.1"/><path fill="#FBBC05" d="M55.42 154.8c-2.8-8.26-4.41-17.1-4.41-26.31s1.61-18.05 4.41-26.3l-.07-1.76-41.25-31.9-.54.26C5.09 84.27 0 106.36 0 128.5s5.1 44.23 13.56 63.7l41.86-32.69"/><path fill="#EA4335" d="M130.55 50.5c24.82 0 41.57 10.75 51.14 19.74l37.36-36.2C196 12.81 166.19 0 130.55 0 79.7 0 34.73 29.54 13.56 64.8l41.86 32.69c10.56-32.28 40.2-56.99 75.13-56.99"/></svg>'
     }
   ];
@@ -101,10 +103,17 @@
   const getOrderedEngines = (prefs) => prefs.order.map(k => ENGINE_MAP.get(k)).filter(Boolean);
   const getEnabledEngines = (prefs) => getOrderedEngines(prefs).filter(e => !prefs.disabled.includes(e.key));
 
+  // host match helper (string or array of strings)
+  const hostMatches = (hostname, hostField) => {
+    const arr = Array.isArray(hostField) ? hostField : [hostField];
+    return arr.some(h => hostname.includes(h));
+  };
+
   const getCurrentEngine = () => {
-    const { hostname, searchParams } = new URL(location.href);
+    const url = new URL(location.href);
+    const { hostname, searchParams } = url;
     for (const engine of ENGINES) {
-      if (hostname.includes(engine.host)) {
+      if (hostMatches(hostname, engine.host)) {
         const query = searchParams.get(engine.param)?.trim();
         return query ? { engine, query } : null;
       }
@@ -120,6 +129,9 @@
       location.href = engine.url + encodeURIComponent(current.query);
     }
   };
+
+  const isTouchLike = () =>
+    (('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || matchMedia('(pointer: coarse)').matches);
 
   const style = document.createElement('style');
   style.textContent = `
@@ -141,10 +153,15 @@
       top: 50%;
       left: 0;
       transform: translate(calc(-1 * var(--seqs-width)), -50%);
-      z-index: 999999;
-      transition: transform .3s var(--seqs-ease);
+      z-index: 2147483646;
+      transition: transform .25s var(--seqs-ease);
     }
-    .seqs-wrap:hover { transform: translate(0, -50%); }
+    .seqs-wrap.open { transform: translate(0, -50%); }
+
+    /* Keep hover behavior for desktop only */
+    @media (hover: hover) and (pointer: fine) {
+      .seqs-wrap:not(.open):hover { transform: translate(0, -50%); }
+    }
 
     .seqs-panel {
       width: var(--seqs-width);
@@ -168,6 +185,8 @@
       cursor: pointer;
       transition: all .2s var(--seqs-ease);
       padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
     .seqs-btn:hover {
       background: var(--seqs-btn-hover);
@@ -209,6 +228,8 @@
       transition: all .2s var(--seqs-ease);
       border: 1px solid var(--seqs-border);
       border-left: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation; /* avoids ghost clicks/double-tap zoom */
     }
     .seqs-handle:hover {
       width: 32px;
@@ -220,6 +241,7 @@
       height: 16px;
       fill: rgba(255,255,255,.7);
       transition: fill .2s var(--seqs-ease);
+      pointer-events: none;
     }
     .seqs-handle:hover svg { fill: rgba(255,255,255,.9); }
 
@@ -228,7 +250,7 @@
       position: fixed;
       inset: 0;
       background: rgba(0,0,0,.5);
-      z-index: 9999999;
+      z-index: 2147483647;
       display: grid;
       place-items: center;
     }
@@ -263,6 +285,7 @@
       width: 28px; height: 28px;
       border-radius: 8px;
       cursor: pointer;
+      touch-action: manipulation;
     }
     .seqs-settings-body {
       padding: 12px 16px;
@@ -321,6 +344,7 @@
       background: var(--seqs-btn-bg);
       cursor: grab;
       user-select: none;
+      touch-action: none;
     }
     .seqs-drag:hover { border-color: var(--seqs-border-hover); background: var(--seqs-btn-hover); }
     .seqs-drag:active { cursor: grabbing; }
@@ -336,6 +360,7 @@
       color: #eee; border: 1px solid var(--seqs-border);
       border-radius: 8px; padding: 8px 12px; cursor: pointer;
       transition: all .2s var(--seqs-ease);
+      touch-action: manipulation;
     }
     .seqs-settings-actions button:hover { background: var(--seqs-btn-hover); border-color: var(--seqs-border-hover); }
     .seqs-primary { border-color: var(--seqs-accent); }
@@ -381,7 +406,7 @@
 
   const handle = document.createElement('div');
   handle.className = 'seqs-handle';
-  handle.title = 'Cycle to next engine';
+  handle.title = 'Open switcher (tap). Long-press to switch';
   handle.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`;
 
   const buildPanel = () => {
@@ -389,7 +414,6 @@
     const enabled = getEnabledEngines(prefs);
     panel.innerHTML = '';
 
-    // Ensure current engine is visible even if disabled in settings
     const display = enabled.slice();
     if (!display.some(e => e.key === current.engine.key)) {
       display.unshift(current.engine);
@@ -401,11 +425,15 @@
       btn.type = 'button';
       btn.title = engine.label;
       btn.appendChild(createIcon(engine.icon));
-      btn.onclick = () => switchTo(engine);
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        switchTo(engine);
+      }, { passive: false });
       panel.appendChild(btn);
     }
 
-    // Settings button with fixed gear icon
+    // Settings button
     const settingsBtn = document.createElement('button');
     settingsBtn.className = 'seqs-btn settings';
     settingsBtn.type = 'button';
@@ -417,8 +445,29 @@
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path fill="rgba(255,255,255,.9)" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.57-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.5.5 0 0 0-.48-.42h-3.4a.5.5 0 0 0-.48.42l-.36 2.54c-.59.24-1.12.56-1.62.94l-2.39-.96a.5.5 0 0 0-.57.22L2.46 7.98a.5.5 0 0 0 .12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.11.2.36.28.57.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.03.24.24.42.48.42h3.4c.24 0 .45-.18.48-.42l.36-2.54c.59-.24 1.12-.56 1.62-.94l2.39.96c.21.06.46-.02.57-.22l1.92-3.32a.5.5 0 0 0-.12-.61l-2.03-1.58zM11.5 15.5A3.5 3.5 0 1 1 15 12a3.5 3.5 0 0 1-3.5 3.5z"/>
       </svg>`;
-    settingsBtn.onclick = openSettings;
+    settingsBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openSettings();
+    }, { passive: false });
     panel.appendChild(settingsBtn);
+  };
+
+  // Toggle open/close on touch; keep hover for desktop
+  const toggleOpen = (force) => {
+    const next = force === undefined ? !wrap.classList.contains('open') : !!force;
+    wrap.classList.toggle('open', next);
+  };
+
+  // tap vs long-press behavior for handle on touch devices
+  let longPressTimer = null;
+  let longPressFired = false;
+
+  const clearLongPress = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
   };
 
   const cycleNext = () => {
@@ -430,7 +479,45 @@
     switchTo(next);
   };
 
-  handle.onclick = cycleNext;
+  // Handle interactions:
+  // - Touch: short tap toggles panel; long-press (500ms) cycles to next engine
+  // - Mouse (desktop): click cycles (old behavior), hover opens (via CSS)
+  const onPointerDown = (ev) => {
+    // Prevent accidental focus scroll/zoom behavior
+    if (isTouchLike()) {
+      ev.preventDefault();
+      longPressFired = false;
+      clearLongPress();
+      longPressTimer = setTimeout(() => {
+        longPressFired = true;
+        cycleNext();
+      }, 500);
+    }
+  };
+  const onPointerUp = (ev) => {
+    if (isTouchLike()) {
+      ev.preventDefault();
+      clearLongPress();
+      if (!longPressFired) toggleOpen(); // short tap opens/closes
+    } else {
+      // Desktop click cycles, hover opens panel
+      cycleNext();
+    }
+  };
+  const onPointerCancel = () => {
+    clearLongPress();
+  };
+
+  handle.addEventListener('pointerdown', onPointerDown, { passive: false });
+  handle.addEventListener('pointerup', onPointerUp, { passive: false });
+  handle.addEventListener('pointercancel', onPointerCancel, { passive: true });
+  handle.addEventListener('pointerleave', onPointerCancel, { passive: true });
+
+  // Close panel when tapping outside on touch devices
+  document.addEventListener('click', (e) => {
+    if (!isTouchLike()) return;
+    if (!wrap.contains(e.target)) toggleOpen(false);
+  }, { passive: true });
 
   wrap.appendChild(panel);
   wrap.appendChild(handle);
@@ -524,7 +611,6 @@
           </svg>
         `;
 
-        // Only allow dragging from the handle
         li.draggable = false;
         drag.addEventListener('mousedown', () => { li.draggable = true; });
         drag.addEventListener('mouseup',   () => { li.draggable = false; });
@@ -533,7 +619,6 @@
         li.addEventListener('dragstart', (e) => {
           dragKey = engine.key;
           e.dataTransfer.effectAllowed = 'move';
-          // Firefox requires dataTransfer data
           e.dataTransfer.setData('text/plain', engine.key);
         });
 
@@ -547,10 +632,6 @@
           const rect = target.getBoundingClientRect();
           const before = e.clientY < rect.top + rect.height / 2;
           target.classList.add(before ? 'drop-before' : 'drop-after');
-        });
-
-        li.addEventListener('dragleave', () => {
-          // visual cleanup happens in dragover for next target
         });
 
         li.addEventListener('drop', (e) => {
@@ -569,7 +650,6 @@
           let to = order.indexOf(targetKey);
           if (after) to += 1;
 
-          // Adjust if moving forward in the list
           if (from < to) to -= 1;
 
           order.splice(to, 0, order.splice(from, 1)[0]);
