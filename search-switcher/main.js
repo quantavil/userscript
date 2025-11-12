@@ -10,11 +10,16 @@
 // @match        *://*.yandex.*/search*
 // @match        *://ya.ru/search*
 // @match        *://*.ya.ru/search*
-// @match        *://www.bing.com/search?*
+// @match        *://bing.com/search?*
+// @match        *://*.bing.com/search?*
 // @match        *://duckduckgo.com/?*
-// @match        *://www.google.com/search?*
-// @match        *://google.com/search?*
-// @grant        none
+// @match        *://*.duckduckgo.com/?*
+// @match        *://google.*/search?*
+// @match        *://*.google.*/search?*
+// @match        *://youtube.com/results?*
+// @match        *://*.youtube.com/results?*
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -83,9 +88,11 @@
 
   const loadPrefs = () => {
     try {
-      const raw = localStorage.getItem(PREF_KEY);
+      const raw = typeof GM_getValue === 'function'
+        ? GM_getValue(PREF_KEY, null)
+        : localStorage.getItem(PREF_KEY);
       if (!raw) return getDefaultPrefs();
-      const parsed = JSON.parse(raw) || {};
+      const parsed = typeof raw === 'string' ? (JSON.parse(raw) || {}) : (raw || {});
       const known = new Set(ENGINES.map(e => e.key));
       let order = Array.isArray(parsed.order) ? parsed.order.filter(k => known.has(k)) : [];
       for (const k of ENGINES.map(e => e.key)) if (!order.includes(k)) order.push(k);
@@ -97,16 +104,40 @@
   };
 
   const savePrefs = (prefs) => {
-    localStorage.setItem(PREF_KEY, JSON.stringify(prefs));
+    const payload = JSON.stringify(prefs);
+    if (typeof GM_setValue === 'function') {
+      GM_setValue(PREF_KEY, payload);
+    } else {
+      localStorage.setItem(PREF_KEY, payload);
+    }
   };
 
   const getOrderedEngines = (prefs) => prefs.order.map(k => ENGINE_MAP.get(k)).filter(Boolean);
   const getEnabledEngines = (prefs) => getOrderedEngines(prefs).filter(e => !prefs.disabled.includes(e.key));
 
-  // host match helper (string or array of strings)
+  // Host match helper with strict boundary checks (string or array of strings)
+  // Supports patterns:
+  //  - exact hosts like 'www.google.com'
+  //  - subdomains via '*.example.com'
+  //  - TLD wildcard via 'google.' (matches google.<tld> and subdomains)
   const hostMatches = (hostname, hostField) => {
-    const arr = Array.isArray(hostField) ? hostField : [hostField];
-    return arr.some(h => hostname.includes(h));
+    const patterns = Array.isArray(hostField) ? hostField : [hostField];
+    return patterns.some((p) => {
+      if (!p) return false;
+      // Wildcard subdomain pattern: '*.example.com'
+      if (p.startsWith('*.')) {
+        const base = p.slice(2);
+        return hostname === base || hostname.endsWith(`.${base}`);
+      }
+      // TLD wildcard pattern: 'google.' (matches google.com, google.co.uk, etc.)
+      if (p.endsWith('.')) {
+        const escaped = p.replace(/\./g, '\\.');
+        const re = new RegExp(`(^|\\.)${escaped}[A-Za-z0-9.-]+$`);
+        return re.test(hostname);
+      }
+      // Exact or subdomain match
+      return hostname === p || hostname.endsWith(`.${p}`);
+    });
   };
 
   const getCurrentEngine = () => {
@@ -770,7 +801,16 @@
     const saveBtn = overlay.querySelector('.seqs-save');
     const resetBtn = overlay.querySelector('.seqs-reset');
 
-    const close = () => overlay.remove();
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') close();
+    };
+
+    const close = () => {
+      document.removeEventListener('keydown', onKeyDown);
+      overlay.remove();
+    };
+
+    document.addEventListener('keydown', onKeyDown);
 
     closeBtn.onclick = cancelBtn.onclick = close;
 
