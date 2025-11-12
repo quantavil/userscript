@@ -2,7 +2,7 @@
 // @name         Smart Abbreviation Expander (AI)
 // @namespace    https://github.com/quantavil
 // @version      1.12.0
-// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Inline editing, in-panel settings, top-right SVG FAB with site filter, hotkey customization, and API key verify+save. Fallback: if no caret, insert at end-of-line in a reasonable field.
+// @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Inline editing, in-panel settings, hotkey customization, and API key verify+save. Fallback: if no caret, insert at end-of-line in a reasonable field.
 // @author       quantavil
 // @match        *://*/*
 // @grant        GM_getValue
@@ -31,9 +31,7 @@
       dict: 'sae.dict.v1',
       tone: 'sae.gemini.tone.v1',
       keys: 'sae.keys.v1',
-      fab: 'sae.ui.fabEnabled.v1',
       apiKey: 'sae.gemini.apiKey.v1',
-      fabSites: 'sae.ui.fabSites.v1', // array of host patterns
     },
     toast: { throttleMs: 3000 },
     clipboardReadTimeoutMs: 350,
@@ -149,14 +147,11 @@
     lastEditable: null,
     _lastToastAt: 0,
     tone: 'neutral',
-    fabEnabled: true,
     _lastFocusedEditable: null,
     activeIndex: 0,
     apiKey: '',
-    fabSites: ['*'], // list of host patterns; * means all
   };
   let paletteEl = null;
-  let fabEl = null;
   let hotkeyCapture = null; // { kind: 'spaceOnly' | 'code', resolve, bubble }
   let prevOverflow = '';
 
@@ -206,21 +201,6 @@
     .sae-chip{display:inline-block;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#ddd;margin-right:8px}
     .sae-settings-actions{display:flex;gap:8px;flex-wrap:wrap}
     .sae-settings-footer{padding-top:8px;display:flex;justify-content:flex-end}
-
-    /* FAB (SVG) at top-right edge */
-    .sae-fab{
-      position:fixed !important; top:0 !important; right:0 !important;
-      width:40px !important;height:40px !important;
-      display:flex !important;align-items:center !important;justify-content:center !important;
-      border:1px solid rgba(255,255,255,.12) !important;
-      border-right:none !important;border-radius:6px 0 0 6px !important;
-      background:#111 !important;color:#fff !important;
-      box-shadow:0 6px 18px rgba(0,0,0,.35) !important;
-      cursor:pointer !important;z-index:2147483647 !important;
-      user-select:none !important; pointer-events:auto !important; box-sizing:border-box !important;
-    }
-    .sae-fab:hover{background:#1b1b1b !important}
-    .sae-fab svg{width:20px;height:20px;fill:currentColor}
   `;
 
   // ----------------------
@@ -238,31 +218,19 @@
     if (savedKeys?.palette) Object.assign(CONFIG.palette, savedKeys.palette);
     if (savedKeys?.correct) Object.assign(CONFIG.correct, savedKeys.correct);
 
-    // FAB flag + site list
-    state.fabEnabled = await GMX.getValue(CONFIG.storeKeys.fab, true);
-    state.fabSites = await GMX.getValue(CONFIG.storeKeys.fabSites, ['*']);
-
     // API key
     state.apiKey = await GMX.getValue(CONFIG.storeKeys.apiKey, CONFIG.gemini.apiKey || '');
 
-    // Wait for DOM before adding FAB
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initDOM);
-    } else {
-      initDOM();
-    }
-    window.addEventListener('load', () => refreshFab());
 
     // Remember last focused editable (ignore palette UI)
     document.addEventListener('focusin', (e) => {
-      if (e.target.closest('.sae-palette, .sae-fab')) return;
+      if (e.target.closest('.sae-palette')) return;
       const el = isEditable(e.target);
       if (el) state._lastFocusedEditable = el;
     }, true);
 
     // Menu commands
     GMX.registerMenuCommand('Open Abbreviation Palette', () => { state.lastEditable = captureEditableContext(); openPalette(); });
-    GMX.registerMenuCommand(`Toggle FAB (${state.fabEnabled ? 'on' : 'off'})`, async () => { await toggleFabSetting(); });
     GMX.registerMenuCommand('Export Dictionary (.json)', exportDict);
     GMX.registerMenuCommand('Import Dictionary', () => importDict());
     GMX.registerMenuCommand('Reset Dictionary to Defaults', async () => {
@@ -290,9 +258,7 @@
     document.addEventListener('keydown', onKeyDownCapture, true);
   }
 
-  function initDOM() {
-    refreshFab();
-  }
+  
 
   // ----------------------
   // Hotkeys
@@ -679,7 +645,7 @@
   }
 
   // ----------------------
-  // Palette UI + dict management + FAB + Hotkeys + Settings
+  // Palette UI + dict management + Hotkeys + Settings
   // ----------------------
   async function setDict(obj, msg) {
     state.dict = normalizeDict(obj);
@@ -857,7 +823,7 @@
     }
 
     async function selectAndInsert(key) {
-      // Prefer the saved context captured when opening palette/FAB click
+      // Prefer the saved context captured when opening palette click
       let ctx = null;
       const saved = state.lastEditable;
       if (saved && (
@@ -923,24 +889,8 @@
       const hkPalette = hotkeyToString(CONFIG.palette, false);
       const hkCorrect = hotkeyToString(CONFIG.correct, false);
       const tones = ['neutral', 'friendly', 'formal', 'casual', 'concise'];
-      const sitesList = escapeHtml((state.fabSites || ['*']).join('\n'));
 
       settingsView.innerHTML = `
-        <div class="sae-hrow">
-          <div>FAB (top-right)</div>
-          <div><label><input type="checkbox" class="fab-toggle"${state.fabEnabled ? ' checked' : ''}/> Show floating button</label></div>
-          <div></div>
-        </div>
-        <div class="sae-hrow">
-          <div>Show FAB on websites</div>
-          <div>
-            <textarea class="sae-textarea fab-sites-textarea" placeholder="One per line. Examples:\n*\nexample.com\n*.example.com\nhttps://app.example.com">${sitesList}</textarea>
-          </div>
-          <div class="sae-settings-actions">
-            <button class="sae-btn add-site">Add current site</button>
-            <button class="sae-btn save-sites">Save list</button>
-          </div>
-        </div>
         <div class="sae-hrow">
           <div>Tone (Gemini)</div>
           <div><select class="sae-select tone-select">
@@ -986,30 +936,6 @@
           <button class="sae-btn" data-action="done">Done</button>
         </div>
       `;
-
-      // FAB toggle
-      $('.fab-toggle', settingsView).addEventListener('change', () => toggleFabSetting());
-
-      // Site list actions
-      $('.add-site', settingsView).addEventListener('click', () => {
-        const ta = $('.fab-sites-textarea', settingsView);
-        const host = location.hostname;
-        const lines = normalizeFabSites(ta.value);
-        if (!lines.includes(host)) {
-          ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + host;
-          toast(`Added "${host}"`);
-        } else {
-          toast(`"${host}" already in list.`);
-        }
-      });
-      $('.save-sites', settingsView).addEventListener('click', async () => {
-        const ta = $('.fab-sites-textarea', settingsView);
-        const next = normalizeFabSites(ta.value);
-        state.fabSites = next.length ? next : ['*'];
-        await GMX.setValue(CONFIG.storeKeys.fabSites, state.fabSites);
-        refreshFab();
-        toast('FAB site list saved.');
-      });
 
       // Tone change
       $('.tone-select', settingsView).addEventListener('change', async (e) => {
@@ -1120,47 +1046,6 @@
   }
 
   // ----------------------
-  // FAB helpers (no watcher)
-  // ----------------------
-  function shouldShowFab() { return !!(state.fabEnabled && isFabHostAllowed(state.fabSites, location.hostname)); }
-  function refreshFab() { if (shouldShowFab()) ensureFab(); else removeFab(); }
-  function removeFab() { try { fabEl?.remove(); } catch { } fabEl = null; }
-
-  function ensureFab() {
-    if (fabEl && fabEl.isConnected) { fabEl.style.display = 'flex'; return; }
-    fabEl = document.createElement('button');
-    fabEl.className = 'sae-fab';
-    fabEl.type = 'button';
-    fabEl.title = 'Abbreviation Palette';
-    fabEl.innerHTML = `
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <circle cx="12" cy="5" r="2"></circle>
-        <circle cx="12" cy="12" r="2"></circle>
-        <circle cx="12" cy="19" r="2"></circle>
-      </svg>
-    `;
-
-    fabEl.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (state._lastFocusedEditable && state._lastFocusedEditable.isConnected) {
-        state.lastEditable = buildEndContextForEl(state._lastFocusedEditable);
-      } else {
-        state.lastEditable = captureEditableContext();
-      }
-      openPalette();
-    });
-
-    document.documentElement.appendChild(fabEl);
-  }
-
-  async function toggleFabSetting() {
-    state.fabEnabled = !state.fabEnabled;
-    await GMX.setValue(CONFIG.storeKeys.fab, state.fabEnabled);
-    refreshFab();
-    toast(`FAB ${state.fabEnabled ? 'enabled' : 'disabled'}.`);
-  }
-
-  // ----------------------
   // Fallback helpers
   // ----------------------
   function elementIsVisible(el) {
@@ -1248,24 +1133,6 @@
   function codeToHuman(code) { if (!code) return 'Space'; if (code.startsWith('Key')) return code.slice(3); if (code.startsWith('Digit')) return code.slice(5); if (code === 'Space') return 'Space'; return code; }
   function toast(msg, ms = 2200) { notify.toast(msg, ms); }
   function throttledToast(msg, ms = 2200) { const now = Date.now(); if (now - state._lastToastAt < CONFIG.toast.throttleMs) return; state._lastToastAt = now; toast(msg, ms); }
-
-  // FAB site matching
-  function normalizeFabSites(input) {
-    return String(input || '').split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
-  }
-  function isFabHostAllowed(list, host) {
-    if (!Array.isArray(list) || list.length === 0) return false; // only show on listed sites
-    host = (host || '').toLowerCase();
-    return list.some(p => matchHostPattern(p, host));
-  }
-  function matchHostPattern(p, host) {
-    p = String(p || '').trim().toLowerCase();
-    if (!p) return false;
-    if (p === '*' || p === 'all') return true;
-    try { if (p.includes('://')) p = new URL(p).hostname.toLowerCase(); } catch { }
-    if (p.startsWith('*.')) { const base = p.slice(2); return host === base || host.endsWith('.' + base); }
-    return host === p || host.endsWith('.' + p);
-  }
 
   // API key verify + save
   async function verifyAndSaveApiKey(key, btn) {
