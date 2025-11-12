@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Search Engine Quick Switcher (Mobile-friendly)
 // @namespace    https://github.com/quantavil
-// @version      3.9
+// @version      4.0
 // @description  Floating Search Engine Quick Switcher with mobile/touch support
 // @author       quantavil
 // @license      MIT
@@ -462,6 +462,9 @@
   // tap vs long-press behavior for handle on touch devices
   let longPressTimer = null;
   let longPressFired = false;
+  const MOVE_CANCEL_PX = 8;
+  let pressStartXY = null;
+  let movedDuringPress = false;
 
   const clearLongPress = () => {
     if (longPressTimer) {
@@ -483,10 +486,11 @@
   // - Touch: short tap toggles panel; long-press (500ms) cycles to next engine
   // - Mouse (desktop): click cycles (old behavior), hover opens (via CSS)
   const onPointerDown = (ev) => {
-    // Prevent accidental focus scroll/zoom behavior
     if (isTouchLike()) {
       ev.preventDefault();
       longPressFired = false;
+      movedDuringPress = false;
+      pressStartXY = { x: ev.clientX, y: ev.clientY };
       clearLongPress();
       longPressTimer = setTimeout(() => {
         longPressFired = true;
@@ -494,11 +498,24 @@
       }, 500);
     }
   };
+
+  const onPointerMove = (ev) => {
+    if (!isTouchLike() || !pressStartXY) return;
+    const dx = ev.clientX - pressStartXY.x;
+    const dy = ev.clientY - pressStartXY.y;
+    if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
+      movedDuringPress = true;
+      clearLongPress();
+    }
+  };
+
   const onPointerUp = (ev) => {
     if (isTouchLike()) {
       ev.preventDefault();
       clearLongPress();
-      if (!longPressFired) toggleOpen(); // short tap opens/closes
+      const shouldToggle = !longPressFired && !movedDuringPress;
+      pressStartXY = null;
+      if (shouldToggle) toggleOpen();
     } else {
       // Desktop click cycles, hover opens panel
       cycleNext();
@@ -506,9 +523,12 @@
   };
   const onPointerCancel = () => {
     clearLongPress();
+    pressStartXY = null;
+    movedDuringPress = false;
   };
 
   handle.addEventListener('pointerdown', onPointerDown, { passive: false });
+  handle.addEventListener('pointermove', onPointerMove, { passive: false });
   handle.addEventListener('pointerup', onPointerUp, { passive: false });
   handle.addEventListener('pointercancel', onPointerCancel, { passive: true });
   handle.addEventListener('pointerleave', onPointerCancel, { passive: true });
@@ -551,6 +571,8 @@
     `;
 
     const listEl = overlay.querySelector('.seqs-engine-list');
+    const isTouch = isTouchLike();
+    let tDrag = { active: false, dropTarget: null, before: true, pointerId: null };
 
     const clearDropIndicators = () => {
       listEl.querySelectorAll('.drop-before, .drop-after').forEach(el => {
@@ -611,57 +633,126 @@
           </svg>
         `;
 
-        li.draggable = false;
-        drag.addEventListener('mousedown', () => { li.draggable = true; });
-        drag.addEventListener('mouseup',   () => { li.draggable = false; });
-        drag.addEventListener('mouseleave',() => { li.draggable = false; });
-
-        li.addEventListener('dragstart', (e) => {
-          dragKey = engine.key;
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', engine.key);
-        });
-
-        li.addEventListener('dragover', (e) => {
-          if (!dragKey) return;
-          e.preventDefault();
-          const target = e.currentTarget;
-          if (!target || !(target instanceof HTMLElement)) return;
-          clearDropIndicators();
-
-          const rect = target.getBoundingClientRect();
-          const before = e.clientY < rect.top + rect.height / 2;
-          target.classList.add(before ? 'drop-before' : 'drop-after');
-        });
-
-        li.addEventListener('drop', (e) => {
-          if (!dragKey) return;
-          e.preventDefault();
-          const targetKey = li.dataset.key;
-          if (!targetKey || targetKey === dragKey) {
-            clearDropIndicators();
-            return;
-          }
-
-          const before = li.classList.contains('drop-before');
-          const after  = li.classList.contains('drop-after');
-
-          let from = order.indexOf(dragKey);
-          let to = order.indexOf(targetKey);
-          if (after) to += 1;
-
-          if (from < to) to -= 1;
-
-          order.splice(to, 0, order.splice(from, 1)[0]);
-          clearDropIndicators();
-          render();
-        });
-
-        li.addEventListener('dragend', () => {
+        if (!isTouch) {
           li.draggable = false;
-          dragKey = null;
-          clearDropIndicators();
-        });
+          drag.addEventListener('mousedown', () => { li.draggable = true; });
+          drag.addEventListener('mouseup',   () => { li.draggable = false; });
+          drag.addEventListener('mouseleave',() => { li.draggable = false; });
+
+          li.addEventListener('dragstart', (e) => {
+            dragKey = engine.key;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', engine.key);
+          });
+
+          li.addEventListener('dragover', (e) => {
+            if (!dragKey) return;
+            e.preventDefault();
+            const target = e.currentTarget;
+            if (!target || !(target instanceof HTMLElement)) return;
+            clearDropIndicators();
+
+            const rect = target.getBoundingClientRect();
+            const before = e.clientY < rect.top + rect.height / 2;
+            target.classList.add(before ? 'drop-before' : 'drop-after');
+          });
+
+          li.addEventListener('drop', (e) => {
+            if (!dragKey) return;
+            e.preventDefault();
+            const targetKey = li.dataset.key;
+            if (!targetKey || targetKey === dragKey) {
+              clearDropIndicators();
+              return;
+            }
+
+            const before = li.classList.contains('drop-before');
+            const after  = li.classList.contains('drop-after');
+
+            let from = order.indexOf(dragKey);
+            let to = order.indexOf(targetKey);
+            if (after) to += 1;
+
+            if (from < to) to -= 1;
+
+            order.splice(to, 0, order.splice(from, 1)[0]);
+            clearDropIndicators();
+            render();
+          });
+
+          li.addEventListener('dragend', () => {
+            li.draggable = false;
+            dragKey = null;
+            clearDropIndicators();
+          });
+        } else {
+          // Pointer-based touch reorder
+          drag.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dragKey = engine.key;
+            tDrag.active = true;
+            tDrag.pointerId = e.pointerId;
+            tDrag.dropTarget = null;
+            tDrag.before = true;
+            drag.setPointerCapture(e.pointerId);
+          });
+          drag.addEventListener('pointermove', (e) => {
+            if (!tDrag.active) return;
+            e.preventDefault();
+            const y = e.clientY;
+            let best = null;
+            const rows = Array.from(listEl.children);
+            clearDropIndicators();
+            for (const row of rows) {
+              const rect = row.getBoundingClientRect();
+              if (y >= rect.top && y <= rect.bottom) {
+                const before = y < rect.top + rect.height / 2;
+                row.classList.add(before ? 'drop-before' : 'drop-after');
+                best = { row, before };
+                break;
+              }
+            }
+            if (!best && rows.length) {
+              const first = rows[0];
+              const last = rows[rows.length - 1];
+              const r1 = first.getBoundingClientRect();
+              const r2 = last.getBoundingClientRect();
+              if (y < r1.top) {
+                first.classList.add('drop-before');
+                best = { row: first, before: true };
+              } else if (y > r2.bottom) {
+                last.classList.add('drop-after');
+                best = { row: last, before: false };
+              }
+            }
+            tDrag.dropTarget = best?.row || null;
+            tDrag.before = best?.before ?? true;
+          });
+          drag.addEventListener('pointerup', (e) => {
+            if (!tDrag.active) return;
+            e.preventDefault();
+            drag.releasePointerCapture(tDrag.pointerId);
+            tDrag.active = false;
+            const targetEl = tDrag.dropTarget;
+            clearDropIndicators();
+            if (!targetEl || !dragKey) return;
+            const targetKey = targetEl.dataset.key;
+            if (!targetKey || targetKey === dragKey) return;
+            let from = order.indexOf(dragKey);
+            let to = order.indexOf(targetKey);
+            if (!tDrag.before) to += 1;
+            if (from < to) to -= 1;
+            order.splice(to, 0, order.splice(from, 1)[0]);
+            dragKey = null;
+            render();
+          });
+          drag.addEventListener('pointercancel', () => {
+            tDrag.active = false;
+            dragKey = null;
+            clearDropIndicators();
+          });
+        }
 
         li.appendChild(info);
         li.appendChild(toggle);
