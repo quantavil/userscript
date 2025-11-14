@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Smart Abbreviation Expander (AI)
 // @namespace    https://github.com/quantavil
-// @version      1.12.0
+// @version      1.14.0
 // @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Inline editing, in-panel settings, hotkey customization, and API key verify+save. Fallback: if no caret, insert at end-of-line in a reasonable field.
 // @author       quantavil
 // @match        *://*/*

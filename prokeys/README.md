@@ -1,8 +1,6 @@
-# SnippetForge
+# Smart Abbreviation Expander (AI)
 
-**AI-Powered Smart Text Expander**
-
-SnippetForge is a powerful userscript that transforms your typing experience with intelligent text expansion, AI-powered grammar correction, and a sophisticated template engine. Expand abbreviations, insert dynamic content, and polish your writing—all with a few keystrokes.
+AI-powered userscript that supercharges typing with smart abbreviation expansion, dynamic templates, and Gemini-powered rewriting. Trigger expansions with Shift+Space, browse your snippet palette, and polish text with one hotkey.
 
 ---
 
@@ -10,11 +8,11 @@ SnippetForge is a powerful userscript that transforms your typing experience wit
 
 | Feature | Description |
 |---------|-------------|
-| 🚀 **Smart Expansion** | Type abbreviations like `brb` and press `Shift+Space` to instantly expand them |
+| 🚀 **Smart Expansion** | Type abbreviations like `brb` then press `Shift+Space` to expand |
 | 🎨 **Template Engine** | Use dynamic tags: `{{date}}`, `{{time}}`, `{{clipboard}}`, `{{cursor}}` |
-| 🤖 **AI Correction** | Select text and press `Alt+G` to polish grammar/tone with Gemini AI |
+| 🤖 **AI Correction** | Select text and press `Alt+G` to polish grammar/tone with Gemini |
 | 📚 **Visual Palette** | Press `Alt+P` to browse, search, and manage all your snippets |
-| ⚙️ **In-Panel Settings** | Customize hotkeys, AI tone, and FAB visibility without leaving the page |
+| ⚙️ **In-Panel Settings** | Customize hotkeys, AI tone, and custom prompt in the palette |
 | 📦 **Dictionary Sync** | Export/import your snippets as JSON for backup or sharing |
 | 🎯 **Universal Support** | Works in textareas, inputs, and contenteditable areas across all websites |
 | 💾 **Smart Fallback** | If no text field is focused, inserts at the end of the last used field |
@@ -28,22 +26,11 @@ SnippetForge is a powerful userscript that transforms your typing experience wit
 
 ### Steps
 1. Create a new userscript in your manager
-2. Copy the entire `SnippetForge` script into it
+2. Copy the contents of `prokeys/main.js` into it
 3. Save and enable the script
-4. **Important**: Add your Gemini API key in the `CONFIG.gemini.apiKey` field (found near the top of the script)
+4. Open the palette (`Alt+P`) → click the gear → enter your Gemini API key → click `Verify`
 
-```javascript
-// In the script header:
-const CONFIG = {
-  // ... other settings
-  gemini: {
-    apiKey: 'YOUR_API_KEY_HERE', // ← Replace with your key
-    // ...
-  }
-};
-```
-
-*Get a free API key from [Google AI Studio](https://makersuite.google.com/app/apikey)*
+Get an API key from Google AI Studio: https://makersuite.google.com/app/apikey
 
 ---
 
@@ -64,6 +51,11 @@ const CONFIG = {
 1. Select text in any editable field (or place cursor in an empty field)
 2. Press `Alt+G`
 3. Wait a moment while Gemini rewrites it with improved grammar and tone
+
+### Custom Prompt
+1. Open the palette (`Alt+P`) → Settings
+2. Add your instruction in “Custom Prompt” (use `{}` to insert selection)
+3. In a text field, press `Alt+Shift+G` to apply it
 
 ---
 
@@ -100,6 +92,7 @@ reply: Thanks for your message on {{day}}. I'll review it and get back to you so
 | `Shift+Space` | Expand abbreviation before cursor |
 | `Alt+P` | Open snippet palette |
 | `Alt+G` | AI-correct selected text or entire field |
+| `Alt+Shift+G` | Apply your Custom Prompt to selection/field |
 | `↑`/`↓` | Navigate palette items |
 | `Enter` | Insert selected snippet |
 | `Escape` | Close palette/settings |
@@ -123,11 +116,11 @@ reply: Thanks for your message on {{day}}. I'll review it and get back to you so
 
 | Setting | Options | Description |
 |---------|---------|-------------|
-| **FAB Toggle** | on/off | Show/hide the floating button at the top-right |
-| **AI Tone** | neutral, friendly, formal, casual, concise | Personality of Gemini corrections |
+| **AI Tone** | neutral, friendly, formal, casual, concise | Tone used by Gemini corrections |
 | **Expand Hotkey** | any Space-based combo | Default: `Shift+Space` |
 | **Palette Hotkey** | any key combination | Default: `Alt+P` |
 | **Correct Hotkey** | any key combination | Default: `Alt+G` |
+| **Custom Prompt** | free text | Instruction used by `Alt+Shift+G` (supports `{}`)
 
 ---
 
@@ -146,28 +139,40 @@ reply: Thanks for your message on {{day}}. I'll review it and get back to you so
 
 ### Resetting
 - Use "Reset to Defaults" to restore the built-in dictionary
-- **Warning**: This cannot be undone
+- Warning: This cannot be undone
 
 ---
 
 ## Advanced Usage
 
 ### Fallback Insertion
-If you trigger expansion without a focused text field, SnippetForge intelligently:
+If you trigger expansion without a focused text field, the script intelligently:
 1. Uses the last field you edited
 2. Falls back to the first visible text field on the page
 3. Inserts at the end of the content
 
 ### ContentEditable Support
-SnippetForge fully supports rich text editors (Gmail, Notion, etc.) with:
+Fully supports rich text editors (Gmail, Notion, etc.) with:
 - Preserved formatting
 - Correct cursor positioning
 - Multi-line expansions
 
 ### Performance Notes
-- **Search Debouncing**: Searches wait 150ms after you stop typing
-- **Toast Throttling**: Status messages won't spam you
-- **Clipboard Timeout**: Reads clipboards for 350ms before giving up
+- Search debouncing: 150ms after typing stops
+- Toast throttling: avoids duplicate messages within 3s
+- Clipboard timeout: waits ~350ms, then falls back
+
+---
+
+## Menu Commands
+
+- `Open Abbreviation Palette`
+- `Export Dictionary (.json)`
+- `Import Dictionary`
+- `Reset Dictionary to Defaults`
+- `Gemini: Correct Selection/Field (Alt+G)`
+- `Gemini: Set Tone (neutral/friendly/formal/casual/concise)`
+- `Gemini: Set API Key`
 
 ---
 
