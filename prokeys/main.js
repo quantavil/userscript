@@ -370,11 +370,41 @@
         getSelectedText() { const { range } = this.getSelectionRange(); return range ? range.toString() : ''; },
         getAllText() { const r = document.createRange(); r.selectNodeContents(root); return r.toString(); },
         replaceRangeWithText(range, text, caretIndex = text.length) {
+          let ok = false;
+          try {
+            const sel = getSafeSelection();
+            sel && sel.removeAllRanges();
+            sel && sel.addRange(range);
+            const mark = '\u200B';
+            const t = (caretIndex >= 0 && caretIndex <= text.length) ? (String(text).slice(0, caretIndex) + mark + String(text).slice(caretIndex)) : (String(text) + mark);
+            ok = document.execCommand('insertText', false, t);
+            if (!ok) ok = document.execCommand('insertHTML', false, t);
+            if (ok) {
+              const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+              let foundNode = null, foundIdx = -1;
+              for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                const i = n.nodeValue.indexOf(mark);
+                if (i !== -1) { foundNode = n; foundIdx = i; break; }
+              }
+              if (foundNode) {
+                const v = foundNode.nodeValue;
+                foundNode.nodeValue = v.slice(0, foundIdx) + v.slice(foundIdx + 1);
+                const r = document.createRange();
+                r.setStart(foundNode, foundIdx);
+                r.collapse(true);
+                const s2 = getSafeSelection();
+                s2 && s2.removeAllRanges();
+                s2 && s2.addRange(r);
+              }
+              dispatchInput(root, 'insertReplacementText', String(text));
+              return;
+            }
+          } catch {}
           range.deleteContents();
-          const { fragment, cursorNode, cursorOffset, lastNode } = buildFragment(text, caretIndex);
+          const { fragment, cursorNode, cursorOffset, lastNode } = buildFragment(String(text), caretIndex);
           range.insertNode(fragment);
-          const sel = getSafeSelection(); placeCaretAfterInsertion(sel, range, cursorNode, cursorOffset, lastNode);
-          dispatchInput(root, 'insertReplacementText', text);
+          const sel2 = getSafeSelection(); placeCaretAfterInsertion(sel2, range, cursorNode, cursorOffset, lastNode);
+          dispatchInput(root, 'insertReplacementText', String(text));
         },
         replaceSelection(text, caretIndex) { const { range } = this.getSelectionRange(); if (!range) return; this.replaceRangeWithText(range, text, caretIndex); }
       };
