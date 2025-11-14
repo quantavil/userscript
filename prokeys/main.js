@@ -703,7 +703,9 @@
   // Palette UI + dict management + Hotkeys + Settings
   // ----------------------
   async function setDict(obj, msg) {
-    state.dict = normalizeDict(obj);
+    const normalized = normalizeDict(obj);
+    if (!normalized || Object.keys(normalized).length === 0) { paletteEl?.__render?.(); toast('Dictionary unchanged — no valid entries.'); return; }
+    state.dict = normalized;
     await GMX.setValue(CONFIG.storeKeys.dict, state.dict);
     paletteEl?.__render?.(); toast(msg || 'Dictionary updated.');
   }
@@ -1117,6 +1119,7 @@
     if (panel) panel.classList.remove('settings-open');
     const backBtn = paletteEl.querySelector('[data-action="back"]');
     if (backBtn) backBtn.style.display = 'none';
+    if (hotkeyCapture) { hotkeyCapture.bubble?.close(); hotkeyCapture.resolve(null); hotkeyCapture = null; }
     paletteEl.classList.remove('open');
   }
 
