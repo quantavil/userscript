@@ -46,17 +46,108 @@
     styleEl.textContent = css
   }
 
-  function chooseTheme(){
+  let activeEl = null
+  let settingsEl = null
+  let settingsCssEl = null
+
+  function isScrollable(node){
+    if(!node || node.nodeType !== 1) return false
+    const cs = getComputedStyle(node)
+    if(cs.display === 'none') return false
+    const oy = cs.overflowY, ox = cs.overflowX, o = cs.overflow
+    const sy = /(auto|scroll)/.test(oy) || /(auto|scroll)/.test(o)
+    const sx = /(auto|scroll)/.test(ox) || /(auto|scroll)/.test(o)
+    if(!sy && !sx) return false
+    return (sy && node.scrollHeight > node.clientHeight) || (sx && node.scrollWidth > node.clientWidth)
+  }
+
+  function findScrollableParent(el){
+    if(!el) return document.scrollingElement || document.documentElement
+    let c = el
+    while(c && c !== document.documentElement){
+      if(c === document.body) return document.scrollingElement || document.documentElement
+      if(settingsEl && settingsEl.contains(c)) return activeEl || (document.scrollingElement || document.documentElement)
+      if(isScrollable(c)) return c
+      c = c.parentElement
+    }
+    return document.scrollingElement || document.documentElement
+  }
+
+  function setActive(el){
+    const root = document.scrollingElement || document.documentElement
+    activeEl = el || root
+  }
+
+  function getMetrics(){
+    const root = document.scrollingElement || document.documentElement
+    const el = activeEl && activeEl.isConnected ? activeEl : root
+    const isMain = el === root
+    if(isMain){
+      return { el, isMain, scrollTop: root.scrollTop || window.pageYOffset || 0, scrollHeight: root.scrollHeight || document.body.scrollHeight || 0, viewportHeight: window.innerHeight || root.clientHeight || 0 }
+    } else {
+      return { el, isMain, scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, viewportHeight: el.clientHeight }
+    }
+  }
+
+  function scrollToY(y){
+    const root = document.scrollingElement || document.documentElement
+    const el = activeEl && activeEl.isConnected ? activeEl : root
+    if(el === root){ root.scrollTop = y } else { el.scrollTop = y }
+  }
+
+  function jumpToPercent(p){
+    const m = getMetrics()
+    const max = Math.max(0, m.scrollHeight - m.viewportHeight)
+    scrollToY(p * max)
+  }
+
+  function openSettings(){
     const names = Object.keys(THEMES)
     const current = getValue('sbTheme', DEFAULT_THEME)
-    const input = prompt('Pick scrollbar theme:\n' + names.map((n,i)=>`${i+1}. ${n}`).join('\n'), current)
-    if(!input) return
-    let chosen = input.trim()
-    const idx = parseInt(chosen, 10)
-    if(!isNaN(idx) && idx >= 1 && idx <= names.length) chosen = names[idx-1]
-    if(!THEMES[chosen]) return
-    setValue('sbTheme', chosen)
-    applyTheme(chosen)
+    if(!settingsCssEl){
+      const css = `#sb-settings-overlay{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}#sb-settings{background:#12161c;color:#e6edf3;min-width:320px;max-width:420px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:18px;font:14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}#sb-settings h2{margin:0 0 12px 0;font-size:16px;font-weight:600}#sb-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}#sb-list button{border:0;padding:10px 12px;border-radius:10px;background:#1a2029;color:#e6edf3;cursor:pointer;display:flex;align-items:center;justify-content:center}#sb-list button:hover{background:#222a35}#sb-actions{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}#sb-actions button{border:0;padding:8px 12px;border-radius:8px;background:#2a3342;color:#e6edf3;cursor:pointer}#sb-actions button:hover{background:#354257}`
+      settingsCssEl = document.createElement('style')
+      settingsCssEl.id = 'sb-settings-css'
+      settingsCssEl.textContent = css
+      ;(document.head || document.documentElement).appendChild(settingsCssEl)
+    }
+    const overlay = document.createElement('div')
+    overlay.id = 'sb-settings-overlay'
+    const modal = document.createElement('div')
+    modal.id = 'sb-settings'
+    const title = document.createElement('h2')
+    title.textContent = 'Scrollbar Theme'
+    const list = document.createElement('div')
+    list.id = 'sb-list'
+    names.forEach(n=>{
+      const b = document.createElement('button')
+      b.textContent = n + (n===current?' ✓':'')
+      b.addEventListener('click',()=>{ setValue('sbTheme', n); applyTheme(n); closeSettings() })
+      list.appendChild(b)
+    })
+    const actions = document.createElement('div')
+    actions.id = 'sb-actions'
+    const closeBtn = document.createElement('button')
+    closeBtn.textContent = 'Close'
+    closeBtn.addEventListener('click',()=>closeSettings())
+    actions.appendChild(closeBtn)
+    modal.appendChild(title)
+    modal.appendChild(list)
+    modal.appendChild(actions)
+    overlay.appendChild(modal)
+    overlay.addEventListener('click',e=>{ if(e.target === overlay) closeSettings() })
+    settingsEl = overlay
+    ;(document.body || document.documentElement).appendChild(overlay)
+    document.addEventListener('keydown', onSettingsKeyDown, { once: true })
+  }
+
+  function closeSettings(){
+    if(settingsEl && settingsEl.parentNode){ settingsEl.parentNode.removeChild(settingsEl) }
+    settingsEl = null
+  }
+
+  function onSettingsKeyDown(e){
+    if(e.key === 'Escape') closeSettings()
   }
 
   function cycleTheme(){
@@ -72,7 +163,22 @@
   applyTheme(initial)
 
   if(typeof GM_registerMenuCommand === 'function'){
-    GM_registerMenuCommand('Choose Scrollbar Theme', chooseTheme)
+    GM_registerMenuCommand('Choose Scrollbar Theme', openSettings)
     GM_registerMenuCommand('Cycle Scrollbar Theme', cycleTheme)
   }
+
+  setActive(document.scrollingElement || document.documentElement)
+  document.addEventListener('mouseover',e=>{ if(settingsEl && settingsEl.contains(e.target)) return; const el = findScrollableParent(e.target); if(el !== activeEl) setActive(el) }, true)
+  document.addEventListener('wheel',e=>{ if(settingsEl && settingsEl.contains(e.target)) return; const el = findScrollableParent(e.target); if(el !== activeEl) setActive(el) }, { passive: true })
+  document.addEventListener('keydown',e=>{
+    const t = e.target && e.target.tagName
+    if(t === 'INPUT' || t === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return
+    const k = (e.key||'').toLowerCase()
+    if(k >= '0' && k <= '9'){
+      e.preventDefault()
+      if(k === '1'){ jumpToPercent(0); return }
+      if(k === '0'){ jumpToPercent(1); return }
+      jumpToPercent(parseInt(k,10)/10)
+    }
+  })
 })()
