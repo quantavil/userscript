@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Smart Abbreviation Expander (AI)
 // @namespace    https://github.com/quantavil
-// @version      1.14.0
+// @version      1.14.2
 // @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Inline editing, in-panel settings, hotkey customization, and API key verify+save. Fallback: if no caret, insert at end-of-line in a reasonable field.
 // @author       quantavil
 // @match        *://*/*
@@ -152,6 +152,7 @@
     _lastFocusedEditable: null,
     activeIndex: 0,
     apiKey: '',
+    apiKeyIndex: 0,
     userPrompt: '',
   };
   let paletteEl = null;
@@ -254,7 +255,7 @@
       toast(`Tone set to ${state.tone}.`);
     });
     GMX.registerMenuCommand('Gemini: Set API Key', async () => {
-      const val = prompt('Enter your Gemini API key:', state.apiKey || '');
+      const val = prompt('Enter Gemini API key(s) separated by ;', state.apiKey || '');
       if (val == null) return;
       state.apiKey = val.trim();
       await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
@@ -657,14 +658,6 @@
   function maybeTruncate(text, max) { return text.length <= max ? { text, truncated: false } : { text: text.slice(0, max), truncated: true }; }
 
   async function correctWithGemini(text, bubble) {
-    const key = String(state.apiKey || '').trim();
-    if (!key) {
-      bubble?.update('Set your Gemini API key in Settings.');
-      throttledToast('No Gemini API key set. Open Palette → Settings to add it.');
-      setTimeout(() => bubble && bubble.close(), 1400);
-      return null;
-    }
-    const url = `${CONFIG.gemini.endpoint}/${encodeURIComponent(CONFIG.gemini.model)}:generateContent?key=${encodeURIComponent(key)}`;
     const tone = (state.tone || 'neutral').toLowerCase();
     const prompt = [
       `You are a writing assistant.`,
@@ -679,17 +672,32 @@
   }
 
   async function geminiGenerate(prompt, bubble) {
-    const key = String(state.apiKey || '').trim();
-    if (!key) { bubble?.update('Set your Gemini API key in Settings.'); throttledToast('No Gemini API key set.'); setTimeout(() => bubble && bubble.close(), 1400); return null; }
-    const url = `${CONFIG.gemini.endpoint}/${encodeURIComponent(CONFIG.gemini.model)}:generateContent?key=${encodeURIComponent(key)}`;
-    const res = await GMX.request({ method: 'POST', url, headers: { 'Content-Type': 'application/json' }, data: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: CONFIG.gemini.temperature } }), timeout: CONFIG.gemini.timeoutMs });
-    if (res.status < 200 || res.status >= 300) { bubble?.update(`Gemini error: HTTP ${res.status}`); throttledToast(`Gemini error: HTTP ${res.status}`); setTimeout(() => bubble && bubble.close(), 1400); return null; }
-    let json; try { json = JSON.parse(res.text); } catch { bubble?.update('Gemini: Parse error.'); throttledToast('Gemini: Failed to parse response.'); setTimeout(() => bubble && bubble.close(), 1400); return null; }
-    const cand = json.candidates && json.candidates[0];
-    const parts = (cand && cand.content && cand.content.parts) || [];
-    const out = parts.map(p => p.text || '').join('').trim();
-    if (!out) { bubble?.update('Gemini: Empty response.'); throttledToast('Gemini: Empty response.'); setTimeout(() => bubble && bubble.close(), 1400); return null; }
-    return out;
+    const raw = String(state.apiKey || '').trim();
+    const keys = raw ? raw.split(';').map(k => k.trim()).filter(k => k) : [];
+    if (!keys.length) { bubble?.update('Set your Gemini API key in Settings.'); throttledToast('No Gemini API key set.'); setTimeout(() => bubble && bubble.close(), 1400); return null; }
+    const start = Number.isInteger(state.apiKeyIndex) ? state.apiKeyIndex % keys.length : 0;
+    for (let i = 0; i < keys.length; i++) {
+      const idx = (start + i) % keys.length;
+      const key = keys[idx];
+      const url = `${CONFIG.gemini.endpoint}/${encodeURIComponent(CONFIG.gemini.model)}:generateContent?key=${encodeURIComponent(key)}`;
+      try {
+        const res = await GMX.request({ method: 'POST', url, headers: { 'Content-Type': 'application/json' }, data: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: CONFIG.gemini.temperature } }), timeout: CONFIG.gemini.timeoutMs });
+        if (res.status < 200 || res.status >= 300) { continue; }
+        let json; try { json = JSON.parse(res.text); } catch { continue; }
+        const cand = json.candidates && json.candidates[0];
+        const parts = (cand && cand.content && cand.content.parts) || [];
+        const out = parts.map(p => p.text || '').join('').trim();
+        if (!out) { continue; }
+        state.apiKeyIndex = idx;
+        return out;
+      } catch (e) {
+        continue;
+      }
+    }
+    bubble?.update('Gemini error: all keys failed.');
+    throttledToast('Gemini error: all keys failed.');
+    setTimeout(() => bubble && bubble.close(), 1400);
+    return null;
   }
 
   function stripModelArtifacts(s) {
@@ -957,9 +965,10 @@
           <div></div>
         </div>
         <div class="sae-hrow">
-          <div>Gemini API Key</div>
+          <div>Gemini API Key(s)</div>
           <div>
-            <input type="text" class="sae-text api-key-input" placeholder="Enter API key" value="${escapeHtml(state.apiKey || '')}" />
+            <input type="text" class="sae-text api-key-input" placeholder="Enter API keys separated by ;" value="${escapeHtml(state.apiKey || '')}" />
+            <div class="sae-help">Supports multiple keys separated by ; — rotates on error/limits.</div>
           </div>
           <div><button class="sae-btn verify-api">Verify</button></div>
         </div>
@@ -1213,22 +1222,37 @@
   function throttledToast(msg, ms = 2200) { const now = Date.now(); if (now - state._lastToastAt < CONFIG.toast.throttleMs) return; state._lastToastAt = now; toast(msg, ms); }
 
   // API key verify + save
-  async function verifyAndSaveApiKey(key, btn) {
-    if (!key) { toast('Enter an API key first.'); return; }
+  async function verifyAndSaveApiKey(keyInput, btn) {
+    if (!keyInput) { toast('Enter API key(s) first.'); return; }
     const oldText = btn.textContent;
     btn.textContent = 'Verifying…'; btn.disabled = true; btn.classList.remove('ok');
     try {
-      const url = `${CONFIG.gemini.endpoint}?key=${encodeURIComponent(key)}`; // GET models list
-      const res = await GMX.request({ method: 'GET', url, timeout: CONFIG.gemini.timeoutMs });
-      if (res.status >= 200 && res.status < 300) {
-        state.apiKey = key;
+      const keys = keyInput.split(';').map(k => k.trim()).filter(k => k);
+      if (!keys.length) { btn.textContent = 'Verify'; toast('Enter valid API key(s).'); return; }
+      const results = [];
+      let okIdx = -1;
+      for (let i = 0; i < keys.length; i++) {
+        const url = `${CONFIG.gemini.endpoint}?key=${encodeURIComponent(keys[i])}`;
+        try {
+          const res = await GMX.request({ method: 'GET', url, timeout: CONFIG.gemini.timeoutMs });
+          if (res.status >= 200 && res.status < 300) { results.push({ i, ok: true }); if (okIdx === -1) okIdx = i; }
+          else { results.push({ i, ok: false, code: res.status }); }
+        } catch (e) {
+          results.push({ i, ok: false, code: 'ERR' });
+        }
+      }
+      const failed = results.filter(r => !r.ok).map(r => r.i + 1);
+      const succeeded = results.filter(r => r.ok).map(r => r.i + 1);
+      if (okIdx >= 0) {
+        state.apiKey = keys.join(';');
+        state.apiKeyIndex = okIdx;
         await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
         btn.classList.add('ok'); btn.textContent = 'Verified ✓';
-        toast('API key verified and saved.');
+        if (failed.length) toast(`Verified: #${succeeded.join(', #')} • Failed: #${failed.join(', #')}`);
+        else toast(`Verified: #${succeeded.join(', #')}`);
       } else {
-        console.warn('Verify key HTTP error', res.status, res.text);
         btn.textContent = 'Verify';
-        toast(`Verification failed (HTTP ${res.status}).`);
+        toast(`Verification failed for all keys: #${failed.join(', #')}`);
       }
     } catch (err) {
       console.warn('Verify key failed:', err);
