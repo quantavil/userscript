@@ -25,6 +25,7 @@
     trigger: { shift: true, alt: false, ctrl: false, meta: false }, // Space-based (Shift+Space)
     palette: { code: 'KeyP', alt: true, shift: false, ctrl: false, meta: false }, // Alt+P
     correct: { code: 'KeyG', alt: true, shift: false, ctrl: false, meta: false }, // Alt+G
+    customPrompt: { code: 'KeyG', alt: true, shift: true, ctrl: false, meta: false },
     maxAbbrevLen: 80,
     styleId: 'sae-styles',
     storeKeys: {
@@ -32,6 +33,7 @@
       tone: 'sae.gemini.tone.v1',
       keys: 'sae.keys.v1',
       apiKey: 'sae.gemini.apiKey.v1',
+      userPrompt: 'sae.gemini.userPrompt.v1',
     },
     toast: { throttleMs: 3000 },
     clipboardReadTimeoutMs: 350,
@@ -150,6 +152,7 @@
     _lastFocusedEditable: null,
     activeIndex: 0,
     apiKey: '',
+    userPrompt: '',
   };
   let paletteEl = null;
   let hotkeyCapture = null; // { kind: 'spaceOnly' | 'code', resolve, bubble }
@@ -195,6 +198,7 @@
     .sae-hrow:last-child{border-bottom:none}
     .sae-select,.sae-text,.sae-textarea{background:#1b1b1b;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;font:inherit;width:100%}
     .sae-textarea{min-height:88px;resize:vertical}
+    .sae-help{font-size:11px;opacity:.8;margin-top:6px;color:#ccc}
     .sae-btn{padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:#1b1b1b;color:#fff;cursor:pointer;transition:all .15s ease}
     .sae-btn:hover{background:#252525}
     .sae-btn.ok{background:#174f2b;border-color:#2b9a4a;color:#eaffea}
@@ -217,9 +221,11 @@
     if (savedKeys?.trigger) Object.assign(CONFIG.trigger, savedKeys.trigger);
     if (savedKeys?.palette) Object.assign(CONFIG.palette, savedKeys.palette);
     if (savedKeys?.correct) Object.assign(CONFIG.correct, savedKeys.correct);
+    if (savedKeys?.customPrompt) Object.assign(CONFIG.customPrompt, savedKeys.customPrompt);
 
     // API key
     state.apiKey = await GMX.getValue(CONFIG.storeKeys.apiKey, CONFIG.gemini.apiKey || '');
+    state.userPrompt = await GMX.getValue(CONFIG.storeKeys.userPrompt, '');
 
 
     // Remember last focused editable (ignore palette UI)
@@ -273,6 +279,7 @@
   const HOTKEYS = [
     { spec: () => CONFIG.palette, needsEditable: false, handler: () => { state.lastEditable = captureEditableContext(); openPalette(); } },
     { spec: () => CONFIG.correct, needsEditable: true, handler: () => triggerGeminiCorrection() },
+    { spec: () => CONFIG.customPrompt, needsEditable: true, handler: () => triggerGeminiCustomPrompt() },
     { spec: () => CONFIG.trigger, needsEditable: true, handler: () => doExpansion() },
   ];
 
@@ -311,6 +318,19 @@
   async function setHotkey(name, captureKind) {
     const spec = await captureHotkey(captureKind);
     if (!spec) return;
+    const existing = {
+      trigger: CONFIG.trigger,
+      palette: CONFIG.palette,
+      correct: CONFIG.correct,
+      customPrompt: CONFIG.customPrompt,
+    };
+    for (const [k, v] of Object.entries(existing)) {
+      if (k === name) continue;
+      const a = spec.code ? spec.code : 'Space';
+      const b = v.code ? v.code : 'Space';
+      const conflict = a === b && !!spec.shift === !!v.shift && !!spec.alt === !!v.alt && !!spec.ctrl === !!v.ctrl && !!spec.meta === !!v.meta;
+      if (conflict) { toast(`Conflict: already used by ${k}.`); return; }
+    }
     CONFIG[name] = spec;
     const keys = await GMX.getValue(CONFIG.storeKeys.keys, {});
     keys[name] = spec;
@@ -608,6 +628,32 @@
     }
   }
 
+  async function triggerGeminiCustomPrompt() {
+    const ctx = captureEditableContext(); if (!ctx) return;
+    const bubble = notify.busy('Applying prompt…');
+    try {
+      const editor = makeEditor(ctx);
+      let text = editor.getSelectedText();
+      if (!text) text = editor.getAllText();
+      if (!text) { bubble.update('Nothing to transform.'); return setTimeout(() => bubble.close(), 1200); }
+      const pRaw = String(state.userPrompt || '').trim();
+      if (!pRaw) { bubble.update('Set Custom Prompt in Settings.'); throttledToast('No custom prompt set. Open Settings to add it.'); return setTimeout(() => bubble.close(), 1400); }
+      const truncated = maybeTruncate(text, CONFIG.gemini.maxInputChars);
+      if (truncated.truncated) throttledToast(`Note: input truncated to ${CONFIG.gemini.maxInputChars} chars for prompt.`);
+      const prompt = pRaw.includes('{}') ? pRaw.replaceAll('{}', truncated.text) : [pRaw, '', 'Return only the transformed text.', '', 'Text:', truncated.text].join('\n');
+      const out = await geminiGenerate(prompt, bubble);
+      if (out == null) return;
+      const cleaned = stripModelArtifacts(out);
+      editor.replaceSelection(cleaned, cleaned.length);
+      bubble.update('Applied ✓');
+      setTimeout(() => bubble.close(), 900);
+    } catch (err) {
+      console.warn('Gemini custom prompt error:', err);
+      bubble.update('AI prompt failed — check console.');
+      setTimeout(() => bubble.close(), 1400);
+    }
+  }
+
   function maybeTruncate(text, max) { return text.length <= max ? { text, truncated: false } : { text: text.slice(0, max), truncated: true }; }
 
   async function correctWithGemini(text, bubble) {
@@ -629,42 +675,21 @@
       ``, `Text:`, text
     ].join('\n');
 
-    try {
-      const res = await GMX.request({
-        method: 'POST', url, headers: { 'Content-Type': 'application/json' },
-        data: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: CONFIG.gemini.temperature } }),
-        timeout: CONFIG.gemini.timeoutMs,
-      });
-      if (res.status < 200 || res.status >= 300) {
-        console.warn('Gemini error HTTP', res.status, res.text);
-        bubble?.update(`Gemini error: HTTP ${res.status}`);
-        throttledToast(`Gemini error: HTTP ${res.status}`);
-        setTimeout(() => bubble && bubble.close(), 1400);
-        return null;
-      }
-      let json; try { json = JSON.parse(res.text); } catch {
-        bubble?.update('Gemini: Parse error.');
-        throttledToast('Gemini: Failed to parse response.');
-        setTimeout(() => bubble && bubble.close(), 1400);
-        return null;
-      }
-      const cand = json.candidates && json.candidates[0];
-      const parts = (cand && cand.content && cand.content.parts) || [];
-      const out = parts.map(p => p.text || '').join('').trim();
-      if (!out) {
-        bubble?.update('Gemini: Empty response.');
-        throttledToast('Gemini: Empty response.');
-        setTimeout(() => bubble && bubble.close(), 1400);
-        return null;
-      }
-      return out;
-    } catch (err) {
-      console.warn('Gemini request failed:', err);
-      bubble?.update('Gemini request failed.');
-      throttledToast('Gemini request failed. Check connection.');
-      setTimeout(() => bubble && bubble.close(), 1400);
-      return null;
-    }
+    try { return await geminiGenerate(prompt, bubble); } catch (err) { console.warn('Gemini request failed:', err); bubble?.update('Gemini request failed.'); throttledToast('Gemini request failed. Check connection.'); setTimeout(() => bubble && bubble.close(), 1400); return null; }
+  }
+
+  async function geminiGenerate(prompt, bubble) {
+    const key = String(state.apiKey || '').trim();
+    if (!key) { bubble?.update('Set your Gemini API key in Settings.'); throttledToast('No Gemini API key set.'); setTimeout(() => bubble && bubble.close(), 1400); return null; }
+    const url = `${CONFIG.gemini.endpoint}/${encodeURIComponent(CONFIG.gemini.model)}:generateContent?key=${encodeURIComponent(key)}`;
+    const res = await GMX.request({ method: 'POST', url, headers: { 'Content-Type': 'application/json' }, data: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: CONFIG.gemini.temperature } }), timeout: CONFIG.gemini.timeoutMs });
+    if (res.status < 200 || res.status >= 300) { bubble?.update(`Gemini error: HTTP ${res.status}`); throttledToast(`Gemini error: HTTP ${res.status}`); setTimeout(() => bubble && bubble.close(), 1400); return null; }
+    let json; try { json = JSON.parse(res.text); } catch { bubble?.update('Gemini: Parse error.'); throttledToast('Gemini: Failed to parse response.'); setTimeout(() => bubble && bubble.close(), 1400); return null; }
+    const cand = json.candidates && json.candidates[0];
+    const parts = (cand && cand.content && cand.content.parts) || [];
+    const out = parts.map(p => p.text || '').join('').trim();
+    if (!out) { bubble?.update('Gemini: Empty response.'); throttledToast('Gemini: Empty response.'); setTimeout(() => bubble && bubble.close(), 1400); return null; }
+    return out;
   }
 
   function stripModelArtifacts(s) {
@@ -918,6 +943,7 @@
       const hkExpand = hotkeyToString(CONFIG.trigger, true);
       const hkPalette = hotkeyToString(CONFIG.palette, false);
       const hkCorrect = hotkeyToString(CONFIG.correct, false);
+      const hkCustom = hotkeyToString(CONFIG.customPrompt, false);
       const tones = ['neutral', 'friendly', 'formal', 'casual', 'concise'];
 
       settingsView.innerHTML = `
@@ -950,6 +976,18 @@
               <span class="sae-chip">Correct: ${hkCorrect}</span>
               <button class="sae-btn" data-hk="correct">Change</button>
             </div>
+            <div style="margin-top:6px">
+              <span class="sae-chip">Custom Prompt: ${hkCustom}</span>
+              <button class="sae-btn" data-hk="customPrompt">Change</button>
+            </div>
+          </div>
+          <div></div>
+        </div>
+        <div class="sae-hrow">
+          <div>Custom Prompt</div>
+          <div>
+            <textarea class="sae-textarea user-prompt-input" placeholder="Write your instruction. Use {} to insert selection. Example: Rewrite to concise, friendly tone: {}">${escapeHtml(state.userPrompt || '')}</textarea>
+            <div class="sae-help">Use {} to insert the selected text. Example: Rewrite to concise, friendly tone: {}</div>
           </div>
           <div></div>
         </div>
@@ -993,6 +1031,12 @@
           renderSettingsView();
         });
       });
+
+      const promptInput = $('.user-prompt-input', settingsView);
+      const autoSize = (el) => { el.style.height = 'auto'; el.style.height = Math.min(420, el.scrollHeight) + 'px'; };
+      autoSize(promptInput);
+      promptInput.addEventListener('input', async (e) => { autoSize(promptInput); state.userPrompt = e.target.value; await GMX.setValue(CONFIG.storeKeys.userPrompt, state.userPrompt); });
+      promptInput.addEventListener('change', async (e) => { autoSize(promptInput); state.userPrompt = e.target.value; await GMX.setValue(CONFIG.storeKeys.userPrompt, state.userPrompt); toast('Custom prompt saved.'); });
 
       // Dict actions
       $('[data-action="export"]', settingsView).addEventListener('click', () => exportDict());
