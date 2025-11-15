@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Beautiful Scrollbar — Compact Dark UI (Instant Jump)
-// @namespace    http://tampermonkey.net/
+// @namespace    http://github.com/quantavil/beautiful-scrollbar
 // @version      5.2.0
 // @description  Fast custom scrollbar with multi-container support, minimal dark settings UI, and instant quick-jump keys. ESC for settings. 1=top, 0=bottom, 2–9=% jump instantly.
-// @author       Your Name
+// @author       quantavil
 // @match        *://*/*
 // @run-at       document-start
 // @grant        GM_registerMenuCommand
