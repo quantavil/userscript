@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Beautiful Scrollbar
 // @namespace    http://github.com/quantavil/beautiful-scrollbar
-// @version      5.6.1
+// @version      5.6.4
 // @description  Fast custom scrollbar with multi-container support, minimal dark settings UI, animated themes, hover-only option, idle thin indicator with delay, and instant quick-jump keys. ESC for settings. 1=top, 0=bottom, 2–9=% instant jump. Optional quick smooth scroll for bar clicks (keys stay instant).
 // @author       quantavil
 // @license      MIT
@@ -397,7 +397,7 @@
     updateAll() { this.map.forEach(i => i.req()); }
     clean() {
       this.map.forEach((inst, el) => {
-        if (el !== $root() && !document.contains(el)) { inst.destroy(); this.map.delete(el); }
+        if (el !== $root() && !el?.isConnected) { inst.destroy(); this.map.delete(el); }
       });
     }
     observe() {
@@ -546,6 +546,7 @@
       transition:background .15s, box-shadow .2s, opacity .15s;
       animation: var(--bs-thumb-anim, none);
       animation-play-state: running;
+      touch-action: none;
     }
     .bs-bar:hover .bs-thumb{ background:var(--bs-thumb-hover); box-shadow:var(--bs-glow), 0 2px 8px rgba(0,0,0,.25); }
     .bs-bar.drag .bs-thumb{ cursor:grabbing; }
@@ -619,11 +620,6 @@
   // -------------------------------
   const bindKeys = () => {
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        if (UI_OPEN) { e.preventDefault(); closeUI(); }
-        else if (!isEditable(e.target)) { e.preventDefault(); openUI(); }
-        return;
-      }
       if (UI_OPEN || isEditable(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (KEYS_SHIFT && !e.shiftKey) return;
       const d = getDigit(e); if (d == null) return;
