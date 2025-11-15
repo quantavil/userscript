@@ -14,6 +14,7 @@
   const MIN_THUMB = 30, Z = 9999999;
   const root = () => document.scrollingElement || document.documentElement || document.body;
   let activeC = null;
+  let lastEl = null;
   const cp = (e) => (typeof e.composedPath === 'function') ? e.composedPath()[0] : e.target;
   const isScrollable = (el) => {
     if (!el || !el.nodeType) return false;
@@ -92,12 +93,20 @@
       thumb.style.transform = `translateY(${Math.round(y)}px)`;
     };
     const req = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(update); };
+    const setActive = (el) => {
+      const next = el || root();
+      if (lastEl && lastEl !== next) lastEl.removeEventListener('scroll', req);
+      if (next && lastEl !== next) next.addEventListener('scroll', req, { passive: true });
+      lastEl = next;
+      activeC = next;
+    };
 
     window.addEventListener('scroll', req, { passive: true });
     window.addEventListener('resize', req, { passive: true });
-    document.addEventListener('wheel', (e) => { activeC = findScrollable(cp(e)); req(); }, { passive: true });
-    document.addEventListener('mouseover', (e) => { activeC = findScrollable(cp(e)); }, { passive: true });
-    document.addEventListener('focusin', (e) => { activeC = findScrollable(cp(e)); req(); }, { passive: true });
+    document.addEventListener('wheel', (e) => { setActive(findScrollable(cp(e))); req(); }, { passive: true });
+    document.addEventListener('mouseover', (e) => { setActive(findScrollable(cp(e))); }, { passive: true });
+    document.addEventListener('focusin', (e) => { setActive(findScrollable(cp(e))); req(); }, { passive: true });
+    setActive(findScrollable(document.activeElement));
 
     // Click on track -> jump to that percentage
     bar.addEventListener('click', (e) => {
@@ -106,6 +115,7 @@
       const p = clamp((e.clientY - rect.top) / rect.height, 0, 1);
       const s = metrics(getActive());
       s.el.scrollTop = Math.round(s.max * p);
+      req();
     });
 
     // Drag thumb (instant)
@@ -122,6 +132,7 @@
         const s = metrics(s0.el);
         const delta = (dy / space) * s.max;
         s.el.scrollTop = clamp(s0.scroll + delta, 0, s.max);
+        req();
       };
       const onUp = () => {
         thumb.releasePointerCapture(e.pointerId);
@@ -164,9 +175,9 @@
       else if (d === '0') p = 1;
       else p = parseInt(d, 10) / 10;
       s.el.scrollTop = Math.round(s.max * p);
+      req();
     };
     document.addEventListener('keydown', onKey, true);
-    window.addEventListener('keydown', onKey, true);
   }
 
   function start() {
