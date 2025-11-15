@@ -159,10 +159,9 @@
       this._idleTO = 0;
       this.isHover = false;
 
-      // Update on scroll; expand on scroll only when hover-only is OFF
       this.onScroll = () => {
         this.req();
-        if (!HOVER_ONLY) this.awake();
+        this.awake();
         this.scheduleIdle();
       };
 
@@ -356,18 +355,11 @@
   }
 
   // -------------------------------
-  // Settings UI (themes + hover-only + smooth)
+  // Settings UI (themes + smooth)
   // -------------------------------
   let UI = null, UI_OPEN = false, MGR = null;
-  let HOVER_ONLY = toBool(Store.get('bs-hover-only', '0'));
   let SMOOTH_BAR = toBool(Store.get('bs-smooth-bar', '0')); // off by default
 
-  const setHoverOnly = (on) => {
-    HOVER_ONLY = !!on;
-    Store.set('bs-hover-only', HOVER_ONLY ? '1' : '0');
-    document.documentElement.classList.toggle('bs-hover-only', HOVER_ONLY);
-    MGR?.updateAll();
-  };
   const setSmoothBar = (on) => {
     SMOOTH_BAR = !!on;
     Store.set('bs-smooth-bar', SMOOTH_BAR ? '1' : '0');
@@ -404,10 +396,6 @@
 
         <div class="bs-subtitle">Behavior</div>
         <div class="bs-row">
-          <div class="bs-row-label">Show full thumb only on hover</div>
-          <button class="bs-switch ${HOVER_ONLY ? 'on' : ''}" data-k="hover" role="switch" aria-checked="${HOVER_ONLY}" aria-label="Show full thumb only on hover"><i></i></button>
-        </div>
-        <div class="bs-row">
           <div class="bs-row-label">Quick smooth scroll (bar only)</div>
           <button class="bs-switch ${SMOOTH_BAR ? 'on' : ''}" data-k="smooth" role="switch" aria-checked="${SMOOTH_BAR}" aria-label="Quick smooth scroll (bar only)"><i></i></button>
         </div>
@@ -431,8 +419,7 @@
       if (sw) {
         const on = !sw.classList.contains('on');
         const which = sw.dataset.k;
-        if (which === 'hover') setHoverOnly(on);
-        else if (which === 'smooth') setSmoothBar(on);
+        if (which === 'smooth') setSmoothBar(on);
         sw.classList.toggle('on', on);
         sw.setAttribute('aria-checked', String(on));
       }
@@ -512,10 +499,7 @@
       animation-play-state: paused;
     }
 
-    /* Hover-only mode: keep track hidden unless active; still uses idle thin indicator */
-    html.bs-hover-only .bs-bar{ background: transparent; }
-    html.bs-hover-only .bs-bar:hover,
-    html.bs-hover-only .bs-bar.drag{ background: var(--bs-track); }
+    
 
     /* Overlay */
     .bs-ov{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(3,6,12,.72); backdrop-filter: blur(6px); z-index:${Z+10}; }
@@ -595,7 +579,6 @@
   const start = () => {
     injectStyles();
     setTheme(CUR_THEME);
-    setHoverOnly(HOVER_ONLY);
     MGR = new Manager();
     bindKeys();
     if (typeof GM_registerMenuCommand === 'function') {
