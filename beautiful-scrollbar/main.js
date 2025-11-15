@@ -1,9 +1,10 @@
 // ==UserScript==
-// @name         Beautiful Scrollbar — Compact Dark UI (Idle Thin Indicator + Instant Jump)
+// @name         Beautiful Scrollbar
 // @namespace    http://github.com/quantavil/beautiful-scrollbar
 // @version      5.6.1
 // @description  Fast custom scrollbar with multi-container support, minimal dark settings UI, animated themes, hover-only option, idle thin indicator with delay, and instant quick-jump keys. ESC for settings. 1=top, 0=bottom, 2–9=% instant jump. Optional quick smooth scroll for bar clicks (keys stay instant).
 // @author       quantavil
+// @license      MIT
 // @match        *://*/*
 // @run-at       document-start
 // @grant        GM_registerMenuCommand
@@ -18,7 +19,7 @@
   // -------------------------------
   // Config + Themes
   // -------------------------------
-  const MIN_THUMB = 30, RATIO = 0.95, Z = 2147483640;
+  const MIN_THUMB = 30, RATIO = 0.95, Z = 9999999;
   const IDLE_DELAY = 1000; // ms — wait before collapsing to thin indicator
 
   // New fields per theme:
@@ -158,6 +159,7 @@
       this._anim = 0;
       this._idleTO = 0;
       this.isHover = false;
+      if (!this.r && this.c && this.c.classList) this.c.classList.add('bs-hide-v');
 
       this.onScroll = () => {
         this.req();
@@ -233,6 +235,18 @@
         const m = this.m(); this.go(m.max * p);
       });
 
+      // Touch tap on track -> jump
+      this.el.addEventListener('touchstart', (e) => {
+        if (e.target !== this.el) return;
+        const t = e.touches && e.touches[0]; if (!t) return;
+        this.awake();
+        this.scheduleIdle();
+        const rect = this.el.getBoundingClientRect();
+        const th = this.thumb.offsetHeight, space = rect.height - th; if (space <= 0) return;
+        const p = clamp((t.clientY - rect.top - th / 2) / space, 0, 1);
+        const m = this.m(); this.go(m.max * p);
+      }, { passive: true });
+
       // Hover state for idle logic
       this.el.addEventListener('mouseenter', () => { this.isHover = true; this.awake(); });
       this.el.addEventListener('mouseleave', () => { this.isHover = false; this.scheduleIdle(); });
@@ -258,6 +272,32 @@
         };
         document.addEventListener('mousemove', mm);
         document.addEventListener('mouseup', mu);
+      });
+
+      // Touch drag on thumb
+      this.thumb.addEventListener('touchstart', (e) => {
+        const t = e.touches && e.touches[0]; if (!t) return;
+        const startY = t.clientY, start = this.m().scroll;
+        this.el.classList.add('drag');
+        this.awake();
+        this.cancelSmooth();
+        const mm = (ev) => {
+          const tt = ev.touches && ev.touches[0]; if (!tt) return;
+          const m = this.m(), rect = this.el.getBoundingClientRect();
+          const th = this.thumb.offsetHeight, space = rect.height - th; if (space <= 0) return;
+          this.to(start + ((tt.clientY - startY) / space) * m.max);
+          ev.preventDefault();
+        };
+        const mu = () => {
+          this.el.classList.remove('drag');
+          document.removeEventListener('touchmove', mm);
+          document.removeEventListener('touchend', mu);
+          document.removeEventListener('touchcancel', mu);
+          this.scheduleIdle();
+        };
+        document.addEventListener('touchmove', mm, { passive: false });
+        document.addEventListener('touchend', mu);
+        document.addEventListener('touchcancel', mu);
       });
 
       (this.r ? window : this.c).addEventListener('scroll', this.onScroll, { passive: true });
@@ -314,6 +354,7 @@
       cancelAnimationFrame(this.raf);
       (this.r ? window : this.c).removeEventListener('scroll', this.onScroll);
       this.el?.remove();
+      if (!this.r && this.c && this.c.classList) this.c.classList.remove('bs-hide-v');
       this.el = this.thumb = this.c = null;
     }
   }
@@ -330,14 +371,25 @@
       this.observe();
     }
     get(c) { if (!this.map.has(c)) this.map.set(c, new SB(c)); return this.map.get(c); }
-    setActiveFrom(target) {
-      if (target?.closest('.bs-bar, .bs-ui')) return;
+    setActiveFrom(evtOrTarget) {
+      const target = evtOrTarget?.target || evtOrTarget;
+      if (target?.closest?.('.bs-bar, .bs-ui')) return;
+      let path = evtOrTarget?.composedPath?.();
+      if (Array.isArray(path) && path.length) {
+        for (const el of path) {
+          if (!el || !el.nodeType || el === document || el === window) continue;
+          if (typeof el.closest === 'function' && el.closest('.bs-bar, .bs-ui')) continue;
+          if (isScrollable(el)) { this.active = this.get(el); return; }
+          const rn = el.getRootNode?.();
+          if (rn && rn.host && isScrollable(rn.host)) { this.active = this.get(rn.host); return; }
+        }
+      }
       const c = findScrollable(target);
       if (c) this.active = this.get(c);
     }
     bind() {
-      const onEvt = (e) => this.setActiveFrom(e.target);
-      document.addEventListener('mouseover', onEvt, { passive: true });
+      const onEvt = (e) => this.setActiveFrom(e);
+      document.addEventListener('mouseover', onEvt);
       document.addEventListener('wheel', onEvt, { passive: true });
       document.addEventListener('focusin', onEvt);
       window.addEventListener('resize', () => this.updateAll(), { passive: true });
@@ -349,7 +401,13 @@
       });
     }
     observe() {
-      const mo = new MutationObserver(() => { this.clean(); this.updateAll(); });
+      this._moScheduled = false;
+      const schedule = () => {
+        if (this._moScheduled) return;
+        this._moScheduled = true;
+        requestAnimationFrame(() => { this._moScheduled = false; this.clean(); this.updateAll(); });
+      };
+      const mo = new MutationObserver(schedule);
       mo.observe(document.documentElement, { childList: true, subtree: true });
     }
   }
@@ -359,6 +417,7 @@
   // -------------------------------
   let UI = null, UI_OPEN = false, MGR = null;
   let SMOOTH_BAR = toBool(Store.get('bs-smooth-bar', '0')); // off by default
+  let KEYS_SHIFT = toBool(Store.get('bs-keys-shift', '1'));
 
   const setSmoothBar = (on) => {
     SMOOTH_BAR = !!on;
@@ -399,6 +458,10 @@
           <div class="bs-row-label">Quick smooth scroll (bar only)</div>
           <button class="bs-switch ${SMOOTH_BAR ? 'on' : ''}" data-k="smooth" role="switch" aria-checked="${SMOOTH_BAR}" aria-label="Quick smooth scroll (bar only)"><i></i></button>
         </div>
+        <div class="bs-row">
+          <div class="bs-row-label">Require Shift for number jumps</div>
+          <button class="bs-switch ${KEYS_SHIFT ? 'on' : ''}" data-k="keys" role="switch" aria-checked="${KEYS_SHIFT}" aria-label="Require Shift for number jumps"><i></i></button>
+        </div>
 
         <div class="bs-meta"><kbd>1</kbd> top • <kbd>0</kbd> bottom • <kbd>2–9</kbd> jump %</div>
       </div>
@@ -420,6 +483,7 @@
         const on = !sw.classList.contains('on');
         const which = sw.dataset.k;
         if (which === 'smooth') setSmoothBar(on);
+        if (which === 'keys') { KEYS_SHIFT = !!on; Store.set('bs-keys-shift', KEYS_SHIFT ? '1' : '0'); }
         sw.classList.toggle('on', on);
         sw.setAttribute('aria-checked', String(on));
       }
@@ -458,9 +522,9 @@
       --bs-thin-thumb: 2px;       /* collapsed thumb visible line */
       --bs-idle-opacity: .6;      /* collapsed thumb opacity */
     }
-    /* Hide native scrollbars */
-    html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { width:0!important; height:0!important; display:none!important; }
-    html, body, * { scrollbar-width: none!important; -ms-overflow-style: none!important; }
+    html::-webkit-scrollbar:vertical, body::-webkit-scrollbar:vertical, .bs-hide-v::-webkit-scrollbar:vertical { width:0!important; display:none!important; }
+    html, body { scrollbar-width: none!important; -ms-overflow-style: none!important; }
+    .bs-hide-v { scrollbar-width: none!important; -ms-overflow-style: none!important; }
 
     /* Custom bar */
     .bs-bar{
@@ -542,6 +606,7 @@
     @keyframes bs-rainbow { 0%{background-position:0% 50%} 100%{background-position:100% 50%} }
     @keyframes bs-glint { 0%{background-position:200% 0,0 0} 100%{background-position:-200% 0,0 0} }
     @keyframes bs-water { 0%{background-position:0 4px,0 0,0 0} 100%{background-position:96px 4px,72px 0,0 0} }
+    @keyframes bs-pan { 0%{background-position:0% 0%} 50%{background-position:100% 100%} 100%{background-position:0% 0%} }
 
     @media (prefers-reduced-motion: reduce){
       .bs-thumb, .bs-prev b { animation: none!important; }
@@ -560,6 +625,7 @@
         return;
       }
       if (UI_OPEN || isEditable(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (KEYS_SHIFT && !e.shiftKey) return;
       const d = getDigit(e); if (d == null) return;
 
       const inst = MGR?.active || MGR?.rootInst; if (!inst) return;
@@ -576,15 +642,15 @@
   // -------------------------------
   // Init
   // -------------------------------
-  const start = () => {
-    injectStyles();
-    setTheme(CUR_THEME);
-    MGR = new Manager();
-    bindKeys();
-    if (typeof GM_registerMenuCommand === 'function') {
-      GM_registerMenuCommand('🎨 Scrollbar Settings', () => (UI_OPEN ? closeUI() : openUI()));
-    }
-  };
+    const start = () => {
+      injectStyles();
+      setTheme(CUR_THEME);
+      MGR = new Manager();
+      bindKeys();
+      if (typeof GM_registerMenuCommand === 'function') {
+        GM_registerMenuCommand('🎨 Scrollbar Settings', () => (UI_OPEN ? closeUI() : openUI()));
+      }
+    };
 
   if (document.body) start();
   else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
