@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Beautiful Scrollbar — Compact Dark UI (Instant Jump)
+// @name         Beautiful Scrollbar — Compact Dark UI (Idle Thin Indicator + Instant Jump)
 // @namespace    http://github.com/quantavil/beautiful-scrollbar
-// @version      5.5.0
-// @description  Fast custom scrollbar with multi-container support, minimal dark settings UI, animated themes, hover-only option, and instant quick-jump keys. ESC for settings. 1=top, 0=bottom, 2–9=% jump instantly. Optional quick smooth scroll for bar clicks (keys stay instant).
+// @version      5.6.1
+// @description  Fast custom scrollbar with multi-container support, minimal dark settings UI, animated themes, hover-only option, idle thin indicator with delay, and instant quick-jump keys. ESC for settings. 1=top, 0=bottom, 2–9=% instant jump. Optional quick smooth scroll for bar clicks (keys stay instant).
 // @author       quantavil
 // @match        *://*/*
 // @run-at       document-start
@@ -19,6 +19,7 @@
   // Config + Themes
   // -------------------------------
   const MIN_THUMB = 30, RATIO = 0.95, Z = 2147483640;
+  const IDLE_DELAY = 1000; // ms — wait before collapsing to thin indicator
 
   // New fields per theme:
   // - anim    -> CSS animation shorthand (e.g., "bs-barber 2.2s linear infinite")
@@ -136,7 +137,6 @@
     r.setProperty('--bs-radius', (t.radius ?? 8) + 'px');
     r.setProperty('--bs-width', (t.w ?? 10) + 'px');
     r.setProperty('--bs-glow', t.glow || 'none');
-    // animation + background-size
     r.setProperty('--bs-thumb-anim', t.anim || 'none');
     r.setProperty('--bs-thumb-bg-size', t.bgSize || 'auto');
   };
@@ -156,10 +156,21 @@
       document.body.appendChild(this.el);
       this.raf = 0;
       this._anim = 0;
-      this.onScroll = () => this.req();
+      this._idleTO = 0;
+      this.isHover = false;
+
+      // Update on scroll; expand on scroll only when hover-only is OFF
+      this.onScroll = () => {
+        this.req();
+        if (!HOVER_ONLY) this.awake();
+        this.scheduleIdle();
+      };
+
       this.bind();
       this.update();
+      this.scheduleIdle(); // start collapsed after a delay if untouched
     }
+
     _setScroll(v) {
       (this.r ? $root() : this.c).scrollTop = v;
     }
@@ -190,21 +201,49 @@
       if (SMOOTH_BAR) this.smoothTo(y);
       else this.to(y);
     }
+
+    // Idle/Active state
+    awake() {
+      clearTimeout(this._idleTO);
+      this._idleTO = 0;
+      this.el.classList.remove('idle');
+    }
+    scheduleIdle() {
+      if (!this.el) return;
+      if (this.isHover || this.el.classList.contains('drag')) return;
+      clearTimeout(this._idleTO);
+      this._idleTO = setTimeout(() => {
+        if (this.el && !this.isHover && !this.el.classList.contains('drag')) {
+          this.el.classList.add('idle');
+        }
+      }, IDLE_DELAY);
+    }
+
     bind() {
       // Track click -> jump
       this.el.addEventListener('click', (e) => {
         if (e.target !== this.el) return;
+        // any click is activity
+        this.awake();
+        this.scheduleIdle();
+
         const rect = this.el.getBoundingClientRect();
         const th = this.thumb.offsetHeight, space = rect.height - th;
         if (space <= 0) return;
         const p = clamp((e.clientY - rect.top - th / 2) / space, 0, 1);
         const m = this.m(); this.go(m.max * p);
       });
+
+      // Hover state for idle logic
+      this.el.addEventListener('mouseenter', () => { this.isHover = true; this.awake(); });
+      this.el.addEventListener('mouseleave', () => { this.isHover = false; this.scheduleIdle(); });
+
       // Drag thumb (always direct)
       this.thumb.addEventListener('mousedown', (e) => {
         if (e.button !== 0) return; e.preventDefault();
         const startY = e.clientY, start = this.m().scroll;
         this.el.classList.add('drag');
+        this.awake(); // expand immediately
         this.cancelSmooth();
         const mm = (ev) => {
           ev.preventDefault();
@@ -212,27 +251,37 @@
           const th = this.thumb.offsetHeight, space = rect.height - th; if (space <= 0) return;
           this.to(start + ((ev.clientY - startY) / space) * m.max);
         };
-        const mu = () => { this.el.classList.remove('drag'); document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); };
+        const mu = () => {
+          this.el.classList.remove('drag');
+          document.removeEventListener('mousemove', mm);
+          document.removeEventListener('mouseup', mu);
+          this.scheduleIdle(); // collapse after delay when drag ends
+        };
         document.addEventListener('mousemove', mm);
         document.addEventListener('mouseup', mu);
       });
+
       (this.r ? window : this.c).addEventListener('scroll', this.onScroll, { passive: true });
     }
+
     m() {
       if (this.r) {
-        const scroll = window.pageYOffset || $root().scrollTop;
+        const rootEl = $root();
+        const scroll = window.pageYOffset || rootEl.scrollTop;
         const vh = window.innerHeight;
-        const sh = Math.max($root().scrollHeight, document.body?.scrollHeight || 0, vh);
+        const sh = Math.max(rootEl.scrollHeight || 0, document.body?.scrollHeight || 0, vh);
         return { scroll, vh, sh, max: Math.max(0, sh - vh) };
       }
       const scroll = this.c.scrollTop, vh = this.c.clientHeight, sh = this.c.scrollHeight;
       return { scroll, vh, sh, max: Math.max(0, sh - vh) };
     }
+
     update() {
       if (!this.el) return;
       const m = this.m();
       let vis = m.max > 0 ? 1 : 0;
       let top = 0, h = window.innerHeight, right = 0;
+
       if (!this.r) {
         const rect = this.c.getBoundingClientRect();
         if (rect.height <= 0 || rect.bottom <= 0 || rect.top >= window.innerHeight) vis = 0;
@@ -242,12 +291,14 @@
           right = Math.max(0, window.innerWidth - rect.right);
         }
       }
+
       this.el.style.opacity = String(vis);
       this.el.style.pointerEvents = vis ? 'auto' : 'none';
       this.el.style.top = top + 'px';
       this.el.style.height = h + 'px';
       this.el.style.right = right + 'px';
       if (!vis) return;
+
       const barH = this.el.offsetHeight || h;
       const th = Math.max(MIN_THUMB, Math.min(barH * RATIO, barH * (m.vh / Math.max(m.sh, 1))));
       const p = m.max ? (m.scroll / m.max) : 0;
@@ -255,9 +306,12 @@
       this.thumb.style.height = Math.round(th) + 'px';
       this.thumb.style.transform = `translateY(${Math.round(y)}px)`;
     }
+
     req() { cancelAnimationFrame(this.raf); this.raf = requestAnimationFrame(() => this.update()); }
+
     destroy() {
       this.cancelSmooth();
+      clearTimeout(this._idleTO);
       cancelAnimationFrame(this.raf);
       (this.r ? window : this.c).removeEventListener('scroll', this.onScroll);
       this.el?.remove();
@@ -350,8 +404,8 @@
 
         <div class="bs-subtitle">Behavior</div>
         <div class="bs-row">
-          <div class="bs-row-label">Show thumb only on hover</div>
-          <button class="bs-switch ${HOVER_ONLY ? 'on' : ''}" data-k="hover" role="switch" aria-checked="${HOVER_ONLY}" aria-label="Show thumb only on hover"><i></i></button>
+          <div class="bs-row-label">Show full thumb only on hover</div>
+          <button class="bs-switch ${HOVER_ONLY ? 'on' : ''}" data-k="hover" role="switch" aria-checked="${HOVER_ONLY}" aria-label="Show full thumb only on hover"><i></i></button>
         </div>
         <div class="bs-row">
           <div class="bs-row-label">Quick smooth scroll (bar only)</div>
@@ -397,7 +451,7 @@
   const closeUI = () => { UI?.classList.remove('show'); UI_OPEN = false; };
 
   // -------------------------------
-  // Styles (hover-only clean; no grey guide; keyframes updated)
+  // Styles (idle thin indicator; cleanup redundant rules)
   // -------------------------------
   const injectStyles = () => addCSS(`
     :root{
@@ -411,16 +465,27 @@
       --bs-red-strong: #dc2626;
       --bs-thumb-anim: none;
       --bs-thumb-bg-size: auto;
+
+      /* Idle indicator tuning */
+      --bs-indicator-width: 3px;  /* collapsed bar width */
+      --bs-thin-thumb: 2px;       /* collapsed thumb visible line */
+      --bs-idle-opacity: .6;      /* collapsed thumb opacity */
     }
     /* Hide native scrollbars */
     html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { width:0!important; height:0!important; display:none!important; }
     html, body, * { scrollbar-width: none!important; -ms-overflow-style: none!important; }
 
     /* Custom bar */
-    .bs-bar{ position:fixed; right:0; top:0; width:var(--bs-width); height:100vh; background:var(--bs-track); border-radius:var(--bs-radius) 0 0 var(--bs-radius); z-index:${Z}; transition:opacity .2s,width .15s, background .15s; opacity:0; pointer-events:none; }
+    .bs-bar{
+      position:fixed; right:0; top:0; width:var(--bs-width); height:100vh;
+      background:var(--bs-track);
+      border-radius:var(--bs-radius) 0 0 var(--bs-radius);
+      z-index:${Z}; transition:opacity .2s,width .15s, background .15s;
+      opacity:0; pointer-events:none;
+    }
     .bs-bar:hover{ width:calc(var(--bs-width) + 3px); }
     .bs-thumb{
-      position:absolute; left:1px; right:1px; top:0;
+      position:absolute; left:0; right:0; top:0;
       min-height:${MIN_THUMB}px;
       background:var(--bs-thumb);
       background-size: var(--bs-thumb-bg-size, auto);
@@ -434,14 +499,23 @@
     .bs-bar:hover .bs-thumb{ background:var(--bs-thumb-hover); box-shadow:var(--bs-glow), 0 2px 8px rgba(0,0,0,.25); }
     .bs-bar.drag .bs-thumb{ cursor:grabbing; }
 
-    /* Hover-only mode: no grey line, reduced hit area when idle */
-    html.bs-hover-only .bs-bar{ width:3px; background:transparent; }
+    /* Idle collapse to thin indicator */
+    .bs-bar.idle{
+      width: var(--bs-indicator-width);
+      background: transparent;
+    }
+    .bs-bar.idle .bs-thumb{
+      opacity: var(--bs-idle-opacity);
+      box-shadow: none;
+      background: var(--bs-thumb);
+      clip-path: inset(0 calc(50% - (var(--bs-thin-thumb) / 2)) 0 calc(50% - (var(--bs-thin-thumb) / 2)));
+      animation-play-state: paused;
+    }
+
+    /* Hover-only mode: keep track hidden unless active; still uses idle thin indicator */
+    html.bs-hover-only .bs-bar{ background: transparent; }
     html.bs-hover-only .bs-bar:hover,
-    html.bs-hover-only .bs-bar.drag{ width:var(--bs-width); background:var(--bs-track); }
-    html.bs-hover-only .bs-bar .bs-thumb{ opacity:0; }
-    html.bs-hover-only .bs-bar:hover .bs-thumb,
-    html.bs-hover-only .bs-bar.drag .bs-thumb{ opacity:1; }
-    html.bs-hover-only .bs-bar:not(:hover):not(.drag) .bs-thumb{ animation-play-state: paused; }
+    html.bs-hover-only .bs-bar.drag{ background: var(--bs-track); }
 
     /* Overlay */
     .bs-ov{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(3,6,12,.72); backdrop-filter: blur(6px); z-index:${Z+10}; }
@@ -480,20 +554,10 @@
     .bs-grid::-webkit-scrollbar-thumb:hover{ background:rgba(96,165,250,.6); }
     .bs-grid{ scrollbar-width:thin!important; }
 
-    /* Keyframes for animated themes (updated) */
-    @keyframes bs-rainbow {
-      0%   { background-position:   0% 50%; }
-      100% { background-position: 100% 50%; }
-    }
-    @keyframes bs-glint {
-      0%   { background-position: 200% 0, 0 0; }
-      100% { background-position: -200% 0, 0 0; }
-    }
-    /* Two wave layers drifting horizontally for a cleaner filling effect */
-    @keyframes bs-water {
-      0%   { background-position: 0 4px, 0 0, 0 0; }
-      100% { background-position: 96px 4px, 72px 0, 0 0; }
-    }
+    /* Keyframes for animated themes */
+    @keyframes bs-rainbow { 0%{background-position:0% 50%} 100%{background-position:100% 50%} }
+    @keyframes bs-glint { 0%{background-position:200% 0,0 0} 100%{background-position:-200% 0,0 0} }
+    @keyframes bs-water { 0%{background-position:0 4px,0 0,0 0} 100%{background-position:96px 4px,72px 0,0 0} }
 
     @media (prefers-reduced-motion: reduce){
       .bs-thumb, .bs-prev b { animation: none!important; }
