@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Smart Abbreviation Expander (AI)
+// @name         Smart Abbreviation Expander (AI) / Prompt manger
 // @namespace    https://github.com/quantavil
-// @version      1.14.2
+// @version      1.15
 // @description  Expand abbreviations with Shift+Space, open palette with Alt+P. Gemini grammar/tone correction with Alt+G. Supports {{date}}, {{time}}, {{day}}, {{clipboard}}, and {{cursor}}. Works in inputs, textareas, and contenteditable with robust insertion. Inline editing, in-panel settings, hotkey customization, and API key verify+save. Fallback: if no caret, insert at end-of-line in a reasonable field.
 // @author       quantavil
 // @match        *://*/*
@@ -236,31 +236,33 @@
       if (el) state._lastFocusedEditable = el;
     }, true);
 
-    // Menu commands
+    const isVM = typeof GM_info !== 'undefined' && GM_info && /Violentmonkey/i.test(GM_info.scriptHandler || '');
     GMX.registerMenuCommand('Open Abbreviation Palette', () => { state.lastEditable = captureEditableContext(); openPalette(); });
-    GMX.registerMenuCommand('Export Dictionary (.json)', exportDict);
-    GMX.registerMenuCommand('Import Dictionary', () => importDict());
-    GMX.registerMenuCommand('Reset Dictionary to Defaults', async () => {
-      if (confirm('Reset dictionary to defaults?')) await setDict(DEFAULT_DICT, 'Dictionary reset to defaults.');
-    });
-    GMX.registerMenuCommand('Gemini: Correct Selection/Field (Alt+G)', triggerGeminiCorrection);
-    GMX.registerMenuCommand('Gemini: Set Tone (neutral/friendly/formal/casual/concise)', async () => {
-      const val = prompt('Tone (neutral, friendly, formal, casual, concise):', state.tone || 'neutral');
-      if (val == null) return;
-      const t = (val || '').trim().toLowerCase();
-      const allowed = ['neutral', 'friendly', 'formal', 'casual', 'concise'];
-      if (!allowed.includes(t)) return toast('Invalid tone.');
-      state.tone = t;
-      await GMX.setValue(CONFIG.storeKeys.tone, state.tone);
-      toast(`Tone set to ${state.tone}.`);
-    });
-    GMX.registerMenuCommand('Gemini: Set API Key', async () => {
-      const val = prompt('Enter Gemini API key(s) separated by ;', state.apiKey || '');
-      if (val == null) return;
-      state.apiKey = val.trim();
-      await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
-      toast(state.apiKey ? 'API key saved.' : 'API key cleared.');
-    });
+    if (!isVM) {
+      GMX.registerMenuCommand('Export Dictionary (.json)', exportDict);
+      GMX.registerMenuCommand('Import Dictionary', () => importDict());
+      GMX.registerMenuCommand('Reset Dictionary to Defaults', async () => {
+        if (confirm('Reset dictionary to defaults?')) await setDict(DEFAULT_DICT, 'Dictionary reset to defaults.');
+      });
+      GMX.registerMenuCommand('Gemini: Correct Selection/Field (Alt+G)', triggerGeminiCorrection);
+      GMX.registerMenuCommand('Gemini: Set Tone (neutral/friendly/formal/casual/concise)', async () => {
+        const val = prompt('Tone (neutral, friendly, formal, casual, concise):', state.tone || 'neutral');
+        if (val == null) return;
+        const t = (val || '').trim().toLowerCase();
+        const allowed = ['neutral', 'friendly', 'formal', 'casual', 'concise'];
+        if (!allowed.includes(t)) return toast('Invalid tone.');
+        state.tone = t;
+        await GMX.setValue(CONFIG.storeKeys.tone, state.tone);
+        toast(`Tone set to ${state.tone}.`);
+      });
+      GMX.registerMenuCommand('Gemini: Set API Key', async () => {
+        const val = prompt('Enter Gemini API key(s) separated by ;', state.apiKey || '');
+        if (val == null) return;
+        state.apiKey = val.trim();
+        await GMX.setValue(CONFIG.storeKeys.apiKey, state.apiKey);
+        toast(state.apiKey ? 'API key saved.' : 'API key cleared.');
+      });
+    }
 
     document.addEventListener('keydown', onKeyDownCapture, true);
   }
