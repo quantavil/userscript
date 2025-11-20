@@ -1,9 +1,120 @@
 // ==UserScript==
-// @name         Instant Jump Scrollbar (Minimal)
+// @name        Instant Jump Scrollbar
 // @namespace    https://github.com/quantavil
-// @version      1.0.0
+// @version      1.0.4
 // @description  Instant quick jumps: 1=top, 0=bottom, 2–9=20%–90%. Click anywhere on the custom scrollbar to jump there.
 // @match        *://*/*
+
+// --- Music & Audio Only ---
+// @exclude *://music.youtube.com/*
+// @exclude *://*.soundcloud.com/*
+// @exclude *://*.deezer.com/*
+// @exclude *://*.pandora.com/*
+// @exclude *://music.apple.com/*
+// @exclude *://*.tidal.com/*
+// @exclude *://*.gaana.com/*
+// @exclude *://*.jiosaavn.com/*
+// @exclude *://*.wynk.in/*
+
+// --- Productivity, Cloud & Office Suites (Prevents Key Conflicts with Data Entry) ---
+// @exclude *://super-productivity.com/*
+// @exclude *://calendar.google.com/*
+// @exclude *://docs.google.com/*
+// @exclude *://drive.google.com/*
+// @exclude *://mail.google.com/*
+// @exclude *://keep.google.com/*
+// @exclude *://meet.google.com/*
+// @exclude *://contacts.google.com/*
+// @exclude *://*.office.com/*
+// @exclude *://outlook.live.com/*
+// @exclude *://*.microsoft365.com/*
+// @exclude *://*.notion.so/*
+// @exclude *://*.trello.com/*
+// @exclude *://*.asana.com/*
+// @exclude *://*.atlassian.net/*
+// @exclude *://*.jira.com/*
+// @exclude *://*.monday.com/*
+// @exclude *://*.clickup.com/*
+// @exclude *://*.linear.app/*
+// @exclude *://*.miro.com/*
+// @exclude *://*.figma.com/*
+// @exclude *://*.canva.com/*
+// @exclude *://*.dropbox.com/*
+// @exclude *://*.box.com/*
+// @exclude *://*.onedrive.live.com/*
+// @exclude *://*.evernote.com/*
+
+
+// --- Search Engines & Maps ---
+// @exclude *://www.google.*/*
+// @exclude *://search.brave.com/*
+// @exclude *://*.bing.com/*
+// @exclude *://*.duckduckgo.com/*
+// @exclude *://*.yahoo.com/*
+// @exclude *://*.baidu.com/*
+// @exclude *://*.yandex.com/*
+// @exclude *://*.ecosia.org/*
+// @exclude *://*.startpage.com/*
+// @exclude *://*.google.com/maps/*
+// @exclude *://*.openstreetmap.org/*
+
+
+// --- Trading, Visual Editors, and Desktop-like Apps (High Interference Risk) ---
+// @exclude *://*.tradingview.com/*
+// @exclude *://*.webflow.com/*
+// @exclude *://*.adobe.com/*
+// @exclude *://app.postman.com/*
+// @exclude *://*.framer.com/*
+// @exclude *://*.zotero.org/*
+
+
+
+// --- Banking & Finance (Global) ---
+// @exclude *://*.paypal.com/*
+// @exclude *://*.stripe.com/*
+// @exclude *://*.wise.com/*
+// @exclude *://*.revolut.com/*
+// @exclude *://*.americanexpress.com/*
+// @exclude *://*.mastercard.com/*
+// @exclude *://*.visa.com/*
+
+// --- Banking & Finance (Indian) ---
+// @exclude *://*.onlinesbi.sbi/*
+// @exclude *://retail.onlinesbi.com/*
+// @exclude *://*.hdfcbank.com/*
+// @exclude *://netbanking.hdfcbank.com/*
+// @exclude *://*.icicibank.com/*
+// @exclude *://infinity.icicibank.com/*
+// @exclude *://*.axisbank.com/*
+// @exclude *://*.kotak.com/*
+// @exclude *://*.pnbindia.in/*
+// @exclude *://*.bankofbaroda.in/*
+// @exclude *://*.canarabank.com/*
+// @exclude *://*.unionbankofindia.co.in/*
+// @exclude *://*.idfcfirstbank.com/*
+// @exclude *://*.indusind.com/*
+// @exclude *://*.yesbank.in/*
+// @exclude *://*.rblbank.com/*
+// @exclude *://*.idbibank.in/*
+// @exclude *://*.paytm.com/*
+// @exclude *://*.phonepe.com/*
+// @exclude *://*.razorpay.com/*
+
+// --- Government & Official (India) ---
+// @exclude *://*.gov.in/*
+// @exclude *://*.uidai.gov.in/*
+// @exclude *://*.incometax.gov.in/*
+// @exclude *://*.gst.gov.in/*
+// @exclude *://*.epfindia.gov.in/*
+// @exclude *://*.passportindia.gov.in/*
+// @exclude *://*.irctc.co.in/*
+
+// --- Security & Password Managers ---
+// @exclude *://*.lastpass.com/*
+// @exclude *://*.1password.com/*
+// @exclude *://*.bitwarden.com/*
+// @exclude *://*.dashlane.com/*
+
 // @run-at       document-start
 // @license      MIT
 // ==/UserScript==
