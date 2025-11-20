@@ -1,30 +1,167 @@
 // ==UserScript==
-// @name         StreamGrabber
-// @namespace    https://github.com/streamgrabber-lite
-// @version      1.2.2
-// @description  Lightweight downloader for HLS (.m3u8 via m3u8-parser), video blobs, and direct videos. Mobile + Desktop. Pause/Resume. AES-128. fMP4. Minimal UI.
-// @match        *://*/*
-// @exclude      *://*.youtube.com/*
-// @exclude      *://*.youtu.be/*
-// @exclude      *://*.x.com/*
-// @exclude      *://*.twitch.tv/*
-// @exclude      *://*.reddit.com/*
-// @exclude      *://*.redd.it/*
-// @exclude      *://*.facebook.com/*
-// @exclude      *://*.instagram.com/*
-// @exclude      *://*.tiktok.com/*
-// @exclude      *://*.netflix.com/*
-// @exclude      *://*.hulu.com/*
-// @exclude      *://*.disneyplus.com/*
-// @exclude      *://*.primevideo.com/*
-// @exclude      *://*.spotify.com/*
-// @run-at       document-start
-// @grant        GM_xmlhttpRequest
-// @grant        GM_addStyle
-// @connect      *
-// @license      MIT
-// @require      https://cdnjs.cloudflare.com/ajax/libs/m3u8-parser/7.2.0/m3u8-parser.min.js
-// @require      https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js
+// @name StreamGrabber
+// @namespace https://github.com/streamgrabber-lite
+// @version 1.2.4
+// @description Lightweight downloader for HLS (.m3u8 via m3u8-parser), video blobs, and direct videos. Mobile + Desktop. Pause/Resume. AES-128. fMP4. Minimal UI.
+// @match *://*/*
+
+// --- Existing Social & Streaming Exclusions ---
+// @exclude *://*.youtube.com/*
+// @exclude *://*.youtu.be/*
+// @exclude *://*.x.com/*
+// @exclude *://*.twitch.tv/*
+// @exclude *://*.reddit.com/*
+// @exclude *://*.redd.it/*
+// @exclude *://*.facebook.com/*
+// @exclude *://*.instagram.com/*
+// @exclude *://*.tiktok.com/*
+// @exclude *://*.netflix.com/*
+// @exclude *://*.hulu.com/*
+// @exclude *://*.disneyplus.com/*
+// @exclude *://*.primevideo.com/*
+// @exclude *://*.spotify.com/*
+
+// --- Music & Audio Only ---
+// @exclude *://music.youtube.com/*
+// @exclude *://*.soundcloud.com/*
+// @exclude *://*.deezer.com/*
+// @exclude *://*.pandora.com/*
+// @exclude *://music.apple.com/*
+// @exclude *://*.tidal.com/*
+// @exclude *://*.gaana.com/*
+// @exclude *://*.jiosaavn.com/*
+// @exclude *://*.wynk.in/*
+
+// --- Productivity, Cloud & Office Suites ---
+// @exclude *://super-productivity.com/*
+// @exclude *://calendar.google.com/*
+// @exclude *://docs.google.com/*
+// @exclude *://drive.google.com/*
+// @exclude *://mail.google.com/*
+// @exclude *://keep.google.com/*
+// @exclude *://meet.google.com/*
+// @exclude *://contacts.google.com/*
+// @exclude *://*.office.com/*
+// @exclude *://outlook.live.com/*
+// @exclude *://*.microsoft365.com/*
+// @exclude *://*.notion.so/*
+// @exclude *://*.trello.com/*
+// @exclude *://*.asana.com/*
+// @exclude *://*.atlassian.net/*
+// @exclude *://*.jira.com/*
+// @exclude *://*.monday.com/*
+// @exclude *://*.clickup.com/*
+// @exclude *://*.linear.app/*
+// @exclude *://*.miro.com/*
+// @exclude *://*.figma.com/*
+// @exclude *://*.canva.com/*
+// @exclude *://*.dropbox.com/*
+// @exclude *://*.box.com/*
+// @exclude *://*.onedrive.live.com/*
+// @exclude *://*.evernote.com/*
+
+// --- Cloud Consoles & DevOps ---
+// @exclude *://aws.amazon.com/*
+// @exclude *://console.aws.amazon.com/*
+// @exclude *://portal.azure.com/*
+// @exclude *://console.cloud.google.com/*
+// @exclude *://*.firebase.google.com/*
+// @exclude *://*.vercel.com/*
+// @exclude *://*.netlify.com/*
+// @exclude *://*.heroku.com/*
+// @exclude *://*.digitalocean.com/*
+// @exclude *://*.cloudflare.com/*
+
+// --- Communication & Chat ---
+// @exclude *://web.telegram.org/*
+// @exclude *://app.slack.com/*
+// @exclude *://*.slack.com/*
+// @exclude *://discord.com/*
+// @exclude *://web.whatsapp.com/*
+// @exclude *://teams.microsoft.com/*
+// @exclude *://zoom.us/*
+// @exclude *://web.skype.com/*
+// @exclude *://messenger.com/*
+
+// --- Search Engines ---
+// @exclude *://www.google.*/*
+// @exclude *://search.brave.com/*
+// @exclude *://*.bing.com/*
+// @exclude *://*.duckduckgo.com/*
+// @exclude *://*.yahoo.com/*
+// @exclude *://*.baidu.com/*
+// @exclude *://*.yandex.com/*
+// @exclude *://*.ecosia.org/*
+// @exclude *://*.startpage.com/*
+
+// --- Developer Tools & Repositories ---
+// @exclude *://github.com/*
+// @exclude *://gitlab.com/*
+// @exclude *://bitbucket.org/*
+// @exclude *://stackoverflow.com/*
+// @exclude *://*.stackexchange.com/*
+// @exclude *://*.npm *
+// @exclude *://pypi.org/*
+// @exclude *://*.w3schools.com/*
+// @exclude *://developer.mozilla.org/*
+
+// --- Wikipedia & Reference ---
+// @exclude *://*.wikipedia.org/*
+// @exclude *://*.wiktionary.org/*
+
+// --- Banking & Finance (Global) ---
+// @exclude *://*.paypal.com/*
+// @exclude *://*.stripe.com/*
+// @exclude *://*.wise.com/*
+// @exclude *://*.revolut.com/*
+// @exclude *://*.americanexpress.com/*
+// @exclude *://*.mastercard.com/*
+// @exclude *://*.visa.com/*
+
+// --- Banking & Finance (Indian) ---
+// @exclude *://*.onlinesbi.sbi/*
+// @exclude *://retail.onlinesbi.com/*
+// @exclude *://*.hdfcbank.com/*
+// @exclude *://netbanking.hdfcbank.com/*
+// @exclude *://*.icicibank.com/*
+// @exclude *://infinity.icicibank.com/*
+// @exclude *://*.axisbank.com/*
+// @exclude *://*.kotak.com/*
+// @exclude *://*.pnbindia.in/*
+// @exclude *://*.bankofbaroda.in/*
+// @exclude *://*.canarabank.com/*
+// @exclude *://*.unionbankofindia.co.in/*
+// @exclude *://*.idfcfirstbank.com/*
+// @exclude *://*.indusind.com/*
+// @exclude *://*.yesbank.in/*
+// @exclude *://*.rblbank.com/*
+// @exclude *://*.idbibank.in/*
+// @exclude *://*.paytm.com/*
+// @exclude *://*.phonepe.com/*
+// @exclude *://*.razorpay.com/*
+
+// --- Government & Official (India) ---
+// @exclude *://*.gov.in/*
+// @exclude *://*.uidai.gov.in/*
+// @exclude *://*.incometax.gov.in/*
+// @exclude *://*.gst.gov.in/*
+// @exclude *://*.epfindia.gov.in/*
+// @exclude *://*.passportindia.gov.in/*
+// @exclude *://*.irctc.co.in/*
+
+// --- Security & Password Managers ---
+// @exclude *://*.lastpass.com/*
+// @exclude *://*.1password.com/*
+// @exclude *://*.bitwarden.com/*
+// @exclude *://*.dashlane.com/*
+
+// @run-at document-start
+// @grant GM_xmlhttpRequest
+// @grant GM_addStyle
+// @connect *
+// @license MIT
+// @require https://cdnjs.cloudflare.com/ajax/libs/m3u8-parser/7.2.0/m3u8-parser.min.js
+// @require https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js
 // ==/UserScript==
 (() => {
   'use strict';
