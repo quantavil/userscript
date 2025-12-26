@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Advanced Search Builder
 // @namespace    https://github.com/quantavil/userscript
-// @version      1.6
+// @version      1.7
 // @description  Advanced filter modal for GitHub search with OR/AND/NOT logic and native look.
 // @author       quantavil
 // @match        https://github.com/*
@@ -47,10 +47,13 @@
         modal.id = MODAL_ID;
         modal.style.cssText = `
             position: fixed;
-            top: 80px;
+            top: 50%;
             left: 50%;
-            transform: translateX(-50%);
-            width: 500px;
+            transform: translate(-50%, -50%);
+            width: 95%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
             z-index: 9999;
             background-color: var(--bgColor-default, #fff);
             border: 1px solid var(--borderColor-default, #d0d7de);
@@ -60,7 +63,28 @@
             padding: 16px;
             font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;
             color: var(--fgColor-default, #24292f);
+            box-sizing: border-box;
         `;
+
+        // Add responsive grid style
+        const style = document.createElement('style');
+        style.innerHTML = `
+            #${MODAL_ID} .responsive-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+            }
+            @media (max-width: 480px) {
+                #${MODAL_ID} .responsive-grid {
+                    grid-template-columns: 1fr;
+                }
+                #${MODAL_ID} {
+                    top: 10px;
+                    transform: translateX(-50%);
+                }
+            }
+        `;
+        document.head.appendChild(style);
 
         modal.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
@@ -89,7 +113,7 @@
 
                 <hr style="border:0; border-top:1px solid var(--borderColor-muted); margin: 12px 0;">
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div class="responsive-grid">
                      <div>
                         <label style="display:block; font-size:12px; font-weight:600;">Owner/User</label>
                         <input type="text" id="inp-user" class="form-control input-sm" style="width:100%;">
@@ -125,6 +149,7 @@
                     <button type="submit" class="btn btn-primary btn-sm">Search</button>
                 </div>
             </form>
+
         `;
 
         document.body.appendChild(modal);
