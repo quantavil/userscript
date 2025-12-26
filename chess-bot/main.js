@@ -1050,13 +1050,15 @@
                     console.warn(`GabiBot: ❌ API failed (${res.status}) after ${duration.toFixed(0)}ms`);
                     throw new Error(`API error ${res.status}`);
                 }
-                const data = await res.json();
-                if (data.success === false) {
-                    console.warn(`GabiBot: ❌ API success=false after ${duration.toFixed(0)}ms`);
-                    throw new Error('API success=false');
+                const response = await res.json();
+                if (response.success === false) {
+                    const errorMsg = typeof response.data === 'string' ? response.data : 'API success=false';
+                    console.warn(`GabiBot: ❌ API error after ${duration.toFixed(0)}ms: ${errorMsg}`);
+                    throw new Error(errorMsg);
                 }
                 console.log(`GabiBot: ✅ API success in ${duration.toFixed(0)}ms | FEN: ${fen.substring(0, 20)}...`);
-                return data;
+                // Extract the actual engine data for simpler consumption
+                return response.data || {};
             } finally {
                 clearTimeout(to);
                 signal?.removeEventListener('abort', onAbort);
@@ -1123,13 +1125,26 @@
         else if (Array.isArray(data.lines)) addFromArray(data.lines);
         else if (Array.isArray(data.pvs)) addFromArray(data.pvs);
 
-        if (!lines.length && typeof data.bestmove === 'string') {
-            const parts = data.bestmove.split(' ');
-            let uci = parts.length > 1 ? parts[1] : parts[0];
-            if (uci === 'bestmove' && parts[1]) uci = parts[1];
-            const pv = data.pv || data.continuation || uci;
-            const score = scoreFrom(data.evaluation);
-            pushLine(uci, pv, score);
+        if (!lines.length && (data.bestmove || data.best_move)) {
+            const bestmoveText = data.bestmove || data.best_move;
+            if (typeof bestmoveText === 'string') {
+                const parts = bestmoveText.split(' ');
+                let uci = parts.length > 1 ? parts[1] : parts[0];
+                if (uci === 'bestmove' && parts[1]) uci = parts[1];
+                const pv = data.continuation || data.pv || data.line || uci;
+
+                // Handle API v2 fields: eval (float) and mate (integer or null)
+                let scoreObj = {};
+                if (data.mate !== undefined && data.mate !== null) {
+                    scoreObj = { mate: parseInt(data.mate, 10) };
+                } else if (data.eval !== undefined && data.eval !== null) {
+                    scoreObj = { cp: Math.round(parseFloat(data.eval) * 100) };
+                } else {
+                    scoreObj = data.evaluation || data.score || {};
+                }
+                const score = scoreFrom(scoreObj);
+                pushLine(uci, pv, score);
+            }
         }
         lines.sort((a, b) => scoreNumeric(b.score) - scoreNumeric(a.score));
         return lines[0] || null;
