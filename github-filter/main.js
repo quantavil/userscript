@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         GitHub Advanced Search Builder
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/quantavil/userscript
 // @version      1.6
 // @description  Advanced filter modal for GitHub search with OR/AND/NOT logic and native look.
 // @author       quantavil
@@ -9,7 +9,7 @@
 // @grant        none
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
     // Config
@@ -38,7 +38,7 @@
 
         // Insert Button
         if (headerSearch.parentNode) {
-             headerSearch.parentNode.insertBefore(btn, headerSearch.nextSibling);
+            headerSearch.parentNode.insertBefore(btn, headerSearch.nextSibling);
         }
 
         // Create Modal (Hidden by default)
