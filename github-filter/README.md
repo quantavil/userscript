@@ -4,11 +4,15 @@ A lightweight userscript that adds an advanced search modal to GitHub's header, 
 
 ## Features
 - **Visual Builder**: No need to remember GitHub's search syntax.
-- **AND/OR/NOT Logic**: Easily combine or exclude terms.
-- **Metadata Support**: Filter by user/owner, repository, language, file extension, stars, forks, and file path.
-- **Native Look**: Styled using GitHub's design system variables for a seamless experience.
+- **Improved Persistence**: Fields are automatically restored from the current URL query.
+- **Search Categories**: Easily switch between Repositories, Code, Issues, PRs, etc.
+- **Advanced Sorting**: Sort results by Stars, Forks, or Recently Updated.
+- **Detailed Filters**: Filter by topics, created/pushed dates, size, language, and more.
+- **AND/OR/NOT Logic**: Full support for complex Boolean queries.
+- **Mobile Responsive**: Fully optimized for both desktop and mobile views.
+- **Native Look**: Styled using GitHub's Primer design system variables.
 - **Hotkeys**: Toggle the modal with `Ctrl+Shift+F`.
-- **Responsive**: Works with both the legacy and the new GitHub header designs.
+- **Clear All**: One-click reset for all filter fields.
 
 ## Installation
 1. Install a userscript manager like [Tampermonkey](https://www.tampermonkey.net/) or [Greasemonkey](https://www.greasemonkey.org/).

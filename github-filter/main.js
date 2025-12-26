@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Advanced Search Builder
 // @namespace    https://github.com/quantavil/userscript
-// @version      1.7
+// @version      1.8
 // @description  Advanced filter modal for GitHub search with OR/AND/NOT logic and native look.
 // @author       quantavil
 // @match        https://github.com/*
@@ -95,6 +95,29 @@
             </div>
 
             <form id="${MODAL_ID}-form">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom:12px;">
+                    <div>
+                        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Search Type</label>
+                        <select id="sel-type" class="form-select select-sm" style="width:100%;">
+                            <option value="repositories">Repositories</option>
+                            <option value="code">Code</option>
+                            <option value="issues">Issues</option>
+                            <option value="pullrequests">Pull Requests</option>
+                            <option value="discussions">Discussions</option>
+                            <option value="users">Users</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Sort By</label>
+                        <select id="sel-sort" class="form-select select-sm" style="width:100%;">
+                            <option value="">Best Match</option>
+                            <option value="stars">Most Stars</option>
+                            <option value="forks">Most Forks</option>
+                            <option value="updated">Recently Updated</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="form-group" style="margin-bottom:12px;">
                     <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Must contain ALL (AND)</label>
                     <input type="text" id="inp-and" class="form-control input-sm input-block" placeholder="rust async tokio" style="width:100%;">
@@ -102,13 +125,12 @@
 
                 <div class="form-group" style="margin-bottom:12px;">
                     <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Must contain ONE OF (OR)</label>
-                    <input type="text" id="inp-or" class="form-control input-sm input-block" placeholder="api, library, framework" style="width:100%;">
-                    <p style="font-size:10px; color:var(--fgColor-muted); margin-top:4px;">Separators: space, comma, or colon.</p>
+                    <input type="text" id="inp-or" class="form-control input-sm input-block" placeholder="api, library" style="width:100%;">
                 </div>
 
                 <div class="form-group" style="margin-bottom:12px;">
                     <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--fgColor-danger, #cf222e);">Exclude (NOT)</label>
-                    <input type="text" id="inp-not" class="form-control input-sm input-block" placeholder="deprecated, archived" style="width:100%;">
+                    <input type="text" id="inp-not" class="form-control input-sm input-block" placeholder="deprecated" style="width:100%;">
                 </div>
 
                 <hr style="border:0; border-top:1px solid var(--borderColor-muted); margin: 12px 0;">
@@ -116,19 +138,27 @@
                 <div class="responsive-grid">
                      <div>
                         <label style="display:block; font-size:12px; font-weight:600;">Owner/User</label>
-                        <input type="text" id="inp-user" class="form-control input-sm" style="width:100%;">
+                        <input type="text" id="inp-user" class="form-control input-sm" placeholder="e.g. facebook" style="width:100%;">
                     </div>
                     <div>
                         <label style="display:block; font-size:12px; font-weight:600;">Repository</label>
-                        <input type="text" id="inp-repo" class="form-control input-sm" style="width:100%;">
+                        <input type="text" id="inp-repo" class="form-control input-sm" placeholder="e.g. react" style="width:100%;">
                     </div>
                     <div>
                         <label style="display:block; font-size:12px; font-weight:600;">Language</label>
-                        <input type="text" id="inp-lang" class="form-control input-sm" placeholder="python" style="width:100%;">
+                        <input type="text" id="inp-lang" class="form-control input-sm" placeholder="e.g. python" style="width:100%;">
                     </div>
                     <div>
                         <label style="display:block; font-size:12px; font-weight:600;">Extension</label>
-                        <input type="text" id="inp-ext" class="form-control input-sm" placeholder="md" style="width:100%;">
+                        <input type="text" id="inp-ext" class="form-control input-sm" placeholder="e.g. md" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:12px; font-weight:600;">Created Date</label>
+                        <input type="text" id="inp-created" class="form-control input-sm" placeholder="e.g. >2023-01-01" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:12px; font-weight:600;">Pushed Date</label>
+                        <input type="text" id="inp-pushed" class="form-control input-sm" placeholder="e.g. >2024-01-01" style="width:100%;">
                     </div>
                     <div>
                         <label style="display:block; font-size:12px; font-weight:600;">Stars (>=)</label>
@@ -138,6 +168,14 @@
                         <label style="display:block; font-size:12px; font-weight:600;">Forks (>=)</label>
                         <input type="number" id="inp-forks" class="form-control input-sm" style="width:100%;">
                     </div>
+                    <div>
+                        <label style="display:block; font-size:12px; font-weight:600;">Size (KB)</label>
+                        <input type="text" id="inp-size" class="form-control input-sm" placeholder="e.g. >1000" style="width:100%;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:12px; font-weight:600;">Topics</label>
+                        <input type="text" id="inp-topics" class="form-control input-sm" placeholder="e.g. machine-learning" style="width:100%;">
+                    </div>
                 </div>
 
                  <div style="margin-top:12px;">
@@ -145,7 +183,8 @@
                     <input type="text" id="inp-path" class="form-control input-sm" placeholder="src/main" style="width:100%;">
                 </div>
 
-                <div style="margin-top:16px; text-align:right;">
+                <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center;">
+                    <button type="button" id="${MODAL_ID}-clear" class="btn btn-sm btn-muted">Clear all</button>
                     <button type="submit" class="btn btn-primary btn-sm">Search</button>
                 </div>
             </form>
@@ -157,8 +196,12 @@
         // Events
         btn.addEventListener('click', (e) => {
             e.preventDefault();
-            modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
-            document.getElementById('inp-and').focus();
+            const isOpening = modal.style.display !== 'block';
+            modal.style.display = isOpening ? 'block' : 'none';
+            if (isOpening) {
+                populateFieldsFromURL();
+                document.getElementById('inp-and').focus();
+            }
         });
 
         document.getElementById(`${MODAL_ID}-close`).addEventListener('click', () => {
@@ -170,69 +213,163 @@
             executeSearch();
         });
 
+        document.getElementById(`${MODAL_ID}-clear`).addEventListener('click', () => {
+            const ids = ['inp-and', 'inp-or', 'inp-not', 'inp-user', 'inp-repo', 'inp-lang', 'inp-ext', 'inp-stars', 'inp-forks', 'inp-path', 'inp-topics', 'inp-created', 'inp-pushed', 'inp-size', 'sel-type', 'sel-sort'];
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    if (el.tagName === 'SELECT') el.selectedIndex = 0;
+                    else el.value = '';
+                }
+            });
+        });
+
         // Close on escape
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') modal.style.display = 'none';
             if (e.ctrlKey && e.shiftKey && e.key === 'F') {
                 modal.style.display = 'block';
+                populateFieldsFromURL();
                 document.getElementById('inp-and').focus();
             }
         });
     }
 
-    function executeSearch() {
-        let queryParts = [];
+    function populateFieldsFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        const query = params.get('q');
+        const type = params.get('type');
+        const sort = params.get('s');
 
-        // Helper to split by space, comma, or semicolon
-        const parseList = (val) => val.split(/[\s,;]+/).filter(t => t.length > 0);
-        // 1. Handle AND (Default text)
-        const andVal = document.getElementById('inp-and').value.trim();
-        if (andVal) queryParts.push(andVal);
-        // 2. Handle OR (Complex Grouping)
-        const orVal = document.getElementById('inp-or').value.trim();
-        if (orVal) {
-            const terms = parseList(orVal);
-            if (terms.length > 1) {
-                queryParts.push(`(${terms.join(' OR ')})`);
-            } else if (terms.length === 1) {
-                queryParts.push(terms[0]);
+        // Reset fields
+        const allIds = ['inp-and', 'inp-or', 'inp-not', 'inp-user', 'inp-repo', 'inp-lang', 'inp-ext', 'inp-stars', 'inp-forks', 'inp-path', 'inp-topics', 'inp-created', 'inp-pushed', 'inp-size', 'sel-type', 'sel-sort'];
+        allIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                if (el.tagName === 'SELECT') el.selectedIndex = 0;
+                else el.value = '';
+            }
+        });
+
+        if (type) document.getElementById('sel-type').value = type;
+        if (sort) document.getElementById('sel-sort').value = sort;
+
+        if (!query) return;
+
+        let remainingQuery = query;
+
+        // 1. Extract metadata filters
+        const metadataMap = {
+            'user': 'inp-user',
+            'repo': 'inp-repo',
+            'language': 'inp-lang',
+            'extension': 'inp-ext',
+            'stars': 'inp-stars',
+            'forks': 'inp-forks',
+            'path': 'inp-path',
+            'topic': 'inp-topics',
+            'created': 'inp-created',
+            'pushed': 'inp-pushed',
+            'size': 'inp-size'
+        };
+
+        for (const [key, id] of Object.entries(metadataMap)) {
+            const regex = new RegExp(`${key}:(\\S+)`, 'i');
+            const match = remainingQuery.match(regex);
+            if (match) {
+                let val = match[1];
+                if (key === 'stars' || key === 'forks') {
+                    val = val.replace('>=', '');
+                }
+                document.getElementById(id).value = val;
+                remainingQuery = remainingQuery.replace(match[0], '');
             }
         }
 
-        // 3. Handle Exclude (NOT)
-        const notVal = document.getElementById('inp-not').value.trim();
+        // 2. Extract OR groups: (A OR B OR C)
+        const orMatch = remainingQuery.match(/\(([^)]+ OR [^)]+)\)/i);
+        if (orMatch) {
+            const terms = orMatch[1].split(/\s+OR\s+/i);
+            document.getElementById('inp-or').value = terms.join(', ');
+            remainingQuery = remainingQuery.replace(orMatch[0], '');
+        }
+
+        // 3. Extract NOT terms: -term
+        const notTerms = [];
+        remainingQuery = remainingQuery.replace(/-(\S+)/g, (match, term) => {
+            notTerms.push(term);
+            return '';
+        });
+        if (notTerms.length > 0) {
+            document.getElementById('inp-not').value = notTerms.join(', ');
+        }
+
+        // 4. Remaining goes to AND
+        const andVal = remainingQuery.trim().replace(/\s+/g, ' ');
+        if (andVal) {
+            document.getElementById('inp-and').value = andVal;
+        }
+    }
+
+    function executeSearch() {
+        let queryParts = [];
+        const getVal = (id) => document.getElementById(id).value.trim();
+
+        // Helper to split by space, comma, or semicolon
+        const parseList = (val) => val.split(/[\s,;]+/).filter(t => t.length > 0);
+
+        // 1. Handle AND
+        const andVal = getVal('inp-and');
+        if (andVal) queryParts.push(andVal);
+
+        // 2. Handle OR
+        const orVal = getVal('inp-or');
+        if (orVal) {
+            const terms = parseList(orVal);
+            if (terms.length > 1) queryParts.push(`(${terms.join(' OR ')})`);
+            else if (terms.length === 1) queryParts.push(terms[0]);
+        }
+
+        // 3. Handle NOT
+        const notVal = getVal('inp-not');
         if (notVal) {
             const terms = parseList(notVal);
             terms.forEach(t => queryParts.push(`-${t}`));
         }
 
         // 4. Metadata
-        const getVal = (id) => document.getElementById(id).value.trim();
+        const metadata = {
+            'user': 'inp-user',
+            'repo': 'inp-repo',
+            'language': 'inp-lang',
+            'extension': 'inp-ext',
+            'stars': 'inp-stars',
+            'forks': 'inp-forks',
+            'path': 'inp-path',
+            'topic': 'inp-topics',
+            'created': 'inp-created',
+            'pushed': 'inp-pushed',
+            'size': 'inp-size'
+        };
 
-        const user = getVal('inp-user');
-        if (user) queryParts.push(`user:${user}`);
+        for (const [key, id] of Object.entries(metadata)) {
+            let val = getVal(id);
+            if (val) {
+                // Auto-add >= to stars/forks if missing and only a number
+                if ((key === 'stars' || key === 'forks') && !val.match(/[<>=]/)) val = `>=${val}`;
+                queryParts.push(`${key}:${val}`);
+            }
+        }
 
-        const repo = getVal('inp-repo');
-        if (repo) queryParts.push(`repo:${repo}`);
-
-        const lang = getVal('inp-lang');
-        if (lang) queryParts.push(`language:${lang}`);
-
-        const ext = getVal('inp-ext');
-        if (ext) queryParts.push(`extension:${ext}`);
-
-        const stars = getVal('inp-stars');
-        if (stars) queryParts.push(`stars:>=${stars}`);
-
-        const forks = getVal('inp-forks');
-        if (forks) queryParts.push(`forks:>=${forks}`);
-
-        const path = getVal('inp-path');
-        if (path) queryParts.push(`path:${path}`);
+        const type = document.getElementById('sel-type').value;
+        const sort = document.getElementById('sel-sort').value;
 
         // Construct final URL
         const finalQuery = encodeURIComponent(queryParts.join(' '));
-        window.location.href = `https://github.com/search?q=${finalQuery}&type=repositories`;
+        let url = `https://github.com/search?q=${finalQuery}&type=${type}`;
+        if (sort) url += `&s=${sort}&o=desc`;
+
+        window.location.href = url;
     }
 
     // Init and Observe for Turbo/PJAX
