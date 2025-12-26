@@ -13,38 +13,13 @@ for cmd in yt-dlp jq fzf column; do
     fi
 done
 
-# --- Cleanup Trap (Stops spinner on Ctrl+C) ---
-cleanup() {
-    [ -n "$SPIN_PID" ] && kill "$SPIN_PID" 2>/dev/null
-    tput cnorm # Restore cursor
-    exit 1
-}
-trap cleanup INT TERM
-
 URL="$1"
 [ -z "$URL" ] && { echo "Usage: $(basename "$0") <url>"; exit 1; }
 
-# --- Helper: Spinner ---
-start_spinner() {
-    set +m
-    tput civis # Hide cursor
-    echo -n "$1 "
-    { while : ; do for X in '⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏'; do echo -en "\b$X"; sleep 0.1; done; done & } 2>/dev/null
-    SPIN_PID=$!
-}
-
-stop_spinner() {
-    [ -n "$SPIN_PID" ] && kill "$SPIN_PID" &>/dev/null
-    echo -en "\b✅\n"
-    tput cnorm # Restore cursor
-    set -m
-}
-
 # --- Playlist Handling ---
 if [[ "$URL" == *"list="* ]]; then
-    start_spinner " Playlist detected. Fetching list..."
+    echo " Playlist detected. Fetching list..."
     PLAYLIST_JSON=$(yt-dlp --flat-playlist -J "$URL")
-    stop_spinner
 
     [ -z "$PLAYLIST_JSON" ] && { echo "❌ Failed to fetch playlist"; exit 1; }
 
@@ -64,21 +39,19 @@ if [[ "$URL" == *"list="* ]]; then
     [ -z "$VID_ID_ONLY" ] && exit 1
 
     URL="https://www.youtube.com/watch?v=$VID_ID_ONLY"
-    echo -e "📌 Selected ID: \033[1;36m$VID_ID_ONLY\033[0m\n"
+    echo -e "📌 Selected ID: $VID_ID_ONLY"
 fi
 
 # --- Metadata Fetch ---
-start_spinner "⏳ Fetching video metadata..."
-# Added --no-playlist to prevent accidental bulk fetch
+echo "⏳ Fetching video metadata..."
 JSON=$(yt-dlp --no-playlist -J "$URL")
-stop_spinner
 [ -z "$JSON" ] && { echo "❌ Failed to fetch metadata"; exit 1; }
 
 TITLE=$(echo "$JSON" | jq -r '.title')
-echo -e "📺 \033[1;37m$TITLE\033[0m\n"
+echo -e "📺 $TITLE"
 
 # --- Select Video Stream ---
-# FIX: Hidden sort column (Format: HEIGHT \t ID \t Display...)
+# Filter: Remove storyboard formats, map codecs to friendly names
 VID_SELECTION=$(
     {
         echo -e "0\tID\tRES\tFPS\tEXT\tCODEC\tSIZE"
@@ -143,7 +116,6 @@ none     (no subtitles)"
     SUB_CODES=$(echo "$SUB_SELECTION" | grep -v "none" | awk '{print $1}' | paste -sd "," -)
     if [ -n "$SUB_CODES" ]; then
         SUB_ARGS+=(--write-subs --write-auto-subs --sub-langs "$SUB_CODES")
-        # Only embed if video exists
         [[ "$VID_ID" != "none" ]] && SUB_ARGS+=(--embed-subs)
     fi
 fi
@@ -187,30 +159,8 @@ while [[ -f "$OUTPUT_DIR/$FINAL_STEM.$FINAL_EXT" ]]; do
     ((COUNT++))
 done
 
-# --- Size Estimate ---
-VID_SIZE=0
-AUD_SIZE=0
-if [ "$VID_ID" != "none" ]; then
-    VID_SIZE=$(echo "$JSON" | jq -r --arg id "$VID_ID" '.formats[] | select(.format_id == $id) | ((.filesize // .filesize_approx) // 0)')
-fi
-if [ "$AUD_ID" != "none" ]; then
-    AUD_SIZE=$(echo "$JSON" | jq -r --arg id "$AUD_ID" '.formats[] | select(.format_id == $id) | ((.filesize // .filesize_approx) // 0)')
-fi
-TOTAL_MB=$(( (VID_SIZE + AUD_SIZE) / 1048576 ))
-
-# --- Summary & Execute ---
-echo -e "\n\033[1;34m┌───────────────────────────────────────────────────┐\033[0m"
-echo -e "\033[1;34m│\033[0m 📹 VideoFmt: $VID_ID"
-echo -e "\033[1;34m│\033[0m 🔊 AudioFmt: $AUD_ID"
-echo -e "\033[1;34m│\033[0m 💬 Subs:     ${SUB_CODES:-none}"
-echo -e "\033[1;34m│\033[0m 📦 Size:     ~$TOTAL_MB MB"
-echo -e "\033[1;34m│\033[0m 📂 Output:   $FINAL_STEM.$FINAL_EXT"
-echo -e "\033[1;34m└───────────────────────────────────────────────────┘\033[0m\n"
-
-read -rp "Proceed? [Y/n] " confirm
-[[ "$confirm" =~ ^[Nn] ]] && { echo "Cancelled."; exit 0; }
-
-echo "⬇️  Downloading..."
+# --- Execute ---
+echo "⬇️  Downloading to $OUTPUT_DIR$FINAL_STEM.$FINAL_EXT ..."
 yt-dlp \
     -f "$FORMAT_STR" \
     "${SUB_ARGS[@]}" \
@@ -218,4 +168,4 @@ yt-dlp \
     -P "$OUTPUT_DIR" \
     -o "$FINAL_STEM.%(ext)s" \
     --progress \
-    "$URL" && echo -e "\n✅ Done! Saved to $OUTPUT_DIR"
+    "$URL" && echo -e "\n✅ Done!"

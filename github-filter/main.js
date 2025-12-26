@@ -5,6 +5,7 @@
 // @description  Advanced filter modal for GitHub search with OR/AND/NOT logic and native look.
 // @author       quantavil
 // @match        https://github.com/*
+// @license      MIT
 // @icon         https://github.githubassets.com/favicons/favicon.svg
 // @grant        none
 // ==/UserScript==
