@@ -6,6 +6,11 @@
 // @author       Quantavil
 // @match        *://hianime.to/*
 // @match        *://*.animekai.la/*
+// @match        *://animekai.to/*
+// @match        *://animekai.im/*
+// @match        *://animekai.nl/*
+// @match        *://animekai.vc/*
+// @match        *://anikai.to/*
 // @match        *://anikototv.to/*
 // @match        *://animetsu.bz/*
 // @match        *://yugenanime.tv/*
@@ -25,6 +30,7 @@
         CACHE_EXPIRY: 14 * 24 * 60 * 60 * 1000,
         DEBOUNCE_DELAY: 400, // UX delay before requesting
         API_INTERVAL: 350,   // Minimum ms between API calls (Jikan limit)
+        FUZZY_THRESHOLD: 0.7, // Minimum similarity score (0-1) to accept a match
         SELECTORS: {
             ITEM: '.aitem, .flw-item, .anime-item, .poster-card, .film_list-wrap > div, .ep-item',
             TITLE: '.title, .film-name, .anime-name, .name, .d-title, h3.title, .dynamic-name'
@@ -38,30 +44,37 @@
         queue: [],
         processing: false,
         add(title, callback) {
-            this.queue.push({ title, callback });
+            this.queue.push({ title, callback, retries: 0 });
             this.process();
         },
         async process() {
             if (this.processing || this.queue.length === 0) return;
             this.processing = true;
 
-            const { title, callback } = this.queue.shift();
+            const job = this.queue.shift();
+            const { title, callback, retries } = job;
 
             try {
                 const data = await getMalData(title);
 
-                // 429 Retry Strategy
+                // 429 Retry Strategy (Max 1 retry)
                 if (data && data.status === 429) {
-                    console.warn(`[MAL-Hover] 429 Rate Limit. Backing off...`);
-                    this.queue.unshift({ title, callback }); // Return to queue
-                    setTimeout(() => {
-                        this.processing = false;
-                        this.process();
-                    }, 2000); // Wait 2s before retrying
-                    return;
+                    if (retries < 1) {
+                        console.warn(`[MAL-Hover] 429 Rate Limit. Backing off... Retry ${retries + 1}/1`);
+                        job.retries++;
+                        this.queue.unshift(job); // Return to queue with incremented retry
+                        setTimeout(() => {
+                            this.processing = false;
+                            this.process();
+                        }, 2500); // Backoff wait
+                        return;
+                    } else {
+                        console.error(`[MAL-Hover] 429 Rate Limit. Max retries exceeded.`);
+                        callback({ error: true, score: '429' });
+                    }
+                } else {
+                    callback(data);
                 }
-
-                callback(data);
             } catch (e) {
                 console.error(e);
                 callback({ error: true });
@@ -128,6 +141,33 @@
         return num >= 1e6 ? (num / 1e6).toFixed(1) + 'M' : num >= 1e3 ? (num / 1e3).toFixed(1) + 'k' : num;
     }
 
+    // Levenshtein distance for fuzzy matching
+    function getSimilarity(s1, s2) {
+        let longer = s1.length > s2.length ? s1 : s2;
+        let shorter = s1.length > s2.length ? s2 : s1;
+
+        if (longer.length === 0) return 1.0;
+
+        let costs = new Array();
+        for (let i = 0; i <= longer.length; i++) {
+            let lastValue = i;
+            for (let j = 0; j <= shorter.length; j++) {
+                if (i == 0) costs[j] = j;
+                else {
+                    if (j > 0) {
+                        let newValue = costs[j - 1];
+                        if (s1.charAt(i - 1) != s2.charAt(j - 1))
+                            newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                        costs[j - 1] = lastValue;
+                        lastValue = newValue;
+                    }
+                }
+            }
+            if (i > 0) costs[shorter.length] = lastValue;
+        }
+        return (longer.length - costs[shorter.length]) / parseFloat(longer.length);
+    }
+
     function cleanTitle(title) {
         // Removes common suffixes that break Jikan search (e.g., "One Piece (Sub)", "Naruto [Dub]")
         // REMOVE AGGRESSIVE SEASON CLEANING to avoid "Season 2" -> "Season 1" mismatch
@@ -146,18 +186,42 @@
         if (cached) return cached;
 
         try {
-            const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanT)}&limit=1`);
+            // Request top 3 results for fuzzy matching
+            const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanT)}&limit=3`);
 
             if (res.status === 429) return { status: 429 }; // Return status for handling
 
             const json = await res.json();
-            const data = json.data && json.data.length > 0 ? json.data[0] : null;
+            const results = json.data || [];
 
-            const result = data ? {
+            let bestMatch = null;
+            let highestScore = 0;
+
+            if (results.length > 0) {
+                // Find best match among the top 3
+                results.forEach(item => {
+                    const sim1 = getSimilarity(cleanT.toLowerCase(), (item.title || '').toLowerCase());
+                    const sim2 = getSimilarity(cleanT.toLowerCase(), (item.title_english || '').toLowerCase());
+                    const score = Math.max(sim1, sim2);
+
+                    if (score > highestScore) {
+                        highestScore = score;
+                        bestMatch = item;
+                    }
+                });
+
+                // Fail-safe: If no decent match found, but we have results, fallback to first ONLY if very disparate?
+                // For now, if best score is really bad, might be better to show nothing or first result?
+                // Let's stick to simply picking the best score, defaulting to first if all equal (0)
+                if (!bestMatch) bestMatch = results[0];
+            }
+
+            const result = bestMatch ? {
                 found: true,
-                score: data.score || 'N/A',
-                members: formatMembers(data.members),
-                url: data.url
+                score: bestMatch.score || 'N/A',
+                members: formatMembers(bestMatch.members),
+                url: bestMatch.url,
+                matchScore: highestScore // Debug info
             } : { found: false };
 
             setCache(cacheKey, result);
