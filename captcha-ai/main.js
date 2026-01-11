@@ -18,6 +18,15 @@
     const CONFIG = {
         apiKey: 'AIzaSyDp4Ldwi-Pr4E3dfQiT2lyRa0-S57W0b5E',
         model: 'gemma-3-27b-it',
+        timeouts: {
+            imageLoad: 5000,
+            api: 15000
+        },
+        delays: {
+            initialRun: 100,      
+            afterRefresh: 100,    
+            afterSrcChange: 50 
+        }
     };
 
     const SITES = [
@@ -133,6 +142,8 @@
                 console.log('Icegate Solver: No matching configuration for this site.');
                 return;
             }
+            this._debounceTimer = null;
+            this.observer = null;
             this.injectStyles();
             this.createUI();
             this.init();
@@ -153,6 +164,9 @@
         }
 
         createUI() {
+            // Fix: Duplicate Widget on SPA Navigation
+            document.querySelector('.ice-solver-widget')?.remove();
+
             this.widget = document.createElement('div');
             this.widget.className = 'ice-solver-widget status-idle';
             this.widget.innerHTML = `
@@ -173,12 +187,17 @@
         updateStatus(status, text) {
             this.widget.className = `ice-solver-widget status-${status}`;
             this.statusText.textContent = text;
+
+            // Fix: Button Text Logic Issue
+            this.solveBtn.classList.remove('loading');
             if (status === 'solving') {
                 this.solveBtn.textContent = '...';
                 this.solveBtn.classList.add('loading');
-            } else {
+            } else if (status === 'error') {
                 this.solveBtn.textContent = 'Retry';
-                this.solveBtn.classList.remove('loading');
+            } else {
+                // idle or success
+                this.solveBtn.textContent = 'Solve';
             }
         }
 
@@ -189,25 +208,30 @@
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
 
-            if (this.site.type === 'canvas') {
-                // If the source is already a canvas
-                if (el.tagName !== 'CANVAS') throw new Error('Expected Canvas element');
-                // We need to clone it because we can't get data from a tainted canvas if it was tainted, 
-                // but usually these are drawn by JS so we can just toDataURL on the original if allowed, 
-                // OR we have to rely on the fact that we can read it.
-                // If it's a Canvas element in DOM, we can just call toDataURL on it directly.
-                return el.toDataURL('image/jpeg').replace(/^data:image\/jpeg;base64,/, '');
+            try {
+                if (this.site.type === 'canvas') {
+                    if (el.tagName !== 'CANVAS') throw new Error('Expected Canvas element');
+                    return el.toDataURL('image/jpeg').replace(/^data:image\/jpeg;base64,/, '');
+                } else {
+                    if (el.tagName !== 'IMG') throw new Error('Expected Image element');
 
-            } else {
-                // Image element
-                if (el.tagName !== 'IMG') throw new Error('Expected Image element');
-                if (!el.complete || el.naturalWidth === 0) {
-                    await new Promise(r => el.onload = r);
+                    // Fix: Race Condition in Image Loading
+                    if (!el.complete || el.naturalWidth === 0) {
+                        await new Promise((resolve, reject) => {
+                            el.onload = resolve;
+                            el.onerror = () => reject(new Error('Image failed to load'));
+                            setTimeout(() => reject(new Error('Image load timeout')), CONFIG.timeouts.imageLoad);
+                        });
+                    }
+
+                    canvas.width = el.naturalWidth || el.width;
+                    canvas.height = el.naturalHeight || el.height;
+                    ctx.drawImage(el, 0, 0);
+                    return canvas.toDataURL('image/jpeg').replace(/^data:image\/jpeg;base64,/, '');
                 }
-                canvas.width = el.naturalWidth || el.width;
-                canvas.height = el.naturalHeight || el.height;
-                ctx.drawImage(el, 0, 0);
-                return canvas.toDataURL('image/jpeg').replace(/^data:image\/jpeg;base64,/, '');
+            } catch (e) {
+                // Fix: Canvas Taint / Cross-Origin Not Handled
+                throw new Error('Canvas tainted or extraction failed: ' + e.message);
             }
         }
 
@@ -228,13 +252,21 @@
                     url: apiUrl,
                     headers: { "Content-Type": "application/json" },
                     data: JSON.stringify(payload),
+                    timeout: CONFIG.timeouts.api, // Fix: No API Request Timeout
+                    ontimeout: () => reject("Request timed out"),
                     onload: (response) => {
                         if (response.status === 200) {
                             try {
                                 const data = JSON.parse(response.responseText);
                                 const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                                if (text) resolve(text.trim().replace(/\s/g, ''));
-                                else reject("No text in response");
+
+                                // Fix: No Response Validation
+                                const solution = text ? text.trim().replace(/[^a-zA-Z0-9]/g, '') : '';
+                                if (solution.length < 4 || solution.length > 8) {
+                                    reject("Invalid captcha format");
+                                } else {
+                                    resolve(solution);
+                                }
                             } catch (e) { reject("Parse Error: " + e.message); }
                         } else {
                             reject(`API Error ${response.status}`);
@@ -243,6 +275,11 @@
                     onerror: (err) => reject("Network Error")
                 });
             });
+        }
+
+        debounce(fn, delay) {
+            clearTimeout(this._debounceTimer);
+            this._debounceTimer = setTimeout(fn, delay);
         }
 
         async run() {
@@ -273,8 +310,8 @@
         }
 
         init() {
-            // Auto-run on load after a slight delay to ensure render
-            setTimeout(() => this.run(), 1000);
+            // Fix: Magic Numbers
+            setTimeout(() => this.run(), CONFIG.delays.initialRun);
 
             // Observe for refresh
             if (this.site.selectors.refreshBtn) {
@@ -282,26 +319,28 @@
                 if (btn) {
                     btn.addEventListener('click', () => {
                         this.updateStatus('idle', 'Refreshed');
-                        setTimeout(() => this.run(), 1000); // Wait for new captcha
+                        setTimeout(() => this.run(), CONFIG.delays.afterRefresh);
                     });
                 }
             }
 
-            // Also monitor DOM for captcha replacement if possible
-            // For Canvas, it's harder to watch src, so we might need a MutationObserver on the parent or just rely on the button.
-            // For Image, we can watch src.
+            // Also monitor DOM for captcha replacement
             if (this.site.selectors.captchaSource) {
                 const el = document.querySelector(this.site.selectors.captchaSource);
+                // Fix: Observer Never Disconnected
+                if (this.observer) this.observer.disconnect();
+
                 if (el && el.tagName === 'IMG') {
-                    const observer = new MutationObserver((mutations) => {
+                    this.observer = new MutationObserver((mutations) => {
                         for (const m of mutations) {
                             if (m.type === 'attributes' && m.attributeName === 'src') {
                                 console.log('Captcha source changed, re-solving...');
-                                setTimeout(() => this.run(), 500);
+                                // Fix: No Debouncing for Rapid Changes
+                                this.debounce(() => this.run(), CONFIG.delays.afterSrcChange);
                             }
                         }
                     });
-                    observer.observe(el, { attributes: true });
+                    this.observer.observe(el, { attributes: true });
                 }
             }
         }
