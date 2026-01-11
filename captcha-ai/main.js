@@ -13,7 +13,7 @@
     'use strict';
 
     const CONFIG = {
-        apiKey: 'AIzaSyDp4Ldwi-Pr4E3dfQiT2lyRa0-S57W0b5E',
+        apiKey: 'YOUR-API-KEY',
         model: 'gemma-3-27b-it',
         selectors: {
             captchaImage: '#capimg',
