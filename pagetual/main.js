@@ -224,6 +224,7 @@
                 lastPage: "Reached the last page",
                 lastPageTips: "Show tips when reaching the last page"
             }
+        }
     ];
     var langList = { "en": "English" };
     var i18nData = langData[0].lang;
