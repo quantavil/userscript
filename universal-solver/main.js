@@ -17,8 +17,8 @@
 
     // --- Configuration ---
     const CONFIG = {
-        apiKey: 'AIzaSyDp4Ldwi-Pr4E3dfQiT2lyRa0-S57W0b5E', // TODO: user should probably be able to set this too, but hardcoded for now
-        model: 'gemma-3-27b-it',
+        get apiKey() { return GM_getValue('gemini_api_key', ''); },
+        get model() { return GM_getValue('gemini_model', 'gemma-3-27b-it'); },
         timeouts: {
             imageLoad: 5000,
             api: 12000
@@ -72,7 +72,7 @@
             border-radius: 50%;
             overflow: hidden;
         }
-        
+
         .ucs-widget.minimized .ucs-content { display: none; }
         .ucs-widget.minimized .ucs-icon { display: block; }
 
@@ -128,7 +128,7 @@
         }
 
         .ucs-btn:active { transform: translateY(0); }
-        
+
         .ucs-btn.secondary {
             background: rgba(255, 255, 255, 0.1);
             color: #ccc;
@@ -147,13 +147,13 @@
             cursor: crosshair;
             background: rgba(0,0,0,0.1);
         }
-        
+
         .ucs-highlight {
             outline: 2px solid var(--ucs-accent) !important;
             box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2) !important;
             transition: all 0.1s;
         }
-        
+
         .ucs-tooltip {
             position: fixed;
             background: #333;
@@ -369,8 +369,20 @@
 
         registerMenu() {
             if (typeof GM_registerMenuCommand !== 'undefined') {
+                GM_registerMenuCommand("🔑 Set API Key", () => {
+                    const currentKey = GM_getValue('gemini_api_key', '');
+                    const key = prompt('Enter your Gemini API Key:', currentKey);
+                    if (key !== null && key.trim()) {
+                        GM_setValue('gemini_api_key', key.trim());
+                        const currentModel = GM_getValue('gemini_model', 'gemma-3-27b-it');
+                        const model = prompt('Enter model name (leave empty for default):', currentModel);
+                        if (model && model.trim()) GM_setValue('gemini_model', model.trim());
+                        alert('API Key saved!');
+                    }
+                });
+
                 GM_registerMenuCommand("⚙️ Configure Captcha Solver", () => {
-                    this.injectStyles(); // Ensure styles are present
+                    this.injectStyles();
                     this.startSetup();
                 });
 
@@ -484,7 +496,10 @@
 
             try {
                 if (this.siteConfig.isCanvas || el.tagName === 'CANVAS') {
-                    return el.toDataURL('image/jpeg').replace(/^data:image\/jpeg;base64,/, '');
+                    canvas.width = el.width;
+                    canvas.height = el.height;
+                    ctx.drawImage(el, 0, 0);
+                    return canvas.toDataURL('image/jpeg').replace(/^data:image\/jpeg;base64,/, '');
                 } else {
                     if (!el.complete || el.naturalWidth === 0) {
                         await new Promise((resolve, reject) => {
@@ -496,12 +511,41 @@
                     canvas.width = el.naturalWidth || el.width;
                     canvas.height = el.naturalHeight || el.height;
                     ctx.drawImage(el, 0, 0);
-                    return canvas.toDataURL('image/jpeg').replace(/^data:image\/jpeg;base64,/, '');
+                    try {
+                        return canvas.toDataURL('image/jpeg').replace(/^data:image\/jpeg;base64,/, '');
+                    } catch (corsError) {
+                        // CORS blocked - fallback to GM_xmlhttpRequest
+                        return await this.fetchCrossOriginImage(el.src);
+                    }
                 }
             } catch (e) {
                 console.error(e);
                 throw new Error('Image extraction failed');
             }
+        }
+
+        async fetchCrossOriginImage(url) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    responseType: 'blob',
+                    timeout: CONFIG.timeouts.imageLoad,
+                    onload: (response) => {
+                        if (response.status === 200) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                                const base64 = reader.result.replace(/^data:image\/[^;]+;base64,/, '');
+                                resolve(base64);
+                            };
+                            reader.onerror = reject;
+                            reader.readAsDataURL(response.response);
+                        } else reject(new Error(`HTTP ${response.status}`));
+                    },
+                    onerror: () => reject(new Error('Network Error')),
+                    ontimeout: () => reject(new Error('Timeout'))
+                });
+            });
         }
 
         async runSolve() {

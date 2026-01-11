@@ -46,7 +46,6 @@ A powerful, universal captcha solver userscript that uses the Google Gemini API 
 
 -   **Auto-Solve**: The widget will show "Solving..." automatically when a configured captcha is detected.
 -   **Manual Solve**: Click the "Solve" button on the widget to trigger a new attempt.
--   **Minimize**: Click the robot icon 🤖 to minimize the widget to a floating bubble.
 -   **Reset**: Use the Userscript menu to reset configuration for the current site or globally.
 
 ## Troubleshooting
