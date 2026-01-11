@@ -1,17 +1,20 @@
 // ==UserScript==
 // @name         Universal Captcha Solver
-// @namespace    http://tampermonkey.net/
-// @version      1.0
+// @namespace    http://github.com/quantavil
+// @version      1.1
 // @description  Solve captchas on any website using Gemini AI with a generic selector picker
 // @author       quantavil
 // @match        *://*/*
+// @license      MIT
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        GM_listValues
+// @grant        GM_deleteValue
 // ==/UserScript==
-
+ 
 (function () {
     'use strict';
 
