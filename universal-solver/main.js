@@ -1,15 +1,18 @@
 // ==UserScript==
 // @name         Universal Captcha Solver
-// @namespace    http://tampermonkey.net/
+// @namespace    http://github.com/quantavil
 // @version      1.0
 // @description  Solve captchas on any website using Gemini AI with a generic selector picker
-// @author       Antigravity
+// @author       quantavil
 // @match        *://*/*
+// @license      MIT
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        GM_listValues
+// @grant        GM_deleteValue
 // ==/UserScript==
 
 (function () {
@@ -17,8 +20,7 @@
 
     // --- Configuration ---
     const CONFIG = {
-        apiKey: 'AIzaSyDp4Ldwi-Pr4E3dfQiT2lyRa0-S57W0b5E', // TODO: user should probably be able to set this too, but hardcoded for now
-        model: 'gemma-3-27b-it',
+        // apiKey and model are now dynamic
         timeouts: {
             imageLoad: 5000,
             api: 12000
@@ -175,19 +177,36 @@
     class ConfigManager {
         constructor() {
             this.domain = window.location.hostname;
+            this.GLOBAL_KEY = 'UCS_GLOBAL_CONFIG';
         }
 
-        getConfig() {
+        getGlobalConfig() {
+            const stored = GM_getValue(this.GLOBAL_KEY);
+            return stored ? JSON.parse(stored) : null;
+        }
+
+        saveGlobalConfig(apiKey, model) {
+            GM_setValue(this.GLOBAL_KEY, JSON.stringify({ apiKey, model }));
+        }
+
+        getSiteConfig() {
             const stored = GM_getValue(this.domain);
             return stored ? JSON.parse(stored) : null;
         }
 
-        saveConfig(config) {
+        saveSiteConfig(config) {
             GM_setValue(this.domain, JSON.stringify(config));
         }
 
-        clearConfig() {
-            GM_setValue(this.domain, null);
+        clearSiteConfig() {
+            GM_deleteValue(this.domain);
+        }
+
+        resetAll() {
+            const keys = GM_listValues();
+            for (const key of keys) {
+                GM_deleteValue(key);
+            }
         }
     }
 
@@ -211,7 +230,7 @@
         start(message) {
             this.active = true;
             this.createOverlay(message);
-            document.addEventListener('mousemove', this.handleMouseMove, true);
+            document.addEventListener('mousemove', this.handleMouseMove, { capture: true, passive: true });
             document.addEventListener('click', this.handleClick, true);
             document.addEventListener('keydown', this.handleKeyDown, true);
         }
@@ -225,7 +244,7 @@
 
             this.overlay?.remove();
             this.tooltip?.remove();
-            document.removeEventListener('mousemove', this.handleMouseMove, true);
+            document.removeEventListener('mousemove', this.handleMouseMove, { capture: true, passive: true });
             document.removeEventListener('click', this.handleClick, true);
             document.removeEventListener('keydown', this.handleKeyDown, true);
         }
@@ -282,11 +301,15 @@
         }
 
         handleKeyDown(e) {
-            if (e.key === 'Escape') this.stop();
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                this.stop();
+            }
         }
 
         generateSelector(el) {
-            if (el.id) return `#${el.id}`;
+            if (el.id) return `#${CSS.escape(el.id)}`;
             let path = [];
             while (el && el.nodeType === Node.ELEMENT_NODE && el.tagName !== 'HTML') {
                 let selector = el.tagName.toLowerCase();
@@ -306,13 +329,15 @@
      * Main Solver Logic (Gemini)
      */
     class GeminiSolver {
-        constructor() {
+        constructor(globalConfig) {
             this.config = CONFIG;
+            this.globalConfig = globalConfig;
         }
 
         async solve(base64Image) {
             return new Promise((resolve, reject) => {
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.config.model}:generateContent?key=${this.config.apiKey}`;
+                const model = this.globalConfig.model || 'gemma-3-27b-it';
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.globalConfig.apiKey}`;
                 const payload = {
                     contents: [{
                         parts: [
@@ -355,10 +380,23 @@
         constructor() {
             this.configManager = new ConfigManager();
             this.picker = null;
-            this.solver = new GeminiSolver();
-            this.siteConfig = this.configManager.getConfig();
+            this.globalConfig = this.configManager.getGlobalConfig();
+            this.siteConfig = this.configManager.getSiteConfig();
+            this.observer = null;
+            this.isSolving = false;
+            this.canvas = document.createElement('canvas'); // Reuse canvas
+            this.ctx = this.canvas.getContext('2d');
 
+            // Register menu FIRST so user can set key if missing
             this.registerMenu();
+
+            // Only proceed if we have an API key
+            if (!this.globalConfig || !this.globalConfig.apiKey) {
+                // Do not auto-prompt. Wait for user to use the menu.
+                return;
+            }
+
+            this.solver = new GeminiSolver(this.globalConfig);
 
             if (this.siteConfig) {
                 this.injectStyles();
@@ -367,16 +405,36 @@
             }
         }
 
+        promptGlobalConfig() {
+            const apiKey = prompt("Please enter your Google Gemini API Key:\n(Get one at aistudio.google.com)", "");
+            if (!apiKey) return;
+            const model = prompt("Enter Model Name (default: gemma-3-27b-it):", "gemma-3-27b-it") || "gemma-3-27b-it";
+
+            this.configManager.saveGlobalConfig(apiKey, model);
+            location.reload();
+        }
+
         registerMenu() {
             if (typeof GM_registerMenuCommand !== 'undefined') {
+                GM_registerMenuCommand("🔑 Set API Key", () => {
+                    this.promptGlobalConfig();
+                });
+
                 GM_registerMenuCommand("⚙️ Configure Captcha Solver", () => {
                     this.injectStyles(); // Ensure styles are present
                     this.startSetup();
                 });
 
-                GM_registerMenuCommand("❌ Reset Configuration", () => {
+                GM_registerMenuCommand("❌ Reset Site Configuration", () => {
                     if (confirm('Reset configuration for this site?')) {
-                        this.configManager.clearConfig();
+                        this.configManager.clearSiteConfig();
+                        location.reload();
+                    }
+                });
+
+                GM_registerMenuCommand("⚠️ Reset ALL Configuration", () => {
+                    if (confirm('WARNING: This will reset API Key and ALL site configurations. Are you sure?')) {
+                        this.configManager.resetAll();
                         location.reload();
                     }
                 });
@@ -418,7 +476,7 @@
 
             if (solveBtn) solveBtn.onclick = () => this.runSolve();
             if (closeBtn) closeBtn.onclick = () => {
-                this.widget.remove();
+                this.destroy(); // Proper cleanup
             };
 
             this.updateStatus('ready', 'Ready');
@@ -427,6 +485,9 @@
 
         updateStatus(status, text) {
             if (!this.widget) return;
+            // Prevent updates if destroyed (double safety)
+            if (!document.body.contains(this.widget)) return;
+
             this.widget.className = `ucs-widget ucs-status-${status}`;
             const txt = this.widget.querySelector('.ucs-status-text');
             if (txt) txt.textContent = text;
@@ -451,6 +512,9 @@
         }
 
         async startSetup() {
+            // If picker is already active, stop it
+            if (this.picker?.active) this.picker.stop();
+
             this.picker = new SelectorPicker((selector, tagName) => {
                 // Step 1: Image
                 const imgSelector = selector;
@@ -458,6 +522,9 @@
 
                 // Delay slightly
                 setTimeout(() => {
+                    // Check if setup was cancelled during invalid intermediate state
+                    if (!this.picker) return;
+
                     this.picker = new SelectorPicker((inputSelector) => {
                         // Step 2: Input - Done
                         const config = {
@@ -465,7 +532,7 @@
                             inputSelector: inputSelector,
                             isCanvas: isCanvas
                         };
-                        this.configManager.saveConfig(config);
+                        this.configManager.saveSiteConfig(config);
                         alert('Configuration Saved! Page will reload.');
                         location.reload();
                     });
@@ -475,17 +542,50 @@
             this.picker.start("CLICK THE CAPTCHA IMAGE");
         }
 
+        destroy() {
+            if (this.observer) {
+                this.observer.disconnect();
+                this.observer = null;
+            }
+            if (this.widget) {
+                this.widget.remove();
+                this.widget = null;
+            }
+        }
+
         async getImageBase64() {
             const el = document.querySelector(this.siteConfig.captchaSelector);
             if (!el) throw new Error('Captcha element not found');
 
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
+            // Use reused canvas
+            const canvas = this.canvas;
+            const ctx = this.ctx;
+
+            // Clear previous content
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const MAX_DIMENSION = 800;
 
             try {
                 if (this.siteConfig.isCanvas || el.tagName === 'CANVAS') {
-                    return el.toDataURL('image/jpeg').replace(/^data:image\/jpeg;base64,/, '');
+                    // Calculate dimensions
+                    let width = el.width;
+                    let height = el.height;
+
+                    if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+                        const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
+                        width *= ratio;
+                        height *= ratio;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(el, 0, 0, width, height);
+
+                    return canvas.toDataURL('image/jpeg', 0.8).replace(/^data:image\/jpeg;base64,/, '');
                 } else {
+                    let sourceImg = el;
+
                     if (!el.complete || el.naturalWidth === 0) {
                         await new Promise((resolve, reject) => {
                             el.onload = resolve;
@@ -493,10 +593,39 @@
                             setTimeout(() => reject(new Error('Timeout')), CONFIG.timeouts.imageLoad);
                         });
                     }
-                    canvas.width = el.naturalWidth || el.width;
-                    canvas.height = el.naturalHeight || el.height;
-                    ctx.drawImage(el, 0, 0);
-                    return canvas.toDataURL('image/jpeg').replace(/^data:image\/jpeg;base64,/, '');
+
+                    // Handle CORS
+                    if (el.crossOrigin !== 'Anonymous') {
+                        const imgClone = new Image();
+                        imgClone.crossOrigin = "Anonymous";
+                        imgClone.src = el.src;
+
+                        await new Promise((resolve, reject) => {
+                            if (imgClone.complete) {
+                                resolve();
+                            } else {
+                                imgClone.onload = resolve;
+                                imgClone.onerror = () => reject(new Error('CORS Image Load Failed'));
+                                setTimeout(() => reject(new Error('Timeout')), CONFIG.timeouts.imageLoad);
+                            }
+                        });
+                        sourceImg = imgClone;
+                    }
+
+                    let width = sourceImg.naturalWidth || sourceImg.width;
+                    let height = sourceImg.naturalHeight || sourceImg.height;
+
+                    if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+                        const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
+                        width *= ratio;
+                        height *= ratio;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(sourceImg, 0, 0, width, height);
+
+                    return canvas.toDataURL('image/jpeg', 0.8).replace(/^data:image\/jpeg;base64,/, '');
                 }
             } catch (e) {
                 console.error(e);
@@ -506,7 +635,9 @@
 
         async runSolve() {
             if (!this.siteConfig) return;
+            if (this.isSolving) return; // Prevent concurrent solves
 
+            this.isSolving = true;
             try {
                 this.updateStatus('solving', 'Solving...');
                 const base64 = await this.getImageBase64();
@@ -518,6 +649,8 @@
             } catch (e) {
                 console.error('Solver Error:', e);
                 this.updateStatus('error', 'Failed');
+            } finally {
+                this.isSolving = false;
             }
         }
 
@@ -535,14 +668,19 @@
 
             const el = document.querySelector(this.siteConfig.captchaSelector);
             if (el && !this.siteConfig.isCanvas) {
-                const observer = new MutationObserver((mutations) => {
+                if (this.observer) this.observer.disconnect();
+
+                this.observer = new MutationObserver((mutations) => {
                     for (const m of mutations) {
                         if (m.attributeName === 'src') {
-                            setTimeout(() => this.runSolve(), CONFIG.delays.afterSrcChange);
+                            // Debounce or just wait
+                            setTimeout(() => {
+                                if (this.observer) this.runSolve(); // solving checks for isSolving lock
+                            }, CONFIG.delays.afterSrcChange);
                         }
                     }
                 });
-                observer.observe(el, { attributes: true });
+                this.observer.observe(el, { attributes: true });
             }
         }
     }
