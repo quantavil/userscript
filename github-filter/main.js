@@ -1,388 +1,606 @@
 // ==UserScript==
 // @name         GitHub Advanced Search Builder
 // @namespace    https://github.com/quantavil/userscript
-// @version      1.9
-// @description  Advanced filter modal for GitHub search with OR/AND/NOT logic and native look.
+// @version      3.0
+// @description  Advanced filter modal for GitHub search with OR/AND/NOT logic, release detection, and two-column layout.
 // @author       quantavil
 // @match        https://github.com/*
 // @license      MIT
 // @icon         https://github.githubassets.com/favicons/favicon.svg
-// @grant        none
+// @grant        GM_registerMenuCommand
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    // Config
-    const TRIGGER_ID = 'gh-adv-search-btn';
-    const MODAL_ID = 'gh-adv-search-modal';
+    const MODAL_ID = 'gh-adv-search-panel';
+    const RELEASE_BADGE_CLASS = 'gh-release-badge';
 
-    // Icons
-    const FILTER_ICON = `<svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" fill="currentColor"><path d="M.75 3h14.5a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1 0-1.5ZM3 7.75A.75.75 0 0 1 3.75 7h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 3 7.75Zm3 4.75a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z"></path></svg>`;
+    // Configuration for all search fields
+    const CONFIG = [
+        {
+            section: 'Main', fields: [
+                {
+                    id: 'type', label: 'Type', type: 'select', options: [
+                        { v: 'repositories', l: 'Repositories' }, { v: 'code', l: 'Code' }, { v: 'issues', l: 'Issues' },
+                        { v: 'pullrequests', l: 'Pull Requests' }, { v: 'discussions', l: 'Discussions' }, { v: 'users', l: 'Users' }
+                    ]
+                },
+                {
+                    id: 'sort', label: 'Sort', type: 'select', options: [
+                        { v: '', l: 'Best Match' }, { v: 'stars', l: 'Most Stars' }, { v: 'forks', l: 'Most Forks' }, { v: 'updated', l: 'Recently Updated' }
+                    ]
+                }
+            ]
+        },
+        {
+            section: 'Query', fields: [
+                { id: 'and', label: 'Includes (AND)', type: 'text', placeholder: 'rust async' },
+                { id: 'or', label: 'One of (OR)', type: 'text', placeholder: 'api, library', map: 'OR' },
+                { id: 'not', label: 'Exclude (NOT)', type: 'text', placeholder: 'deprecated', map: 'NOT', labelColor: 'var(--fgColor-danger, #cf222e)' },
+            ]
+        },
+        {
+            section: 'Metadata', fields: [
+                { id: 'user', label: 'User/Org', type: 'text', placeholder: 'facebook', meta: 'user' },
+                { id: 'repo', label: 'Repository', type: 'text', placeholder: 'react', meta: 'repo' },
+                { id: 'lang', label: 'Language', type: 'text', placeholder: 'python', meta: 'language' },
+                { id: 'ext', label: 'Extension', type: 'text', placeholder: 'md', meta: 'extension' },
+                { id: 'path', label: 'Path', type: 'text', placeholder: 'src/', meta: 'path' },
+            ]
+        },
+        {
+            section: 'Stats', fields: [
+                { id: 'stars', label: 'Stars >=', type: 'number', meta: 'stars' },
+                { id: 'forks', label: 'Forks >=', type: 'number', meta: 'forks' },
+                { id: 'size', label: 'Size (KB)', type: 'text', placeholder: '>1000', meta: 'size' },
+                { id: 'created', label: 'Created', type: 'text', placeholder: '>2023-01', meta: 'created' },
+                { id: 'pushed', label: 'Pushed', type: 'text', placeholder: '>2024-01', meta: 'pushed' },
+            ]
+        }
+    ];
 
-    function createUI() {
-        if (document.getElementById(TRIGGER_ID)) return;
+    function injectGlobalStyles() {
+        const styleId = 'gh-adv-global-styles';
+        if (document.getElementById(styleId)) return;
 
-        // Find the global search input container
-        let headerSearch = document.querySelector('.header-search-wrapper, .AppHeader-search, [class*="Search-module__searchButtonGroup"]');
-        if (!headerSearch) {
-            const searchButton = document.querySelector('button[aria-label="Search or jump to…"]');
-            if (searchButton) {
-                headerSearch = searchButton.closest('[class*="Search-module__searchButtonGroup"]') || searchButton;
+        const css = `
+            /* Two-column grid layout for search results */
+            [data-testid="results-list"] {
+                display: grid !important;
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 16px !important;
+                padding: 16px !important;
             }
-        }
-        if (!headerSearch) return;
-
-        // Create Trigger Button
-        const btn = document.createElement('button');
-        btn.id = TRIGGER_ID;
-        btn.className = 'btn btn-sm ml-2';
-        btn.style.display = 'inline-flex';
-        btn.style.alignItems = 'center';
-        btn.style.gap = '4px';
-        btn.innerHTML = `${FILTER_ICON} Filter`;
-        btn.title = "Advanced Search Builder (Ctrl+Shift+F)";
-
-        // Insert Button
-        if (headerSearch.parentNode) {
-            headerSearch.parentNode.insertBefore(btn, headerSearch.nextSibling);
-        }
-
-        // Create Modal (Hidden by default)
-        const modal = document.createElement('div');
-        modal.id = MODAL_ID;
-        modal.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 95%;
-            max-width: 500px;
-            max-height: 90vh;
-            overflow-y: auto;
-            z-index: 9999;
-            background-color: var(--bgColor-default, #fff);
-            border: 1px solid var(--borderColor-default, #d0d7de);
-            border-radius: 6px;
-            box-shadow: var(--shadow-large, 0 8px 24px rgba(140,149,159,0.2));
-            display: none;
-            padding: 16px;
-            font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;
-            color: var(--fgColor-default, #24292f);
-            box-sizing: border-box;
+            
+            /* Card styling for search result items */
+            [data-testid="results-list"] > div {
+                background: var(--bgColor-default, #fff);
+                border: 1px solid var(--borderColor-default, #d0d7de);
+                border-radius: 12px;
+                padding: 16px;
+                transition: all 0.2s ease;
+                position: relative;
+            }
+            
+            [data-testid="results-list"] > div:hover {
+                border-color: var(--color-accent-fg, #0969da);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            }
+            
+            /* Release badge styles */
+            .${RELEASE_BADGE_CLASS} {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 10px;
+                border-radius: 20px;
+                font-size: 11px;
+                font-weight: 600;
+                margin-top: 10px;
+                text-decoration: none !important;
+                transition: all 0.15s ease;
+            }
+            
+            .${RELEASE_BADGE_CLASS}.has-release {
+                background: linear-gradient(135deg, #238636 0%, #2ea043 100%);
+                color: #fff !important;
+            }
+            
+            .${RELEASE_BADGE_CLASS}.has-release:hover {
+                background: linear-gradient(135deg, #2ea043 0%, #3fb950 100%);
+                transform: translateY(-1px);
+            }
+            
+            .${RELEASE_BADGE_CLASS}.no-release {
+                background: var(--bgColor-danger-muted, #ffebe9);
+                color: var(--fgColor-danger, #cf222e) !important;
+                border: 1px solid var(--borderColor-danger-muted, #ffcecb);
+            }
+            
+            .${RELEASE_BADGE_CLASS}.checking {
+                background: var(--bgColor-muted, #f6f8fa);
+                color: var(--fgColor-muted, #656d76) !important;
+                border: 1px solid var(--borderColor-muted, #d8dee4);
+            }
+            
+            .${RELEASE_BADGE_CLASS} svg {
+                width: 14px;
+                height: 14px;
+                flex-shrink: 0;
+            }
+            
+            /* Spinner animation */
+            @keyframes spin {
+                to { transform: rotate(360deg); }
+            }
+            
+            .${RELEASE_BADGE_CLASS}.checking svg {
+                animation: spin 1s linear infinite;
+            }
         `;
 
-        // Add responsive grid style
         const style = document.createElement('style');
-        style.innerHTML = `
-            #${MODAL_ID} .responsive-grid {
+        style.id = styleId;
+        style.textContent = css;
+        document.head.appendChild(style);
+    }
+
+    function createPanel() {
+        if (document.getElementById(MODAL_ID)) return;
+
+        const panel = document.createElement('div');
+        panel.id = MODAL_ID;
+
+        const css = `
+            #${MODAL_ID} {
+                position: fixed;
+                top: 70px;
+                right: 20px;
+                width: 320px;
+                max-height: calc(100vh - 100px);
+                background-color: var(--bgColor-default, #fff);
+                border: 1px solid var(--borderColor-default, #d0d7de);
+                border-radius: 12px;
+                box-shadow: var(--shadow-large, 0 8px 24px rgba(140,149,159,0.2));
+                z-index: 9999;
+                display: none;
+                flex-direction: column;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+                overflow: hidden;
+                backdrop-filter: blur(8px);
+                animation: slideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            @keyframes slideIn {
+                from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+                to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+            #${MODAL_ID} .panel-header {
+                padding: 12px 16px;
+                background: var(--bgColor-muted, #f6f8fa);
+                border-bottom: 1px solid var(--borderColor-muted, #d8dee4);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-weight: 600;
+                font-size: 14px;
+            }
+            #${MODAL_ID} .panel-body {
+                padding: 16px;
+                overflow-y: auto;
+                flex: 1;
+                scrollbar-width: thin;
+            }
+            #${MODAL_ID} .form-section {
+                margin-bottom: 16px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid var(--borderColor-muted, #d8dee4);
+            }
+            #${MODAL_ID} .form-section:last-child {
+                border-bottom: none;
+                margin-bottom: 0;
+            }
+            #${MODAL_ID} .section-title {
+                font-size: 11px;
+                text-transform: uppercase;
+                color: var(--fgColor-muted, #656d76);
+                margin-bottom: 8px;
+                font-weight: 600;
+                letter-spacing: 0.5px;
+            }
+            #${MODAL_ID} .form-grid {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 10px;
+                gap: 8px;
             }
-            @media (max-width: 480px) {
-                #${MODAL_ID} .responsive-grid {
-                    grid-template-columns: 1fr;
-                }
-                #${MODAL_ID} {
-                    top: 10px;
-                    transform: translateX(-50%);
-                }
+            #${MODAL_ID} .form-grid.single {
+                grid-template-columns: 1fr;
+            }
+            #${MODAL_ID} .input-group {
+                margin-bottom: 8px;
+            }
+            #${MODAL_ID} label {
+                display: block;
+                font-size: 12px;
+                margin-bottom: 4px;
+                color: var(--fgColor-default, #24292f);
+                font-weight: 500;
+            }
+            #${MODAL_ID} input, #${MODAL_ID} select {
+                width: 100%;
+                padding: 6px 10px;
+                font-size: 13px;
+                border: 1px solid var(--borderColor-default, #d0d7de);
+                border-radius: 6px;
+                background: var(--bgColor-default, #fff);
+                color: var(--fgColor-default, #24292f);
+                transition: all 0.2s ease;
+                box-sizing: border-box;
+            }
+            #${MODAL_ID} input:focus, #${MODAL_ID} select:focus {
+                border-color: var(--color-accent-fg, #0969da);
+                box-shadow: 0 0 0 3px var(--color-accent-subtle, rgba(9,105,218,0.3));
+                outline: none;
+            }
+            #${MODAL_ID} .panel-footer {
+                padding: 12px 16px;
+                border-top: 1px solid var(--borderColor-muted, #d8dee4);
+                background: var(--bgColor-muted, #f6f8fa);
+                display: flex;
+                gap: 8px;
+            }
+            #${MODAL_ID} .btn {
+                flex: 1;
+                padding: 6px 12px;
+                border-radius: 6px;
+                font-size: 13px;
+                font-weight: 600;
+                cursor: pointer;
+                border: 1px solid;
+                text-align: center;
+            }
+            #${MODAL_ID} .btn-primary {
+                background: var(--color-success-emphasis, #2da44e);
+                color: white;
+                border-color: var(--color-success-emphasis, #2da44e);
+            }
+            #${MODAL_ID} .btn-secondary {
+                background: var(--bgColor-default, #fff);
+                color: var(--fgColor-default, #24292f);
+                border-color: var(--borderColor-default, #d0d7de);
+            }
+            #${MODAL_ID} .close-icon {
+                cursor: pointer;
+                color: var(--fgColor-muted);
+                padding: 4px;
+                border-radius: 4px;
+            }
+            #${MODAL_ID} .close-icon:hover {
+                background: var(--bgColor-muted);
+            }
+            #${MODAL_ID} .checkbox-group {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-top: 8px;
+            }
+            #${MODAL_ID} input[type="checkbox"] {
+                width: auto;
             }
         `;
+
+        const style = document.createElement('style');
+        style.textContent = css;
         document.head.appendChild(style);
 
-        modal.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                <h3 style="margin:0; font-size:16px;">Advanced Search</h3>
-                <button id="${MODAL_ID}-close" class="btn-octicon" type="button">
-                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"></path></svg>
-                </button>
+        // Generate Form HTML with two-column grids
+        let formInfo = '';
+        CONFIG.forEach(section => {
+            const isSingleColumn = section.section === 'Query';
+            formInfo += `<div class="form-section"><div class="section-title">${section.section}</div><div class="form-grid ${isSingleColumn ? 'single' : ''}">`;
+            section.fields.forEach(f => {
+                const labelStyle = f.labelColor ? `style="color:${f.labelColor}"` : '';
+                formInfo += `
+                    <div class="input-group">
+                        <label for="gh-adv-${f.id}" ${labelStyle}>${f.label}</label>
+                        ${f.type === 'select' ?
+                        `<select id="gh-adv-${f.id}">${f.options.map(o => `<option value="${o.v}">${o.l}</option>`).join('')}</select>` :
+                        `<input type="${f.type}" id="gh-adv-${f.id}" placeholder="${f.placeholder || ''}" />`
+                    }
+                    </div>
+                `;
+            });
+            formInfo += `</div></div>`;
+        });
+
+        panel.innerHTML = `
+            <div class="panel-header">
+                <span>Search Builder</span>
+                <div class="close-icon" id="${MODAL_ID}-close">✕</div>
             </div>
-
-            <form id="${MODAL_ID}-form">
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom:12px;">
-                    <div>
-                        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Search Type</label>
-                        <select id="sel-type" class="form-select select-sm" style="width:100%;">
-                            <option value="repositories">Repositories</option>
-                            <option value="code">Code</option>
-                            <option value="issues">Issues</option>
-                            <option value="pullrequests">Pull Requests</option>
-                            <option value="discussions">Discussions</option>
-                            <option value="users">Users</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Sort By</label>
-                        <select id="sel-sort" class="form-select select-sm" style="width:100%;">
-                            <option value="">Best Match</option>
-                            <option value="stars">Most Stars</option>
-                            <option value="forks">Most Forks</option>
-                            <option value="updated">Recently Updated</option>
-                        </select>
+            <div class="panel-body">
+                ${formInfo}
+                <div class="form-section">
+                     <div class="checkbox-group">
+                        <input type="checkbox" id="gh-adv-release">
+                        <label for="gh-adv-release" style="margin:0; cursor:pointer">Only show with releases</label>
                     </div>
                 </div>
-
-                <div class="form-group" style="margin-bottom:12px;">
-                    <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Must contain ALL (AND)</label>
-                    <input type="text" id="inp-and" class="form-control input-sm input-block" placeholder="rust async tokio" style="width:100%;">
-                </div>
-
-                <div class="form-group" style="margin-bottom:12px;">
-                    <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Must contain ONE OF (OR)</label>
-                    <input type="text" id="inp-or" class="form-control input-sm input-block" placeholder="api, library" style="width:100%;">
-                </div>
-
-                <div class="form-group" style="margin-bottom:12px;">
-                    <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px; color:var(--fgColor-danger, #cf222e);">Exclude (NOT)</label>
-                    <input type="text" id="inp-not" class="form-control input-sm input-block" placeholder="deprecated" style="width:100%;">
-                </div>
-
-                <hr style="border:0; border-top:1px solid var(--borderColor-muted); margin: 12px 0;">
-
-                <div class="responsive-grid">
-                     <div>
-                        <label style="display:block; font-size:12px; font-weight:600;">Owner/User</label>
-                        <input type="text" id="inp-user" class="form-control input-sm" placeholder="e.g. facebook" style="width:100%;">
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:12px; font-weight:600;">Repository</label>
-                        <input type="text" id="inp-repo" class="form-control input-sm" placeholder="e.g. react" style="width:100%;">
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:12px; font-weight:600;">Language</label>
-                        <input type="text" id="inp-lang" class="form-control input-sm" placeholder="e.g. python" style="width:100%;">
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:12px; font-weight:600;">Extension</label>
-                        <input type="text" id="inp-ext" class="form-control input-sm" placeholder="e.g. md" style="width:100%;">
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:12px; font-weight:600;">Created Date</label>
-                        <input type="text" id="inp-created" class="form-control input-sm" placeholder="e.g. >2023-01-01" style="width:100%;">
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:12px; font-weight:600;">Pushed Date</label>
-                        <input type="text" id="inp-pushed" class="form-control input-sm" placeholder="e.g. >2024-01-01" style="width:100%;">
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:12px; font-weight:600;">Stars (>=)</label>
-                        <input type="number" id="inp-stars" class="form-control input-sm" style="width:100%;">
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:12px; font-weight:600;">Forks (>=)</label>
-                        <input type="number" id="inp-forks" class="form-control input-sm" style="width:100%;">
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:12px; font-weight:600;">Size (KB)</label>
-                        <input type="text" id="inp-size" class="form-control input-sm" placeholder="e.g. >1000" style="width:100%;">
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:12px; font-weight:600;">Topics</label>
-                        <input type="text" id="inp-topics" class="form-control input-sm" placeholder="e.g. machine-learning" style="width:100%;">
-                    </div>
-                </div>
-
-                 <div style="margin-top:12px;">
-                    <label style="display:block; font-size:12px; font-weight:600;">In Path</label>
-                    <input type="text" id="inp-path" class="form-control input-sm" placeholder="src/main" style="width:100%;">
-                </div>
-
-                <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center;">
-                    <button type="button" id="${MODAL_ID}-clear" class="btn btn-sm btn-muted">Clear all</button>
-                    <button type="submit" class="btn btn-primary btn-sm">Search</button>
-                </div>
-            </form>
-
+            </div>
+            <div class="panel-footer">
+                <button class="btn btn-secondary" id="${MODAL_ID}-clear">Clear</button>
+                <button class="btn btn-primary" id="${MODAL_ID}-search">Search</button>
+            </div>
         `;
 
-        document.body.appendChild(modal);
+        document.body.appendChild(panel);
 
-        // Events
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const isOpening = modal.style.display !== 'block';
-            modal.style.display = isOpening ? 'block' : 'none';
-            if (isOpening) {
-                populateFieldsFromURL();
-                document.getElementById('inp-and').focus();
-            }
+        // Event Listeners
+        document.getElementById(`${MODAL_ID}-close`).onclick = togglePanel;
+        document.getElementById(`${MODAL_ID}-clear`).onclick = clearFields;
+        document.getElementById(`${MODAL_ID}-search`).onclick = executeSearch;
+
+        panel.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') executeSearch();
         });
 
-        document.getElementById(`${MODAL_ID}-close`).addEventListener('click', () => {
-            modal.style.display = 'none';
-        });
-
-        document.getElementById(`${MODAL_ID}-form`).addEventListener('submit', (e) => {
-            e.preventDefault();
-            executeSearch();
-        });
-
-        document.getElementById(`${MODAL_ID}-clear`).addEventListener('click', () => {
-            const ids = ['inp-and', 'inp-or', 'inp-not', 'inp-user', 'inp-repo', 'inp-lang', 'inp-ext', 'inp-stars', 'inp-forks', 'inp-path', 'inp-topics', 'inp-created', 'inp-pushed', 'inp-size', 'sel-type', 'sel-sort'];
-            ids.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) {
-                    if (el.tagName === 'SELECT') el.selectedIndex = 0;
-                    else el.value = '';
-                }
-            });
-        });
-
-        // Close on escape
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') modal.style.display = 'none';
-            if (e.ctrlKey && e.shiftKey && e.key === 'F') {
-                modal.style.display = 'block';
-                populateFieldsFromURL();
-                document.getElementById('inp-and').focus();
-            }
+            if (e.key === 'Escape' && panel.style.display === 'flex') togglePanel();
+            if (e.ctrlKey && e.shiftKey && e.code === 'KeyF') togglePanel();
         });
     }
 
-    function populateFieldsFromURL() {
+    function togglePanel() {
+        let panel = document.getElementById(MODAL_ID);
+        if (!panel) {
+            createPanel();
+            panel = document.getElementById(MODAL_ID);
+        }
+        const isOpen = panel.style.display === 'flex';
+        panel.style.display = isOpen ? 'none' : 'flex';
+
+        if (!isOpen) {
+            populateFields();
+            const firstInput = panel.querySelector('input');
+            if (firstInput) firstInput.focus();
+        }
+    }
+
+    function clearFields() {
+        CONFIG.forEach(s => s.fields.forEach(f => {
+            const el = document.getElementById(`gh-adv-${f.id}`);
+            if (el) el.value = '';
+        }));
+        document.getElementById('gh-adv-release').checked = false;
+    }
+
+    function populateFields() {
         const params = new URLSearchParams(window.location.search);
-        const query = params.get('q');
+        let q = params.get('q') || '';
         const type = params.get('type');
         const sort = params.get('s');
 
-        // Reset fields
-        const allIds = ['inp-and', 'inp-or', 'inp-not', 'inp-user', 'inp-repo', 'inp-lang', 'inp-ext', 'inp-stars', 'inp-forks', 'inp-path', 'inp-topics', 'inp-created', 'inp-pushed', 'inp-size', 'sel-type', 'sel-sort'];
-        allIds.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                if (el.tagName === 'SELECT') el.selectedIndex = 0;
-                else el.value = '';
-            }
-        });
+        clearFields();
 
-        if (type) document.getElementById('sel-type').value = type;
-        if (sort) document.getElementById('sel-sort').value = sort;
+        if (type) document.getElementById('gh-adv-type').value = type;
+        if (sort) document.getElementById('gh-adv-sort').value = sort;
+        if (params.get('userscript_has_release') === '1') {
+            document.getElementById('gh-adv-release').checked = true;
+        }
 
-        if (!query) return;
-
-        let remainingQuery = query;
-
-        // 1. Extract metadata filters
-        const metadataMap = {
-            'user': 'inp-user',
-            'repo': 'inp-repo',
-            'language': 'inp-lang',
-            'extension': 'inp-ext',
-            'stars': 'inp-stars',
-            'forks': 'inp-forks',
-            'path': 'inp-path',
-            'topic': 'inp-topics',
-            'created': 'inp-created',
-            'pushed': 'inp-pushed',
-            'size': 'inp-size'
-        };
-
-        for (const [key, id] of Object.entries(metadataMap)) {
-            const regex = new RegExp(`${key}:(\\S+)`, 'i');
-            const match = remainingQuery.match(regex);
-            if (match) {
-                let val = match[1];
-                if (key === 'stars' || key === 'forks') {
-                    val = val.replace('>=', '');
+        CONFIG.forEach(s => s.fields.forEach(f => {
+            if (f.meta) {
+                const regex = new RegExp(`${f.meta}:(\\S+)`, 'i');
+                const match = q.match(regex);
+                if (match) {
+                    let val = match[1];
+                    if (f.meta === 'stars' || f.meta === 'forks') val = val.replace('>=', '');
+                    document.getElementById(`gh-adv-${f.id}`).value = val;
+                    q = q.replace(match[0], '');
                 }
-                document.getElementById(id).value = val;
-                remainingQuery = remainingQuery.replace(match[0], '');
             }
-        }
+        }));
 
-        // 2. Extract OR groups: (A OR B OR C)
-        const orMatch = remainingQuery.match(/\(([^)]+ OR [^)]+)\)/i);
+        const orMatch = q.match(/\(([^)]+ OR [^)]+)\)/i);
         if (orMatch) {
-            const terms = orMatch[1].split(/\s+OR\s+/i);
-            document.getElementById('inp-or').value = terms.join(', ');
-            remainingQuery = remainingQuery.replace(orMatch[0], '');
+            document.getElementById('gh-adv-or').value = orMatch[1].replace(/\s+OR\s+/gi, ', ');
+            q = q.replace(orMatch[0], '');
         }
 
-        // 3. Extract NOT terms: -term
-        const notTerms = [];
-        remainingQuery = remainingQuery.replace(/-(\S+)/g, (match, term) => {
-            notTerms.push(term);
+        const nots = [];
+        q = q.replace(/-(\S+)/g, (_, term) => {
+            nots.push(term);
             return '';
         });
-        if (notTerms.length > 0) {
-            document.getElementById('inp-not').value = notTerms.join(', ');
-        }
+        if (nots.length) document.getElementById('gh-adv-not').value = nots.join(', ');
 
-        // 4. Remaining goes to AND
-        const andVal = remainingQuery.trim().replace(/\s+/g, ' ');
-        if (andVal) {
-            document.getElementById('inp-and').value = andVal;
-        }
+        const andVal = q.trim().replace(/\s+/g, ' ');
+        if (andVal) document.getElementById('gh-adv-and').value = andVal;
     }
 
     function executeSearch() {
-        let queryParts = [];
-        const getVal = (id) => document.getElementById(id).value.trim();
+        const parts = [];
+        const getValue = (id) => document.getElementById(`gh-adv-${id}`).value.trim();
 
-        // Helper to split by space, comma, or semicolon
-        const parseList = (val) => val.split(/[\s,;]+/).filter(t => t.length > 0);
+        const valAnd = getValue('and');
+        if (valAnd) parts.push(valAnd);
 
-        // 1. Handle AND
-        const andVal = getVal('inp-and');
-        if (andVal) queryParts.push(andVal);
-
-        // 2. Handle OR
-        const orVal = getVal('inp-or');
-        if (orVal) {
-            const terms = parseList(orVal);
-            if (terms.length > 1) queryParts.push(`(${terms.join(' OR ')})`);
-            else if (terms.length === 1) queryParts.push(terms[0]);
+        const valOr = getValue('or');
+        if (valOr) {
+            const terms = valOr.split(/[\s,]+/).filter(Boolean);
+            if (terms.length > 1) parts.push(`(${terms.join(' OR ')})`);
+            else if (terms.length === 1) parts.push(terms[0]);
         }
 
-        // 3. Handle NOT
-        const notVal = getVal('inp-not');
-        if (notVal) {
-            const terms = parseList(notVal);
-            terms.forEach(t => queryParts.push(`-${t}`));
+        const valNot = getValue('not');
+        if (valNot) {
+            valNot.split(/[\s,]+/).filter(Boolean).forEach(t => parts.push(`-${t}`));
         }
 
-        // 4. Metadata
-        const metadata = {
-            'user': 'inp-user',
-            'repo': 'inp-repo',
-            'language': 'inp-lang',
-            'extension': 'inp-ext',
-            'stars': 'inp-stars',
-            'forks': 'inp-forks',
-            'path': 'inp-path',
-            'topic': 'inp-topics',
-            'created': 'inp-created',
-            'pushed': 'inp-pushed',
-            'size': 'inp-size'
-        };
-
-        for (const [key, id] of Object.entries(metadata)) {
-            let val = getVal(id);
-            if (val) {
-                // Auto-add >= to stars/forks if missing and only a number
-                if ((key === 'stars' || key === 'forks') && !val.match(/[<>=]/)) val = `>=${val}`;
-                queryParts.push(`${key}:${val}`);
+        CONFIG.forEach(s => s.fields.forEach(f => {
+            if (f.meta) {
+                let val = getValue(f.id);
+                if (val) {
+                    if ((f.meta === 'stars' || f.meta === 'forks') && !val.match(/[<>=]/)) val = `>=${val}`;
+                    parts.push(`${f.meta}:${val}`);
+                }
             }
-        }
+        }));
 
-        const type = document.getElementById('sel-type').value;
-        const sort = document.getElementById('sel-sort').value;
+        const type = getValue('type');
+        const sort = getValue('sort');
+        const hasRelease = document.getElementById('gh-adv-release').checked;
 
-        // Construct final URL
-        const finalQuery = encodeURIComponent(queryParts.join(' '));
-        let url = `https://github.com/search?q=${finalQuery}&type=${type}`;
+        let url = `https://github.com/search?q=${encodeURIComponent(parts.join(' '))}&type=${type}`;
         if (sort) url += `&s=${sort}&o=desc`;
+        if (hasRelease) url += '&userscript_has_release=1';
 
         window.location.href = url;
     }
 
-    // Init and Observe for Turbo/PJAX
-    createUI();
+    // --- Release Detection & Badge System ---
+
+    const SVG_ICONS = {
+        tag: `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 0 1 0 2.474l-5.026 5.026a1.75 1.75 0 0 1-2.474 0l-6.25-6.25A1.752 1.752 0 0 1 1 7.775Zm1.5 0c0 .066.026.13.073.177l6.25 6.25a.25.25 0 0 0 .354 0l5.025-5.025a.25.25 0 0 0 0-.354l-6.25-6.25a.25.25 0 0 0-.177-.073H2.75a.25.25 0 0 0-.25.25ZM6 5a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"></path></svg>`,
+        x: `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"></path></svg>`,
+        spinner: `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 7 7A7.008 7.008 0 0 0 8 1Zm0 12.5A5.5 5.5 0 1 1 13.5 8 5.506 5.506 0 0 1 8 13.5Z" opacity="0.3"></path><path d="M8 1v1.5A5.506 5.506 0 0 1 13.5 8H15a7.008 7.008 0 0 0-7-7Z"></path></svg>`
+    };
+
+
+
+    function createReleaseBadge(status, data = null) {
+        const badge = document.createElement('a');
+        badge.className = `${RELEASE_BADGE_CLASS} ${status}`;
+
+        if (status === 'checking') {
+            badge.innerHTML = `${SVG_ICONS.spinner} <span>Checking...</span>`;
+            badge.href = '#';
+            badge.onclick = (e) => e.preventDefault();
+        } else if (status === 'has-release' && data) {
+            badge.innerHTML = `${SVG_ICONS.tag} <span>${data.tag}</span>`;
+            badge.href = data.url;
+            badge.target = '_blank';
+            badge.title = `Latest release: ${data.tag}`;
+        } else {
+            badge.innerHTML = `${SVG_ICONS.x} <span>No releases</span>`;
+            badge.href = '#';
+            badge.onclick = (e) => e.preventDefault();
+        }
+
+        return badge;
+    }
+
+    async function fetchReleaseInfo(owner, repo) {
+        try {
+            // Use GET with redirect:follow - the final URL contains the tag
+            // This works in userscript context (Tampermonkey/Violentmonkey bypass CORS)
+            const res = await fetch(`https://github.com/${owner}/${repo}/releases/latest`, {
+                method: 'GET',
+                redirect: 'follow'
+            });
+
+            // 404 = no releases
+            if (res.status === 404 || !res.ok) {
+                return null;
+            }
+
+            // Parse tag from final redirected URL
+            const tagMatch = res.url.match(/\/releases\/tag\/([^/]+)$/);
+            if (!tagMatch) {
+                return null;
+            }
+
+            const tag = decodeURIComponent(tagMatch[1]);
+
+            return {
+                tag,
+                url: res.url
+            };
+        } catch (e) {
+            console.error(`Release check failed for ${owner}/${repo}:`, e);
+            return null;
+        }
+    }
+
+    async function processSearchResults() {
+        const params = new URLSearchParams(window.location.search);
+        const filterOnly = params.get('userscript_has_release') === '1';
+
+        // Only run on search pages
+        if (!window.location.pathname.startsWith('/search')) return;
+
+        const resultContainer = document.querySelector('[data-testid="results-list"]');
+        if (!resultContainer) return;
+
+        const items = Array.from(resultContainer.children);
+
+        for (const item of items) {
+            // Skip if already processed
+            if (item.dataset.releaseProcessed) continue;
+            item.dataset.releaseProcessed = 'true';
+
+            // Find the repo link
+            const link = item.querySelector('a[href^="/"]');
+            if (!link) continue;
+
+            const path = link.getAttribute('href');
+            const parts = path.split('/').filter(Boolean);
+            if (parts.length < 2) continue;
+
+            const owner = parts[0];
+            const repo = parts[1];
+
+            // Find where to insert the badge (after the description or in the metadata area)
+            const metaList = item.querySelector('ul');
+            const insertTarget = metaList || item;
+
+            // Create and add checking badge
+            const badgeContainer = document.createElement('div');
+            badgeContainer.style.marginTop = '8px';
+            const checkingBadge = createReleaseBadge('checking');
+            badgeContainer.appendChild(checkingBadge);
+            insertTarget.parentNode.insertBefore(badgeContainer, insertTarget.nextSibling);
+
+            // Fetch release info
+            const releaseInfo = await fetchReleaseInfo(owner, repo);
+
+            // Remove checking badge
+            badgeContainer.innerHTML = '';
+
+            if (releaseInfo) {
+                const releaseBadge = createReleaseBadge('has-release', releaseInfo);
+                badgeContainer.appendChild(releaseBadge);
+            } else {
+                if (filterOnly) {
+                    // Hide items without releases when filter is active
+                    item.style.display = 'none';
+                } else {
+                    const noReleaseBadge = createReleaseBadge('no-release');
+                    badgeContainer.appendChild(noReleaseBadge);
+                }
+            }
+        }
+    }
+
+    // --- Initialization ---
+    GM_registerMenuCommand("Search Filter", togglePanel);
+
+    // Inject styles
+    injectGlobalStyles();
+
+    // Observer for dynamic content
+    let debounceTimer;
     const observer = new MutationObserver(() => {
-        if (!document.getElementById(TRIGGER_ID)) createUI();
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            processSearchResults();
+        }, 200);
     });
+
     observer.observe(document.body, { childList: true, subtree: true });
+
+    // Initial run
+    createPanel();
+    processSearchResults();
 
 })();
