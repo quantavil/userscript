@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Advanced Search Builder
 // @namespace    https://github.com/quantavil/userscript
-// @version      1.8
+// @version      1.9
 // @description  Advanced filter modal for GitHub search with OR/AND/NOT logic and native look.
 // @author       quantavil
 // @match        https://github.com/*
@@ -24,7 +24,13 @@
         if (document.getElementById(TRIGGER_ID)) return;
 
         // Find the global search input container
-        const headerSearch = document.querySelector('.header-search-wrapper, .AppHeader-search');
+        let headerSearch = document.querySelector('.header-search-wrapper, .AppHeader-search, [class*="Search-module__searchButtonGroup"]');
+        if (!headerSearch) {
+            const searchButton = document.querySelector('button[aria-label="Search or jump to…"]');
+            if (searchButton) {
+                headerSearch = searchButton.closest('[class*="Search-module__searchButtonGroup"]') || searchButton;
+            }
+        }
         if (!headerSearch) return;
 
         // Create Trigger Button
