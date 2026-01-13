@@ -443,6 +443,40 @@
         spinner: `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 7 7A7.008 7.008 0 0 0 8 1Zm0 12.5A5.5 5.5 0 1 1 13.5 8 5.506 5.506 0 0 1 8 13.5Z" opacity="0.3"></path><path d="M8 1v1.5A5.506 5.506 0 0 1 13.5 8H15a7.008 7.008 0 0 0-7-7Z"></path></svg>`
     };
 
+    // --- Caching System ---
+    const CACHE_PREFIX = 'gh-release-cache-';
+    const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+    function getReleaseCache(owner, repo) {
+        try {
+            const key = `${CACHE_PREFIX}${owner}-${repo}`;
+            const cached = localStorage.getItem(key);
+            if (!cached) return null;
+
+            const data = JSON.parse(cached);
+            if (Date.now() - data.timestamp > CACHE_TTL) {
+                localStorage.removeItem(key);
+                return null;
+            }
+            return data.info;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function setReleaseCache(owner, repo, info) {
+        try {
+            const key = `${CACHE_PREFIX}${owner}-${repo}`;
+            const data = {
+                timestamp: Date.now(),
+                info: info
+            };
+            localStorage.setItem(key, JSON.stringify(data));
+        } catch (e) {
+            // Storage full or other error, ignore
+        }
+    }
+
 
 
     function formatRelativeDate(dateStr) {
@@ -483,57 +517,105 @@
     }
 
     async function fetchReleaseInfo(owner, repo) {
+        // Check cache first
+        const cached = getReleaseCache(owner, repo);
+        if (cached) return cached;
+
         try {
-            // Fetch release page to get tag and date
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
             const res = await fetch(`https://github.com/${owner}/${repo}/releases/latest`, {
                 method: 'GET',
-                redirect: 'follow'
+                redirect: 'follow',
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
 
-            // 404 = no releases
             if (res.status === 404 || !res.ok) {
+                setReleaseCache(owner, repo, null); // Cache absence of release
                 return null;
             }
 
-            // Check if we got redirected to a release tag page
-            const finalUrl = res.url;
+            const htmlText = await res.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlText, 'text/html');
 
-            // Handle both /releases/tag/X and /releases/latest URLs
+            // 1. Try to find the tag
+            // URL might be .../releases/tag/v1.0.0
             let tag = null;
+            const finalUrl = res.url;
             const tagMatch = finalUrl.match(/\/releases\/tag\/([^/?#]+)/);
+
             if (tagMatch) {
                 tag = decodeURIComponent(tagMatch[1]);
-            }
-
-            // Parse HTML to get release date and tag if not found in URL
-            const html = await res.text();
-
-            // Extract tag from page if not in URL
-            if (!tag) {
-                // Try to find tag in the page content
-                const tagOnPage = html.match(/\/releases\/tag\/([^"'\s]+)/);
-                if (tagOnPage) {
-                    tag = decodeURIComponent(tagOnPage[1]);
-                }
+            } else {
+                // Try finding it in the DOM: title or breadcrumb
+                // Often the title is "Release v1.0.0 · owner/repo"
+                const title = doc.title;
+                const titleMatch = title.match(/Release (.+?) ·/);
+                if (titleMatch) tag = titleMatch[1];
             }
 
             if (!tag) {
-                return null;
+                // Fallback: look for generic release header
+                const header = doc.querySelector('h1.d-inline');
+                if (header) tag = header.textContent.trim();
             }
 
-            // Extract release date from datetime attribute
-            const dateMatch = html.match(/datetime="([^"]+)"/);
-            const date = dateMatch ? dateMatch[1] : null;
+            if (!tag) return null;
 
-            return {
+            // 2. Find the date
+            // Usually in a relative-time element inside the release header or sub-header
+            let date = null;
+
+            // Selector strategy:
+            // The latest release page usually has a <relative-time> near the top
+            const timeEl = doc.querySelector('relative-time');
+            if (timeEl) {
+                date = timeEl.getAttribute('datetime');
+            } else {
+                // Fallback to searching for a datetime attribute in a time element
+                const anyTime = doc.querySelector('time[datetime]');
+                if (anyTime) date = anyTime.getAttribute('datetime');
+            }
+
+            const info = {
                 tag,
                 date,
                 url: `https://github.com/${owner}/${repo}/releases/tag/${encodeURIComponent(tag)}`
             };
+
+            setReleaseCache(owner, repo, info);
+            return info;
+
         } catch (e) {
             console.error(`Release check failed for ${owner}/${repo}:`, e);
             return null;
         }
+    }
+
+    // Concurrency queue helper
+    async function processQueue(items, concurrency, task) {
+        const queue = [...items];
+        const workers = [];
+
+        const worker = async () => {
+            while (queue.length > 0) {
+                const item = queue.shift();
+                try {
+                    await task(item);
+                } catch (e) {
+                    console.error('Queue task failed', e);
+                }
+            }
+        };
+
+        for (let i = 0; i < concurrency; i++) {
+            workers.push(worker());
+        }
+
+        await Promise.all(workers);
     }
 
     async function processSearchResults() {
@@ -546,54 +628,64 @@
         const resultContainer = document.querySelector('[data-testid="results-list"]');
         if (!resultContainer) return;
 
-        const items = Array.from(resultContainer.children);
+        const allItems = Array.from(resultContainer.children);
 
-        for (const item of items) {
-            // Skip if already processed
-            if (item.dataset.releaseProcessed) continue;
-            item.dataset.releaseProcessed = 'true';
+        // Filter items that need processing
+        const itemsToProcess = allItems.filter(item => {
+            if (item.dataset.releaseProcessed) return false;
 
-            // Find the repo link
             const link = item.querySelector('a[href^="/"]');
-            if (!link) continue;
+            if (!link) return false;
 
             const path = link.getAttribute('href');
             const parts = path.split('/').filter(Boolean);
-            if (parts.length < 2) continue;
+            return parts.length >= 2;
+        });
 
+        // Mark them as processed immediately to avoid double queueing
+        itemsToProcess.forEach(item => item.dataset.releaseProcessed = 'true');
+
+        // Process function for each item
+        const processItem = async (item) => {
+            const link = item.querySelector('a[href^="/"]');
+            const path = link.getAttribute('href');
+            const parts = path.split('/').filter(Boolean);
             const owner = parts[0];
             const repo = parts[1];
 
-            // Find where to insert the badge (after the description or in the metadata area)
+            // Find where to insert the badge
             const metaList = item.querySelector('ul');
             const insertTarget = metaList || item;
 
-            // Create and add checking badge
+            // Create container
             const badgeContainer = document.createElement('div');
             badgeContainer.style.marginTop = '8px';
             const checkingBadge = createReleaseBadge('checking');
+
+            // If cached, we can skip the "checking" state ui if we want, but sticking to pattern:
             badgeContainer.appendChild(checkingBadge);
             insertTarget.parentNode.insertBefore(badgeContainer, insertTarget.nextSibling);
 
-            // Fetch release info
             const releaseInfo = await fetchReleaseInfo(owner, repo);
 
-            // Remove checking badge
             badgeContainer.innerHTML = '';
-
             if (releaseInfo) {
                 const releaseBadge = createReleaseBadge('has-release', releaseInfo);
                 badgeContainer.appendChild(releaseBadge);
             } else {
                 if (filterOnly) {
-                    // Hide items without releases when filter is active
                     item.style.display = 'none';
+                    // Also hide the container if we hid the item
+                    badgeContainer.style.display = 'none';
                 } else {
                     const noReleaseBadge = createReleaseBadge('no-release');
                     badgeContainer.appendChild(noReleaseBadge);
                 }
             }
-        }
+        };
+
+        // Run with concurrency of 3 to be polite but faster
+        await processQueue(itemsToProcess, 3, processItem);
     }
 
     // --- Initialization ---
