@@ -65,30 +65,7 @@
         if (document.getElementById(styleId)) return;
 
         const css = `
-            /* Two-column grid layout for search results */
-            [data-testid="results-list"] {
-                display: grid !important;
-                grid-template-columns: repeat(2, 1fr) !important;
-                gap: 16px !important;
-                padding: 16px !important;
-            }
-            
-            /* Card styling for search result items */
-            [data-testid="results-list"] > div {
-                background: var(--bgColor-default, #fff);
-                border: 1px solid var(--borderColor-default, #d0d7de);
-                border-radius: 12px;
-                padding: 16px;
-                transition: all 0.2s ease;
-                position: relative;
-            }
-            
-            [data-testid="results-list"] > div:hover {
-                border-color: var(--color-accent-fg, #0969da);
-                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            }
-            
-            /* Release badge styles */
+            /* Release badge styles - minimal, no layout changes */
             .${RELEASE_BADGE_CLASS} {
                 display: inline-flex;
                 align-items: center;
@@ -97,7 +74,7 @@
                 border-radius: 20px;
                 font-size: 11px;
                 font-weight: 600;
-                margin-top: 10px;
+                margin-top: 8px;
                 text-decoration: none !important;
                 transition: all 0.15s ease;
             }
@@ -131,12 +108,12 @@
             }
             
             /* Spinner animation */
-            @keyframes spin {
+            @keyframes gh-release-spin {
                 to { transform: rotate(360deg); }
             }
             
             .${RELEASE_BADGE_CLASS}.checking svg {
-                animation: spin 1s linear infinite;
+                animation: gh-release-spin 1s linear infinite;
             }
         `;
 
@@ -468,6 +445,20 @@
 
 
 
+    function formatRelativeDate(dateStr) {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) return 'today';
+        if (diffDays === 1) return 'yesterday';
+        if (diffDays < 7) return `${diffDays}d ago`;
+        if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+        if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
+        return `${Math.floor(diffDays / 365)}y ago`;
+    }
+
     function createReleaseBadge(status, data = null) {
         const badge = document.createElement('a');
         badge.className = `${RELEASE_BADGE_CLASS} ${status}`;
@@ -477,10 +468,11 @@
             badge.href = '#';
             badge.onclick = (e) => e.preventDefault();
         } else if (status === 'has-release' && data) {
-            badge.innerHTML = `${SVG_ICONS.tag} <span>${data.tag}</span>`;
+            const dateText = data.date ? ` • ${formatRelativeDate(data.date)}` : '';
+            badge.innerHTML = `${SVG_ICONS.tag} <span>${data.tag}${dateText}</span>`;
             badge.href = data.url;
             badge.target = '_blank';
-            badge.title = `Latest release: ${data.tag}`;
+            badge.title = data.date ? `Released: ${new Date(data.date).toLocaleDateString()}` : data.tag;
         } else {
             badge.innerHTML = `${SVG_ICONS.x} <span>No releases</span>`;
             badge.href = '#';
@@ -492,8 +484,7 @@
 
     async function fetchReleaseInfo(owner, repo) {
         try {
-            // Use GET with redirect:follow - the final URL contains the tag
-            // This works in userscript context (Tampermonkey/Violentmonkey bypass CORS)
+            // Fetch release page to get tag and date
             const res = await fetch(`https://github.com/${owner}/${repo}/releases/latest`, {
                 method: 'GET',
                 redirect: 'follow'
@@ -504,17 +495,40 @@
                 return null;
             }
 
-            // Parse tag from final redirected URL
-            const tagMatch = res.url.match(/\/releases\/tag\/([^/]+)$/);
-            if (!tagMatch) {
+            // Check if we got redirected to a release tag page
+            const finalUrl = res.url;
+
+            // Handle both /releases/tag/X and /releases/latest URLs
+            let tag = null;
+            const tagMatch = finalUrl.match(/\/releases\/tag\/([^/?#]+)/);
+            if (tagMatch) {
+                tag = decodeURIComponent(tagMatch[1]);
+            }
+
+            // Parse HTML to get release date and tag if not found in URL
+            const html = await res.text();
+
+            // Extract tag from page if not in URL
+            if (!tag) {
+                // Try to find tag in the page content
+                const tagOnPage = html.match(/\/releases\/tag\/([^"'\s]+)/);
+                if (tagOnPage) {
+                    tag = decodeURIComponent(tagOnPage[1]);
+                }
+            }
+
+            if (!tag) {
                 return null;
             }
 
-            const tag = decodeURIComponent(tagMatch[1]);
+            // Extract release date from datetime attribute
+            const dateMatch = html.match(/datetime="([^"]+)"/);
+            const date = dateMatch ? dateMatch[1] : null;
 
             return {
                 tag,
-                url: res.url
+                date,
+                url: `https://github.com/${owner}/${repo}/releases/tag/${encodeURIComponent(tag)}`
             };
         } catch (e) {
             console.error(`Release check failed for ${owner}/${repo}:`, e);
