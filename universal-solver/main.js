@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Universal Captcha Solver
 // @namespace    http://github.com/quantavil
-// @version      1.1
+// @version      1.2
 // @description  Solve captchas on any website using Gemini AI with a generic selector picker
 // @author       quantavil
 // @match        *://*/*
@@ -14,7 +14,7 @@
 // @grant        GM_listValues
 // @grant        GM_deleteValue
 // ==/UserScript==
- 
+
 (function () {
     'use strict';
 
@@ -51,7 +51,7 @@
             position: fixed;
             bottom: 20px;
             right: 20px;
-            z-index: 2147483647; /* Max z-index */
+            z-index: 2147483647;
             background: var(--ucs-bg);
             backdrop-filter: blur(10px);
             border: 1px solid var(--ucs-border);
@@ -190,7 +190,60 @@
         }
 
         clearConfig() {
-            GM_setValue(this.domain, null);
+            GM_deleteValue(this.domain);
+        }
+
+        exportSettings() {
+            const keys = GM_listValues();
+            const configs = {};
+
+            keys.forEach(key => {
+                // Skip system keys
+                if (key === 'gemini_api_key' || key === 'gemini_model') return;
+
+                try {
+                    const value = GM_getValue(key);
+                    // Only export valid JSON configs
+                    if (value && typeof value === 'string' && value.startsWith('{')) {
+                        configs[key] = JSON.parse(value);
+                    }
+                } catch (e) {
+                    console.warn(`Skipping invalid config for ${key}`, e);
+                }
+            });
+
+            const exportData = {
+                details: {
+                    exportedAt: new Date().toISOString(),
+                    scriptVersion: '1.2',
+                    author: 'Universal Solver'
+                },
+                configs: configs
+            };
+
+            return JSON.stringify(exportData, null, 2);
+        }
+
+        importSettings(jsonString) {
+            try {
+                const data = JSON.parse(jsonString);
+                if (!data.configs) throw new Error('Invalid export file format');
+
+                const entries = Object.entries(data.configs);
+                let importedCount = 0;
+
+                entries.forEach(([domain, config]) => {
+                    // Simple validation
+                    if (config.captchaSelector && config.inputSelector) {
+                        GM_setValue(domain, JSON.stringify(config));
+                        importedCount++;
+                    }
+                });
+
+                return { success: true, count: importedCount };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
         }
     }
 
@@ -236,9 +289,6 @@
         createOverlay(msg) {
             this.overlay = document.createElement('div');
             this.overlay.className = 'ucs-picker-overlay';
-            // Note: overlay must allow pointer events to pass through for elementFromPoint to work easily,
-            // OR we toggle it. Here we use pointer-events: none in CSS usually, but we need to catch clicks?
-            // Actually, we'll keep it simple: overlay is for visual tint, we use elementFromPoint.
             document.body.appendChild(this.overlay);
 
             this.tooltip = document.createElement('div');
@@ -360,6 +410,7 @@
             this.picker = null;
             this.solver = new GeminiSolver();
             this.siteConfig = this.configManager.getConfig();
+            this.observer = null;
 
             this.registerMenu();
 
@@ -395,7 +446,56 @@
                         location.reload();
                     }
                 });
+
+                GM_registerMenuCommand("📤 Export Configs", () => this.handleExport());
+                GM_registerMenuCommand("📥 Import Configs", () => this.handleImport());
             }
+        }
+
+        handleExport() {
+            try {
+                const json = this.configManager.exportSettings();
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `universal_solver_configs_${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+            } catch (e) {
+                alert('Export failed: ' + e.message);
+            }
+        }
+
+        handleImport() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const result = this.configManager.importSettings(event.target.result);
+                    if (result.success) {
+                        alert(`Successfully imported ${result.count} configurations! Reloading...`);
+                        location.reload();
+                    } else {
+                        alert(`Import failed: ${result.error}`);
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            input.click();
         }
 
         injectStyles() {
@@ -433,6 +533,7 @@
 
             if (solveBtn) solveBtn.onclick = () => this.runSolve();
             if (closeBtn) closeBtn.onclick = () => {
+                this.cleanup();
                 this.widget.remove();
             };
 
@@ -467,14 +568,11 @@
 
         async startSetup() {
             this.picker = new SelectorPicker((selector, tagName) => {
-                // Step 1: Image
                 const imgSelector = selector;
                 const isCanvas = tagName === 'CANVAS';
 
-                // Delay slightly
                 setTimeout(() => {
                     this.picker = new SelectorPicker((inputSelector) => {
-                        // Step 2: Input - Done
                         const config = {
                             captchaSelector: imgSelector,
                             inputSelector: inputSelector,
@@ -517,7 +615,6 @@
                     try {
                         return canvas.toDataURL('image/jpeg').replace(/^data:image\/jpeg;base64,/, '');
                     } catch (corsError) {
-                        // CORS blocked - fallback to GM_xmlhttpRequest
                         return await this.fetchCrossOriginImage(el.src);
                     }
                 }
@@ -554,6 +651,12 @@
         async runSolve() {
             if (!this.siteConfig) return;
 
+            // Validate API key
+            if (!CONFIG.apiKey) {
+                this.updateStatus('error', 'No API Key');
+                return;
+            }
+
             try {
                 this.updateStatus('solving', 'Solving...');
                 const base64 = await this.getImageBase64();
@@ -582,14 +685,21 @@
 
             const el = document.querySelector(this.siteConfig.captchaSelector);
             if (el && !this.siteConfig.isCanvas) {
-                const observer = new MutationObserver((mutations) => {
+                this.observer = new MutationObserver((mutations) => {
                     for (const m of mutations) {
                         if (m.attributeName === 'src') {
                             setTimeout(() => this.runSolve(), CONFIG.delays.afterSrcChange);
                         }
                     }
                 });
-                observer.observe(el, { attributes: true });
+                this.observer.observe(el, { attributes: true });
+            }
+        }
+
+        cleanup() {
+            if (this.observer) {
+                this.observer.disconnect();
+                this.observer = null;
             }
         }
     }
@@ -600,5 +710,4 @@
     } else {
         new UniversalSolver();
     }
-
 })();
