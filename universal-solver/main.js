@@ -33,25 +33,29 @@
         }
     };
 
+
+
     // --- Neo-Brutal Minimal UI Styles ---
     const STYLES = `
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
 
         :root {
-            --ucs-bg: #fffef8;
-            --ucs-bg-solid: #fffef8;
-            --ucs-border: #1a1a1a;
-            --ucs-border-light: #1a1a1a;
-            --ucs-text: #1a1a1a;
-            --ucs-text-muted: #5c5c5c;
-            --ucs-accent: #1a1a1a;
-            --ucs-accent-hover: #333;
-            --ucs-success: #00c853;
-            --ucs-error: #ff1744;
-            --ucs-warning: #ffc107;
+            --ucs-bg: #f5f0e6;
+            --ucs-bg-solid: #f5f0e6;
+            --ucs-border: #0d0d0d;
+            --ucs-border-light: #2a2a2a;
+            --ucs-text: #0d0d0d;
+            --ucs-text-muted: #4a4a4a;
+            --ucs-accent: #ff5757;
+            --ucs-accent-secondary: #3d5afe;
+            --ucs-accent-hover: #ff3333;
+            --ucs-success: #2ecc71;
+            --ucs-error: #ff4757;
+            --ucs-warning: #f39c12;
             --ucs-font: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
-            --ucs-shadow: 4px 4px 0 #1a1a1a;
-            --ucs-shadow-hover: 6px 6px 0 #1a1a1a;
+            --ucs-shadow: 5px 5px 0 #0d0d0d;
+            --ucs-shadow-hover: 7px 7px 0 #0d0d0d;
+            --ucs-shadow-sm: 3px 3px 0 #0d0d0d;
         }
 
         .ucs-widget {
@@ -187,83 +191,93 @@
 
         .ucs-modal {
             background: var(--ucs-bg-solid);
-            border: 3px solid var(--ucs-border);
-            width: 340px;
-            max-height: 80vh;
+            border: 4px solid var(--ucs-border);
+            width: 420px;
+            max-height: 85vh;
             overflow: hidden;
-            box-shadow: 8px 8px 0 var(--ucs-border);
+            box-shadow: 10px 10px 0 var(--ucs-border);
         }
 
         .ucs-modal-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 14px 16px;
-            border-bottom: 3px solid var(--ucs-border);
-            background: #1a1a1a;
+            padding: 16px 20px;
+            border-bottom: 4px solid var(--ucs-border);
+            background: var(--ucs-accent);
             color: #fff;
         }
 
         .ucs-modal-title {
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
             margin: 0;
+            text-shadow: 1px 1px 0 rgba(0,0,0,0.2);
         }
 
         .ucs-modal-close {
-            background: transparent;
-            border: 2px solid #fff;
-            color: #fff;
-            font-size: 14px;
+            background: #fff;
+            border: 3px solid var(--ucs-border);
+            color: var(--ucs-border);
+            font-size: 16px;
             font-weight: 700;
             cursor: pointer;
-            width: 28px;
-            height: 28px;
+            width: 32px;
+            height: 32px;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.1s;
+            box-shadow: var(--ucs-shadow-sm);
         }
 
         .ucs-modal-close:hover {
-            background: var(--ucs-error);
-            border-color: var(--ucs-error);
+            background: var(--ucs-border);
+            color: #fff;
+            transform: translate(-2px, -2px);
+            box-shadow: 5px 5px 0 var(--ucs-border);
+        }
+
+        .ucs-modal-close:active {
+            transform: translate(1px, 1px);
+            box-shadow: 1px 1px 0 var(--ucs-border);
         }
 
         .ucs-tabs {
             display: flex;
-            border-bottom: 3px solid var(--ucs-border);
+            border-bottom: 4px solid var(--ucs-border);
+            background: #fff;
         }
 
         .ucs-tab {
             flex: 1;
-            padding: 12px;
+            padding: 14px 16px;
             background: transparent;
             border: none;
-            border-right: 3px solid var(--ucs-border);
+            border-right: 4px solid var(--ucs-border);
             color: var(--ucs-text-muted);
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 1px;
             cursor: pointer;
             font-family: var(--ucs-font);
-            transition: all 0.1s;
+            transition: all 0.15s;
         }
 
         .ucs-tab:last-child { border-right: none; }
         .ucs-tab:hover { background: #f0f0e8; color: var(--ucs-text); }
 
         .ucs-tab.active {
-            background: var(--ucs-text);
-            color: var(--ucs-bg);
+            background: var(--ucs-accent-secondary);
+            color: #fff;
         }
 
         .ucs-tab-content {
-            padding: 16px;
-            max-height: 50vh;
+            padding: 20px;
+            max-height: 60vh;
             overflow-y: auto;
         }
 
@@ -318,30 +332,31 @@
         .ucs-site-list {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 14px;
         }
 
         .ucs-site-item {
             background: #fff;
-            border: 2px solid var(--ucs-border);
-            padding: 12px;
+            border: 3px solid var(--ucs-border);
+            padding: 14px 16px;
             position: relative;
-            box-shadow: 3px 3px 0 var(--ucs-border);
+            box-shadow: var(--ucs-shadow-sm);
         }
 
         .ucs-site-item:hover {
-            transform: translate(-1px, -1px);
-            box-shadow: 4px 4px 0 var(--ucs-border);
+            transform: translate(-2px, -2px);
+            box-shadow: var(--ucs-shadow);
         }
 
         .ucs-site-pattern {
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 700;
             color: var(--ucs-text);
-            margin-bottom: 8px;
+            margin-bottom: 10px;
             word-break: break-all;
-            padding-right: 30px;
+            padding-right: 70px;
             text-transform: uppercase;
+            line-height: 1.4;
         }
 
         .ucs-site-selectors {
@@ -358,12 +373,17 @@
             font-size: 9px;
         }
 
-        .ucs-site-delete {
+        .ucs-site-actions {
             position: absolute;
-            top: 8px;
-            right: 8px;
-            width: 22px;
-            height: 22px;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            gap: 6px;
+        }
+
+        .ucs-site-action-btn {
+            width: 26px;
+            height: 26px;
             background: var(--ucs-bg);
             border: 2px solid var(--ucs-border);
             color: var(--ucs-text);
@@ -374,21 +394,48 @@
             align-items: center;
             justify-content: center;
             transition: all 0.1s;
+            box-shadow: 2px 2px 0 var(--ucs-border);
         }
 
-        .ucs-site-delete:hover {
+        .ucs-site-action-btn:hover {
+            transform: translate(-1px, -1px);
+            box-shadow: 3px 3px 0 var(--ucs-border);
+        }
+
+        .ucs-site-action-btn.edit:hover {
+            background: var(--ucs-accent-secondary);
+            color: #fff;
+            border-color: var(--ucs-border);
+        }
+
+        .ucs-site-action-btn.delete:hover {
             background: var(--ucs-error);
             color: #fff;
-            border-color: var(--ucs-error);
+            border-color: var(--ucs-border);
         }
 
         .ucs-empty {
             text-align: center;
             color: var(--ucs-text-muted);
-            font-size: 11px;
-            padding: 24px;
+            font-size: 12px;
+            padding: 30px 20px;
             text-transform: uppercase;
             letter-spacing: 1px;
+            border: 3px dashed var(--ucs-border-light);
+            background: rgba(255,255,255,0.5);
+        }
+
+        /* Add Site Form */
+        .ucs-add-form {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 3px dashed var(--ucs-border-light);
+        }
+
+        .ucs-add-form .ucs-label {
+            font-size: 11px;
+            margin-bottom: 10px;
+            color: var(--ucs-accent);
         }
 
         /* Picker Overlay */
@@ -498,6 +545,7 @@
          * Get config for current page (with pattern matching)
          */
         getConfig() {
+            // 1. Check User Overrides
             const keys = GM_listValues();
             let bestMatch = null;
             let bestSpecificity = 0;
@@ -627,6 +675,7 @@
             this.callbacks = callbacks;
             this.overlay = null;
             this.activeTab = 'api';
+            this.editingPattern = null; // Track editing state
         }
 
         open() {
@@ -711,24 +760,46 @@
         renderSitesTab() {
             const sites = this.configManager.getAllSiteConfigs();
 
+            const addFormHtml = `
+                <div class="ucs-add-form">
+                     <div class="ucs-label" id="ucs-form-title">➕ Add New Site</div>
+                     <input type="text" class="ucs-input" id="ucs-new-pattern" placeholder="Domain or URL Pattern" style="margin-bottom: 8px;">
+                     <input type="text" class="ucs-input" id="ucs-new-captcha" placeholder="Captcha Selector (e.g. #img)" style="margin-bottom: 8px;">
+                     <input type="text" class="ucs-input" id="ucs-new-input" placeholder="Input Selector (e.g. #code)" style="margin-bottom: 8px;">
+                     <div class="ucs-btn-row" style="margin-top: 10px;">
+                        <button class="ucs-btn" id="ucs-add-site" style="width: 100%;">Add Site</button>
+                        <button class="ucs-btn secondary" id="ucs-cancel-edit" style="display: none;">Cancel</button>
+                     </div>
+                </div>
+            `;
+
             if (sites.length === 0) {
-                return '<div class="ucs-empty">No sites configured yet</div>';
+                return `
+                    <div class="ucs-empty">No sites configured yet</div>
+                    ${addFormHtml}
+                `;
             }
 
             return `
-                <div class="ucs-site-list">
-                    ${sites.map(({ pattern, config }) => `
-                        <div class="ucs-site-item" data-pattern="${this.escapeHtml(pattern)}">
-                            <button class="ucs-site-delete" title="Remove">×</button>
-                            <div class="ucs-site-pattern">${this.escapeHtml(pattern)}</div>
-                            <div class="ucs-site-selectors">
-                                Captcha: <code>${this.escapeHtml(config.captchaSelector)}</code><br>
-                                Input: <code>${this.escapeHtml(config.inputSelector)}</code>
-                            </div>
+            <div class="ucs-site-list">
+                ${sites.map(({ pattern, config }) => `
+                    <div class="ucs-site-item" data-pattern="${this.escapeHtml(pattern)}" 
+                         data-captcha="${this.escapeHtml(config.captchaSelector)}"
+                         data-input="${this.escapeHtml(config.inputSelector)}">
+                        <div class="ucs-site-actions">
+                            <button class="ucs-site-action-btn edit ucs-site-edit" title="Edit">✎</button>
+                            <button class="ucs-site-action-btn delete ucs-site-delete" title="Remove">×</button>
                         </div>
-                    `).join('')}
-                </div>
-            `;
+                        <div class="ucs-site-pattern">${this.escapeHtml(pattern)}</div>
+                        <div class="ucs-site-selectors">
+                            Captcha: <code>${this.escapeHtml(config.captchaSelector)}</code><br>
+                            Input: <code>${this.escapeHtml(config.inputSelector)}</code>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+            ${addFormHtml}
+        `;
         }
 
         escapeHtml(str) {
@@ -750,6 +821,7 @@
             // Rebind site delete handlers when switching to sites tab
             if (tabName === 'sites') {
                 this.bindSiteHandlers(modal);
+                this.resetForm(modal); // Reset form state when switching to sites tab
             }
         }
 
@@ -837,6 +909,7 @@
         }
 
         bindSiteHandlers(modal) {
+            // Delete handlers
             modal.querySelectorAll('.ucs-site-delete').forEach(btn => {
                 btn.onclick = (e) => {
                     const item = e.target.closest('.ucs-site-item');
@@ -844,16 +917,94 @@
 
                     if (confirm(`Remove configuration for "${pattern}"?`)) {
                         this.configManager.deleteSiteConfig(pattern);
-                        item.remove();
-
-                        // Check if list is empty
-                        const list = modal.querySelector('.ucs-site-list');
-                        if (!list.children.length) {
-                            modal.querySelector('#ucs-tab-sites').innerHTML =
-                                '<div class="ucs-empty">No sites configured</div>';
-                        }
+                        // Refresh tab
+                        this.refreshSitesTab(modal);
                     }
                 };
+            });
+
+            // Edit handlers
+            modal.querySelectorAll('.ucs-site-edit').forEach(btn => {
+                btn.onclick = (e) => {
+                    const item = e.target.closest('.ucs-site-item');
+                    const pattern = item.dataset.pattern;
+                    const captcha = item.dataset.captcha;
+                    const input = item.dataset.input;
+
+                    this.editingPattern = pattern;
+
+                    modal.querySelector('#ucs-new-pattern').value = pattern;
+                    modal.querySelector('#ucs-new-captcha').value = captcha;
+                    modal.querySelector('#ucs-new-input').value = input;
+
+                    modal.querySelector('#ucs-form-title').textContent = 'Edit Site';
+                    modal.querySelector('#ucs-add-site').textContent = 'Update Site';
+                    modal.querySelector('#ucs-cancel-edit').style.display = 'inline-block';
+
+                    // Highlight being edited
+                    modal.querySelectorAll('.ucs-site-item').forEach(el => el.style.opacity = '0.5');
+                    item.style.opacity = '1';
+                    item.style.border = '2px solid var(--ucs-text)';
+                };
+            });
+
+            // Cancel Edit
+            const cancelBtn = modal.querySelector('#ucs-cancel-edit');
+            if (cancelBtn) {
+                cancelBtn.onclick = () => {
+                    this.resetForm(modal);
+                };
+            }
+
+            // Add/Update Site Handler
+            const addBtn = modal.querySelector('#ucs-add-site');
+            if (addBtn) {
+                addBtn.onclick = () => {
+                    const pattern = modal.querySelector('#ucs-new-pattern').value.trim();
+                    const captcha = modal.querySelector('#ucs-new-captcha').value.trim();
+                    const input = modal.querySelector('#ucs-new-input').value.trim();
+
+                    if (!pattern || !captcha || !input) {
+                        this.showToast('Fill all fields', true);
+                        return;
+                    }
+
+                    // If editing and pattern changed, delete old one
+                    if (this.editingPattern && this.editingPattern !== pattern) {
+                        this.configManager.deleteSiteConfig(this.editingPattern);
+                    }
+
+                    this.configManager.saveConfig({
+                        captchaSelector: captcha,
+                        inputSelector: input
+                    }, pattern);
+
+                    this.showToast(this.editingPattern ? 'Site Updated' : 'Site Added');
+                    this.resetForm(modal);
+                    this.refreshSitesTab(modal);
+                };
+            }
+        }
+
+        refreshSitesTab(modal) {
+            modal.querySelector('#ucs-tab-sites').innerHTML = this.renderSitesTab();
+            this.bindSiteHandlers(modal);
+        }
+
+        resetForm(modal) {
+            this.editingPattern = null;
+            modal.querySelector('#ucs-new-pattern').value = '';
+            modal.querySelector('#ucs-new-captcha').value = '';
+            modal.querySelector('#ucs-new-input').value = '';
+
+            modal.querySelector('#ucs-form-title').textContent = '➕ Add New Site';
+            modal.querySelector('#ucs-add-site').textContent = 'Add Site';
+            modal.querySelector('#ucs-cancel-edit').style.display = 'none';
+
+            // Reset styles
+            modal.querySelectorAll('.ucs-site-item').forEach(el => {
+                el.style.opacity = '1';
+                el.style.border = '3px solid var(--ucs-border)';
             });
         }
 
