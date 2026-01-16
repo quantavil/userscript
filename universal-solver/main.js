@@ -18,22 +18,78 @@
 (function () {
     'use strict';
 
-    // --- Configuration ---
-    const CONFIG = {
-        get apiKey() { return GM_getValue('gemini_api_key', ''); },
-        get model() { return GM_getValue('gemini_model', 'gemma-3-27b-it'); },
-        timeouts: {
-            imageLoad: 5000,
-            api: 12000
+    // --- Configuration & Constants ---
+    const CONSTANTS = {
+        STORAGE_KEYS: {
+            API_KEY: 'gemini_api_key',
+            MODEL: 'gemini_model'
         },
-        delays: {
-            initialRun: 100,
-            afterRefresh: 100,
-            afterSrcChange: 50
+        DEFAULTS: {
+            MODEL: 'gemma-3-27b-it'
+        },
+        TIMEOUTS: {
+            IMAGE_LOAD: 5000,
+            API: 12000
+        },
+        DELAYS: {
+            INITIAL_RUN: 100,
+            AFTER_REFRESH: 100,
+            AFTER_SRC_CHANGE: 50
         }
     };
 
+    // --- Shared Utilities ---
+    const createToast = () => {
+        const show = (message, isError = false) => {
+            const toast = document.createElement('div');
+            toast.className = `ucs-toast ${isError ? 'error' : 'success'}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2500);
+        };
+        return { show };
+    };
+    const Toast = createToast();
 
+    class HttpClient {
+        static async request(method, url, options = {}) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: method,
+                    url: url,
+                    headers: options.headers || {},
+                    data: options.data,
+                    responseType: options.responseType,
+                    timeout: options.timeout || 10000,
+                    onload: (res) => {
+                        if (res.status >= 200 && res.status < 300) {
+                            resolve(res);
+                        } else {
+                            // Try to parse error message if JSON
+                            let errorMessage = `HTTP ${res.status}`;
+                            try {
+                                const json = JSON.parse(res.responseText);
+                                if (json.error && json.error.message) {
+                                    errorMessage = json.error.message;
+                                }
+                            } catch (e) { }
+                            reject(new Error(errorMessage));
+                        }
+                    },
+                    onerror: () => reject(new Error('Network Error')),
+                    ontimeout: () => reject(new Error('Timeout'))
+                });
+            });
+        }
+
+        static async post(url, data, options = {}) {
+            return this.request('POST', url, { ...options, data });
+        }
+
+        static async get(url, options = {}) {
+            return this.request('GET', url, options);
+        }
+    }
 
     // --- Minimal Clean UI Styles ---
     const STYLES = `
@@ -485,6 +541,7 @@
             this.hostname = window.location.hostname;
             this.pathname = window.location.pathname;
             this.siteKey = this.hostname + this.pathname;
+            this.reservedKeys = Object.values(CONSTANTS.STORAGE_KEYS);
         }
 
         /**
@@ -530,7 +587,7 @@
             let bestSpecificity = 0;
 
             for (const key of keys) {
-                if (key === 'gemini_api_key' || key === 'gemini_model') continue;
+                if (this.reservedKeys.includes(key)) continue;
 
                 const { match, specificity } = this.matchesPattern(key);
                 if (match && specificity > bestSpecificity) {
@@ -564,7 +621,7 @@
             // Find and delete the matching config
             const keys = GM_listValues();
             for (const key of keys) {
-                if (key === 'gemini_api_key' || key === 'gemini_model') continue;
+                if (this.reservedKeys.includes(key)) continue;
                 const { match } = this.matchesPattern(key);
                 if (match) {
                     GM_deleteValue(key);
@@ -589,7 +646,7 @@
             const sites = [];
 
             for (const key of keys) {
-                if (key === 'gemini_api_key' || key === 'gemini_model') continue;
+                if (this.reservedKeys.includes(key)) continue;
 
                 try {
                     const value = GM_getValue(key);
@@ -707,9 +764,8 @@
         }
 
         renderApiTab() {
-            const currentKey = GM_getValue('gemini_api_key', '');
-            const currentModel = GM_getValue('gemini_model', 'gemma-3-27b-it');
-            const maskedKey = currentKey ? '•'.repeat(Math.min(currentKey.length, 20)) + currentKey.slice(-4) : '';
+            const currentKey = GM_getValue(CONSTANTS.STORAGE_KEYS.API_KEY, '');
+            const currentModel = GM_getValue(CONSTANTS.STORAGE_KEYS.MODEL, CONSTANTS.DEFAULTS.MODEL);
 
             return `
                 <div class="ucs-field">
@@ -720,7 +776,7 @@
                 <div class="ucs-field">
                     <label class="ucs-label">Model</label>
                     <input type="text" class="ucs-input" id="ucs-model" 
-                           value="${currentModel}" placeholder="gemma-3-27b-it">
+                           value="${currentModel}" placeholder="${CONSTANTS.DEFAULTS.MODEL}">
                 </div>
                 <div class="ucs-btn-row">
                     <button class="ucs-btn" id="ucs-save-api">Save</button>
@@ -810,20 +866,19 @@
                 const apiKey = modal.querySelector('#ucs-api-key').value.trim();
                 const model = modal.querySelector('#ucs-model').value.trim();
 
-                if (apiKey) GM_setValue('gemini_api_key', apiKey);
-                if (model) GM_setValue('gemini_model', model);
+                if (apiKey) GM_setValue(CONSTANTS.STORAGE_KEYS.API_KEY, apiKey);
+                if (model) GM_setValue(CONSTANTS.STORAGE_KEYS.MODEL, model);
 
-                this.showToast('Settings saved!');
+                Toast.show('Settings saved!');
             };
 
             // Verify API key
-            modal.querySelector('#ucs-verify-api').onclick = () => {
-                const self = this;
+            modal.querySelector('#ucs-verify-api').onclick = async () => {
                 const apiKey = modal.querySelector('#ucs-api-key').value.trim();
-                const model = modal.querySelector('#ucs-model').value.trim() || 'gemma-3-27b-it';
+                const model = modal.querySelector('#ucs-model').value.trim() || CONSTANTS.DEFAULTS.MODEL;
 
                 if (!apiKey) {
-                    self.showToast('Enter an API key first', true);
+                    Toast.show('Enter an API key first', true);
                     return;
                 }
 
@@ -832,37 +887,19 @@
                 btn.textContent = '...';
                 btn.disabled = true;
 
-                GM_xmlhttpRequest({
-                    method: 'POST',
-                    url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-                    headers: { 'Content-Type': 'application/json' },
-                    data: JSON.stringify({ contents: [{ parts: [{ text: 'test' }] }] }),
-                    timeout: 10000,
-                    onload: function (res) {
-                        btn.textContent = originalText;
-                        btn.disabled = false;
-                        if (res.status === 200) {
-                            self.showToast('✓ Valid!');
-                        } else {
-                            try {
-                                const err = JSON.parse(res.responseText);
-                                self.showToast(`✗ ${err.error?.message || 'Error ' + res.status}`, true);
-                            } catch (e) {
-                                self.showToast(`✗ Error: ${res.status}`, true);
-                            }
-                        }
-                    },
-                    onerror: function () {
-                        btn.textContent = originalText;
-                        btn.disabled = false;
-                        self.showToast('✗ Network error', true);
-                    },
-                    ontimeout: function () {
-                        btn.textContent = originalText;
-                        btn.disabled = false;
-                        self.showToast('✗ Timeout', true);
-                    }
-                });
+                try {
+                    await HttpClient.post(
+                        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+                        JSON.stringify({ contents: [{ parts: [{ text: 'test' }] }] }),
+                        { headers: { 'Content-Type': 'application/json' }, timeout: 10000 }
+                    );
+                    Toast.show('✓ Valid!');
+                } catch (e) {
+                    Toast.show(`✗ ${e.message}`, true);
+                } finally {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
             };
 
             // Export
@@ -944,7 +981,18 @@
                     const input = modal.querySelector('#ucs-new-input').value.trim();
 
                     if (!pattern || !captcha || !input) {
-                        this.showToast('Fill all fields', true);
+                        Toast.show('Fill all fields', true);
+                        return;
+                    }
+
+                    // Validate Selectors
+                    try {
+                        // We can only validate syntax, we can't find element on this page if it's for another site.
+                        // But document.querySelector throws if selector is invalid.
+                        document.querySelector(captcha);
+                        document.querySelector(input);
+                    } catch (e) {
+                        Toast.show('Invalid CSS Selector syntax', true);
                         return;
                     }
 
@@ -958,7 +1006,7 @@
                         inputSelector: input
                     }, pattern);
 
-                    this.showToast(this.editingPattern ? 'Site Updated' : 'Site Added');
+                    Toast.show(this.editingPattern ? 'Site Updated' : 'Site Added');
                     this.resetForm(modal);
                     this.refreshSitesTab(modal);
                 };
@@ -985,14 +1033,6 @@
                 el.style.opacity = '1';
                 el.style.border = '1px solid var(--ucs-border)';
             });
-        }
-
-        showToast(message, isError = false) {
-            const toast = document.createElement('div');
-            toast.className = `ucs-toast ${isError ? 'error' : 'success'}`;
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 2500);
         }
     }
 
@@ -1109,44 +1149,38 @@
      */
     class GeminiSolver {
         constructor() {
-            this.config = CONFIG;
+            // config handled dynamically
         }
 
-        async solve(base64Image) {
-            return new Promise((resolve, reject) => {
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.config.model}:generateContent?key=${this.config.apiKey}`;
-                const payload = {
-                    contents: [{
-                        parts: [
-                            { text: "Solve this captcha. Output ONLY the alphanumeric characters visible in the image. Do not include spaces or special characters." },
-                            { inline_data: { mime_type: "image/jpeg", data: base64Image } }
-                        ]
-                    }]
-                };
+        get apiKey() { return GM_getValue(CONSTANTS.STORAGE_KEYS.API_KEY, ''); }
+        get model() { return GM_getValue(CONSTANTS.STORAGE_KEYS.MODEL, CONSTANTS.DEFAULTS.MODEL); }
 
-                GM_xmlhttpRequest({
-                    method: "POST",
-                    url: apiUrl,
-                    headers: { "Content-Type": "application/json" },
-                    data: JSON.stringify(payload),
-                    timeout: this.config.timeouts.api,
-                    ontimeout: () => reject("Timeout"),
-                    onload: (response) => {
-                        if (response.status === 200) {
-                            try {
-                                const data = JSON.parse(response.responseText);
-                                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                                const solution = text ? text.trim().replace(/[^a-zA-Z0-9]/g, '') : '';
-                                if (solution.length < 3) reject("Invalid format");
-                                else resolve(solution);
-                            } catch (e) { reject("Parse Error"); }
-                        } else {
-                            reject(`API ${response.status}`);
-                        }
-                    },
-                    onerror: () => reject("Network Error")
-                });
+        async solve(base64Image) {
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
+            const payload = {
+                contents: [{
+                    parts: [
+                        { text: "Solve this captcha. Output ONLY the alphanumeric characters visible in the image. Do not include spaces or special characters." },
+                        { inline_data: { mime_type: "image/jpeg", data: base64Image } }
+                    ]
+                }]
+            };
+
+            const response = await HttpClient.post(apiUrl, JSON.stringify(payload), {
+                headers: { "Content-Type": "application/json" },
+                timeout: CONSTANTS.TIMEOUTS.API
             });
+
+            try {
+                const data = JSON.parse(response.responseText);
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                const solution = text ? text.trim().replace(/[^a-zA-Z0-9]/g, '') : '';
+                if (solution.length < 3) throw new Error("Invalid format");
+                return solution;
+            } catch (e) {
+                if (e.message === "Invalid format") throw e;
+                throw new Error("Parse Error");
+            }
         }
     }
 
@@ -1160,6 +1194,7 @@
             this.solver = new GeminiSolver();
             this.siteConfig = this.configManager.getConfig();
             this.observer = null;
+            this.cachedCaptchaEl = null;
 
             this.registerMenu();
 
@@ -1167,6 +1202,9 @@
                 this.injectStyles();
                 this.createUI();
                 this.initAutoSolve();
+
+                // Cleanup on unload to prevent memory leaks
+                window.addEventListener('beforeunload', () => this.cleanup());
             }
         }
 
@@ -1209,7 +1247,7 @@
                     URL.revokeObjectURL(url);
                 }, 100);
             } catch (e) {
-                alert('Export failed: ' + e.message);
+                Toast.show(`Export failed: ${e.message}`, true);
             }
         }
 
@@ -1226,10 +1264,10 @@
                 reader.onload = (event) => {
                     const result = this.configManager.importSettings(event.target.result);
                     if (result.success) {
-                        alert(`Successfully imported ${result.count} configurations! Reloading...`);
-                        location.reload();
+                        Toast.show(`Successfully imported ${result.count} configurations! Reloading...`);
+                        setTimeout(() => location.reload(), 1500);
                     } else {
-                        alert(`Import failed: ${result.error}`);
+                        Toast.show(`Import failed: ${result.error}`, true);
                     }
                 };
                 reader.readAsText(file);
@@ -1319,8 +1357,8 @@
                             isCanvas: isCanvas
                         };
                         this.configManager.saveConfig(config);
-                        alert('Configuration Saved! Page will reload.');
-                        location.reload();
+                        Toast.show('Configuration Saved! Reloading...');
+                        setTimeout(() => location.reload(), 1000);
                     });
                     this.picker.start("CLICK THE INPUT FIELD");
                 }, 500);
@@ -1329,7 +1367,13 @@
         }
 
         async getImageBase64() {
-            const el = document.querySelector(this.siteConfig.captchaSelector);
+            // Use cached element if valid, otherwise query
+            let el = this.cachedCaptchaEl;
+            if (!el || !document.contains(el)) {
+                el = document.querySelector(this.siteConfig.captchaSelector);
+                this.cachedCaptchaEl = el;
+            }
+
             if (!el) throw new Error('Captcha element not found');
 
             const canvas = document.createElement('canvas');
@@ -1346,7 +1390,7 @@
                         await new Promise((resolve, reject) => {
                             el.onload = resolve;
                             el.onerror = () => reject(new Error('Image failed to load'));
-                            setTimeout(() => reject(new Error('Timeout')), CONFIG.timeouts.imageLoad);
+                            setTimeout(() => reject(new Error('Timeout')), CONSTANTS.TIMEOUTS.IMAGE_LOAD);
                         });
                     }
                     canvas.width = el.naturalWidth || el.width;
@@ -1365,26 +1409,19 @@
         }
 
         async fetchCrossOriginImage(url) {
+            const response = await HttpClient.request('GET', url, {
+                responseType: 'blob',
+                timeout: CONSTANTS.TIMEOUTS.IMAGE_LOAD
+            });
+
             return new Promise((resolve, reject) => {
-                GM_xmlhttpRequest({
-                    method: 'GET',
-                    url: url,
-                    responseType: 'blob',
-                    timeout: CONFIG.timeouts.imageLoad,
-                    onload: (response) => {
-                        if (response.status === 200) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                                const base64 = reader.result.replace(/^data:image\/[^;]+;base64,/, '');
-                                resolve(base64);
-                            };
-                            reader.onerror = reject;
-                            reader.readAsDataURL(response.response);
-                        } else reject(new Error(`HTTP ${response.status}`));
-                    },
-                    onerror: () => reject(new Error('Network Error')),
-                    ontimeout: () => reject(new Error('Timeout'))
-                });
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64 = reader.result.replace(/^data:image\/[^;]+;base64,/, '');
+                    resolve(base64);
+                };
+                reader.onerror = () => reject(new Error('Failed to read blob'));
+                reader.readAsDataURL(response.response);
             });
         }
 
@@ -1392,8 +1429,10 @@
             if (!this.siteConfig) return;
 
             // Validate API key
-            if (!CONFIG.apiKey) {
+            const apiKey = GM_getValue(CONSTANTS.STORAGE_KEYS.API_KEY, '');
+            if (!apiKey) {
                 this.updateStatus('error', 'No API Key');
+                Toast.show('Please configure API Key in settings', true);
                 return;
             }
 
@@ -1408,12 +1447,16 @@
             } catch (e) {
                 console.error('Solver Error:', e);
                 this.updateStatus('error', 'Failed');
+                Toast.show(e.message, true);
             }
         }
 
         fillInput(text) {
             const input = document.querySelector(this.siteConfig.inputSelector);
-            if (!input) return;
+            if (!input) {
+                Toast.show('Input field not found', true);
+                return;
+            };
 
             input.value = text;
             input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1421,14 +1464,14 @@
         }
 
         initAutoSolve() {
-            setTimeout(() => this.runSolve(), CONFIG.delays.initialRun);
+            setTimeout(() => this.runSolve(), CONSTANTS.DELAYS.INITIAL_RUN);
 
-            const el = document.querySelector(this.siteConfig.captchaSelector);
+            let el = document.querySelector(this.siteConfig.captchaSelector);
             if (el && !this.siteConfig.isCanvas) {
                 this.observer = new MutationObserver((mutations) => {
                     for (const m of mutations) {
                         if (m.attributeName === 'src') {
-                            setTimeout(() => this.runSolve(), CONFIG.delays.afterSrcChange);
+                            setTimeout(() => this.runSolve(), CONSTANTS.DELAYS.AFTER_SRC_CHANGE);
                         }
                     }
                 });
