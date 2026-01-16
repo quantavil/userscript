@@ -15,8 +15,8 @@ A powerful, universal captcha solver userscript that uses the Google Gemini API 
 ## Installation
 
 1.  **Install a Userscript Manager**:
-    -   [Tampermonkey](https://www.tampermonkey.net/) (Recommended)
-    -   Violentmonkey
+    -   [Violentmonkey](https://violentmonkey.github.io/) (Recommended)
+    -   [Tampermonkey](https://www.tampermonkey.net/)
 
 2.  **Install the Script**:
     -   Create a new script in your manager.
@@ -29,15 +29,16 @@ A powerful, universal captcha solver userscript that uses the Google Gemini API 
 
 1.  Go to any website.
 2.  Open your Userscript Manager menu (usually the extension icon).
-3.  Select **"🔑 Set API Key"**.
+3.  Select **"⚙️ Settings"**.
 4.  Enter your Google Gemini API Key. You can get one for free at [Google AI Studio](https://aistudio.google.com/).
 5.  (Optional) Enter a custom model name (e.g., `gemini-1.5-flash`).
+6.  Click **"Save"**.
 
 ### Configuring a Website
 
 1.  Navigate to a page with a captcha.
 2.  Open the Userscript Manager menu.
-3.  Select **"⚙️ Configure Captcha Solver"**.
+3.  Select **"🎯 Configure Captcha"**.
 4.  **Step 1**: Click on the **Captcha Image**.
 5.  **Step 2**: Click on the **Answer Input Field**.
 6.  The page will reload, and the solver will activate automatically.
