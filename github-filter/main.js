@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Advanced Search Builder
 // @namespace    https://github.com/quantavil/userscript
-// @version      4.1
+// @version      4.2
 // @description  Advanced filter modal for GitHub search with Brutal UI and Release detection.
 // @match        https://github.com/*
 // @license      MIT
@@ -23,7 +23,7 @@
         },
         selectors: {
             results: '[data-testid="results-list"]',
-            resultItem: '[data-testid="results-list"] > div, .repo-list-item, .Box-row', // Added .Box-row for wider compatibility
+            resultItem: '[data-testid="results-list"] > div, .repo-list-item, .Box-row',
             resultLink: '.search-title a, a[href^="/"]'
         }
     };
@@ -57,7 +57,6 @@
             items: [
                 { id: 'and', label: 'AND', placeholder: 'rust async', type: 'text' },
                 { id: 'or', label: 'OR', placeholder: 'react, vue', type: 'text' },
-                { id: 'not', label: 'NOT', placeholder: 'deprecated', type: 'text', danger: true },
             ]
         },
         {
@@ -78,7 +77,7 @@
     ];
 
     /* =========================================================================
-       THEME & STYLES — MIMAL BRUTAL
+       THEME & STYLES — MIMIMAL BRUTAL
        ========================================================================= */
     function injectStyles() {
         if (document.getElementById(CONFIG.ids.style)) return;
@@ -280,16 +279,16 @@
             .gh-release-tag {
                 display: inline-flex;
                 align-items: center;
-                padding: 4px 8px; /* Increased size */
+                padding: 4px 8px;
                 margin-top: 6px;
-                font-size: 11px; /* Increased font */
+                font-size: 11px;
                 font-family: var(--brutal-font);
-                font-weight: 700; /* Bold */
-                border: 2px solid var(--brutal-border); /* Thicker border */
+                font-weight: 700;
+                border: 2px solid var(--brutal-border);
                 background: var(--brutal-bg);
                 color: var(--brutal-fg) !important;
                 text-decoration: none !important;
-                box-shadow: 2px 2px 0 var(--brutal-border); /* Pop effect */
+                box-shadow: 2px 2px 0 var(--brutal-border);
                 transition: transform 0.1s;
             }
             .gh-release-tag:hover {
@@ -301,7 +300,7 @@
             
             /* Success (Has Release) - GREEN */
             .gh-release-tag.has-release {
-                color: #15803d !important; /* Green 700 */
+                color: #15803d !important;
                 border-color: #15803d;
                 box-shadow: 2px 2px 0 #15803d;
             }
@@ -312,7 +311,7 @@
 
             /* Failure (No Release) - RED */
             .gh-release-tag.no-release {
-                color: #b91c1c !important; /* Red 700 */
+                color: #b91c1c !important;
                 border-color: #b91c1c;
                 box-shadow: 2px 2px 0 #b91c1c;
             }
@@ -381,7 +380,9 @@
     class QueryBuilder {
         static clean(str) {
             if (!str) return [];
-            return str.split(/[, ]+/).filter(Boolean);
+            // Parse tokens respecting quotes: matches quoted strings OR non-space/comma sequences
+            const matches = str.match(/("[^"]*"|[^, ]+)/g);
+            return matches ? matches : [];
         }
 
         static buildUrl(data) {
@@ -394,9 +395,6 @@
             if (orTerms.length) {
                 parts.push(orTerms.length === 1 ? orTerms[0] : `(${orTerms.join(' OR ')})`);
             }
-
-            const notTerms = this.clean(data.not);
-            notTerms.forEach(t => parts.push(`-${t}`));
 
             data.meta.forEach(m => {
                 let val = m.value.trim();
@@ -423,33 +421,30 @@
             const sort = params.get('s') || '';
             const releasesOnly = params.get('userscript_has_release') === '1';
 
-            const state = { type, sort, releasesOnly, and: '', or: '', not: '', meta: {} };
+            const state = { type, sort, releasesOnly, and: '', or: '', meta: {} };
             let q = rawQ;
 
+            // 1. Extract Meta fields (key:value) - supports quoted values
             FIELDS.find(s => s.section === 'META').items.forEach(item => {
-                // Regex to find meta:value pair
-                const regex = new RegExp(`\\b${item.meta}:(\\S+)`, 'gi');
-                const match = q.match(regex);
-                if (match) {
-                    let val = match[0].split(':')[1];
+                const regex = new RegExp(`\\b${item.meta}:("[^"]*"|\\S+)`, 'gi');
+                q = q.replace(regex, (match, val) => {
                     // Strip auto >= for display
                     if (['stars', 'forks', 'size'].includes(item.meta) && val.startsWith('>=')) {
                         val = val.substring(2);
                     }
                     state.meta[item.id] = val;
-                    q = q.replace(regex, '');
-                }
+                    return ''; // Remove from q
+                });
             });
 
+            // 2. Extract OR groups: (a OR b)
             const orMatch = q.match(/\(([^)]+)\)/);
             if (orMatch && orMatch[1].includes(' OR ')) {
                 state.or = orMatch[1].split(' OR ').join(', ');
                 q = q.replace(orMatch[0], '');
             }
 
-            const nots = [];
-            q = q.replace(/-\S+/g, m => { nots.push(m.substring(1)); return ''; });
-            state.not = nots.join(', ');
+            // 3. Remaining is AND
             state.and = q.replace(/\s+/g, ' ').trim();
 
             return state;
@@ -616,65 +611,56 @@
         await Promise.all(workers);
     }
 
+    async function processItem(item, filterOnly) {
+        const link = item.querySelector(CONFIG.selectors.resultLink);
+        if (!link) return;
+
+        const path = link.getAttribute('href');
+        const parts = path.split('/').filter(Boolean);
+        if (parts.length < 2) return;
+        const [owner, repo] = parts;
+
+        const metaList = item.querySelector('ul');
+        const insertTarget = metaList || item;
+
+        // Container is still used to keep structure clean, but no specific asset classes needed
+        const badgeContainer = document.createElement('div');
+        badgeContainer.style.marginTop = '6px';
+
+        const checkingBadge = createReleaseBadge('checking');
+        badgeContainer.appendChild(checkingBadge);
+
+        insertTarget.parentNode.insertBefore(badgeContainer, insertTarget.nextSibling);
+
+        const releaseInfo = await fetchReleaseInfo(owner, repo);
+
+        badgeContainer.innerHTML = '';
+        if (releaseInfo) {
+            const releaseBadge = createReleaseBadge('has-release', releaseInfo);
+            badgeContainer.appendChild(releaseBadge);
+        } else {
+            if (filterOnly) {
+                item.style.display = 'none';
+                badgeContainer.style.display = 'none';
+            } else {
+                const noReleaseBadge = createReleaseBadge('no-release');
+                badgeContainer.appendChild(noReleaseBadge);
+            }
+        }
+    }
+
     async function processSearchResults() {
+        if (!window.location.pathname.startsWith('/search')) return;
+
         const params = new URLSearchParams(window.location.search);
         const filterOnly = params.get('userscript_has_release') === '1';
 
-        if (!window.location.pathname.startsWith('/search')) return;
-
         const allItems = Array.from(document.querySelectorAll(CONFIG.selectors.resultItem));
-
-        const itemsToProcess = allItems.filter(item => {
-            if (item.dataset.releaseProcessed) return false;
-
-            // Validate it's a repo item by checking for a link
-            const link = item.querySelector('a[href^="/"]');
-            if (!link) return false;
-
-            // Simple validation: path should look like /owner/repo
-            const path = link.getAttribute('href');
-            const parts = path.split('/').filter(Boolean);
-            return parts.length >= 2;
-        });
+        const itemsToProcess = allItems.filter(item => !item.dataset.releaseProcessed);
 
         itemsToProcess.forEach(item => item.dataset.releaseProcessed = 'true');
 
-        const processItem = async (item) => {
-            const link = item.querySelector('a[href^="/"]');
-            const path = link.getAttribute('href');
-            const parts = path.split('/').filter(Boolean);
-            const owner = parts[0];
-            const repo = parts[1];
-
-            const metaList = item.querySelector('ul');
-            const insertTarget = metaList || item;
-
-            const badgeContainer = document.createElement('div');
-            badgeContainer.style.marginTop = '4px';
-
-            const checkingBadge = createReleaseBadge('checking');
-            badgeContainer.appendChild(checkingBadge);
-
-            insertTarget.parentNode.insertBefore(badgeContainer, insertTarget.nextSibling);
-
-            const releaseInfo = await fetchReleaseInfo(owner, repo);
-
-            badgeContainer.innerHTML = '';
-            if (releaseInfo) {
-                const releaseBadge = createReleaseBadge('has-release', releaseInfo);
-                badgeContainer.appendChild(releaseBadge);
-            } else {
-                if (filterOnly) {
-                    item.style.display = 'none';
-                    badgeContainer.style.display = 'none';
-                } else {
-                    const noReleaseBadge = createReleaseBadge('no-release');
-                    badgeContainer.appendChild(noReleaseBadge);
-                }
-            }
-        };
-
-        await processQueue(itemsToProcess, 3, processItem);
+        await processQueue(itemsToProcess, 3, item => processItem(item, filterOnly));
     }
 
     /* =========================================================================
@@ -778,7 +764,6 @@
         });
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape' && modalEl.dataset.visible === 'true') toggleModal(false);
-            if (e.ctrlKey && e.shiftKey && e.code === 'KeyF') toggleModal();
         });
     }
 
@@ -793,7 +778,6 @@
         setVal('sort', state.sort);
         setVal('and', state.and);
         setVal('or', state.or);
-        setVal('not', state.not);
         Object.entries(state.meta).forEach(([id, val]) => setVal(id, val));
 
         const relCheck = document.getElementById('gh-field-releases');
@@ -807,7 +791,6 @@
             sort: getVal('sort'),
             and: getVal('and'),
             or: getVal('or'),
-            not: getVal('not'),
             meta: [],
             releasesOnly: document.getElementById('gh-field-releases').checked
         };
