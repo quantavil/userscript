@@ -305,8 +305,7 @@
             const spanLength = (lastMatchIdx - firstMatchIdx) + 1;
             const matchDensity = lowerQuery.length / spanLength;
 
-            // Strictness Check (90%)
-            if (matchDensity >= 0.9) {
+            if (matchDensity >= 0.85) {
                 // Calculate simple score based on density
                 // Base score 40, max 50 based on density
                 return { score: 40 + (matchDensity * 10), matches: [] };
