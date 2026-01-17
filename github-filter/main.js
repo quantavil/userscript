@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         GitHub Advanced Search Builder
+// @name         GitHub Advanced Search 
 // @namespace    https://github.com/quantavil/userscript
 // @version      4.2
-// @description  Advanced filter modal for GitHub search with Brutal UI and Release detection.
+// @description  Advanced filter modal for GitHub search 
 // @match        https://github.com/*
 // @license      MIT
 // @icon         https://github.githubassets.com/favicons/favicon.svg
