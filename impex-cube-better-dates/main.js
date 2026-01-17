@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Impex Cube - Better Date Selector
-// @namespace    http://tampermonkey.net/
+// @namespace    http://github.com/quantavil
 // @version      1.2
 // @description  Enhanced date input with manual typing support - Format: DD/MM/YYYY
 // @author       You
-// @match        *://import.impexcube.in/*
-// @match        *://export.impexcube.in/*
+// @match        *://*.impexcube.in/*
+// @license      MIT
 // @grant        GM_addStyle
 // ==/UserScript==
 
