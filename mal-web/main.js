@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         MAL Rating Hover Provider (Wildcard Edition)
+// @name         MAL Rating Hover Provider (Wildcard Edition - V4 Clear Cache)
 // @namespace    http://tampermonkey.net/
-// @version      2.0
-// @description  Shows MAL rating on hover (desktop) or long-press (mobile). Includes fixes for bubbling, double-taps, and false positives.
+// @version      4.0
+// @description  Shows MAL rating on hover. Features: Blue Badge (>8), Smart Caching, Color Grading, and Menu option to Clear Cache.
 // @author       Quantavil (Fixed)
 
-// --- Domain Wildcards (Matches any extension like .to, .ru, .com) ---
+// --- Domain Wildcards ---
 // @match        *://hianime.*/*
 // @match        *://anitaro.*/*
 // @match        *://animovitch.*/*
@@ -35,6 +35,9 @@
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_deleteValue
+// @grant        GM_listValues
+// @grant        GM_registerMenuCommand
 // @grant        GM_openInTab
 // @run-at       document-end
 // ==/UserScript==
@@ -43,12 +46,13 @@
     'use strict';
 
     const CONFIG = {
-        CACHE_PREFIX: 'mal_v3_',
-        CACHE_EXPIRY: 14 * 24 * 60 * 60 * 1000, // 14 Days
-        DEBOUNCE_DELAY: 400, // Desktop hover delay
-        LONG_PRESS_DELAY: 600, // Mobile long press delay
-        API_INTERVAL: 350,   // Safe interval for Jikan API
-        MATCH_THRESHOLD: 0.6, // 60% similarity required to show result
+        CACHE_PREFIX: 'mal_v5_',
+        CACHE_EXPIRY_SUCCESS: 14 * 24 * 60 * 60 * 1000, // 14 Days
+        CACHE_EXPIRY_ERROR: 12 * 60 * 60 * 1000,        // 12 Hours
+        DEBOUNCE_DELAY: 200,
+        LONG_PRESS_DELAY: 500,
+        API_INTERVAL: 350,
+        MATCH_THRESHOLD: 0.5,
         SELECTORS: {
             ITEM: `
                 .flw-item, .film_list-wrap > div, .poster-card, .f-item, .aitem, .anime-item, .ep-item, .anicard,
@@ -68,12 +72,13 @@
     let longPressTimeout;
     let isTouchInteraction = false;
 
-    // === Request Queue (Prevents 429 Rate Limits) ===
+    // === Request Queue ===
     const requestQueue = {
         queue: [],
         processing: false,
-        add(title, callback) {
-            this.queue.push({ title, callback, retries: 0 });
+        add(title, cleanT, callback) {
+            if (this.queue.some(q => q.cleanT === cleanT)) return;
+            this.queue.push({ title, cleanT, callback, retries: 0 });
             this.process();
         },
         async process() {
@@ -81,14 +86,13 @@
             this.processing = true;
 
             const job = this.queue.shift();
-            const { title, callback, retries } = job;
+            const { cleanT, callback, retries } = job;
 
             try {
-                const data = await getMalData(title);
+                const data = await fetchMalData(cleanT);
 
                 if (data && data.status === 429) {
-                    if (retries < 1) {
-                        console.warn(`[MAL-Hover] Rate Limit Hit. Pausing...`);
+                    if (retries < 2) {
                         job.retries++;
                         this.queue.unshift(job);
                         setTimeout(() => {
@@ -97,14 +101,16 @@
                         }, 2500);
                         return;
                     } else {
-                        callback({ error: true, score: '429' });
+                        callback({ error: true, temp: true }); 
                     }
                 } else {
+                    const cacheKey = cleanT.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    setCache(cacheKey, data);
                     callback(data);
                 }
             } catch (e) {
                 console.error(e);
-                callback({ error: true });
+                callback({ error: true, temp: true });
             }
 
             setTimeout(() => {
@@ -121,71 +127,130 @@
         .mal-rating-badge {
             position: absolute;
             top: 6px; right: 6px;
-            background: rgba(18, 20, 32, 0.94);
-            backdrop-filter: blur(6px);
-            -webkit-backdrop-filter: blur(6px);
+            background: rgba(18, 20, 32, 0.96);
+            backdrop-filter: blur(4px);
             border: 1px solid rgba(255, 255, 255, 0.15);
             color: #e0e0e0;
-            padding: 5px 9px;
-            border-radius: 8px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-family: sans-serif;
             font-size: 11px;
             font-weight: 700;
-            z-index: 999999;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            z-index: 9999;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
             cursor: pointer;
             display: flex;
             flex-direction: column;
             align-items: flex-end;
-            min-width: 44px;
+            min-width: 40px;
             opacity: 0;
-            transform: translateY(-4px) translateZ(0);
-            animation: malFadeIn 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-            line-height: 1.3;
+            transform: translateY(-4px);
+            animation: malFadeIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
             transition: all 0.2s ease;
-            pointer-events: auto;
+            pointer-events: auto; 
             user-select: none;
         }
 
         .mal-rating-badge:hover, .mal-rating-badge.mobile-active {
-            transform: translateY(0) scale(1.05) translateZ(0);
-            background: rgba(22, 25, 40, 1);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.6);
-            z-index: 1000000;
+            transform: translateY(0) scale(1.05);
+            background: rgba(25, 28, 45, 1);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.7);
+            z-index: 10000;
         }
 
         .mal-rating-badge .score { 
-            font-size: 13px; color: #fff; letter-spacing: 0.5px; display: flex; align-items: center; gap: 3px;
+            font-size: 13px; color: #fff; display: flex; align-items: center; gap: 2px;
         }
         .mal-rating-badge .score::before { content: '★'; font-size: 10px; opacity: 0.8; }
         .mal-rating-badge .members { font-size: 9px; color: #9aa0b0; font-weight: 500; }
 
-        .mal-rating-badge.high-score { border-color: rgba(74, 222, 128, 0.4); }
-        .mal-rating-badge.high-score .score { color: #86efac; } .mal-rating-badge.high-score .score::before { color: #4ade80; }
+        /* Color Grading */
+        .mal-rating-badge.score-blue { border-color: rgba(96, 165, 250, 0.5); background: rgba(10, 20, 40, 0.95); box-shadow: 0 0 8px rgba(59, 130, 246, 0.3); }
+        .mal-rating-badge.score-blue .score { color: #60a5fa; text-shadow: 0 0 5px rgba(96, 165, 250, 0.4); } 
+        .mal-rating-badge.score-blue .score::before { color: #3b82f6; }
 
-        .mal-rating-badge.mid-score { border-color: rgba(250, 204, 21, 0.4); }
-        .mal-rating-badge.mid-score .score { color: #fde047; } .mal-rating-badge.mid-score .score::before { color: #facc15; }
+        .mal-rating-badge.score-green { border-color: rgba(74, 222, 128, 0.4); }
+        .mal-rating-badge.score-green .score { color: #86efac; } .mal-rating-badge.score-green .score::before { color: #4ade80; }
 
-        .mal-rating-badge.low-score { border-color: rgba(248, 113, 113, 0.4); }
-        .mal-rating-badge.low-score .score { color: #fca5a5; } .mal-rating-badge.low-score .score::before { color: #f87171; }
+        .mal-rating-badge.score-yellow { border-color: rgba(250, 204, 21, 0.4); }
+        .mal-rating-badge.score-yellow .score { color: #fde047; } .mal-rating-badge.score-yellow .score::before { color: #facc15; }
 
-        .mal-rating-badge.loading { background: rgba(0, 0, 0, 0.85); min-width: unset; padding: 6px 10px; }
-        .mal-rating-badge.error { background: rgba(220, 38, 38, 0.9); border-color: rgba(255, 100, 100, 0.3); color: white; }
+        .mal-rating-badge.score-orange { border-color: rgba(251, 146, 60, 0.4); }
+        .mal-rating-badge.score-orange .score { color: #fdba74; } .mal-rating-badge.score-orange .score::before { color: #fb923c; }
 
-        @media (pointer: coarse) { .mal-rating-badge { padding: 7px 11px; top: 8px; right: 8px; } }
-        @keyframes malFadeIn { to { opacity: 1; transform: translateY(0) translateZ(0); } }
+        .mal-rating-badge.score-red { border-color: rgba(248, 113, 113, 0.4); }
+        .mal-rating-badge.score-red .score { color: #fca5a5; } .mal-rating-badge.score-red .score::before { color: #f87171; }
+
+        .mal-rating-badge.loading { 
+            background: rgba(0, 0, 0, 0.8); 
+            min-width: unset; 
+            padding: 6px 10px;
+            pointer-events: none;
+        }
+        .mal-rating-badge.error { background: rgba(80, 80, 80, 0.9); color: #bbb; border-color: rgba(255,255,255,0.1); }
+
+        /* Toast Notification */
+        #mal-toast {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(30,30,30,0.9); color: white; padding: 10px 20px;
+            border-radius: 8px; font-family: sans-serif; font-size: 13px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 9999999;
+            opacity: 0; transition: opacity 0.3s ease; pointer-events: none;
+        }
+        #mal-toast.show { opacity: 1; }
+
+        @media (pointer: coarse) { .mal-rating-badge { padding: 6px 10px; top: 8px; right: 8px; } }
+        @keyframes malFadeIn { to { opacity: 1; transform: translateY(0); } }
         @keyframes malPulse { from { opacity: 0.5; } to { opacity: 1; } }
     `);
 
-    // === Logic Helper Functions ===
+    // === Logic ===
     function getCache(key) {
         const data = GM_getValue(CONFIG.CACHE_PREFIX + key);
-        return (data && Date.now() - data.timestamp < CONFIG.CACHE_EXPIRY) ? data.payload : null;
+        if (!data) return null;
+        
+        const expiryDuration = data.expiryDuration || CONFIG.CACHE_EXPIRY_SUCCESS;
+        if (Date.now() - data.timestamp > expiryDuration) {
+            return null;
+        }
+        return data.payload;
     }
 
     function setCache(key, payload) {
-        GM_setValue(CONFIG.CACHE_PREFIX + key, { payload, timestamp: Date.now() });
+        const expiryDuration = payload.found ? CONFIG.CACHE_EXPIRY_SUCCESS : CONFIG.CACHE_EXPIRY_ERROR;
+        GM_setValue(CONFIG.CACHE_PREFIX + key, { 
+            payload, 
+            timestamp: Date.now(),
+            expiryDuration: expiryDuration
+        });
     }
+
+    // === Menu Command: Clear Cache ===
+    function showToast(msg) {
+        let toast = document.getElementById('mal-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'mal-toast';
+            document.body.appendChild(toast);
+        }
+        toast.innerText = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    function clearMalCache() {
+        const keys = GM_listValues();
+        let count = 0;
+        keys.forEach(key => {
+            if (key.startsWith(CONFIG.CACHE_PREFIX)) {
+                GM_deleteValue(key);
+                count++;
+            }
+        });
+        showToast(`🗑️ Cleared ${count} items from MAL Cache.`);
+    }
+
+    GM_registerMenuCommand("🗑️ Clear MAL Cache", clearMalCache);
 
     function formatMembers(num) {
         if (!num) return '0';
@@ -196,7 +261,6 @@
         const len1 = s1.length, len2 = s2.length;
         const maxDist = Math.max(len1, len2);
         if (len1 === 0 || len2 === 0) return maxDist === 0 ? 1 : 0;
-
         const row = Array(len1 + 1).fill(0).map((_, i) => i);
         for (let i = 1; i <= len2; i++) {
             let prev = i;
@@ -211,23 +275,23 @@
     }
 
     function cleanTitle(title) {
-        return title
-            .replace(/(\(|\[)\s*(sub|dub|uncensored|tv|bd|blu-ray|4k|hd|special|ova|ona|complete).+?(\)|\])/gi, '')
+        let clean = title
+            .replace(/(\(|\[)\s*(sub|dub|uncensored|tv|bd|blu-ray|4k|hd|special|ova|ona|complete|re-upload).+?(\)|\])/gi, '')
             .replace(/[-:]\s*season\s*\d+/gi, '')
+            .replace(/S\d+$/, '') 
             .replace(/\s+/g, ' ')
             .trim();
+            
+        if (clean.includes(':')) {
+            const parts = clean.split(':');
+            if (parts[0].length > 3) return parts[0].trim();
+        }
+        return clean;
     }
 
-    // === API Handler ===
-    async function getMalData(rawTitle) {
-        const cleanT = cleanTitle(rawTitle);
-        const cacheKey = cleanT.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const cached = getCache(cacheKey);
-
-        if (cached) return cached;
-
+    async function fetchMalData(cleanT) {
         try {
-            const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanT)}&limit=5`);
+            const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanT)}&limit=8`);
             if (res.status === 429) return { status: 429 };
 
             const json = await res.json();
@@ -240,25 +304,29 @@
                 results.forEach(item => {
                     const sim1 = getSimilarity(cleanT.toLowerCase(), (item.title || '').toLowerCase());
                     const sim2 = getSimilarity(cleanT.toLowerCase(), (item.title_english || '').toLowerCase());
-                    const score = Math.max(sim1, sim2);
+                    const sim3 = getSimilarity(cleanT.toLowerCase(), (item.title_japanese || '').toLowerCase());
+                    
+                    const score = Math.max(sim1, sim2, sim3);
+                    const weightedScore = (item.score) ? score + 0.1 : score;
 
-                    // [BUG FIX]: Added Threshold check > 0.6
-                    if (score > highestScore && score > CONFIG.MATCH_THRESHOLD) {
-                        highestScore = score;
+                    if (weightedScore > highestScore && score > CONFIG.MATCH_THRESHOLD) {
+                        highestScore = weightedScore;
                         bestMatch = item;
                     }
                 });
             }
 
-            const result = bestMatch ? {
-                found: true,
-                score: bestMatch.score || 'N/A',
-                members: formatMembers(bestMatch.members),
-                url: bestMatch.url,
-            } : { found: false };
+            if (bestMatch) {
+                return {
+                    found: true,
+                    score: bestMatch.score ? bestMatch.score : 'N/A',
+                    members: formatMembers(bestMatch.members),
+                    url: bestMatch.url,
+                };
+            } else {
+                return { found: false };
+            }
 
-            setCache(cacheKey, result);
-            return result;
         } catch (e) {
             return { error: true };
         }
@@ -269,6 +337,8 @@
         const existing = container.querySelector('.mal-rating-badge');
         if (existing) existing.remove();
 
+        if (data.temp || data.error) return;
+
         const badge = document.createElement('div');
         badge.className = 'mal-rating-badge';
         if (isTouchInteraction) badge.classList.add('mobile-active');
@@ -278,28 +348,30 @@
             badge.innerText = '• • •';
             badge.style.animation = 'malPulse 0.8s infinite alternate';
         } else if (data.found) {
-            badge.title = "Click to open MAL";
+            badge.title = "View on MyAnimeList";
             badge.innerHTML = `<span class="score">${data.score}</span><span class="members">${data.members}</span>`;
             
             const numScore = parseFloat(data.score);
             if (!isNaN(numScore)) {
-                if (numScore >= 7.5) badge.classList.add('high-score');
-                else if (numScore >= 6.0) badge.classList.add('mid-score');
-                else badge.classList.add('low-score');
+                if (numScore > 8.0) badge.classList.add('score-blue');
+                else if (numScore >= 7.0) badge.classList.add('score-green');
+                else if (numScore >= 6.0) badge.classList.add('score-yellow');
+                else if (numScore >= 5.0) badge.classList.add('score-orange');
+                else badge.classList.add('score-red');
+            } else {
+                badge.classList.add('score-red');
             }
 
-            const linkHandler = (e) => {
+            badge.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 GM_openInTab(data.url, { active: true });
-            };
-            
-            // [BUG FIX]: Removed touchend to prevent double-tap opening
-            badge.addEventListener('click', linkHandler);
+            });
 
         } else {
             badge.classList.add('error');
             badge.innerText = '?';
+            badge.title = "Not found (Cached 12h)";
         }
 
         if (window.getComputedStyle(container).position === 'static') {
@@ -311,21 +383,29 @@
     }
 
     function processItem(item) {
+        if (item.querySelector('.mal-rating-badge')) return;
+
         const titleEl = item.querySelector(CONFIG.SELECTORS.TITLE);
         let title = item.getAttribute('data-title') || item.getAttribute('aria-label');
         if (!title && titleEl) {
             title = titleEl.getAttribute('title') || titleEl.innerText || titleEl.getAttribute('alt');
         }
-
         if (!title) return;
-        if (item.querySelector('.mal-rating-badge:not(.loading):not(.error)')) return;
+
+        const cleanT = cleanTitle(title);
+        const cacheKey = cleanT.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        const cachedData = getCache(cacheKey);
+        if (cachedData) {
+            renderBadge(item, cachedData);
+            return;
+        }
 
         const interactionId = Date.now() + Math.random().toString();
         item.dataset.malInteraction = interactionId;
-
         renderBadge(item, { loading: true });
 
-        requestQueue.add(title, (data) => {
+        requestQueue.add(title, cleanT, (data) => {
             if (document.body.contains(item) && item.dataset.malInteraction === interactionId) {
                 renderBadge(item, data);
             }
@@ -333,10 +413,8 @@
     }
 
     // === Event Listeners ===
-
     document.body.addEventListener('mouseover', function (e) {
         if (isTouchInteraction) return;
-
         const item = e.target.closest(CONFIG.SELECTORS.ITEM);
         if (!item) return;
 
@@ -348,12 +426,9 @@
 
     document.body.addEventListener('mouseout', (e) => {
         if (isTouchInteraction) return;
-
         const item = e.target.closest(CONFIG.SELECTORS.ITEM);
         if (item) {
-            // [BUG FIX]: Check relatedTarget. If moving to child (e.g., image), do NOT remove.
             if (item.contains(e.relatedTarget)) return;
-
             clearTimeout(hoverTimeout);
             const badge = item.querySelector('.mal-rating-badge.loading');
             if (badge) {
@@ -366,45 +441,29 @@
     // Mobile Logic
     let touchStartX = 0;
     let touchStartY = 0;
-
     document.body.addEventListener('touchstart', (e) => {
         const item = e.target.closest(CONFIG.SELECTORS.ITEM);
         if (!item) return;
-
         isTouchInteraction = true;
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
-
         longPressTimeout = setTimeout(() => {
             processItem(item);
             if (navigator.vibrate) navigator.vibrate(40);
         }, CONFIG.LONG_PRESS_DELAY);
-
     }, { passive: true });
 
     document.body.addEventListener('touchmove', (e) => {
         if (!longPressTimeout) return;
-        const moveX = Math.abs(e.touches[0].clientX - touchStartX);
-        const moveY = Math.abs(e.touches[0].clientY - touchStartY);
-        if (moveX > 15 || moveY > 15) {
+        if (Math.abs(e.touches[0].clientX - touchStartX) > 15 || Math.abs(e.touches[0].clientY - touchStartY) > 15) {
             clearTimeout(longPressTimeout);
             longPressTimeout = null;
         }
     }, { passive: true });
 
-    document.body.addEventListener('touchend', (e) => {
-        if (longPressTimeout) {
-            clearTimeout(longPressTimeout);
-            longPressTimeout = null;
-        }
+    document.body.addEventListener('touchend', () => {
+        if (longPressTimeout) clearTimeout(longPressTimeout);
         setTimeout(() => { isTouchInteraction = false; }, 600);
-    });
-
-    document.body.addEventListener('contextmenu', (e) => {
-        const item = e.target.closest(CONFIG.SELECTORS.ITEM);
-        if (item && isTouchInteraction) {
-            e.preventDefault();
-        }
     });
 
 })();
