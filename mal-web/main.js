@@ -36,6 +36,7 @@
 // @match        *://aniworld.*/*
 // @match        *://gogoanime.*/*
 // @match        *://hianime.*/*
+// @match        *://justanime.*/*
 // @match        *://kawaiifu.*/*
 // @match        *://kimoitv.*/*
 // @match        *://ramenflix.*/*
@@ -63,7 +64,7 @@
         CACHE_EXPIRY_SUCCESS: 14 * 24 * 60 * 60 * 1000, // 14 Days
         CACHE_EXPIRY_ERROR: 12 * 60 * 60 * 1000,        // 12 Hours
         DEBOUNCE_DELAY: 200,
-        LONG_PRESS_DELAY: 500,
+        LONG_PRESS_DELAY: 200,
         API_INTERVAL: 350,
         MATCH_THRESHOLD: 0.5,
         SELECTORS: {
@@ -74,13 +75,14 @@
                 .video-block, .card, 
                 a[href*="/series/"], a[data-discover], a[href*="/watch/"], .anime-card,
                 .vod-item, a[href*="/anime/info/"], .chart2g, .items li,
-                .snap-center, [class*="MovieCardSmall"], article.group, app-anime-item
+                .snap-center, [class*="MovieCardSmall"], article.group, app-anime-item,
+                div:has(.item-title)
             `,
             TITLE: `
                 .film-name, .dynamic-name, .film-name a,
                 .title, .d-title, .anime-name, .name, .mv-namevn,
                 h2, h3, h5, .content-title, .new-card-title, .pe-title, .news-item-title, .Title,
-                .line-clamp-2, .line-clamp-1,
+                .line-clamp-2, .line-clamp-1, .item-title,
                 .charttitle2g a
             `
         }
