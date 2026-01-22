@@ -27,6 +27,11 @@ The script will automatically activate on all websites.
 6. Monitor download progress in the floating progress card
 7. Downloads support pause/resume functionality
 
+### Menu Commands
+Access these via your userscript manager's menu:
+- **Show Download Panel**: Manually open the download panel to see all detected media
+- **Clear Cache**: Clear all detected media from the current session
+
 ### Advanced Features
 - **Alt+Click**: When exactly one media item is detected, alt-clicking the download button will start download immediately without showing the selection dialog
 - **Copy URLs**: Click the copy button next to any media item to copy its URL to clipboard
@@ -36,11 +41,12 @@ The script will automatically activate on all websites.
 ## Features
 
 - **Automatic Detection**: Automatically detects m3u8 streams and video blobs on any website
+- **Unified UI**: Single download button in the main window – videos from iframes are automatically aggregated
+- **Cross-Frame Support**: Detects and downloads videos embedded in iframes seamlessly
 - **Multi-Quality Support**: Choose from available video quality variants for HLS streams
 - **Encryption Support**: Handles AES-128 encrypted streams
 - **Format Support**: Supports both fragmented MP4 (fMP4) and MPEG-TS formats
 - **Progress Tracking**: Real-time download progress with pause/resume functionality
-- **Video.js Integration**: Adds download buttons to Video.js players
 - **Cross-Origin Support**: Uses GM_xmlhttpRequest for reliable cross-domain requests
 - **Modern File APIs**: Utilizes File System Access API when available, falls back to blob downloads
 - **Size Estimation**: Smart size estimation for HLS streams using bandwidth data or byte ranges
@@ -48,4 +54,33 @@ The script will automatically activate on all websites.
 - **Robust Error Handling**: Automatic retry mechanism with configurable limits
 - **Clean UI**: Floating download button with progress cards and variant picker
 - **Concurrent Downloads**: Optimized concurrent segment downloading for faster HLS downloads
+- **Native Downloads**: Uses GM_download for reliable, native browser downloads
 
+## Architecture
+
+StreamGrabber uses a **Master-Slave architecture** for handling videos across frames:
+
+- **Top Window (Master)**: Displays all UI elements (FAB button, download panel, progress cards), coordinates downloads, and aggregates detected videos from all frames
+- **Iframes (Slave)**: Detect videos and report them to the master window. Execute blob downloads when commanded and report progress back
+
+This design ensures:
+- No duplicate download buttons cluttering the interface
+- All videos visible in a single, unified panel
+- Seamless downloading regardless of where the video is embedded
+
+## Changelog
+
+### v1.2.5
+- **Unified UI**: Download button now only appears in the main window
+- **Cross-Frame Detection**: Videos from iframes are automatically detected and listed
+- **Cross-Frame Downloads**: Blob URLs from iframes are handled seamlessly
+- **Improved Menu Commands**: "Show Download Panel" now shows all videos from all frames
+
+### v1.2.4
+- Added native GM_download support
+- Added GM_notification for download completion
+- Improved mobile compatibility
+
+## License
+
+MIT License

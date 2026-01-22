@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name StreamGrabber
 // @namespace https://github.com/streamgrabber-lite
-// @version 1.2.5
+// @version 1.2.6
 // @description Lightweight downloader for HLS (.m3u8 via m3u8 parser), video blobs, and direct videos. Mobile plus Desktop. Pause or Resume. AES 128. fMP4. Minimal UI.
 // @match *://*/*
 // --- Existing Social and Streaming Exclusions ---
@@ -209,7 +209,8 @@
   const isHttp = (u) => typeof u === 'string' && /^https?:/i.test(u);
   const isBlob = (u) => typeof u === 'string' && /^blob:/i.test(u);
   const isM3U8Url = (u) => /\.m3u8(\b|[?#]|$)/i.test(u || '');
-  const isVideoUrl = (u) => /\.(mp4|mkv|webm|avi|mov|m4v|ts|m2ts|flv|ogv|ogg)([?#]|$)/i.test(u || '');
+  const isVideoUrl = (u) => /\.(mp4|mkv|webm|avi|mov|m4v|flv|ogv|ogg)([?#]|$)/i.test(u || '');
+  const isSegmentUrl = (u) => /\.(m4s|init|seg|fmp4|ts|m2ts)([?#]|$)/i.test(u || '');
   const looksM3U8Type = (t = '') => /mpegurl|vnd\.apple\.mpegurl|application\/x-mpegurl/i.test(t);
   const looksVideoType = (t = '') => /^video\//i.test(t) || /(matroska|mp4|webm|quicktime)/i.test(t);
   const safeAbs = (u, b) => { try { return new URL(u, b).href; } catch { return u; } };
@@ -725,6 +726,25 @@
   function take(url, metadata = {}) {
     try {
       if (!url || (!isHttp(url) && !isBlob(url))) return;
+      if (isSegmentUrl(url)) return; // Explicitly ignore segments
+
+      let size = metadata.size || null;
+      let type = metadata.type || null;
+
+      // Populate from BLOBS if missing
+      if (isBlob(url)) {
+        const info = BLOBS.get(url);
+        if (info) {
+          if (size == null) size = info.size;
+          if (type == null) type = info.type;
+        }
+      }
+
+      // Filter small video blobs (likely segments)
+      // 512KB min for blobs to be considered "Video"
+      if (isBlob(url) && size != null && size < 512 * 1024 && !isM3U8Url(url) && BLOBS.get(url)?.kind !== 'm3u8') {
+        return;
+      }
 
       const kind = (isM3U8Url(url) || (isBlob(url) && BLOBS.get(url)?.kind === 'm3u8')) ? 'hls' :
         (isVideoUrl(url) || (isBlob(url) && BLOBS.get(url)?.kind === 'video')) ? 'video' : null;
@@ -734,9 +754,9 @@
       const item = {
         url,
         kind,
-        label: kind === 'hls' ? 'HLS' : (guessExt(url, metadata.type).toUpperCase()),
-        size: metadata.size || null,
-        type: metadata.type || null,
+        label: kind === 'hls' ? 'HLS' : (guessExt(url, type).toUpperCase()),
+        size: size,
+        type: type,
         origin: document.location.origin
       };
 
