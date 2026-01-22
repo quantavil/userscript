@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         MAL Rating Hover Provider (Wildcard Edition - V4 Clear Cache)
+// @name         MAL Rating Hover Provider (Wildcard Edition - Fixed V5)
 // @namespace    http://tampermonkey.net/
-// @version      4.0
-// @description  Shows MAL rating on hover. Features: Blue Badge (>8), Smart Caching, Color Grading, and Menu option to Clear Cache.
+// @version      5.0
+// @description  Shows MAL rating on hover. Features: Gold Badge (>8), Smart Caching, Color Grading, and Menu option to Clear Cache.
 // @author       Quantavil (Fixed)
 
 // --- Domain Wildcards ---
@@ -76,8 +76,14 @@
     const requestQueue = {
         queue: [],
         processing: false,
+        currentJob: null, // FIX: Track current job to prevent duplicates
+
         add(title, cleanT, callback) {
-            if (this.queue.some(q => q.cleanT === cleanT)) return;
+            // FIX: Check both queue AND current processing job
+            if ((this.currentJob && this.currentJob.cleanT === cleanT) || 
+                this.queue.some(q => q.cleanT === cleanT)) {
+                return;
+            }
             this.queue.push({ title, cleanT, callback, retries: 0 });
             this.process();
         },
@@ -86,6 +92,7 @@
             this.processing = true;
 
             const job = this.queue.shift();
+            this.currentJob = job; // Set current job
             const { cleanT, callback, retries } = job;
 
             try {
@@ -95,17 +102,23 @@
                     if (retries < 2) {
                         job.retries++;
                         this.queue.unshift(job);
+                        this.currentJob = null; // Clear current before timeout return
                         setTimeout(() => {
                             this.processing = false;
                             this.process();
                         }, 2500);
                         return;
                     } else {
+                        // FIX: Ensure temp is true so we don't cache 429 errors
                         callback({ error: true, temp: true }); 
                     }
                 } else {
-                    const cacheKey = cleanT.toLowerCase().replace(/[^a-z0-9]/g, '');
-                    setCache(cacheKey, data);
+                    // FIX: Only cache if it's not a temporary error or network failure
+                    if (!data.temp && !data.error) {
+                        const cacheKey = cleanT.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        // Check if key is valid before caching
+                        if(cacheKey.length > 0) setCache(cacheKey, data);
+                    }
                     callback(data);
                 }
             } catch (e) {
@@ -113,6 +126,7 @@
                 callback({ error: true, temp: true });
             }
 
+            this.currentJob = null; // Clear current job
             setTimeout(() => {
                 this.processing = false;
                 this.process();
@@ -165,21 +179,27 @@
         .mal-rating-badge .members { font-size: 9px; color: #9aa0b0; font-weight: 500; }
 
         /* Color Grading */
-        .mal-rating-badge.score-blue { border-color: rgba(96, 165, 250, 0.5); background: rgba(10, 20, 40, 0.95); box-shadow: 0 0 8px rgba(59, 130, 246, 0.3); }
-        .mal-rating-badge.score-blue .score { color: #60a5fa; text-shadow: 0 0 5px rgba(96, 165, 250, 0.4); } 
-        .mal-rating-badge.score-blue .score::before { color: #3b82f6; }
+        
+        /* 8+ : Golden Yellow */
+        .mal-rating-badge.score-gold { border-color: rgba(234, 179, 8, 0.5); background: rgba(30, 25, 10, 0.95); box-shadow: 0 0 8px rgba(234, 179, 8, 0.3); }
+        .mal-rating-badge.score-gold .score { color: #facc15; text-shadow: 0 0 5px rgba(250, 204, 21, 0.4); } 
+        .mal-rating-badge.score-gold .score::before { color: #fbbf24; font-size: 12px; } /* Bigger star */
 
+        /* 7-8 : Green */
         .mal-rating-badge.score-green { border-color: rgba(74, 222, 128, 0.4); }
         .mal-rating-badge.score-green .score { color: #86efac; } .mal-rating-badge.score-green .score::before { color: #4ade80; }
 
-        .mal-rating-badge.score-yellow { border-color: rgba(250, 204, 21, 0.4); }
-        .mal-rating-badge.score-yellow .score { color: #fde047; } .mal-rating-badge.score-yellow .score::before { color: #facc15; }
-
+        /* 6-7 : Orange */
         .mal-rating-badge.score-orange { border-color: rgba(251, 146, 60, 0.4); }
         .mal-rating-badge.score-orange .score { color: #fdba74; } .mal-rating-badge.score-orange .score::before { color: #fb923c; }
 
+        /* 5-6 : Red */
         .mal-rating-badge.score-red { border-color: rgba(248, 113, 113, 0.4); }
         .mal-rating-badge.score-red .score { color: #fca5a5; } .mal-rating-badge.score-red .score::before { color: #f87171; }
+        
+        /* <5 : Purple */
+        .mal-rating-badge.score-purple { border-color: rgba(192, 132, 252, 0.4); background: rgba(20, 10, 30, 0.95); }
+        .mal-rating-badge.score-purple .score { color: #d8b4fe; } .mal-rating-badge.score-purple .score::before { color: #c084fc; }
 
         .mal-rating-badge.loading { 
             background: rgba(0, 0, 0, 0.8); 
@@ -206,17 +226,24 @@
 
     // === Logic ===
     function getCache(key) {
-        const data = GM_getValue(CONFIG.CACHE_PREFIX + key);
+        const fullKey = CONFIG.CACHE_PREFIX + key;
+        const data = GM_getValue(fullKey);
         if (!data) return null;
         
         const expiryDuration = data.expiryDuration || CONFIG.CACHE_EXPIRY_SUCCESS;
+        
+        // FIX: Delete expired cache instead of just returning null
         if (Date.now() - data.timestamp > expiryDuration) {
+            GM_deleteValue(fullKey);
             return null;
         }
         return data.payload;
     }
 
     function setCache(key, payload) {
+        // Double check we aren't caching errors
+        if(payload.temp || payload.error && !payload.found) return;
+
         const expiryDuration = payload.found ? CONFIG.CACHE_EXPIRY_SUCCESS : CONFIG.CACHE_EXPIRY_ERROR;
         GM_setValue(CONFIG.CACHE_PREFIX + key, { 
             payload, 
@@ -328,7 +355,8 @@
             }
 
         } catch (e) {
-            return { error: true };
+            // FIX: Return temp: true so we don't cache network failures
+            return { error: true, temp: true };
         }
     }
 
@@ -337,7 +365,9 @@
         const existing = container.querySelector('.mal-rating-badge');
         if (existing) existing.remove();
 
-        if (data.temp || data.error) return;
+        // If it's a temp error, don't show badge (or show loading state if you prefer)
+        if (data.temp && !data.loading) return;
+        if (data.error && !data.found && !data.loading) return; // Silent fail on error
 
         const badge = document.createElement('div');
         badge.className = 'mal-rating-badge';
@@ -353,13 +383,13 @@
             
             const numScore = parseFloat(data.score);
             if (!isNaN(numScore)) {
-                if (numScore > 8.0) badge.classList.add('score-blue');
-                else if (numScore >= 7.0) badge.classList.add('score-green');
-                else if (numScore >= 6.0) badge.classList.add('score-yellow');
-                else if (numScore >= 5.0) badge.classList.add('score-orange');
-                else badge.classList.add('score-red');
+                if (numScore >= 8.0) badge.classList.add('score-gold'); // >8 Golden
+                else if (numScore >= 7.0) badge.classList.add('score-green'); // 7-8 Green
+                else if (numScore >= 6.0) badge.classList.add('score-orange'); // 6-7 Orange
+                else if (numScore >= 5.0) badge.classList.add('score-red'); // 5-6 Red
+                else badge.classList.add('score-purple'); // <5 Purple
             } else {
-                badge.classList.add('score-red');
+                badge.classList.add('score-purple'); // N/A
             }
 
             badge.addEventListener('click', (e) => {
@@ -393,7 +423,11 @@
         if (!title) return;
 
         const cleanT = cleanTitle(title);
+        // FIX: Prevent empty cache keys
+        if (!cleanT || cleanT.length < 2) return;
+
         const cacheKey = cleanT.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if(!cacheKey) return; 
 
         const cachedData = getCache(cacheKey);
         if (cachedData) {
