@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MAL Rating Hover Provider (Wildcard Edition - Fixed V5)
 // @namespace    http://tampermonkey.net/
-// @version      5.0
+// @version      3.0
 // @description  Shows MAL rating on hover. Features: Gold Badge (>8), Smart Caching, Color Grading, and Menu option to Clear Cache.
 // @author       Quantavil (Fixed)
 
@@ -80,7 +80,7 @@
 
         add(title, cleanT, callback) {
             // FIX: Check both queue AND current processing job
-            if ((this.currentJob && this.currentJob.cleanT === cleanT) || 
+            if ((this.currentJob && this.currentJob.cleanT === cleanT) ||
                 this.queue.some(q => q.cleanT === cleanT)) {
                 return;
             }
@@ -110,14 +110,14 @@
                         return;
                     } else {
                         // FIX: Ensure temp is true so we don't cache 429 errors
-                        callback({ error: true, temp: true }); 
+                        callback({ error: true, temp: true });
                     }
                 } else {
                     // FIX: Only cache if it's not a temporary error or network failure
                     if (!data.temp && !data.error) {
                         const cacheKey = cleanT.toLowerCase().replace(/[^a-z0-9]/g, '');
                         // Check if key is valid before caching
-                        if(cacheKey.length > 0) setCache(cacheKey, data);
+                        if (cacheKey.length > 0) setCache(cacheKey, data);
                     }
                     callback(data);
                 }
@@ -183,7 +183,7 @@
         /* 8+ : Golden Yellow */
         .mal-rating-badge.score-gold { border-color: rgba(234, 179, 8, 0.5); background: rgba(30, 25, 10, 0.95); box-shadow: 0 0 8px rgba(234, 179, 8, 0.3); }
         .mal-rating-badge.score-gold .score { color: #facc15; text-shadow: 0 0 5px rgba(250, 204, 21, 0.4); } 
-        .mal-rating-badge.score-gold .score::before { color: #fbbf24; font-size: 12px; } /* Bigger star */
+        .mal-rating-badge.score-gold .score::before { color: #fbbf24; font-size: 14px; } /* Bigger star */
 
         /* 7-8 : Green */
         .mal-rating-badge.score-green { border-color: rgba(74, 222, 128, 0.4); }
@@ -229,10 +229,9 @@
         const fullKey = CONFIG.CACHE_PREFIX + key;
         const data = GM_getValue(fullKey);
         if (!data) return null;
-        
+
         const expiryDuration = data.expiryDuration || CONFIG.CACHE_EXPIRY_SUCCESS;
-        
-        // FIX: Delete expired cache instead of just returning null
+
         if (Date.now() - data.timestamp > expiryDuration) {
             GM_deleteValue(fullKey);
             return null;
@@ -242,11 +241,11 @@
 
     function setCache(key, payload) {
         // Double check we aren't caching errors
-        if(payload.temp || payload.error && !payload.found) return;
+        if (payload.temp || (payload.error && !payload.found)) return;
 
         const expiryDuration = payload.found ? CONFIG.CACHE_EXPIRY_SUCCESS : CONFIG.CACHE_EXPIRY_ERROR;
-        GM_setValue(CONFIG.CACHE_PREFIX + key, { 
-            payload, 
+        GM_setValue(CONFIG.CACHE_PREFIX + key, {
+            payload,
             timestamp: Date.now(),
             expiryDuration: expiryDuration
         });
@@ -305,10 +304,10 @@
         let clean = title
             .replace(/(\(|\[)\s*(sub|dub|uncensored|tv|bd|blu-ray|4k|hd|special|ova|ona|complete|re-upload).+?(\)|\])/gi, '')
             .replace(/[-:]\s*season\s*\d+/gi, '')
-            .replace(/S\d+$/, '') 
+            .replace(/S\d+$/, '')
             .replace(/\s+/g, ' ')
             .trim();
-            
+
         if (clean.includes(':')) {
             const parts = clean.split(':');
             if (parts[0].length > 3) return parts[0].trim();
@@ -318,7 +317,10 @@
 
     async function fetchMalData(cleanT) {
         try {
-            const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanT)}&limit=8`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanT)}&limit=8`, { signal: controller.signal });
+            clearTimeout(timeoutId);
             if (res.status === 429) return { status: 429 };
 
             const json = await res.json();
@@ -332,7 +334,7 @@
                     const sim1 = getSimilarity(cleanT.toLowerCase(), (item.title || '').toLowerCase());
                     const sim2 = getSimilarity(cleanT.toLowerCase(), (item.title_english || '').toLowerCase());
                     const sim3 = getSimilarity(cleanT.toLowerCase(), (item.title_japanese || '').toLowerCase());
-                    
+
                     const score = Math.max(sim1, sim2, sim3);
                     const weightedScore = (item.score) ? score + 0.1 : score;
 
@@ -380,7 +382,7 @@
         } else if (data.found) {
             badge.title = "View on MyAnimeList";
             badge.innerHTML = `<span class="score">${data.score}</span><span class="members">${data.members}</span>`;
-            
+
             const numScore = parseFloat(data.score);
             if (!isNaN(numScore)) {
                 if (numScore >= 8.0) badge.classList.add('score-gold'); // >8 Golden
@@ -396,7 +398,7 @@
                 e.preventDefault();
                 e.stopPropagation();
                 GM_openInTab(data.url, { active: true });
-            });
+            }, { once: true });
 
         } else {
             badge.classList.add('error');
@@ -405,7 +407,7 @@
         }
 
         if (window.getComputedStyle(container).position === 'static') {
-             container.classList.add('mal-container-rel');
+            container.classList.add('mal-container-rel');
         }
 
         if (!data.loading) badge.style.animation = '';
@@ -427,7 +429,7 @@
         if (!cleanT || cleanT.length < 2) return;
 
         const cacheKey = cleanT.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if(!cacheKey) return; 
+        if (!cacheKey) return;
 
         const cachedData = getCache(cacheKey);
         if (cachedData) {
@@ -467,7 +469,7 @@
             const badge = item.querySelector('.mal-rating-badge.loading');
             if (badge) {
                 badge.remove();
-                item.removeAttribute('data-malInteraction');
+                delete item.dataset.malInteraction;
             }
         }
     });

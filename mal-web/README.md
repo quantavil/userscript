@@ -7,7 +7,7 @@ A Tampermonkey userscript that displays MyAnimeList (MAL) ratings, members, and 
 - **Hover Tooltips**: Instantly shows MAL score and member count.
 - **Smart Caching**: Caches results for 14 days to minimize API requests and load almost instantly on return visits.
 - **Rate Limit Safe**: Built-in queue system with backoff and retry logic to respect Jikan API limits (including 429 recovery).
-- **Fuzzy Matching**: Fetches top 3 results and uses smart string comparison to find the correct anime (e.g., distinguishing "Season 4" from compile movies).
+- **Fuzzy Matching**: Fetches top 8 results and uses smart string comparison to find the correct anime (e.g., distinguishing "Season 4" from compile movies).
 - **Race Condition Protection**: Handles rapid hovering correctly so you never see the wrong score on an item.
 
 ## Supported Sites
@@ -35,7 +35,7 @@ const CONFIG = {
     CACHE_EXPIRY: 15 * 24 * 60 * 60 * 1000, // 14 days
     DEBOUNCE_DELAY: 400, // Delay before fetching (ms)
     API_INTERVAL: 350,   // Rate limit delay (ms)
-    FUZZY_THRESHOLD: 0.7 // Matching strictness
+    MATCH_THRESHOLD: 0.5 // Matching strictness
 };
 ```
 
