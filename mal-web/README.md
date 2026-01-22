@@ -4,41 +4,73 @@ A Tampermonkey userscript that displays MyAnimeList (MAL) ratings, members, and 
 
 ## Features
 
-- **Hover Tooltips**: Instantly shows MAL score and member count.
-- **Smart Caching**: Caches results for 14 days to minimize API requests and load almost instantly on return visits.
-- **Rate Limit Safe**: Built-in queue system with backoff and retry logic to respect Jikan API limits (including 429 recovery).
-- **Fuzzy Matching**: Fetches top 8 results and uses smart string comparison to find the correct anime (e.g., distinguishing "Season 4" from compile movies).
-- **Race Condition Protection**: Handles rapid hovering correctly so you never see the wrong score on an item.
+- **Hover Tooltips**: Instantly shows MAL score and member count
+- **Color-Coded Badges**: Gold (8+), Green (7-8), Orange (6-7), Red (5-6), Purple (<5)
+- **Smart Caching**: 14-day cache for successful lookups, 12-hour for not-found
+- **Rate Limit Safe**: Queue system with retry logic for Jikan API limits
+- **Fuzzy Matching**: Fetches top 8 results with Levenshtein similarity matching
+- **Mobile Support**: Long-press to show ratings on touch devices
+- **Request Timeout**: 8-second timeout prevents hung requests
 
 ## Supported Sites
 
-- `hianime.to`
-- `animekai.to` / `.im` / `.la` / `.nl` / `.vc`
-- `anikai.to`
-- `anikototv.to`
-- `animetsu.bz`
-- `yugenanime.tv`
-- `animepahe.ru`
+| Site | Domain Pattern |
+|------|----------------|
+| HiAnime | `hianime.*` |
+| Anitaro | `anitaro.*` |
+| Animovitch | `animovitch.*` |
+| AnimeKai | `animekai.*` |
+| Anikai | `anikai.*` |
+| Anikoto TV | `anikototv.*` |
+| GogoAnime | `gogoanime.*` |
+| Anigo | `anigo.*` |
+| 9Anime | `9anime.*` |
+| AnimeNoSub | `animenosub.*` |
+| Kawaiifu | `kawaiifu.*` |
+| AniWorld | `aniworld.*` |
+| Yugen Anime | `yugenanime.*` |
+| AnimePahe | `animepahe.*` |
+| Kimoi TV | `kimoitv.*` |
+| UniqueStream | `anime.uniquestream.*` |
+| WCOStream | `wcostream.*` |
+| Ramenflix | `ramenflix.*` |
+| AnimeYY | `animeyy.*` |
+| Animeland | `animeland.*` |
+| Animelon | `animelon.*` |
+| 123Animes | `123animes.*` |
+| Animetsu | `animetsu.*` |
+| Aniwave | `aniwave.*` |
+| Zoro | `zoro.*` |
 
 ## Installation
 
-1. Install the [Tampermonkey](https://www.tampermonkey.net/) extension for your browser.
-2. Create a new script and copy the contents of `main.js` into the editor.
-3. Save the script.
+1. Install [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/)
+2. Create a new script and paste the contents of `main.js`
+3. Save and enable the script
 
 ## Configuration
 
-The script includes a `CONFIG` object at the top that can be tweaked if necessary:
-
 ```javascript
 const CONFIG = {
-    CACHE_EXPIRY: 15 * 24 * 60 * 60 * 1000, // 14 days
-    DEBOUNCE_DELAY: 400, // Delay before fetching (ms)
-    API_INTERVAL: 350,   // Rate limit delay (ms)
-    MATCH_THRESHOLD: 0.5 // Matching strictness
+    CACHE_PREFIX: 'mal_v5_',
+    CACHE_EXPIRY_SUCCESS: 14 * 24 * 60 * 60 * 1000, // 14 days
+    CACHE_EXPIRY_ERROR: 12 * 60 * 60 * 1000,        // 12 hours
+    DEBOUNCE_DELAY: 200,      // Hover delay (ms)
+    LONG_PRESS_DELAY: 500,    // Mobile long-press (ms)
+    API_INTERVAL: 350,        // Rate limit delay (ms)
+    MATCH_THRESHOLD: 0.5      // Fuzzy matching strictness
 };
 ```
 
+## Menu Commands
+
+- **🗑️ Clear MAL Cache** - Clears all cached ratings
+
+## License
+
+MIT
+
 ## Credits
 
-Powered by the [Jikan API](https://jikan.moe/).
+- Powered by the [Jikan API](https://jikan.moe/)
+- Author: [Quantavil](https://github.com/quantavil)
