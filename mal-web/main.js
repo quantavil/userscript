@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         MAL Rating Hover Provider
-// @namespace    http://tampermonkey.net/
+// @namespace    http://github.com/quantavil
 // @version      3.0
 // @description  Shows MAL rating on hover. Features: Gold Badge (>8), Smart Caching, Color Grading, and Menu option to Clear Cache.
-// @author       Quantavil (Fixed)
+// @author       Quantavil 
 
 // --- Domain Wildcards ---
 // @match        *://hianime.*/*
@@ -40,6 +40,7 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_openInTab
 // @run-at       document-end
+// @license      MIT
 // ==/UserScript==
 
 (function () {
