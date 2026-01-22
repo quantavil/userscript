@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         MAL Rating Hover Provider
 // @namespace    http://tampermonkey.net/
-// @version      1.5
-// @description  Shows MAL rating on hover. Click to visit MAL. Cross-site per-anime caching (14 days). Rate-limit safe.
+// @version      1.6
+// @description  Shows MAL rating on hover (desktop) or long-press (mobile). Click to visit MAL. Cross-site per-anime caching (14 days). Rate-limit safe.
 // @author       Quantavil
 // @match        *://hianime.to/*
+// @match        *://hianime.do/*
 // @match        *://*.animekai.la/*
 // @match        *://animekai.to/*
 // @match        *://animekai.im/*
@@ -14,6 +15,7 @@
 // @match        *://anikototv.to/*
 // @match        *://animetsu.bz/*
 // @match        *://yugenanime.tv/*
+// @match        *://anigo.to/*
 // @match        *://animepahe.ru/*
 // @grant        GM_addStyle
 // @grant        GM_getValue
@@ -28,16 +30,18 @@
     const CONFIG = {
         CACHE_PREFIX: 'mal_v3_',
         CACHE_EXPIRY: 14 * 24 * 60 * 60 * 1000,
-        DEBOUNCE_DELAY: 400, // UX delay before requesting
-        API_INTERVAL: 350,   // Minimum ms between API calls (Jikan limit)
-        FUZZY_THRESHOLD: 0.7, // Minimum similarity score (0-1) to accept a match
+        DEBOUNCE_DELAY: 400, // Hover delay
+        LONG_PRESS_DELAY: 600, // Mobile long press delay
+        API_INTERVAL: 350,   // Jikan safe interval
         SELECTORS: {
-            ITEM: '.aitem, .flw-item, .anime-item, .poster-card, .film_list-wrap > div, .ep-item',
+            ITEM: '.aitem, .flw-item, .anime-item, .poster-card, .film_list-wrap > div, .ep-item, .f-item, .anicard',
             TITLE: '.title, .film-name, .anime-name, .name, .d-title, h3.title, .dynamic-name'
         }
     };
 
     let hoverTimeout;
+    let longPressTimeout;
+    let isTouchInteraction = false;
 
     // === Request Queue (Rate Limit Handling) ===
     const requestQueue = {
@@ -57,19 +61,17 @@
             try {
                 const data = await getMalData(title);
 
-                // 429 Retry Strategy (Max 1 retry)
                 if (data && data.status === 429) {
                     if (retries < 1) {
-                        console.warn(`[MAL-Hover] 429 Rate Limit. Backing off... Retry ${retries + 1}/1`);
+                        console.warn(`[MAL-Hover] 429 Rate Limit. Retrying...`);
                         job.retries++;
-                        this.queue.unshift(job); // Return to queue with incremented retry
+                        this.queue.unshift(job);
                         setTimeout(() => {
                             this.processing = false;
                             this.process();
-                        }, 2500); // Backoff wait
+                        }, 2500);
                         return;
                     } else {
-                        console.error(`[MAL-Hover] 429 Rate Limit. Max retries exceeded.`);
                         callback({ error: true, score: '429' });
                     }
                 } else {
@@ -80,7 +82,6 @@
                 callback({ error: true });
             }
 
-            // Standard Jikan rate limit compliance
             setTimeout(() => {
                 this.processing = false;
                 this.process();
@@ -94,36 +95,66 @@
         .mal-rating-badge {
             position: absolute;
             top: 6px; right: 6px;
-            background: rgba(46, 81, 162, 0.95);
-            backdrop-filter: blur(4px);
-            color: #fff;
-            padding: 4px 6px;
-            border-radius: 4px;
-            font-family: sans-serif;
+            background: rgba(18, 20, 32, 0.92);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #e0e0e0;
+            padding: 5px 8px;
+            border-radius: 6px;
+            font-family: 'Segoe UI', system-ui, sans-serif;
             font-size: 11px;
-            font-weight: 700;
+            font-weight: 600;
             z-index: 99999;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.7);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
             cursor: pointer;
             display: flex;
             flex-direction: column;
             align-items: flex-end;
-            min-width: 40px;
+            min-width: 42px;
             opacity: 0;
-            animation: malFadeIn 0.2s forwards;
-            line-height: 1.2;
-            transition: transform 0.1s ease;
+            transform: translateY(-2px);
+            animation: malFadeIn 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+            line-height: 1.25;
+            transition: all 0.2s ease;
+            pointer-events: auto;
         }
-        .mal-rating-badge:hover { transform: scale(1.05); background: #2e51a2; }
+        .mal-rating-badge:hover, .mal-rating-badge.mobile-active {
+            transform: translateY(0) scale(1.02);
+            background: rgba(25, 28, 45, 0.98);
+            border-color: rgba(46, 81, 162, 0.4);
+            box-shadow: 0 6px 16px rgba(46, 81, 162, 0.25);
+        }
+        .mal-rating-badge .score { 
+            font-size: 13px; 
+            color: #fff;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .mal-rating-badge .score::before {
+            content: '★';
+            color: #ffd700;
+            font-size: 11px;
+        }
+        .mal-rating-badge .members { 
+            font-size: 9px; 
+            color: #9aa0b0; 
+            margin-top: 1px;
+        }
         .mal-rating-badge.loading {
-            background: rgba(0, 0, 0, 0.6);
-            min-width: auto;
-            pointer-events: none;
+            background: rgba(0, 0, 0, 0.7);
+            min-width: unset;
+            padding: 4px 8px;
         }
-        .mal-rating-badge.error { background: rgba(160, 0, 0, 0.9); pointer-events: none; }
-        .mal-rating-badge .score { font-size: 13px; text-shadow: 1px 1px 0 #000; }
-        .mal-rating-badge .members { font-size: 9px; opacity: 0.9; font-weight: 400; }
-        @keyframes malFadeIn { to { opacity: 1; } }
+        .mal-rating-badge.error { 
+            background: rgba(220, 38, 38, 0.9); 
+            border-color: rgba(255, 100, 100, 0.3);
+            color: white;
+        }
+        @keyframes malFadeIn { 
+            to { opacity: 1; transform: translateY(0); } 
+        }
     `);
 
     // === Logic ===
@@ -138,58 +169,44 @@
 
     function formatMembers(num) {
         if (!num) return '0';
-        return num >= 1e6 ? (num / 1e6).toFixed(1) + 'M' : num >= 1e3 ? (num / 1e3).toFixed(1) + 'k' : num;
+        return num >= 1e6 ? (num / 1e6).toFixed(1) + 'M' : num >= 1e3 ? (num / 1e3).toFixed(1) + 'K' : num;
     }
 
-    // Levenshtein distance for fuzzy matching
     function getSimilarity(s1, s2) {
-        let longer = s1.length > s2.length ? s1 : s2;
-        let shorter = s1.length > s2.length ? s2 : s1;
+        const len1 = s1.length, len2 = s2.length;
+        const maxDist = Math.max(len1, len2);
+        if (len1 === 0 || len2 === 0) return maxDist === 0 ? 1 : 0;
 
-        if (longer.length === 0) return 1.0;
-
-        let costs = new Array();
-        for (let i = 0; i <= longer.length; i++) {
-            let lastValue = i;
-            for (let j = 0; j <= shorter.length; j++) {
-                if (i == 0) costs[j] = j;
-                else {
-                    if (j > 0) {
-                        let newValue = costs[j - 1];
-                        if (s1.charAt(i - 1) != s2.charAt(j - 1))
-                            newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
-                        costs[j - 1] = lastValue;
-                        lastValue = newValue;
-                    }
-                }
+        const row = Array(len1 + 1).fill(0).map((_, i) => i);
+        for (let i = 1; i <= len2; i++) {
+            let prev = i;
+            for (let j = 1; j <= len1; j++) {
+                const val = (s2[i - 1] === s1[j - 1]) ? row[j - 1] : Math.min(row[j - 1] + 1, prev + 1, row[j] + 1);
+                row[j - 1] = prev;
+                prev = val;
             }
-            if (i > 0) costs[shorter.length] = lastValue;
+            row[len1] = prev;
         }
-        return (longer.length - costs[shorter.length]) / parseFloat(longer.length);
+        return 1 - (row[len1] / maxDist);
     }
 
     function cleanTitle(title) {
-        // Removes common suffixes that break Jikan search (e.g., "One Piece (Sub)", "Naruto [Dub]")
-        // REMOVE AGGRESSIVE SEASON CLEANING to avoid "Season 2" -> "Season 1" mismatch
         return title
-            .replace(/(\(|\[)\s*(sub|dub|uncensored|tv|bd|blu-ray|4k).+?(\)|\])/gi, '')
+            .replace(/(\(|\[)\s*(sub|dub|uncensored|tv|bd|blu-ray|4k|hd|special|ova|ona).+?(\)|\])/gi, '')
+            .replace(/\s+/g, ' ')
             .trim();
     }
 
     async function getMalData(rawTitle) {
         const cleanT = cleanTitle(rawTitle);
-        // BETTER CACHE KEY: Don't strip special chars completely to avoid collisions (e.g. Re:Zero vs ReZero)
-        // Just lower case and simple safe replacement
-        const cacheKey = cleanT.toLowerCase().trim();
+        const cacheKey = cleanT.toLowerCase().replace(/[^a-z0-9]/g, '');
         const cached = getCache(cacheKey);
 
         if (cached) return cached;
 
         try {
-            // Request top 3 results for fuzzy matching
-            const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanT)}&limit=3`);
-
-            if (res.status === 429) return { status: 429 }; // Return status for handling
+            const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanT)}&limit=5`);
+            if (res.status === 429) return { status: 429 };
 
             const json = await res.json();
             const results = json.data || [];
@@ -198,7 +215,6 @@
             let highestScore = 0;
 
             if (results.length > 0) {
-                // Find best match among the top 3
                 results.forEach(item => {
                     const sim1 = getSimilarity(cleanT.toLowerCase(), (item.title || '').toLowerCase());
                     const sim2 = getSimilarity(cleanT.toLowerCase(), (item.title_english || '').toLowerCase());
@@ -210,10 +226,8 @@
                     }
                 });
 
-                // Fail-safe: If no decent match found, but we have results, fallback to first ONLY if very disparate?
-                // For now, if best score is really bad, might be better to show nothing or first result?
-                // Let's stick to simply picking the best score, defaulting to first if all equal (0)
-                if (!bestMatch) bestMatch = results[0];
+                // Fallback: If no high match but results exist, take the first one if it's "close enough" logic allows
+                if (!bestMatch && results.length > 0) bestMatch = results[0];
             }
 
             const result = bestMatch ? {
@@ -221,7 +235,6 @@
                 score: bestMatch.score || 'N/A',
                 members: formatMembers(bestMatch.members),
                 url: bestMatch.url,
-                matchScore: highestScore // Debug info
             } : { found: false };
 
             setCache(cacheKey, result);
@@ -237,79 +250,147 @@
 
         const badge = document.createElement('div');
         badge.className = 'mal-rating-badge';
+        if (isTouchInteraction) badge.classList.add('mobile-active');
 
         if (data.loading) {
             badge.classList.add('loading');
-            badge.innerText = '...';
+            badge.innerText = '• • •';
+            // Scale animation for loading
+            badge.style.animation = 'malPulse 1s infinite alternate';
         } else if (data.found) {
             badge.title = "View on MAL";
-            badge.innerHTML = `<span class="score">★ ${data.score}</span><span class="members">${data.members}</span>`;
-            badge.addEventListener('click', (e) => {
-                e.preventDefault(); e.stopPropagation();
+            badge.innerHTML = `<span class="score">${data.score}</span><span class="members">${data.members}</span>`;
+
+            // Interaction
+            const linkHandler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 GM_openInTab(data.url, { active: true });
-            });
+            };
+            badge.addEventListener('click', linkHandler);
+            badge.addEventListener('touchend', linkHandler);
+
         } else {
             badge.classList.add('error');
-            badge.innerText = data.error ? (data.score || 'Err') : 'NA';
+            badge.innerText = 'N/A';
         }
 
-        // Optimization: Check class rather than computed style
         if (!container.classList.contains('mal-container-rel')) {
             container.classList.add('mal-container-rel');
         }
+
+        // Remove ANY existing animation style from loading before appending final
+        if (!data.loading) badge.style.animation = '';
+
         container.appendChild(badge);
     }
 
-    // === Events ===
+    function processItem(item) {
+        const titleEl = item.querySelector(CONFIG.SELECTORS.TITLE);
+        const title = item.getAttribute('data-title') ||
+            item.getAttribute('aria-label') ||
+            (titleEl ? (titleEl.getAttribute('title') || titleEl.innerText || titleEl.getAttribute('alt')) : null);
+
+        if (!title) return;
+
+        // Prevent Duplicate Requests for same item interaction
+        if (item.querySelector('.mal-rating-badge:not(.loading):not(.error)')) return;
+
+        // Unique ID for this specific interaction instance
+        const interactionId = Date.now() + Math.random().toString();
+        item.dataset.malInteraction = interactionId;
+
+        renderBadge(item, { loading: true });
+
+        requestQueue.add(title, (data) => {
+            if (document.body.contains(item) && item.dataset.malInteraction === interactionId) {
+                renderBadge(item, data);
+            }
+        });
+    }
+
+    // === Event Handling ===
+
+    // Desktop: Hover
     document.body.addEventListener('mouseover', function (e) {
+        if (isTouchInteraction) return; // Ignore mouse events if touch is active
+
         const item = e.target.closest(CONFIG.SELECTORS.ITEM);
         if (!item) return;
 
-        // Prevent race condition: If hovering same item, do nothing if already processing/loaded
-        // If switching items, clear previous timeout
-
-        // UNIQUE HOVER ID for race condition handling
-        const currentHoverId = Date.now() + Math.random().toString();
-        item.dataset.malHoverId = currentHoverId;
-
         clearTimeout(hoverTimeout);
-
-        // Don't re-render valid badges (if fully loaded)
-        if (item.querySelector('.mal-rating-badge:not(.loading):not(.error)')) return;
-
         hoverTimeout = setTimeout(() => {
-            // Re-check race condition: is this still the active item?
-            if (item.dataset.malHoverId !== currentHoverId) return;
-
-            const titleEl = item.querySelector(CONFIG.SELECTORS.TITLE);
-            // FALLBACK SELECTORS
-            const title = item.getAttribute('data-title') ||
-                item.getAttribute('aria-label') ||
-                (titleEl ? (titleEl.getAttribute('title') || titleEl.innerText || titleEl.getAttribute('alt')) : null);
-
-            if (!title) return;
-
-            renderBadge(item, { loading: true });
-
-            requestQueue.add(title, (data) => {
-                // FINAL RACE CONDITION CHECK:
-                // Ensure the item still exists and matches the hover ID of the request
-                if (document.body.contains(item) && item.dataset.malHoverId === currentHoverId) {
-                    renderBadge(item, data);
-                }
-            });
+            processItem(item);
         }, CONFIG.DEBOUNCE_DELAY);
     });
 
     document.body.addEventListener('mouseout', (e) => {
+        if (isTouchInteraction) return;
+
         const item = e.target.closest(CONFIG.SELECTORS.ITEM);
         if (item) {
             clearTimeout(hoverTimeout);
-            // Invalidate the hover session so pending callbacks don't render
-            item.removeAttribute('data-malHoverId');
-
+            item.removeAttribute('data-malInteraction');
             const badge = item.querySelector('.mal-rating-badge.loading');
             if (badge) badge.remove();
+        }
+    });
+
+    // Mobile: Touch / Long Press
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    document.body.addEventListener('touchstart', (e) => {
+        const item = e.target.closest(CONFIG.SELECTORS.ITEM);
+        if (!item) return;
+
+        isTouchInteraction = true;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+
+        longPressTimeout = setTimeout(() => {
+            // Check if user has moved too much finger (handled in move, but safely here)
+            processItem(item);
+            // Vibrate to indicate success
+            if (navigator.vibrate) navigator.vibrate(50);
+        }, CONFIG.LONG_PRESS_DELAY);
+
+    }, { passive: true });
+
+    document.body.addEventListener('touchmove', (e) => {
+        if (!longPressTimeout) return;
+
+        // Calculate move distance
+        const moveX = Math.abs(e.touches[0].clientX - touchStartX);
+        const moveY = Math.abs(e.touches[0].clientY - touchStartY);
+
+        // Tolerance for slight finger movement
+        if (moveX > 10 || moveY > 10) {
+            clearTimeout(longPressTimeout);
+            longPressTimeout = null;
+        }
+    }, { passive: true });
+
+    document.body.addEventListener('touchend', (e) => {
+        if (longPressTimeout) {
+            // Released before long press finished -> It's a click
+            clearTimeout(longPressTimeout);
+            longPressTimeout = null;
+        }
+
+        // Reset touch flag after a delay to allow mixed usage
+        setTimeout(() => { isTouchInteraction = false; }, 500);
+    });
+
+    // Prevent context menu on long press for items
+    document.body.addEventListener('contextmenu', (e) => {
+        const item = e.target.closest(CONFIG.SELECTORS.ITEM);
+        if (item && isTouchInteraction) {
+            // Only prevent if we actually triggered logic? 
+            // Better UX: let context menu happen if we didn't show badge yet, 
+            // OR prevent it so badge is the primary long-press action.
+            // Let's prevent it to feel "native".
+            e.preventDefault();
         }
     });
 
