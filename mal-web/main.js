@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MAL Rating Hover Provider
 // @namespace    http://github.com/quantavil
-// @version      3.0
+// @version      3.2
 // @description  Shows MAL rating on hover. Features: Gold Badge (>8), Smart Caching, Color Grading, and Menu option to Clear Cache.
 // @author       Quantavil 
 
@@ -30,14 +30,10 @@
 // @match        *://123animes.*/*
 // @match        *://animetsu.*/*
 // @match        *://aniwave.*/*
-// @match        *://zoro.*/*
-// @match        *://anizone.*/*
 // @match        *://anime.nexus/*
-// @match        *://miuro.*/*
 // @match        *://senshi.*/*
 // @match        *://anihq.*/*
 // @match        *://anidap.*/*
-// @match        *://animerealms.*/*
 // @match        *://animex.*/*
 // @match        *://animedefenders.*/*
 // @match        *://anicore.*/*
@@ -71,14 +67,14 @@
                 .bsx, .bs, .item, .coverListItem,
                 .content-card, .new-card-animate, .pe-episode-card, .news-item, .TPostMv, .gallery, .mini-previews,
                 .video-block, .card, 
-                a[href*="/series/"], a[data-discover], a[href*="/watch/"], .anime-card, div[data-slot="carousel-item"],
+                a[href*="/series/"], a[data-discover], a[href*="/watch/"], .anime-card,
                 .vod-item, a[href*="/anime/info/"], .chart2g
             `,
             TITLE: `
                 .film-name, .dynamic-name, .film-name a,
                 .title, .d-title, .anime-name, .name, .mv-namevn,
                 h2, h3, h5, .content-title, .new-card-title, .pe-title, .news-item-title, .Title,
-                .line-clamp-2 a, .line-clamp-2,
+                .line-clamp-2,
                 .charttitle2g a
             `
         }
@@ -322,10 +318,6 @@
             .replace(/\s+/g, ' ')
             .trim();
 
-        if (clean.includes(':')) {
-            const parts = clean.split(':');
-            if (parts[0].length > 3) return parts[0].trim();
-        }
         return clean;
     }
 
@@ -333,7 +325,7 @@
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 8000);
-            const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanT)}&limit=8`, { signal: controller.signal });
+            const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanT)}&limit=10`, { signal: controller.signal });
             clearTimeout(timeoutId);
             if (res.status === 429) return { status: 429 };
 
@@ -341,26 +333,67 @@
             const results = json.data || [];
 
             let bestMatch = null;
-            let highestScore = 0;
+            let highestScore = -1;
 
             if (results.length > 0) {
                 const targetLower = cleanT.toLowerCase();
+                const targetKey = targetLower.replace(/[^a-z0-9]/g, '');
+
+                // Keywords that imply we are looking for a special type
+                const typeKeywords = ['movie', 'special', 'ova', 'film', 'theater'];
+                const hasTypeInQuery = typeKeywords.some(k => targetLower.includes(k));
+
                 results.forEach(item => {
-                    const sim1 = getSimilarity(targetLower, (item.title || '').toLowerCase());
-                    const sim2 = getSimilarity(targetLower, (item.title_english || '').toLowerCase());
-                    const sim3 = getSimilarity(targetLower, (item.title_japanese || '').toLowerCase());
+                    const titleLower = (item.title || '').toLowerCase();
+                    const titleEngLower = (item.title_english || '').toLowerCase();
+                    const titleJapLower = (item.title_japanese || '').toLowerCase();
 
-                    const score = Math.max(sim1, sim2, sim3);
-                    const weightedScore = (item.score) ? score + 0.1 : score;
+                    const sim1 = getSimilarity(targetLower, titleLower);
+                    const sim2 = getSimilarity(targetLower, titleEngLower);
+                    const sim3 = getSimilarity(targetLower, titleJapLower);
 
-                    if (weightedScore > highestScore && score > CONFIG.MATCH_THRESHOLD) {
-                        highestScore = weightedScore;
+                    let score = Math.max(sim1, sim2, sim3);
+
+                    // --- Scoring Adjustments ---
+
+                    // 1. Exact Match Bonus
+                    // Check strict alphanumeric match to handle "Fullmetal Alchemist: Brotherhood" vs "Fullmetal Alchemist"
+                    const itemKey = titleLower.replace(/[^a-z0-9]/g, '');
+                    const itemEngKey = titleEngLower.replace(/[^a-z0-9]/g, '');
+                    const itemJapKey = titleJapLower.replace(/[^a-z0-9]/g, '');
+
+                    if (targetKey === itemKey || targetKey === itemEngKey || targetKey === itemJapKey) {
+                        score += 0.3; // Major boost for exact match
+                    } else if ((itemKey.includes(targetKey) && itemKey.length < targetKey.length + 5) ||
+                        (itemEngKey.includes(targetKey) && itemEngKey.length < targetKey.length + 5) ||
+                        (itemJapKey.includes(targetKey) && itemJapKey.length < targetKey.length + 5)) {
+                        score += 0.1; // Minor boost for very close containment
+                    }
+
+                    // 2. Type Penalty
+                    // If query doesn't ask for Movie/Special, penalize them.
+                    const isTypeVariant = ['Movie', 'Special', 'OVA', 'ONA', 'Music'].includes(item.type);
+                    if (isTypeVariant && !hasTypeInQuery) {
+                        score -= 0.25;
+                    }
+
+                    // 3. Popularity Bias as Tie-Breaker
+                    // Add tiny score based on log of members to favor popular shows (TV series) over obscure OVAs in ties
+                    if (item.members) {
+                        score += (Math.log10(item.members) * 0.01);
+                    }
+
+                    if (score > highestScore) {
+                        highestScore = score;
                         bestMatch = item;
                     }
                 });
             }
 
-            if (bestMatch) {
+            // Threshold check (slightly lower threshold due to penalties potentially lowering valid scores, 
+            // but the exact match bonus raises them)
+            // We use 0.45 as a safe baseline since purely different titles will have scores < 0.3 usually.
+            if (bestMatch && highestScore > 0.45) {
                 return {
                     found: true,
                     score: bestMatch.score ? bestMatch.score : 'N/A',
