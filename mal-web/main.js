@@ -31,6 +31,17 @@
 // @match        *://animetsu.*/*
 // @match        *://aniwave.*/*
 // @match        *://zoro.*/*
+// @match        *://anizone.*/*
+// @match        *://anime.nexus/*
+// @match        *://miuro.*/*
+// @match        *://senshi.*/*
+// @match        *://anihq.*/*
+// @match        *://anidap.*/*
+// @match        *://animerealms.*/*
+// @match        *://animex.*/*
+// @match        *://animedefenders.*/*
+// @match        *://anicore.*/*
+// @match        *://animeheaven.*/*
 
 // @grant        GM_addStyle
 // @grant        GM_getValue
@@ -59,12 +70,16 @@
                 .flw-item, .film_list-wrap > div, .poster-card, .f-item, .aitem, .anime-item, .ep-item, .anicard,
                 .bsx, .bs, .item, .coverListItem,
                 .content-card, .new-card-animate, .pe-episode-card, .news-item, .TPostMv, .gallery, .mini-previews,
-                .video-block, .card
+                .video-block, .card, 
+                a[href*="/series/"], a[data-discover], a[href*="/watch/"], .anime-card, div[data-slot="carousel-item"],
+                .vod-item, a[href*="/anime/info/"], .chart2g
             `,
             TITLE: `
                 .film-name, .dynamic-name, .film-name a,
                 .title, .d-title, .anime-name, .name, .mv-namevn,
-                h2, h3, .content-title, .new-card-title, .pe-title, .news-item-title, .Title
+                h2, h3, h5, .content-title, .new-card-title, .pe-title, .news-item-title, .Title,
+                .line-clamp-2 a, .line-clamp-2,
+                .charttitle2g a
             `
         }
     };
@@ -78,7 +93,7 @@
     const requestQueue = {
         queue: [],
         processing: false,
-        currentJob: null, 
+        currentJob: null,
 
         add(title, cleanT, callback) {
             if ((this.currentJob && this.currentJob.cleanT === cleanT) ||
