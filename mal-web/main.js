@@ -6,38 +6,43 @@
 // @author       Quantavil 
 
 // --- Domain Wildcards ---
-// @match        *://hianime.*/*
-// @match        *://anitaro.*/*
-// @match        *://animovitch.*/*
-// @match        *://animekai.*/*
+// @match        *://123animes.*/*
+// @match        *://9anime.*/*
+// @match        *://anicore.*/*
+// @match        *://anidap.*/*
+// @match        *://anigo.*/*
+// @match        *://anihq.*/*
 // @match        *://anikai.*/*
 // @match        *://anikototv.*/*
-// @match        *://gogoanime.*/*
-// @match        *://anigo.*/*
-// @match        *://9anime.*/*
-// @match        *://animenosub.*/*
-// @match        *://kawaiifu.*/*
-// @match        *://aniworld.*/*
-// @match        *://yugenanime.*/*
-// @match        *://animepahe.*/*
-// @match        *://kimoitv.*/*
-// @match        *://anime.uniquestream.*/*
-// @match        *://wcostream.*/*
-// @match        *://ramenflix.*/*
-// @match        *://animeyy.*/*
-// @match        *://animeland.*/*
-// @match        *://animelon.*/*
-// @match        *://123animes.*/*
-// @match        *://animetsu.*/*
-// @match        *://aniwave.*/*
-// @match        *://anime.nexus/*
-// @match        *://senshi.*/*
-// @match        *://anihq.*/*
-// @match        *://anidap.*/*
-// @match        *://animex.*/*
 // @match        *://animedefenders.*/*
-// @match        *://anicore.*/*
+// @match        *://animegers.*/*
 // @match        *://animeheaven.*/*
+// @match        *://animekai.*/*
+// @match        *://animeland.*/*
+// @match        *://animelok.*/*
+// @match        *://animelon.*/*
+// @match        *://animenosub.*/*
+// @match        *://animepahe.*/*
+// @match        *://animestar.*/*
+// @match        *://animetsu.*/*
+// @match        *://animex.*/*
+// @match        *://animeya.*/*
+// @match        *://animeyy.*/*
+// @match        *://anime.nexus/*
+// @match        *://anime.uniquestream.*/*
+// @match        *://anitaro.*/*
+// @match        *://anitaku.*/*
+// @match        *://aniwave.*/*
+// @match        *://aniworld.*/*
+// @match        *://gogoanime.*/*
+// @match        *://hianime.*/*
+// @match        *://kawaiifu.*/*
+// @match        *://kimoitv.*/*
+// @match        *://ramenflix.*/*
+// @match        *://rivestream.*/*
+// @match        *://senshi.*/*
+// @match        *://wcostream.*/*
+// @match        *://yugenanime.*/*
 
 // @grant        GM_addStyle
 // @grant        GM_getValue
@@ -68,13 +73,14 @@
                 .content-card, .new-card-animate, .pe-episode-card, .news-item, .TPostMv, .gallery, .mini-previews,
                 .video-block, .card, 
                 a[href*="/series/"], a[data-discover], a[href*="/watch/"], .anime-card,
-                .vod-item, a[href*="/anime/info/"], .chart2g
+                .vod-item, a[href*="/anime/info/"], .chart2g, .items li,
+                .snap-center, [class*="MovieCardSmall"], article.group, app-anime-item
             `,
             TITLE: `
                 .film-name, .dynamic-name, .film-name a,
                 .title, .d-title, .anime-name, .name, .mv-namevn,
                 h2, h3, h5, .content-title, .new-card-title, .pe-title, .news-item-title, .Title,
-                .line-clamp-2,
+                .line-clamp-2, .line-clamp-1,
                 .charttitle2g a
             `
         }
