@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         MAL Rating Hover Provider (Wildcard Edition - Fixed V5)
+// @name         MAL Rating Hover Provider
 // @namespace    http://tampermonkey.net/
 // @version      3.0
 // @description  Shows MAL rating on hover. Features: Gold Badge (>8), Smart Caching, Color Grading, and Menu option to Clear Cache.
@@ -63,7 +63,7 @@
             TITLE: `
                 .film-name, .dynamic-name, .film-name a,
                 .title, .d-title, .anime-name, .name, .mv-namevn,
-                h2, h3, h3.title, .content-title, .new-card-title, .pe-title, .news-item-title, .Title
+                h2, h3, .content-title, .new-card-title, .pe-title, .news-item-title, .Title
             `
         }
     };
@@ -71,15 +71,15 @@
     let hoverTimeout;
     let longPressTimeout;
     let isTouchInteraction = false;
+    const KEY_REGEX = /[^a-z0-9]/g;
 
     // === Request Queue ===
     const requestQueue = {
         queue: [],
         processing: false,
-        currentJob: null, // FIX: Track current job to prevent duplicates
+        currentJob: null, 
 
         add(title, cleanT, callback) {
-            // FIX: Check both queue AND current processing job
             if ((this.currentJob && this.currentJob.cleanT === cleanT) ||
                 this.queue.some(q => q.cleanT === cleanT)) {
                 return;
@@ -109,13 +109,11 @@
                         }, 2500);
                         return;
                     } else {
-                        // FIX: Ensure temp is true so we don't cache 429 errors
                         callback({ error: true, temp: true });
                     }
                 } else {
-                    // FIX: Only cache if it's not a temporary error or network failure
                     if (!data.temp && !data.error) {
-                        const cacheKey = cleanT.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const cacheKey = cleanT.toLowerCase().replace(KEY_REGEX, '');
                         // Check if key is valid before caching
                         if (cacheKey.length > 0) setCache(cacheKey, data);
                     }
@@ -330,10 +328,11 @@
             let highestScore = 0;
 
             if (results.length > 0) {
+                const targetLower = cleanT.toLowerCase();
                 results.forEach(item => {
-                    const sim1 = getSimilarity(cleanT.toLowerCase(), (item.title || '').toLowerCase());
-                    const sim2 = getSimilarity(cleanT.toLowerCase(), (item.title_english || '').toLowerCase());
-                    const sim3 = getSimilarity(cleanT.toLowerCase(), (item.title_japanese || '').toLowerCase());
+                    const sim1 = getSimilarity(targetLower, (item.title || '').toLowerCase());
+                    const sim2 = getSimilarity(targetLower, (item.title_english || '').toLowerCase());
+                    const sim3 = getSimilarity(targetLower, (item.title_japanese || '').toLowerCase());
 
                     const score = Math.max(sim1, sim2, sim3);
                     const weightedScore = (item.score) ? score + 0.1 : score;
@@ -357,7 +356,6 @@
             }
 
         } catch (e) {
-            // FIX: Return temp: true so we don't cache network failures
             return { error: true, temp: true };
         }
     }
@@ -406,7 +404,7 @@
             badge.title = "Not found (Cached 12h)";
         }
 
-        if (window.getComputedStyle(container).position === 'static') {
+        if (!container.classList.contains('mal-container-rel') && window.getComputedStyle(container).position === 'static') {
             container.classList.add('mal-container-rel');
         }
 
@@ -425,10 +423,9 @@
         if (!title) return;
 
         const cleanT = cleanTitle(title);
-        // FIX: Prevent empty cache keys
         if (!cleanT || cleanT.length < 2) return;
 
-        const cacheKey = cleanT.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const cacheKey = cleanT.toLowerCase().replace(KEY_REGEX, '');
         if (!cacheKey) return;
 
         const cachedData = getCache(cacheKey);
