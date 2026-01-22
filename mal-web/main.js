@@ -39,6 +39,7 @@
 // @match        *://justanime.*/*
 // @match        *://kawaiifu.*/*
 // @match        *://kimoitv.*/*
+// @match        *://miruro.*/*
 // @match        *://ramenflix.*/*
 // @match        *://rivestream.*/*
 // @match        *://senshi.*/*
@@ -320,6 +321,7 @@
 
     function cleanTitle(title) {
         let clean = title
+            .replace(/^Title:\s*/i, '') // Remove "Title: " prefix
             .replace(/(\(|\[)\s*(sub|dub|uncensored|tv|bd|blu-ray|4k|hd|special|ova|ona|complete|re-upload).+?(\)|\])/gi, '')
             .replace(/[-:]\s*season\s*\d+/gi, '')
             .replace(/S\d+$/, '')
