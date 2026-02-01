@@ -1,6 +1,3 @@
-import { html, render, nothing, type TemplateResult } from 'lit-html';
-import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { classMap } from 'lit-html/directives/class-map.js';
 import type { MediaItem, ProgressCardController } from '../types';
 import { ICONS } from './icons';
 import { formatBytes, uid } from '../utils';
@@ -26,7 +23,7 @@ async function copyToClipboard(text: string, btn: HTMLElement): Promise<boolean>
     }
     document.body.removeChild(textarea);
   }
-
+  
   const originalHTML = btn.innerHTML;
   btn.innerHTML = ICONS.check;
   btn.classList.add('copied');
@@ -35,6 +32,45 @@ async function copyToClipboard(text: string, btn: HTMLElement): Promise<boolean>
     btn.classList.remove('copied');
   }, 1500);
   return true;
+}
+
+// ============================================
+// Helper: Create element
+// ============================================
+
+function h<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  attrs?: Record<string, string | boolean | number | null | undefined>,
+  children?: (Node | string)[] | string
+): HTMLElementTagNameMap[K] {
+  const el = document.createElement(tag);
+  
+  if (attrs) {
+    for (const [key, val] of Object.entries(attrs)) {
+      if (val == null || val === false) continue;
+      if (val === true) {
+        el.setAttribute(key, '');
+      } else {
+        el.setAttribute(key, String(val));
+      }
+    }
+  }
+  
+  if (children) {
+    if (typeof children === 'string') {
+      el.innerHTML = children;
+    } else {
+      for (const child of children) {
+        if (typeof child === 'string') {
+          el.appendChild(document.createTextNode(child));
+        } else {
+          el.appendChild(child);
+        }
+      }
+    }
+  }
+  
+  return el;
 }
 
 // ============================================
@@ -53,33 +89,49 @@ export function renderFab(
   fabState: FabState,
   onClick: () => void
 ): void {
-  const fabClasses = {
-    'sg-fab': true,
-    'show': fabState.show,
-    'busy': fabState.busy,
-    'idle': fabState.idle,
-  };
-
-  const badgeClasses = {
-    'sg-badge': true,
-    'show': fabState.count > 0,
-  };
-
-  const template = html`
-    <button
-      class=${classMap(fabClasses)}
-      title="Download detected media (${fabState.count} items)"
-      @click=${onClick}
-      ?disabled=${fabState.busy}
-    >
-      <span>${unsafeHTML(ICONS.download)}</span>
-      <span class=${classMap(badgeClasses)}>
-        ${fabState.count > 99 ? '99+' : fabState.count}
-      </span>
-    </button>
-  `;
-
-  render(template, container);
+  // Clear container
+  container.innerHTML = '';
+  
+  // Build class list
+  const classes = ['sg-fab'];
+  if (fabState.show) classes.push('show');
+  if (fabState.busy) classes.push('busy');
+  if (fabState.idle) classes.push('idle');
+  
+  // Create FAB button
+  const fab = h('button', {
+    class: classes.join(' '),
+    title: `Download detected media (${fabState.count} items)`,
+    disabled: fabState.busy ? true : null,
+  });
+  
+  // Add icon
+  const iconSpan = h('span');
+  iconSpan.innerHTML = ICONS.download;
+  fab.appendChild(iconSpan);
+  
+  // Add badge
+  const badgeClasses = ['sg-badge'];
+  if (fabState.count > 0) badgeClasses.push('show');
+  
+  const badge = h('span', { class: badgeClasses.join(' ') });
+  badge.textContent = fabState.count > 99 ? '99+' : String(fabState.count);
+  fab.appendChild(badge);
+  
+  // Add click handler
+  fab.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onClick();
+  });
+  
+  container.appendChild(fab);
+  
+  console.log('[SG] FAB rendered to DOM:', { 
+    classes: fab.className, 
+    inDOM: document.body.contains(fab),
+    display: getComputedStyle(fab).display 
+  });
 }
 
 // ============================================
@@ -97,133 +149,212 @@ export function renderModal(
   onSelect: (item: MediaItem) => void,
   onFilterChange: (checked: boolean) => void
 ): void {
+  // Clear container
+  container.innerHTML = '';
+  
+  // Build modal overlay
+  const modalClasses = ['sg-modal'];
+  if (show) modalClasses.push('show');
+  
+  const modal = h('div', { class: modalClasses.join(' ') });
+  
+  // Backdrop click handler
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      onClose();
+    }
+  });
+  
+  // Card
+  const card = h('div', { 
+    class: 'sg-card',
+    role: 'dialog',
+    'aria-modal': 'true',
+  });
+  
+  // Header
+  const header = h('div', { class: 'sg-card-head' });
+  
+  const titleEl = h('div', { class: 'sg-card-title' });
+  titleEl.textContent = title;
+  header.appendChild(titleEl);
+  
+  const closeBtn = h('button', { class: 'sg-btn', title: 'Close (Esc)' });
+  closeBtn.innerHTML = ICONS.close;
+  closeBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    onClose();
+  });
+  header.appendChild(closeBtn);
+  
+  card.appendChild(header);
+  
+  // Body
+  const body = h('div', { class: 'sg-card-body' });
+  
+  // Filter option
   const anySizeKnown = items.some(i => i.size != null);
-
-  const modalClasses = {
-    'sg-modal': true,
-    'show': show,
-  };
-
-  const renderItem = (item: MediaItem, index: number) => {
-    const shortUrl = item.url.length > 65 ? item.url.slice(0, 65) + '…' : item.url;
-
-    const badges: TemplateResult[] = [];
-
-    // Kind badge
-    if (item.kind === 'hls') {
-      if (item.hlsType === 'error') {
-        badges.push(html`<span class="sg-badge-type error">Error</span>`);
-      } else if (item.hlsType === 'invalid') {
-        badges.push(html`<span class="sg-badge-type error">Invalid</span>`);
-      } else if (item.hlsType === 'master') {
-        badges.push(html`<span class="sg-badge-type master">Master</span>`);
-      } else if (item.hlsType === 'media') {
-        badges.push(html`<span class="sg-badge-type video">Video</span>`);
-      } else if (item.enriching) {
-        badges.push(html`<span class="sg-badge-type analyzing">...</span>`);
-      } else {
-        badges.push(html`<span class="sg-badge-type video">HLS</span>`);
-      }
-
-      if (item.isLive) {
-        badges.push(html`<span class="sg-badge-type live">Live</span>`);
-      }
-      if (item.encrypted) {
-        badges.push(html`<span class="sg-badge-type encrypted">🔒</span>`);
-      }
-    } else if (item.kind === 'video') {
-      badges.push(html`<span class="sg-badge-type direct">Direct</span>`);
-    } else if (item.kind === 'variant') {
-      badges.push(html`<span class="sg-badge-type video">Quality</span>`);
+  if (showFilter && anySizeKnown) {
+    const option = h('label', { class: 'sg-option' });
+    
+    const checkbox = h('input', { 
+      type: 'checkbox',
+      checked: excludeSmall ? true : null,
+    }) as HTMLInputElement;
+    checkbox.addEventListener('change', () => {
+      onFilterChange(checkbox.checked);
+    });
+    option.appendChild(checkbox);
+    
+    option.appendChild(document.createTextNode(' Exclude small (< 1MB)'));
+    body.appendChild(option);
+  }
+  
+  // Item list
+  const list = h('div', { class: 'sg-list' });
+  
+  if (items.length === 0) {
+    const empty = h('div', { class: 'sg-empty' });
+    empty.innerHTML = 'No media detected yet.<br><small>Try playing a video on this page.</small>';
+    list.appendChild(empty);
+  } else {
+    for (const item of items) {
+      const itemEl = createItemElement(item, onSelect);
+      list.appendChild(itemEl);
     }
+  }
+  
+  body.appendChild(list);
+  card.appendChild(body);
+  modal.appendChild(card);
+  container.appendChild(modal);
+  
+  console.log('[SG] Modal rendered to DOM:', {
+    show,
+    classes: modal.className,
+    inDOM: document.body.contains(modal),
+    display: getComputedStyle(modal).display,
+    itemCount: items.length,
+  });
+}
 
-    // Remote badge (from iframe)
-    if (item.isRemote) {
-      badges.push(html`<span class="sg-badge-type remote">iFrame</span>`);
+function createItemElement(
+  item: MediaItem,
+  onSelect: (item: MediaItem) => void
+): HTMLElement {
+  const el = h('div', { 
+    class: 'sg-item',
+    role: 'button',
+    tabindex: '0',
+  });
+  
+  // Top row
+  const top = h('div', { class: 'sg-item-top' });
+  
+  // Title with badges
+  const titleDiv = h('div', { class: 'sg-item-title' });
+  
+  const labelSpan = h('span');
+  labelSpan.textContent = item.label;
+  titleDiv.appendChild(labelSpan);
+  
+  // Badges
+  const badges = getBadges(item);
+  for (const badge of badges) {
+    titleDiv.appendChild(badge);
+  }
+  
+  top.appendChild(titleDiv);
+  
+  // Size
+  if (item.size) {
+    const sizeSpan = h('span', { class: 'sg-item-size' });
+    sizeSpan.textContent = formatBytes(item.size);
+    top.appendChild(sizeSpan);
+  }
+  
+  // Copy button
+  const copyBtn = h('button', { class: 'sg-copy-btn', title: 'Copy URL' });
+  copyBtn.innerHTML = ICONS.copy;
+  copyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    copyToClipboard(item.url, copyBtn);
+  });
+  top.appendChild(copyBtn);
+  
+  el.appendChild(top);
+  
+  // Sublabel
+  if (item.sublabel) {
+    const subEl = h('div', { class: 'sg-item-sub' });
+    subEl.textContent = item.sublabel;
+    el.appendChild(subEl);
+  }
+  
+  // URL
+  const urlEl = h('div', { class: 'sg-item-url', title: item.url });
+  urlEl.textContent = item.url.length > 65 ? item.url.slice(0, 65) + '…' : item.url;
+  el.appendChild(urlEl);
+  
+  // Click handler
+  el.addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('.sg-copy-btn')) {
+      onSelect(item);
     }
-
-    const handleCopy = (e: Event) => {
-      e.stopPropagation();
-      copyToClipboard(item.url, e.currentTarget as HTMLElement);
-    };
-
-    const handleClick = (e: Event) => {
-      if (!(e.target as HTMLElement).closest('.sg-copy-btn')) {
-        onSelect(item);
-      }
-    };
-
-    const handleKeydown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        onSelect(item);
-      }
-    };
-
-    return html`
-      <div
-        class="sg-item"
-        role="button"
-        tabindex="0"
-        data-index=${index}
-        @click=${handleClick}
-        @keydown=${handleKeydown}
-      >
-        <div class="sg-item-top">
-          <div class="sg-item-title">
-            <span>${item.label}</span>
-            ${badges}
-          </div>
-          ${item.size ? html`<span class="sg-item-size">${formatBytes(item.size)}</span>` : nothing}
-          <button class="sg-copy-btn" title="Copy URL" @click=${handleCopy}>
-            ${unsafeHTML(ICONS.copy)}
-          </button>
-        </div>
-        ${item.sublabel ? html`<div class="sg-item-sub">${item.sublabel}</div>` : nothing}
-        <div class="sg-item-url" title=${item.url}>${shortUrl}</div>
-      </div>
-    `;
-  };
-
-  const handleBackdropClick = (e: Event) => {
-    if (e.target === e.currentTarget) onClose();
-  };
-
-  const template = html`
-    <div
-      class=${classMap(modalClasses)}
-      @click=${handleBackdropClick}
-    >
-      <div class="sg-card" role="dialog" aria-modal="true" aria-labelledby="sg-modal-title">
-        <div class="sg-card-head">
-          <div class="sg-card-title" id="sg-modal-title">${title}</div>
-          <button class="sg-btn" title="Close (Esc)" @click=${onClose}>
-            ${unsafeHTML(ICONS.close)}
-          </button>
-        </div>
-        <div class="sg-card-body">
-          ${showFilter && anySizeKnown ? html`
-            <label class="sg-option">
-              <input
-                type="checkbox"
-                ?checked=${excludeSmall}
-                @change=${(e: Event) => onFilterChange((e.target as HTMLInputElement).checked)}
-              >
-              Exclude small (&lt; 1MB)
-            </label>
-          ` : nothing}
-          <div class="sg-list">
-            ${items.length > 0
-      ? items.map((item, i) => renderItem(item, i))
-      : html`<div class="sg-empty">No media detected yet.<br><small>Try playing a video on this page.</small></div>`
+  });
+  
+  // Keyboard handler
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect(item);
     }
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+  });
+  
+  return el;
+}
 
-  render(template, container);
+function getBadges(item: MediaItem): HTMLElement[] {
+  const badges: HTMLElement[] = [];
+  
+  const addBadge = (text: string, type: string) => {
+    const badge = h('span', { class: `sg-badge-type ${type}` });
+    badge.textContent = text;
+    badges.push(badge);
+  };
+  
+  if (item.kind === 'hls') {
+    if (item.hlsType === 'error') {
+      addBadge('Error', 'error');
+    } else if (item.hlsType === 'invalid') {
+      addBadge('Invalid', 'error');
+    } else if (item.hlsType === 'master') {
+      addBadge('Master', 'master');
+    } else if (item.hlsType === 'media') {
+      addBadge('Video', 'video');
+    } else if (item.enriching) {
+      addBadge('...', 'analyzing');
+    } else {
+      addBadge('HLS', 'video');
+    }
+    
+    if (item.isLive) {
+      addBadge('Live', 'live');
+    }
+    if (item.encrypted) {
+      addBadge('🔒', 'encrypted');
+    }
+  } else if (item.kind === 'video') {
+    addBadge('Direct', 'direct');
+  } else if (item.kind === 'variant') {
+    addBadge('Quality', 'video');
+  }
+  
+  if (item.isRemote) {
+    addBadge('iFrame', 'remote');
+  }
+  
+  return badges;
 }
 
 // ============================================
@@ -233,6 +364,11 @@ export function renderModal(
 class ProgressCardImpl implements ProgressCardController {
   private container: HTMLElement;
   private element: HTMLDivElement;
+  private fillEl: HTMLDivElement | null = null;
+  private statusTextEl: HTMLSpanElement | null = null;
+  private percentEl: HTMLSpanElement | null = null;
+  private pauseBtn: HTMLButtonElement | null = null;
+  
   private minimized = false;
   private percent = 0;
   private statusText: string;
@@ -241,115 +377,154 @@ class ProgressCardImpl implements ProgressCardController {
   private onCancelFn?: () => void;
   private title: string;
   private src: string;
-
+  
   constructor(container: HTMLElement, title: string, src: string, segs = 0) {
     this.container = container;
     this.title = title;
     this.src = src;
     this.statusText = segs ? `${segs} segments` : 'Starting...';
-
+    
     this.element = document.createElement('div');
     this.element.className = 'sg-progress';
     this.element.id = `sg-progress-${uid()}`;
+    
+    this.buildDOM();
     this.container.appendChild(this.element);
-
-    this.render();
   }
-
-  private render(): void {
-    const handleStop = () => {
-      if (this.onStopFn) {
-        const result = this.onStopFn();
-        this.isPaused = result === 'paused';
-        this.render();
-      }
-    };
-
-    const handleMinimize = () => {
+  
+  private buildDOM(): void {
+    this.element.innerHTML = '';
+    
+    // Row with name and controls
+    const row = h('div', { class: 'sg-progress-row' });
+    
+    const nameEl = h('div', { class: 'sg-progress-name', title: this.src });
+    nameEl.textContent = this.title;
+    row.appendChild(nameEl);
+    
+    const ctrls = h('div', { class: 'sg-progress-ctrls' });
+    
+    // Pause/Resume button (only if handler is set)
+    if (this.onStopFn) {
+      this.pauseBtn = h('button', { 
+        class: 'sg-btn sg-btn-small',
+        title: this.isPaused ? 'Resume' : 'Pause',
+      }) as HTMLButtonElement;
+      this.pauseBtn.innerHTML = this.isPaused ? ICONS.play : ICONS.pause;
+      this.pauseBtn.addEventListener('click', () => {
+        if (this.onStopFn) {
+          const result = this.onStopFn();
+          this.isPaused = result === 'paused';
+          if (this.pauseBtn) {
+            this.pauseBtn.innerHTML = this.isPaused ? ICONS.play : ICONS.pause;
+            this.pauseBtn.title = this.isPaused ? 'Resume' : 'Pause';
+          }
+          this.updateClass();
+        }
+      });
+      ctrls.appendChild(this.pauseBtn);
+    }
+    
+    // Minimize button
+    const minBtn = h('button', { 
+      class: 'sg-btn sg-btn-small btn-minimize',
+      title: this.minimized ? 'Expand' : 'Minimize',
+    }) as HTMLButtonElement;
+    minBtn.innerHTML = this.minimized ? ICONS.maximize : ICONS.minimize;
+    minBtn.addEventListener('click', () => {
       this.minimized = !this.minimized;
-      this.render();
-    };
-
-    const handleCancel = () => {
+      minBtn.innerHTML = this.minimized ? ICONS.maximize : ICONS.minimize;
+      minBtn.title = this.minimized ? 'Expand' : 'Minimize';
+      this.updateClass();
+    });
+    ctrls.appendChild(minBtn);
+    
+    // Cancel button
+    const cancelBtn = h('button', { 
+      class: 'sg-btn sg-btn-small',
+      title: 'Cancel',
+    }) as HTMLButtonElement;
+    cancelBtn.innerHTML = ICONS.cancel;
+    cancelBtn.addEventListener('click', () => {
       this.onCancelFn?.();
-    };
-
-    const progressClasses = {
-      'sg-progress': true,
-      'minimized': this.minimized,
-      'paused': this.isPaused,
-    };
-
-    const template = html`
-      <div class="sg-progress-row">
-        <div class="sg-progress-name" title=${this.src}>${this.title}</div>
-        <div class="sg-progress-ctrls">
-          ${this.onStopFn ? html`
-            <button 
-              class="sg-btn sg-btn-small" 
-              title=${this.isPaused ? 'Resume' : 'Pause'} 
-              @click=${handleStop}
-            >
-              ${unsafeHTML(this.isPaused ? ICONS.play : ICONS.pause)}
-            </button>
-          ` : nothing}
-          <button 
-            class="sg-btn sg-btn-small btn-minimize" 
-            title=${this.minimized ? 'Expand' : 'Minimize'} 
-            @click=${handleMinimize}
-          >
-            ${unsafeHTML(this.minimized ? ICONS.maximize : ICONS.minimize)}
-          </button>
-          <button class="sg-btn sg-btn-small" title="Cancel" @click=${handleCancel}>
-            ${unsafeHTML(ICONS.cancel)}
-          </button>
-        </div>
-      </div>
-      <div class="sg-progress-bar">
-        <div class="sg-progress-fill" style="width: ${this.percent}%"></div>
-      </div>
-      <div class="sg-progress-status">
-        <span>${this.statusText}</span>
-        <span>${Math.floor(this.percent)}%</span>
-      </div>
-    `;
-
-    // Build class string
-    const classStr = Object.entries(progressClasses)
-      .filter(([, v]) => v)
-      .map(([k]) => k)
-      .join(' ');
-
-    this.element.className = classStr;
-    render(template, this.element);
+    });
+    ctrls.appendChild(cancelBtn);
+    
+    row.appendChild(ctrls);
+    this.element.appendChild(row);
+    
+    // Progress bar
+    const bar = h('div', { class: 'sg-progress-bar' });
+    this.fillEl = h('div', { class: 'sg-progress-fill' }) as HTMLDivElement;
+    this.fillEl.style.width = `${this.percent}%`;
+    bar.appendChild(this.fillEl);
+    this.element.appendChild(bar);
+    
+    // Status
+    const status = h('div', { class: 'sg-progress-status' });
+    this.statusTextEl = h('span') as HTMLSpanElement;
+    this.statusTextEl.textContent = this.statusText;
+    status.appendChild(this.statusTextEl);
+    
+    this.percentEl = h('span') as HTMLSpanElement;
+    this.percentEl.textContent = `${Math.floor(this.percent)}%`;
+    status.appendChild(this.percentEl);
+    
+    this.element.appendChild(status);
+    
+    this.updateClass();
   }
-
+  
+  private updateClass(): void {
+    const classes = ['sg-progress'];
+    if (this.minimized) classes.push('minimized');
+    if (this.isPaused) classes.push('paused');
+    this.element.className = classes.join(' ');
+  }
+  
   update(percent: number, text = ''): void {
     this.percent = Math.max(0, Math.min(100, percent));
     if (text) this.statusText = text;
-    this.render();
+    
+    if (this.fillEl) {
+      this.fillEl.style.width = `${this.percent}%`;
+    }
+    if (this.statusTextEl) {
+      this.statusTextEl.textContent = this.statusText;
+    }
+    if (this.percentEl) {
+      this.percentEl.textContent = `${Math.floor(this.percent)}%`;
+    }
   }
-
+  
   done(ok = true, msg?: string): void {
-    const fill = this.element.querySelector('.sg-progress-fill') as HTMLElement;
-    if (fill) {
-      fill.style.background = ok ? 'var(--sg-ok)' : 'var(--sg-bad)';
+    if (this.fillEl) {
+      this.fillEl.style.background = ok ? 'var(--sg-ok)' : 'var(--sg-bad)';
+      this.fillEl.style.width = '100%';
     }
     this.percent = 100;
     this.statusText = msg || (ok ? 'Complete ✓' : 'Failed ✗');
-    this.render();
+    
+    if (this.statusTextEl) {
+      this.statusTextEl.textContent = this.statusText;
+    }
+    if (this.percentEl) {
+      this.percentEl.textContent = '100%';
+    }
+    
     setTimeout(() => this.remove(), 2500);
   }
-
+  
   remove(): void {
     this.element.remove();
   }
-
+  
   setOnStop(fn: () => 'paused' | 'resumed'): void {
     this.onStopFn = fn;
-    this.render();
+    // Rebuild DOM to add the pause button
+    this.buildDOM();
   }
-
+  
   setOnCancel(fn: () => void): void {
     this.onCancelFn = fn;
   }

@@ -42,35 +42,42 @@ export async function downloadDirect(
     card.remove();
   });
   
-  GM_download({
-    url: dlUrl,
-    name: filename,
-    onprogress: (e) => {
-      if (e.lengthComputable) {
-        card.update((e.loaded / e.total) * 100, `${formatBytes(e.loaded)}/${formatBytes(e.total)}`);
-      } else {
-        card.update(0, formatBytes(e.loaded));
-      }
-    },
-    onload: () => {
-      card.update(100, '');
-      card.done(true);
-      cleanup();
-      GM_notification({
-        text: `Download complete: ${filename}`,
-        title: 'StreamGrabber',
-        timeout: 3000,
-      });
-    },
-    onerror: () => {
-      card.done(false, 'Failed');
-      cleanup();
-    },
-    ontimeout: () => {
-      card.done(false, 'Timeout');
-      cleanup();
-    },
-  });
+// In downloadDirect function, update the GM_download call:
+
+GM_download({
+  url: dlUrl,
+  name: filename,
+  saveAs: true, // ADD THIS - ensures save dialog is shown
+  onprogress: (e) => {
+    if (e.lengthComputable) {
+      card.update((e.loaded / e.total) * 100, `${formatBytes(e.loaded)}/${formatBytes(e.total)}`);
+    } else {
+      card.update(0, formatBytes(e.loaded));
+    }
+  },
+  onload: () => {
+    card.update(100, '');
+    card.done(true);
+    cleanup();
+    GM_notification({
+      text: `Download complete: ${filename}`,
+      title: 'StreamGrabber',
+      timeout: 3000,
+    });
+  },
+  onerror: (err) => {
+    // FIX: Properly handle error object
+    const errorMsg = err?.error || 'unknown';
+    const details = err?.details || '';
+    console.error('[SG] Download error:', { error: errorMsg, details, url: dlUrl });
+    card.done(false, errorMsg === 'not_succeeded' ? 'Save failed' : errorMsg);
+    cleanup();
+  },
+  ontimeout: () => {
+    card.done(false, 'Timeout');
+    cleanup();
+  },
+});
 }
 
 // ============================================

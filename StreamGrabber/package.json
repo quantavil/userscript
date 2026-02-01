@@ -11,8 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "hls-parser": "^0.16.0",
-    "lit-html": "^3.3.2"
+    "hls-parser": "^0.16.0"
   },
   "devDependencies": {
     "@types/greasemonkey": "^4.0.7",
