@@ -9,29 +9,33 @@ import { blobRegistry } from './core/network';
 class AppState {
   /** Detected media items (keyed by URL) */
   readonly items = new Map<string, MediaItem>();
-  
+
   /** Quick lookup sets */
   private readonly m3u8Urls = new Set<string>();
   private readonly videoUrls = new Set<string>();
-  
+
   /** Watched video elements */
   readonly watchedVideos = new WeakSet<HTMLVideoElement>();
-  
+
   /** Settings */
   excludeSmall: boolean;
-  
+
+  /** Cached valid count */
+  private _validCount = 0;
+  private _validCountDirty = true;
+
   /** UI callbacks */
   private onItemAdded: ((item: MediaItem) => void) | null = null;
   private onItemUpdated: (() => void) | null = null;
-  
+
   constructor() {
     this.excludeSmall = GM_getValue(SETTINGS_KEYS.EXCLUDE_SMALL, true);
   }
-  
+
   // ----------------------------------------
   // Callbacks
   // ----------------------------------------
-  
+
   setCallbacks(cbs: {
     onItemAdded?: (item: MediaItem) => void;
     onItemUpdated?: () => void;
@@ -39,116 +43,132 @@ class AppState {
     if (cbs.onItemAdded) this.onItemAdded = cbs.onItemAdded;
     if (cbs.onItemUpdated) this.onItemUpdated = cbs.onItemUpdated;
   }
-  
+
   notifyUpdate(): void {
     this.onItemUpdated?.();
   }
-  
+
   // ----------------------------------------
   // Item Management
   // ----------------------------------------
-  
+
   hasItem(url: string): boolean {
     return this.items.has(url);
   }
-  
+
   getItem(url: string): MediaItem | undefined {
     return this.items.get(url);
   }
-  
+
   addItem(item: MediaItem): boolean {
     if (this.items.has(item.url)) return false;
-    
+
     this.items.set(item.url, item);
-    
+
     if (item.kind === 'hls') {
       this.m3u8Urls.add(item.url);
     } else {
       this.videoUrls.add(item.url);
     }
-    
+
+    // Invalidate cache
+    this.invalidateCount();
+
     // Enforce max limit
     this.enforceLimit();
-    
+
     // Notify
     this.onItemAdded?.(item);
-    
+
     return true;
   }
-  
+
   private enforceLimit(): void {
     while (this.items.size > CACHE.DB_MAX) {
       const first = this.items.keys().next().value;
       if (first === undefined) break;
-      
+
       const item = this.items.get(first);
       this.items.delete(first);
-      
+
       if (item) {
         this.m3u8Urls.delete(item.url);
         this.videoUrls.delete(item.url);
       }
     }
+    this.invalidateCount();
   }
-  
+
   /**
    * Count valid items (excluding invalid/error)
    */
   get validCount(): number {
-    let n = 0;
-    for (const item of this.items.values()) {
-      if (item.hlsType !== 'invalid' && item.hlsType !== 'error') {
-        n++;
+    if (this._validCountDirty) {
+      let n = 0;
+      for (const item of this.items.values()) {
+        if (item.hlsType !== 'invalid' && item.hlsType !== 'error') {
+          n++;
+        }
       }
+      this._validCount = n;
+      this._validCountDirty = false;
     }
-    return n;
+    return this._validCount;
   }
-  
+
+  /**
+   * Mark valid count as dirty (needs recalculation)
+   */
+  invalidateCount(): void {
+    this._validCountDirty = true;
+  }
+
   /**
    * Get all items (newest first)
    */
   getAllItems(): MediaItem[] {
     return Array.from(this.items.values()).reverse();
   }
-  
+
   /**
    * Get filtered items based on settings
    */
   getFilteredItems(): MediaItem[] {
     const items = this.getAllItems();
     if (!this.excludeSmall) return items;
-    
+
     return items.filter(
       item => item.size == null || item.size >= CFG.SMALL_BYTES
     );
   }
-  
+
   // ----------------------------------------
   // Settings
   // ----------------------------------------
-  
+
   setExcludeSmall(v: boolean): void {
     this.excludeSmall = v;
     GM_setValue(SETTINGS_KEYS.EXCLUDE_SMALL, v);
   }
-  
+
   // ----------------------------------------
   // Cleanup
   // ----------------------------------------
-  
+
   clear(): void {
     this.items.clear();
     this.m3u8Urls.clear();
     this.videoUrls.clear();
     blobRegistry.clear();
+    this.invalidateCount();
   }
-  
+
   /**
    * Trim stale blobs and enforce limits
    */
   trim(): void {
     this.enforceLimit();
-    
+
     const now = Date.now();
     for (const [href, info] of blobRegistry) {
       const idle = now - (info.ts || 0);

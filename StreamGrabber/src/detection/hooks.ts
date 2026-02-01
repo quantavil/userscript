@@ -4,13 +4,33 @@ import { looksM3U8Type, looksVideoType } from '../utils';
 
 type DetectionCallback = (url: string, metadata?: { size?: number; type?: string }) => void;
 
-let onDetect: DetectionCallback = () => {};
+let onDetect: DetectionCallback | null = null;
+const earlyDetections: Array<{ url: string; metadata?: { size?: number; type?: string } }> = [];
 
 /**
  * Set the detection callback
  */
 export function setDetectionCallback(cb: DetectionCallback): void {
   onDetect = cb;
+
+  // Process any detections that happened before callback was set
+  if (earlyDetections.length > 0) {
+    const pending = [...earlyDetections];
+    earlyDetections.length = 0;
+    pending.forEach(({ url, metadata }) => cb(url, metadata));
+  }
+}
+
+/**
+ * Internal function to emit detection
+ */
+function emitDetection(url: string, metadata?: { size?: number; type?: string }): void {
+  if (onDetect) {
+    onDetect(url, metadata);
+  } else {
+    // Queue for later if callback not yet set
+    earlyDetections.push({ url, metadata });
+  }
 }
 
 // ============================================
@@ -19,13 +39,13 @@ export function setDetectionCallback(cb: DetectionCallback): void {
 
 function hookCreateObjectURL(): void {
   const original = URL.createObjectURL;
-  
+
   URL.createObjectURL = function (obj: Blob | MediaSource): string {
     const href = original.call(this, obj);
-    
+
     try {
       const now = Date.now();
-      
+
       if (obj instanceof Blob) {
         const type = obj.type || '';
         const info: BlobInfo = {
@@ -35,15 +55,15 @@ function hookCreateObjectURL(): void {
           kind: 'other',
           ts: now,
         };
-        
+
         if (looksM3U8Type(type)) {
           info.kind = 'm3u8';
           blobRegistry.set(href, info);
-          onDetect(href);
+          emitDetection(href);
         } else if (looksVideoType(type)) {
           info.kind = 'video';
           blobRegistry.set(href, info);
-          onDetect(href);
+          emitDetection(href);
         } else {
           // Check content for ambiguous types
           const needsCheck = /octet-stream|text\/plain|^$/.test(type);
@@ -55,7 +75,7 @@ function hookCreateObjectURL(): void {
                 }
                 blobRegistry.set(href, info);
                 if (info.kind === 'm3u8') {
-                  onDetect(href);
+                  emitDetection(href);
                 }
               })
               .catch(() => {
@@ -78,14 +98,14 @@ function hookCreateObjectURL(): void {
     } catch (e) {
       console.error('[SG] createObjectURL hook error:', e);
     }
-    
+
     return href;
   };
 }
 
 function hookRevokeObjectURL(): void {
   const original = URL.revokeObjectURL;
-  
+
   URL.revokeObjectURL = function (href: string): void {
     try {
       const info = blobRegistry.get(href);
@@ -94,7 +114,7 @@ function hookRevokeObjectURL(): void {
         info.ts = Date.now();
       }
     } catch { /* ignore */ }
-    
+
     return original.call(this, href);
   };
 }
@@ -106,14 +126,14 @@ function hookRevokeObjectURL(): void {
 function hookFetch(): void {
   const original = window.fetch;
   if (typeof original !== 'function') return;
-  
+
   window.fetch = function (...args: Parameters<typeof fetch>): Promise<Response> {
     try {
       const input = args[0];
-      const url = typeof input === 'string' ? input : input?.url;
-      if (url) onDetect(url);
+      const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : (input as URL).href);
+      if (url) emitDetection(url);
     } catch { /* ignore */ }
-    
+
     return original.apply(this, args);
   };
 }
@@ -124,7 +144,7 @@ function hookFetch(): void {
 
 function hookXHR(): void {
   const original = XMLHttpRequest.prototype.open;
-  
+
   XMLHttpRequest.prototype.open = function (
     method: string,
     url: string | URL,
@@ -132,9 +152,9 @@ function hookXHR(): void {
   ): void {
     try {
       const urlStr = typeof url === 'string' ? url : url?.href;
-      if (urlStr) onDetect(urlStr);
+      if (urlStr) emitDetection(urlStr);
     } catch { /* ignore */ }
-    
+
     // @ts-expect-error - rest params typing
     return original.call(this, method, url, ...rest);
   };
@@ -149,7 +169,7 @@ function hookPerformanceObserver(): void {
     const observer = new PerformanceObserver(list => {
       for (const entry of list.getEntries()) {
         if ('name' in entry && typeof entry.name === 'string') {
-          onDetect(entry.name);
+          emitDetection(entry.name);
         }
       }
     });
@@ -166,7 +186,7 @@ let hooksInstalled = false;
 export function installHooks(): void {
   if (hooksInstalled) return;
   hooksInstalled = true;
-  
+
   hookCreateObjectURL();
   hookRevokeObjectURL();
   hookFetch();

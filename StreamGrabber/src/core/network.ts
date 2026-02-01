@@ -22,7 +22,7 @@ export function gmGet<T extends 'text' | 'arraybuffer'>(
   opts: GmRequestOptions & { responseType: T }
 ): AbortablePromise<T extends 'text' ? string : ArrayBuffer> {
   let ref: ReturnType<typeof GM_xmlhttpRequest> | null = null;
-  
+
   const p = new Promise<T extends 'text' ? string : ArrayBuffer>((resolve, reject) => {
     ref = GM_xmlhttpRequest({
       method: 'GET',
@@ -42,11 +42,11 @@ export function gmGet<T extends 'text' | 'arraybuffer'>(
       ontimeout: () => reject(new Error('Timeout')),
     });
   }) as AbortablePromise<T extends 'text' ? string : ArrayBuffer>;
-  
+
   p.abort = () => {
     try { ref?.abort(); } catch { /* ignore */ }
   };
-  
+
   return p;
 }
 
@@ -81,23 +81,36 @@ export function getBin(
   headers: Record<string, string> = {},
   timeout = CFG.REQUEST_TIMEOUT,
   onprogress?: (e: { loaded: number; total: number }) => void
-): Promise<ArrayBuffer> {
+): AbortablePromise<ArrayBuffer> {
   if (isBlob(url)) {
     const info = blobRegistry.get(url);
-    if (!info?.blob) return Promise.reject(new Error('Blob not found'));
+    if (!info?.blob) {
+      const p = Promise.reject(new Error('Blob not found')) as AbortablePromise<ArrayBuffer>;
+      p.abort = () => { };
+      return p;
+    }
     info.ts = Date.now();
-    
+
     const range = parseRange(headers.Range);
     const part = range
       ? info.blob.slice(range.start, range.end == null ? info.blob.size : range.end + 1)
       : info.blob;
-    
+
     if (onprogress) {
       setTimeout(() => onprogress({ loaded: part.size, total: part.size }), 0);
     }
-    return part.arrayBuffer();
+
+    // Wrap in abortable promise
+    let aborted = false;
+    const p = part.arrayBuffer().then(buf => {
+      if (aborted) throw new Error('Aborted');
+      return buf;
+    }) as AbortablePromise<ArrayBuffer>;
+
+    p.abort = () => { aborted = true; };
+    return p;
   }
-  
+
   return gmGet({
     url,
     responseType: 'arraybuffer',
@@ -123,11 +136,11 @@ async function fetchHead(url: string): Promise<HeadMeta> {
         ontimeout: () => reject(new Error('HEAD timeout')),
       });
     });
-    
+
     const h = resp.responseHeaders || '';
     const lengthMatch = /(^|\n)content-length:\s*(\d+)/i.exec(h);
     const typeMatch = /(^|\n)content-type:\s*([^\n]+)/i.exec(h);
-    
+
     return {
       length: lengthMatch ? +lengthMatch[2] : null,
       type: typeMatch ? typeMatch[2].trim() : null,

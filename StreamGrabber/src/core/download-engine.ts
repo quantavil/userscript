@@ -40,7 +40,7 @@ export async function downloadSegments(
 ): Promise<void> {
   const segs = parsed.segs;
   const total = segs.length;
-  
+
   // State
   const state: DownloadState = {
     paused: false,
@@ -53,28 +53,28 @@ export async function downloadSegments(
     byteDone: 0,
     avgLen: 0,
   };
-  
+
   const seg: SegmentStatus = {
     attempts: new Uint8Array(total),
     status: new Int8Array(total),
   };
-  
+
   // Inflight tracking
   const inflight = new Map<number, { abort: () => void }>();
   const inprog = new Map<number, { loaded: number; total: number }>();
   const buffers = new Map<number, Uint8Array>();
   const retryQueue = new Set<number>();
-  
+
   // Caches for keys and init segments
   const keyCache = new Map<string, Uint8Array>();
   const keyInflight = new Map<string, Promise<Uint8Array>>();
   const mapCache = new Map<string, Uint8Array>();
   const mapInflight = new Map<string, Promise<Uint8Array>>();
-  
+
   // File writer
   const mime = isFmp4 ? 'video/mp4' : 'video/mp2t';
   let writer: FileWriter;
-  
+
   try {
     writer = await createFileWriter(filename, mime);
   } catch (e) {
@@ -84,28 +84,28 @@ export async function downloadSegments(
     }
     throw e;
   }
-  
+
   // ----------------------------------------
   // Control handlers
   // ----------------------------------------
-  
+
   card.setOnStop(() => {
     state.paused = !state.paused;
     if (!state.paused) pump();
     return state.paused ? 'paused' : 'resumed';
   });
-  
+
   card.setOnCancel(() => {
     state.canceled = true;
     abortAll();
     writer.abort();
     card.remove();
   });
-  
+
   // ----------------------------------------
   // Helpers
   // ----------------------------------------
-  
+
   function abortAll(): void {
     for (const [, req] of inflight) {
       try { req.abort(); } catch { /* ignore */ }
@@ -113,28 +113,28 @@ export async function downloadSegments(
     inflight.clear();
     inprog.clear();
   }
-  
+
   function enqueueRetry(i: number): void {
     retryQueue.add(i);
   }
-  
+
   function takeRetry(): number {
     const it = retryQueue.values().next();
     if (it.done) return -1;
     retryQueue.delete(it.value);
     return it.value;
   }
-  
+
   // ----------------------------------------
   // Progress UI
   // ----------------------------------------
-  
+
   let rafId = 0;
   function draw(): void {
     if (rafId) return;
     rafId = requestAnimationFrame(() => {
       rafId = 0;
-      
+
       let partial = 0;
       inprog.forEach(({ loaded, total: t }) => {
         if (t > 0) {
@@ -143,18 +143,18 @@ export async function downloadSegments(
           partial += Math.min(1, loaded / state.avgLen);
         }
       });
-      
+
       const pct = ((state.done + partial) / total) * 100;
       card.update(pct, `${state.done}/${total}`);
     });
   }
-  
+
   // ----------------------------------------
   // Writing
   // ----------------------------------------
-  
+
   let writeChain = Promise.resolve();
-  
+
   function queueFlush(): void {
     writeChain = writeChain.then(async () => {
       while (buffers.has(state.writePtr)) {
@@ -165,23 +165,23 @@ export async function downloadSegments(
       }
     });
   }
-  
+
   // ----------------------------------------
   // Key & Map fetching
   // ----------------------------------------
-  
+
   async function fetchKeyBytes(s: Segment): Promise<Uint8Array | null> {
     if (!s.key || s.key.method !== 'AES-128' || !s.key.uri) return null;
-    
+
     return once(keyCache, keyInflight, s.key.uri, async () => {
       const buf = await getBin(s.key!.uri!);
       return new Uint8Array(buf);
     }, 100);
   }
-  
+
   async function fetchMapBytes(s: Segment): Promise<Uint8Array | null> {
     if (!s.needMap || !s.map?.uri) return null;
-    
+
     const id = `${s.map.uri}|${s.map.rangeHeader || ''}`;
     return once(mapCache, mapInflight, id, async () => {
       const headers = s.map!.rangeHeader ? { Range: s.map!.rangeHeader } : {};
@@ -189,14 +189,14 @@ export async function downloadSegments(
       return new Uint8Array(buf);
     }, 100);
   }
-  
+
   // ----------------------------------------
   // Segment handling
   // ----------------------------------------
-  
+
   function fail(i: number, why: string): void {
     seg.attempts[i]++;
-    
+
     if (seg.attempts[i] > CFG.RETRIES) {
       seg.status[i] = -1;
       console.error(`[SG] Segment ${i} failed: ${why}`);
@@ -206,19 +206,19 @@ export async function downloadSegments(
       enqueueRetry(i);
     }
   }
-  
+
   function maybeFailFast(i: number): void {
     if (seg.status[i] === -1 && i === state.writePtr && !state.ended) {
       abortAll();
       finalize(false);
     }
   }
-  
+
   async function handleSegment(i: number): Promise<void> {
     const s = segs[i];
     seg.status[i] = 1;
     state.active++;
-    
+
     // Check unsupported encryption
     if (s.key && s.key.method && s.key.method !== 'AES-128') {
       state.active--;
@@ -228,9 +228,9 @@ export async function downloadSegments(
       check();
       return;
     }
-    
+
     const headers = s.range ? { Range: s.range } : {};
-    
+
     const req = getBin(
       s.uri,
       headers,
@@ -240,23 +240,22 @@ export async function downloadSegments(
         draw();
       }
     );
-    
-    // Store abort function
-    const abortable = req as { abort?: () => void };
-    inflight.set(i, { abort: () => abortable.abort?.() });
-    
+
+    // Store abort function - getBin now always returns AbortablePromise
+    inflight.set(i, { abort: () => req.abort() });
+
     try {
       let buf = await req;
-      
+
       // Decrypt if needed
       const keyBytes = await fetchKeyBytes(s);
       if (keyBytes) {
         const iv = s.key!.iv ? hexToU8(s.key!.iv) : ivFromSeq(parsed.mediaSeq + i);
         buf = await aesCbcDecrypt(buf, keyBytes, iv);
       }
-      
+
       let u8 = new Uint8Array(buf);
-      
+
       // Prepend init segment if needed
       if (s.needMap) {
         const mapBytes = await fetchMapBytes(s);
@@ -267,17 +266,17 @@ export async function downloadSegments(
           u8 = joined;
         }
       }
-      
+
       buffers.set(i, u8);
       inprog.delete(i);
       inflight.delete(i);
-      
+
       seg.status[i] = 2;
       state.active--;
       state.done++;
       state.byteDone += u8.length;
       state.avgLen = state.byteDone / Math.max(1, state.done);
-      
+
       draw();
       queueFlush();
     } catch (e) {
@@ -290,18 +289,18 @@ export async function downloadSegments(
       check();
     }
   }
-  
+
   // ----------------------------------------
   // Pump & Check
   // ----------------------------------------
-  
+
   function pump(): void {
     if (state.paused || state.canceled || state.ended) return;
-    
+
     while (state.active < CFG.CONCURRENCY) {
       // Try retry queue first
       let idx = takeRetry();
-      
+
       if (idx === -1) {
         // Find next pending segment
         while (state.nextIdx < total && seg.status[state.nextIdx] !== 0) {
@@ -311,28 +310,28 @@ export async function downloadSegments(
           idx = state.nextIdx++;
         }
       }
-      
+
       if (idx === -1) break;
       handleSegment(idx);
     }
   }
-  
+
   function check(): void {
     if (state.ended) return;
-    
+
     // Check if current write position failed
     if (seg.status[state.writePtr] === -1) {
       abortAll();
       finalize(false);
       return;
     }
-    
+
     // Check if all done
     if (state.done === total) {
       finalize(true);
       return;
     }
-    
+
     // Check if no active and some failed
     if (!state.active) {
       for (let i = 0; i < seg.status.length; i++) {
@@ -343,15 +342,15 @@ export async function downloadSegments(
       }
     }
   }
-  
+
   async function finalize(ok: boolean): Promise<void> {
     if (state.ended) return;
     state.ended = true;
-    
+
     try {
       queueFlush();
       await writeChain;
-      
+
       if (ok) {
         await writer.close();
         card.update(100, '');
@@ -367,7 +366,7 @@ export async function downloadSegments(
       abortAll();
     }
   }
-  
+
   // Start!
   pump();
 }

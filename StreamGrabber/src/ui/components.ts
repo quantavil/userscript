@@ -1,6 +1,7 @@
 import { html, render, nothing, type TemplateResult } from 'lit-html';
+import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
+import { classMap } from 'lit-html/directives/class-map.js';
 import type { MediaItem, ProgressCardController } from '../types';
-import { CFG } from '../config';
 import { ICONS } from './icons';
 import { formatBytes, uid } from '../utils';
 
@@ -25,7 +26,7 @@ async function copyToClipboard(text: string, btn: HTMLElement): Promise<boolean>
     }
     document.body.removeChild(textarea);
   }
-  
+
   const originalHTML = btn.innerHTML;
   btn.innerHTML = ICONS.check;
   btn.classList.add('copied');
@@ -52,27 +53,32 @@ export function renderFab(
   fabState: FabState,
   onClick: () => void
 ): void {
-  const classes = [
-    'sg-fab',
-    fabState.show ? 'show' : '',
-    fabState.busy ? 'busy' : '',
-    fabState.idle ? 'idle' : '',
-  ].filter(Boolean).join(' ');
-  
+  const fabClasses = {
+    'sg-fab': true,
+    'show': fabState.show,
+    'busy': fabState.busy,
+    'idle': fabState.idle,
+  };
+
+  const badgeClasses = {
+    'sg-badge': true,
+    'show': fabState.count > 0,
+  };
+
   const template = html`
     <button
-      class=${classes}
-      title="Download detected media"
+      class=${classMap(fabClasses)}
+      title="Download detected media (${fabState.count} items)"
       @click=${onClick}
       ?disabled=${fabState.busy}
     >
-      <span .innerHTML=${ICONS.download}></span>
-      <span class=${`sg-badge ${fabState.count > 0 ? 'show' : ''}`}>
-        ${fabState.count}
+      <span>${unsafeHTML(ICONS.download)}</span>
+      <span class=${classMap(badgeClasses)}>
+        ${fabState.count > 99 ? '99+' : fabState.count}
       </span>
     </button>
   `;
-  
+
   render(template, container);
 }
 
@@ -92,19 +98,33 @@ export function renderModal(
   onFilterChange: (checked: boolean) => void
 ): void {
   const anySizeKnown = items.some(i => i.size != null);
-  
-  const renderItem = (item: MediaItem) => {
+
+  const modalClasses = {
+    'sg-modal': true,
+    'show': show,
+  };
+
+  const renderItem = (item: MediaItem, index: number) => {
     const shortUrl = item.url.length > 65 ? item.url.slice(0, 65) + '…' : item.url;
-    
+
     const badges: TemplateResult[] = [];
+
+    // Kind badge
     if (item.kind === 'hls') {
-      if (item.hlsType === 'master') {
+      if (item.hlsType === 'error') {
+        badges.push(html`<span class="sg-badge-type error">Error</span>`);
+      } else if (item.hlsType === 'invalid') {
+        badges.push(html`<span class="sg-badge-type error">Invalid</span>`);
+      } else if (item.hlsType === 'master') {
         badges.push(html`<span class="sg-badge-type master">Master</span>`);
       } else if (item.hlsType === 'media') {
         badges.push(html`<span class="sg-badge-type video">Video</span>`);
+      } else if (item.enriching) {
+        badges.push(html`<span class="sg-badge-type analyzing">...</span>`);
       } else {
         badges.push(html`<span class="sg-badge-type video">HLS</span>`);
       }
+
       if (item.isLive) {
         badges.push(html`<span class="sg-badge-type live">Live</span>`);
       }
@@ -113,31 +133,39 @@ export function renderModal(
       }
     } else if (item.kind === 'video') {
       badges.push(html`<span class="sg-badge-type direct">Direct</span>`);
+    } else if (item.kind === 'variant') {
+      badges.push(html`<span class="sg-badge-type video">Quality</span>`);
     }
-    
+
+    // Remote badge (from iframe)
+    if (item.isRemote) {
+      badges.push(html`<span class="sg-badge-type remote">iFrame</span>`);
+    }
+
     const handleCopy = (e: Event) => {
       e.stopPropagation();
       copyToClipboard(item.url, e.currentTarget as HTMLElement);
     };
-    
+
     const handleClick = (e: Event) => {
       if (!(e.target as HTMLElement).closest('.sg-copy-btn')) {
         onSelect(item);
       }
     };
-    
+
     const handleKeydown = (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         onSelect(item);
       }
     };
-    
+
     return html`
       <div
         class="sg-item"
         role="button"
         tabindex="0"
+        data-index=${index}
         @click=${handleClick}
         @keydown=${handleKeydown}
       >
@@ -148,7 +176,7 @@ export function renderModal(
           </div>
           ${item.size ? html`<span class="sg-item-size">${formatBytes(item.size)}</span>` : nothing}
           <button class="sg-copy-btn" title="Copy URL" @click=${handleCopy}>
-            <span .innerHTML=${ICONS.copy}></span>
+            ${unsafeHTML(ICONS.copy)}
           </button>
         </div>
         ${item.sublabel ? html`<div class="sg-item-sub">${item.sublabel}</div>` : nothing}
@@ -156,21 +184,21 @@ export function renderModal(
       </div>
     `;
   };
-  
+
   const handleBackdropClick = (e: Event) => {
     if (e.target === e.currentTarget) onClose();
   };
-  
+
   const template = html`
     <div
-      class=${`sg-modal ${show ? 'show' : ''}`}
+      class=${classMap(modalClasses)}
       @click=${handleBackdropClick}
     >
-      <div class="sg-card" role="dialog" aria-modal="true">
+      <div class="sg-card" role="dialog" aria-modal="true" aria-labelledby="sg-modal-title">
         <div class="sg-card-head">
-          <div class="sg-card-title">${title}</div>
-          <button class="sg-btn" title="Close" @click=${onClose}>
-            <span .innerHTML=${ICONS.close}></span>
+          <div class="sg-card-title" id="sg-modal-title">${title}</div>
+          <button class="sg-btn" title="Close (Esc)" @click=${onClose}>
+            ${unsafeHTML(ICONS.close)}
           </button>
         </div>
         <div class="sg-card-body">
@@ -186,20 +214,20 @@ export function renderModal(
           ` : nothing}
           <div class="sg-list">
             ${items.length > 0
-              ? items.map(renderItem)
-              : html`<div class="sg-empty">No media detected yet.</div>`
-            }
+      ? items.map((item, i) => renderItem(item, i))
+      : html`<div class="sg-empty">No media detected yet.<br><small>Try playing a video on this page.</small></div>`
+    }
           </div>
         </div>
       </div>
     </div>
   `;
-  
+
   render(template, container);
 }
 
 // ============================================
-// Progress Card (Fixed Implementation)
+// Progress Card
 // ============================================
 
 class ProgressCardImpl implements ProgressCardController {
@@ -213,21 +241,21 @@ class ProgressCardImpl implements ProgressCardController {
   private onCancelFn?: () => void;
   private title: string;
   private src: string;
-  
+
   constructor(container: HTMLElement, title: string, src: string, segs = 0) {
     this.container = container;
     this.title = title;
     this.src = src;
-    this.statusText = segs ? `${segs} segs` : '';
-    
+    this.statusText = segs ? `${segs} segments` : 'Starting...';
+
     this.element = document.createElement('div');
     this.element.className = 'sg-progress';
     this.element.id = `sg-progress-${uid()}`;
     this.container.appendChild(this.element);
-    
+
     this.render();
   }
-  
+
   private render(): void {
     const handleStop = () => {
       if (this.onStopFn) {
@@ -236,16 +264,22 @@ class ProgressCardImpl implements ProgressCardController {
         this.render();
       }
     };
-    
+
     const handleMinimize = () => {
       this.minimized = !this.minimized;
       this.render();
     };
-    
+
     const handleCancel = () => {
       this.onCancelFn?.();
     };
-    
+
+    const progressClasses = {
+      'sg-progress': true,
+      'minimized': this.minimized,
+      'paused': this.isPaused,
+    };
+
     const template = html`
       <div class="sg-progress-row">
         <div class="sg-progress-name" title=${this.src}>${this.title}</div>
@@ -256,18 +290,18 @@ class ProgressCardImpl implements ProgressCardController {
               title=${this.isPaused ? 'Resume' : 'Pause'} 
               @click=${handleStop}
             >
-              <span .innerHTML=${this.isPaused ? ICONS.play : ICONS.pause}></span>
+              ${unsafeHTML(this.isPaused ? ICONS.play : ICONS.pause)}
             </button>
           ` : nothing}
           <button 
             class="sg-btn sg-btn-small btn-minimize" 
-            title=${this.minimized ? 'Show' : 'Hide'} 
+            title=${this.minimized ? 'Expand' : 'Minimize'} 
             @click=${handleMinimize}
           >
-            <span .innerHTML=${this.minimized ? ICONS.maximize : ICONS.minimize}></span>
+            ${unsafeHTML(this.minimized ? ICONS.maximize : ICONS.minimize)}
           </button>
           <button class="sg-btn sg-btn-small" title="Cancel" @click=${handleCancel}>
-            <span .innerHTML=${ICONS.cancel}></span>
+            ${unsafeHTML(ICONS.cancel)}
           </button>
         </div>
       </div>
@@ -279,37 +313,43 @@ class ProgressCardImpl implements ProgressCardController {
         <span>${Math.floor(this.percent)}%</span>
       </div>
     `;
-    
-    this.element.className = `sg-progress ${this.minimized ? 'minimized' : ''}`;
+
+    // Build class string
+    const classStr = Object.entries(progressClasses)
+      .filter(([, v]) => v)
+      .map(([k]) => k)
+      .join(' ');
+
+    this.element.className = classStr;
     render(template, this.element);
   }
-  
+
   update(percent: number, text = ''): void {
     this.percent = Math.max(0, Math.min(100, percent));
-    this.statusText = text;
+    if (text) this.statusText = text;
     this.render();
   }
-  
+
   done(ok = true, msg?: string): void {
     const fill = this.element.querySelector('.sg-progress-fill') as HTMLElement;
     if (fill) {
-      fill.style.background = ok ? '#10b981' : '#e74c3c';
+      fill.style.background = ok ? 'var(--sg-ok)' : 'var(--sg-bad)';
     }
     this.percent = 100;
-    this.statusText = msg || (ok ? '✓' : '✗');
+    this.statusText = msg || (ok ? 'Complete ✓' : 'Failed ✗');
     this.render();
-    setTimeout(() => this.remove(), 2200);
+    setTimeout(() => this.remove(), 2500);
   }
-  
+
   remove(): void {
     this.element.remove();
   }
-  
+
   setOnStop(fn: () => 'paused' | 'resumed'): void {
     this.onStopFn = fn;
     this.render();
   }
-  
+
   setOnCancel(fn: () => void): void {
     this.onCancelFn = fn;
   }
