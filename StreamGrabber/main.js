@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name StreamGrabber
 // @namespace https://github.com/streamgrabber-lite
-// @version 1.2.6
+// @version 1.3.0
 // @description Lightweight downloader for HLS (.m3u8 via m3u8 parser), video blobs, and direct videos. Mobile plus Desktop. Pause or Resume. AES 128. fMP4. Minimal UI.
 // @match *://*/*
 // --- Existing Social and Streaming Exclusions ---
@@ -163,9 +163,10 @@
     CONC: 6,
     REQ_MS: 60000,
     MAN_MS: 30000,
-    SMALL_BYTES: 1 * 1024 * 1024, // 1MB
-    UI_IDLE_MS: 5000, // idle fade delay
+    SMALL_BYTES: 1 * 1024 * 1024,
+    UI_IDLE_MS: 5000,
     IS_TOP: window.self === window.top,
+    ENRICH_DELAY: 150,
   };
   const CACHE = {
     TEXT_MAX: 256,
@@ -177,22 +178,18 @@
   // =========================
   // State & caches
   // =========================
-  // DB items: { url, kind, label, size, type, origin, win? }
-  // We use Maps now to track metadata better
   const STATE = {
-    items: new Map(), // url -> item (kept uniquely by url)
+    items: new Map(),
   };
   const DB = {
-    // Deprecated old Sets, kept for legacy compat if referenced, 
-    // but we primarily use STATE.items now for the UI list.
     m3u8: new Set(),
     vid: new Set(),
   };
-  const BLOBS = new Map(); // blobUrl -> { blob, type, size, kind, ts, revoked? }
-  const textCache = new Map(); // url -> text (LRU-ish via bump)
-  const inflightText = new Map(); // url -> Promise<string>
-  const headCache = new Map(); // url -> { length, type } (LRU-ish via bump)
-  const inflightHead = new Map(); // url -> Promise<meta>
+  const BLOBS = new Map();
+  const textCache = new Map();
+  const inflightText = new Map();
+  const headCache = new Map();
+  const inflightHead = new Map();
   const watchedVideos = new Set();
 
   // Settings
@@ -215,7 +212,24 @@
   const looksVideoType = (t = '') => /^video\//i.test(t) || /(matroska|mp4|webm|quicktime)/i.test(t);
   const safeAbs = (u, b) => { try { return new URL(u, b).href; } catch { return u; } };
   const cleanName = (s) => (s || 'video').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120).trim() || 'video';
-  const fmtBytes = (n) => { if (n == null) return ''; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0, v = n; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`; };
+  
+  const fmtBytes = (n) => {
+    if (n == null) return '';
+    const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0, v = n;
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
+  };
+
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds <= 0) return null;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+
   const extFromType = (t = '') => {
     t = t.toLowerCase();
     if (t.includes('webm')) return 'webm';
@@ -226,9 +240,42 @@
     if (t.includes('mp4')) return 'mp4';
     return 'mp4';
   };
+
   const guessExt = (url, type) => {
-    const m = /(?:\.([a-z0-9]+))([?#]|$)/i.exec(url || ''); return m ? m[1].toLowerCase() : (type ? extFromType(type) : 'mp4');
+    const m = /(?:\.([a-z0-9]+))([?#]|$)/i.exec(url || '');
+    return m ? m[1].toLowerCase() : (type ? extFromType(type) : 'mp4');
   };
+
+  // Extract resolution from URL patterns
+  function extractResFromUrl(url) {
+    if (!url) return null;
+    const patterns = [
+      /[_\-\/](\d{3,4})p(?:[_\-\/\.]|$)/i,
+      /[_\-\/](\d{3,4})x(\d{3,4})(?:[_\-\/\.]|$)/i,
+      /resolution[=_]?(\d{3,4})/i,
+      /quality[=_]?(\d{3,4})/i,
+      /[_\-]hd(\d{3,4})/i,
+      /(\d{3,4})\.m3u8/i,
+    ];
+    for (const p of patterns) {
+      const m = p.exec(url);
+      if (m) {
+        if (m[2]) return `${m[1]}x${m[2]}`;
+        const h = parseInt(m[1], 10);
+        if (h >= 144 && h <= 4320) return `${h}p`;
+      }
+    }
+    return null;
+  }
+
+  // Quick guess HLS type from URL
+  function guessHlsType(url) {
+    const lc = (url || '').toLowerCase();
+    if (/master|index|manifest|playlist\.m3u8/i.test(lc)) return 'master';
+    if (/chunklist|media|video|segment|quality|stream_\d|_\d{3,4}p?\./i.test(lc)) return 'media';
+    return 'unknown';
+  }
+
   function once(cache, inflight, key, loader, max) {
     const inC = lruGet(cache, key);
     if (inC !== undefined) return Promise.resolve(inC);
@@ -240,6 +287,7 @@
     inflight.set(key, p);
     return p;
   }
+
   const parseRange = (v) => {
     if (!v) return null;
     const m = /bytes=(\d+)-(\d+)?/i.exec(v);
@@ -247,11 +295,9 @@
     return { start: +m[1], end: m[2] != null ? +m[2] : null };
   };
 
-  // bounded add helper for STATE.items
   function boundedAddItem(item, max = CACHE.DB_MAX) {
     if (STATE.items.has(item.url)) return false;
     STATE.items.set(item.url, item);
-    // keep syncing legacy sets for minimal breakage
     if (item.kind === 'hls') DB.m3u8.add(item.url);
     else DB.vid.add(item.url);
 
@@ -266,14 +312,15 @@
     }
     return true;
   }
-  // LRU-ish helpers for Maps (bump on get, trim on set)
+
   function lruGet(map, key) {
     if (!map.has(key)) return undefined;
     const v = map.get(key);
-    map.delete(key); // bump to end
+    map.delete(key);
     map.set(key, v);
     return v;
   }
+
   function lruSet(map, key, val, max) {
     if (map.has(key)) map.delete(key);
     map.set(key, val);
@@ -283,9 +330,8 @@
       }
     }
   }
-  // passive cache trim (+prune revoked blobs)
+
   function trimCaches() {
-    // trim DB via bounded rule enforcement if needed, mostly handled on add
     while (STATE.items.size > CACHE.DB_MAX) {
       const k = STATE.items.keys().next().value;
       STATE.items.delete(k);
@@ -323,6 +369,7 @@
     p.abort = () => { try { ref?.abort(); } catch { } };
     return p;
   }
+
   const getText = (url) => once(textCache, inflightText, url, async () => {
     if (isBlob(url)) {
       const info = BLOBS.get(url);
@@ -332,6 +379,7 @@
     }
     return gmGet({ url, responseType: 'text', timeout: CFG.MAN_MS });
   }, CACHE.TEXT_MAX);
+
   function getBin(url, headers = {}, timeout = CFG.REQ_MS, onprogress) {
     if (isBlob(url)) {
       const info = BLOBS.get(url);
@@ -344,6 +392,7 @@
     }
     return gmGet({ url, responseType: 'arraybuffer', headers, timeout, onprogress });
   }
+
   const headMeta = (url) => once(headCache, inflightHead, url, async () => {
     try {
       const resp = await new Promise((res, rej) => {
@@ -370,11 +419,14 @@
     for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
     return out;
   };
+
   const ivFromSeq = (n) => {
-    n = BigInt(n >>> 0); const iv = new Uint8Array(16);
+    n = BigInt(n >>> 0);
+    const iv = new Uint8Array(16);
     for (let i = 15; i >= 0; i--) { iv[i] = Number(n & 0xffn); n >>= 8n; }
     return iv;
   };
+
   async function aesCbcDec(buf, keyBytes, iv) {
     const k = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['decrypt']);
     return crypto.subtle.decrypt({ name: 'AES-CBC', iv }, k, buf);
@@ -424,7 +476,7 @@
   .umdl-pick.show{display:flex}
   .umdl-card{
     background:var(--sg-bg);color:var(--sg-fg);border:1px solid var(--sg-border-2);
-    border-radius:10px;width:min(500px,94vw);max-height:84vh;overflow:hidden
+    border-radius:10px;width:min(520px,94vw);max-height:84vh;overflow:hidden
   }
   .umdl-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #2d2d2d}
   .umdl-head .ttl{font-size:15px;font-weight:600;color:#fff}
@@ -448,15 +500,33 @@
   .umdl-list{display:flex;flex-direction:column;gap:8px}
   .umdl-item{
     background:var(--sg-bg-2);border:1px solid var(--sg-border);border-radius:8px;
-    padding:12px 14px;cursor:pointer
+    padding:12px 14px;cursor:pointer;transition:border-color .15s,background .15s
   }
   .umdl-item:hover{background:#2d2d2d;border-color:var(--sg-border-2)}
-  .umdl-item-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
-  .umdl-item .t{font-weight:600;font-size:13px;color:#fff;line-height:1.4;flex:1}
+  .umdl-item-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+  .umdl-item .t{
+    font-weight:600;font-size:13px;color:#fff;line-height:1.4;flex:1;
+    display:flex;align-items:center;flex-wrap:wrap;gap:6px
+  }
   .umdl-item .s{
     font-size:11px;color:var(--sg-fg-dimmer);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     font-family:ui-monospace,SF Mono,Consolas,monospace
   }
+  .umdl-item .sub{
+    font-size:10px;color:#666;margin-top:4px;margin-bottom:2px
+  }
+  .umdl-item .sz{
+    font-size:11px;color:#888;margin-left:auto;white-space:nowrap;padding-left:8px
+  }
+  .umdl-type-badge{
+    font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;text-transform:uppercase;
+    letter-spacing:0.3px
+  }
+  .umdl-type-badge.master{background:#6366f1;color:#fff}
+  .umdl-type-badge.video{background:#10b981;color:#fff}
+  .umdl-type-badge.direct{background:#f59e0b;color:#fff}
+  .umdl-type-badge.live{background:#ef4444;color:#fff}
+  .umdl-type-badge.encrypted{background:#8b5cf6;color:#fff}
   .umdl-copy-btn{
     background:var(--sg-bg-3);border:1px solid var(--sg-border-2);color:var(--sg-fg-dim);
     border-radius:6px;padding:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0
@@ -551,7 +621,7 @@
   const PROG_WRAP = TOAST;
 
   function mountUI() {
-    if (!CFG.IS_TOP) return; // Only Top Window mounts UI
+    if (!CFG.IS_TOP) return;
     if (!document.body) { document.addEventListener('DOMContentLoaded', mountUI, { once: true }); return; }
     if (!FAB.parentNode) document.body.appendChild(FAB);
     if (!PANEL.parentNode) document.body.appendChild(PANEL);
@@ -589,50 +659,43 @@
     const d = ev.data;
     if (!d || typeof d !== 'object') return;
 
-    // Child Logic
     if (d.type === 'SG_CMD_DOWNLOAD') {
       const { url, kind, variant } = d.payload || {};
       if (kind === 'video') downloadDirect(url, true);
       else if (kind === 'hls' || kind === 'variant') downloadHls(url, variant, true);
     }
     if (d.type === 'SG_CMD_PICK_RESULT') {
-      const { id, idx } = d.payload; // We send back index or null? Or full object?
-      // Sending index is safer to map back to local object list if we can.
-      // But we sent the full list.
-      // Let's expect the chosen ITEM back, or null.
+      const { id } = d.payload;
       const res = PICKER_REQS.get(id);
       if (res) {
         PICKER_REQS.delete(id);
-        res(d.payload.item); // item or null
+        res(d.payload.item);
       }
     }
-    // Control commands from Top
     if (d.type === 'SG_CMD_CONTROL') {
       const { id, action } = d.payload;
-      const ctrl = PICKER_REQS.get(id + '_ctrl'); // We reused this map for controls? hacky but works
+      const ctrl = PICKER_REQS.get(id + '_ctrl');
       if (ctrl) {
         if (action === 'cancel') ctrl.onCancel?.();
         if (action === 'stop') ctrl.onStop?.();
       }
     }
 
-    // Top Logic
     if (!CFG.IS_TOP) return;
 
     if (d.type === 'SG_DETECT' && d.item) {
       const it = d.item;
-      // Attach remote source for callbacks
       it.remoteWin = ev.source;
       it.isRemote = true;
       if (boundedAddItem(it)) {
         showFab();
         setBadge();
+        if (it.kind === 'hls') queueEnrich(it.url);
       }
     }
     else if (d.type === 'SG_PROGRESS_START') {
-      // Create a proxy card
       const { id, title, src, stoppable } = d.payload;
-      createRemoteCard(id, title, src, ev.source); // pass stoppable? in makeProgress options
+      createRemoteCard(id, title, src, ev.source);
     }
     else if (d.type === 'SG_PROGRESS_UPDATE') {
       updateRemoteCard(d.payload);
@@ -721,17 +784,142 @@
   }
 
   // =========================
+  // HLS Enrichment System
+  // =========================
+  const enrichQueue = new Set();
+  let enrichRunning = false;
+  let enrichTimeout = null;
+
+  async function enrichHlsItem(item) {
+    if (!item || item.enriched || item.enriching) return false;
+    item.enriching = true;
+
+    try {
+      const txt = await getText(item.url);
+      const man = parseManifest(txt);
+
+      // Master playlist
+      if (Array.isArray(man.playlists) && man.playlists.length > 0) {
+        const variants = buildVariantsFromManifest(man, item.url);
+        const sorted = variants.sort((a, b) => (b.h || 0) - (a.h || 0) || (b.avg || b.peak || 0) - (a.avg || a.peak || 0));
+        const best = sorted[0];
+        const count = variants.length;
+
+        let parts = [];
+        parts.push(`${count} ${count === 1 ? 'quality' : 'qualities'}`);
+        if (best?.res) parts.push(`up to ${best.res}`);
+        else if (best?.h) parts.push(`up to ${best.h}p`);
+
+        item.label = parts.join(' • ');
+        item.hlsType = 'master';
+        item.variantCount = count;
+        item.variants = variants;
+        item.bestVariant = best;
+      }
+      // Media playlist
+      else if (Array.isArray(man.segments) && man.segments.length > 0) {
+        const parsed = buildMediaFromManifest(man, item.url);
+        const segs = parsed.segs;
+        const segCount = segs.length;
+        const duration = man.segments.reduce((a, s) => a + (s.duration || 0), 0);
+        const isVod = !!man.endList;
+
+        const exactBytes = computeExactBytesFromSegments(parsed);
+        const res = extractResFromUrl(item.url);
+        const isFmp4 = segs.some(s => s.map) || /\.m4s(\?|$)/i.test(segs[0]?.uri || '');
+        const format = isFmp4 ? 'fMP4' : 'TS';
+        const encrypted = segs.some(s => s.key?.method === 'AES-128');
+
+        let parts = [];
+        if (res) parts.push(res);
+        if (duration > 0) {
+          const dur = formatDuration(duration);
+          if (dur) parts.push(dur);
+        }
+        if (exactBytes != null) {
+          parts.push(`~${fmtBytes(exactBytes)}`);
+          item.size = exactBytes;
+        }
+
+        item.label = parts.length > 0 ? parts.join(' • ') : 'Video Stream';
+        item.sublabel = `${segCount} segments • ${format}`;
+        item.hlsType = 'media';
+        item.duration = duration;
+        item.segCount = segCount;
+        item.resolution = res;
+        item.isVod = isVod;
+        item.isFmp4 = isFmp4;
+        item.encrypted = encrypted;
+        item.isLive = !isVod;
+      }
+      else {
+        item.label = 'Empty or Invalid';
+        item.hlsType = 'invalid';
+      }
+
+      item.enriched = true;
+      return true;
+    } catch (e) {
+      err('enrichHlsItem', e);
+      item.label = 'Parse Error';
+      item.hlsType = 'error';
+      item.enriched = true;
+      return false;
+    } finally {
+      item.enriching = false;
+    }
+  }
+
+  async function processEnrichQueue() {
+    if (enrichRunning) return;
+    enrichRunning = true;
+
+    try {
+      while (enrichQueue.size > 0) {
+        const url = enrichQueue.values().next().value;
+        enrichQueue.delete(url);
+
+        const item = STATE.items.get(url);
+        if (item && item.kind === 'hls' && !item.enriched) {
+          await enrichHlsItem(item);
+          if (PANEL.classList.contains('show')) {
+            refreshListUI();
+          }
+          setBadge();
+        }
+      }
+    } finally {
+      enrichRunning = false;
+    }
+  }
+
+  function queueEnrich(url) {
+    enrichQueue.add(url);
+    clearTimeout(enrichTimeout);
+    enrichTimeout = setTimeout(processEnrichQueue, CFG.ENRICH_DELAY);
+  }
+
+  function refreshListUI() {
+    if (!PANEL.classList.contains('show')) return;
+    buildItems().then(items => {
+      const filtered = SETTINGS.excludeSmall
+        ? items.filter(x => x.size == null || x.size >= CFG.SMALL_BYTES)
+        : items;
+      renderList(filtered);
+    });
+  }
+
+  // =========================
   // Detection
   // =========================
   function take(url, metadata = {}) {
     try {
       if (!url || (!isHttp(url) && !isBlob(url))) return;
-      if (isSegmentUrl(url)) return; // Explicitly ignore segments
+      if (isSegmentUrl(url)) return;
 
       let size = metadata.size || null;
       let type = metadata.type || null;
 
-      // Populate from BLOBS if missing
       if (isBlob(url)) {
         const info = BLOBS.get(url);
         if (info) {
@@ -740,40 +928,62 @@
         }
       }
 
-      // Filter small video blobs (likely segments)
-      // 512KB min for blobs to be considered "Video"
       if (isBlob(url) && size != null && size < 512 * 1024 && !isM3U8Url(url) && BLOBS.get(url)?.kind !== 'm3u8') {
         return;
       }
 
-      const kind = (isM3U8Url(url) || (isBlob(url) && BLOBS.get(url)?.kind === 'm3u8')) ? 'hls' :
+      const isHls = isM3U8Url(url) || (isBlob(url) && BLOBS.get(url)?.kind === 'm3u8');
+      const kind = isHls ? 'hls' :
         (isVideoUrl(url) || (isBlob(url) && BLOBS.get(url)?.kind === 'video')) ? 'video' : null;
 
       if (!kind) return;
 
+      // Initial label
+      let label;
+      let sublabel = null;
+      if (kind === 'hls') {
+        const guess = guessHlsType(url);
+        const res = extractResFromUrl(url);
+        if (guess === 'master') {
+          label = 'Analyzing...';
+        } else if (res) {
+          label = `${res} • Analyzing...`;
+        } else {
+          label = 'Analyzing...';
+        }
+      } else {
+        label = guessExt(url, type).toUpperCase();
+      }
+
       const item = {
         url,
         kind,
-        label: kind === 'hls' ? 'HLS' : (guessExt(url, type).toUpperCase()),
-        size: size,
-        type: type,
-        origin: document.location.origin
+        label,
+        sublabel,
+        size,
+        type,
+        origin: document.location.origin,
+        enriched: false,
+        enriching: false,
+        hlsType: null,
+        isLive: false,
+        encrypted: false,
       };
 
       if (!CFG.IS_TOP) {
-        // We are in iframe: send to Top
-        // We cannot send 'window' object, so we listen for commands
-        // We use the URL as ID. If blob, it's unique enough for this session reference.
         window.top.postMessage({ type: 'SG_DETECT', item: JSON.parse(JSON.stringify(item)) }, '*');
       } else {
-        // We are Top: Add locally
         if (boundedAddItem(item)) {
           showFab();
           setBadge();
+          if (kind === 'hls') {
+            queueEnrich(url);
+          }
         }
       }
     } catch (e) { err('take', e); }
   }
+
   // Hook: createObjectURL
   (() => {
     const bak = URL.createObjectURL;
@@ -810,6 +1020,7 @@
       return r.call(this, href);
     };
   })();
+
   // Hook: fetch
   (() => {
     const f = window.fetch;
@@ -823,6 +1034,7 @@
       };
     }
   })();
+
   // Hook: XHR
   (() => {
     const o = XMLHttpRequest.prototype.open;
@@ -831,11 +1043,13 @@
       return o.call(this, method, url, ...rest);
     };
   })();
+
   // PerfObserver
   try {
     const po = new PerformanceObserver(list => list.getEntries().forEach(e => take(e.name)));
     po.observe({ entryTypes: ['resource'] });
   } catch { }
+
   // Video tags scanning
   function watchVideo(v) {
     if (v.__sg_watch) return;
@@ -848,9 +1062,11 @@
     watchedVideos.add(v);
     cb();
   }
+
   function scanVideos() {
     document.querySelectorAll('video').forEach(watchVideo);
   }
+
   let mo;
   document.addEventListener('DOMContentLoaded', () => {
     scanVideos();
@@ -876,26 +1092,61 @@
   function renderList(list) {
     const listEl = PANEL.querySelector('.umdl-list');
     listEl.innerHTML = '';
+
     if (!list.length) {
       const empty = document.createElement('div');
       empty.className = 'umdl-empty';
-      empty.textContent = 'No items match the filter.';
+      empty.textContent = 'No media detected yet.';
       listEl.appendChild(empty);
       return;
     }
+
     list.forEach((it) => {
       const div = document.createElement('div');
       div.className = 'umdl-item';
       div.setAttribute('role', 'button');
       div.tabIndex = 0;
-      const shortUrl = it.url.length > 80 ? it.url.slice(0, 80) + '…' : it.url;
+
+      const shortUrl = it.url.length > 65 ? it.url.slice(0, 65) + '…' : it.url;
+
+      // Build badges
+      let badges = '';
+      if (it.kind === 'hls') {
+        if (it.hlsType === 'master') {
+          badges += '<span class="umdl-type-badge master">Master</span>';
+        } else if (it.hlsType === 'media') {
+          badges += '<span class="umdl-type-badge video">Video</span>';
+        } else {
+          badges += '<span class="umdl-type-badge video">HLS</span>';
+        }
+        if (it.isLive) {
+          badges += '<span class="umdl-type-badge live">Live</span>';
+        }
+        if (it.encrypted) {
+          badges += '<span class="umdl-type-badge encrypted">🔒</span>';
+        }
+      } else if (it.kind === 'video') {
+        badges += '<span class="umdl-type-badge direct">Direct</span>';
+      }
+
+      // Size
+      const sizeText = it.size ? `<span class="sz">${fmtBytes(it.size)}</span>` : '';
+
+      // Sublabel
+      const sublabelHtml = it.sublabel ? `<div class="sub">${escapeHtml(it.sublabel)}</div>` : '';
+
       div.innerHTML = `
-      <div class="umdl-item-top">
-        <div class="t">${escapeHtml(it.label)}</div>
-        <button class="umdl-copy-btn" title="Copy URL">${ICONS.copy}</button>
-      </div>
-      <div class="s" title="${escapeHtml(it.url)}">${escapeHtml(shortUrl)}</div>
-    `;
+        <div class="umdl-item-top">
+          <div class="t">
+            <span>${escapeHtml(it.label)}</span>
+            ${badges}
+          </div>
+          ${sizeText}
+          <button class="umdl-copy-btn" title="Copy URL">${ICONS.copy}</button>
+        </div>
+        ${sublabelHtml}
+        <div class="s" title="${escapeHtml(it.url)}">${escapeHtml(shortUrl)}</div>
+      `;
 
       const copyBtn = div.querySelector('.umdl-copy-btn');
       copyBtn.onclick = (e) => {
@@ -905,38 +1156,29 @@
 
       const act = () => resolvePicker(it);
       div.onclick = (e) => {
-        if (!e.target.closest('.umdl-copy-btn')) {
-          act();
-        }
+        if (!e.target.closest('.umdl-copy-btn')) act();
       };
       div.onkeydown = (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          act();
-        }
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); }
       };
 
       listEl.appendChild(div);
     });
   }
+
   let resolvePicker = () => { };
+
   // =========================
   // UI interactions
   // =========================
-  // Maps for async coordination
-  const REMOTE_JOBS = new Map(); // id -> { update, done, remove } (Top only)
-  const PICKER_REQS = new Map(); // id -> resolve (Child only)
+  const REMOTE_JOBS = new Map();
+  const PICKER_REQS = new Map();
 
   function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
   async function pickFromList(items, { title = 'Select Media', filterable = true } = {}) {
     if (!CFG.IS_TOP) {
-      // Proxy to Top
       const id = uid();
-      // We can't send complex objects (like functions) or self structures easily if they have cycles
-      // Items from DB are simple JSON-able, but if they came from *another* frame, they might be complex?
-      // Actually items in Slave are likely local structured ones.
-      // We strip non-clonable data just in case?
       const safeItems = JSON.parse(JSON.stringify(items));
       window.top.postMessage({
         type: 'SG_CMD_PICK',
@@ -945,7 +1187,6 @@
       return new Promise(res => PICKER_REQS.set(id, res));
     }
 
-    // Top Logic (Existing)
     return new Promise((resolve) => {
       resolvePicker = (v) => { closePanel(); resolve(v ?? null); };
       const ttl = PANEL.querySelector('.ttl');
@@ -976,9 +1217,6 @@
     });
   }
 
-  // =========================
-  // UI interactions
-  // =========================
   FAB.addEventListener('click', async (ev) => {
     clearIdle(); setIdle();
     let items = [];
@@ -986,7 +1224,6 @@
     try {
       items = await buildItems();
 
-      // Alt-click: quick start when exactly 1 item
       if (ev.altKey && items.length === 1) {
         await handleItem(items[0]);
         return;
@@ -1005,7 +1242,6 @@
   // Progress card
   function makeProgress(title, src, { stoppable = false, onStop, onCancel, segs = 0 } = {}) {
     if (!CFG.IS_TOP) {
-      // Proxy to Top
       const id = uid();
       const job = {
         update(p, txt) {
@@ -1014,15 +1250,12 @@
         done(ok, msg) {
           window.top.postMessage({ type: 'SG_PROGRESS_DONE', payload: { id, ok, msg } }, '*');
         },
-        remove() { /* No op, done handles it? Or send explicit remove? */ }
+        remove() { }
       };
-
-      // Register for control callbacks
       PICKER_REQS.set(id + '_ctrl', { onStop, onCancel });
-
       window.top.postMessage({
         type: 'SG_PROGRESS_START',
-        payload: { id, title, src, stoppable } // 'segs' only used for UI text?
+        payload: { id, title, src, stoppable }
       }, '*');
       return job;
     }
@@ -1084,17 +1317,13 @@
     };
   }
 
-  // Remote Card Helpers (Top)
   function createRemoteCard(id, title, src, sourceWin) {
     if (REMOTE_JOBS.has(id)) return;
     const card = makeProgress(title, src, {
-      stoppable: true, // We assume stoppable if remote requests it? Or passed in payload?
+      stoppable: true,
       onStop: () => {
         sourceWin.postMessage({ type: 'SG_CMD_CONTROL', payload: { id, action: 'stop' } }, '*');
-        return 'paused'; // UI assumes paused immediately? Sync issue. 
-        // Actually Top UI updates button icon based on return value.
-        // We might need to handle async state or just toggle blindly.
-        // For now, let's toggle blindly.
+        return 'paused';
       },
       onCancel: () => {
         sourceWin.postMessage({ type: 'SG_CMD_CONTROL', payload: { id, action: 'cancel' } }, '*');
@@ -1102,19 +1331,19 @@
         REMOTE_JOBS.delete(id);
       }
     });
-    // Extend card with ID ref if needed?
     REMOTE_JOBS.set(id, card);
   }
+
   function updateRemoteCard({ id, p, txt }) {
     const card = REMOTE_JOBS.get(id);
     if (card) card.update(p, txt);
   }
+
   function finishRemoteCard({ id, ok, msg }) {
     const card = REMOTE_JOBS.get(id);
     if (card) {
       card.done(ok, msg);
       if (ok) setTimeout(() => REMOTE_JOBS.delete(id), 2500);
-      // On error/cancel, we might keep it or delete it. Done handles delete timeout.
     }
   }
 
@@ -1122,6 +1351,7 @@
   // M3U8 parsing via m3u8-parser
   // =========================
   const M3U8 = (typeof m3u8Parser !== 'undefined' ? m3u8Parser : (window.m3u8Parser || globalThis.m3u8Parser));
+
   function parseManifest(text) {
     if (!M3U8?.Parser) throw new Error('m3u8-parser not available');
     const parser = new M3U8.Parser();
@@ -1129,6 +1359,7 @@
     parser.end();
     return parser.manifest;
   }
+
   function buildVariantsFromManifest(man, base) {
     const out = [];
     const pls = Array.isArray(man.playlists) ? man.playlists : [];
@@ -1148,12 +1379,14 @@
     }
     return out;
   }
+
   function rangeHeaderFromByterange(br, fallbackStart = 0) {
     if (!br || typeof br.length !== 'number') return { header: null, next: fallbackStart };
     const start = (typeof br.offset === 'number') ? br.offset : fallbackStart;
     const end = start + br.length - 1;
     return { header: `bytes=${start}-${end}`, next: end + 1 };
   }
+
   function buildMediaFromManifest(man, base) {
     const segs = [];
     const srcSegs = Array.isArray(man.segments) ? man.segments : [];
@@ -1162,7 +1395,6 @@
     for (let i = 0; i < srcSegs.length; i++) {
       const s = srcSegs[i];
 
-      // Segment byterange -> Range header
       let rangeHeader = null;
       if (s.byterange) {
         const r = rangeHeaderFromByterange(s.byterange, lastNext);
@@ -1172,7 +1404,6 @@
         lastNext = 0;
       }
 
-      // Init map (fMP4)
       let map = null;
       let needMap = false;
       if (s.map?.uri) {
@@ -1188,7 +1419,6 @@
         if (needMap) prevMapSig = sig;
       }
 
-      // Key
       let key = null;
       if (s.key?.method && s.key.method !== 'NONE') {
         key = {
@@ -1209,6 +1439,7 @@
     }
     return { segs, mediaSeq: man.mediaSequence || 0, endList: !!man.endList };
   }
+
   function computeExactBytesFromSegments(parsed) {
     let exact = true;
     let total = 0;
@@ -1233,6 +1464,7 @@
     }
     return exact ? total : null;
   }
+
   function estimateHlsFromManifest(man, base, variant = null) {
     const parsed = buildMediaFromManifest(man, base);
     const seconds = (Array.isArray(man.segments) ? man.segments : []).reduce((a, s) => a + (s.duration || 0), 0);
@@ -1247,37 +1479,21 @@
   // =========================
   // Build items
   // =========================
-  // =========================
-  // Build items
-  // =========================
   async function buildItems() {
-    // Return unified list from STATE
-    // Sorting: Videos first? Or timestamp?
     return Array.from(STATE.items.values()).reverse();
   }
 
   async function handleItem(it) {
     if (it.isRemote && it.remoteWin) {
       if (it.remoteWin.closed) { alert('Source frame is gone'); return; }
-      // Ask slave to download
-      // For HLS master playlist, we might want to ask slave to list variants?
-      // Currently implementing direct variant selection in slave logic or simple trigger.
-      // For simplicity: If it's a generic HLS, we trigger downloadHls on slave.
-      // Slave will do the variant fetching/prompting? 
-      // Wait, UI is on master. Slave can't prompt.
-      // If HLS, we might need to fetch variants via Master.
-      // Complex case: Remote HLS. Master parses manifest?
-      // If URL is Http, Master can fetch manifest. If Blob, Master can't.
 
       if (it.kind === 'hls' && !isBlob(it.url)) {
-        // Master can handle it directly if public URL
         return downloadHls(it.url);
       }
       if (it.kind === 'video' && !isBlob(it.url)) {
         return downloadDirect(it.url);
       }
 
-      // Blob or otherwise restricted: Send command
       it.remoteWin.postMessage({
         type: 'SG_CMD_DOWNLOAD',
         payload: { url: it.url, kind: it.kind, variant: it.variant }
@@ -1285,7 +1501,6 @@
       return;
     }
 
-    // Local handling
     if (it.kind === 'video') return downloadDirect(it.url);
     if (it.kind === 'variant') return downloadHls(it.url, it.variant);
     if (it.kind === 'hls') return downloadHls(it.url);
@@ -1300,7 +1515,7 @@
     const ext = guessExt(url, info?.type);
     const fn = `${cleanName(document.title)}.${ext}`;
 
-    const card = makeProgress(fn, url, { onCancel: () => card.remove() }); // GM_download cancellation tricky, simple UI remove
+    const card = makeProgress(fn, url, { onCancel: () => card.remove() });
 
     let dlUrl = url;
     let cleanup = () => { };
@@ -1353,7 +1568,6 @@
         // fallthrough to in-memory
       }
     }
-    // Fallback: in-memory (GM_download)
     const chunks = [];
     return {
       write: (chunk) => { chunks.push(chunk); return Promise.resolve(); },
@@ -1399,6 +1613,13 @@
           const est = estimateHlsFromManifest(vMan, v.url, v);
           if (est.bytes != null) size = est.bytes;
           if (size != null) label += ` • ~${fmtBytes(size)}`;
+
+          // Add duration
+          const duration = vMan.segments?.reduce((a, s) => a + (s.duration || 0), 0) || 0;
+          if (duration > 0) {
+            const dur = formatDuration(duration);
+            if (dur) label = `${label} • ${dur}`;
+          }
         } catch { }
         items.push({ kind: 'variant', url: v.url, label, variant: v, size });
       }
@@ -1428,10 +1649,10 @@
     const total = segs.length;
     let paused = false, canceled = false, ended = false;
     const attempts = new Uint8Array(total);
-    const status = new Int8Array(total); // 0=queued,1=loading,2=done,-1=failed
-    const inflight = new Map(); // idx -> req
-    const inprog = new Map(); // idx -> {loaded,total}
-    const buffers = new Map(); // idx -> Uint8Array (ready for ordered write)
+    const status = new Int8Array(total);
+    const inflight = new Map();
+    const inprog = new Map();
+    const buffers = new Map();
     let done = 0, active = 0, nextIdx = 0, writePtr = 0, byteDone = 0, avgLen = 0;
 
     const retryQ = new Set();
@@ -1459,7 +1680,6 @@
       }
     });
 
-    // caches for keys/maps
     const keyCache = new Map(), keyInflight = new Map();
     const mapCache = new Map(), mapInflight = new Map();
     const onceKey = (k, fn) => once(keyCache, keyInflight, k, fn);
@@ -1486,12 +1706,14 @@
       for (const [, r] of inflight) { try { r.abort?.(); } catch { } }
       inflight.clear(); inprog.clear();
     }
+
     function maybeFailFast(i) {
       if (status[i] === -1 && i === writePtr && !ended) {
         abortAll();
         finalize(false);
       }
     }
+
     function fail(i, why) {
       const a = ++attempts[i];
       if (a > CFG.RETRIES) {
@@ -1502,10 +1724,12 @@
         enqueueRetry(i);
       }
     }
+
     async function fetchKeyBytes(s) {
       if (!s.key || s.key.method !== 'AES-128' || !s.key.uri) return null;
       return onceKey(s.key.uri, async () => new Uint8Array(await getBin(s.key.uri)));
     }
+
     async function fetchMapBytes(s) {
       if (!s.needMap || !s.map?.uri) return null;
       const id = `${s.map.uri}|${s.map.rangeHeader || ''}`;
@@ -1542,14 +1766,12 @@
       let buf;
       try {
         buf = await req;
-        // decrypt?
         const kb = await fetchKeyBytes(s);
         if (kb) {
           const iv = s.key.iv ? hexToU8(s.key.iv) : ivFromSeq(parsed.mediaSeq + i);
           buf = await aesCbcDec(buf, kb, iv);
         }
         let u8 = new Uint8Array(buf);
-        // prepend init map?
         if (s.needMap) {
           const mapBytes = await fetchMapBytes(s);
           if (mapBytes?.length) {
@@ -1587,6 +1809,7 @@
         handleSeg(idx);
       }
     }
+
     function check() {
       if (ended) return;
       if (status[writePtr] === -1) {
@@ -1596,6 +1819,7 @@
       if (done === total) return finalize(true);
       if (!active && Array.prototype.some.call(status, v => v === -1)) return finalize(false);
     }
+
     async function finalize(ok) {
       if (ended) return; ended = true;
       try {
