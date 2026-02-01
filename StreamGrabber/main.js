@@ -212,7 +212,7 @@
   const looksVideoType = (t = '') => /^video\//i.test(t) || /(matroska|mp4|webm|quicktime)/i.test(t);
   const safeAbs = (u, b) => { try { return new URL(u, b).href; } catch { return u; } };
   const cleanName = (s) => (s || 'video').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120).trim() || 'video';
-  
+
   const fmtBytes = (n) => {
     if (n == null) return '';
     const u = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -723,7 +723,14 @@
     }
   }
   function setBadge() {
-    const n = STATE.items.size;
+    // OLD: const n = STATE.items.size;
+    // NEW: Count only valid items
+    let n = 0;
+    for (const item of STATE.items.values()) {
+      if (item.hlsType !== 'invalid' && item.hlsType !== 'error') {
+        n++;
+      }
+    }
     if (n === lastBadgeCount) return;
     lastBadgeCount = n;
     badgeWanted = n;
@@ -794,80 +801,97 @@
     if (!item || item.enriched || item.enriching) return false;
     item.enriching = true;
 
+    // Timeout promise
+    const timeout = new Promise((_, rej) =>
+      setTimeout(() => rej(new Error('Enrichment Timeout')), 10000)
+    );
+
     try {
-      const txt = await getText(item.url);
-      const man = parseManifest(txt);
+      await Promise.race([
+        (async () => {
+          const txt = await getText(item.url);
+          const man = parseManifest(txt);
+          return performEnrichment(item, man);
+        })(),
+        timeout
+      ]);
 
-      // Master playlist
-      if (Array.isArray(man.playlists) && man.playlists.length > 0) {
-        const variants = buildVariantsFromManifest(man, item.url);
-        const sorted = variants.sort((a, b) => (b.h || 0) - (a.h || 0) || (b.avg || b.peak || 0) - (a.avg || a.peak || 0));
-        const best = sorted[0];
-        const count = variants.length;
-
-        let parts = [];
-        parts.push(`${count} ${count === 1 ? 'quality' : 'qualities'}`);
-        if (best?.res) parts.push(`up to ${best.res}`);
-        else if (best?.h) parts.push(`up to ${best.h}p`);
-
-        item.label = parts.join(' • ');
-        item.hlsType = 'master';
-        item.variantCount = count;
-        item.variants = variants;
-        item.bestVariant = best;
-      }
-      // Media playlist
-      else if (Array.isArray(man.segments) && man.segments.length > 0) {
-        const parsed = buildMediaFromManifest(man, item.url);
-        const segs = parsed.segs;
-        const segCount = segs.length;
-        const duration = man.segments.reduce((a, s) => a + (s.duration || 0), 0);
-        const isVod = !!man.endList;
-
-        const exactBytes = computeExactBytesFromSegments(parsed);
-        const res = extractResFromUrl(item.url);
-        const isFmp4 = segs.some(s => s.map) || /\.m4s(\?|$)/i.test(segs[0]?.uri || '');
-        const format = isFmp4 ? 'fMP4' : 'TS';
-        const encrypted = segs.some(s => s.key?.method === 'AES-128');
-
-        let parts = [];
-        if (res) parts.push(res);
-        if (duration > 0) {
-          const dur = formatDuration(duration);
-          if (dur) parts.push(dur);
-        }
-        if (exactBytes != null) {
-          parts.push(`~${fmtBytes(exactBytes)}`);
-          item.size = exactBytes;
-        }
-
-        item.label = parts.length > 0 ? parts.join(' • ') : 'Video Stream';
-        item.sublabel = `${segCount} segments • ${format}`;
-        item.hlsType = 'media';
-        item.duration = duration;
-        item.segCount = segCount;
-        item.resolution = res;
-        item.isVod = isVod;
-        item.isFmp4 = isFmp4;
-        item.encrypted = encrypted;
-        item.isLive = !isVod;
-      }
-      else {
-        item.label = 'Empty or Invalid';
-        item.hlsType = 'invalid';
-      }
-
-      item.enriched = true;
       return true;
     } catch (e) {
       err('enrichHlsItem', e);
       item.label = 'Parse Error';
+      if (e.message === 'Enrichment Timeout') item.label = 'Timeout';
       item.hlsType = 'error';
       item.enriched = true;
       return false;
     } finally {
       item.enriching = false;
     }
+  }
+
+  // Moved the core logic here to make the timeout wrapper cleaner
+  async function performEnrichment(item, man) {
+
+    // Master playlist
+    if (Array.isArray(man.playlists) && man.playlists.length > 0) {
+      const variants = buildVariantsFromManifest(man, item.url);
+      const sorted = variants.sort((a, b) => (b.h || 0) - (a.h || 0) || (b.avg || b.peak || 0) - (a.avg || a.peak || 0));
+      const best = sorted[0];
+      const count = variants.length;
+
+      let parts = [];
+      parts.push(`${count} ${count === 1 ? 'quality' : 'qualities'}`);
+      if (best?.res) parts.push(`up to ${best.res}`);
+      else if (best?.h) parts.push(`up to ${best.h}p`);
+
+      item.label = parts.join(' • ');
+      item.hlsType = 'master';
+      item.variantCount = count;
+      item.variants = variants;
+      item.bestVariant = best;
+    }
+    // Media playlist
+    else if (Array.isArray(man.segments) && man.segments.length > 0) {
+      const parsed = buildMediaFromManifest(man, item.url);
+      const segs = parsed.segs;
+      const segCount = segs.length;
+      const duration = man.segments.reduce((a, s) => a + (s.duration || 0), 0);
+      const isVod = !!man.endList;
+
+      const exactBytes = computeExactBytesFromSegments(parsed);
+      const res = extractResFromUrl(item.url);
+      const isFmp4 = segs.some(s => s.map) || /\.m4s(\?|$)/i.test(segs[0]?.uri || '');
+      const format = isFmp4 ? 'fMP4' : 'TS';
+      const encrypted = segs.some(s => s.key?.method === 'AES-128');
+
+      let parts = [];
+      if (res) parts.push(res);
+      if (duration > 0) {
+        const dur = formatDuration(duration);
+        if (dur) parts.push(dur);
+      }
+      if (exactBytes != null) {
+        parts.push(`~${fmtBytes(exactBytes)}`);
+        item.size = exactBytes;
+      }
+
+      item.label = parts.length > 0 ? parts.join(' • ') : 'Video Stream';
+      item.sublabel = `${segCount} segments • ${format}`;
+      item.hlsType = 'media';
+      item.duration = duration;
+      item.segCount = segCount;
+      item.resolution = res;
+      item.isVod = isVod;
+      item.isFmp4 = isFmp4;
+      item.encrypted = encrypted;
+      item.isLive = !isVod;
+    }
+    else {
+      item.label = 'Empty or Invalid';
+      item.hlsType = 'invalid';
+    }
+
+    item.enriched = true;
   }
 
   async function processEnrichQueue() {
@@ -912,7 +936,19 @@
   // =========================
   // Detection
   // =========================
+  const pendingUrls = new Set();
+  const DEBOUNCE_MS = 50;
+
   function take(url, metadata = {}) {
+    if (pendingUrls.has(url)) return;
+    pendingUrls.add(url);
+    setTimeout(() => {
+      pendingUrls.delete(url);
+      takeInternal(url, metadata);
+    }, DEBOUNCE_MS);
+  }
+
+  function takeInternal(url, metadata = {}) {
     try {
       if (!url || (!isHttp(url) && !isBlob(url))) return;
       if (isSegmentUrl(url)) return;
