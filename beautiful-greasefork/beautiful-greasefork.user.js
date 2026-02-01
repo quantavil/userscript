@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Greasy Fork Minimal UI
 // @namespace    https://greasyfork.org/
-// @version      2.4.0
-// @description  Clean, minimal dark theme for Greasy Fork
+// @version      2.5.0
+// @description  Clean, minimal dark theme for Greasy Fork with logarithmic install sliders and fixed FOUC
 // @author       quantavil
 // @license      MIT
 // @match        https://greasyfork.org/*
@@ -10,33 +10,41 @@
 // @icon         https://greasyfork.org/vite/assets/blacklogo96-CxYTSM_T.png
 // @grant        GM_addStyle
 // @run-at       document-start
-// @downloadURL https://update.greasyfork.org/scripts/564806/Greasy%20Fork%20Minimal%20UI.user.js
-// @updateURL https://update.greasyfork.org/scripts/564806/Greasy%20Fork%20Minimal%20UI.meta.js
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    // ========== FOUC Prevention - Hide Everything Immediately ==========
-    const hideAll = document.createElement('style');
-    hideAll.id = 'gf-hide-fouc';
-    hideAll.textContent = `
-        html {
-            background: #09090b !important;
-        }
-        html:not(.gf-ready) body {
-            opacity: 0 !important;
-            visibility: hidden !important;
-        }
-        html.gf-ready body {
-            opacity: 1 !important;
-            visibility: visible !important;
-            transition: opacity 0.1s ease-in !important;
-        }
+    // ========== 1. AGGRESSIVE FOUC PREVENTION ==========
+    // Inject style immediately into HTML to hide body before it even parses
+    const hideStyle = document.createElement('style');
+    hideStyle.id = 'gf-hide-fouc';
+    hideStyle.textContent = `
+        html { background: #09090b !important; }
+        body { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
+        .gf-loaded body { opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; transition: opacity 0.2s ease-in !important; }
     `;
-    document.documentElement.appendChild(hideAll);
+    (document.head || document.documentElement).appendChild(hideStyle);
 
-    // ========== Full CSS ==========
+    // ========== 2. HELPER FUNCTIONS (Logarithmic Scale) ==========
+    // Converts a slider position (0-100) to a value using a power curve
+    // This provides "Log-like" behavior: precise control at low numbers, rapid growth at high numbers
+    function getLogValue(position, max) {
+        if (position === 0) return 0;
+        if (position === 100) return max;
+        // The power of 4 gives a very nice "log" feel for install counts
+        const min = 1;
+        const result = Math.floor(max * Math.pow(position / 100, 4));
+        return result < 1 ? 1 : result;
+    }
+
+    function formatNumber(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+        if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+        return n.toString();
+    }
+
+    // ========== 3. MAIN CSS ==========
     const css = `
         /* ========== Variables ========== */
         :root {
@@ -82,16 +90,15 @@
         ::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 5px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
 
-        /* ========== Hide Ads Completely ========== */
-        .ad-entry,
-        .ad,
-        #script-list-ea,
-        .ethical-ads,
-        [data-ea-publisher] {
+        /* ========== Hide Ads & Junk ========== */
+        .ad-entry, .ad, #script-list-ea, .ethical-ads, [data-ea-publisher],
+        #pagetual-sideController, .umdl-fab, .umdl-pick, .umdl-toast,
+        .sae-bubble, .sae-palette {
             display: none !important;
             visibility: hidden !important;
             height: 0 !important;
             overflow: hidden !important;
+            pointer-events: none !important;
         }
 
         /* ========== Header ========== */
@@ -278,7 +285,6 @@
             overflow: hidden;
         }
 
-        /* ========== Tabs - FIXED (No Scrollbar) ========== */
         #script-links.tabs {
             display: flex;
             flex-wrap: wrap;
@@ -291,12 +297,8 @@
             overflow: visible;
         }
 
-        #script-links.tabs li {
-            flex-shrink: 0;
-        }
-
-        #script-links.tabs li span,
-        #script-links.tabs li a span {
+        #script-links.tabs li { flex-shrink: 0; }
+        #script-links.tabs li span, #script-links.tabs li a span {
             display: block;
             padding: 12px 16px;
             font-size: 13px;
@@ -305,27 +307,13 @@
             white-space: nowrap;
             transition: color 0.15s, background 0.15s;
         }
-
-        #script-links.tabs li a:hover span {
-            color: var(--text-1);
-            background: var(--bg-3);
-        }
-
-        #script-links.tabs li.current {
-            background: var(--bg-1);
-            border-bottom: 2px solid var(--accent);
-            margin-bottom: -1px;
-        }
-
-        #script-links.tabs li.current span {
-            color: var(--accent);
-            font-weight: 600;
-        }
+        #script-links.tabs li a:hover span { color: var(--text-1); background: var(--bg-3); }
+        #script-links.tabs li.current { background: var(--bg-1); border-bottom: 2px solid var(--accent); margin-bottom: -1px; }
+        #script-links.tabs li.current span { color: var(--accent); font-weight: 600; }
 
         #script-info > header { padding: 28px; border-bottom: 1px solid var(--border); }
         #script-info > header h2 { margin: 0 0 12px 0; font-size: 26px; font-weight: 700; color: var(--text-1); }
         #script-info #script-description { color: var(--text-2); font-size: 16px; margin: 0; }
-
         #script-content { padding: 28px; }
 
         /* Install Button */
@@ -345,140 +333,46 @@
         #install-area .install-link:hover { background: var(--accent-hover); transform: translateY(-1px); }
         #install-area .install-link::before { content: '↓'; font-size: 18px; font-weight: 700; }
         #install-area .install-help-link {
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--bg-2);
-            border: 1px solid var(--border);
-            border-radius: 50%;
-            color: var(--text-3) !important;
-            font-size: 13px;
-            font-weight: 600;
+            width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+            background: var(--bg-2); border: 1px solid var(--border); border-radius: 50%;
+            color: var(--text-3) !important; font-size: 13px; font-weight: 600;
         }
 
         #script-feedback-suggestion {
-            padding: 16px 20px;
-            background: var(--bg-2);
-            border-left: 3px solid var(--accent);
-            border-radius: 0 var(--radius) var(--radius) 0;
-            margin-bottom: 24px;
-            font-size: 14px;
-            color: var(--text-2);
+            padding: 16px 20px; background: var(--bg-2); border-left: 3px solid var(--accent);
+            border-radius: 0 var(--radius) var(--radius) 0; margin-bottom: 24px; font-size: 14px; color: var(--text-2);
         }
 
-        /* ========== Script Meta Block ========== */
-        .script-meta-block {
-            background: var(--bg-2);
-            border-radius: var(--radius);
-            padding: 24px;
-            margin-bottom: 24px;
-        }
-
-        .script-meta-block #script-stats.inline-script-stats {
-            display: grid;
-            grid-template-columns: max-content 1fr;
-            gap: 10px 24px;
-            align-items: baseline;
-        }
-
-        .script-meta-block #script-stats.inline-script-stats > dt {
-            display: block !important;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            color: var(--text-3);
-            padding: 4px 0;
-        }
-
-        .script-meta-block #script-stats.inline-script-stats > dd {
-            font-size: 14px;
-            color: var(--text-1);
-            padding: 4px 0;
-            margin: 0;
-        }
-
-        .script-meta-block #script-stats.inline-script-stats > dd::before {
-            display: none !important;
-        }
-
-        .script-meta-block #script-stats.inline-script-stats > dd a {
-            color: var(--accent) !important;
-        }
+        /* Script Meta */
+        .script-meta-block { background: var(--bg-2); border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
+        .script-meta-block #script-stats.inline-script-stats { display: grid; grid-template-columns: max-content 1fr; gap: 10px 24px; align-items: baseline; }
+        .script-meta-block #script-stats.inline-script-stats > dt { display: block !important; font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-3); padding: 4px 0; }
+        .script-meta-block #script-stats.inline-script-stats > dd { font-size: 14px; color: var(--text-1); padding: 4px 0; margin: 0; }
+        .script-meta-block #script-stats.inline-script-stats > dd::before { display: none !important; }
+        .script-meta-block #script-stats.inline-script-stats > dd a { color: var(--accent) !important; }
 
         .script-meta-block #script-stats .good-rating-count,
         .script-meta-block #script-stats .ok-rating-count,
-        .script-meta-block #script-stats .bad-rating-count {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 13px;
-            margin-right: 4px;
-        }
+        .script-meta-block #script-stats .bad-rating-count { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 13px; margin-right: 4px; }
         .script-meta-block #script-stats .good-rating-count { background: var(--accent-dim); }
         .script-meta-block #script-stats .ok-rating-count { background: rgba(250, 204, 21, 0.15); }
         .script-meta-block #script-stats .bad-rating-count { background: rgba(239, 68, 68, 0.15); }
+        .script-meta-block .browser-compatible { width: 22px; height: 22px; margin-right: 6px; vertical-align: middle; filter: brightness(0.9); }
 
-        .script-meta-block .browser-compatible {
-            width: 22px;
-            height: 22px;
-            margin-right: 6px;
-            vertical-align: middle;
-            filter: brightness(0.9);
-        }
-
-        /* Applies-to section */
-        .script-show-applies-to .block-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
+        /* Applies To */
+        .script-show-applies-to .block-list { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0; }
         .script-show-applies-to .block-list.expandable { max-height: none !important; height: auto !important; }
-        .script-show-applies-to .block-list li a {
-            display: inline-block;
-            padding: 5px 12px;
-            background: var(--bg-3);
-            border-radius: 20px;
-            font-size: 12px;
-            color: var(--text-2) !important;
-        }
+        .script-show-applies-to .block-list li a { display: inline-block; padding: 5px 12px; background: var(--bg-3); border-radius: 20px; font-size: 12px; color: var(--text-2) !important; }
         .script-show-applies-to .block-list li a:hover { background: var(--accent-dim); color: var(--accent) !important; }
         .script-show-applies-to .expander { display: none !important; }
 
         /* Additional Info */
-        #additional-info {
-            padding: 24px;
-            background: var(--bg-2);
-            border-radius: var(--radius);
-            margin-top: 24px;
-            font-size: 15px;
-            line-height: 1.7;
-            color: var(--text-2);
-        }
+        #additional-info { padding: 24px; background: var(--bg-2); border-radius: var(--radius); margin-top: 24px; font-size: 15px; line-height: 1.7; color: var(--text-2); }
         #additional-info p { margin: 0 0 16px 0; }
-        #additional-info p:last-child { margin-bottom: 0; }
         #additional-info a { color: var(--accent) !important; }
         #additional-info strong { color: var(--text-1); font-weight: 600; }
-        #additional-info code {
-            padding: 3px 8px;
-            background: var(--bg-1);
-            border-radius: 4px;
-            font-family: var(--mono);
-            font-size: 13px;
-            color: var(--accent);
-        }
-        #additional-info pre {
-            padding: 16px;
-            background: var(--bg-1);
-            border-radius: var(--radius);
-            overflow-x: auto;
-            margin: 0 0 16px 0;
-        }
+        #additional-info code { padding: 3px 8px; background: var(--bg-1); border-radius: 4px; font-family: var(--mono); font-size: 13px; color: var(--accent); }
+        #additional-info pre { padding: 16px; background: var(--bg-1); border-radius: var(--radius); overflow-x: auto; margin: 0 0 16px 0; }
         #additional-info pre code { padding: 0; background: none; color: var(--text-1); }
         #additional-info img { max-width: 100%; border-radius: var(--radius); margin: 16px 0; }
 
@@ -489,183 +383,55 @@
 
         /* ========== Control Bar ========== */
         #gf-control-bar {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            margin-bottom: 20px;
-            padding: 16px 20px;
-            background: var(--bg-1);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            flex-wrap: wrap;
+            display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding: 16px 20px;
+            background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius); flex-wrap: wrap;
         }
-
-        #gf-control-bar .cb-section {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        #gf-control-bar .cb-label {
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-3);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            white-space: nowrap;
-        }
-
+        #gf-control-bar .cb-section { display: flex; align-items: center; gap: 10px; }
+        #gf-control-bar .cb-label { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
         #gf-control-bar select {
-            background: var(--bg-2);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 8px 12px;
-            font-size: 13px;
-            color: var(--text-1);
-            cursor: pointer;
-            outline: none;
+            background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 8px 12px; font-size: 13px; color: var(--text-1); cursor: pointer; outline: none;
         }
         #gf-control-bar select:focus { border-color: var(--accent); }
-
-        #gf-control-bar .cb-divider {
-            width: 1px;
-            height: 28px;
-            background: var(--border);
-        }
-
-        /* Slider Styles */
-        #gf-control-bar .slider-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        #gf-control-bar .slider-container {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+        #gf-control-bar .cb-divider { width: 1px; height: 28px; background: var(--border); }
+        #gf-control-bar .slider-group { display: flex; align-items: center; gap: 8px; }
+        #gf-control-bar .slider-container { display: flex; align-items: center; gap: 8px; }
 
         #gf-control-bar input[type="range"] {
-            -webkit-appearance: none;
-            width: 100px;
-            height: 6px;
-            background: var(--bg-3);
-            border-radius: 3px;
-            outline: none;
-            cursor: pointer;
+            -webkit-appearance: none; width: 120px; height: 6px; background: var(--bg-3); border-radius: 3px; outline: none; cursor: pointer;
         }
-
         #gf-control-bar input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
-            background: var(--accent);
-            border-radius: 50%;
-            cursor: pointer;
-            transition: transform 0.15s;
+            -webkit-appearance: none; width: 16px; height: 16px; background: var(--accent); border-radius: 50%; cursor: pointer; transition: transform 0.15s;
         }
-
-        #gf-control-bar input[type="range"]::-webkit-slider-thumb:hover {
-            transform: scale(1.15);
-        }
-
-        #gf-control-bar input[type="range"]::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
-            background: var(--accent);
-            border-radius: 50%;
-            border: none;
-            cursor: pointer;
-        }
-
+        #gf-control-bar input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
         #gf-control-bar .slider-value {
-            min-width: 50px;
-            padding: 4px 8px;
-            background: var(--bg-2);
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-1);
-            text-align: center;
-            font-family: var(--mono);
+            min-width: 60px; padding: 4px 8px; background: var(--bg-2); border-radius: 4px;
+            font-size: 12px; font-weight: 600; color: var(--text-1); text-align: center; font-family: var(--mono);
         }
-
-        #gf-control-bar .cb-stats {
-            margin-left: auto;
-            font-size: 13px;
-            color: var(--text-3);
-        }
+        #gf-control-bar .cb-stats { margin-left: auto; font-size: 13px; color: var(--text-3); }
         #gf-control-bar .cb-stats strong { color: var(--accent); font-weight: 600; }
 
         /* ========== Scroll Top Button ========== */
         #gf-scroll-top {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            width: 44px;
-            height: 44px;
-            background: var(--bg-2);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            color: var(--text-2);
-            font-size: 18px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 999;
-            opacity: 0;
-            visibility: hidden;
-            transform: translateY(10px);
-            transition: all 0.2s;
+            position: fixed; bottom: 24px; right: 24px; width: 44px; height: 44px;
+            background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius);
+            color: var(--text-2); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            z-index: 999; opacity: 0; visibility: hidden; transform: translateY(10px); transition: all 0.2s;
         }
         #gf-scroll-top.show { opacity: 1; visibility: visible; transform: translateY(0); }
         #gf-scroll-top:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
 
         /* ========== Forms & Inputs ========== */
-        input[type="text"],
-        input[type="search"],
-        input[type="email"],
-        input[type="password"],
-        textarea,
-        select {
-            background: var(--bg-2) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: var(--radius) !important;
-            color: var(--text-1) !important;
-            padding: 10px 14px !important;
-            font-size: 14px !important;
-            outline: none !important;
-            transition: border-color 0.15s !important;
+        input[type="text"], input[type="search"], input[type="email"], input[type="password"], textarea, select {
+            background: var(--bg-2) !important; border: 1px solid var(--border) !important; border-radius: var(--radius) !important;
+            color: var(--text-1) !important; padding: 10px 14px !important; font-size: 14px !important; outline: none !important; transition: border-color 0.15s !important;
         }
-
-        input:focus,
-        textarea:focus,
-        select:focus {
-            border-color: var(--accent) !important;
+        input:focus, textarea:focus, select:focus { border-color: var(--accent) !important; }
+        button, input[type="submit"], .button {
+            background: var(--bg-3) !important; border: 1px solid var(--border) !important; border-radius: var(--radius) !important;
+            color: var(--text-1) !important; padding: 10px 18px !important; font-size: 14px !important; font-weight: 500 !important; cursor: pointer !important; transition: all 0.15s !important;
         }
-
-        button,
-        input[type="submit"],
-        .button {
-            background: var(--bg-3) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: var(--radius) !important;
-            color: var(--text-1) !important;
-            padding: 10px 18px !important;
-            font-size: 14px !important;
-            font-weight: 500 !important;
-            cursor: pointer !important;
-            transition: all 0.15s !important;
-        }
-
-        button:hover,
-        input[type="submit"]:hover,
-        .button:hover {
-            background: var(--bg-2) !important;
-            border-color: var(--border-hover) !important;
-        }
+        button:hover, input[type="submit"]:hover, .button:hover { background: var(--bg-2) !important; border-color: var(--border-hover) !important; }
 
         /* ========== Responsive ========== */
         @media (max-width: 768px) {
@@ -683,36 +449,35 @@
             #gf-control-bar { gap: 12px; }
             #gf-control-bar input[type="range"] { width: 80px; }
             #gf-control-bar .cb-stats { width: 100%; margin-left: 0; margin-top: 8px; }
-            #script-links.tabs li span,
-            #script-links.tabs li a span { padding: 10px 12px; font-size: 12px; }
+            #script-links.tabs li span, #script-links.tabs li a span { padding: 10px 12px; font-size: 12px; }
         }
-
         @media (max-width: 480px) {
             #script-links.tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
             #script-links.tabs::-webkit-scrollbar { display: none; }
             #script-links.tabs { -ms-overflow-style: none; scrollbar-width: none; }
         }
-
-        /* ========== Hide junk ========== */
-        #pagetual-sideController, .umdl-fab, .umdl-pick, .umdl-toast,
-        .sae-bubble, .sae-palette { display: none !important; }
     `;
 
     GM_addStyle(css);
 
-    // ========== Reveal Page After Styles Applied ==========
-    function revealPage() {
-        document.documentElement.classList.add('gf-ready');
-    }
-
-    // ========== Initialization ==========
+    // ========== 4. INITIALIZATION ==========
     function init() {
-        revealPage();
+        // Wait for body to exist before applying revealing class
+        if (document.body) {
+            document.documentElement.classList.add('gf-loaded');
+        } else {
+            document.addEventListener('DOMContentLoaded', () => {
+                document.documentElement.classList.add('gf-loaded');
+            });
+        }
+
         expandCollapsed();
         addScrollTop();
-        
-        if (document.querySelector('#browse-script-list')) {
-            addControlBar();
+
+        // Check for script list to inject controls
+        const scriptList = document.querySelector('#browse-script-list');
+        if (scriptList) {
+            addControlBar(scriptList);
         }
     }
 
@@ -727,7 +492,6 @@
 
     function addScrollTop() {
         if (document.getElementById('gf-scroll-top')) return;
-        
         const btn = document.createElement('button');
         btn.id = 'gf-scroll-top';
         btn.innerHTML = '↑';
@@ -747,15 +511,14 @@
         }, { passive: true });
     }
 
-    function addControlBar() {
-        const main = document.querySelector('.sidebarred-main-content');
+    function addControlBar(list) {
+        const main = document.querySelector('.sidebarred-main-content') || list.parentElement;
         if (!main || document.getElementById('gf-control-bar')) return;
 
-        const list = document.getElementById('browse-script-list');
-        const scripts = Array.from(list?.querySelectorAll('li[data-script-id]') || []);
+        const scripts = Array.from(list.querySelectorAll('li[data-script-id]'));
         if (!scripts.length) return;
 
-        // Get max values for sliders
+        // Calculate dynamic maximums for the current page
         let maxDaily = 0, maxTotal = 0;
         scripts.forEach(li => {
             const daily = parseInt(li.dataset.scriptDailyInstalls) || 0;
@@ -764,11 +527,10 @@
             if (total > maxTotal) maxTotal = total;
         });
 
-        // Cap slider max values for usability
-        const dailyMax = Math.min(maxDaily, 500);
-        const totalMax = Math.min(maxTotal, 50000);
+        // Ensure reasonable defaults if 0
+        if (maxDaily === 0) maxDaily = 10;
+        if (maxTotal === 0) maxTotal = 100;
 
-        // Get current sort from URL
         const urlParams = new URLSearchParams(window.location.search);
         const currentSort = urlParams.get('sort') || '';
 
@@ -790,78 +552,71 @@
             <div class="cb-section slider-group">
                 <span class="cb-label">Daily ≥</span>
                 <div class="slider-container">
-                    <input type="range" id="gf-daily-slider" min="0" max="${dailyMax}" value="0">
+                    <!-- Range is always 0-100 for smooth sliding -->
+                    <input type="range" id="gf-daily-slider" min="0" max="100" value="0">
                     <span class="slider-value" id="gf-daily-value">0</span>
                 </div>
             </div>
             <div class="cb-section slider-group">
                 <span class="cb-label">Total ≥</span>
                 <div class="slider-container">
-                    <input type="range" id="gf-total-slider" min="0" max="${totalMax}" step="100" value="0">
+                    <input type="range" id="gf-total-slider" min="0" max="100" value="0">
                     <span class="slider-value" id="gf-total-value">0</span>
                 </div>
             </div>
             <div class="cb-stats">
-                <strong id="gf-visible">${scripts.length}</strong> / ${scripts.length} scripts
+                <strong id="gf-visible">${scripts.length}</strong> / ${scripts.length}
             </div>
         `;
         main.insertBefore(bar, main.firstChild);
 
-        // Sort handler
+        // Logic References
         const sortSelect = document.getElementById('gf-sort');
+        const dailySlider = document.getElementById('gf-daily-slider');
+        const totalSlider = document.getElementById('gf-total-slider');
+        const dailyValueLabel = document.getElementById('gf-daily-value');
+        const totalValueLabel = document.getElementById('gf-total-value');
+        const visibleCountLabel = document.getElementById('gf-visible');
+
         sortSelect.onchange = function() {
             const url = new URL(window.location.href);
-            if (this.value) {
-                url.searchParams.set('sort', this.value);
-            } else {
-                url.searchParams.delete('sort');
-            }
+            if (this.value) url.searchParams.set('sort', this.value);
+            else url.searchParams.delete('sort');
             window.location.href = url.toString();
         };
 
-        const dailySlider = document.getElementById('gf-daily-slider');
-        const totalSlider = document.getElementById('gf-total-slider');
-        const dailyValue = document.getElementById('gf-daily-value');
-        const totalValue = document.getElementById('gf-total-value');
-        const visibleCount = document.getElementById('gf-visible');
-
-        function formatNumber(n) {
-            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-            return n.toString();
-        }
-
         function applyFilters() {
-            const minDaily = parseInt(dailySlider.value) || 0;
-            const minTotal = parseInt(totalSlider.value) || 0;
-            let visible = 0;
+            // Convert slider position (0-100) to actual value using Power Curve
+            const minDaily = getLogValue(parseInt(dailySlider.value), maxDaily);
+            const minTotal = getLogValue(parseInt(totalSlider.value), maxTotal);
 
+            let visible = 0;
             scripts.forEach(li => {
                 const daily = parseInt(li.dataset.scriptDailyInstalls) || 0;
                 const total = parseInt(li.dataset.scriptTotalInstalls) || 0;
+                // Filter Logic
                 const show = daily >= minDaily && total >= minTotal;
                 li.style.display = show ? '' : 'none';
                 if (show) visible++;
             });
 
-            dailyValue.textContent = formatNumber(minDaily);
-            totalValue.textContent = formatNumber(minTotal);
-            visibleCount.textContent = visible;
+            // Update Labels
+            dailyValueLabel.textContent = formatNumber(minDaily);
+            totalValueLabel.textContent = formatNumber(minTotal);
+            visibleCountLabel.textContent = visible;
         }
 
         dailySlider.oninput = applyFilters;
         totalSlider.oninput = applyFilters;
     }
 
-    // ========== Keyboard Shortcuts ==========
+    // ========== 5. KEYBOARD SHORTCUTS ==========
     document.addEventListener('keydown', e => {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-        
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
         switch(e.key.toLowerCase()) {
             case '/':
                 e.preventDefault();
-                const search = document.querySelector('.sidebar-search input') || 
-                              document.querySelector('input[type="search"]');
+                const search = document.querySelector('.sidebar-search input') || document.querySelector('input[type="search"]');
                 search?.focus();
                 break;
             case 'i':
@@ -873,10 +628,11 @@
         }
     });
 
-    // ========== Run ==========
+    // ========== 6. BOOTSTRAP ==========
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
         init();
     }
+
 })();
