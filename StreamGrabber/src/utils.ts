@@ -13,17 +13,42 @@ const PATTERNS = {
     m3u8Type: /mpegurl|vnd\.apple\.mpegurl|application\/x-mpegurl/i,
     videoType: /^video\//i,
     videoTypeAlt: /(matroska|mp4|webm|quicktime)/i,
-    resolution: [
-        /(?:^|[_\-\/])(\d{3,4})p(?:[_\-\/\.]|$)/i,
-        /(?:^|[_\-\/])(\d{3,4})x(\d{3,4})(?:[_\-\/\.]|$)/i,
-        /resolution[=_]?(\d{3,4})/i,
-        /quality[=_]?(\d{3,4})/i,
-        /[_\-]hd(\d{3,4})/i,
-        /(\d{3,4})\.m3u8/i,
-    ],
+    // Combined resolution pattern for single-pass extraction
+    // Group 1: Num1
+    // Group 2: Separator [px]
+    // Group 3: Num2 (optional)
+    // Group 4: resolution=...
+    // Group 5: quality=...
+    // Group 6: -hd...
+    // Group 7: ...m3u8
+    resolutionCombined: /(?:^|[_\-\/])(\d{3,4})([px])(\d{3,4})?(?:[_\-\/\.]|$)|resolution[=_]?(\d{3,4})|quality[=_]?(\d{3,4})|[_\-]hd(\d{3,4})|(\d{3,4})\.m3u8/i,
     hlsMaster: /master|index|manifest|playlist\.m3u8/i,
     hlsMedia: /chunklist|media|video|segment|quality|stream_\d|_\d{3,4}p?\./i,
 } as const;
+
+export function parseHeaders(headers: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (!headers) return out;
+
+    // Fast manual loop is often better than split('\n').reduce for large headers
+    let start = 0;
+    while (start < headers.length) {
+        let end = headers.indexOf('\n', start);
+        if (end === -1) end = headers.length;
+
+        const line = headers.substring(start, end).trim();
+        if (line) {
+            const sep = line.indexOf(':');
+            if (sep > 0) {
+                const key = line.substring(0, sep).trim().toLowerCase();
+                const val = line.substring(sep + 1).trim();
+                out[key] = val;
+            }
+        }
+        start = end + 1;
+    }
+    return out;
+}
 
 export const isHttp = (u: unknown): u is string =>
     typeof u === 'string' && PATTERNS.http.test(u);
@@ -60,11 +85,32 @@ export function safeAbsUrl(url: string, base: string): string {
 
 export function extractResFromUrl(url: string | null | undefined): string | null {
     if (!url) return null;
-    for (const p of PATTERNS.resolution) {
-        const m = p.exec(url);
-        if (m) {
-            if (m[2]) return `${m[1]}x${m[2]}`;
-            const h = parseInt(m[1], 10);
+    // 2: resolution=1080
+    // 3: quality=1080
+    // 4: -hd1080
+    // 5: 1080.m3u8
+    const m = PATTERNS.resolutionCombined.exec(url);
+    if (m) {
+        if (m[1]) {
+            // Case 1: 1920x1080 or 1080p
+            const w = parseInt(m[1], 10);
+            const sep = m[2]; // Captured separator [px]
+            const hStr = m[3]; // Captured height if WxH
+
+            if (sep === 'x' && hStr) {
+                // It's Width x Height (e.g. 1920x1080)
+                // Return generic WxH string as old code did, or normalize to Height?
+                // Old code returned "WxH". Let's stick to that for compatibility.
+                return `${w}x${hStr}`;
+            }
+            // It's 1080p
+            if (w >= 144 && w <= 4320) return `${w}p`;
+        }
+
+        // Other groups
+        const val = m[4] || m[5] || m[6] || m[7];
+        if (val) {
+            const h = parseInt(val, 10);
             if (h >= 144 && h <= 4320) return `${h}p`;
         }
     }

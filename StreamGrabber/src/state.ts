@@ -96,6 +96,8 @@ class AppState {
         this.videoUrls.delete(item.url);
       }
     }
+    // Only invalidate if we actually removed something? 
+    // Actually invalidateCount just sets a dirty flag, so it's cheap.
     this.invalidateCount();
   }
 
@@ -174,9 +176,12 @@ class AppState {
       const idle = now - (info.ts || 0);
       if (info.revoked && idle > CACHE.CLEAR_MS) {
         blobRegistry.delete(href);
-        this.items.delete(href);
-        this.m3u8Urls.delete(href);
-        this.videoUrls.delete(href);
+        if (this.items.has(href)) {
+          this.items.delete(href);
+          this.m3u8Urls.delete(href);
+          this.videoUrls.delete(href);
+          this.invalidateCount();
+        }
       }
     }
   }

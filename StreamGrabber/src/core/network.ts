@@ -1,6 +1,6 @@
 import type { HeadMeta, AbortablePromise, GmRequestOptions, BlobInfo } from '../types';
 import { CFG, CACHE } from '../config';
-import { isBlob, parseRange, once } from '../utils';
+import { isBlob, parseRange, once, parseHeaders } from '../utils';
 
 // ============================================
 // Caches
@@ -137,13 +137,10 @@ async function fetchHead(url: string): Promise<HeadMeta> {
       });
     });
 
-    const h = resp.responseHeaders || '';
-    const lengthMatch = /(^|\n)content-length:\s*(\d+)/i.exec(h);
-    const typeMatch = /(^|\n)content-type:\s*([^\n]+)/i.exec(h);
-
+    const h = parseHeaders(resp.responseHeaders || '');
     return {
-      length: lengthMatch ? +lengthMatch[2] : null,
-      type: typeMatch ? typeMatch[2].trim() : null,
+      length: h['content-length'] ? +h['content-length'] : null,
+      type: h['content-type'] ? h['content-type'].trim() : null,
     };
   } catch {
     return { length: null, type: null };
