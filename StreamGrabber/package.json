@@ -11,7 +11,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "hls-parser": "^0.16.0"
+    "hls-parser": "^0.16.0",
+    "p-queue": "^9.1.0",
+    "p-retry": "^7.1.1"
   },
   "devDependencies": {
     "@types/greasemonkey": "^4.0.7",

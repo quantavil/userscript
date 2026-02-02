@@ -1,3 +1,4 @@
+import PQueue from 'p-queue';
 import type { MediaItem } from '../types';
 import { CFG } from '../config';
 import { getText } from './network';
@@ -15,12 +16,14 @@ import { sortVariantsByQuality, buildLabel, buildSublabel } from './shared';
 // Enrichment Queue
 // ============================================
 
-const enrichQueue = new Set<string>();
-let enrichRunning = false;
-let enrichTimeout: ReturnType<typeof setTimeout> | null = null;
+// Queue for enrichment tasks
+const queue = new PQueue({ concurrency: 2 });
+
+// Track URLs that are currently in the queue to avoid duplicates
+const pendingUrls = new Set<string>();
 
 // Simple callback storage (no complex holder needed)
-let _onEnrichComplete: () => void = () => {};
+let _onEnrichComplete: () => void = () => { };
 let _getItemFn: (url: string) => MediaItem | undefined = () => undefined;
 
 export function setEnrichCallback(cb: () => void): void {
@@ -35,7 +38,7 @@ export function setGetItemFn(fn: (url: string) => MediaItem | undefined): void {
 // Single Item Enrichment
 // ============================================
 
-async function performEnrichment(item: MediaItem): Promise<void> {
+async function performEnrichment(item: MediaItem): Promise<boolean> {
   const txt = await getText(item.url);
   const man = parseManifest(txt, item.url);
 
@@ -99,6 +102,7 @@ async function performEnrichment(item: MediaItem): Promise<void> {
   }
 
   item.enriched = true;
+  return true;
 }
 
 async function enrichItem(item: MediaItem): Promise<boolean> {
@@ -133,33 +137,6 @@ async function enrichItem(item: MediaItem): Promise<boolean> {
 }
 
 // ============================================
-// Queue Processing
-// ============================================
-
-async function processQueue(): Promise<void> {
-  if (enrichRunning) return;
-  enrichRunning = true;
-
-  try {
-    while (enrichQueue.size > 0) {
-      const url = enrichQueue.values().next().value;
-      if (url === undefined) break;
-
-      enrichQueue.delete(url);
-
-      const item = _getItemFn(url);
-
-      if (item && item.kind === 'hls' && !item.enriched) {
-        await enrichItem(item);
-        _onEnrichComplete();
-      }
-    }
-  } finally {
-    enrichRunning = false;
-  }
-}
-
-// ============================================
 // Public API
 // ============================================
 
@@ -167,16 +144,30 @@ async function processQueue(): Promise<void> {
  * Queue a URL for enrichment
  */
 export function queueEnrich(url: string): void {
-  enrichQueue.add(url);
+  if (pendingUrls.has(url)) return;
 
-  if (enrichTimeout) clearTimeout(enrichTimeout);
-  enrichTimeout = setTimeout(processQueue, CFG.ENRICH_DELAY);
+  pendingUrls.add(url);
+
+  queue.add(async () => {
+    try {
+      const item = _getItemFn(url);
+      if (item && item.kind === 'hls' && !item.enriched) {
+        await enrichItem(item);
+        _onEnrichComplete();
+      }
+    } finally {
+      pendingUrls.delete(url);
+    }
+  });
 }
 
 /**
  * Immediately enrich an item (for download flow)
  */
 export async function enrichNow(item: MediaItem): Promise<boolean> {
+  // If explicitly requested, ensure it's not pending nicely 
+  // Check if already in progress
+
   if (item._enrichPromise) {
     await item._enrichPromise;
     return item.enriched && item.hlsType !== 'error' && item.hlsType !== 'invalid';

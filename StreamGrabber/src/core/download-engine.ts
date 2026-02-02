@@ -1,3 +1,5 @@
+import PQueue from 'p-queue';
+import pRetry, { AbortError } from 'p-retry';
 import type { Segment, ParsedMedia, ProgressCardController } from '../types';
 import { CFG } from '../config';
 import { getBin } from './network';
@@ -12,18 +14,10 @@ import { once } from '../utils';
 interface DownloadState {
   paused: boolean;
   canceled: boolean;
-  ended: boolean;
   done: number;
-  active: number;
-  nextIdx: number;
   writePtr: number;
   byteDone: number;
   avgLen: number;
-}
-
-interface SegmentStatus {
-  attempts: Uint8Array;
-  status: Int8Array; // 0=pending, 1=fetching, 2=done, -1=failed
 }
 
 // ============================================
@@ -34,7 +28,7 @@ export async function downloadSegments(
   parsed: ParsedMedia,
   filename: string,
   isFmp4: boolean,
-  srcUrl: string, // Keep for logging, prefix removed
+  srcUrl: string, // Keep for logging
   card: ProgressCardController
 ): Promise<void> {
   const segs = parsed.segs;
@@ -46,25 +40,22 @@ export async function downloadSegments(
   const state: DownloadState = {
     paused: false,
     canceled: false,
-    ended: false,
     done: 0,
-    active: 0,
-    nextIdx: 0,
     writePtr: 0,
     byteDone: 0,
     avgLen: 0,
   };
 
-  const seg: SegmentStatus = {
-    attempts: new Uint8Array(total),
-    status: new Int8Array(total),
-  };
+  // Queue & Concurrency
+  const queue = new PQueue({ concurrency: CFG.CONCURRENCY });
 
-  // Inflight tracking
-  const inflight = new Map<number, { abort: () => void }>();
+  // Progress tracking
   const inprog = new Map<number, { loaded: number; total: number }>();
+  // segment index -> AbortController
+  const controllers = new Map<number, AbortController>();
+
+  // Buffers for sequential writing
   const buffers = new Map<number, Uint8Array>();
-  const retryQueue = new Set<number>();
 
   // Caches for keys and init segments
   const keyCache = new Map<string, Uint8Array>();
@@ -92,42 +83,28 @@ export async function downloadSegments(
 
   card.setOnStop(() => {
     state.paused = !state.paused;
-    if (!state.paused) pump();
+    if (state.paused) {
+      queue.pause();
+    } else {
+      queue.start();
+    }
     return state.paused ? 'paused' : 'resumed';
   });
 
   card.setOnCancel(() => {
     state.canceled = true;
     abortAll();
+    queue.clear();
     writer.abort();
     card.remove();
   });
 
-  // ----------------------------------------
-  // Helpers
-  // ----------------------------------------
-
   function abortAll(): void {
-    for (const [, req] of inflight) {
-      try {
-        req.abort();
-      } catch {
-        /* ignore */
-      }
+    for (const controller of controllers.values()) {
+      controller.abort();
     }
-    inflight.clear();
+    controllers.clear();
     inprog.clear();
-  }
-
-  function enqueueRetry(i: number): void {
-    retryQueue.add(i);
-  }
-
-  function takeRetry(): number {
-    const it = retryQueue.values().next();
-    if (it.done) return -1;
-    retryQueue.delete(it.value);
-    return it.value;
   }
 
   // ----------------------------------------
@@ -155,7 +132,7 @@ export async function downloadSegments(
   }
 
   // ----------------------------------------
-  // Writing
+  // Writing (Sequential)
   // ----------------------------------------
 
   let writeChain = Promise.resolve();
@@ -189,158 +166,123 @@ export async function downloadSegments(
 
     const id = `${s.map.uri}|${s.map.rangeHeader || ''}`;
     return once(mapCache, mapInflight, id, async () => {
-      const headers = s.map!.rangeHeader ? { Range: s.map!.rangeHeader } : {};
+      const headers: Record<string, string> = s.map!.rangeHeader ? { Range: s.map!.rangeHeader } : {};
       const buf = await getBin(s.map!.uri, headers);
       return new Uint8Array(buf);
     }, 100);
   }
 
   // ----------------------------------------
-  // Segment handling
+  // Task Logic
   // ----------------------------------------
 
-  function fail(i: number, why: string): void {
-    seg.attempts[i]++;
+  async function downloadSegmentTask(i: number): Promise<void> {
+    if (state.canceled) return;
 
-    if (seg.attempts[i] > CFG.RETRIES) {
-      seg.status[i] = -1;
-      console.error(`[SG] Segment ${i} failed: ${why}`);
-      maybeFailFast(i);
-    } else {
-      seg.status[i] = 0;
-      enqueueRetry(i);
-    }
-  }
-
-  function maybeFailFast(i: number): void {
-    if (seg.status[i] === -1 && i === state.writePtr && !state.ended) {
-      abortAll();
-      finalize(false);
-    }
-  }
-
-  async function handleSegment(i: number): Promise<void> {
     const s = segs[i];
-    seg.status[i] = 1;
-    state.active++;
 
-    // Check unsupported encryption
+    // Encryption check
     if (s.key && s.key.method && s.key.method !== 'AES-128') {
-      state.active--;
-      seg.status[i] = -1;
-      console.error('[SG] Unsupported key method:', s.key.method);
-      maybeFailFast(i);
-      check();
-      return;
+      throw new AbortError(new Error(`Unsupported key method: ${s.key.method}`));
     }
 
-    const headers = s.range ? { Range: s.range } : {};
-
-    const req = getBin(s.uri, headers, CFG.REQUEST_TIMEOUT, (e) => {
-      inprog.set(i, { loaded: e.loaded, total: e.total });
-      draw();
-    });
-
-    inflight.set(i, { abort: () => req.abort() });
+    const controller = new AbortController();
+    controllers.set(i, controller);
 
     try {
-      let buf = await req;
+      await pRetry(async () => {
+        if (state.canceled) throw new AbortError(new Error('Canceled'));
 
-      // Decrypt if needed
-      const keyBytes = await fetchKeyBytes(s);
-      if (keyBytes) {
-        const iv = s.key!.iv ? hexToU8(s.key!.iv) : ivFromSeq(parsed.mediaSeq + i);
-        buf = await aesCbcDecrypt(buf, keyBytes, iv);
-      }
+        const headers: Record<string, string> = s.range ? { Range: s.range } : {};
 
-      let u8 = new Uint8Array(buf);
+        // Use our getBin wrapper but attach the abort signal if we can?
+        // getBin returns an AbortablePromise. We can just use that.
+        // We'll wrap it to respect the controller.
 
-      // Prepend init segment if needed
-      if (s.needMap) {
-        const mapBytes = await fetchMapBytes(s);
-        if (mapBytes?.length) {
-          const joined = new Uint8Array(mapBytes.length + u8.length);
-          joined.set(mapBytes, 0);
-          joined.set(u8, mapBytes.length);
-          u8 = joined;
+        const req = getBin(s.uri, headers, CFG.REQUEST_TIMEOUT, (e) => {
+          inprog.set(i, { loaded: e.loaded, total: e.total });
+          draw();
+        });
+
+        // Wire abort controller to request
+        controller.signal.addEventListener('abort', () => req.abort());
+
+        // If already aborted
+        if (controller.signal.aborted) {
+          req.abort();
+          throw new Error('Aborted');
         }
-      }
 
-      buffers.set(i, u8);
+        let buf: ArrayBuffer;
+        try {
+          buf = await req;
+        } catch (err) {
+          // If manual abort, don't retry, just throw
+          if (controller.signal.aborted) throw new AbortError(new Error('Aborted'));
+          throw err;
+        }
+
+        // Decrypt if needed
+        const keyBytes = await fetchKeyBytes(s);
+        if (keyBytes) {
+          const iv = s.key!.iv ? hexToU8(s.key!.iv) : ivFromSeq(parsed.mediaSeq + i);
+          buf = await aesCbcDecrypt(buf, keyBytes, iv);
+        }
+
+        let u8 = new Uint8Array(buf);
+
+        // Prepend init segment if needed
+        if (s.needMap) {
+          const mapBytes = await fetchMapBytes(s);
+          if (mapBytes?.length) {
+            const joined = new Uint8Array(mapBytes.length + u8.length);
+            joined.set(mapBytes, 0);
+            joined.set(u8, mapBytes.length);
+            u8 = joined;
+          }
+        }
+
+        buffers.set(i, u8);
+      }, {
+        retries: CFG.RETRIES,
+        onFailedAttempt: ({ error, attemptNumber }) => {
+          if (state.canceled) return;
+          console.warn(`[SG] Segment ${i} failed (attempt ${attemptNumber}): ${error.message}`);
+        },
+        signal: controller.signal // Pass signal to pRetry if supported, or just use ours
+      });
+
+      // Success
       inprog.delete(i);
-      inflight.delete(i);
+      controllers.delete(i);
 
-      seg.status[i] = 2;
-      state.active--;
       state.done++;
-      state.byteDone += u8.length;
+      const finishedSize = buffers.get(i)?.length || 0;
+      state.byteDone += finishedSize;
       state.avgLen = state.byteDone / Math.max(1, state.done);
 
       draw();
       queueFlush();
-    } catch (e) {
+
+    } catch (error) {
       inprog.delete(i);
-      inflight.delete(i);
-      state.active--;
-      fail(i, (e as Error).message || 'network/decrypt');
-    } finally {
-      pump();
-      check();
+      controllers.delete(i);
+      if (!state.canceled && !(error instanceof AbortError)) {
+        console.error(`[SG] Segment ${i} fatal error:`, error);
+        // If a segment fails permanently, we must fail the whole download
+        abortAll();
+        state.canceled = true; // effectively canceled by error
+        queue.clear();
+        finalize(false);
+      }
     }
   }
 
   // ----------------------------------------
-  // Pump & Check
+  // Finalize
   // ----------------------------------------
-
-  function pump(): void {
-    if (state.paused || state.canceled || state.ended) return;
-
-    while (state.active < CFG.CONCURRENCY) {
-      let idx = takeRetry();
-
-      if (idx === -1) {
-        while (state.nextIdx < total && seg.status[state.nextIdx] !== 0) {
-          state.nextIdx++;
-        }
-        if (state.nextIdx < total) {
-          idx = state.nextIdx++;
-        }
-      }
-
-      if (idx === -1) break;
-      handleSegment(idx);
-    }
-  }
-
-  function check(): void {
-    if (state.ended) return;
-
-    if (seg.status[state.writePtr] === -1) {
-      abortAll();
-      finalize(false);
-      return;
-    }
-
-    if (state.done === total) {
-      finalize(true);
-      return;
-    }
-
-    if (!state.active) {
-      for (let i = 0; i < seg.status.length; i++) {
-        if (seg.status[i] === -1) {
-          finalize(false);
-          return;
-        }
-      }
-    }
-  }
 
   async function finalize(ok: boolean): Promise<void> {
-    if (state.ended) return;
-    state.ended = true;
-
     try {
       queueFlush();
       await writeChain;
@@ -356,11 +298,24 @@ export async function downloadSegments(
     } catch (e) {
       console.error('[SG] finalize error:', e);
       card.done(false);
-    } finally {
-      abortAll();
     }
   }
 
-  // Start!
-  pump();
+  // ----------------------------------------
+  // Start
+  // ----------------------------------------
+
+  // Add all tasks to queue
+  for (let i = 0; i < total; i++) {
+    queue.add(() => downloadSegmentTask(i));
+  }
+
+  // Wait for queue to empty
+  await queue.onIdle();
+
+  if (!state.canceled && state.done === total) {
+    finalize(true);
+  } else if (!state.canceled && state.done < total) {
+ 
+  }
 }
