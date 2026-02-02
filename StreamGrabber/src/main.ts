@@ -137,14 +137,14 @@ function init(): void {
   });
 
   // Set up state callbacks
-  state.setCallbacks({
-    onItemAdded: () => {
-      showFab();
-      updateBadge();
-    },
-    onItemUpdated: () => {
-      refreshUI();
-    },
+  // Set up state subscriptions
+  state.events.itemAdded.subscribe(() => {
+    showFab();
+    updateBadge();
+  });
+
+  state.events.updated.subscribe(() => {
+    refreshUI();
   });
 
   // Start detection (all frames)
@@ -187,9 +187,11 @@ async function handleItemAction(item: MediaItem): Promise<void> {
   try {
     await handleItem(
       item,
-      createProgress,
-      (items) => pickFromList(items, { title: 'Select Quality', filterable: true }),
-      setFabBusy
+      {
+        createCard: createProgress,
+        pickVariant: (items) => pickFromList(items, { title: 'Select Quality', filterable: true }),
+        setBusy: setFabBusy,
+      }
     );
   } catch (e) {
     alertError(e);
@@ -237,9 +239,9 @@ async function handleDownloadCommand(
             '*'
           );
         },
-        remove() {},
-        setOnStop() {},
-        setOnCancel() {},
+        remove() { },
+        setOnStop() { },
+        setOnCancel() { },
       };
     };
 
@@ -247,33 +249,40 @@ async function handleDownloadCommand(
       await downloadHls(
         url,
         variant as Variant | null,
-        createProxyCard,
-        async (items) => {
-          return new Promise((resolve) => {
-            const pickId = shortId();
+        {
+          createCard: createProxyCard,
+          pickVariant: async (items) => {
+            return new Promise((resolve) => {
+              const pickId = shortId();
 
-            const handler = (ev: MessageEvent) => {
-              const data = ev.data;
-              if (data?.type === 'SG_CMD_PICK_RESULT' && data?.payload?.id === pickId) {
-                window.removeEventListener('message', handler);
-                resolve(data.payload.item);
-              }
-            };
+              const handler = (ev: MessageEvent) => {
+                const data = ev.data;
+                if (data?.type === 'SG_CMD_PICK_RESULT' && data?.payload?.id === pickId) {
+                  window.removeEventListener('message', handler);
+                  resolve(data.payload.item);
+                }
+              };
 
-            window.addEventListener('message', handler);
+              window.addEventListener('message', handler);
 
-            window.top?.postMessage(
-              {
-                type: 'SG_CMD_PICK',
-                payload: { id: pickId, items, title: 'Select Quality' },
-              },
-              '*'
-            );
-          });
+              window.top?.postMessage(
+                {
+                  type: 'SG_CMD_PICK',
+                  payload: { id: pickId, items, title: 'Select Quality' },
+                },
+                '*'
+              );
+            });
+          },
+          setBusy: () => { },
         }
       );
     } else if (kind === 'video') {
-      await downloadDirect(url, createProxyCard);
+      await downloadDirect(url, {
+        createCard: createProxyCard,
+        pickVariant: async () => null,
+        setBusy: () => { },
+      });
     }
   } catch (e) {
     console.error('[SG] [iframe] Download error:', e);

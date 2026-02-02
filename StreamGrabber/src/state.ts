@@ -1,6 +1,31 @@
 import type { MediaItem, BlobInfo } from './types';
 import { CFG, CACHE, SETTINGS_KEYS } from './config';
-import { blobRegistry } from './core/network';
+import { pruneBlobs } from './core/network';
+
+// ============================================
+// Event System
+// ============================================
+
+export type Listener<T> = (payload: T) => void;
+
+export class Subscribable<T = void> {
+  private listeners = new Set<Listener<T>>();
+
+  subscribe(fn: Listener<T>): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  dispatch(payload: T): void {
+    for (const fn of this.listeners) {
+      try {
+        fn(payload);
+      } catch (e) {
+        console.error('[SG] Event dispatch error:', e);
+      }
+    }
+  }
+}
 
 // ============================================
 // Central State
@@ -24,28 +49,14 @@ class AppState {
   private _validCount = 0;
   private _validCountDirty = true;
 
-  /** UI callbacks */
-  private onItemAdded: ((item: MediaItem) => void) | null = null;
-  private onItemUpdated: (() => void) | null = null;
+  /** Events */
+  readonly events = {
+    itemAdded: new Subscribable<MediaItem>(),
+    updated: new Subscribable<void>(),
+  };
 
   constructor() {
     this.excludeSmall = GM_getValue(SETTINGS_KEYS.EXCLUDE_SMALL, true);
-  }
-
-  // ----------------------------------------
-  // Callbacks
-  // ----------------------------------------
-
-  setCallbacks(cbs: {
-    onItemAdded?: (item: MediaItem) => void;
-    onItemUpdated?: () => void;
-  }): void {
-    if (cbs.onItemAdded) this.onItemAdded = cbs.onItemAdded;
-    if (cbs.onItemUpdated) this.onItemUpdated = cbs.onItemUpdated;
-  }
-
-  notifyUpdate(): void {
-    this.onItemUpdated?.();
   }
 
   // ----------------------------------------
@@ -78,7 +89,8 @@ class AppState {
     this.enforceLimit();
 
     // Notify
-    this.onItemAdded?.(item);
+    this.events.itemAdded.dispatch(item);
+    this.events.updated.dispatch();
 
     return true;
   }
@@ -161,7 +173,7 @@ class AppState {
     this.items.clear();
     this.m3u8Urls.clear();
     this.videoUrls.clear();
-    blobRegistry.clear();
+    pruneBlobs(() => true);
     this.invalidateCount();
   }
 
@@ -172,16 +184,17 @@ class AppState {
     this.enforceLimit();
 
     const now = Date.now();
-    for (const [href, info] of blobRegistry) {
+    const removedUrls = pruneBlobs((_, info) => {
       const idle = now - (info.ts || 0);
-      if (info.revoked && idle > CACHE.CLEAR_MS) {
-        blobRegistry.delete(href);
-        if (this.items.has(href)) {
-          this.items.delete(href);
-          this.m3u8Urls.delete(href);
-          this.videoUrls.delete(href);
-          this.invalidateCount();
-        }
+      return !!(info.revoked && idle > CACHE.CLEAR_MS);
+    });
+
+    for (const href of removedUrls) {
+      if (this.items.has(href)) {
+        this.items.delete(href);
+        this.m3u8Urls.delete(href);
+        this.videoUrls.delete(href);
+        this.invalidateCount();
       }
     }
   }

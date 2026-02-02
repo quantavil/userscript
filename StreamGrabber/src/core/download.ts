@@ -19,9 +19,12 @@ import {
 // Types
 // ============================================
 
-type CreateCardFn = (title: string, src: string, segs?: number) => ProgressCardController;
-type PickVariantFn = (items: MediaItem[]) => Promise<MediaItem | null>;
-type SetBusyFn = (busy: boolean) => void;
+export interface DownloadDelegate {
+  createCard(title: string, src: string, segs?: number): ProgressCardController;
+  pickVariant(items: MediaItem[]): Promise<MediaItem | null>;
+  setBusy(busy: boolean): void;
+  // Optional: add any other UI interactions here if needed
+}
 
 // ============================================
 // Direct Download
@@ -29,7 +32,7 @@ type SetBusyFn = (busy: boolean) => void;
 
 export async function downloadDirect(
   url: string,
-  createCard: CreateCardFn
+  delegate: DownloadDelegate
 ): Promise<void> {
   console.log('[SG] Direct download:', url);
 
@@ -38,14 +41,14 @@ export async function downloadDirect(
   const filename = `${cleanFilename(document.title)}.${ext}`;
 
   let dlUrl = url;
-  let cleanup = () => {};
+  let cleanup = () => { };
 
   if (info?.blob) {
     dlUrl = URL.createObjectURL(info.blob);
     cleanup = () => URL.revokeObjectURL(dlUrl);
   }
 
-  const card = createCard(filename, url);
+  const card = delegate.createCard(filename, url);
 
   card.setOnCancel(() => {
     cleanup();
@@ -92,8 +95,7 @@ export async function downloadDirect(
 export async function downloadHls(
   url: string,
   preVariant: Variant | null,
-  createCard: CreateCardFn,
-  pickVariant: PickVariantFn
+  delegate: DownloadDelegate
 ): Promise<void> {
   console.log('[SG] HLS download:', url);
 
@@ -163,7 +165,7 @@ export async function downloadHls(
       });
     }
 
-    const selected = await pickVariant(items);
+    const selected = await delegate.pickVariant(items);
     if (!selected) return;
 
     chosenVariant = selected.variant ?? null;
@@ -190,7 +192,7 @@ export async function downloadHls(
   const quality = chosenVariant?.res ? `_${chosenVariant.res}` : '';
   const filename = `${name}${quality}.${ext}`;
 
-  const card = createCard(filename, url, parsed.segs.length);
+  const card = delegate.createCard(filename, url, parsed.segs.length);
 
   await downloadSegments(parsed, filename, fmp4, url, card);
 }
@@ -201,9 +203,7 @@ export async function downloadHls(
 
 export async function handleItem(
   item: MediaItem,
-  createCard: CreateCardFn,
-  pickVariant: PickVariantFn,
-  setFabBusy: SetBusyFn
+  delegate: DownloadDelegate
 ): Promise<void> {
   // Handle remote items (blobs from child frames)
   if (item.isRemote && item.remoteWin) {
@@ -214,10 +214,10 @@ export async function handleItem(
     // For non-blob remote items, download directly from top
     if (!item.url.startsWith('blob:')) {
       if (item.kind === 'hls') {
-        return downloadHls(item.url, null, createCard, pickVariant);
+        return downloadHls(item.url, null, delegate);
       }
       if (item.kind === 'video') {
-        return downloadDirect(item.url, createCard);
+        return downloadDirect(item.url, delegate);
       }
     }
 
@@ -234,7 +234,7 @@ export async function handleItem(
 
   // Ensure HLS items are enriched
   if (item.kind === 'hls' && !item.enriched) {
-    setFabBusy(true);
+    delegate.setBusy(true);
     try {
       if (item._enrichPromise) {
         await item._enrichPromise;
@@ -244,7 +244,7 @@ export async function handleItem(
     } catch (e) {
       throw new Error(`Failed to analyze stream: ${(e as Error).message}`);
     } finally {
-      setFabBusy(false);
+      delegate.setBusy(false);
     }
 
     if (item.hlsType === 'error' || item.hlsType === 'invalid') {
@@ -254,14 +254,14 @@ export async function handleItem(
 
   // Dispatch
   if (item.kind === 'video') {
-    return downloadDirect(item.url, createCard);
+    return downloadDirect(item.url, delegate);
   }
 
   if (item.kind === 'variant') {
-    return downloadHls(item.url, item.variant ?? null, createCard, pickVariant);
+    return downloadHls(item.url, item.variant ?? null, delegate);
   }
 
   if (item.kind === 'hls') {
-    return downloadHls(item.url, null, createCard, pickVariant);
+    return downloadHls(item.url, null, delegate);
   }
 }

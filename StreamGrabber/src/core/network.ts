@@ -13,6 +13,7 @@ const headCache = new Map<string, HeadMeta>();
 const headInflight = new Map<string, Promise<HeadMeta>>();
 
 // Blob registry (populated by detection hooks)
+export type BlobPredicate = (url: string, info: BlobInfo) => boolean;
 export const blobRegistry = new Map<string, BlobInfo>();
 
 // ============================================
@@ -92,7 +93,7 @@ export function getBin(
   if (blobInfo) {
     if (!blobInfo.blob) {
       const p = Promise.reject(new Error('Blob not found')) as AbortablePromise<ArrayBuffer>;
-      p.abort = () => {};
+      p.abort = () => { };
       return p;
     }
 
@@ -163,4 +164,19 @@ export function clearNetworkCaches(): void {
   textInflight.clear();
   headCache.clear();
   headInflight.clear();
+}
+
+/**
+ * Prune blobs from registry based on a predicate.
+ * Returns the list of removed URLs.
+ */
+export function pruneBlobs(predicate: BlobPredicate): string[] {
+  const removed: string[] = [];
+  for (const [url, info] of blobRegistry) {
+    if (predicate(url, info)) {
+      blobRegistry.delete(url);
+      removed.push(url);
+    }
+  }
+  return removed;
 }

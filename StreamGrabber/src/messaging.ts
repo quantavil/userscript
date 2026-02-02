@@ -38,12 +38,12 @@ type PickCallback = (
 ) => void;
 type DownloadCommandCallback = (url: string, kind: string, variant?: unknown) => void;
 
-let onRemoteItem: RemoteItemCallback = () => {};
-let onProgressStart: ProgressStartCallback = () => {};
-let onProgressUpdate: ProgressUpdateCallback = () => {};
-let onProgressDone: ProgressDoneCallback = () => {};
-let onPick: PickCallback = () => {};
-let onDownloadCommand: DownloadCommandCallback = () => {};
+let onRemoteItem: RemoteItemCallback = () => { };
+let onProgressStart: ProgressStartCallback = () => { };
+let onProgressUpdate: ProgressUpdateCallback = () => { };
+let onProgressDone: ProgressDoneCallback = () => { };
+let onPick: PickCallback = () => { };
+let onDownloadCommand: DownloadCommandCallback = () => { };
 
 export function setMessagingCallbacks(cbs: {
   onRemoteItem?: RemoteItemCallback;
@@ -65,108 +65,108 @@ export function setMessagingCallbacks(cbs: {
 // Message Handler
 // ============================================
 
+type MessageHandler = (data: SGMessage, source: Window) => void;
+
+const topHandlers: Record<string, MessageHandler> = {
+  'SG_DETECT': (data, source) => {
+    if (!data.item) return;
+    const item = data.item as MediaItem;
+    item.remoteWin = source;
+    item.isRemote = true;
+
+    console.log(
+      '[SG] Received detection from iframe:',
+      item.kind,
+      item.url.slice(0, 60)
+    );
+
+    if (state.addItem(item)) {
+      onRemoteItem(item);
+      if (item.kind === 'hls') {
+        queueEnrich(item.url);
+      }
+    }
+  },
+
+  'SG_PROGRESS_START': (data, source) => {
+    const { id, title, src } = data.payload as {
+      id: string;
+      title: string;
+      src: string;
+    };
+    onProgressStart(id, title, src, source);
+  },
+
+  'SG_PROGRESS_UPDATE': (data) => {
+    const { id, p, txt } = data.payload as { id: string; p: number; txt: string };
+    onProgressUpdate(id, p, txt);
+  },
+
+  'SG_PROGRESS_DONE': (data) => {
+    const { id, ok, msg } = data.payload as {
+      id: string;
+      ok: boolean;
+      msg: string;
+    };
+    onProgressDone(id, ok, msg);
+  },
+
+  'SG_CMD_PICK': (data, source) => {
+    const { id, items, title } = data.payload as {
+      id: string;
+      items: MediaItem[];
+      title: string;
+    };
+    onPick(id, items, title, source);
+  }
+};
+
+const childHandlers: Record<string, MessageHandler> = {
+  'SG_CMD_DOWNLOAD': (data) => {
+    const { url, kind, variant } = data.payload as {
+      url: string;
+      kind: string;
+      variant?: unknown;
+    };
+    console.log('[SG] [iframe] Received download command:', { url, kind });
+    onDownloadCommand(url, kind, variant);
+  },
+
+  'SG_CMD_PICK_RESULT': (data) => {
+    const { id, item } = data.payload as { id: string; item: MediaItem | null };
+    const resolver = pickerRequests.get(id);
+    if (resolver) {
+      pickerRequests.delete(id);
+      resolver(item);
+    }
+  },
+
+  'SG_CMD_CONTROL': (data) => {
+    const { id, action } = data.payload as { id: string; action: 'cancel' | 'stop' };
+    const handler = controlHandlers.get(id + '_ctrl');
+    if (handler) {
+      if (action === 'cancel') handler.onCancel?.();
+      if (action === 'stop') handler.onStop?.();
+    }
+  }
+};
+
 function handleMessage(ev: MessageEvent): void {
   const data = ev.data as SGMessage | null;
   if (!data || typeof data !== 'object' || !data.type) return;
 
   if (ev.source === window) return;
 
-  // Child frame messages (handled by top only)
+  let handler: MessageHandler | undefined;
+
   if (CFG.IS_TOP) {
-    switch (data.type) {
-      case 'SG_DETECT': {
-        if (!data.item) break;
-        const item = data.item as MediaItem;
-        item.remoteWin = ev.source as Window;
-        item.isRemote = true;
-
-        console.log(
-          '[SG] Received detection from iframe:',
-          item.kind,
-          item.url.slice(0, 60)
-        );
-
-        if (state.addItem(item)) {
-          onRemoteItem(item);
-          if (item.kind === 'hls') {
-            queueEnrich(item.url);
-          }
-        }
-        break;
-      }
-
-      case 'SG_PROGRESS_START': {
-        const { id, title, src } = data.payload as {
-          id: string;
-          title: string;
-          src: string;
-        };
-        onProgressStart(id, title, src, ev.source as Window);
-        break;
-      }
-
-      case 'SG_PROGRESS_UPDATE': {
-        const { id, p, txt } = data.payload as { id: string; p: number; txt: string };
-        onProgressUpdate(id, p, txt);
-        break;
-      }
-
-      case 'SG_PROGRESS_DONE': {
-        const { id, ok, msg } = data.payload as {
-          id: string;
-          ok: boolean;
-          msg: string;
-        };
-        onProgressDone(id, ok, msg);
-        break;
-      }
-
-      case 'SG_CMD_PICK': {
-        const { id, items, title } = data.payload as {
-          id: string;
-          items: MediaItem[];
-          title: string;
-        };
-        onPick(id, items, title, ev.source as Window);
-        break;
-      }
-    }
+    handler = topHandlers[data.type];
+  } else {
+    handler = childHandlers[data.type];
   }
 
-  // Messages from top (handled by child frames)
-  if (!CFG.IS_TOP) {
-    switch (data.type) {
-      case 'SG_CMD_DOWNLOAD': {
-        const { url, kind, variant } = data.payload as {
-          url: string;
-          kind: string;
-          variant?: unknown;
-        };
-        console.log('[SG] [iframe] Received download command:', { url, kind });
-        onDownloadCommand(url, kind, variant);
-        break;
-      }
-
-      case 'SG_CMD_PICK_RESULT': {
-        const { id, item } = data.payload as { id: string; item: MediaItem | null };
-        const resolver = pickerRequests.get(id);
-        if (resolver) {
-          pickerRequests.delete(id);
-          resolver(item);
-        }
-        break;
-      }
-
-      case 'SG_CMD_CONTROL': {
-        const { id, action } = data.payload as { id: string; action: 'cancel' | 'stop' };
-        const handler = controlHandlers.get(id + '_ctrl');
-        if (handler) {
-          if (action === 'cancel') handler.onCancel?.();
-          if (action === 'stop') handler.onStop?.();
-        }
-        break;
-      }
-    }
+  if (handler) {
+    handler(data, ev.source as Window);
   }
 }
 

@@ -734,7 +734,7 @@
     display: block !important;
     height: 100% !important;
     width: 0 !important;
-    background: linear-gradient(90deg, var(--sg-gold-dim), var(--sg-gold)) !important;
+    background: linear-gradient(90deg, var(--sg-gold), var(--sg-gold-bright)) !important;
     box-shadow: 0 0 10px var(--sg-gold-glow) !important;
     transition: width 0.2s linear !important;
 }
