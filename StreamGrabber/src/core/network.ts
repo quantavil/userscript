@@ -112,13 +112,92 @@ export function getBin(
     return p;
   }
 
-  return gmGet({
-    url,
-    responseType: 'arraybuffer',
-    headers,
-    timeout,
-    onprogress,
-  });
+  // Smart Fetch: Try Native -> Fallback to GM
+  let abortRef: (() => void) | null = null;
+  let isAborted = false;
+
+  const p = new Promise<ArrayBuffer>(async (resolve, reject) => {
+    // 1. Try Native Fetch (Pre-flight check for CORS implicitly handled by browser)
+    try {
+      if (isAborted) throw new Error('Aborted');
+
+      const controller = new AbortController();
+      abortRef = () => controller.abort();
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) throw new Error(`Status ${response.status}`);
+      if (!response.body) throw new Error('No body');
+
+      // Native fetch successful, read stream for progress
+      const reader = response.body.getReader();
+      const contentLength = +(response.headers.get('Content-Length') || '0');
+      let received = 0;
+      const chunks: Uint8Array[] = [];
+
+      while (true) {
+        if (isAborted) {
+          reader.cancel();
+          throw new Error('Aborted');
+        }
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (onprogress && contentLength) {
+          onprogress({ loaded: received, total: contentLength });
+        }
+      }
+
+      // Concatenate chunks
+      const result = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      resolve(result.buffer);
+      return;
+    } catch (e) {
+      if (isAborted || (e as Error).name === 'AbortError') {
+        reject(new Error('Aborted'));
+        return;
+      }
+      // If native fetch fails (CORS, etc.), proceed to GM fallback
+      // Don't log spam, just perform fallback
+    }
+
+    if (isAborted) {
+      reject(new Error('Aborted'));
+      return;
+    }
+
+    // 2. Fallback to GM_xmlhttpRequest
+    const req = gmGet({
+      url,
+      responseType: 'arraybuffer',
+      headers,
+      timeout,
+      onprogress,
+    });
+
+    abortRef = () => req.abort();
+
+    req.then(resolve).catch(reject);
+
+  }) as AbortablePromise<ArrayBuffer>;
+
+  p.abort = () => {
+    isAborted = true;
+    if (abortRef) abortRef();
+  };
+
+  return p;
 }
 
 // ============================================

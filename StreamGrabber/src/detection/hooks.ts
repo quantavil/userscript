@@ -21,6 +21,10 @@ export function setDetectionCallback(cb: DetectionCallback): void {
   }
 }
 
+function checkContent(content: string): boolean {
+  return typeof content === 'string' && content.trim().startsWith('#EXTM3U');
+}
+
 /**
  * Internal function to emit detection
  */
@@ -124,8 +128,29 @@ function hookRevokeObjectURL(): void {
 // ============================================
 
 function hookFetch(): void {
-  const original = window.fetch;
-  if (typeof original !== 'function') return;
+  const originalFetch = window.fetch;
+  const originalResText = window.Response.prototype.text;
+
+  if (typeof originalFetch !== 'function') return;
+
+  // Hook Response.text() to inspect content
+  window.Response.prototype.text = function () {
+    return new Promise((resolve, reject) => {
+      originalResText.call(this)
+        .then((text) => {
+          resolve(text);
+          // Async check to avoid blocking
+          try {
+            if (checkContent(text)) {
+              emitDetection(this.url);
+            }
+          } catch (e) {
+            console.error('[SG] Detection error in Response.text:', e);
+          }
+        })
+        .catch(reject);
+    });
+  };
 
   window.fetch = function (...args: Parameters<typeof fetch>): Promise<Response> {
     try {
@@ -134,7 +159,7 @@ function hookFetch(): void {
       if (url) emitDetection(url);
     } catch { /* ignore */ }
 
-    return original.apply(this, args);
+    return originalFetch.apply(this, args);
   };
 }
 
@@ -156,7 +181,23 @@ function hookXHR(): void {
     } catch { /* ignore */ }
 
     // @ts-expect-error - rest params typing
-    return original.call(this, method, url, ...rest);
+    const result = original.call(this, method, url, ...rest);
+
+    // Attach load listener to inspect content
+    this.addEventListener('load', () => {
+      try {
+        // Only inspect text responses to avoid InvalidStateError on binary/blob types
+        if (!this.responseType || this.responseType === 'text') {
+          const content = this.responseText;
+          const targetUrl = typeof url === 'string' ? url : url?.href;
+          if (targetUrl && checkContent(content)) {
+            emitDetection(targetUrl);
+          }
+        }
+      } catch { /* ignore */ }
+    });
+
+    return result;
   };
 }
 
