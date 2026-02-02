@@ -2,6 +2,7 @@ import type { HeadMeta, AbortablePromise, GmRequestOptions, BlobInfo } from '../
 import { CFG, CACHE } from '../config';
 import { isBlob, once, parseHeaders } from '../utils';
 import { getBlobInfo, getBlobSlice } from './shared';
+import { blobRegistry } from './blob-store';
 
 // ============================================
 // Caches
@@ -11,10 +12,6 @@ const textCache = new Map<string, string>();
 const textInflight = new Map<string, Promise<string>>();
 const headCache = new Map<string, HeadMeta>();
 const headInflight = new Map<string, Promise<HeadMeta>>();
-
-// Blob registry (populated by detection hooks)
-export type BlobPredicate = (url: string, info: BlobInfo) => boolean;
-export const blobRegistry = new Map<string, BlobInfo>();
 
 // ============================================
 // Core GM Request
@@ -170,13 +167,5 @@ export function clearNetworkCaches(): void {
  * Prune blobs from registry based on a predicate.
  * Returns the list of removed URLs.
  */
-export function pruneBlobs(predicate: BlobPredicate): string[] {
-  const removed: string[] = [];
-  for (const [url, info] of blobRegistry) {
-    if (predicate(url, info)) {
-      blobRegistry.delete(url);
-      removed.push(url);
-    }
-  }
-  return removed;
-}
+// Blob registry is now in ./blob-store.ts
+export { blobRegistry } from './blob-store';

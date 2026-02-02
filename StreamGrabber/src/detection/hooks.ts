@@ -1,5 +1,5 @@
 import type { BlobInfo } from '../types';
-import { blobRegistry } from '../core/network';
+import { blobRegistry } from '../core/blob-store';
 import { looksM3U8Type, looksVideoType } from '../utils';
 
 type DetectionCallback = (url: string, metadata?: { size?: number; type?: string }) => void;

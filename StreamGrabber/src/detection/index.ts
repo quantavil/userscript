@@ -1,7 +1,7 @@
 import type { MediaItem } from '../types';
 import { CFG } from '../config';
 import { state } from '../state';
-import { blobRegistry } from '../core/network';
+import { blobRegistry } from '../core/blob-store';
 import {
   isHttp,
   isBlob,

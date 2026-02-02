@@ -1,6 +1,6 @@
 import type { MediaItem, BlobInfo } from './types';
 import { CFG, CACHE, SETTINGS_KEYS } from './config';
-import { pruneBlobs } from './core/network';
+import { pruneBlobs } from './core/blob-store';
 
 // ============================================
 // Event System

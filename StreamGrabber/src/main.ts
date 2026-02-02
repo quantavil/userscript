@@ -300,7 +300,8 @@ init();
 // ============================================
 
 export { state };
-export { getText, getBin, headMeta, blobRegistry } from './core/network';
+export { getText, getBin, headMeta } from './core/network';
+export { blobRegistry } from './core/blob-store';
 export {
   parseManifest,
   calcDuration,
