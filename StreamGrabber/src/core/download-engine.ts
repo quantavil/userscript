@@ -33,13 +33,14 @@ interface SegmentStatus {
 export async function downloadSegments(
   parsed: ParsedMedia,
   filename: string,
-  _ext: string,
   isFmp4: boolean,
-  _srcUrl: string,
+  srcUrl: string, // Keep for logging, prefix removed
   card: ProgressCardController
 ): Promise<void> {
   const segs = parsed.segs;
   const total = segs.length;
+
+  console.log('[SG] Starting segment download:', { filename, segments: total, srcUrl });
 
   // State
   const state: DownloadState = {
@@ -108,7 +109,11 @@ export async function downloadSegments(
 
   function abortAll(): void {
     for (const [, req] of inflight) {
-      try { req.abort(); } catch { /* ignore */ }
+      try {
+        req.abort();
+      } catch {
+        /* ignore */
+      }
     }
     inflight.clear();
     inprog.clear();
@@ -231,17 +236,11 @@ export async function downloadSegments(
 
     const headers = s.range ? { Range: s.range } : {};
 
-    const req = getBin(
-      s.uri,
-      headers,
-      CFG.REQUEST_TIMEOUT,
-      (e) => {
-        inprog.set(i, { loaded: e.loaded, total: e.total });
-        draw();
-      }
-    );
+    const req = getBin(s.uri, headers, CFG.REQUEST_TIMEOUT, (e) => {
+      inprog.set(i, { loaded: e.loaded, total: e.total });
+      draw();
+    });
 
-    // Store abort function - getBin now always returns AbortablePromise
     inflight.set(i, { abort: () => req.abort() });
 
     try {
@@ -298,11 +297,9 @@ export async function downloadSegments(
     if (state.paused || state.canceled || state.ended) return;
 
     while (state.active < CFG.CONCURRENCY) {
-      // Try retry queue first
       let idx = takeRetry();
 
       if (idx === -1) {
-        // Find next pending segment
         while (state.nextIdx < total && seg.status[state.nextIdx] !== 0) {
           state.nextIdx++;
         }
@@ -319,20 +316,17 @@ export async function downloadSegments(
   function check(): void {
     if (state.ended) return;
 
-    // Check if current write position failed
     if (seg.status[state.writePtr] === -1) {
       abortAll();
       finalize(false);
       return;
     }
 
-    // Check if all done
     if (state.done === total) {
       finalize(true);
       return;
     }
 
-    // Check if no active and some failed
     if (!state.active) {
       for (let i = 0; i < seg.status.length; i++) {
         if (seg.status[i] === -1) {

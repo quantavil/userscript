@@ -6,17 +6,17 @@
  * Convert hex string to Uint8Array
  */
 export function hexToU8(hex: string | null | undefined): Uint8Array {
-  let cleaned = String(hex || '')
-    .replace(/^0x/i, '')
-    .replace(/[^0-9a-f]/gi, '');
-  
-  if (cleaned.length % 2) cleaned = '0' + cleaned;
-  
-  const out = new Uint8Array(cleaned.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = parseInt(cleaned.substr(i * 2, 2), 16);
-  }
-  return out;
+  const clean = (hex || '').replace(/^0x/i, '').replace(/[^0-9a-f]/gi, '');
+  if (clean.length === 0) return new Uint8Array(0);
+
+  // Pad if odd length
+  const evenHex = clean.length % 2 === 0 ? clean : '0' + clean;
+
+  // Use modern match safely
+  const chunks = evenHex.match(/.{1,2}/g);
+  if (!chunks) return new Uint8Array(0);
+
+  return new Uint8Array(chunks.map(b => parseInt(b, 16)));
 }
 
 /**
@@ -43,14 +43,14 @@ export async function aesCbcDecrypt(
 ): Promise<ArrayBuffer> {
   const key = await crypto.subtle.importKey(
     'raw',
-    keyBytes,
+    keyBytes as any,
     { name: 'AES-CBC' },
     false,
     ['decrypt']
   );
-  
+
   return crypto.subtle.decrypt(
-    { name: 'AES-CBC', iv },
+    { name: 'AES-CBC', iv: iv as any },
     key,
     buf
   );

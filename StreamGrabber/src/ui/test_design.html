@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamGrabber Premium Design Test</title>
+    <!-- Inject the CSS directly or link it if relative paths work in this context. 
+         For safety, I'll link it relative to this file location. -->
+    <link rel="stylesheet" href="./main.css">
+    <style>
+        body {
+            background-color: #222;
+            background-image: url('https://images.unsplash.com/photo-1634152962476-4b8a00e1915c?q=80&w=2000&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- FAB Container -->
+    <div id="sg-fab-container">
+        <div class="sg-fab show">
+            <span class="sg-fab-icon">
+                <!-- Icon -->
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                    <path stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="currentColor"
+                        stroke-width="2"
+                        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+            </span>
+            <div class="sg-badge show">3</div>
+        </div>
+    </div>
+
+    <!-- Modal Container (Simulated Open State) -->
+    <div id="sg-modal-container">
+        <div class="sg-modal show" style="display: flex;">
+            <div class="sg-card">
+                <div class="sg-card-head">
+                    <div class="sg-card-title">StreamGrabber</div>
+                    <button class="sg-btn sg-btn-small">
+                        <svg viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="sg-card-body">
+                    <!-- Progress Item -->
+                    <div class="sg-progress">
+                        <div class="sg-progress-row">
+                            <div class="sg-progress-name">Big_Buck_Bunny_4K.mp4</div>
+                            <div class="sg-progress-ctrls">
+                                <button class="sg-btn sg-btn-small" style="color: var(--sg-warn)">
+                                    <svg viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="sg-progress-bar">
+                            <div class="sg-progress-fill" style="width: 65%;"></div>
+                        </div>
+                        <div class="sg-progress-status">
+                            <span>245.5 MB / 378.2 MB</span>
+                            <span>65%</span>
+                        </div>
+                    </div>
+
+                    <div class="sg-option">
+                        <input type="checkbox" checked>
+                        <span>Enable Auto-Download for Master Playlists</span>
+                    </div>
+
+                    <div class="sg-list">
+                        <div class="sg-item">
+                            <div class="sg-item-top">
+                                <div class="sg-item-title">
+                                    <span class="sg-badge-type master">MASTER</span>
+                                    Manifest for Season 1
+                                </div>
+                                <div class="sg-item-size">1.2 MB</div>
+                            </div>
+                            <div class="sg-item-sub">
+                                <span>1920x1080</span>
+                                <span>•</span>
+                                <span>HLS</span>
+                            </div>
+                            <div class="sg-item-url">https://example.com/stream/hls/master.m3u8</div>
+                        </div>
+
+                        <div class="sg-item">
+                            <div class="sg-item-top">
+                                <div class="sg-item-title">
+                                    <span class="sg-badge-type video">VIDEO</span>
+                                    Episode 1 - The Beginning
+                                </div>
+                                <div class="sg-item-size">~450 MB</div>
+                            </div>
+                            <div class="sg-item-sub">
+                                <span>1280x720</span>
+                                <span>•</span>
+                                <span>MP4</span>
+                            </div>
+                            <div class="sg-item-url">https://cdn.video/ep1.mp4</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="sg-toast-container"></div>
+
+</body>
+
+</html>

@@ -3,6 +3,8 @@
  * Uses File System Access API when available, falls back to blob/GM_download
  */
 
+import { notifyDownloadComplete } from './shared';
+
 export interface FileWriter {
   write(chunk: Uint8Array): Promise<void>;
   close(): Promise<void>;
@@ -24,10 +26,12 @@ async function createNativeWriter(
     const ext = suggestedName.split('.').pop() || 'mp4';
     const handle = await window.showSaveFilePicker({
       suggestedName,
-      types: [{
-        description: 'Video file',
-        accept: { [mimeType]: [`.${ext}`] },
-      }],
+      types: [
+        {
+          description: 'Video file',
+          accept: { [mimeType]: [`.${ext}`] },
+        },
+      ],
     });
 
     const stream = await handle.createWritable();
@@ -49,11 +53,7 @@ async function createNativeWriter(
         closed = true;
         try {
           await stream.close();
-          GM_notification({
-            text: `Download complete: ${suggestedName}`,
-            title: 'StreamGrabber',
-            timeout: 3000,
-          });
+          notifyDownloadComplete(suggestedName);
         } catch (e) {
           console.error('[SG] Native close error:', e);
           throw new Error(`Failed to save file: ${(e as Error).message}`);
@@ -62,20 +62,18 @@ async function createNativeWriter(
       abort(): void {
         if (closed || aborted) return;
         aborted = true;
-        try { 
-          stream.abort(); 
-        } catch { 
-          /* ignore */ 
+        try {
+          stream.abort();
+        } catch {
+          /* ignore */
         }
       },
     };
   } catch (e) {
     const error = e as Error;
-    // User cancelled - bubble up
     if (error.name === 'AbortError') {
       throw e;
     }
-    // Security or other API error - return null to use fallback
     console.warn('[SG] File System Access API failed, using fallback:', error.message);
     return null;
   }
@@ -84,10 +82,7 @@ async function createNativeWriter(
 /**
  * Create a file writer using in-memory blob + GM_download (fallback)
  */
-function createBlobWriter(
-  suggestedName: string,
-  mimeType: string
-): FileWriter {
+function createBlobWriter(suggestedName: string, mimeType: string): FileWriter {
   const chunks: Uint8Array[] = [];
   let totalSize = 0;
   let closed = false;
@@ -98,10 +93,11 @@ function createBlobWriter(
       if (closed || aborted) return;
       chunks.push(chunk);
       totalSize += chunk.length;
-      
-      // Warn if getting too large for memory
+
       if (totalSize > 500 * 1024 * 1024 && chunks.length % 100 === 0) {
-        console.warn(`[SG] Large download in memory: ${Math.round(totalSize / 1024 / 1024)}MB`);
+        console.warn(
+          `[SG] Large download in memory: ${Math.round(totalSize / 1024 / 1024)}MB`
+        );
       }
     },
     async close(): Promise<void> {
@@ -119,52 +115,48 @@ function createBlobWriter(
 
       return new Promise((resolve, reject) => {
         const cleanup = () => {
-          // Small delay before revoking to ensure download started
           setTimeout(() => URL.revokeObjectURL(url), 1000);
         };
 
         GM_download({
           url,
           name: suggestedName,
-          saveAs: true, // Always show save dialog for reliability
+          saveAs: true,
           onload: () => {
             cleanup();
-            GM_notification({
-              text: `Download complete: ${suggestedName}`,
-              title: 'StreamGrabber',
-              timeout: 3000,
-            });
+            notifyDownloadComplete(suggestedName);
             resolve();
           },
           onerror: (err) => {
             cleanup();
-            // Properly extract error details
             const errorMsg = err?.error || 'unknown';
             const details = err?.details || '';
             console.error('[SG] GM_download error:', { error: errorMsg, details });
-            
-            // Provide helpful error messages
+
             let userMessage: string;
             switch (errorMsg) {
               case 'not_enabled':
                 userMessage = 'Downloads are disabled in userscript settings';
                 break;
               case 'not_whitelisted':
-                userMessage = 'URL not whitelisted for download. Check userscript settings.';
+                userMessage =
+                  'URL not whitelisted for download. Check userscript settings.';
                 break;
               case 'not_permitted':
-                userMessage = 'Download not permitted. Try allowing downloads in browser settings.';
+                userMessage =
+                  'Download not permitted. Try allowing downloads in browser settings.';
                 break;
               case 'not_supported':
                 userMessage = 'Download not supported by your userscript manager';
                 break;
               case 'not_succeeded':
-                userMessage = details || 'Download failed. Check if the file location is writable.';
+                userMessage =
+                  details || 'Download failed. Check if the file location is writable.';
                 break;
               default:
                 userMessage = `Download failed: ${errorMsg}${details ? ` - ${details}` : ''}`;
             }
-            
+
             reject(new Error(userMessage));
           },
           ontimeout: () => {
@@ -177,7 +169,7 @@ function createBlobWriter(
     abort(): void {
       if (closed || aborted) return;
       aborted = true;
-      chunks.length = 0; // Free memory
+      chunks.length = 0;
     },
   };
 }
@@ -189,26 +181,20 @@ export async function createFileWriter(
   suggestedName: string,
   mimeType: string
 ): Promise<FileWriter> {
-  // Try native File System Access API first (better for large files)
   const nativeWriter = await createNativeWriter(suggestedName, mimeType);
   if (nativeWriter) {
     console.log('[SG] Using native File System Access API');
     return nativeWriter;
   }
 
-  // Fallback to blob accumulation
   console.log('[SG] Using blob fallback for download');
   return createBlobWriter(suggestedName, mimeType);
 }
 
 /**
  * Alternative: Direct blob download without streaming
- * Use this for smaller files where memory isn't a concern
  */
-export function downloadBlob(
-  blob: Blob,
-  filename: string
-): Promise<void> {
+export function downloadBlob(blob: Blob, filename: string): Promise<void> {
   const url = URL.createObjectURL(blob);
 
   return new Promise((resolve, reject) => {
@@ -224,7 +210,9 @@ export function downloadBlob(
         setTimeout(() => URL.revokeObjectURL(url), 1000);
         const errorMsg = err?.error || 'unknown';
         const details = err?.details || '';
-        reject(new Error(`Download failed: ${errorMsg}${details ? ` - ${details}` : ''}`));
+        reject(
+          new Error(`Download failed: ${errorMsg}${details ? ` - ${details}` : ''}`)
+        );
       },
       ontimeout: () => {
         setTimeout(() => URL.revokeObjectURL(url), 1000);

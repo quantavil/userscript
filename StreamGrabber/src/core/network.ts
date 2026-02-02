@@ -1,6 +1,7 @@
 import type { HeadMeta, AbortablePromise, GmRequestOptions, BlobInfo } from '../types';
 import { CFG, CACHE } from '../config';
-import { isBlob, parseRange, once, parseHeaders } from '../utils';
+import { isBlob, once, parseHeaders } from '../utils';
+import { getBlobInfo, getBlobSlice } from './shared';
 
 // ============================================
 // Caches
@@ -44,7 +45,11 @@ export function gmGet<T extends 'text' | 'arraybuffer'>(
   }) as AbortablePromise<T extends 'text' ? string : ArrayBuffer>;
 
   p.abort = () => {
-    try { ref?.abort(); } catch { /* ignore */ }
+    try {
+      ref?.abort();
+    } catch {
+      /* ignore */
+    }
   };
 
   return p;
@@ -55,12 +60,12 @@ export function gmGet<T extends 'text' | 'arraybuffer'>(
 // ============================================
 
 async function fetchText(url: string): Promise<string> {
-  if (isBlob(url)) {
-    const info = blobRegistry.get(url);
-    if (!info?.blob) throw new Error('Blob not found');
-    info.ts = Date.now();
-    return info.blob.text();
+  const blobInfo = getBlobInfo(url, blobRegistry);
+  if (blobInfo) {
+    if (!blobInfo.blob) throw new Error('Blob not found');
+    return blobInfo.blob.text();
   }
+
   return gmGet({
     url,
     responseType: 'text',
@@ -82,32 +87,30 @@ export function getBin(
   timeout = CFG.REQUEST_TIMEOUT,
   onprogress?: (e: { loaded: number; total: number }) => void
 ): AbortablePromise<ArrayBuffer> {
-  if (isBlob(url)) {
-    const info = blobRegistry.get(url);
-    if (!info?.blob) {
+  const blobInfo = getBlobInfo(url, blobRegistry);
+
+  if (blobInfo) {
+    if (!blobInfo.blob) {
       const p = Promise.reject(new Error('Blob not found')) as AbortablePromise<ArrayBuffer>;
-      p.abort = () => { };
+      p.abort = () => {};
       return p;
     }
-    info.ts = Date.now();
 
-    const range = parseRange(headers.Range);
-    const part = range
-      ? info.blob.slice(range.start, range.end == null ? info.blob.size : range.end + 1)
-      : info.blob;
+    const part = getBlobSlice(blobInfo.blob, headers.Range);
 
     if (onprogress) {
       setTimeout(() => onprogress({ loaded: part.size, total: part.size }), 0);
     }
 
-    // Wrap in abortable promise
     let aborted = false;
-    const p = part.arrayBuffer().then(buf => {
+    const p = part.arrayBuffer().then((buf) => {
       if (aborted) throw new Error('Aborted');
       return buf;
     }) as AbortablePromise<ArrayBuffer>;
 
-    p.abort = () => { aborted = true; };
+    p.abort = () => {
+      aborted = true;
+    };
     return p;
   }
 

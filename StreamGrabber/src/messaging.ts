@@ -2,6 +2,7 @@ import type { MediaItem, SGMessage } from './types';
 import { CFG } from './config';
 import { state } from './state';
 import { queueEnrich } from './core/enrichment';
+import { serializeMediaItem, shortId } from './core/shared';
 
 // ============================================
 // Types
@@ -21,10 +22,20 @@ const controlHandlers = new Map<string, ControlHandler>();
 // ============================================
 
 type RemoteItemCallback = (item: MediaItem) => void;
-type ProgressStartCallback = (id: string, title: string, src: string, source: Window) => void;
+type ProgressStartCallback = (
+  id: string,
+  title: string,
+  src: string,
+  source: Window
+) => void;
 type ProgressUpdateCallback = (id: string, p: number, txt: string) => void;
 type ProgressDoneCallback = (id: string, ok: boolean, msg: string) => void;
-type PickCallback = (id: string, items: MediaItem[], title: string, source: Window) => void;
+type PickCallback = (
+  id: string,
+  items: MediaItem[],
+  title: string,
+  source: Window
+) => void;
 type DownloadCommandCallback = (url: string, kind: string, variant?: unknown) => void;
 
 let onRemoteItem: RemoteItemCallback = () => {};
@@ -57,10 +68,9 @@ export function setMessagingCallbacks(cbs: {
 function handleMessage(ev: MessageEvent): void {
   const data = ev.data as SGMessage | null;
   if (!data || typeof data !== 'object' || !data.type) return;
-  
-  // Skip messages from self
+
   if (ev.source === window) return;
-  
+
   // Child frame messages (handled by top only)
   if (CFG.IS_TOP) {
     switch (data.type) {
@@ -69,9 +79,13 @@ function handleMessage(ev: MessageEvent): void {
         const item = data.item as MediaItem;
         item.remoteWin = ev.source as Window;
         item.isRemote = true;
-        
-        console.log('[SG] Received detection from iframe:', item.kind, item.url.slice(0, 60));
-        
+
+        console.log(
+          '[SG] Received detection from iframe:',
+          item.kind,
+          item.url.slice(0, 60)
+        );
+
         if (state.addItem(item)) {
           onRemoteItem(item);
           if (item.kind === 'hls') {
@@ -80,25 +94,33 @@ function handleMessage(ev: MessageEvent): void {
         }
         break;
       }
-      
+
       case 'SG_PROGRESS_START': {
-        const { id, title, src } = data.payload as { id: string; title: string; src: string };
+        const { id, title, src } = data.payload as {
+          id: string;
+          title: string;
+          src: string;
+        };
         onProgressStart(id, title, src, ev.source as Window);
         break;
       }
-      
+
       case 'SG_PROGRESS_UPDATE': {
         const { id, p, txt } = data.payload as { id: string; p: number; txt: string };
         onProgressUpdate(id, p, txt);
         break;
       }
-      
+
       case 'SG_PROGRESS_DONE': {
-        const { id, ok, msg } = data.payload as { id: string; ok: boolean; msg: string };
+        const { id, ok, msg } = data.payload as {
+          id: string;
+          ok: boolean;
+          msg: string;
+        };
         onProgressDone(id, ok, msg);
         break;
       }
-      
+
       case 'SG_CMD_PICK': {
         const { id, items, title } = data.payload as {
           id: string;
@@ -110,8 +132,8 @@ function handleMessage(ev: MessageEvent): void {
       }
     }
   }
-  
-  // Messages from top (handled by child frames - iframes)
+
+  // Messages from top (handled by child frames)
   if (!CFG.IS_TOP) {
     switch (data.type) {
       case 'SG_CMD_DOWNLOAD': {
@@ -124,7 +146,7 @@ function handleMessage(ev: MessageEvent): void {
         onDownloadCommand(url, kind, variant);
         break;
       }
-      
+
       case 'SG_CMD_PICK_RESULT': {
         const { id, item } = data.payload as { id: string; item: MediaItem | null };
         const resolver = pickerRequests.get(id);
@@ -134,7 +156,7 @@ function handleMessage(ev: MessageEvent): void {
         }
         break;
       }
-      
+
       case 'SG_CMD_CONTROL': {
         const { id, action } = data.payload as { id: string; action: 'cancel' | 'stop' };
         const handler = controlHandlers.get(id + '_ctrl');
@@ -169,34 +191,9 @@ export function postToChild(target: Window, message: SGMessage): void {
 }
 
 export function sendDetection(item: MediaItem): void {
-  // Clone item without non-serializable properties
-  const serialized: Partial<MediaItem> = {
-    url: item.url,
-    kind: item.kind,
-    label: item.label,
-    sublabel: item.sublabel,
-    size: item.size,
-    type: item.type,
-    origin: item.origin,
-    enriched: item.enriched,
-    enriching: item.enriching,
-    hlsType: item.hlsType,
-    isLive: item.isLive,
-    encrypted: item.encrypted,
-    duration: item.duration,
-    segCount: item.segCount,
-    resolution: item.resolution,
-    isVod: item.isVod,
-    isFmp4: item.isFmp4,
-    variantCount: item.variantCount,
-    variants: item.variants,
-    bestVariant: item.bestVariant,
-    variant: item.variant,
-  };
-  
   postToTop({
     type: 'SG_DETECT',
-    item: serialized,
+    item: serializeMediaItem(item),
   });
 }
 
@@ -229,7 +226,11 @@ export function registerControlHandler(id: string, handler: ControlHandler): voi
   controlHandlers.set(id + '_ctrl', handler);
 }
 
-export function sendPickResult(target: Window, id: string, item: MediaItem | null): void {
+export function sendPickResult(
+  target: Window,
+  id: string,
+  item: MediaItem | null
+): void {
   postToChild(target, {
     type: 'SG_CMD_PICK_RESULT',
     payload: { id, item },
@@ -245,7 +246,7 @@ let initialized = false;
 export function initMessaging(): void {
   if (initialized) return;
   initialized = true;
-  
+
   window.addEventListener('message', handleMessage);
   console.log('[SG] Messaging initialized', { isTop: CFG.IS_TOP });
 }

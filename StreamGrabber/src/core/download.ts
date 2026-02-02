@@ -1,9 +1,19 @@
 import type { MediaItem, Variant, ProgressCardController } from '../types';
 import { getText, blobRegistry } from './network';
-import { parseManifest, calcDuration, estimateHlsSize, isFmp4 as checkFmp4 } from './parser';
+import {
+  parseManifest,
+  calcDuration,
+  estimateHlsSize,
+  isFmp4 as checkFmp4,
+} from './parser';
 import { downloadSegments } from './download-engine';
 import { enrichNow } from './enrichment';
-import { cleanFilename, guessExt, formatBytes, formatDuration } from '../utils';
+import { cleanFilename, guessExt, formatBytes } from '../utils'; // FIXED: formatBytes from utils
+import {
+  sortVariantsByQuality,
+  buildLabel,
+  notifyDownloadComplete,
+} from './shared';
 
 // ============================================
 // Types
@@ -14,62 +24,8 @@ type PickVariantFn = (items: MediaItem[]) => Promise<MediaItem | null>;
 type SetBusyFn = (busy: boolean) => void;
 
 // ============================================
-// Base Downloader Helper
+// Direct Download
 // ============================================
-
-class BaseDownloader {
-  constructor(
-    protected createCard: CreateCardFn,
-    protected title: string,
-    protected src: string,
-    protected segs = 0
-  ) { }
-
-  public start(url: string, cleanup: () => void): void {
-    const card = this.createCard(this.title, this.src, this.segs);
-
-    card.setOnCancel(() => {
-      cleanup();
-      card.remove();
-    });
-
-    // Common GM_download wrapper
-    GM_download({
-      url,
-      name: this.title,
-      saveAs: true,
-      onprogress: (e) => {
-        if (e.lengthComputable) {
-          card.update((e.loaded / e.total) * 100, `${formatBytes(e.loaded)}/${formatBytes(e.total)}`);
-        } else {
-          card.update(0, formatBytes(e.loaded));
-        }
-      },
-      onload: () => {
-        card.update(100, '');
-        card.done(true);
-        cleanup();
-        GM_notification({
-          text: `Download complete: ${this.title}`,
-          title: 'StreamGrabber',
-          timeout: 3000,
-        });
-      },
-      onerror: (err) => {
-        const errorMsg = err?.error || 'unknown';
-        const details = err?.details || '';
-        console.error('[SG] Download error:', { error: errorMsg, details, url });
-        card.done(false, errorMsg === 'not_succeeded' ? 'Save failed' : errorMsg);
-        cleanup();
-      },
-      ontimeout: () => {
-        card.done(false, 'Timeout');
-        cleanup();
-      },
-    });
-  }
-}
-
 
 export async function downloadDirect(
   url: string,
@@ -82,14 +38,51 @@ export async function downloadDirect(
   const filename = `${cleanFilename(document.title)}.${ext}`;
 
   let dlUrl = url;
-  let cleanup = () => { };
+  let cleanup = () => {};
 
   if (info?.blob) {
     dlUrl = URL.createObjectURL(info.blob);
     cleanup = () => URL.revokeObjectURL(dlUrl);
   }
 
-  new BaseDownloader(createCard, filename, url).start(dlUrl, cleanup);
+  const card = createCard(filename, url);
+
+  card.setOnCancel(() => {
+    cleanup();
+    card.remove();
+  });
+
+  GM_download({
+    url: dlUrl,
+    name: filename,
+    saveAs: true,
+    onprogress: (e) => {
+      if (e.lengthComputable) {
+        card.update(
+          (e.loaded / e.total) * 100,
+          `${formatBytes(e.loaded)}/${formatBytes(e.total)}`
+        );
+      } else {
+        card.update(0, formatBytes(e.loaded));
+      }
+    },
+    onload: () => {
+      card.update(100, '');
+      card.done(true);
+      cleanup();
+      notifyDownloadComplete(filename);
+    },
+    onerror: (err) => {
+      const errorMsg = err?.error || 'unknown';
+      console.error('[SG] Download error:', { error: errorMsg, url });
+      card.done(false, errorMsg === 'not_succeeded' ? 'Save failed' : errorMsg);
+      cleanup();
+    },
+    ontimeout: () => {
+      card.done(false, 'Timeout');
+      cleanup();
+    },
+  });
 }
 
 // ============================================
@@ -112,9 +105,7 @@ export async function downloadHls(
 
   // Master playlist: prompt for variant
   if (man.isMaster && man.variants && man.variants.length > 0) {
-    const variants = [...man.variants].sort(
-      (a, b) => (b.h || 0) - (a.h || 0) || (b.avg || b.peak || 0) - (a.avg || a.peak || 0)
-    );
+    const variants = sortVariantsByQuality(man.variants);
 
     if (variants.length === 0) {
       throw new Error('No variants found');
@@ -124,36 +115,36 @@ export async function downloadHls(
     const items: MediaItem[] = [];
 
     for (const v of variants) {
-      let label = [
-        v.res,
-        (v.avg || v.peak) ? `${Math.round((v.avg || v.peak)! / 1000)}k` : null,
-      ].filter(Boolean).join(' • ') || 'Variant';
-
       let size: number | null = null;
+      let duration = 0;
 
       try {
         const mediaTxt = await getText(v.url);
         const vMan = parseManifest(mediaTxt, v.url);
 
         if (vMan.segments) {
-          const duration = calcDuration(vMan.segments);
+          duration = calcDuration(vMan.segments);
           const est = estimateHlsSize(
-            { segs: vMan.segments, mediaSeq: vMan.mediaSeq ?? 0, endList: vMan.endList ?? false },
+            {
+              segs: vMan.segments,
+              mediaSeq: vMan.mediaSeq ?? 0,
+              endList: vMan.endList ?? false,
+            },
             duration,
             v
           );
-
-          if (est.bytes != null) {
-            size = est.bytes;
-            label += ` • ~${formatBytes(size)}`;
-          }
-
-          if (duration > 0) {
-            const dur = formatDuration(duration);
-            if (dur) label = `${label} • ${dur}`;
-          }
+          size = est.bytes;
         }
-      } catch { /* ignore variant parsing errors */ }
+      } catch {
+        /* ignore variant parsing errors */
+      }
+
+      const label = buildLabel({
+        resolution: v.res,
+        bitrate: v.avg || v.peak,
+        duration,
+        size,
+      });
 
       items.push({
         url: v.url,
@@ -199,15 +190,9 @@ export async function downloadHls(
   const quality = chosenVariant?.res ? `_${chosenVariant.res}` : '';
   const filename = `${name}${quality}.${ext}`;
 
-  // For HLS, we use the engine which drives the card,
-  // but we can potentially unify the card creation here if we refactor engine too.
-  // Ideally, downloadSegments should take the downloader or card.
-  // For now, let's leave downloadSegments as is but reuse the card creation logic if possible?
-  // Actually downloadSegments *takes* a card.
-  // Let's keep it simple for HLS as it's more complex than direct download.
   const card = createCard(filename, url, parsed.segs.length);
 
-  await downloadSegments(parsed, filename, ext, fmp4, url, card);
+  await downloadSegments(parsed, filename, fmp4, url, card);
 }
 
 // ============================================
@@ -237,10 +222,13 @@ export async function handleItem(
     }
 
     // Blob items need to be downloaded in their origin frame
-    item.remoteWin.postMessage({
-      type: 'SG_CMD_DOWNLOAD',
-      payload: { url: item.url, kind: item.kind, variant: item.variant },
-    }, '*');
+    item.remoteWin.postMessage(
+      {
+        type: 'SG_CMD_DOWNLOAD',
+        payload: { url: item.url, kind: item.kind, variant: item.variant },
+      },
+      '*'
+    );
     return;
   }
 

@@ -15,7 +15,8 @@ import {
   setUICallbacks,
   refreshUI,
 } from './ui';
-import type { MediaItem, ProgressCardController } from './types';
+import type { MediaItem, ProgressCardController, Variant } from './types';
+import { shortId, alertError } from './core/shared';
 
 // ============================================
 // Remote Jobs (cross-frame progress cards)
@@ -64,17 +65,23 @@ function init(): void {
       try {
         const card = createProgress(title, src);
         card.setOnStop(() => {
-          source.postMessage({
-            type: 'SG_CMD_CONTROL',
-            payload: { id, action: 'stop' },
-          }, '*');
+          source.postMessage(
+            {
+              type: 'SG_CMD_CONTROL',
+              payload: { id, action: 'stop' },
+            },
+            '*'
+          );
           return 'paused';
         });
         card.setOnCancel(() => {
-          source.postMessage({
-            type: 'SG_CMD_CONTROL',
-            payload: { id, action: 'cancel' },
-          }, '*');
+          source.postMessage(
+            {
+              type: 'SG_CMD_CONTROL',
+              payload: { id, action: 'cancel' },
+            },
+            '*'
+          );
           card.remove();
           remoteJobs.delete(id);
         });
@@ -95,14 +102,16 @@ function init(): void {
       }
     },
     onPick: (id, items, title, source) => {
-      pickFromList(items, { title, filterable: true }).then(selected => {
-        source.postMessage({
-          type: 'SG_CMD_PICK_RESULT',
-          payload: { id, item: selected },
-        }, '*');
+      pickFromList(items, { title, filterable: true }).then((selected) => {
+        source.postMessage(
+          {
+            type: 'SG_CMD_PICK_RESULT',
+            payload: { id, item: selected },
+          },
+          '*'
+        );
       });
     },
-    // Handle download commands from top frame (for iframe downloads)
     onDownloadCommand: handleDownloadCommand,
   });
 
@@ -117,7 +126,6 @@ function init(): void {
         queueEnrich(item.url);
       }
     } else {
-      // Forward to top frame (iframe detection)
       console.log('[SG] [iframe] Forwarding detection:', item.kind, item.url.slice(0, 60));
       sendDetection(item);
     }
@@ -169,9 +177,7 @@ async function handleFabClickAction(): Promise<void> {
 
     await handleItemAction(selected);
   } catch (e) {
-    const error = e as Error;
-    console.error('[SG] FAB click error:', error);
-    alert(error.message || String(e));
+    alertError(e);
   } finally {
     setFabBusy(false);
   }
@@ -186,9 +192,7 @@ async function handleItemAction(item: MediaItem): Promise<void> {
       setFabBusy
     );
   } catch (e) {
-    const error = e as Error;
-    console.error('[SG] Item action error:', error);
-    alert(error.message || String(e));
+    alertError(e);
   }
 }
 
@@ -203,46 +207,50 @@ async function handleDownloadCommand(
   console.log('[SG] [iframe] Received download command:', { url, kind });
 
   try {
-    const createProxyCard = (title: string, src: string, _segs?: number): ProgressCardController => {
-      const id = Math.random().toString(36).slice(2);
+    const createProxyCard = (title: string, src: string): ProgressCardController => {
+      const id = shortId();
 
-      // Notify top frame about progress
-      window.top?.postMessage({
-        type: 'SG_PROGRESS_START',
-        payload: { id, title, src },
-      }, '*');
+      window.top?.postMessage(
+        {
+          type: 'SG_PROGRESS_START',
+          payload: { id, title, src },
+        },
+        '*'
+      );
 
       return {
         update(p: number, txt?: string) {
-          window.top?.postMessage({
-            type: 'SG_PROGRESS_UPDATE',
-            payload: { id, p, txt: txt || '' },
-          }, '*');
+          window.top?.postMessage(
+            {
+              type: 'SG_PROGRESS_UPDATE',
+              payload: { id, p, txt: txt || '' },
+            },
+            '*'
+          );
         },
         done(ok = true, msg?: string) {
-          window.top?.postMessage({
-            type: 'SG_PROGRESS_DONE',
-            payload: { id, ok, msg: msg || '' },
-          }, '*');
+          window.top?.postMessage(
+            {
+              type: 'SG_PROGRESS_DONE',
+              payload: { id, ok, msg: msg || '' },
+            },
+            '*'
+          );
         },
-        remove() { },
-        setOnStop(_fn: () => 'paused' | 'resumed') { },
-        setOnCancel(_fn: () => void) { },
+        remove() {},
+        setOnStop() {},
+        setOnCancel() {},
       };
     };
 
     if (kind === 'hls') {
-      // For HLS in iframe, we need to create a remote progress card
-      // Using createProxyCard above
-
       await downloadHls(
         url,
-        variant as import('./types').Variant | null,
+        variant as Variant | null,
         createProxyCard,
         async (items) => {
-          // Request picker from top frame
           return new Promise((resolve) => {
-            const pickId = Math.random().toString(36).slice(2);
+            const pickId = shortId();
 
             const handler = (ev: MessageEvent) => {
               const data = ev.data;
@@ -254,10 +262,13 @@ async function handleDownloadCommand(
 
             window.addEventListener('message', handler);
 
-            window.top?.postMessage({
-              type: 'SG_CMD_PICK',
-              payload: { id: pickId, items, title: 'Select Quality' },
-            }, '*');
+            window.top?.postMessage(
+              {
+                type: 'SG_CMD_PICK',
+                payload: { id: pickId, items, title: 'Select Quality' },
+              },
+              '*'
+            );
           });
         }
       );
@@ -276,12 +287,18 @@ async function handleDownloadCommand(
 init();
 
 // ============================================
-// Exports (for advanced usage)
+// Exports
 // ============================================
 
 export { state };
 export { getText, getBin, headMeta, blobRegistry } from './core/network';
-export { parseManifest, calcDuration, computeExactBytes, isFmp4, hasEncryption } from './core/parser';
+export {
+  parseManifest,
+  calcDuration,
+  computeExactBytes,
+  isFmp4,
+  hasEncryption,
+} from './core/parser';
 export { aesCbcDecrypt, hexToU8, ivFromSeq } from './core/crypto';
 export { queueEnrich, enrichNow, needsEnrichment } from './core/enrichment';
 export { downloadDirect, downloadHls, handleItem } from './core/download';
@@ -289,3 +306,4 @@ export { initMessaging, sendDetection, postToTop, postToChild } from './messagin
 export * from './utils';
 export * from './types';
 export * from './config';
+export * from './core/shared';

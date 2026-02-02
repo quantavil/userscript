@@ -13,15 +13,8 @@ const PATTERNS = {
     m3u8Type: /mpegurl|vnd\.apple\.mpegurl|application\/x-mpegurl/i,
     videoType: /^video\//i,
     videoTypeAlt: /(matroska|mp4|webm|quicktime)/i,
-    // Combined resolution pattern for single-pass extraction
-    // Group 1: Num1
-    // Group 2: Separator [px]
-    // Group 3: Num2 (optional)
-    // Group 4: resolution=...
-    // Group 5: quality=...
-    // Group 6: -hd...
-    // Group 7: ...m3u8
-    resolutionCombined: /(?:^|[_\-\/])(\d{3,4})([px])(\d{3,4})?(?:[_\-\/\.]|$)|resolution[=_]?(\d{3,4})|quality[=_]?(\d{3,4})|[_\-]hd(\d{3,4})|(\d{3,4})\.m3u8/i,
+    resolutionCombined:
+        /(?:^|[_\-\/])(\d{3,4})([px])(\d{3,4})?(?:[_\-\/\.]|$)|resolution[=_]?(\d{3,4})|quality[=_]?(\d{3,4})|[_\-]hd(\d{3,4})|(\d{3,4})\.m3u8/i,
     hlsMaster: /master|index|manifest|playlist\.m3u8/i,
     hlsMedia: /chunklist|media|video|segment|quality|stream_\d|_\d{3,4}p?\./i,
 } as const;
@@ -30,23 +23,13 @@ export function parseHeaders(headers: string): Record<string, string> {
     const out: Record<string, string> = {};
     if (!headers) return out;
 
-    // Fast manual loop is often better than split('\n').reduce for large headers
-    let start = 0;
-    while (start < headers.length) {
-        let end = headers.indexOf('\n', start);
-        if (end === -1) end = headers.length;
+    headers.trim().split(/[\r\n]+/).forEach(line => {
+        const parts = line.split(':');
+        const key = parts.shift()?.trim();
+        const val = parts.join(':').trim();
+        if (key) out[key.toLowerCase()] = val;
+    });
 
-        const line = headers.substring(start, end).trim();
-        if (line) {
-            const sep = line.indexOf(':');
-            if (sep > 0) {
-                const key = line.substring(0, sep).trim().toLowerCase();
-                const val = line.substring(sep + 1).trim();
-                out[key] = val;
-            }
-        }
-        start = end + 1;
-    }
     return out;
 }
 
@@ -85,29 +68,19 @@ export function safeAbsUrl(url: string, base: string): string {
 
 export function extractResFromUrl(url: string | null | undefined): string | null {
     if (!url) return null;
-    // 2: resolution=1080
-    // 3: quality=1080
-    // 4: -hd1080
-    // 5: 1080.m3u8
     const m = PATTERNS.resolutionCombined.exec(url);
     if (m) {
         if (m[1]) {
-            // Case 1: 1920x1080 or 1080p
             const w = parseInt(m[1], 10);
-            const sep = m[2]; // Captured separator [px]
-            const hStr = m[3]; // Captured height if WxH
+            const sep = m[2];
+            const hStr = m[3];
 
             if (sep === 'x' && hStr) {
-                // It's Width x Height (e.g. 1920x1080)
-                // Return generic WxH string as old code did, or normalize to Height?
-                // Old code returned "WxH". Let's stick to that for compatibility.
                 return `${w}x${hStr}`;
             }
-            // It's 1080p
             if (w >= 144 && w <= 4320) return `${w}p`;
         }
 
-        // Other groups
         const val = m[4] || m[5] || m[6] || m[7];
         if (val) {
             const h = parseInt(val, 10);
@@ -117,7 +90,9 @@ export function extractResFromUrl(url: string | null | undefined): string | null
     return null;
 }
 
-export function guessHlsType(url: string | null | undefined): 'master' | 'media' | 'unknown' {
+export function guessHlsType(
+    url: string | null | undefined
+): 'master' | 'media' | 'unknown' {
     const lc = (url || '').toLowerCase();
     if (PATTERNS.hlsMaster.test(lc)) return 'master';
     if (PATTERNS.hlsMedia.test(lc)) return 'media';
@@ -256,12 +231,8 @@ export function once<T>(
 }
 
 // ============================================
-// Misc
+// Misc (REMOVED uid - use generateId from shared.ts)
 // ============================================
-
-export function uid(): string {
-    return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
 
 const escapeDiv = document.createElement('div');
 export function escapeHtml(x: unknown): string {
