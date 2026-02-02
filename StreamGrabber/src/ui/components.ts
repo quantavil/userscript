@@ -49,7 +49,12 @@ async function copyToClipboard(text: string, btn: HTMLElement): Promise<boolean>
       value: text,
       style: 'position:fixed;opacity:0;pointer-events:none',
     });
-    document.body.appendChild(textarea);
+
+    // Append to the implementation root (Shadow DOM) instead of body for hydration safety
+    const root = btn.getRootNode();
+    const target = (root instanceof ShadowRoot || root instanceof Document) ? root : document.body;
+    target.appendChild(textarea);
+
     textarea.select();
     const ok = document.execCommand('copy');
     textarea.remove();
@@ -337,7 +342,7 @@ class ProgressCard implements ProgressCardController {
   update(percent: number, text = ''): void {
     this.percent = Math.max(0, Math.min(100, percent));
     if (text) this.status = text;
-    this.fillEl.style.width = `${this.percent}%`;
+    this.fillEl.style.setProperty('width', `${this.percent}%`, 'important');
     this.statusEl.textContent = this.status;
     this.percentEl.textContent = `${Math.floor(this.percent)}%`;
   }

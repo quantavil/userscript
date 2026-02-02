@@ -32,27 +32,61 @@ export function mountUI(): void {
 
   if (!document.body) {
     const event = document.readyState === 'loading' ? 'DOMContentLoaded' : 'load';
-    document.addEventListener(event, () => mountUI(), { once: true });
+    window.addEventListener(event, () => mountUI(), { once: true });
     return;
   }
 
-  GM_addStyle(STYLES);
+  // Create host element for Shadow DOM
+  const host = document.createElement('div');
+  host.id = 'sg-host';
+  Object.assign(host.style, {
+    position: 'fixed',
+    top: '0',
+    left: '0',
+    width: '0',
+    height: '0',
+    zIndex: '2147483647',
+    pointerEvents: 'none', // Allow clicks to pass through the wrapper
+  });
 
+  // Attach Shadow DOM
+  const shadow = host.attachShadow({ mode: 'open' });
+
+  // Inject Styles (remove GM_addStyle dependency for UI)
+  const styleEl = document.createElement('style');
+  styleEl.textContent = STYLES;
+  shadow.append(styleEl);
+
+  // Create Containers
   fabContainer = document.createElement('div');
   fabContainer.id = 'sg-fab-container';
+  // Reset pointer-events for children so they can be clicked
+  fabContainer.style.pointerEvents = 'auto';
 
   modalContainer = document.createElement('div');
   modalContainer.id = 'sg-modal-container';
+  modalContainer.style.pointerEvents = 'auto';
 
   toastContainer = document.createElement('div');
   toastContainer.id = 'sg-toast-container';
   toastContainer.className = 'sg-toast';
+  // toastContainer uses pointer-events: none in CSS usually, but let's ensure children are auto
+  // The CSS for .sg-toast says "pointer-events: none !important" and children "pointer-events: auto"
+  // So we just need to ensure the container itself respects the context
+  // Note: Since we are inside shadow DOM, IDs are scoped.
 
-  document.body.append(fabContainer, modalContainer, toastContainer);
+  // Append to Shadow DOM
+  shadow.append(fabContainer, modalContainer, toastContainer);
+
+  // Append Host to Body (or documentElement)
+  document.documentElement.append(host);
 
   // Event delegation
+  // Note: Events bubble from Shadow DOM, so we can listen on the container elements directly
   fabContainer.addEventListener('mouseenter', clearIdle);
   fabContainer.addEventListener('mouseleave', resetIdle);
+
+  // For global keys like Escape, document listener is fine
   document.addEventListener('keydown', (e) => e.key === 'Escape' && modalState.show && closeModal());
 
   mounted = true;
@@ -201,7 +235,7 @@ export function pickFromList(
 
 export function createProgress(title: string, src: string, segs = 0): ProgressCard {
   if (!ensureMounted() || !toastContainer) {
-    return { update() {}, done() {}, remove() {}, setOnStop() {}, setOnCancel() {} };
+    return { update() { }, done() { }, remove() { }, setOnStop() { }, setOnCancel() { } };
   }
   return createProgressCard(toastContainer, title, src, segs);
 }

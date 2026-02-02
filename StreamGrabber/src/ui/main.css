@@ -20,7 +20,7 @@
 }
 
 /* CSS Variables - Premium Palette */
-:root {
+:host {
     /* Core Colors */
     --sg-bg-deep: #050505;
     --sg-bg-surface: #0a0a0a;
@@ -596,7 +596,7 @@
 
     background: transparent !important;
     border: 1px solid var(--sg-border-subtle) !important;
-    color: var(--sg-text-muted) !important;
+    color: var(--sg-gold) !important;
 
     border-radius: 6px !important;
     padding: 8px !important;
@@ -649,7 +649,7 @@
     position: fixed !important;
     right: 30px !important;
     bottom: 110px !important;
-    z-index: 2147483646 !important;
+    z-index: 2147483648 !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 16px !important;
@@ -734,6 +734,7 @@
     display: block !important;
     height: 100% !important;
     width: 0 !important;
+    background-color: var(--sg-gold) !important;
     background: linear-gradient(90deg, var(--sg-gold), var(--sg-gold-bright)) !important;
     box-shadow: 0 0 10px var(--sg-gold-glow) !important;
     transition: width 0.2s linear !important;
