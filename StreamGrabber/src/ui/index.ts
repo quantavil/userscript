@@ -4,8 +4,15 @@ import { STYLES } from './styles';
 import { renderFab, renderModal, createProgressCard, type FabState } from './components';
 import type { MediaItem, ProgressCard } from '../types';
 
+declare const GM_registerMenuCommand: (name: string, fn: () => void) => void;
+declare const GM_notification: (options: { text: string; title?: string; timeout?: number }) => void;
+
 // ============================================
 // State
+// ============================================
+
+// ============================================
+// Utilities
 // ============================================
 
 let mounted = false;

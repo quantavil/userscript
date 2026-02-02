@@ -1,52 +1,69 @@
-# StreamGrabber
+# StreamGrabber 🚀
 
-StreamGrabber is a powerful userscript designed to detect and grab media streams (like HLS) from various web pages.
+A high-performance, lightweight userscript designed for seamless media extraction. Detect and download HLS streams (.m3u8), video blobs, and direct video files with a minimal, premium UI.
 
-## Project Structure
+---
 
-The codebase is organized into logical modules to maintain separation of concerns between core logic, media detection, and user interface.
+## 📥 Installation
 
-```text
-StreamGrabber/
-├── src/
-│   ├── core/           # Core media processing and business logic
-│   │   ├── network.ts         # Network request interception and handling
-│   │   ├── crypto.ts          # Cryptographic utilities for decryption
-│   │   ├── parser.ts          # Manifest and stream parsing
-│   │   ├── enrichment.ts      # Metadata enrichment for detected streams
-│   │   ├── download-engine.ts # Segment fetching and scheduling
-│   │   ├── download.ts        # High-level download orchestration
-│   │   └── file-writer.ts     # Chunk-to-file assembly (Blob handling)
-│   ├── detection/      # Stream detection and scanning
-│   │   ├── hooks.ts           # Browser API hooks (fetch/XHR)
-│   │   ├── video-scanner.ts   # DOM scanning for video elements
-│   │   └── index.ts           # Detection module entry point
-│   ├── ui/             # User Interface components and styles
-│   │   ├── components.ts      # Imperative DOM components
-│   │   ├── icons.ts           # SVG icons collection
-│   │   ├── styles.ts          # Dynamic CSS injection
-│   │   └── index.ts           # UI module entry point
-│   ├── types/          # TypeScript type definitions and interfaces
-│   ├── main.ts         # Userscript entry point and orchestration
-│   ├── messaging.ts    # Cross-frame/Tab communication layer
-│   ├── state.ts        # Global state and persistence
-│   ├── config.ts       # Application settings and keys
-│   └── utils.ts        # Shared helper functions
-├── consolidate_code.py # Code/Audit consolidation script
-├── audit-report.md     # Latest codebase audit report
-└── README.md           # This file
-```
+> [!IMPORTANT]
+> **Recommended Userscript Manager: [Violentmonkey](https://violentmonkey.github.io/)**
+>
+> While StreamGrabber works on most managers, **Violentmonkey** provides the best compatibility and performance for modern userscripts.
 
-## Specialized Analysis
+1.  **Install a manager:** [Violentmonkey](https://violentmonkey.github.io/) (Recommended)
+2.  **Add Script:** Click [here](https://raw.githubusercontent.com/quantavil/userscript/main/StreamGrabber/main.js) to install.
+3.  **Confirm:** Accept the installation in your browser extension.
 
-To facilitate AI-driven audits, the `consolidate_code.py` script splits the project into specialized context files:
+---
 
-- **UI**: `ui_code.txt` + `ui_audit.txt`
-- **Logic**: `logic_code.txt` + `logic_audit.txt`
-- **Config**: `config_code.txt` + `config_audit.txt`
+## ✨ Key Features
 
-## Development
+-   **Smart HLS Processing**: Parallel segment downloading with AES-128 decryption and fMP4 support.
+-   **Unified Terminal UI**: A single, clean floating action button (FAB) that manages all detected media across nested iframes.
+-   **Adaptive Quality**: Automatically picks up master playlists and offers resolution selection (e.g., 1080p, 720p).
+-   **Resilient Downloads**: Built-in pause/resume functionality with automatic retry mechanisms for unstable connections.
+-   **Privacy First**: Minimal permissions, no external tracking, and works entirely within your browser context.
 
-- **Build**: `npm run build`
-- **Test**: `npm test`
-- **Consolidate**: `python3 consolidate_code.py`
+---
+
+## 🛠 Usage
+
+1.  **Browse**: Open any page with video content.
+2.  **Detect**: The floating download button will appear once media is identified.
+3.  **Choose**: Click the button to view resolutions or download directly (use **Alt+Click** for instant download if only one source is found).
+4.  **Monitor**: Track progress in real-time with the compact progress cards.
+
+---
+
+## ⚙️ Advanced Controls
+
+Access these via your userscript manager menu:
+-   **Show Download Panel**: Force the UI to appear.
+-   **Clear Cache**: Reset detected media for the current session.
+-   **Toggle Filtering**: Exclude small segments or ads (< 1MB).
+
+---
+
+## 📜 Changelog
+
+### v2.0.0
+-   **Shadow DOM Isolation**: Re-engineered the entire UI layer to use **Shadow DOM**. This encapsulates styles and DOM nodes, preventing "hydration failed" errors on sites built with React, Next.js, and other modern frameworks.
+-   **Hydration-Safe Architecture**: The UI host is now detached from the main document body's tree, ensuring 100% isolation from host-side script interference.
+-   **Premium Gold Theme**: Implemented a new, sleek design system with gold accents, enhanced typography, and micro-animations.
+-   **Dynamic Progress Engine**: Improved download scheduler with verified percentage tracking and gold-gradient filling.
+
+### v1.3.0
+-   **HLS Enhancements**: Improved playlist enrichment and resolution detection.
+-   **UI Refinement**: Cleaner animations and better responsive layout for mobile.
+-   **Performance**: Optimized memory usage during large concurrent downloads.
+
+### v1.2.5
+-   **Unified UI**: Global aggregation of media from all sub-frames.
+-   **Compatibility**: Enhanced support for fMP4 and diverse HLS encryption schemes.
+
+---
+
+## 📄 License
+
+MIT © [quantavil](https://github.com/quantavil)

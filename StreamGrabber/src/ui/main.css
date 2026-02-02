@@ -607,6 +607,12 @@
     font-family: var(--sg-font-body) !important;
 }
 
+.sg-copy-btn svg {
+    width: 18px !important;
+    height: 18px !important;
+    display: block !important;
+}
+
 .sg-copy-btn:hover {
     border-color: var(--sg-gold-dim) !important;
     color: var(--sg-gold) !important;
@@ -730,10 +736,10 @@
 }
 
 .sg-progress-fill {
-    all: initial !important;
     display: block !important;
     height: 100% !important;
-    width: 0 !important;
+    width: 0;
+    min-width: 0 !important;
     background-color: var(--sg-gold) !important;
     background: linear-gradient(90deg, var(--sg-gold), var(--sg-gold-bright)) !important;
     box-shadow: 0 0 10px var(--sg-gold-glow) !important;

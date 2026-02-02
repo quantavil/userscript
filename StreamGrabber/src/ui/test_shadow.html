@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,6 +16,7 @@
             height: 100vh;
             margin: 0;
         }
+
         .host-content {
             text-align: center;
             padding: 2rem;
@@ -23,6 +25,7 @@
         }
     </style>
 </head>
+
 <body>
 
     <div class="host-content">
@@ -33,14 +36,14 @@
 
     <!-- Script to simulate Userscript Injection -->
     <script>
-        (async function() {
+        (async function () {
             // 1. Fetch the simplified CSS text (in real usage it's bundled strings)
             // We'll just define the critical parts here or fetch the file if served.
             // Since we can't easily fetch local files via file:// protocol without a server,
             // we will fetch the content of main.css relatively if served, or fallback to a dummy.
             // FOR THIS TEST: I will inject the actual CSS content via a template literal for simplicity 
             // and guaranteed execution without a build step.
-            
+
             const cssResponse = await fetch('./main.css');
             const cssText = await cssResponse.text();
 
@@ -75,10 +78,10 @@
             const modalContainer = document.createElement('div');
             modalContainer.id = 'sg-modal-container';
             modalContainer.style.pointerEvents = 'auto';
-            
+
             const toastContainer = document.createElement('div');
             toastContainer.id = 'sg-toast-container';
-            toastContainer.className = 'sg-toast'; 
+            toastContainer.className = 'sg-toast';
 
             shadow.append(fabContainer, modalContainer, toastContainer);
             document.documentElement.append(host);
@@ -128,9 +131,9 @@
                                     <div class="sg-item-top">
                                         <div class="sg-item-title">Test Item</div>
                                         <button class="sg-copy-btn" title="Copy">
-                                            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="8" y="8" width="12" height="12" rx="2"/>
+                                                <path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/>
                                             </svg>
                                         </button>
                                     </div>
@@ -141,21 +144,22 @@
                     </div>
                 </div>
             `;
-            
+
             // Clipboard logic test
             const copyBtn = shadow.querySelector('.sg-copy-btn');
             copyBtn.addEventListener('click', () => {
-                 // Mock copy
-                 const original = copyBtn.innerHTML;
-                 copyBtn.innerHTML = '✓';
-                 copyBtn.classList.add('copied');
-                 console.log('Copy clicked! (Mock action)');
-                 
-                 // Verify shadow root access
-                 console.log('Copy Button Root Node:', copyBtn.getRootNode());
+                // Mock copy
+                const original = copyBtn.innerHTML;
+                copyBtn.innerHTML = '✓';
+                copyBtn.classList.add('copied');
+                console.log('Copy clicked! (Mock action)');
+
+                // Verify shadow root access
+                console.log('Copy Button Root Node:', copyBtn.getRootNode());
             });
 
         })();
     </script>
 </body>
+
 </html>
