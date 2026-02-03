@@ -2,7 +2,7 @@ import { state } from '../state';
 
 type ScanCallback = (url: string) => void;
 
-let onScan: ScanCallback = () => {};
+let onScan: ScanCallback = () => { };
 
 /**
  * Set the scan callback
@@ -17,20 +17,20 @@ export function setScanCallback(cb: ScanCallback): void {
 function watchVideo(video: HTMLVideoElement): void {
   if (state.watchedVideos.has(video)) return;
   state.watchedVideos.add(video);
-  
+
   const emitSources = () => {
     const sources = [
       video.currentSrc || video.src,
       ...Array.from(video.querySelectorAll('source')).map(s => s.src),
     ].filter(Boolean);
-    
+
     sources.forEach(onScan);
   };
-  
+
   // Listen for media events
   const events = ['loadstart', 'loadedmetadata', 'canplay'] as const;
   events.forEach(ev => video.addEventListener(ev, emitSources));
-  
+
   // Emit current sources immediately
   emitSources();
 }
@@ -44,28 +44,22 @@ export function scanVideos(): void {
 
 /**
  * Start MutationObserver for dynamic videos
+ * Uses debouncing to avoid performance issues on high-frequency DOM updates
  */
 let observer: MutationObserver | null = null;
+let debounceTimer: number | undefined;
 
 export function startVideoObserver(): void {
   if (observer) return;
-  
-  observer = new MutationObserver(mutations => {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (!(node instanceof Element)) continue;
-        
-        if (node.tagName === 'VIDEO') {
-          watchVideo(node as HTMLVideoElement);
-        } else {
-          node.querySelectorAll?.('video')?.forEach(v => {
-            watchVideo(v as HTMLVideoElement);
-          });
-        }
-      }
-    }
+
+  observer = new MutationObserver(() => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = window.setTimeout(() => {
+      scanVideos();
+      debounceTimer = undefined;
+    }, 1000);
   });
-  
+
   observer.observe(document.documentElement, {
     childList: true,
     subtree: true,
@@ -73,6 +67,10 @@ export function startVideoObserver(): void {
 }
 
 export function stopVideoObserver(): void {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = undefined;
+  }
   observer?.disconnect();
   observer = null;
 }

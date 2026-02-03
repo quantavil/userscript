@@ -6,6 +6,14 @@ type DetectionCallback = (url: string, metadata?: { size?: number; type?: string
 
 let onDetect: DetectionCallback | null = null;
 const earlyDetections: Array<{ url: string; metadata?: { size?: number; type?: string } }> = [];
+const recentlyRevoked = new Set<string>();
+
+// Periodic cleanup for recentlyRevoked to avoid timer spam
+setInterval(() => {
+  if (recentlyRevoked.size > 0) {
+    recentlyRevoked.clear();
+  }
+}, 5000);
 
 /**
  * Set the detection callback
@@ -22,7 +30,9 @@ export function setDetectionCallback(cb: DetectionCallback): void {
 }
 
 function checkContent(content: string): boolean {
-  return typeof content === 'string' && content.trim().startsWith('#EXTM3U');
+  if (typeof content !== 'string') return false;
+  // Robust check: allow whitespace, case-insensitive
+  return /^\s*#EXTM3U/i.test(content);
 }
 
 /**
@@ -70,35 +80,29 @@ function hookCreateObjectURL(): void {
           emitDetection(href);
         } else {
           // Check content for ambiguous types
+          // FIX: Only register if it actually LOOKS like media
           const needsCheck = /octet-stream|text\/plain|^$/.test(type);
-          if (needsCheck && obj.size > 0) {
+          if (needsCheck && obj.size > 0 && obj.size < 5 * 1024 * 1024) { // Limit check to smallish blobs
             obj.slice(0, Math.min(2048, obj.size)).text()
               .then(text => {
-                if (/^#EXTM3U/i.test(text)) {
-                  info.kind = 'm3u8';
+                if (checkContent(text)) {
+                  // Re-check revocation before registering
+                  if (!recentlyRevoked.has(href)) {
+                    info.kind = 'm3u8';
+                    blobRegistry.set(href, info); // Only set if confirmed
+                    emitDetection(href);
+                  }
                 }
-                blobRegistry.set(href, info);
-                if (info.kind === 'm3u8') {
-                  emitDetection(href);
-                }
+                // Otherwise ignore (don't leak memory for images/etc)
               })
               .catch(() => {
-                blobRegistry.set(href, info);
+                // Ignore errors
               });
-          } else {
-            blobRegistry.set(href, info);
           }
         }
-      } else {
-        // MediaSource
-        blobRegistry.set(href, {
-          blob: null,
-          type: 'mediasource',
-          size: 0,
-          kind: 'other',
-          ts: now,
-        });
       }
+      // Note: We ignore MediaSource objects now as they are not downloadable directly 
+      // and checking them was causing "false positive" entries in the registry.
     } catch (e) {
       console.error('[SG] createObjectURL hook error:', e);
     }
@@ -116,6 +120,9 @@ function hookRevokeObjectURL(): void {
       if (info) {
         info.revoked = true;
         info.ts = Date.now();
+      } else {
+        // Track revocation for pending async checks
+        recentlyRevoked.add(href);
       }
     } catch { /* ignore */ }
 

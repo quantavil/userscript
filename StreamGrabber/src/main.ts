@@ -31,7 +31,7 @@ const remoteJobs = new Map<string, ProgressCardController>();
 // ============================================
 
 function init(): void {
-  console.log('[SG] StreamGrabber v2.0.0 initializing...', {
+  console.log(`[SG] StreamGrabber v${GM_info?.script?.version || '2.1.1'} initializing...`, {
     isTop: CFG.IS_TOP,
     readyState: document.readyState,
     href: location.href.slice(0, 100),

@@ -35,9 +35,7 @@ class AppState {
   /** Detected media items (keyed by URL) */
   readonly items = new Map<string, MediaItem>();
 
-  /** Quick lookup sets */
-  private readonly m3u8Urls = new Set<string>();
-  private readonly videoUrls = new Set<string>();
+
 
   /** Watched video elements */
   readonly watchedVideos = new WeakSet<HTMLVideoElement>();
@@ -76,11 +74,7 @@ class AppState {
 
     this.items.set(item.url, item);
 
-    if (item.kind === 'hls') {
-      this.m3u8Urls.add(item.url);
-    } else {
-      this.videoUrls.add(item.url);
-    }
+
 
     // Invalidate cache
     this.invalidateCount();
@@ -103,10 +97,7 @@ class AppState {
       const item = this.items.get(first);
       this.items.delete(first);
 
-      if (item) {
-        this.m3u8Urls.delete(item.url);
-        this.videoUrls.delete(item.url);
-      }
+
     }
     // Only invalidate if we actually removed something? 
     // Actually invalidateCount just sets a dirty flag, so it's cheap.
@@ -171,8 +162,7 @@ class AppState {
 
   clear(): void {
     this.items.clear();
-    this.m3u8Urls.clear();
-    this.videoUrls.clear();
+    this.items.clear();
     pruneBlobs(() => true);
     this.invalidateCount();
   }
@@ -192,8 +182,6 @@ class AppState {
     for (const href of removedUrls) {
       if (this.items.has(href)) {
         this.items.delete(href);
-        this.m3u8Urls.delete(href);
-        this.videoUrls.delete(href);
         this.invalidateCount();
       }
     }
