@@ -1,6 +1,27 @@
 import { notifyDownloadComplete } from './shared';
 
-declare const GM_download: any;
+interface GMDownloadOptions {
+  url: string;
+  name: string;
+  saveAs?: boolean;
+  onload?: () => void;
+  onerror?: (error: { error?: string; details?: string }) => void;
+  ontimeout?: () => void;
+}
+
+declare function GM_download(options: GMDownloadOptions): void;
+
+interface FileSystemWritableFileStream extends WritableStream {
+  write(data: BufferSource | Blob | string): Promise<void>;
+  close(): Promise<void>;
+  abort(): Promise<void>;
+}
+
+declare global {
+  interface FileSystemFileHandle {
+    createWritable(options?: any): Promise<FileSystemWritableFileStream>;
+  }
+}
 
 export interface FileWriter {
   write(chunk: Uint8Array): Promise<void>;
@@ -10,9 +31,70 @@ export interface FileWriter {
 
 // ===== Shared Utilities =====
 
-const revokeUrlLater = (url: string, delay = 5000): void => {
+const CONFIG = {
+  /** Buffer threshold before flushing to Blob */
+  MAX_BUFFER_SIZE: 100 * 1024 * 1024, // 100MB
+  /** Hard limit to prevent browser crashes */
+  MAX_FILE_SIZE: 1.9 * 1024 * 1024 * 1024, // ~1.9GB (Chrome limit ~2GB)
+  /** Delay before revoking blob URLs */
+  URL_REVOKE_DELAY: 60000,
+} as const;
+
+const log = {
+  info: (msg: string) => console.log(`[SG] ${msg}`),
+  warn: (msg: string, ...args: unknown[]) => console.warn(`[SG] ${msg}`, ...args),
+  error: (msg: string, ...args: unknown[]) => console.error(`[SG] ${msg}`, ...args),
+};
+
+const revokeUrlLater = (url: string, delay = CONFIG.URL_REVOKE_DELAY): void => {
   setTimeout(() => URL.revokeObjectURL(url), delay);
 };
+
+const wrapSaveError = (e: unknown): Error =>
+  new Error(`Failed to save file: ${(e as Error).message}`);
+
+const silentAbort = (abortable: { abort(): Promise<void> }) =>
+  abortable.abort().catch(() => { });
+
+const silentRemove = (root: FileSystemDirectoryHandle, name: string) =>
+  root.removeEntry(name).catch(() => { });
+
+const getExtension = (filename: string, fallback = ''): string =>
+  filename.split('.').pop() || fallback;
+
+const addPartSuffix = (filename: string, part: number): string => {
+  const lastDot = filename.lastIndexOf('.');
+  return lastDot === -1
+    ? `${filename}.part${part}`
+    : `${filename.slice(0, lastDot)}.part${part}${filename.slice(lastDot)}`;
+};
+
+class WriterState {
+  private closed = false;
+  private aborted = false;
+
+  get isClosed() { return this.closed; }
+  get isAborted() { return this.aborted; }
+
+  setClosed() { this.closed = true; }
+  setAborted() { this.aborted = true; }
+
+  /**
+   * Asserts writer is open and valid.
+   * @param warnOnly If true, returns false on close instead of throwing.
+   */
+  assertWritable(warnOnly = false): boolean {
+    if (this.aborted) throw new Error('Writer was aborted');
+    if (this.closed) {
+      if (warnOnly) {
+        log.warn('Attempted to write after close');
+        return false;
+      }
+      throw new Error('Writer was closed');
+    }
+    return true;
+  }
+}
 
 function mapGMDownloadError(error?: string, details?: string): string {
   switch (error) {
@@ -34,6 +116,7 @@ function mapGMDownloadError(error?: string, details?: string): string {
 function downloadViaAnchor(url: string, filename: string): Promise<void> {
   return new Promise((resolve) => {
     const a = document.createElement('a');
+    // Note: Anchor downloads can't reliably detect success/failure
     a.href = url;
     a.download = filename;
     a.style.display = 'none';
@@ -61,7 +144,7 @@ function downloadWithGM(
         onSuccess?.();
         resolve();
       },
-      onerror: (err: any) => {
+      onerror: (err) => {
         reject(new Error(mapGMDownloadError(err?.error, err?.details)));
       },
       ontimeout: () => {
@@ -80,7 +163,7 @@ async function triggerDownload(url: string, filename: string, onSuccess?: () => 
     if (typeof GM_download === 'function') {
       await downloadWithGM(url, filename, onSuccess);
     } else {
-      console.log('[SG] GM_download unavailable, using anchor fallback');
+      log.info('GM_download unavailable, using anchor fallback');
       await downloadViaAnchor(url, filename);
       onSuccess?.();
     }
@@ -104,7 +187,7 @@ async function createNativeWriter(
   }
 
   try {
-    const ext = suggestedName.split('.').pop() || 'mp4';
+    const ext = getExtension(suggestedName, 'mp4');
     const handle = await window.showSaveFilePicker({
       suggestedName,
       types: [
@@ -116,42 +199,109 @@ async function createNativeWriter(
     });
 
     const stream = await handle.createWritable();
-    let closed = false;
-    let aborted = false;
+    const state = new WriterState();
 
     return {
       async write(chunk: Uint8Array): Promise<void> {
-        if (aborted) throw new Error('Writer was aborted');
-        if (closed) {
-          console.warn('[SG] Attempted to write after close');
-          return;
-        }
+        if (!state.assertWritable(true)) return;
         await stream.write(chunk as any);
       },
 
       async close(): Promise<void> {
-        if (aborted) throw new Error('Writer was aborted');
-        if (closed) return;
-        closed = true;
+        if (state.isAborted) throw new Error('Writer was aborted');
+        if (state.isClosed) return;
+        state.setClosed();
         try {
           await stream.close();
           notifyDownloadComplete(suggestedName);
         } catch (e) {
-          console.error('[SG] Native close error:', e);
-          throw new Error(`Failed to save file: ${(e as Error).message}`);
+          log.error('Native close error:', e);
+          throw wrapSaveError(e);
         }
       },
 
       abort(): void {
-        if (closed || aborted) return;
-        aborted = true;
-        stream.abort().catch(() => { });
+        if (state.isClosed || state.isAborted) return;
+        state.setAborted();
+        silentAbort(stream);
       },
     };
   } catch (e) {
     const error = e as Error;
     if (error.name === 'AbortError') throw e;
-    console.warn('[SG] File System Access API failed, using fallback:', error.message);
+    log.warn('File System Access API failed, using fallback:', error.message);
+    return null;
+  }
+}
+
+// ===== OPFS Writer (Virtual File System) =====
+
+async function createOpfsWriter(
+  suggestedName: string,
+  mimeType: string
+): Promise<FileWriter | null> {
+  if (!navigator.storage?.getDirectory) {
+    return null;
+  }
+
+  try {
+    const root = await navigator.storage.getDirectory();
+    // Use a temp name to avoid conflicts, or just use the suggested name if unique.
+    // For simplicity and to allow simple cleanup, we'll specific temp file.
+    // But to support "Save As" at the end, we just need the data.
+    const tempName = `sg_download_${Date.now()}_${Math.random().toString(36).slice(2)}.tmp`;
+    const fileHandle = await root.getFileHandle(tempName, { create: true });
+
+    // Create a sync access handle if available (faster), or writable (standard)
+    // Synchronous Access Handle is much faster for writing but requires a Worker.
+    // Since we are likely on main thread (userscript), we use createWritable().
+    const writable = await fileHandle.createWritable();
+    const state = new WriterState();
+
+    return {
+      async write(chunk: Uint8Array): Promise<void> {
+        if (!state.assertWritable(true)) return;
+        await writable.write(chunk as any);
+      },
+
+      async close(): Promise<void> {
+        if (state.isAborted) throw new Error('Writer was aborted');
+        if (state.isClosed) return;
+        state.setClosed();
+
+        try {
+          await writable.close();
+
+          // Get the file to create a blob URL
+          // We use the file directly to avoid reading it into memory with new File([...])
+          const file = await fileHandle.getFile();
+          const url = URL.createObjectURL(file);
+
+          await triggerDownload(url, suggestedName, () => {
+            notifyDownloadComplete(suggestedName);
+          });
+
+          // Cleanup OPFS file after download trigger.
+          // IMPORTANT: Delayed cleanup to ensure browser has time to read from the ObjectURL
+          setTimeout(() => {
+            silentRemove(root, tempName);
+          }, CONFIG.URL_REVOKE_DELAY + 5000); // Clean up after revocation to be safe
+
+        } catch (e) {
+          log.error('OPFS close error:', e);
+          throw wrapSaveError(e);
+        }
+      },
+
+      abort(): void {
+        if (state.isClosed || state.isAborted) return;
+        state.setAborted();
+        silentAbort(writable);
+        silentRemove(root, tempName);
+      }
+    };
+  } catch (e) {
+    log.warn('OPFS initialization failed:', e);
     return null;
   }
 }
@@ -168,15 +318,9 @@ function createBlobWriter(suggestedName: string, mimeType: string): FileWriter {
   let currentBufferSize = 0;
   let currentPartSize = 0;
   let partNumber = 1;
-  let closed = false;
-  let aborted = false;
+  const state = new WriterState();
 
-  // Max buffer size before flushing to a Blob (e.g., 100MB)
-  const MAX_BUFFER_SIZE = 100 * 1024 * 1024;
-  // Hard limit for in-memory blobs to prevent browser crash (e.g., 1.9GB)
-  const MAX_FILE_SIZE = 1.9 * 1024 * 1024 * 1024;
-
-  const flushBuffer = () => {
+  const flushBuffer = (): void => {
     if (currentBufferSize === 0) return;
     const blob = new Blob(currentBuffer as any, { type: mimeType }); // mimeType helpful for some constructs
     blobParts.push(blob);
@@ -196,23 +340,16 @@ function createBlobWriter(suggestedName: string, mimeType: string): FileWriter {
 
     if (blobParts.length === 0 && !isFinal) return; // Don't save empty parts if not final
     if (blobParts.length === 0 && isFinal && partNumber === 1) {
-      throw new Error('No data to save');
+      log.warn('Saving empty file');
     }
 
     // Determine filename
     let filename = suggestedName;
     if (partNumber > 1 || (!isFinal && partNumber === 1)) {
-      // Inject .partN before extension for ANY part if we are splitting
-      // If we are saving intermediate part 1, we rename it to part1
-      const lastDotIndex = suggestedName.lastIndexOf('.');
-      if (lastDotIndex !== -1) {
-        filename = `${suggestedName.substring(0, lastDotIndex)}.part${partNumber}${suggestedName.substring(lastDotIndex)}`;
-      } else {
-        filename = `${suggestedName}.part${partNumber}`;
-      }
+      filename = addPartSuffix(suggestedName, partNumber);
     }
 
-    console.log(`[SG] Saving part ${partNumber}: ${filename}, Size: ${(currentPartSize / 1024 / 1024).toFixed(2)} MB`);
+    log.info(`Saving part ${partNumber}: ${filename}, Size: ${(currentPartSize / 1024 / 1024).toFixed(2)} MB`);
 
     const blob = new Blob(blobParts, { type: mimeType });
 
@@ -235,15 +372,11 @@ function createBlobWriter(suggestedName: string, mimeType: string): FileWriter {
 
   return {
     async write(chunk: Uint8Array): Promise<void> {
-      if (aborted) throw new Error('Writer was aborted');
-      if (closed) {
-        console.warn('[SG] Attempted to write after close');
-        return;
-      }
+      if (!state.assertWritable(true)) return;
 
       // Check strict size limit for the current part
-      if (currentPartSize + chunk.length > MAX_FILE_SIZE) {
-        console.warn(`[SG] File part ${partNumber} limit reached (~1.9GB). Splitting file...`);
+      if (currentPartSize + chunk.length > CONFIG.MAX_FILE_SIZE) {
+        log.warn(`File part ${partNumber} limit reached (~1.9GB). Splitting file...`);
         // Save current part (isFinal = false)
         await savePart(false);
         partNumber++;
@@ -254,28 +387,28 @@ function createBlobWriter(suggestedName: string, mimeType: string): FileWriter {
       currentPartSize += chunk.length;
 
       // Flush to Blob if buffer gets too large (paging)
-      if (currentBufferSize >= MAX_BUFFER_SIZE) {
+      if (currentBufferSize >= CONFIG.MAX_BUFFER_SIZE) {
         flushBuffer();
         if (blobParts.length % 5 === 0) {
-          console.log(`[SG] Part ${partNumber} Buffer: ${blobParts.length} blobs, Size: ${(currentPartSize / 1024 / 1024).toFixed(2)} MB`);
+          log.info(`Part ${partNumber} Buffer: ${blobParts.length} blobs, Size: ${(currentPartSize / 1024 / 1024).toFixed(2)} MB`);
         }
       }
     },
 
     async close(): Promise<void> {
-      if (aborted) throw new Error('Writer was aborted');
-      if (closed) return;
-      closed = true;
+      if (state.isAborted) throw new Error('Writer was aborted');
+      if (state.isClosed) return;
+      state.setClosed();
 
       // Save the final part (isFinal = true)
       await savePart(true);
-      // Ensure everything cleared
-      clearMemory();
+
+      // Memory cleared by savePart(), no need for extra call here
     },
 
     abort(): void {
-      if (closed || aborted) return;
-      aborted = true;
+      if (state.isClosed || state.isAborted) return;
+      state.setAborted();
       clearMemory();
     },
   };
@@ -286,14 +419,34 @@ function createBlobWriter(suggestedName: string, mimeType: string): FileWriter {
 export async function createFileWriter(
   suggestedName: string,
   mimeType: string
-): Promise<FileWriter> {
-  const nativeWriter = await createNativeWriter(suggestedName, mimeType);
-  if (nativeWriter) {
-    console.log('[SG] Using native File System Access API');
-    return nativeWriter;
+): Promise<FileWriter> { // Use return type inference or change signature to enforce FileWriter
+  try {
+    const nativeWriter = await createNativeWriter(suggestedName, mimeType);
+    if (nativeWriter) {
+      log.info('Using native File System Access API');
+      return nativeWriter;
+    }
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') {
+      log.info('User cancelled file picker');
+      // AbortError from picker means stop everything.
+      // But we need to return a FileWriter or throw.
+      // If we throw, the caller must handle it. 
+      // Existing caller expects FileWriter or throws.
+      // Re-throwing AbortError is correct for cancellation.
+      throw e;
+    }
+    // Other errors log and fall through
+    log.warn('Native writer creation failed:', e);
   }
 
-  console.log('[SG] Using blob fallback for download');
+  const opfsWriter = await createOpfsWriter(suggestedName, mimeType);
+  if (opfsWriter) {
+    log.info('Using OPFS writer');
+    return opfsWriter;
+  }
+
+  log.info('Using blob fallback for download');
   return createBlobWriter(suggestedName, mimeType);
 }
 
