@@ -1,7 +1,6 @@
 import type { MediaItem, ProgressCardController } from '../types';
 import { ICONS } from './icons';
-import { formatBytes } from '../utils';
-import { shortId as uid } from '../core/shared';
+import { formatBytes, shortId as uid } from '../utils';
 
 // ============================================
 // Utilities

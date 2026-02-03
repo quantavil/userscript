@@ -1,5 +1,5 @@
 import { MessageBus } from './message-bus';
-import { shortId } from './shared';
+import { shortId } from '../utils';
 import type { ProgressCardController } from '../types';
 
 export class RemoteProgressCard implements ProgressCardController {

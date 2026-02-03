@@ -16,7 +16,7 @@ import {
   refreshUI,
 } from './ui';
 import type { MediaItem, ProgressCardController, Variant } from './types';
-import { shortId, alertError } from './core/shared';
+import { shortId, alertError } from './utils';
 import { MessageBus } from './core/message-bus';
 import { RemoteProgressCard } from './core/remote-progress-card';
 
@@ -265,4 +265,3 @@ export { initMessaging, sendDetection } from './messaging';
 export * from './utils';
 export * from './types';
 export * from './config';
-export * from './core/shared';

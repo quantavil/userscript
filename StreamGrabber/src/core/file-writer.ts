@@ -1,4 +1,4 @@
-import { notifyDownloadComplete } from './shared';
+import { notifyDownloadComplete } from '../utils';
 
 interface GMDownloadOptions {
   url: string;

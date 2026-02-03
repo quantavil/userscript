@@ -2,7 +2,7 @@ import type { MediaItem, SGMessage } from './types';
 import { CFG } from './config';
 import { state } from './state';
 import { queueEnrich } from './core/enrichment';
-import { serializeMediaItem } from './core/shared';
+import { serializeMediaItem } from './utils';
 import { MessageBus } from './core/message-bus';
 
 // ============================================

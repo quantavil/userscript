@@ -9,8 +9,12 @@ import {
   isFmp4,
   hasEncryption,
 } from './parser';
-import { extractResFromUrl } from '../utils';
-import { sortVariantsByQuality, buildLabel, buildSublabel } from './shared';
+import {
+  extractResFromUrl,
+  sortVariantsByQuality,
+  buildLabel,
+  buildSublabel,
+} from '../utils';
 
 // ============================================
 // Enrichment Queue

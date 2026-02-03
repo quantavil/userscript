@@ -205,4 +205,28 @@ declare global {
     onerror?: (err: { error: string; details?: string }) => void;
     ontimeout?: () => void;
   }): void;
+
+  function GM_xmlhttpRequest(options: {
+    method?: string;
+    url: string;
+    headers?: Record<string, string>;
+    responseType?: 'text' | 'arraybuffer' | 'blob' | 'json';
+    data?: any;
+    timeout?: number;
+    onload?: (response: any) => void;
+    onerror?: (response: any) => void;
+    onprogress?: (response: any) => void;
+    ontimeout?: (response: any) => void;
+    onabort?: (response: any) => void;
+  }): { abort: () => void };
+
+  function GM_getValue<T>(key: string, defaultValue?: T): T;
+  function GM_setValue<T>(key: string, value: T): void;
+  function GM_notification(options: {
+    text: string;
+    title?: string;
+    image?: string;
+    onclick?: () => void;
+    timeout?: number;
+  }): void;
 }

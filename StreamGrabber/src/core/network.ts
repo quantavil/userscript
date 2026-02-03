@@ -1,7 +1,12 @@
 import type { HeadMeta, AbortablePromise, GmRequestOptions, BlobInfo } from '../types';
 import { CFG, CACHE } from '../config';
-import { isBlob, once, parseHeaders } from '../utils';
-import { getBlobInfo, getBlobSlice } from './shared';
+import {
+  isBlob,
+  once,
+  parseHeaders,
+  getBlobInfo,
+  getBlobSlice,
+} from '../utils/index';
 import { blobRegistry } from './blob-store';
 
 // ============================================
@@ -29,8 +34,8 @@ export function gmGet<T extends 'text' | 'arraybuffer'>(
       responseType: opts.responseType,
       headers: opts.headers || {},
       timeout: opts.timeout ?? CFG.REQUEST_TIMEOUT,
-      onprogress: (e) => opts.onprogress?.({ loaded: e.loaded, total: e.total }),
-      onload: (r) => {
+      onprogress: (e: any) => opts.onprogress?.({ loaded: e.loaded, total: e.total }),
+      onload: (r: any) => {
         if (r.status >= 200 && r.status < 300) {
           resolve(r.response as T extends 'text' ? string : ArrayBuffer);
         } else {
@@ -101,7 +106,7 @@ export function getBin(
     }
 
     let aborted = false;
-    const p = part.arrayBuffer().then((buf) => {
+    const p = part.arrayBuffer().then((buf: ArrayBuffer) => {
       if (aborted) throw new Error('Aborted');
       return buf;
     }) as AbortablePromise<ArrayBuffer>;

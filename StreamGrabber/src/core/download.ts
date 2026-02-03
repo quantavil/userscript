@@ -8,12 +8,15 @@ import {
 } from './parser';
 import { downloadSegments } from './download-engine';
 import { enrichNow } from './enrichment';
-import { cleanFilename, guessExt, formatBytes } from '../utils'; // FIXED: formatBytes from utils
 import {
+  cleanFilename,
+  guessExt,
+  formatBytes,
   sortVariantsByQuality,
   buildLabel,
   notifyDownloadComplete,
-} from './shared';
+  generateFilename,
+} from '../utils';
 
 // ============================================
 // Types
@@ -37,8 +40,9 @@ export async function downloadDirect(
   console.log('[SG] Direct download:', url);
 
   const info = blobRegistry.get(url);
+
   const ext = guessExt(url, info?.type);
-  const filename = `${cleanFilename(document.title)}.${ext}`;
+  const filename = generateFilename({ title: document.title, ext });
 
   let dlUrl = url;
   let cleanup = () => { };
@@ -188,9 +192,11 @@ export async function downloadHls(
 
   const fmp4 = checkFmp4(parsed.segs);
   const ext = fmp4 ? 'mp4' : 'ts';
-  const name = cleanFilename(document.title);
-  const quality = chosenVariant?.res ? `_${chosenVariant.res}` : '';
-  const filename = `${name}${quality}.${ext}`;
+  const filename = generateFilename({
+    title: document.title,
+    ext,
+    quality: chosenVariant?.res
+  });
 
   const card = delegate.createCard(filename, url, parsed.segs.length);
 
