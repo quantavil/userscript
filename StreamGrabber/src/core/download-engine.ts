@@ -75,7 +75,7 @@ class SequentialWriter {
   private totalBytes = 0;
   private writeError: Error | null = null;
 
-  constructor(private writer: FileWriter) { }
+  constructor(private writer: FileWriter) {}
 
   get bufferedCount(): number {
     return this.buffers.size;
@@ -149,7 +149,7 @@ class ProgressTracker {
   constructor(
     private total: number,
     private onUpdate: (pct: number, done: number, total: number) => void
-  ) { }
+  ) {}
 
   get done(): number {
     return this._done;
@@ -208,7 +208,7 @@ export class SegmentFetcher {
   private keyCache = new ResourceCache();
   private mapCache = new ResourceCache();
 
-  constructor(private mediaSeq: number) { }
+  constructor(private mediaSeq: number) {}
 
   async fetch(
     segment: Segment,

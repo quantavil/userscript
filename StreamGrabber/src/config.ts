@@ -44,3 +44,14 @@ export const CACHE = {
 export const SETTINGS_KEYS = {
   EXCLUDE_SMALL: 'sg_exclude_small',
 } as const;
+
+/**
+ * Storage helpers (wraps GM_getValue/GM_setValue for testability)
+ */
+export function getSetting<T>(key: string, defaultValue: T): T {
+  return GM_getValue(key, defaultValue);
+}
+
+export function setSetting<T>(key: string, value: T): void {
+  GM_setValue(key, value);
+}

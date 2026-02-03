@@ -149,20 +149,16 @@ function hookFetch(): void {
 
   // Hook Response.text() to inspect content
   window.Response.prototype.text = function () {
-    return new Promise((resolve, reject) => {
-      originalResText.call(this)
-        .then((text) => {
-          resolve(text);
-          // Async check to avoid blocking
-          try {
-            if (checkContent(text)) {
-              emitDetection(this.url);
-            }
-          } catch (e) {
-            console.error('[SG] Detection error in Response.text:', e);
-          }
-        })
-        .catch(reject);
+    const response = this; // Capture reference for .url access
+    return originalResText.call(this).then((text) => {
+      try {
+        if (checkContent(text)) {
+          emitDetection(response.url);
+        }
+      } catch (e) {
+        console.error('[SG] Detection error in Response.text:', e);
+      }
+      return text;
     });
   };
 

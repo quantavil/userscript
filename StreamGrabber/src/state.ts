@@ -1,5 +1,5 @@
 import type { MediaItem, BlobInfo } from './types';
-import { CFG, CACHE, SETTINGS_KEYS } from './config';
+import { CFG, CACHE, SETTINGS_KEYS, getSetting, setSetting } from './config';
 import { pruneBlobs } from './core/blob-store';
 
 // ============================================
@@ -54,7 +54,7 @@ export class AppState {
   };
 
   constructor() {
-    this.excludeSmall = GM_getValue(SETTINGS_KEYS.EXCLUDE_SMALL, true);
+    this.excludeSmall = getSetting(SETTINGS_KEYS.EXCLUDE_SMALL, true);
   }
 
   // ----------------------------------------
@@ -161,7 +161,7 @@ export class AppState {
 
   setExcludeSmall(v: boolean): void {
     this.excludeSmall = v;
-    GM_setValue(SETTINGS_KEYS.EXCLUDE_SMALL, v);
+    setSetting(SETTINGS_KEYS.EXCLUDE_SMALL, v);
   }
 
   // ----------------------------------------
