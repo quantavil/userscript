@@ -36,9 +36,10 @@ const pendingUrls = new Set<string>();
 export async function analyzeMediaPlaylist(
   url: string,
   text?: string,
-  variant?: Variant
+  variant?: Variant,
+  signal?: AbortSignal
 ): Promise<Partial<MediaItem>> {
-  const txt = text ?? (await getText(url));
+  const txt = text ?? (await getText(url, signal));
   const man = parseManifest(txt, url);
 
   if (man.isMaster && man.variants) {
@@ -110,9 +111,9 @@ export async function analyzeMediaPlaylist(
   };
 }
 
-async function performEnrichment(item: MediaItem): Promise<boolean> {
+async function performEnrichment(item: MediaItem, signal?: AbortSignal): Promise<boolean> {
   try {
-    const data = await analyzeMediaPlaylist(item.url);
+    const data = await analyzeMediaPlaylist(item.url, undefined, undefined, signal);
     Object.assign(item, data);
     return true;
   } catch (e) {
@@ -128,24 +129,21 @@ async function enrichItem(item: MediaItem): Promise<boolean> {
   if (!item || item.enriched || item.enriching) return false;
 
   item.enriching = true;
-
-  const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('Timeout')), CFG.ENRICH_TIMEOUT)
-  );
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), CFG.ENRICH_TIMEOUT);
 
   try {
-    item._enrichPromise = Promise.race([
-      performEnrichment(item),
-      timeout,
-    ]) as Promise<boolean>;
-
+    item._enrichPromise = performEnrichment(item, controller.signal);
     await item._enrichPromise;
+    clearTimeout(timeoutId);
     return true;
   } catch (e) {
+    clearTimeout(timeoutId);
     const error = e as Error;
-    console.error('[SG] enrichItem error:', error);
+    const isAbort = error.message === 'Aborted' || error.name === 'AbortError';
+    console.error(`[SG] enrichItem error: ${error.message}`);
 
-    item.label = error.message === 'Timeout' ? 'Timeout' : 'Parse Error';
+    item.label = isAbort ? 'Timeout' : 'Parse Error';
     item.hlsType = 'error';
     item.enriched = true;
     return false;

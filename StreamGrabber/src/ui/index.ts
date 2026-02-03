@@ -182,8 +182,8 @@ function clearIdle(): void {
 // ============================================
 
 function getFilteredItems(): MediaItem[] {
-  const items = modalState.items.length > 0 ? modalState.items : state.getFilteredItems();
-  return state.excludeSmall ? items.filter((i) => i.size == null || i.size >= CFG.SMALL_BYTES) : items;
+  const items = modalState.items.length > 0 ? modalState.items : state.getAllItems();
+  return state.filterItems(items);
 }
 
 export function openModal(title = 'Select Media', items?: MediaItem[]): void {

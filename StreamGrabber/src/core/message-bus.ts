@@ -3,6 +3,8 @@ import type { SGMessage, MessageType } from '../types';
 
 type MessageHandler = (payload: any, source: Window) => void;
 
+const MAGIC = 'SG_MSG_v1';
+
 export class MessageBus {
     private static instance: MessageBus;
     private handlers = new Map<MessageType, Set<MessageHandler>>();
@@ -45,7 +47,7 @@ export class MessageBus {
 
     public send(type: MessageType, payload: Record<string, unknown> = {}, target: Window = window.top!): void {
         try {
-            const msg: SGMessage = { type, payload };
+            const msg: SGMessage & { magic: string } = { type, payload, magic: MAGIC };
             target.postMessage(msg, '*');
         } catch (e) {
             console.error('[SG] Failed to send message:', type, e);
@@ -59,8 +61,9 @@ export class MessageBus {
     }
 
     private handleMessage(ev: MessageEvent): void {
-        const data = ev.data as SGMessage;
+        const data = ev.data as (SGMessage & { magic?: string });
         if (!data || typeof data !== 'object' || !data.type) return;
+        if (data.magic !== MAGIC) return; // Verify token
         if (ev.source === window) return; // Ignore self
 
         const handlers = this.handlers.get(data.type);

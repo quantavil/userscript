@@ -13,6 +13,7 @@ export interface MediaItem {
   size: number | null;
   type: string | null;
   origin: string;
+  pageTitle?: string;
 
   // Enrichment state
   enriched: boolean;

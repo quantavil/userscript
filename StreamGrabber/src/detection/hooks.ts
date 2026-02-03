@@ -1,11 +1,12 @@
 import type { BlobInfo } from '../types';
 import { blobRegistry } from '../core/blob-store';
+import { CACHE } from '../config';
 import { looksM3U8Type, looksVideoType } from '../utils';
 
-type DetectionCallback = (url: string, metadata?: { size?: number; type?: string }) => void;
+type DetectionCallback = (url: string, metadata?: { size?: number; type?: string; pageTitle?: string }) => void;
 
 let onDetect: DetectionCallback | null = null;
-const earlyDetections: Array<{ url: string; metadata?: { size?: number; type?: string } }> = [];
+const earlyDetections: Array<{ url: string; metadata?: { size?: number; type?: string; pageTitle?: string } }> = [];
 const recentlyRevoked = new Set<string>();
 
 // Periodic cleanup for recentlyRevoked to avoid timer spam
@@ -13,7 +14,7 @@ setInterval(() => {
   if (recentlyRevoked.size > 0) {
     recentlyRevoked.clear();
   }
-}, 5000);
+}, CACHE.CLEAR_MS);
 
 /**
  * Set the detection callback
@@ -38,12 +39,18 @@ function checkContent(content: string): boolean {
 /**
  * Internal function to emit detection
  */
-function emitDetection(url: string, metadata?: { size?: number; type?: string }): void {
+function emitDetection(url: string, metadata?: { size?: number; type?: string; pageTitle?: string }): void {
+  // Always attach page title if not already present
+  const meta = {
+    ...metadata,
+    pageTitle: metadata?.pageTitle || document.title,
+  };
+
   if (onDetect) {
-    onDetect(url, metadata);
+    onDetect(url, meta);
   } else {
     // Queue for later if callback not yet set
-    earlyDetections.push({ url, metadata });
+    earlyDetections.push({ url, metadata: meta });
   }
 }
 

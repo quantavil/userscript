@@ -56,7 +56,11 @@ function init(): void {
   initMessaging();
 
   // Set up MessageBus handlers
-  setupMessageHandlers();
+  if (CFG.IS_TOP) {
+    setupTopHandlers();
+  } else {
+    setupChildHandlers();
+  }
 
   // Set up detection callback
   setItemDetectedCallback((item: MediaItem) => {
@@ -90,98 +94,96 @@ function init(): void {
   console.log('[SG] Initialization complete', { isTop: CFG.IS_TOP });
 }
 
-function setupMessageHandlers(): void {
+function setupTopHandlers(): void {
   const bus = MessageBus.get();
 
-  if (CFG.IS_TOP) {
-    // --- Top Frame Handlers ---
+  // 1. Detection from iframes
+  bus.on('SG_DETECT', (payload, source) => {
+    const remoteItem = payload.item as MediaItem;
+    if (!remoteItem) return;
 
-    // 1. Detection from iframes
-    bus.on('SG_DETECT', (payload, source) => {
-      const remoteItem = payload.item as MediaItem;
-      if (!remoteItem) return;
+    remoteItem.remoteWin = source;
+    remoteItem.isRemote = true;
 
-      remoteItem.remoteWin = source;
-      remoteItem.isRemote = true;
+    console.log('[SG] Received detection from iframe:', remoteItem.kind, remoteItem.url.slice(0, 60));
 
-      console.log('[SG] Received detection from iframe:', remoteItem.kind, remoteItem.url.slice(0, 60));
-
-      if (state.addItem(remoteItem)) {
-        showFab();
-        updateBadge();
-        if (remoteItem.kind === 'hls') {
-          queueEnrich(remoteItem, () => refreshUI());
-        }
+    if (state.addItem(remoteItem)) {
+      showFab();
+      updateBadge();
+      if (remoteItem.kind === 'hls') {
+        queueEnrich(remoteItem, () => refreshUI());
       }
-    });
+    }
+  });
 
-    // 2. Progress Start from iframes
-    bus.on('SG_PROGRESS_START', (payload, source) => {
-      const { id, title, src } = payload as any;
-      if (remoteJobs.has(id)) return;
+  // 2. Progress Start from iframes
+  bus.on('SG_PROGRESS_START', (payload, source) => {
+    const { id, title, src } = payload as any;
+    if (remoteJobs.has(id)) return;
 
-      try {
-        const card = createProgress(title, src);
-        // The source (iframe) has a RemoteProgressCard.
-        // That RemoteProgressCard listens for SG_CMD_CONTROL via MessageBus.
-        // We need to send SG_CMD_CONTROL when this local card is stopped/canceled.
+    try {
+      const card = createProgress(title, src);
+      // The source (iframe) has a RemoteProgressCard.
+      // That RemoteProgressCard listens for SG_CMD_CONTROL via MessageBus.
+      // We need to send SG_CMD_CONTROL when this local card is stopped/canceled.
 
-        card.setOnStop(() => {
-          MessageBus.get().send('SG_CMD_CONTROL', { id, action: 'stop' }, source);
-          return 'paused';
-        });
-        card.setOnCancel(() => {
-          MessageBus.get().send('SG_CMD_CONTROL', { id, action: 'cancel' }, source);
-          card.remove();
-          remoteJobs.delete(id);
-        });
-
-        remoteJobs.set(id, card);
-      } catch (e) {
-        console.error('[SG] Failed to create remote progress card:', e);
-      }
-    });
-
-    // 3. Progress Update from iframes
-    bus.on('SG_PROGRESS_UPDATE', (payload) => {
-      const { id, p, txt } = payload as any;
-      remoteJobs.get(id)?.update(p, txt);
-    });
-
-    // 4. Progress Done from iframes
-    bus.on('SG_PROGRESS_DONE', (payload) => {
-      const { id, ok, msg } = payload as any;
-      const card = remoteJobs.get(id);
-      if (card) {
-        card.done(ok, msg);
-        setTimeout(() => remoteJobs.delete(id), 2500);
-      }
-    });
-
-    // 5. Picker Request from iframes
-    bus.on('SG_CMD_PICK', (payload, source) => {
-      const { id, items, title } = payload as any;
-      pickFromList(items, { title, filterable: true }).then((selected) => {
-        MessageBus.get().send('SG_CMD_PICK_RESULT', { id, item: selected }, source);
+      card.setOnStop(() => {
+        MessageBus.get().send('SG_CMD_CONTROL', { id, action: 'stop' }, source);
+        return 'paused';
       });
-    });
+      card.setOnCancel(() => {
+        MessageBus.get().send('SG_CMD_CONTROL', { id, action: 'cancel' }, source);
+        card.remove();
+        remoteJobs.delete(id);
+      });
 
-  } else {
-    // --- Child Frame Handlers ---
+      remoteJobs.set(id, card);
+    } catch (e) {
+      console.error('[SG] Failed to create remote progress card:', e);
+    }
+  });
 
-    // 1. Download Command from Top Frame
-    bus.on('SG_CMD_DOWNLOAD', (payload) => {
-      const { url, kind, variant } = payload as any;
-      console.log('[SG] [iframe] Received download command:', { url, kind });
-      handleDownloadCommand(url, kind, variant);
-    });
+  // 3. Progress Update from iframes
+  bus.on('SG_PROGRESS_UPDATE', (payload) => {
+    const { id, p, txt } = payload as any;
+    remoteJobs.get(id)?.update(p, txt);
+  });
 
-    // 2. Picker Result from Top Frame
-    bus.on('SG_CMD_PICK_RESULT', (payload) => {
-      const { id, item } = payload as any;
-      resolvePickerRequest(id, item);
+  // 4. Progress Done from iframes
+  bus.on('SG_PROGRESS_DONE', (payload) => {
+    const { id, ok, msg } = payload as any;
+    const card = remoteJobs.get(id);
+    if (card) {
+      card.done(ok, msg);
+      setTimeout(() => remoteJobs.delete(id), 2500);
+    }
+  });
+
+  // 5. Picker Request from iframes
+  bus.on('SG_CMD_PICK', (payload, source) => {
+    const { id, items, title } = payload as any;
+    // We must pass a UI picker here
+    pickFromList(items, { title, filterable: true }).then((selected) => {
+      MessageBus.get().send('SG_CMD_PICK_RESULT', { id, item: selected }, source);
     });
-  }
+  });
+}
+
+function setupChildHandlers(): void {
+  const bus = MessageBus.get();
+
+  // 1. Download Command from Top Frame
+  bus.on('SG_CMD_DOWNLOAD', (payload) => {
+    const { url, kind, variant, pageTitle } = payload as any;
+    console.log('[SG] [iframe] Received download command:', { url, kind });
+    handleDownloadCommand(url, kind, variant, pageTitle);
+  });
+
+  // 2. Picker Result from Top Frame
+  bus.on('SG_CMD_PICK_RESULT', (payload) => {
+    const { id, item } = payload as any;
+    resolvePickerRequest(id, item);
+  });
 }
 
 // ============================================
@@ -235,7 +237,8 @@ async function handleItemAction(item: MediaItem): Promise<void> {
 async function handleDownloadCommand(
   url: string,
   kind: string,
-  variant?: unknown
+  variant?: unknown,
+  pageTitle?: string
 ): Promise<void> {
   console.log('[SG] [iframe] Received download command:', { url, kind });
 
@@ -267,14 +270,15 @@ async function handleDownloadCommand(
             });
           },
           setBusy: () => { },
-        }
+        },
+        pageTitle
       );
     } else if (kind === 'video') {
       await downloadDirect(url, {
         createCard: createProxyCard,
         pickVariant: async () => null,
         setBusy: () => { },
-      });
+      }, pageTitle);
     }
   } catch (e) {
     console.error('[SG] [iframe] Download error:', e);

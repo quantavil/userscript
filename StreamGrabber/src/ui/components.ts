@@ -119,6 +119,12 @@ export function renderFab(
 // Modal Component
 // ============================================
 
+// DOM Cache
+let modalEl: HTMLDivElement | null = null;
+let listEl: HTMLDivElement | null = null;
+let titleEl: HTMLDivElement | null = null;
+let filterCb: HTMLInputElement | null = null;
+
 export function renderModal(
   container: HTMLElement,
   show: boolean,
@@ -130,48 +136,93 @@ export function renderModal(
   onSelect: (item: MediaItem) => void,
   onFilterChange: (checked: boolean) => void
 ): void {
-  container.innerHTML = '';
-  if (!show) return; // Don't render hidden modal
+  // 1. Hide/Remove if not shown
+  if (!show) {
+    if (modalEl) {
+      modalEl.classList.remove('show');
+      // Timeout to remove from DOM after animation? Or just keep it?
+      // For simplicity, we just hide it via class, or remove it.
+      // Current styles use .show to display.
+      // If we remove it, we lose the cache benefits for re-opening.
+      // But clearing innerHTML was the old way.
+      // Let's keep it in DOM but hidden.
+      // Actually, old code did: container.innerHTML = '';
+      // If we want to persist, we should append once.
 
-  const modal = h('div', { class: 'sg-modal show' });
-  modal.addEventListener('click', (e) => e.target === modal && onClose());
+      // If container was cleared externally, our cache is invalid.
+      if (!container.contains(modalEl)) {
+        modalEl = null;
+        listEl = null;
+      }
+    }
+    return;
+  }
 
-  const card = h('div', { class: 'sg-card', role: 'dialog', 'aria-modal': 'true' });
+  // 2. Create if missing
+  if (!modalEl || !container.contains(modalEl)) {
+    // Force cleanup of container if we are engaging (assuming we own it)
+    container.innerHTML = '';
 
-  // Header
-  const header = h('div', { class: 'sg-card-head' });
-  header.append(
-    Object.assign(h('div', { class: 'sg-card-title' }), { textContent: title }),
-    createIconButton(ICONS.close, 'Close (Esc)', onClose)
-  );
-  card.appendChild(header);
+    modalEl = h('div', { class: 'sg-modal' }) as HTMLDivElement;
+    modalEl.addEventListener('click', (e) => e.target === modalEl && onClose());
 
-  // Body
-  const body = h('div', { class: 'sg-card-body' });
+    const card = h('div', { class: 'sg-card', role: 'dialog', 'aria-modal': 'true' });
 
-  // Filter checkbox
-  if (showFilter && items.some((i) => i.size != null)) {
+    // Header
+    const header = h('div', { class: 'sg-card-head' });
+    titleEl = h('div', { class: 'sg-card-title' }) as HTMLDivElement;
+    header.append(
+      titleEl,
+      createIconButton(ICONS.close, 'Close (Esc)', onClose)
+    );
+    card.appendChild(header);
+
+    // Body
+    const body = h('div', { class: 'sg-card-body' });
+
+    // Filter (always create placeholder, toggle visibility)
     const label = h('label', { class: 'sg-option' });
-    const checkbox = h('input', { type: 'checkbox', checked: excludeSmall || null }) as HTMLInputElement;
-    checkbox.addEventListener('change', () => onFilterChange(checkbox.checked));
-    label.append(checkbox, ' Exclude small (< 1MB)');
+    filterCb = h('input', { type: 'checkbox' }) as HTMLInputElement;
+    filterCb.addEventListener('change', () => onFilterChange(filterCb!.checked));
+    label.append(filterCb, ' Exclude small (< 1MB)');
     body.appendChild(label);
+
+    // Store label reference? No, we can just hide the whole label if needed
+    // But for now, let's keep it simple.
+
+    listEl = h('div', { class: 'sg-list' }) as HTMLDivElement;
+    body.appendChild(listEl);
+
+    card.appendChild(body);
+    modalEl.appendChild(card);
+    container.appendChild(modalEl);
   }
 
-  // Item list
-  const list = h('div', { class: 'sg-list' });
-  if (items.length === 0) {
-    const empty = h('div', { class: 'sg-empty' });
-    empty.innerHTML = 'No media detected.<br><small>Play a video to detect streams.</small>';
-    list.appendChild(empty);
-  } else {
-    items.forEach((item) => list.appendChild(createItemElement(item, onSelect)));
+  // 3. Update State
+  modalEl.classList.add('show');
+  if (titleEl) titleEl.textContent = title;
+
+  if (filterCb) {
+    filterCb.checked = excludeSmall || false;
+    // Toggle visibility of filter logic
+    const label = filterCb.parentElement;
+    if (label) {
+      label.style.display = (showFilter && items.some((i) => i.size != null)) ? 'flex' : 'none';
+    }
   }
 
-  body.appendChild(list);
-  card.appendChild(body);
-  modal.appendChild(card);
-  container.appendChild(modal);
+  // 4. Update List
+  // Optimization: Simple destroy & rebuild for now (better than destroying modal)
+  if (listEl) {
+    listEl.innerHTML = '';
+    if (items.length === 0) {
+      const empty = h('div', { class: 'sg-empty' });
+      empty.innerHTML = 'No media detected.<br><small>Play a video to detect streams.</small>';
+      listEl.appendChild(empty);
+    } else {
+      items.forEach((item) => listEl!.appendChild(createItemElement(item, onSelect)));
+    }
+  }
 }
 
 function createIconButton(icon: string, title: string, onClick: () => void): HTMLButtonElement {

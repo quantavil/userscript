@@ -138,13 +138,21 @@ export class AppState {
   /**
    * Get filtered items based on settings
    */
-  getFilteredItems(): MediaItem[] {
-    const items = this.getAllItems();
+  /**
+   * Filter items based on current settings
+   */
+  filterItems(items: MediaItem[]): MediaItem[] {
     if (!this.excludeSmall) return items;
-
     return items.filter(
       item => item.size == null || item.size >= CFG.SMALL_BYTES
     );
+  }
+
+  /**
+   * Get filtered items based on settings
+   */
+  getFilteredItems(): MediaItem[] {
+    return this.filterItems(this.getAllItems());
   }
 
   // ----------------------------------------
@@ -161,7 +169,6 @@ export class AppState {
   // ----------------------------------------
 
   clear(): void {
-    this.items.clear();
     this.items.clear();
     pruneBlobs(() => true);
     this.invalidateCount();

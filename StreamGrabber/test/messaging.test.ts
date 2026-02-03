@@ -37,7 +37,7 @@ describe('MessageBus Reference Architecture', () => {
         // Let's mock a different source
         const otherWindow = {} as Window;
         const msgEvent2 = new MessageEvent('message', {
-            data: { type: 'SG_DETECT', payload: { foo: 'bar' } },
+            data: { type: 'SG_DETECT', payload: { foo: 'bar' }, magic: 'SG_MSG_v1' },
             source: otherWindow
         });
 
@@ -55,7 +55,7 @@ describe('MessageBus Reference Architecture', () => {
         bus.send('SG_CMD_DOWNLOAD', { url: 'http://test' });
 
         expect(spy).toHaveBeenCalledWith(
-            { type: 'SG_CMD_DOWNLOAD', payload: { url: 'http://test' } },
+            { type: 'SG_CMD_DOWNLOAD', payload: { url: 'http://test' }, magic: 'SG_MSG_v1' },
             '*'
         );
     });
@@ -73,6 +73,23 @@ describe('MessageBus Reference Architecture', () => {
         // Or we rely on the fact that sendToTop calls send.
 
         bus.sendToTop('SG_DETECT', { item: {} });
+        // sendToTop calls send, which adds the magic token.
+        // However, the spy is on `bus.send`. 
+        // When we call sendToTop, it calls this.send(type, payload, window.top).
+        // It does NOT pass the magic token as an argument to send()! 
+        // Logic: send(type, payload, target) { ... const msg = { ..., magic } ... }
+        // So the SPY on `send` will be called with (type, payload, target).
+        // The magic token is added INSIDE send().
+        // So this assertion should arguably remain unchanged if we are spying on `bus.send`.
+        // WAIT. The test spies on `bus.send`. 
+        // `bus.sendToTop` calls `this.send(type, payload, window.top)`.
+        // So `spy` is called with arguments ('SG_DETECT', { item: {} }, window.top).
+        // Magic is INTERNAL to send.
+        // So this test should actually PASS as is?
+        // Let's re-read the failure log. It failed on `should send messages via postMessage`.
+        // That test spies on `window.postMessage`.
+        // `should sendToTop correctly` spies on `bus.send`.
+        // So `should sendToTop correctly` should be fine.
         expect(spy).toHaveBeenCalledWith('SG_DETECT', { item: {} }, window.top);
     });
 });

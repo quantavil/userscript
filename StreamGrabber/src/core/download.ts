@@ -35,14 +35,15 @@ export interface DownloadDelegate {
 
 export async function downloadDirect(
   url: string,
-  delegate: DownloadDelegate
+  delegate: DownloadDelegate,
+  pageTitle?: string
 ): Promise<void> {
   console.log('[SG] Direct download:', url);
 
   const info = blobRegistry.get(url);
 
   const ext = guessExt(url, info?.type);
-  const filename = generateFilename({ title: document.title, ext });
+  const filename = generateFilename({ title: pageTitle, ext });
 
   let dlUrl = url;
   let cleanup = () => { };
@@ -99,7 +100,8 @@ export async function downloadDirect(
 export async function downloadHls(
   url: string,
   preVariant: Variant | null,
-  delegate: DownloadDelegate
+  delegate: DownloadDelegate,
+  pageTitle?: string
 ): Promise<void> {
   console.log('[SG] HLS download:', url);
 
@@ -168,7 +170,7 @@ export async function downloadHls(
   const fmp4 = checkFmp4(parsed.segs);
   const ext = fmp4 ? 'mp4' : 'ts';
   const filename = generateFilename({
-    title: document.title,
+    title: pageTitle,
     ext,
     quality: chosenVariant?.res
   });
@@ -195,10 +197,10 @@ export async function handleItem(
     // For non-blob remote items, download directly from top
     if (!item.url.startsWith('blob:')) {
       if (item.kind === 'hls') {
-        return downloadHls(item.url, null, delegate);
+        return downloadHls(item.url, null, delegate, item.pageTitle);
       }
       if (item.kind === 'video') {
-        return downloadDirect(item.url, delegate);
+        return downloadDirect(item.url, delegate, item.pageTitle);
       }
     }
 
@@ -206,7 +208,7 @@ export async function handleItem(
     item.remoteWin.postMessage(
       {
         type: 'SG_CMD_DOWNLOAD',
-        payload: { url: item.url, kind: item.kind, variant: item.variant },
+        payload: { url: item.url, kind: item.kind, variant: item.variant, pageTitle: item.pageTitle },
       },
       '*'
     );
@@ -235,14 +237,14 @@ export async function handleItem(
 
   // Dispatch
   if (item.kind === 'video') {
-    return downloadDirect(item.url, delegate);
+    return downloadDirect(item.url, delegate, item.pageTitle);
   }
 
   if (item.kind === 'variant') {
-    return downloadHls(item.url, item.variant ?? null, delegate);
+    return downloadHls(item.url, item.variant ?? null, delegate, item.pageTitle);
   }
 
   if (item.kind === 'hls') {
-    return downloadHls(item.url, null, delegate);
+    return downloadHls(item.url, null, delegate, item.pageTitle);
   }
 }
