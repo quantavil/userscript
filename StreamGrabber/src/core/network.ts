@@ -1,3 +1,4 @@
+import pRetry from 'p-retry';
 import type { HeadMeta, GmRequestOptions, BlobInfo } from '../types';
 import { CFG, CACHE } from '../config';
 import {
@@ -68,10 +69,13 @@ async function fetchText(url: string): Promise<string> {
     return blobInfo.blob.text();
   }
 
-  return gmGet({
+  return pRetry(() => gmGet({
     url,
     responseType: 'text',
     timeout: CFG.MANIFEST_TIMEOUT,
+  }), {
+    retries: CFG.RETRIES,
+    onFailedAttempt: (e) => console.warn(`[SG] Fetch text failed (attempt ${e.attemptNumber}): ${e.error.message}`)
   });
 }
 
@@ -236,22 +240,27 @@ export function getBin(
 
 async function fetchHead(url: string): Promise<HeadMeta> {
   try {
-    const resp = await new Promise<{ responseHeaders: string }>((resolve, reject) => {
-      GM_xmlhttpRequest({
-        method: 'HEAD',
-        url,
-        timeout: CFG.REQUEST_TIMEOUT,
-        onload: resolve,
-        onerror: () => reject(new Error('HEAD failed')),
-        ontimeout: () => reject(new Error('HEAD timeout')),
+    return await pRetry(async () => {
+      const resp = await new Promise<{ responseHeaders: string }>((resolve, reject) => {
+        GM_xmlhttpRequest({
+          method: 'HEAD',
+          url,
+          timeout: CFG.REQUEST_TIMEOUT,
+          onload: resolve,
+          onerror: () => reject(new Error('HEAD failed')),
+          ontimeout: () => reject(new Error('HEAD timeout')),
+        });
       });
-    });
 
-    const h = parseHeaders(resp.responseHeaders || '');
-    return {
-      length: h['content-length'] ? +h['content-length'] : null,
-      type: h['content-type'] ? h['content-type'].trim() : null,
-    };
+      const h = parseHeaders(resp.responseHeaders || '');
+      return {
+        length: h['content-length'] ? +h['content-length'] : null,
+        type: h['content-type'] ? h['content-type'].trim() : null,
+      };
+    }, {
+      retries: CFG.RETRIES,
+      onFailedAttempt: (e) => console.warn(`[SG] HEAD failed (attempt ${e.attemptNumber}): ${e.error.message}`)
+    });
   } catch {
     return { length: null, type: null };
   }

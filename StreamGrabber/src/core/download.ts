@@ -7,7 +7,7 @@ import {
   isFmp4 as checkFmp4,
 } from './parser';
 import { downloadSegments } from './download-engine';
-import { enrichNow } from './enrichment';
+import { enrichNow, analyzeMediaPlaylist } from './enrichment';
 import {
   cleanFilename,
   guessExt,
@@ -103,15 +103,14 @@ export async function downloadHls(
 ): Promise<void> {
   console.log('[SG] HLS download:', url);
 
-  const txt = await getText(url);
-  const man = parseManifest(txt, url);
+  const data = await analyzeMediaPlaylist(url);
 
   let mediaUrl = url;
   let chosenVariant = preVariant;
 
   // Master playlist: prompt for variant
-  if (man.isMaster && man.variants && man.variants.length > 0) {
-    const variants = sortVariantsByQuality(man.variants);
+  if (data.hlsType === 'master' && data.variants && data.variants.length > 0) {
+    const variants = sortVariantsByQuality(data.variants);
 
     if (variants.length === 0) {
       throw new Error('No variants found');
@@ -121,43 +120,19 @@ export async function downloadHls(
     const items: MediaItem[] = [];
 
     for (const v of variants) {
-      let size: number | null = null;
-      let duration = 0;
-
+      let data: Partial<MediaItem>;
       try {
-        const mediaTxt = await getText(v.url);
-        const vMan = parseManifest(mediaTxt, v.url);
-
-        if (vMan.segments) {
-          duration = calcDuration(vMan.segments);
-          const est = estimateHlsSize(
-            {
-              segs: vMan.segments,
-              mediaSeq: vMan.mediaSeq ?? 0,
-              endList: vMan.endList ?? false,
-            },
-            duration,
-            v
-          );
-          size = est.bytes;
-        }
+        data = await analyzeMediaPlaylist(v.url, undefined, v);
       } catch {
-        /* ignore variant parsing errors */
+        data = { label: buildLabel({ resolution: v.res }), hlsType: 'error' };
       }
-
-      const label = buildLabel({
-        resolution: v.res,
-        bitrate: v.avg || v.peak,
-        duration,
-        size,
-      });
 
       items.push({
         url: v.url,
         kind: 'variant',
-        label,
-        sublabel: null,
-        size,
+        label: data.label || 'Unknown',
+        sublabel: data.sublabel || null,
+        size: data.size ?? null,
         type: null,
         origin: document.location.origin,
         enriched: true,

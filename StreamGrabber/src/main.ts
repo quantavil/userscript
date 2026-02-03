@@ -1,7 +1,7 @@
 import { CFG } from './config';
 import { state } from './state';
 import { initDetection, setItemDetectedCallback } from './detection';
-import { queueEnrich, setEnrichCallback, setGetItemFn } from './core/enrichment';
+import { queueEnrich } from './core/enrichment';
 import { initMessaging, sendDetection, setMessagingCallbacks, registerPickerRequest } from './messaging';
 import { handleItem, downloadDirect, downloadHls } from './core/download';
 import {
@@ -38,7 +38,7 @@ function init(): void {
   });
 
   // Wire enrichment to state (fixes circular dependency)
-  setGetItemFn((url) => state.getItem(url));
+  // No longer needed: setGetItemFn((url) => state.getItem(url));
 
   // Set up UI callbacks FIRST (before mounting)
   setUICallbacks({
@@ -111,7 +111,7 @@ function init(): void {
       updateBadge();
 
       if (item.kind === 'hls') {
-        queueEnrich(item.url);
+        queueEnrich(item, () => refreshUI());
       }
     } else {
       console.log('[SG] [iframe] Forwarding detection:', item.kind, item.url.slice(0, 60));
@@ -119,10 +119,7 @@ function init(): void {
     }
   });
 
-  // Set up enrichment callback
-  setEnrichCallback(() => {
-    refreshUI();
-  });
+  // No longer needed: setEnrichCallback(() => { refreshUI(); });
 
   // Set up state callbacks
   // Set up state subscriptions

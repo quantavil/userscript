@@ -1,5 +1,5 @@
 import PQueue from 'p-queue';
-import type { MediaItem } from '../types';
+import type { MediaItem, Variant } from '../types';
 import { CFG } from '../config';
 import { getText } from './network';
 import {
@@ -26,25 +26,20 @@ const queue = new PQueue({ concurrency: 2 });
 // Track URLs that are currently in the queue to avoid duplicates
 const pendingUrls = new Set<string>();
 
-// Simple callback storage (no complex holder needed)
-let _onEnrichComplete: () => void = () => { };
-let _getItemFn: (url: string) => MediaItem | undefined = () => undefined;
-
-export function setEnrichCallback(cb: () => void): void {
-  _onEnrichComplete = cb;
-}
-
-export function setGetItemFn(fn: (url: string) => MediaItem | undefined): void {
-  _getItemFn = fn;
-}
-
 // ============================================
 // Single Item Enrichment
 // ============================================
 
-async function performEnrichment(item: MediaItem): Promise<boolean> {
-  const txt = await getText(item.url);
-  const man = parseManifest(txt, item.url);
+/**
+ * Analyzes a media playlist (variants or direct streams)
+ */
+export async function analyzeMediaPlaylist(
+  url: string,
+  text?: string,
+  variant?: Variant
+): Promise<Partial<MediaItem>> {
+  const txt = text ?? (await getText(url));
+  const man = parseManifest(txt, url);
 
   if (man.isMaster && man.variants) {
     const sorted = sortVariantsByQuality(man.variants);
@@ -60,12 +55,17 @@ async function performEnrichment(item: MediaItem): Promise<boolean> {
       parts.push(`up to ${best.h}p`);
     }
 
-    item.label = parts.join(' • ');
-    item.hlsType = 'master';
-    item.variantCount = count;
-    item.variants = man.variants;
-    item.bestVariant = best;
-  } else if (man.segments && man.segments.length > 0) {
+    return {
+      label: parts.join(' • '),
+      hlsType: 'master',
+      variantCount: count,
+      variants: man.variants,
+      bestVariant: best,
+      enriched: true,
+    };
+  }
+
+  if (man.segments && man.segments.length > 0) {
     const segs = man.segments;
     const segCount = segs.length;
     const duration = calcDuration(segs);
@@ -77,36 +77,51 @@ async function performEnrichment(item: MediaItem): Promise<boolean> {
       endList: isVod,
     });
 
-    const res = extractResFromUrl(item.url);
+    const res = variant?.res ?? extractResFromUrl(url);
     const fmp4 = isFmp4(segs);
     const encrypted = hasEncryption(segs);
 
-    item.label = buildLabel({
+    const label = buildLabel({
       resolution: res,
       duration,
       size: exactBytes,
     });
 
-    item.sublabel = buildSublabel(segCount, fmp4);
-    item.hlsType = 'media';
-    item.duration = duration;
-    item.segCount = segCount;
-    item.resolution = res;
-    item.isVod = isVod;
-    item.isFmp4 = fmp4;
-    item.encrypted = encrypted;
-    item.isLive = !isVod;
-
-    if (exactBytes != null) {
-      item.size = exactBytes;
-    }
-  } else {
-    item.label = 'Empty or Invalid';
-    item.hlsType = 'invalid';
+    return {
+      label,
+      sublabel: buildSublabel(segCount, fmp4),
+      hlsType: 'media',
+      duration,
+      segCount,
+      resolution: res,
+      isVod,
+      isFmp4: fmp4,
+      encrypted,
+      isLive: !isVod,
+      size: exactBytes ?? null,
+      enriched: true,
+    };
   }
 
-  item.enriched = true;
-  return true;
+  return {
+    label: 'Empty or Invalid',
+    hlsType: 'invalid',
+    enriched: true,
+  };
+}
+
+async function performEnrichment(item: MediaItem): Promise<boolean> {
+  try {
+    const data = await analyzeMediaPlaylist(item.url);
+    Object.assign(item, data);
+    return true;
+  } catch (e) {
+    console.error('[SG] Enrichment failed:', e);
+    item.label = 'Parse Error';
+    item.hlsType = 'error';
+    item.enriched = true;
+    return false;
+  }
 }
 
 async function enrichItem(item: MediaItem): Promise<boolean> {
@@ -147,20 +162,19 @@ async function enrichItem(item: MediaItem): Promise<boolean> {
 /**
  * Queue a URL for enrichment
  */
-export function queueEnrich(url: string): void {
-  if (pendingUrls.has(url)) return;
+export function queueEnrich(item: MediaItem, onComplete?: () => void): void {
+  if (pendingUrls.has(item.url)) return;
 
-  pendingUrls.add(url);
+  pendingUrls.add(item.url);
 
   queue.add(async () => {
     try {
-      const item = _getItemFn(url);
       if (item && item.kind === 'hls' && !item.enriched) {
         await enrichItem(item);
-        _onEnrichComplete();
+        onComplete?.();
       }
     } finally {
-      pendingUrls.delete(url);
+      pendingUrls.delete(item.url);
     }
   });
 }
