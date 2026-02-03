@@ -236,6 +236,37 @@ async function createNativeWriter(
 
 // ===== OPFS Writer (Virtual File System) =====
 
+const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+async function cleanupStaleTempFiles(root: FileSystemDirectoryHandle): Promise<void> {
+  try {
+    const now = Date.now();
+    const deletePromises: Promise<void>[] = [];
+
+    // Iterate over all entries
+    // @ts-ignore - TS might complain about async iterator on older definitions
+    for await (const [name, handle] of root.entries()) {
+      if (handle.kind === 'file' && name.endsWith('.tmp') && name.startsWith('sg_download_')) {
+        // Extract timestamp from filename: sg_download_<TIMESTAMP>_<RANDOM>.tmp
+        const parts = name.split('_');
+        if (parts.length >= 3) {
+          const ts = parseInt(parts[2], 10);
+          if (!isNaN(ts) && (now - ts > STALE_THRESHOLD_MS)) {
+            log.info(`Cleaning up stale temp file: ${name}`);
+            deletePromises.push(silentRemove(root, name));
+          }
+        }
+      }
+    }
+
+    if (deletePromises.length > 0) {
+      await Promise.all(deletePromises);
+    }
+  } catch (e) {
+    log.warn('Failed to cleanup stale temp files:', e);
+  }
+}
+
 async function createOpfsWriter(
   suggestedName: string,
   mimeType: string
@@ -246,6 +277,10 @@ async function createOpfsWriter(
 
   try {
     const root = await navigator.storage.getDirectory();
+
+    // Lazy cleanup on new write
+    cleanupStaleTempFiles(root).catch(() => { });
+
     // Use a temp name to avoid conflicts, or just use the suggested name if unique.
     // For simplicity and to allow simple cleanup, we'll specific temp file.
     // But to support "Save As" at the end, we just need the data.
