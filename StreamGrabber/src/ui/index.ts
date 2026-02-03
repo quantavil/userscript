@@ -46,6 +46,9 @@ export function mountUI(): void {
   // Create host element for Shadow DOM
   const host = document.createElement('div');
   host.id = 'sg-host';
+  // Prevent Dark Reader from inverting color
+  host.setAttribute('data-darkreader-ignore', 'true');
+  host.classList.add('darkreader');
   Object.assign(host.style, {
     position: 'fixed',
     top: '0',
@@ -54,6 +57,7 @@ export function mountUI(): void {
     height: '0',
     zIndex: '2147483647',
     pointerEvents: 'none', // Allow clicks to pass through the wrapper
+    colorScheme: 'dark',
   });
 
   // Attach Shadow DOM
@@ -61,6 +65,7 @@ export function mountUI(): void {
 
   // Inject Styles (remove GM_addStyle dependency for UI)
   const styleEl = document.createElement('style');
+  styleEl.classList.add('darkreader'); // Key fix: prevent Dark Reader from modifying this style block
   styleEl.textContent = STYLES;
   shadow.append(styleEl);
 

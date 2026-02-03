@@ -21,6 +21,9 @@
 
 /* CSS Variables - Premium Palette */
 :host {
+    color-scheme: dark;
+    forced-color-adjust: none;
+
     /* Core Colors */
     --sg-bg-deep: #050505;
     --sg-bg-surface: #0a0a0a;
