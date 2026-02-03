@@ -2,20 +2,16 @@ import type { MediaItem, SGMessage } from './types';
 import { CFG } from './config';
 import { state } from './state';
 import { queueEnrich } from './core/enrichment';
-import { serializeMediaItem, shortId } from './core/shared';
+import { serializeMediaItem } from './core/shared';
+import { MessageBus } from './core/message-bus';
 
 // ============================================
 // Types
 // ============================================
 
 type PickerResolver = (item: MediaItem | null) => void;
-type ControlHandler = {
-  onStop?: () => void;
-  onCancel?: () => void;
-};
 
 const pickerRequests = new Map<string, PickerResolver>();
-const controlHandlers = new Map<string, ControlHandler>();
 
 // ============================================
 // Callbacks (set by UI layer)
@@ -62,111 +58,84 @@ export function setMessagingCallbacks(cbs: {
 }
 
 // ============================================
-// Message Handler
+// Message Handler Setup
 // ============================================
 
-type MessageHandler = (data: SGMessage, source: Window) => void;
-
-const topHandlers: Record<string, MessageHandler> = {
-  'SG_DETECT': (data, source) => {
-    if (!data.item) return;
-    const item = data.item as MediaItem;
-    item.remoteWin = source;
-    item.isRemote = true;
-
-    console.log(
-      '[SG] Received detection from iframe:',
-      item.kind,
-      item.url.slice(0, 60)
-    );
-
-    if (state.addItem(item)) {
-      onRemoteItem(item);
-      if (item.kind === 'hls') {
-        queueEnrich(item.url);
-      }
-    }
-  },
-
-  'SG_PROGRESS_START': (data, source) => {
-    const { id, title, src } = data.payload as {
-      id: string;
-      title: string;
-      src: string;
-    };
-    onProgressStart(id, title, src, source);
-  },
-
-  'SG_PROGRESS_UPDATE': (data) => {
-    const { id, p, txt } = data.payload as { id: string; p: number; txt: string };
-    onProgressUpdate(id, p, txt);
-  },
-
-  'SG_PROGRESS_DONE': (data) => {
-    const { id, ok, msg } = data.payload as {
-      id: string;
-      ok: boolean;
-      msg: string;
-    };
-    onProgressDone(id, ok, msg);
-  },
-
-  'SG_CMD_PICK': (data, source) => {
-    const { id, items, title } = data.payload as {
-      id: string;
-      items: MediaItem[];
-      title: string;
-    };
-    onPick(id, items, title, source);
-  }
-};
-
-const childHandlers: Record<string, MessageHandler> = {
-  'SG_CMD_DOWNLOAD': (data) => {
-    const { url, kind, variant } = data.payload as {
-      url: string;
-      kind: string;
-      variant?: unknown;
-    };
-    console.log('[SG] [iframe] Received download command:', { url, kind });
-    onDownloadCommand(url, kind, variant);
-  },
-
-  'SG_CMD_PICK_RESULT': (data) => {
-    const { id, item } = data.payload as { id: string; item: MediaItem | null };
-    const resolver = pickerRequests.get(id);
-    if (resolver) {
-      pickerRequests.delete(id);
-      resolver(item);
-    }
-  },
-
-  'SG_CMD_CONTROL': (data) => {
-    const { id, action } = data.payload as { id: string; action: 'cancel' | 'stop' };
-    const handler = controlHandlers.get(id + '_ctrl');
-    if (handler) {
-      if (action === 'cancel') handler.onCancel?.();
-      if (action === 'stop') handler.onStop?.();
-    }
-  }
-};
-
-function handleMessage(ev: MessageEvent): void {
-  const data = ev.data as SGMessage | null;
-  if (!data || typeof data !== 'object' || !data.type) return;
-
-  if (ev.source === window) return;
-
-  let handler: MessageHandler | undefined;
+function setupHandlers(): void {
+  const bus = MessageBus.get();
 
   if (CFG.IS_TOP) {
-    handler = topHandlers[data.type];
-  } else {
-    handler = childHandlers[data.type];
-  }
+    // Top frame handlers
+    bus.on('SG_DETECT', (payload, source) => {
+      const item = payload.item as MediaItem; // payload.item was passed in sendDetection via wrapper? No, look at logic below.
+      // Wait, previous code: item = data.item.
+      // SGMessage structure: { type, item, payload }
+      // My MessageBus sends { type, payload }.
+      // I need to adjust MessageBus or payloads.
+      // My MessageBus implementation sends `payload` as the second arg to postMessage?
+      // No, MessageBus.send constructs { type, payload }.
+      // But `SG_DETECT` historically used `item` property on the root message.
+      // I should standardize on `payload`.
 
-  if (handler) {
-    handler(data, ev.source as Window);
+      // Adaptation: serialized item comes in payload.item
+      if (!payload.item) return;
+
+      const remoteItem = payload.item as MediaItem;
+      remoteItem.remoteWin = source;
+      remoteItem.isRemote = true;
+
+      console.log(
+        '[SG] Received detection from iframe:',
+        remoteItem.kind,
+        remoteItem.url.slice(0, 60)
+      );
+
+      if (state.addItem(remoteItem)) {
+        onRemoteItem(remoteItem);
+        if (remoteItem.kind === 'hls') {
+          queueEnrich(remoteItem.url);
+        }
+      }
+    });
+
+    bus.on('SG_PROGRESS_START', (payload, source) => {
+      const { id, title, src } = payload as any;
+      onProgressStart(id, title, src, source);
+    });
+
+    bus.on('SG_PROGRESS_UPDATE', (payload) => {
+      const { id, p, txt } = payload as any;
+      onProgressUpdate(id, p, txt);
+    });
+
+    bus.on('SG_PROGRESS_DONE', (payload) => {
+      const { id, ok, msg } = payload as any;
+      onProgressDone(id, ok, msg);
+    });
+
+    bus.on('SG_CMD_PICK', (payload, source) => {
+      const { id, items, title } = payload as any;
+      onPick(id, items, title, source);
+    });
+
+  } else {
+    // Child frame handlers
+    bus.on('SG_CMD_DOWNLOAD', (payload) => {
+      const { url, kind, variant } = payload as any;
+      console.log('[SG] [iframe] Received download command:', { url, kind });
+      onDownloadCommand(url, kind, variant);
+    });
+
+    bus.on('SG_CMD_PICK_RESULT', (payload) => {
+      const { id, item } = payload as any;
+      const resolver = pickerRequests.get(id);
+      if (resolver) {
+        pickerRequests.delete(id);
+        resolver(item);
+      }
+    });
+
+    // Note: SG_CMD_CONTROL is now handled by RemoteProgressCard directly via bus
   }
 }
 
@@ -174,56 +143,27 @@ function handleMessage(ev: MessageEvent): void {
 // Send Messages
 // ============================================
 
-export function postToTop(message: SGMessage): void {
-  try {
-    window.top?.postMessage(message, '*');
-  } catch (e) {
-    console.error('[SG] Failed to post to top:', e);
-  }
-}
-
-export function postToChild(target: Window, message: SGMessage): void {
-  try {
-    target.postMessage(message, '*');
-  } catch (e) {
-    console.error('[SG] Failed to post to child:', e);
-  }
-}
-
 export function sendDetection(item: MediaItem): void {
-  postToTop({
-    type: 'SG_DETECT',
-    item: serializeMediaItem(item),
+  // Move item to payload
+  MessageBus.get().sendToTop('SG_DETECT', {
+    item: serializeMediaItem(item)
   });
 }
 
 export function sendProgressStart(id: string, title: string, src: string): void {
-  postToTop({
-    type: 'SG_PROGRESS_START',
-    payload: { id, title, src },
-  });
+  MessageBus.get().sendToTop('SG_PROGRESS_START', { id, title, src });
 }
 
 export function sendProgressUpdate(id: string, p: number, txt: string): void {
-  postToTop({
-    type: 'SG_PROGRESS_UPDATE',
-    payload: { id, p, txt },
-  });
+  MessageBus.get().sendToTop('SG_PROGRESS_UPDATE', { id, p, txt });
 }
 
 export function sendProgressDone(id: string, ok: boolean, msg: string): void {
-  postToTop({
-    type: 'SG_PROGRESS_DONE',
-    payload: { id, ok, msg },
-  });
+  MessageBus.get().sendToTop('SG_PROGRESS_DONE', { id, ok, msg });
 }
 
 export function registerPickerRequest(id: string, resolver: PickerResolver): void {
   pickerRequests.set(id, resolver);
-}
-
-export function registerControlHandler(id: string, handler: ControlHandler): void {
-  controlHandlers.set(id + '_ctrl', handler);
 }
 
 export function sendPickResult(
@@ -231,22 +171,16 @@ export function sendPickResult(
   id: string,
   item: MediaItem | null
 ): void {
-  postToChild(target, {
-    type: 'SG_CMD_PICK_RESULT',
-    payload: { id, item },
-  });
+  MessageBus.get().send('SG_CMD_PICK_RESULT', { id, item }, target);
 }
 
 // ============================================
 // Initialization
 // ============================================
 
-let initialized = false;
-
 export function initMessaging(): void {
-  if (initialized) return;
-  initialized = true;
-
-  window.addEventListener('message', handleMessage);
-  console.log('[SG] Messaging initialized', { isTop: CFG.IS_TOP });
+  const bus = MessageBus.get();
+  bus.init();
+  setupHandlers();
+  console.log('[SG] Messaging handlers set up via MessageBus');
 }

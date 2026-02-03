@@ -2,7 +2,7 @@ import { CFG } from './config';
 import { state } from './state';
 import { initDetection, setItemDetectedCallback } from './detection';
 import { queueEnrich, setEnrichCallback, setGetItemFn } from './core/enrichment';
-import { initMessaging, sendDetection, setMessagingCallbacks } from './messaging';
+import { initMessaging, sendDetection, setMessagingCallbacks, registerPickerRequest } from './messaging';
 import { handleItem, downloadDirect, downloadHls } from './core/download';
 import {
   mountUI,
@@ -17,6 +17,8 @@ import {
 } from './ui';
 import type { MediaItem, ProgressCardController, Variant } from './types';
 import { shortId, alertError } from './core/shared';
+import { MessageBus } from './core/message-bus';
+import { RemoteProgressCard } from './core/remote-progress-card';
 
 // ============================================
 // Remote Jobs (cross-frame progress cards)
@@ -64,24 +66,16 @@ function init(): void {
 
       try {
         const card = createProgress(title, src);
+        // The source (iframe) has a RemoteProgressCard.
+        // That RemoteProgressCard listens for SG_CMD_CONTROL via MessageBus.
+        // We need to send SG_CMD_CONTROL when this local card is stopped/canceled.
+
         card.setOnStop(() => {
-          source.postMessage(
-            {
-              type: 'SG_CMD_CONTROL',
-              payload: { id, action: 'stop' },
-            },
-            '*'
-          );
+          MessageBus.get().send('SG_CMD_CONTROL', { id, action: 'stop' }, source);
           return 'paused';
         });
         card.setOnCancel(() => {
-          source.postMessage(
-            {
-              type: 'SG_CMD_CONTROL',
-              payload: { id, action: 'cancel' },
-            },
-            '*'
-          );
+          MessageBus.get().send('SG_CMD_CONTROL', { id, action: 'cancel' }, source);
           card.remove();
           remoteJobs.delete(id);
         });
@@ -103,13 +97,7 @@ function init(): void {
     },
     onPick: (id, items, title, source) => {
       pickFromList(items, { title, filterable: true }).then((selected) => {
-        source.postMessage(
-          {
-            type: 'SG_CMD_PICK_RESULT',
-            payload: { id, item: selected },
-          },
-          '*'
-        );
+        MessageBus.get().send('SG_CMD_PICK_RESULT', { id, item: selected }, source);
       });
     },
     onDownloadCommand: handleDownloadCommand,
@@ -209,40 +197,9 @@ async function handleDownloadCommand(
   console.log('[SG] [iframe] Received download command:', { url, kind });
 
   try {
+    // simplified using RemoteProgressCard
     const createProxyCard = (title: string, src: string): ProgressCardController => {
-      const id = shortId();
-
-      window.top?.postMessage(
-        {
-          type: 'SG_PROGRESS_START',
-          payload: { id, title, src },
-        },
-        '*'
-      );
-
-      return {
-        update(p: number, txt?: string) {
-          window.top?.postMessage(
-            {
-              type: 'SG_PROGRESS_UPDATE',
-              payload: { id, p, txt: txt || '' },
-            },
-            '*'
-          );
-        },
-        done(ok = true, msg?: string) {
-          window.top?.postMessage(
-            {
-              type: 'SG_PROGRESS_DONE',
-              payload: { id, ok, msg: msg || '' },
-            },
-            '*'
-          );
-        },
-        remove() { },
-        setOnStop() { },
-        setOnCancel() { },
-      };
+      return new RemoteProgressCard(title, src);
     };
 
     if (kind === 'hls') {
@@ -255,23 +212,15 @@ async function handleDownloadCommand(
             return new Promise((resolve) => {
               const pickId = shortId();
 
-              const handler = (ev: MessageEvent) => {
-                const data = ev.data;
-                if (data?.type === 'SG_CMD_PICK_RESULT' && data?.payload?.id === pickId) {
-                  window.removeEventListener('message', handler);
-                  resolve(data.payload.item);
-                }
-              };
+              // Register resolver
+              registerPickerRequest(pickId, resolve);
 
-              window.addEventListener('message', handler);
-
-              window.top?.postMessage(
-                {
-                  type: 'SG_CMD_PICK',
-                  payload: { id: pickId, items, title: 'Select Quality' },
-                },
-                '*'
-              );
+              // Send request
+              MessageBus.get().sendToTop('SG_CMD_PICK', {
+                id: pickId,
+                items,
+                title: 'Select Quality'
+              });
             });
           },
           setBusy: () => { },
@@ -312,7 +261,7 @@ export {
 export { aesCbcDecrypt, hexToU8, ivFromSeq } from './core/crypto';
 export { queueEnrich, enrichNow, needsEnrichment } from './core/enrichment';
 export { downloadDirect, downloadHls, handleItem } from './core/download';
-export { initMessaging, sendDetection, postToTop, postToChild } from './messaging';
+export { initMessaging, sendDetection } from './messaging';
 export * from './utils';
 export * from './types';
 export * from './config';

@@ -1,5 +1,7 @@
 import { notifyDownloadComplete } from './shared';
 
+declare const GM_download: any;
+
 export interface FileWriter {
   write(chunk: Uint8Array): Promise<void>;
   close(): Promise<void>;
@@ -59,7 +61,7 @@ function downloadWithGM(
         onSuccess?.();
         resolve();
       },
-      onerror: (err) => {
+      onerror: (err: any) => {
         reject(new Error(mapGMDownloadError(err?.error, err?.details)));
       },
       ontimeout: () => {
@@ -124,7 +126,7 @@ async function createNativeWriter(
           console.warn('[SG] Attempted to write after close');
           return;
         }
-        await stream.write(chunk);
+        await stream.write(chunk as any);
       },
 
       async close(): Promise<void> {
@@ -176,7 +178,7 @@ function createBlobWriter(suggestedName: string, mimeType: string): FileWriter {
 
   const flushBuffer = () => {
     if (currentBufferSize === 0) return;
-    const blob = new Blob(currentBuffer, { type: mimeType }); // mimeType helpful for some constructs
+    const blob = new Blob(currentBuffer as any, { type: mimeType }); // mimeType helpful for some constructs
     blobParts.push(blob);
     currentBuffer = [];
     currentBufferSize = 0;
