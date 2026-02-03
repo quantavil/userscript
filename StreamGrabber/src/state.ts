@@ -31,7 +31,7 @@ export class Subscribable<T = void> {
 // Central State
 // ============================================
 
-class AppState {
+export class AppState {
   /** Detected media items (keyed by URL) */
   readonly items = new Map<string, MediaItem>();
 

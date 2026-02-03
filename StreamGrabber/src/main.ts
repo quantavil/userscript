@@ -2,7 +2,7 @@ import { CFG } from './config';
 import { state } from './state';
 import { initDetection, setItemDetectedCallback } from './detection';
 import { queueEnrich } from './core/enrichment';
-import { initMessaging, sendDetection, setMessagingCallbacks, registerPickerRequest } from './messaging';
+import { initMessaging, sendDetection, registerPickerRequest, resolvePickerRequest } from './messaging';
 import { handleItem, downloadDirect, downloadHls } from './core/download';
 import {
   mountUI,
@@ -16,7 +16,7 @@ import {
   refreshUI,
 } from './ui';
 import type { MediaItem, ProgressCardController, Variant } from './types';
-import { shortId, alertError } from './utils';
+import { shortId, alertError } from './utils/index';
 import { MessageBus } from './core/message-bus';
 import { RemoteProgressCard } from './core/remote-progress-card';
 
@@ -55,13 +55,69 @@ function init(): void {
   // Initialize messaging (all frames need this for cross-frame communication)
   initMessaging();
 
-  // Set up messaging callbacks
-  setMessagingCallbacks({
-    onRemoteItem: () => {
+  // Set up MessageBus handlers
+  setupMessageHandlers();
+
+  // Set up detection callback
+  setItemDetectedCallback((item: MediaItem) => {
+    if (CFG.IS_TOP) {
+      console.log('[SG] Detected:', item.kind, item.url.slice(0, 60));
       showFab();
       updateBadge();
-    },
-    onProgressStart: (id, title, src, source) => {
+
+      if (item.kind === 'hls') {
+        queueEnrich(item, () => refreshUI());
+      }
+    } else {
+      console.log('[SG] [iframe] Forwarding detection:', item.kind, item.url.slice(0, 60));
+      sendDetection(item);
+    }
+  });
+
+  // Set up state subscriptions
+  state.events.itemAdded.subscribe(() => {
+    showFab();
+    updateBadge();
+  });
+
+  state.events.updated.subscribe(() => {
+    refreshUI();
+  });
+
+  // Start detection (all frames)
+  initDetection();
+
+  console.log('[SG] Initialization complete', { isTop: CFG.IS_TOP });
+}
+
+function setupMessageHandlers(): void {
+  const bus = MessageBus.get();
+
+  if (CFG.IS_TOP) {
+    // --- Top Frame Handlers ---
+
+    // 1. Detection from iframes
+    bus.on('SG_DETECT', (payload, source) => {
+      const remoteItem = payload.item as MediaItem;
+      if (!remoteItem) return;
+
+      remoteItem.remoteWin = source;
+      remoteItem.isRemote = true;
+
+      console.log('[SG] Received detection from iframe:', remoteItem.kind, remoteItem.url.slice(0, 60));
+
+      if (state.addItem(remoteItem)) {
+        showFab();
+        updateBadge();
+        if (remoteItem.kind === 'hls') {
+          queueEnrich(remoteItem, () => refreshUI());
+        }
+      }
+    });
+
+    // 2. Progress Start from iframes
+    bus.on('SG_PROGRESS_START', (payload, source) => {
+      const { id, title, src } = payload as any;
       if (remoteJobs.has(id)) return;
 
       try {
@@ -84,58 +140,48 @@ function init(): void {
       } catch (e) {
         console.error('[SG] Failed to create remote progress card:', e);
       }
-    },
-    onProgressUpdate: (id, p, txt) => {
+    });
+
+    // 3. Progress Update from iframes
+    bus.on('SG_PROGRESS_UPDATE', (payload) => {
+      const { id, p, txt } = payload as any;
       remoteJobs.get(id)?.update(p, txt);
-    },
-    onProgressDone: (id, ok, msg) => {
+    });
+
+    // 4. Progress Done from iframes
+    bus.on('SG_PROGRESS_DONE', (payload) => {
+      const { id, ok, msg } = payload as any;
       const card = remoteJobs.get(id);
       if (card) {
         card.done(ok, msg);
         setTimeout(() => remoteJobs.delete(id), 2500);
       }
-    },
-    onPick: (id, items, title, source) => {
+    });
+
+    // 5. Picker Request from iframes
+    bus.on('SG_CMD_PICK', (payload, source) => {
+      const { id, items, title } = payload as any;
       pickFromList(items, { title, filterable: true }).then((selected) => {
         MessageBus.get().send('SG_CMD_PICK_RESULT', { id, item: selected }, source);
       });
-    },
-    onDownloadCommand: handleDownloadCommand,
-  });
+    });
 
-  // Set up detection callback
-  setItemDetectedCallback((item: MediaItem) => {
-    if (CFG.IS_TOP) {
-      console.log('[SG] Detected:', item.kind, item.url.slice(0, 60));
-      showFab();
-      updateBadge();
+  } else {
+    // --- Child Frame Handlers ---
 
-      if (item.kind === 'hls') {
-        queueEnrich(item, () => refreshUI());
-      }
-    } else {
-      console.log('[SG] [iframe] Forwarding detection:', item.kind, item.url.slice(0, 60));
-      sendDetection(item);
-    }
-  });
+    // 1. Download Command from Top Frame
+    bus.on('SG_CMD_DOWNLOAD', (payload) => {
+      const { url, kind, variant } = payload as any;
+      console.log('[SG] [iframe] Received download command:', { url, kind });
+      handleDownloadCommand(url, kind, variant);
+    });
 
-  // No longer needed: setEnrichCallback(() => { refreshUI(); });
-
-  // Set up state callbacks
-  // Set up state subscriptions
-  state.events.itemAdded.subscribe(() => {
-    showFab();
-    updateBadge();
-  });
-
-  state.events.updated.subscribe(() => {
-    refreshUI();
-  });
-
-  // Start detection (all frames)
-  initDetection();
-
-  console.log('[SG] Initialization complete', { isTop: CFG.IS_TOP });
+    // 2. Picker Result from Top Frame
+    bus.on('SG_CMD_PICK_RESULT', (payload) => {
+      const { id, item } = payload as any;
+      resolvePickerRequest(id, item);
+    });
+  }
 }
 
 // ============================================
@@ -259,6 +305,6 @@ export { aesCbcDecrypt, hexToU8, ivFromSeq } from './core/crypto';
 export { queueEnrich, enrichNow, needsEnrichment } from './core/enrichment';
 export { downloadDirect, downloadHls, handleItem } from './core/download';
 export { initMessaging, sendDetection } from './messaging';
-export * from './utils';
+export * from './utils/index';
 export * from './types';
 export * from './config';

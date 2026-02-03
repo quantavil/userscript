@@ -204,7 +204,7 @@ class ProgressTracker {
 // SegmentFetcher
 // ============================================
 
-class SegmentFetcher {
+export class SegmentFetcher {
   private keyCache = new ResourceCache();
   private mapCache = new ResourceCache();
 
@@ -344,7 +344,7 @@ class SegmentFetcher {
 // SegmentDownloader
 // ============================================
 
-class SegmentDownloader {
+export class SegmentDownloader {
   private queue: PQueue;
   private controllers = new Map<number, AbortController>();
   private writer: SequentialWriter;
