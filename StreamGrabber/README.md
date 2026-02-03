@@ -27,7 +27,19 @@ A high-performance, lightweight userscript designed for seamless media extractio
 
 ---
 
-## 🛠 Usage
+## � Screenshots
+
+<p align="center">
+  <img src="https://i.ibb.co/YT2yW8GM/Screenshot-20260203-115416.png" alt="Progress Card" width="45%">
+  <img src="https://i.ibb.co/CKSmRKMZ/Screenshot-20260203-115642.png" alt="Download Modal" width="45%">
+</p>
+<p align="center">
+  <img src="https://i.ibb.co/zTZ8fx9g/Screenshot-20260203-115801.png" alt="Media Detection" width="90%">
+</p>
+
+---
+
+## �🛠 Usage
 
 1.  **Browse**: Open any page with video content.
 2.  **Detect**: The floating download button will appear once media is identified.
@@ -46,6 +58,12 @@ Access these via your userscript manager menu:
 ---
 
 ## 📜 Changelog
+
+### v2.1.0
+-   **Modular Download Engine**: Refactored the core download logic to eliminate "God Functions", ensuring better stability and maintainability.
+-   **Enhanced Resilience**: Added smart 403 fallback mechanisms for strict HLS segments and verified robust pause/resume functionality.
+-   **UI Polish**: Updated FAB aesthetics with a modern squircle design and improved progress bar visualization.
+-   **Namespace Update**: Migrated to `streamgrabber-lite` namespace.
 
 ### v2.0.0
 -   **Shadow DOM Isolation**: Re-engineered the entire UI layer to use **Shadow DOM**. This encapsulates styles and DOM nodes, preventing "hydration failed" errors on sites built with React, Next.js, and other modern frameworks.
