@@ -59,7 +59,7 @@ export async function downloadDirect(
     url: dlUrl,
     name: filename,
     saveAs: true,
-    onprogress: (e) => {
+    onprogress: (e: any) => {
       if (e.lengthComputable) {
         card.update(
           (e.loaded / e.total) * 100,
@@ -75,7 +75,7 @@ export async function downloadDirect(
       cleanup();
       notifyDownloadComplete(filename);
     },
-    onerror: (err) => {
+    onerror: (err: any) => {
       const errorMsg = err?.error || 'unknown';
       console.error('[SG] Download error:', { error: errorMsg, url });
       card.done(false, errorMsg === 'not_succeeded' ? 'Save failed' : errorMsg);
@@ -194,7 +194,7 @@ export async function downloadHls(
 
   const card = delegate.createCard(filename, url, parsed.segs.length);
 
-  await downloadSegments(parsed, filename, fmp4, url, card);
+  await downloadSegments(parsed, filename, fmp4, card);
 }
 
 // ============================================

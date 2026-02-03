@@ -13,11 +13,11 @@ export interface MediaItem {
   size: number | null;
   type: string | null;
   origin: string;
-  
+
   // Enrichment state
   enriched: boolean;
   enriching: boolean;
-  
+
   // HLS-specific
   hlsType: HlsType;
   isLive: boolean;
@@ -31,11 +31,11 @@ export interface MediaItem {
   variants?: Variant[];
   bestVariant?: Variant;
   variant?: Variant;
-  
+
   // Cross-frame
   isRemote?: boolean;
   remoteWin?: Window;
-  
+
   // Internal
   _enrichPromise?: Promise<boolean> | null;
 }
@@ -185,14 +185,24 @@ declare global {
       }>;
     }) => Promise<FileSystemFileHandle>;
   }
-  
+
   interface FileSystemFileHandle {
     createWritable(): Promise<FileSystemWritableFileStream>;
   }
-  
+
   interface FileSystemWritableFileStream extends WritableStream {
     write(data: BufferSource | Blob | string): Promise<void>;
     close(): Promise<void>;
     abort(): Promise<void>;
   }
+
+  function GM_download(options: {
+    url: string;
+    name: string;
+    saveAs?: boolean;
+    onprogress?: (e: { loaded: number; total: number; lengthComputable: boolean }) => void;
+    onload?: () => void;
+    onerror?: (err: { error: string; details?: string }) => void;
+    ontimeout?: () => void;
+  }): void;
 }
