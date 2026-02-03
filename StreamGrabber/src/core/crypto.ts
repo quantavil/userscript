@@ -33,20 +33,44 @@ export function ivFromSeq(n: number): Uint8Array {
   return iv;
 }
 
-/**
- * Decrypt buffer using AES-128-CBC
- */
+import { once } from '../utils/index';
+
+const keyCache = new Map<string, CryptoKey>();
+const keyInflight = new Map<string, Promise<CryptoKey>>();
+const MAX_CACHED_KEYS = 10;
+
+function u8ToHex(u8: Uint8Array): string {
+  let res = '';
+  for (let i = 0; i < u8.length; i++) {
+    res += u8[i].toString(16).padStart(2, '0');
+  }
+  return res;
+}
+
+export function clearKeyCache() {
+  keyCache.clear();
+  keyInflight.clear();
+}
+
 export async function aesCbcDecrypt(
   buf: ArrayBuffer,
   keyBytes: Uint8Array,
   iv: Uint8Array
 ): Promise<ArrayBuffer> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    keyBytes as any,
-    { name: 'AES-CBC' },
-    false,
-    ['decrypt']
+  const hex = u8ToHex(keyBytes);
+
+  const key = await once(
+    keyCache,
+    keyInflight,
+    hex,
+    () => crypto.subtle.importKey(
+      'raw',
+      keyBytes as any,
+      { name: 'AES-CBC' },
+      false,
+      ['decrypt']
+    ),
+    MAX_CACHED_KEYS
   );
 
   return crypto.subtle.decrypt(

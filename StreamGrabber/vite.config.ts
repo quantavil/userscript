@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'StreamGrabber',
         namespace: 'https://github.com/streamgrabber-lite',
-        version: '2.1.1',
+        version: '2.1.3',
         description: 'Lightweight HLS/Video downloader. Pause/Resume. AES-128. fMP4. Mobile + Desktop.',
         author: 'StreamGrabber',
         license: 'MIT',
