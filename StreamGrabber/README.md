@@ -19,7 +19,8 @@ A high-performance, lightweight userscript designed for seamless media extractio
 
 ## ✨ Key Features
 
--   **Smart HLS Processing**: Parallel segment downloading with AES-128 decryption and fMP4 support.
+-   **Strategy-Based Network Layer**: Decoupled fetching logic into dedicated strategies (Blob, Native, GM) for maximum compatibility and reduced complexity.
+-   **Standardized Abort Handling**: Fully transitioned to `AbortController` and `AbortSignal` for industry-standard network request management.
 -   **Unified Terminal UI**: A single, clean floating action button (FAB) that manages all detected media across nested iframes.
 -   **Adaptive Quality**: Automatically picks up master playlists and offers resolution selection (e.g., 1080p, 720p).
 -   **Resilient Downloads**: Built-in pause/resume functionality with automatic retry mechanisms for unstable connections.
@@ -58,6 +59,12 @@ Access these via your userscript manager menu:
 ---
 
 ## 📜 Changelog
+
+### v2.1.1
+-   **Strategy Pattern Implementation**: Refactored `getBin` to use the Strategy Pattern, improving code readability and maintainability.
+-   **AbortSignal Standardization**: Eliminated custom `AbortablePromise` in favor of standard `AbortSignal` support across the stack.
+-   **Vite 7 Upgrade**: Migrated build system to the latest Vite 7 for faster build times and improved source mapping.
+-   **Import Fixes**: Resolved implicit directory resolution issues for better developer experience.
 
 ### v2.1.0
 -   **Modular Download Engine**: Refactored the core download logic to eliminate "God Functions", ensuring better stability and maintainability.

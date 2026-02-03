@@ -113,9 +113,7 @@ export interface GmRequestOptions {
   onprogress?: ProgressCallback;
 }
 
-export interface AbortablePromise<T> extends Promise<T> {
-  abort: () => void;
-}
+
 
 // ============================================
 // Download Types

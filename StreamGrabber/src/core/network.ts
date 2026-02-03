@@ -1,4 +1,4 @@
-import type { HeadMeta, AbortablePromise, GmRequestOptions, BlobInfo } from '../types';
+import type { HeadMeta, GmRequestOptions, BlobInfo } from '../types';
 import { CFG, CACHE } from '../config';
 import {
   isBlob,
@@ -23,12 +23,17 @@ const headInflight = new Map<string, Promise<HeadMeta>>();
 // ============================================
 
 export function gmGet<T extends 'text' | 'arraybuffer'>(
-  opts: GmRequestOptions & { responseType: T }
-): AbortablePromise<T extends 'text' ? string : ArrayBuffer> {
-  let ref: ReturnType<typeof GM_xmlhttpRequest> | null = null;
+  opts: GmRequestOptions & {
+    responseType: T,
+    signal?: AbortSignal
+  }
+): Promise<T extends 'text' ? string : ArrayBuffer> {
+  return new Promise<T extends 'text' ? string : ArrayBuffer>((resolve, reject) => {
+    if (opts.signal?.aborted) {
+      return reject(new Error('Aborted'));
+    }
 
-  const p = new Promise<T extends 'text' ? string : ArrayBuffer>((resolve, reject) => {
-    ref = GM_xmlhttpRequest({
+    const req = GM_xmlhttpRequest({
       method: 'GET',
       url: opts.url,
       responseType: opts.responseType,
@@ -45,17 +50,11 @@ export function gmGet<T extends 'text' | 'arraybuffer'>(
       onerror: () => reject(new Error('Network error')),
       ontimeout: () => reject(new Error('Timeout')),
     });
-  }) as AbortablePromise<T extends 'text' ? string : ArrayBuffer>;
 
-  p.abort = () => {
-    try {
-      ref?.abort();
-    } catch {
-      /* ignore */
+    if (opts.signal) {
+      opts.signal.addEventListener('abort', () => req.abort(), { once: true });
     }
-  };
-
-  return p;
+  });
 }
 
 // ============================================
@@ -84,125 +83,151 @@ export function getText(url: string): Promise<string> {
 // Binary Fetching
 // ============================================
 
+// ============================================
+// Network Strategies
+// ============================================
+
+interface NetworkStrategy {
+  fetch(url: string, options: StrategyOptions): Promise<ArrayBuffer>;
+}
+
+interface StrategyOptions {
+  headers?: Record<string, string>;
+  timeout?: number;
+  onprogress?: (e: { loaded: number; total: number }) => void;
+  signal?: AbortSignal;
+}
+
+class BlobStrategy implements NetworkStrategy {
+  async fetch(url: string, options: StrategyOptions): Promise<ArrayBuffer> {
+    const blobInfo = getBlobInfo(url, blobRegistry);
+    if (!blobInfo || !blobInfo.blob) {
+      throw new Error('Blob not found');
+    }
+
+    if (options.signal?.aborted) {
+      throw new Error('Aborted');
+    }
+
+    const part = getBlobSlice(blobInfo.blob, options.headers?.Range);
+
+    // Simulate progress
+    if (options.onprogress) {
+      // Execute largely to avoid blocking the main thread
+      setTimeout(() => {
+        if (!options.signal?.aborted) {
+          options.onprogress!({ loaded: part.size, total: part.size });
+        }
+      }, 0);
+    }
+
+    // Read blob
+    return new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+
+      const onAbort = () => {
+        reader.abort();
+        reject(new Error('Aborted'));
+      };
+
+      if (options.signal) {
+        options.signal.addEventListener('abort', onAbort, { once: true });
+      }
+
+      reader.onload = () => {
+        if (options.signal) options.signal.removeEventListener('abort', onAbort);
+        resolve(reader.result as ArrayBuffer);
+      };
+
+      reader.onerror = () => {
+        if (options.signal) options.signal.removeEventListener('abort', onAbort);
+        reject(reader.error || new Error('Blob read error'));
+      };
+
+      reader.readAsArrayBuffer(part);
+    });
+  }
+}
+
+class NativeStrategy implements NetworkStrategy {
+  async fetch(url: string, options: StrategyOptions): Promise<ArrayBuffer> {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: options.headers,
+      signal: options.signal,
+    });
+
+    if (!response.ok) throw new Error(`Status ${response.status}`);
+    if (!response.body) throw new Error('No body');
+
+    const reader = response.body.getReader();
+    const contentLength = +(response.headers.get('Content-Length') || '0');
+    let received = 0;
+    const chunks: Uint8Array[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (options.onprogress && contentLength) {
+        options.onprogress({ loaded: received, total: contentLength });
+      }
+    }
+
+    // Concatenate chunks
+    const result = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    return result.buffer;
+  }
+}
+
+class GmStrategy implements NetworkStrategy {
+  async fetch(url: string, options: StrategyOptions): Promise<ArrayBuffer> {
+    return gmGet({
+      url,
+      responseType: 'arraybuffer',
+      headers: options.headers,
+      timeout: options.timeout,
+      onprogress: options.onprogress,
+      signal: options.signal
+    });
+  }
+}
+
+// ============================================
+// Binary Fetching (Facade)
+// ============================================
+
 export function getBin(
   url: string,
   headers: Record<string, string> = {},
   timeout = CFG.REQUEST_TIMEOUT,
-  onprogress?: (e: { loaded: number; total: number }) => void
-): AbortablePromise<ArrayBuffer> {
-  const blobInfo = getBlobInfo(url, blobRegistry);
+  onprogress?: (e: { loaded: number; total: number }) => void,
+  signal?: AbortSignal
+): Promise<ArrayBuffer> {
+  const isBlobUrl = getBlobInfo(url, blobRegistry);
 
-  if (blobInfo) {
-    if (!blobInfo.blob) {
-      const p = Promise.reject(new Error('Blob not found')) as AbortablePromise<ArrayBuffer>;
-      p.abort = () => { };
-      return p;
-    }
-
-    const part = getBlobSlice(blobInfo.blob, headers.Range);
-
-    if (onprogress) {
-      setTimeout(() => onprogress({ loaded: part.size, total: part.size }), 0);
-    }
-
-    let aborted = false;
-    const p = part.arrayBuffer().then((buf: ArrayBuffer) => {
-      if (aborted) throw new Error('Aborted');
-      return buf;
-    }) as AbortablePromise<ArrayBuffer>;
-
-    p.abort = () => {
-      aborted = true;
-    };
-    return p;
+  if (isBlobUrl) {
+    return new BlobStrategy().fetch(url, { headers, timeout, onprogress, signal });
   }
 
-  // Smart Fetch: Try Native -> Fallback to GM
-  let abortRef: (() => void) | null = null;
-  let isAborted = false;
-
-  const p = new Promise<ArrayBuffer>(async (resolve, reject) => {
-    // 1. Try Native Fetch (Pre-flight check for CORS implicitly handled by browser)
-    try {
-      if (isAborted) throw new Error('Aborted');
-
-      const controller = new AbortController();
-      abortRef = () => controller.abort();
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) throw new Error(`Status ${response.status}`);
-      if (!response.body) throw new Error('No body');
-
-      // Native fetch successful, read stream for progress
-      const reader = response.body.getReader();
-      const contentLength = +(response.headers.get('Content-Length') || '0');
-      let received = 0;
-      const chunks: Uint8Array[] = [];
-
-      while (true) {
-        if (isAborted) {
-          reader.cancel();
-          throw new Error('Aborted');
-        }
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        received += value.length;
-        if (onprogress && contentLength) {
-          onprogress({ loaded: received, total: contentLength });
-        }
+  // Try Native -> Fallback to GM
+  return new NativeStrategy().fetch(url, { headers, timeout, onprogress, signal })
+    .catch((err) => {
+      // If native fetch is aborted, rethrow immediately
+      if (signal?.aborted || err.name === 'AbortError' || err.message === 'Aborted') {
+        throw err;
       }
 
-      // Concatenate chunks
-      const result = new Uint8Array(received);
-      let offset = 0;
-      for (const chunk of chunks) {
-        result.set(chunk, offset);
-        offset += chunk.length;
-      }
-
-      resolve(result.buffer);
-      return;
-    } catch (e) {
-      if (isAborted || (e as Error).name === 'AbortError') {
-        reject(new Error('Aborted'));
-        return;
-      }
-      // If native fetch fails (CORS, etc.), proceed to GM fallback
-      // Don't log spam, just perform fallback
-    }
-
-    if (isAborted) {
-      reject(new Error('Aborted'));
-      return;
-    }
-
-    // 2. Fallback to GM_xmlhttpRequest
-    const req = gmGet({
-      url,
-      responseType: 'arraybuffer',
-      headers,
-      timeout,
-      onprogress,
+      // Fallback to GM
+      return new GmStrategy().fetch(url, { headers, timeout, onprogress, signal });
     });
-
-    abortRef = () => req.abort();
-
-    req.then(resolve).catch(reject);
-
-  }) as AbortablePromise<ArrayBuffer>;
-
-  p.abort = () => {
-    isAborted = true;
-    if (abortRef) abortRef();
-  };
-
-  return p;
 }
 
 // ============================================

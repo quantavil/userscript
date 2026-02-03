@@ -5,7 +5,7 @@ import { CFG } from '../config';
 import { getBin } from './network';
 import { aesCbcDecrypt, hexToU8, ivFromSeq } from './crypto';
 import { createFileWriter, type FileWriter } from './file-writer';
-import { once } from '../utils';
+import { once } from '../utils/index';
 
 // ============================================
 // Constants
@@ -253,26 +253,20 @@ class SegmentFetcher {
       ? { Range: segment.range }
       : {};
 
-    const req = getBin(segment.uri, headers, CFG.REQUEST_TIMEOUT, (e) => {
-      onProgress(e.loaded, e.total);
-    });
-
-    const abortHandler = () => req.abort();
-    signal.addEventListener('abort', abortHandler, { once: true });
-
+    // Pass signal directly to getBin
     try {
-      if (signal.aborted) {
-        req.abort();
-        throw new AbortError(new Error('Aborted'));
-      }
-      return await req;
+      return await getBin(
+        segment.uri,
+        headers,
+        CFG.REQUEST_TIMEOUT,
+        (e) => onProgress(e.loaded, e.total),
+        signal
+      );
     } catch (err) {
       if (signal.aborted) {
         throw new AbortError(new Error('Aborted'));
       }
       throw err;
-    } finally {
-      signal.removeEventListener('abort', abortHandler);
     }
   }
 
@@ -287,7 +281,7 @@ class SegmentFetcher {
     return this.keyCache.fetch(
       segment.key.uri,
       async () => {
-        const buf = await getBin(segment.key!.uri!);
+        const buf = await getBin(segment.key!.uri!, {}, CFG.REQUEST_TIMEOUT, undefined, signal);
         return new Uint8Array(buf);
       },
       signal
@@ -309,7 +303,7 @@ class SegmentFetcher {
         const headers: Record<string, string> = segment.map!.rangeHeader
           ? { Range: segment.map!.rangeHeader }
           : {};
-        const buf = await getBin(segment.map!.uri, headers);
+        const buf = await getBin(segment.map!.uri, headers, CFG.REQUEST_TIMEOUT, undefined, signal);
         return new Uint8Array(buf);
       },
       signal
