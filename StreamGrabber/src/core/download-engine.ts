@@ -8,62 +8,525 @@ import { createFileWriter, type FileWriter } from './file-writer';
 import { once } from '../utils';
 
 // ============================================
+// Constants
+// ============================================
+
+const INFLIGHT_CACHE_TIMEOUT_MS = 100;
+const MAX_BUFFERED_SEGMENTS = 50;
+const BACKPRESSURE_CHECK_MS = 50;
+
+// ============================================
 // Types
 // ============================================
 
-interface DownloadState {
-  paused: boolean;
-  canceled: boolean;
-  done: number;
-  writePtr: number;
-  byteDone: number;
-  avgLen: number;
+interface SegmentProgress {
+  loaded: number;
+  total: number;
 }
 
 // ============================================
-// Segment Downloader
+// ResourceCache
+// ============================================
+
+class ResourceCache {
+  private cache = new Map<string, Uint8Array>();
+  private inflight = new Map<string, Promise<Uint8Array>>();
+
+  async fetch(
+    key: string,
+    fetcher: () => Promise<Uint8Array>,
+    signal?: AbortSignal
+  ): Promise<Uint8Array> {
+    // Check abort before starting
+    if (signal?.aborted) {
+      throw new AbortError(new Error('Aborted'));
+    }
+
+    const result = await once(
+      this.cache,
+      this.inflight,
+      key,
+      fetcher,
+      INFLIGHT_CACHE_TIMEOUT_MS
+    );
+
+    // Check abort after fetch
+    if (signal?.aborted) {
+      throw new AbortError(new Error('Aborted'));
+    }
+
+    return result;
+  }
+
+  clear(): void {
+    this.cache.clear();
+    this.inflight.clear();
+  }
+}
+
+// ============================================
+// SequentialWriter
+// ============================================
+
+class SequentialWriter {
+  private buffers = new Map<number, Uint8Array>();
+  private writePtr = 0;
+  private writeChain = Promise.resolve();
+  private totalBytes = 0;
+  private writeError: Error | null = null;
+
+  constructor(private writer: FileWriter) { }
+
+  get bufferedCount(): number {
+    return this.buffers.size;
+  }
+
+  get bytesWritten(): number {
+    return this.totalBytes;
+  }
+
+  get error(): Error | null {
+    return this.writeError;
+  }
+
+  shouldThrottle(): boolean {
+    return this.buffers.size >= MAX_BUFFERED_SEGMENTS;
+  }
+
+  enqueue(index: number, data: Uint8Array): void {
+    this.buffers.set(index, data);
+    this.flush();
+  }
+
+  private flush(): void {
+    this.writeChain = this.writeChain.then(async () => {
+      while (this.buffers.has(this.writePtr)) {
+        const chunk = this.buffers.get(this.writePtr)!;
+        this.buffers.delete(this.writePtr);
+
+        try {
+          await this.writer.write(chunk);
+          this.totalBytes += chunk.length;
+        } catch (e) {
+          this.writeError = e as Error;
+          throw e;
+        }
+
+        this.writePtr++;
+      }
+    });
+  }
+
+  async finalize(): Promise<void> {
+    await this.writeChain;
+    if (this.writeError) {
+      throw this.writeError;
+    }
+  }
+
+  async close(): Promise<void> {
+    await this.finalize();
+    await this.writer.close();
+  }
+
+  abort(): void {
+    this.buffers.clear();
+    this.writer.abort();
+  }
+}
+
+// ============================================
+// ProgressTracker
+// ============================================
+
+class ProgressTracker {
+  private inProgress = new Map<number, SegmentProgress>();
+  private rafId = 0;
+  private _done = 0;
+  private byteDone = 0;
+  private avgLen = 0;
+
+  constructor(
+    private total: number,
+    private onUpdate: (pct: number, done: number, total: number) => void
+  ) { }
+
+  get done(): number {
+    return this._done;
+  }
+
+  get averageSize(): number {
+    return this.avgLen;
+  }
+
+  setProgress(index: number, loaded: number, total: number): void {
+    this.inProgress.set(index, { loaded, total });
+    this.scheduleUpdate();
+  }
+
+  markComplete(index: number, bytes: number): void {
+    this.inProgress.delete(index);
+    this._done++;
+    this.byteDone += bytes;
+    this.avgLen = this.byteDone / this._done;
+    this.scheduleUpdate();
+  }
+
+  clear(index: number): void {
+    this.inProgress.delete(index);
+  }
+
+  private scheduleUpdate(): void {
+    if (this.rafId) return;
+
+    this.rafId = requestAnimationFrame(() => {
+      this.rafId = 0;
+      const partial = this.calculatePartial();
+      const pct = ((this._done + partial) / this.total) * 100;
+      this.onUpdate(pct, this._done, this.total);
+    });
+  }
+
+  private calculatePartial(): number {
+    let partial = 0;
+    this.inProgress.forEach(({ loaded, total }) => {
+      if (total > 0) {
+        partial += Math.min(1, loaded / total);
+      } else if (this.avgLen > 0) {
+        partial += Math.min(1, loaded / this.avgLen);
+      }
+    });
+    return partial;
+  }
+}
+
+// ============================================
+// SegmentFetcher
+// ============================================
+
+class SegmentFetcher {
+  private keyCache = new ResourceCache();
+  private mapCache = new ResourceCache();
+
+  constructor(private mediaSeq: number) { }
+
+  async fetch(
+    segment: Segment,
+    index: number,
+    signal: AbortSignal,
+    onProgress: (loaded: number, total: number) => void
+  ): Promise<Uint8Array> {
+    this.validateEncryption(segment);
+
+    // Pre-fetch with abort support
+    const [keyBytes, mapBytes] = await Promise.all([
+      this.fetchKey(segment, signal),
+      this.fetchMap(segment, signal),
+    ]);
+
+    // Download segment
+    const buf = await this.download(segment, signal, onProgress);
+
+    // Decrypt
+    const decrypted = keyBytes
+      ? await this.decrypt(buf, keyBytes, segment, index)
+      : buf;
+
+    // Prepend map
+    return this.prependMap(new Uint8Array(decrypted), mapBytes);
+  }
+
+  private validateEncryption(segment: Segment): void {
+    if (segment.key?.method && segment.key.method !== 'AES-128') {
+      throw new AbortError(
+        new Error(`Unsupported key method: ${segment.key.method}`)
+      );
+    }
+  }
+
+  private async download(
+    segment: Segment,
+    signal: AbortSignal,
+    onProgress: (loaded: number, total: number) => void
+  ): Promise<ArrayBuffer> {
+    const headers: Record<string, string> = segment.range
+      ? { Range: segment.range }
+      : {};
+
+    const req = getBin(segment.uri, headers, CFG.REQUEST_TIMEOUT, (e) => {
+      onProgress(e.loaded, e.total);
+    });
+
+    const abortHandler = () => req.abort();
+    signal.addEventListener('abort', abortHandler, { once: true });
+
+    try {
+      if (signal.aborted) {
+        req.abort();
+        throw new AbortError(new Error('Aborted'));
+      }
+      return await req;
+    } catch (err) {
+      if (signal.aborted) {
+        throw new AbortError(new Error('Aborted'));
+      }
+      throw err;
+    } finally {
+      signal.removeEventListener('abort', abortHandler);
+    }
+  }
+
+  private async fetchKey(
+    segment: Segment,
+    signal: AbortSignal
+  ): Promise<Uint8Array | null> {
+    if (!segment.key || segment.key.method !== 'AES-128' || !segment.key.uri) {
+      return null;
+    }
+
+    return this.keyCache.fetch(
+      segment.key.uri,
+      async () => {
+        const buf = await getBin(segment.key!.uri!);
+        return new Uint8Array(buf);
+      },
+      signal
+    );
+  }
+
+  private async fetchMap(
+    segment: Segment,
+    signal: AbortSignal
+  ): Promise<Uint8Array | null> {
+    if (!segment.needMap || !segment.map?.uri) {
+      return null;
+    }
+
+    const cacheKey = `${segment.map.uri}|${segment.map.rangeHeader || ''}`;
+    return this.mapCache.fetch(
+      cacheKey,
+      async () => {
+        const headers: Record<string, string> = segment.map!.rangeHeader
+          ? { Range: segment.map!.rangeHeader }
+          : {};
+        const buf = await getBin(segment.map!.uri, headers);
+        return new Uint8Array(buf);
+      },
+      signal
+    );
+  }
+
+  private async decrypt(
+    buf: ArrayBuffer,
+    keyBytes: Uint8Array,
+    segment: Segment,
+    index: number
+  ): Promise<ArrayBuffer> {
+    const iv = segment.key!.iv
+      ? hexToU8(segment.key!.iv)
+      : ivFromSeq(this.mediaSeq + index);
+    return aesCbcDecrypt(buf, keyBytes, iv);
+  }
+
+  private prependMap(
+    data: Uint8Array,
+    mapBytes: Uint8Array | null
+  ): Uint8Array {
+    if (!mapBytes?.length) return data;
+
+    const joined = new Uint8Array(mapBytes.length + data.length);
+    joined.set(mapBytes, 0);
+    joined.set(data, mapBytes.length);
+    return joined;
+  }
+
+  clear(): void {
+    this.keyCache.clear();
+    this.mapCache.clear();
+  }
+}
+
+// ============================================
+// SegmentDownloader
+// ============================================
+
+class SegmentDownloader {
+  private queue: PQueue;
+  private controllers = new Map<number, AbortController>();
+  private writer: SequentialWriter;
+  private progress: ProgressTracker;
+  private fetcher: SegmentFetcher;
+
+  private paused = false;
+  private canceled = false;
+  private finalized = false;
+
+  constructor(
+    private segments: Segment[],
+    mediaSeq: number,
+    writer: FileWriter,
+    private onProgress: (pct: number, done: number, total: number) => void,
+    private onComplete: (success: boolean, message?: string) => void
+  ) {
+    this.queue = new PQueue({ concurrency: CFG.CONCURRENCY });
+    this.writer = new SequentialWriter(writer);
+    this.progress = new ProgressTracker(segments.length, onProgress);
+    this.fetcher = new SegmentFetcher(mediaSeq);
+  }
+
+  async start(): Promise<void> {
+    for (let i = 0; i < this.segments.length; i++) {
+      this.queue.add(() => this.downloadSegment(i));
+    }
+
+    await this.queue.onIdle();
+    await this.finalize();
+  }
+
+  togglePause(): boolean {
+    this.paused = !this.paused;
+    if (this.paused) {
+      this.queue.pause();
+    } else {
+      this.queue.start();
+    }
+    return this.paused;
+  }
+
+  cancel(): void {
+    if (this.canceled) return;
+
+    this.canceled = true;
+    this.abortAll();
+    this.queue.clear();
+    this.writer.abort();
+    this.cleanup();
+  }
+
+  private async downloadSegment(index: number): Promise<void> {
+    if (this.canceled) return;
+
+    await this.waitForBackpressure();
+
+    if (this.canceled) return;
+
+    const controller = new AbortController();
+    this.controllers.set(index, controller);
+
+    try {
+      await pRetry(
+        async () => {
+          if (this.canceled) {
+            throw new AbortError(new Error('Canceled'));
+          }
+
+          const data = await this.fetcher.fetch(
+            this.segments[index],
+            index,
+            controller.signal,
+            (loaded, total) => {
+              this.progress.setProgress(index, loaded, total);
+            }
+          );
+
+          this.writer.enqueue(index, data);
+          this.progress.markComplete(index, data.length);
+        },
+        {
+          retries: CFG.RETRIES,
+          signal: controller.signal,
+          onFailedAttempt: ({ error, attemptNumber }) => {
+            if (!this.canceled) {
+              console.warn(
+                `[SG] Segment ${index} failed (attempt ${attemptNumber}): ${error.message}`
+              );
+            }
+          },
+        }
+      );
+    } catch (error) {
+      this.handleSegmentError(index, error);
+    } finally {
+      this.controllers.delete(index);
+    }
+  }
+
+  private async waitForBackpressure(): Promise<void> {
+    while (this.writer.shouldThrottle() && !this.canceled) {
+      await new Promise((r) => setTimeout(r, BACKPRESSURE_CHECK_MS));
+    }
+  }
+
+  private handleSegmentError(index: number, error: unknown): void {
+    this.progress.clear(index);
+
+    if (this.canceled || error instanceof AbortError) {
+      return;
+    }
+
+    console.error(`[SG] Segment ${index} fatal error:`, error);
+
+    // Trigger failure, but let finalize() handle completion
+    this.canceled = true;
+    this.abortAll();
+    this.queue.clear();
+  }
+
+  private abortAll(): void {
+    for (const controller of this.controllers.values()) {
+      controller.abort();
+    }
+    this.controllers.clear();
+  }
+
+  private async finalize(): Promise<void> {
+    if (this.finalized) return;
+    this.finalized = true;
+
+    const success =
+      !this.canceled &&
+      this.progress.done === this.segments.length &&
+      !this.writer.error;
+
+    try {
+      if (success) {
+        await this.writer.close();
+        this.onComplete(true);
+      } else {
+        this.writer.abort();
+        const msg = this.writer.error
+          ? 'Write failed'
+          : this.canceled
+            ? 'Canceled'
+            : 'Incomplete download';
+        this.onComplete(false, msg);
+      }
+    } catch (e) {
+      console.error('[SG] Finalize error:', e);
+      this.onComplete(false, 'Finalization failed');
+    } finally {
+      this.cleanup();
+    }
+  }
+
+  private cleanup(): void {
+    this.fetcher.clear();
+  }
+}
+
+// ============================================
+// Public API
 // ============================================
 
 export async function downloadSegments(
   parsed: ParsedMedia,
   filename: string,
   isFmp4: boolean,
-  srcUrl: string, // Keep for logging
   card: ProgressCardController
 ): Promise<void> {
-  const segs = parsed.segs;
-  const total = segs.length;
+  const total = parsed.segs.length;
+  console.log('[SG] Starting segment download:', { filename, segments: total });
 
-  console.log('[SG] Starting segment download:', { filename, segments: total, srcUrl });
-
-  // State
-  const state: DownloadState = {
-    paused: false,
-    canceled: false,
-    done: 0,
-    writePtr: 0,
-    byteDone: 0,
-    avgLen: 0,
-  };
-
-  // Queue & Concurrency
-  const queue = new PQueue({ concurrency: CFG.CONCURRENCY });
-
-  // Progress tracking
-  const inprog = new Map<number, { loaded: number; total: number }>();
-  // segment index -> AbortController
-  const controllers = new Map<number, AbortController>();
-
-  // Buffers for sequential writing
-  const buffers = new Map<number, Uint8Array>();
-
-  // Caches for keys and init segments
-  const keyCache = new Map<string, Uint8Array>();
-  const keyInflight = new Map<string, Promise<Uint8Array>>();
-  const mapCache = new Map<string, Uint8Array>();
-  const mapInflight = new Map<string, Promise<Uint8Array>>();
-
-  // File writer
   const mime = isFmp4 ? 'video/mp4' : 'video/mp2t';
   let writer: FileWriter;
 
@@ -77,245 +540,32 @@ export async function downloadSegments(
     throw e;
   }
 
-  // ----------------------------------------
-  // Control handlers
-  // ----------------------------------------
-
-  card.setOnStop(() => {
-    state.paused = !state.paused;
-    if (state.paused) {
-      queue.pause();
-    } else {
-      queue.start();
-    }
-    return state.paused ? 'paused' : 'resumed';
-  });
-
-  card.setOnCancel(() => {
-    state.canceled = true;
-    abortAll();
-    queue.clear();
-    writer.abort();
-    card.remove();
-  });
-
-  function abortAll(): void {
-    for (const controller of controllers.values()) {
-      controller.abort();
-    }
-    controllers.clear();
-    inprog.clear();
-  }
-
-  // ----------------------------------------
-  // Progress UI
-  // ----------------------------------------
-
-  let rafId = 0;
-  function draw(): void {
-    if (rafId) return;
-    rafId = requestAnimationFrame(() => {
-      rafId = 0;
-
-      let partial = 0;
-      inprog.forEach(({ loaded, total: t }) => {
-        if (t > 0) {
-          partial += Math.min(1, loaded / t);
-        } else if (state.avgLen > 0) {
-          partial += Math.min(1, loaded / state.avgLen);
-        }
-      });
-
-      const pct = ((state.done + partial) / total) * 100;
-      card.update(pct, `${state.done}/${total}`);
-    });
-  }
-
-  // ----------------------------------------
-  // Writing (Sequential)
-  // ----------------------------------------
-
-  let writeChain = Promise.resolve();
-
-  function queueFlush(): void {
-    writeChain = writeChain.then(async () => {
-      while (buffers.has(state.writePtr)) {
-        const chunk = buffers.get(state.writePtr)!;
-        buffers.delete(state.writePtr);
-        await writer.write(chunk);
-        state.writePtr++;
-      }
-    });
-  }
-
-  // ----------------------------------------
-  // Key & Map fetching
-  // ----------------------------------------
-
-  async function fetchKeyBytes(s: Segment): Promise<Uint8Array | null> {
-    if (!s.key || s.key.method !== 'AES-128' || !s.key.uri) return null;
-
-    return once(keyCache, keyInflight, s.key.uri, async () => {
-      const buf = await getBin(s.key!.uri!);
-      return new Uint8Array(buf);
-    }, 100);
-  }
-
-  async function fetchMapBytes(s: Segment): Promise<Uint8Array | null> {
-    if (!s.needMap || !s.map?.uri) return null;
-
-    const id = `${s.map.uri}|${s.map.rangeHeader || ''}`;
-    return once(mapCache, mapInflight, id, async () => {
-      const headers: Record<string, string> = s.map!.rangeHeader ? { Range: s.map!.rangeHeader } : {};
-      const buf = await getBin(s.map!.uri, headers);
-      return new Uint8Array(buf);
-    }, 100);
-  }
-
-  // ----------------------------------------
-  // Task Logic
-  // ----------------------------------------
-
-  async function downloadSegmentTask(i: number): Promise<void> {
-    if (state.canceled) return;
-
-    const s = segs[i];
-
-    // Encryption check
-    if (s.key && s.key.method && s.key.method !== 'AES-128') {
-      throw new AbortError(new Error(`Unsupported key method: ${s.key.method}`));
-    }
-
-    const controller = new AbortController();
-    controllers.set(i, controller);
-
-    try {
-      await pRetry(async () => {
-        if (state.canceled) throw new AbortError(new Error('Canceled'));
-
-        const headers: Record<string, string> = s.range ? { Range: s.range } : {};
-
-        // Use our getBin wrapper but attach the abort signal if we can?
-        // getBin returns an AbortablePromise. We can just use that.
-        // We'll wrap it to respect the controller.
-
-        const req = getBin(s.uri, headers, CFG.REQUEST_TIMEOUT, (e) => {
-          inprog.set(i, { loaded: e.loaded, total: e.total });
-          draw();
-        });
-
-        // Wire abort controller to request
-        controller.signal.addEventListener('abort', () => req.abort());
-
-        // If already aborted
-        if (controller.signal.aborted) {
-          req.abort();
-          throw new Error('Aborted');
-        }
-
-        let buf: ArrayBuffer;
-        try {
-          buf = await req;
-        } catch (err) {
-          // If manual abort, don't retry, just throw
-          if (controller.signal.aborted) throw new AbortError(new Error('Aborted'));
-          throw err;
-        }
-
-        // Decrypt if needed
-        const keyBytes = await fetchKeyBytes(s);
-        if (keyBytes) {
-          const iv = s.key!.iv ? hexToU8(s.key!.iv) : ivFromSeq(parsed.mediaSeq + i);
-          buf = await aesCbcDecrypt(buf, keyBytes, iv);
-        }
-
-        let u8 = new Uint8Array(buf);
-
-        // Prepend init segment if needed
-        if (s.needMap) {
-          const mapBytes = await fetchMapBytes(s);
-          if (mapBytes?.length) {
-            const joined = new Uint8Array(mapBytes.length + u8.length);
-            joined.set(mapBytes, 0);
-            joined.set(u8, mapBytes.length);
-            u8 = joined;
-          }
-        }
-
-        buffers.set(i, u8);
-      }, {
-        retries: CFG.RETRIES,
-        onFailedAttempt: ({ error, attemptNumber }) => {
-          if (state.canceled) return;
-          console.warn(`[SG] Segment ${i} failed (attempt ${attemptNumber}): ${error.message}`);
-        },
-        signal: controller.signal // Pass signal to pRetry if supported, or just use ours
-      });
-
-      // Success
-      inprog.delete(i);
-      controllers.delete(i);
-
-      state.done++;
-      const finishedSize = buffers.get(i)?.length || 0;
-      state.byteDone += finishedSize;
-      state.avgLen = state.byteDone / Math.max(1, state.done);
-
-      draw();
-      queueFlush();
-
-    } catch (error) {
-      inprog.delete(i);
-      controllers.delete(i);
-      if (!state.canceled && !(error instanceof AbortError)) {
-        console.error(`[SG] Segment ${i} fatal error:`, error);
-        // If a segment fails permanently, we must fail the whole download
-        abortAll();
-        state.canceled = true; // effectively canceled by error
-        queue.clear();
-        finalize(false);
-      }
-    }
-  }
-
-  // ----------------------------------------
-  // Finalize
-  // ----------------------------------------
-
-  async function finalize(ok: boolean): Promise<void> {
-    try {
-      queueFlush();
-      await writeChain;
-
-      if (ok) {
-        await writer.close();
+  const downloader = new SegmentDownloader(
+    parsed.segs,
+    parsed.mediaSeq,
+    writer,
+    (pct, done, total) => {
+      card.update(pct, `${done}/${total}`);
+    },
+    (success, message) => {
+      if (success) {
         card.update(100, '');
         card.done(true);
       } else {
-        writer.abort();
-        card.done(false, 'Failed');
+        card.done(false, message);
       }
-    } catch (e) {
-      console.error('[SG] finalize error:', e);
-      card.done(false);
     }
-  }
+  );
 
-  // ----------------------------------------
-  // Start
-  // ----------------------------------------
+  card.setOnStop(() => {
+    const paused = downloader.togglePause();
+    return paused ? 'paused' : 'resumed';
+  });
 
-  // Add all tasks to queue
-  for (let i = 0; i < total; i++) {
-    queue.add(() => downloadSegmentTask(i));
-  }
+  card.setOnCancel(() => {
+    downloader.cancel();
+    card.remove();
+  });
 
-  // Wait for queue to empty
-  await queue.onIdle();
-
-  if (!state.canceled && state.done === total) {
-    finalize(true);
-  } else if (!state.canceled && state.done < total) {
- 
-  }
+  await downloader.start();
 }
