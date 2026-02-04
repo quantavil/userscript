@@ -262,6 +262,11 @@ function createItemElement(item: MediaItem, onSelect: (item: MediaItem) => void)
     el.appendChild(Object.assign(h('div', { class: 'sg-item-sub' }), { textContent: item.sublabel }));
   }
 
+  // Page title
+  if (item.pageTitle) {
+    el.appendChild(Object.assign(h('div', { class: 'sg-item-title-context' }), { textContent: item.pageTitle }));
+  }
+
   // URL (truncated)
   const urlEl = h('div', { class: 'sg-item-url', title: item.url });
   urlEl.textContent = item.url.length > 60 ? item.url.slice(0, 60) + '…' : item.url;

@@ -37,13 +37,54 @@ function checkContent(content: string): boolean {
 }
 
 /**
+ * Extract episode info from URL patterns
+ */
+function extractEpisodeFromUrl(url?: string): string | null {
+  const targetUrl = url || window.location.href;
+
+  // Common patterns for episode numbers in URLs:
+  // #ep=1, ?ep=1, &ep=1, /ep-1, /episode-1, /e1, /ep1
+  const patterns = [
+    /[#?&]ep(?:isode)?[=:](\d+)/i,          // #ep=1, ?episode=1
+    /\/ep(?:isode)?[-_]?(\d+)/i,            // /ep-1, /episode_1, /ep1
+    /\/e(\d+)(?:[^a-z0-9]|$)/i,             // /e1 (followed by non-alphanumeric)
+    /[-_]ep(?:isode)?[-_]?(\d+)/i,          // -ep-1, _episode_1
+    /[-_](\d{1,3})(?:[^0-9]|$)/,            // -1 at end (episode number)
+  ];
+
+  for (const pattern of patterns) {
+    const match = targetUrl.match(pattern);
+    if (match?.[1]) {
+      return `Episode ${match[1]}`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Build enhanced page title with episode info
+ */
+function buildEnhancedTitle(): string {
+  const baseTitle = document.title;
+  const episodeInfo = extractEpisodeFromUrl();
+
+  // If title already contains episode info, just return it
+  if (episodeInfo && !/episode\s*\d+/i.test(baseTitle)) {
+    return `${baseTitle} • ${episodeInfo}`;
+  }
+
+  return baseTitle;
+}
+
+/**
  * Internal function to emit detection
  */
 function emitDetection(url: string, metadata?: { size?: number; type?: string; pageTitle?: string }): void {
   // Always attach page title if not already present
   const meta = {
     ...metadata,
-    pageTitle: metadata?.pageTitle || document.title,
+    pageTitle: metadata?.pageTitle || buildEnhancedTitle(),
   };
 
   if (onDetect) {

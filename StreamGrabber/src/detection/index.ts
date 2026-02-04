@@ -37,9 +37,9 @@ function debounceDetect(url: string, callback: (url: string) => void): void {
 function createMediaItem(
   url: string,
   kind: 'hls' | 'video',
-  metadata: { size?: number | null; type?: string | null } = {}
+  metadata: { size?: number | null; type?: string | null; pageTitle?: string } = {}
 ): MediaItem {
-  const { size = null, type = null } = metadata;
+  const { size = null, type = null, pageTitle } = metadata;
 
   // Generate initial label
   let label: string;
@@ -58,6 +58,7 @@ function createMediaItem(
     size,
     type,
     origin: document.location.origin,
+    pageTitle,
     enriched: false,
     enriching: false,
     hlsType: null,
@@ -79,7 +80,7 @@ export function setItemDetectedCallback(cb: OnItemDetected): void {
   onItemDetected = cb;
 }
 
-function processUrl(url: string): void {
+function processUrl(url: string, metadata?: { size?: number; type?: string; pageTitle?: string }): void {
   try {
     // Validate URL
     if (!url || (!isHttp(url) && !isBlob(url))) return;
@@ -102,15 +103,16 @@ function processUrl(url: string): void {
     // Skip already detected
     if (state.hasItem(url)) return;
 
-    // Get metadata from blob registry
-    let size: number | null = null;
-    let type: string | null = null;
+    // Get metadata from blob registry or passed metadata
+    let size: number | null = metadata?.size ?? null;
+    let type: string | null = metadata?.type ?? null;
+    const pageTitle = metadata?.pageTitle;
 
     if (isBlob(url)) {
       const info = blobRegistry.get(url);
       if (info) {
-        size = info.size;
-        type = info.type;
+        size = size ?? info.size;
+        type = type ?? info.type;
       }
 
       // Skip small blobs that aren't m3u8
@@ -127,7 +129,7 @@ function processUrl(url: string): void {
     if (!kind) return;
 
     // Create and register item
-    const item = createMediaItem(url, kind, { size, type });
+    const item = createMediaItem(url, kind, { size, type, pageTitle });
 
     if (state.addItem(item)) {
       onItemDetected(item);
@@ -148,8 +150,8 @@ export function initDetection(): void {
   initialized = true;
 
   // Wire up hooks
-  setDetectionCallback((url) => debounceDetect(url, processUrl));
-  setScanCallback((url) => debounceDetect(url, processUrl));
+  setDetectionCallback((url, metadata) => debounceDetect(url, (u) => processUrl(u, metadata)));
+  setScanCallback((url) => debounceDetect(url, (u) => processUrl(u)));
 
   // Install network hooks immediately
   installHooks();

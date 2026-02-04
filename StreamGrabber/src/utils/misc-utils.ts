@@ -68,6 +68,7 @@ export const SERIALIZABLE_KEYS: (keyof MediaItem)[] = [
     'size',
     'type',
     'origin',
+    'pageTitle',
     'enriched',
     'enriching',
     'hlsType',

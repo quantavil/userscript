@@ -137,6 +137,7 @@ export async function downloadHls(
         size: data.size ?? null,
         type: null,
         origin: document.location.origin,
+        pageTitle,
         enriched: true,
         enriching: false,
         hlsType: 'media',
