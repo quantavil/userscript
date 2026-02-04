@@ -59,8 +59,45 @@ export function shortId(): string {
 // Serialization
 // ============================================
 
-/** Keys to serialize for cross-frame MediaItem transfer */
-export const SERIALIZABLE_KEYS: (keyof MediaItem)[] = [
+/**
+ * Type representing the serializable subset of MediaItem.
+ * This is used for cross-frame postMessage transfers.
+ * 
+ * To add a new field:
+ * 1. Add it to this type
+ * 2. TypeScript will enforce it's included in serializeMediaItem()
+ * 
+ * NOTE: Excludes non-serializable fields like:
+ * - isRemote, remoteWin (Window references)
+ * - _enrichPromise (Promise objects)
+ */
+export type SerializableMediaItem = Pick<MediaItem,
+    | 'url'
+    | 'kind'
+    | 'label'
+    | 'sublabel'
+    | 'size'
+    | 'type'
+    | 'origin'
+    | 'pageTitle'
+    | 'enriched'
+    | 'enriching'
+    | 'hlsType'
+    | 'isLive'
+    | 'encrypted'
+    | 'duration'
+    | 'segCount'
+    | 'resolution'
+    | 'isVod'
+    | 'isFmp4'
+    | 'variantCount'
+    | 'variants'
+    | 'bestVariant'
+    | 'variant'
+>;
+
+/** Keys derived from SerializableMediaItem for iteration */
+const SERIALIZABLE_KEYS: (keyof SerializableMediaItem)[] = [
     'url',
     'kind',
     'label',
@@ -86,10 +123,11 @@ export const SERIALIZABLE_KEYS: (keyof MediaItem)[] = [
 ];
 
 /**
- * Serialize MediaItem for postMessage (strips non-serializable properties)
+ * Serialize MediaItem for postMessage (strips non-serializable properties).
+ * Returns only the fields defined in SerializableMediaItem.
  */
-export function serializeMediaItem(item: MediaItem): Partial<MediaItem> {
-    const result: Partial<MediaItem> = {};
+export function serializeMediaItem(item: MediaItem): SerializableMediaItem {
+    const result = {} as SerializableMediaItem;
     for (const key of SERIALIZABLE_KEYS) {
         if (item[key] !== undefined) {
             (result as Record<string, unknown>)[key] = item[key];
