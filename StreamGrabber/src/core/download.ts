@@ -107,11 +107,11 @@ export async function downloadHls(
 
   const data = await analyzeMediaPlaylist(url);
 
-  let mediaUrl = url;
+  let mediaUrl = preVariant ? preVariant.url : url;
   let chosenVariant = preVariant;
 
-  // Master playlist: prompt for variant
-  if (data.hlsType === 'master' && data.variants && data.variants.length > 0) {
+  // Master playlist: prompt for variant (ONLY if no variant pre-selected)
+  if (!preVariant && data.hlsType === 'master' && data.variants && data.variants.length > 0) {
     const variants = sortVariantsByQuality(data.variants);
 
     if (variants.length === 0) {
@@ -197,8 +197,8 @@ export async function handleItem(
 
     // For non-blob remote items, download directly from top
     if (!item.url.startsWith('blob:')) {
-      if (item.kind === 'hls') {
-        return downloadHls(item.url, null, delegate, item.pageTitle);
+      if (item.kind === 'hls' || item.kind === 'variant') {
+        return downloadHls(item.url, item.variant ?? null, delegate, item.pageTitle);
       }
       if (item.kind === 'video') {
         return downloadDirect(item.url, delegate, item.pageTitle);

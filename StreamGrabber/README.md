@@ -60,6 +60,11 @@ Access these via your userscript manager menu:
 
 ## 📜 Changelog
 
+### v2.2.0
+-   **Inline Quality Selection**: Master Playlists now display quality chips (e.g., 1080p, 720p) directly in the list, enabling one-click downloads without opening a sub-menu.
+-   **Cross-Frame Variant Support**: Fixed and enhanced logic for downloading specific qualities from streams embedded in IFrames.
+-   **UI Refinement**: Improved accessibility with larger click targets for quality chips and removed redundant URL text for a cleaner look.
+
 ### v2.1.1
 -   **Strategy Pattern Implementation**: Refactored `getBin` to use the Strategy Pattern, improving code readability and maintainability.
 -   **AbortSignal Standardization**: Eliminated custom `AbortablePromise` in favor of standard `AbortSignal` support across the stack.

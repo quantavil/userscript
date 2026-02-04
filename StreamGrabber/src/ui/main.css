@@ -798,8 +798,58 @@
 
 .sg-progress.minimized .sg-progress-row {
     margin-bottom: 0 !important;
-    justify-content: center !important;
 }
+
+/* Variant Chips (Inline) */
+.sg-variants {
+    all: initial !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    margin-top: 10px !important;
+    padding-top: 10px !important;
+    border-top: 1px dashed var(--sg-border-subtle) !important;
+    font-family: var(--sg-font-body) !important;
+}
+
+.sg-variant-chip {
+    all: initial !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: var(--sg-text-main) !important;
+    font-family: var(--sg-font-body) !important;
+
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid var(--sg-border-subtle) !important;
+    border-radius: 6px !important;
+
+    padding: 6px 14px !important;
+    min-width: 40px !important;
+    cursor: pointer !important;
+    transition: var(--sg-transition) !important;
+}
+
+.sg-variant-chip:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: var(--sg-gold) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    transform: translateY(-1px) !important;
+}
+
+.sg-variant-chip:active {
+    transform: translateY(0) !important;
+}
+
+.sg-variant-chip:focus {
+    border-color: var(--sg-gold) !important;
+    box-shadow: 0 0 8px var(--sg-gold-glow) !important;
+}
+
+
 
 .sg-progress.minimized .sg-progress-ctrls {
     margin: 0 !important;

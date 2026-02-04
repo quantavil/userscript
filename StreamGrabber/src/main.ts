@@ -284,7 +284,7 @@ async function handleDownloadCommand(
       return new RemoteProgressCard(title, src);
     };
 
-    if (kind === 'hls') {
+    if (kind === 'hls' || kind === 'variant') {
       await downloadHls(
         url,
         variant as Variant | null,
@@ -307,7 +307,7 @@ async function handleDownloadCommand(
           },
           setBusy: () => { },
         },
-        pageTitle 
+        pageTitle
       );
     } else if (kind === 'video') {
       await downloadDirect(url, {

@@ -1,6 +1,6 @@
 import type { MediaItem, ProgressCardController } from '../types';
 import { ICONS } from './icons';
-import { formatBytes, shortId as uid } from '../utils';
+import { formatBytes, shortId as uid, sortVariantsByQuality } from '../utils';
 
 // ============================================
 // Utilities
@@ -267,14 +267,51 @@ function createItemElement(item: MediaItem, onSelect: (item: MediaItem) => void)
     el.appendChild(Object.assign(h('div', { class: 'sg-item-title-context' }), { textContent: item.pageTitle }));
   }
 
-  // URL (truncated)
-  const urlEl = h('div', { class: 'sg-item-url', title: item.url });
-  urlEl.textContent = item.url.length > 60 ? item.url.slice(0, 60) + '…' : item.url;
-  el.appendChild(urlEl);
+  // Inline Variants (Master Playlist)
+  if (item.hlsType === 'master' && item.variants && item.variants.length > 0) {
+    const variantsDiv = h('div', { class: 'sg-variants' });
+
+    // Sort by quality and take top 6 to avoid clutter
+    const sorted = sortVariantsByQuality(item.variants).slice(0, 6);
+
+    for (const v of sorted) {
+      if (!v.res && !v.peak) continue;
+
+      const label = v.res || (v.peak ? `${Math.round(v.peak / 1024)}k` : '?');
+      const chip = h('button', { class: 'sg-variant-chip', type: 'button' });
+      chip.textContent = label;
+
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Construct a temporary item for the variant
+        onSelect({
+          ...item,
+          kind: 'variant',
+          variant: v,
+          label: label,
+          hlsType: 'media',
+          size: null // Reset size as variant size is unknown until parsed
+        });
+      });
+
+      variantsDiv.appendChild(chip);
+    }
+
+    if (variantsDiv.children.length > 0) {
+      el.appendChild(variantsDiv);
+    }
+  }
+
+
 
   // Handlers
   el.addEventListener('click', (e) => {
-    if (!(e.target as HTMLElement).closest('.sg-copy-btn')) onSelect(item);
+    // Ignore clicks on the copy button or variant chips (though chips stop propagation anyway)
+    if ((e.target as HTMLElement).closest('.sg-copy-btn') ||
+      (e.target as HTMLElement).closest('.sg-variant-chip')) {
+      return;
+    }
+    onSelect(item);
   });
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
