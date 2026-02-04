@@ -94,8 +94,12 @@ function init(): void {
   console.log('[SG] Initialization complete', { isTop: CFG.IS_TOP });
 }
 
+
 function setupTopHandlers(): void {
   const bus = MessageBus.get();
+
+  // 0. Setup Navigation Handlers
+  setupNavigationHandlers();
 
   // 1. Detection from iframes
   bus.on('SG_DETECT', (payload, source) => {
@@ -167,6 +171,38 @@ function setupTopHandlers(): void {
       MessageBus.get().send('SG_CMD_PICK_RESULT', { id, item: selected }, source);
     });
   });
+}
+
+function setupNavigationHandlers(): void {
+  // Clear state on history navigation (back/forward)
+  window.addEventListener('popstate', () => {
+    console.log('[SG] Navigation detected (popstate), clearing state...');
+    state.clear();
+  });
+
+  // Clear state on hash change
+  window.addEventListener('hashchange', () => {
+    console.log('[SG] Hash change detected, clearing state...');
+    state.clear();
+  });
+
+  // Monkey-patch history.pushState
+  const originalPush = history.pushState;
+  history.pushState = function (...args) {
+    const result = originalPush.apply(this, args);
+    console.log('[SG] Navigation detected (pushState), clearing state...');
+    state.clear();
+    return result;
+  };
+
+  // Monkey-patch history.replaceState
+  const originalReplace = history.replaceState;
+  history.replaceState = function (...args) {
+    const result = originalReplace.apply(this, args);
+    console.log('[SG] Navigation detected (replaceState), clearing state...');
+    state.clear();
+    return result;
+  };
 }
 
 function setupChildHandlers(): void {
@@ -271,7 +307,7 @@ async function handleDownloadCommand(
           },
           setBusy: () => { },
         },
-        pageTitle
+        pageTitle 
       );
     } else if (kind === 'video') {
       await downloadDirect(url, {

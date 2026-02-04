@@ -172,6 +172,7 @@ export class AppState {
     this.items.clear();
     pruneBlobs(() => true);
     this.invalidateCount();
+    this.events.updated.dispatch();
   }
 
   /**
