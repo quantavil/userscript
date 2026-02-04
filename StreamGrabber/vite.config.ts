@@ -181,7 +181,7 @@ export default defineConfig({
     }),
   ],
   build: {
-    minify: 'esbuild',
+    minify: false,
     target: 'es2022',
   },
 });
