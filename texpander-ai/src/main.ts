@@ -1,6 +1,6 @@
 import { GM_addStyle } from '$'
 import { CONFIG, state, GMX, loadState } from './config'
-import { getEditable, captureContext, matchHotkey, doExpansion } from './core'
+import { getEditable, captureContext, getContextOrFallback, matchHotkey, doExpansion } from './core'
 import { STYLES, notify, openPalette, closePalette, openAIMenu, closeAIMenu, isAIMenuOpen, isPaletteOpen } from './ui'
 
 function handleGlobalKey(e: KeyboardEvent): void {
@@ -19,7 +19,6 @@ function handleGlobalKey(e: KeyboardEvent): void {
   if (matchHotkey(e, CONFIG.palette)) {
     e.preventDefault()
     e.stopPropagation()
-    state.lastEditable = captureContext()
     openPalette()
     return
   }
@@ -47,12 +46,12 @@ function init(): void {
     const t = (e.composedPath?.()?.[0] || e.target) as HTMLElement
     if (t?.closest?.('.sae-palette, .sae-ai-menu')) return
     const el = getEditable(t)
-    if (el) state._lastFocusedEditable = el
+    if (el) state.lastEditableEl = el
   }, true)
 
-  GMX.menu('Open Palette (Alt+P)', () => { state.lastEditable = captureContext(); openPalette() })
+  GMX.menu('Open Palette (Alt+P)', openPalette)
   GMX.menu('AI Actions (Alt+G)', () => {
-    const ctx = captureContext()
+    const ctx = getContextOrFallback()
     ctx ? openAIMenu(ctx) : notify.toast('No editable field')
   })
 
@@ -60,4 +59,4 @@ function init(): void {
   console.log('[texpander-ai] v3.0')
 }
 
-init()  
+init()

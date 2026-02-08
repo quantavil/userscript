@@ -24,7 +24,6 @@ export const CONFIG: Config = {
     aiMenu: { code: 'KeyG', alt: true },
     maxAbbrevLen: 80,
     styleId: 'sae-styles',
-    aiMenuInlineCount: 4,
     toast: Object.freeze({ throttleMs: 3000 }),
     clipboardReadTimeoutMs: 350,
     searchDebounceMs: 150,
@@ -67,7 +66,7 @@ export const DEFAULT_DICT: Readonly<Record<string, string>> = Object.freeze({
 export const GMX = {
     get: <T>(key: string, def: T): T => GM_getValue(key, def),
     set: <T>(key: string, val: T): void => GM_setValue(key, val),
-    menu: (title: string, fn: () => void): any => GM_registerMenuCommand(title, fn),
+    menu: (title: string, fn: () => void): unknown => GM_registerMenuCommand(title, fn),
 
     request: (opts: GMRequestOptions): Promise<GMResponse> =>
         new Promise((resolve, reject) => {
@@ -77,7 +76,7 @@ export const GMX = {
                 headers: opts.headers ?? {},
                 data: opts.data,
                 timeout: opts.timeout ?? CONFIG.gemini.timeoutMs,
-                onload: (r: any) => resolve({ status: r.status, text: r.responseText }),
+                onload: (r: { status: number; responseText: string }) => resolve({ status: r.status, text: r.responseText }),
                 onerror: () => reject(new Error('Network error')),
                 ontimeout: () => reject(new Error('Timeout')),
             })
@@ -94,9 +93,8 @@ export const state: State = {
     apiKeyIndex: 0,
     customPrompts: [],
     disabledBuiltins: [],
-    settings: { aiMenuInlineCount: 4 },
-    lastEditable: null,
-    _lastFocusedEditable: null,
+    settings: { aiMenuInlineCount: 6 },
+    lastEditableEl: null,
     activeIndex: 0,
 }
 
@@ -138,14 +136,9 @@ export function loadState(): void {
     state.customPrompts = GMX.get<AIPrompt[]>(STORE_KEYS.customPrompts, [])
         .map(p => ({ ...p, enabled: p.enabled !== false }))
     state.disabledBuiltins = GMX.get(STORE_KEYS.disabledBuiltins, [])
-    state.settings = GMX.get(STORE_KEYS.settings, { aiMenuInlineCount: 4 })
-    CONFIG.aiMenuInlineCount = state.settings.aiMenuInlineCount || 4
+    state.settings = GMX.get(STORE_KEYS.settings, { aiMenuInlineCount: 6 })
 
     const savedKeys = GMX.get<{ palette?: HotkeySpec; aiMenu?: HotkeySpec }>(STORE_KEYS.keys, {})
     if (savedKeys.palette) Object.assign(CONFIG.palette, savedKeys.palette)
     if (savedKeys.aiMenu) Object.assign(CONFIG.aiMenu, savedKeys.aiMenu)
-}
-
-export function saveDict(): void {
-    GMX.set(STORE_KEYS.dict, state.dict)
 }

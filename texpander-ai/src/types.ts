@@ -24,7 +24,6 @@ export interface Config {
   aiMenu: HotkeySpec
   readonly maxAbbrevLen: number
   readonly styleId: string
-  aiMenuInlineCount: number
   readonly toast: { readonly throttleMs: number }
   readonly clipboardReadTimeoutMs: number
   readonly searchDebounceMs: number
@@ -59,8 +58,7 @@ export interface State {
   customPrompts: AIPrompt[]
   disabledBuiltins: string[]
   settings: Settings
-  lastEditable: EditContext | null
-  _lastFocusedEditable: HTMLElement | null
+  lastEditableEl: HTMLElement | null
   activeIndex: number
 }
 

@@ -132,18 +132,16 @@ function ensurePalette(): HTMLDivElement {
         closePalette()
         const tmpl = state.dict[key]
         if (!tmpl) return
-        let ctx = state.lastEditable
-        if (!ctx || !(ctx.kind === 'input' ? ctx.el?.isConnected : ctx.root?.isConnected)) {
-            ctx = getContextOrFallback()
-        }
+        
+        const ctx = getContextOrFallback()
         if (!ctx) return notify.toast('No editable field')
-        try { (ctx.kind === 'input' ? ctx.el : ctx.root).focus({ preventScroll: true }) } catch { }
+        
         const rendered = await renderTemplate(tmpl)
         makeEditor(captureContext() || ctx)?.replace(rendered.text)
     }
 
     function renderSettings(): void {
-        settings.innerHTML = settingsHTML(state.apiKey, hotkeyStr(CONFIG.palette), hotkeyStr(CONFIG.aiMenu), CONFIG.aiMenuInlineCount)
+        settings.innerHTML = settingsHTML(state.apiKey, hotkeyStr(CONFIG.palette), hotkeyStr(CONFIG.aiMenu), state.settings.aiMenuInlineCount)
 
         const apiIn = $<HTMLInputElement>('#sae-api', settings)!
         const verifyBtn = $<HTMLButtonElement>('#sae-verify', settings)!
@@ -192,9 +190,8 @@ function ensurePalette(): HTMLDivElement {
 
         $<HTMLInputElement>('#sae-inline', settings)!.onchange = (e) => {
             const el = e.target as HTMLInputElement
-            const v = clamp(parseInt(el.value) || 4, 1, 20)
+            const v = clamp(parseInt(el.value) || 6, 1, 20)
             el.value = String(v)
-            CONFIG.aiMenuInlineCount = v
             state.settings.aiMenuInlineCount = v
             GMX.set(STORE_KEYS.settings, state.settings)
         }

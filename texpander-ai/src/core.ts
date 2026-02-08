@@ -1,5 +1,5 @@
 import type { EditContext, Editor, TemplateResult, HotkeySpec } from './types'
-import { CONFIG, state, GMX } from './config'
+import { CONFIG, state } from './config'
 
 // ─────────────────────────────────────────────────────────────
 // Utilities
@@ -94,20 +94,11 @@ export function captureContext(): EditContext | null {
 }
 
 export function getContextOrFallback(): EditContext | null {
-  let ctx = captureContext()
+  const ctx = captureContext()
   if (ctx) return ctx
 
-  if (state.lastEditable) {
-    const el = state.lastEditable.kind === 'input' ? state.lastEditable.el : state.lastEditable.root
-    if (el?.isConnected) {
-      try { el.focus({ preventScroll: true }) } catch {}
-      ctx = captureContext()
-      if (ctx) return ctx
-    }
-  }
-
-  if (state._lastFocusedEditable?.isConnected) {
-    try { state._lastFocusedEditable.focus({ preventScroll: true }) } catch {}
+  if (state.lastEditableEl?.isConnected) {
+    try { state.lastEditableEl.focus({ preventScroll: true }) } catch { /* ignore */ }
     return captureContext()
   }
   return null
@@ -335,6 +326,7 @@ function cleanAIResponse(s: string): string {
 }
 
 export async function callGemini(systemPrompt: string, userText: string): Promise<string | null> {
+  const { GMX } = await import('./config')
   const keys = (state.apiKey || '').split(';').map(k => k.trim()).filter(Boolean)
   if (!keys.length) return null
 

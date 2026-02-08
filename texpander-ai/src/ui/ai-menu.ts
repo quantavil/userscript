@@ -1,5 +1,5 @@
 import type { EditContext, AIPrompt } from '../types'
-import { CONFIG, state, BUILTIN_PROMPTS, isBuiltinEnabled, isCustomEnabled, getAllPrompts } from '../config'
+import { state, BUILTIN_PROMPTS, isBuiltinEnabled, isCustomEnabled, getAllPrompts } from '../config'
 import { $, escHtml, smartTruncate, captureContext, makeEditor, callGemini } from '../core'
 import { notify } from './notify'
 import { aiMenuHTML } from './templates'
@@ -15,6 +15,7 @@ interface AIMenuState {
 let menuEl: HTMLDivElement | null = null
 let menuState: AIMenuState | null = null
 let clickHandler: ((e: MouseEvent) => void) | null = null
+let scrollHandler: ((e: Event) => void) | null = null
 
 function ensureMenu(): HTMLDivElement {
   if (menuEl) return menuEl
@@ -34,6 +35,17 @@ function ensureMenu(): HTMLDivElement {
   return menuEl
 }
 
+function getVisiblePills(): HTMLButtonElement[] {
+  if (!menuEl || !menuState) return []
+  
+  const primary = [...menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pills.primary .sae-ai-pill')]
+  if (!menuState.expanded) return primary
+  
+  const secondary = [...menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pills.secondary .sae-ai-pill')]
+  const custom = [...menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pills.custom .sae-ai-pill')]
+  return [...primary, ...secondary, ...custom]
+}
+
 function renderPills(): void {
   if (!menuEl || !menuState) return
 
@@ -47,7 +59,7 @@ function renderPills(): void {
   const enabledBuiltins = BUILTIN_PROMPTS.filter(p => isBuiltinEnabled(p.id))
   const enabledCustoms = state.customPrompts.filter(isCustomEnabled)
 
-  const inlineCount = CONFIG.aiMenuInlineCount
+  const inlineCount = state.settings.aiMenuInlineCount
   const primaryPrompts = enabledBuiltins.slice(0, inlineCount)
   const secondaryPrompts = enabledBuiltins.slice(inlineCount)
 
@@ -98,8 +110,9 @@ function renderPills(): void {
 
 function updateActive(): void {
   if (!menuEl || !menuState) return
-  menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pill')
-    .forEach((p, i) => p.classList.toggle('active', i === menuState!.activeIndex))
+  const visible = getVisiblePills()
+  menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pill').forEach(p => p.classList.remove('active'))
+  visible[menuState.activeIndex]?.classList.add('active')
 }
 
 function handleKey(e: KeyboardEvent): void {
@@ -112,8 +125,7 @@ function handleKey(e: KeyboardEvent): void {
     return
   }
 
-  const visible = [...menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pill')]
-    .filter(p => p.offsetParent !== null)
+  const visible = getVisiblePills()
 
   const num = parseInt(e.key)
   if (num >= 1 && num <= 9 && visible[num - 1]) {
@@ -125,17 +137,21 @@ function handleKey(e: KeyboardEvent): void {
 
   if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
     e.preventDefault()
+    e.stopPropagation()
     menuState.activeIndex = Math.min(visible.length - 1, menuState.activeIndex + 1)
     updateActive()
   } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
     e.preventDefault()
+    e.stopPropagation()
     menuState.activeIndex = Math.max(0, menuState.activeIndex - 1)
     updateActive()
   } else if (e.key === 'Enter') {
     e.preventDefault()
+    e.stopPropagation()
     if (visible[menuState.activeIndex]) execute(visible[menuState.activeIndex].dataset.id!)
   } else if (e.key === 'Tab') {
     e.preventDefault()
+    e.stopPropagation()
     menuState.expanded = !menuState.expanded
     renderPills()
   }
@@ -183,7 +199,7 @@ async function execute(promptId: string): Promise<void> {
     const result = await callGemini(prompt.prompt, text)
     if (result) {
       closeAIMenu()
-      try { (ctx.kind === 'input' ? ctx.el : ctx.root).focus({ preventScroll: true }) } catch {}
+      try { (ctx.kind === 'input' ? ctx.el : ctx.root).focus({ preventScroll: true }) } catch { /* ignore */ }
 
       const editor = makeEditor(captureContext() || ctx)
       if (editor) {
@@ -221,6 +237,12 @@ export function openAIMenu(ctx: EditContext): void {
 
   menuState.keyHandler = handleKey
   document.addEventListener('keydown', menuState.keyHandler, true)
+
+  scrollHandler = (e: Event) => {
+    if (menuEl?.contains(e.target as Node)) return
+    closeAIMenu()
+  }
+  window.addEventListener('scroll', scrollHandler, true)
 }
 
 export function closeAIMenu(): void {
@@ -228,6 +250,10 @@ export function closeAIMenu(): void {
   menuEl.classList.remove('open', 'loading')
   if (menuState?.keyHandler) {
     document.removeEventListener('keydown', menuState.keyHandler, true)
+  }
+  if (scrollHandler) {
+    window.removeEventListener('scroll', scrollHandler, true)
+    scrollHandler = null
   }
   menuState = null
 }

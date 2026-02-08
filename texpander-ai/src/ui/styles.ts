@@ -1,6 +1,6 @@
 export const STYLES = `
   .sae-palette *,.sae-ai-menu *,.sae-toast{box-sizing:border-box}
-  .sae-toast{position:fixed;z-index:2147483647;max-width:min(480px,85vw);box-shadow:0 8px 32px rgba(0,0,0,.28);border-radius:12px;background:rgba(17,17,17,.95);backdrop-filter:blur(12px);color:#fff;padding:12px 16px;font:13px/1.4 system-ui,-apple-system,sans-serif;white-space:pre-wrap;border:1px solid rgba(255,255,255,.08)}
+  .sae-toast{position:fixed;z-index:2147483647;right:16px;bottom:16px;max-width:min(480px,85vw);box-shadow:0 8px 32px rgba(0,0,0,.28);border-radius:12px;background:rgba(17,17,17,.95);backdrop-filter:blur(12px);color:#fff;padding:12px 16px;font:13px/1.4 system-ui,-apple-system,sans-serif;white-space:pre-wrap;border:1px solid rgba(255,255,255,.08)}
   .sae-palette{all:initial;position:fixed;z-index:2147483647;inset:0;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px);background:rgba(0,0,0,.4);font-family:system-ui,-apple-system,sans-serif}
   .sae-palette.open{display:flex}
   .sae-panel{width:min(680px,94vw);max-height:80vh;overflow:hidden;background:#0d0d0d;color:#fff;border:1px solid rgba(255,255,255,.1);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.5);display:flex;flex-direction:column;font-size:13px;line-height:1.4}
@@ -10,7 +10,11 @@ export const STYLES = `
   .sae-icon-btn{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:#1a1a1a;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
   .sae-icon-btn:hover{background:#252525;border-color:#4a9eff}
   .sae-icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-  .sae-list{flex:1;overflow:auto;padding:8px}
+  .sae-list{flex:1;overflow:auto;padding:8px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}
+  .sae-list::-webkit-scrollbar{width:6px}
+  .sae-list::-webkit-scrollbar-track{background:transparent}
+  .sae-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:3px}
+  .sae-list::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3)}
   .sae-item{display:grid;grid-template-columns:140px 1fr auto;gap:12px;padding:10px 12px;border-radius:8px;border:1px solid transparent;cursor:pointer;align-items:center;transition:all .1s}
   .sae-item:hover,.sae-item.active{background:#1a1a1a;border-color:rgba(255,255,255,.06)}
   .sae-key{font-weight:600;color:#4a9eff;word-break:break-all}
@@ -26,7 +30,11 @@ export const STYLES = `
   .sae-add-new button:hover{background:rgba(74,158,255,.2)}
   .sae-footer{padding:10px 12px;border-top:1px solid rgba(255,255,255,.06);color:#666;font-size:12px}
   .sae-panel.settings-open .sae-list,.sae-panel.settings-open .sae-add-new,.sae-panel.settings-open .sae-search{display:none}
-  .sae-settings{display:none;flex:1;overflow:auto;padding:16px}
+  .sae-settings{display:none;flex:1;overflow:auto;padding:16px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}
+  .sae-settings::-webkit-scrollbar{width:6px}
+  .sae-settings::-webkit-scrollbar-track{background:transparent}
+  .sae-settings::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:3px}
+  .sae-settings::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3)}
   .sae-panel.settings-open .sae-settings{display:block}
   .sae-hrow{padding:16px 0;border-bottom:1px solid rgba(255,255,255,.06)}
   .sae-hrow:last-child{border-bottom:none}
@@ -74,8 +82,12 @@ export const STYLES = `
   .sae-toggle::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s}
   .sae-toggle.on::after{transform:translateX(20px)}
   .sae-empty{color:#666;padding:16px;text-align:center;background:#1a1a1a;border-radius:8px;border:1px dashed rgba(255,255,255,.1)}
-  .sae-ai-menu{position:fixed;z-index:2147483647;background:#0d0d0d;border:1px solid rgba(255,255,255,.12);border-radius:14px;box-shadow:0 16px 64px rgba(0,0,0,.5);padding:10px;font:13px/1.4 system-ui,-apple-system,sans-serif;min-width:200px;max-width:90vw;opacity:0;transform:scale(.96) translateY(-4px);transition:opacity .15s,transform .15s}
-  .sae-ai-menu.open{opacity:1;transform:scale(1) translateY(0)}
+  .sae-ai-menu{position:fixed;z-index:2147483647;background:#0d0d0d;border:1px solid rgba(255,255,255,.12);border-radius:14px;box-shadow:0 16px 64px rgba(0,0,0,.5);padding:10px;font:13px/1.4 system-ui,-apple-system,sans-serif;min-width:200px;max-width:90vw;max-height:80vh;overflow-y:auto;opacity:0;pointer-events:none;transform:scale(.96) translateY(-4px);transition:opacity .15s,transform .15s;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}
+  .sae-ai-menu::-webkit-scrollbar{width:6px}
+  .sae-ai-menu::-webkit-scrollbar-track{background:transparent}
+  .sae-ai-menu::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:3px}
+  .sae-ai-menu::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3)}
+  .sae-ai-menu.open{opacity:1;pointer-events:auto;transform:scale(1) translateY(0)}
   .sae-ai-menu.above{transform-origin:bottom center}
   .sae-ai-menu.below{transform-origin:top center}
   .sae-ai-preview{padding:10px 12px;margin-bottom:8px;background:#1a1a1a;border-radius:10px;color:#999;font-size:12px;line-height:1.5;border:1px solid rgba(255,255,255,.06);word-break:break-word;max-width:500px}
