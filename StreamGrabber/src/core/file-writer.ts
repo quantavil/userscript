@@ -158,10 +158,25 @@ function downloadWithGM(
  * Handles the actual download process (GM_download or Anchor fallback)
  * and ensures URLs are revoked.
  */
-async function triggerDownload(url: string, filename: string, onSuccess?: () => void): Promise<void> {
+async function triggerDownload(
+  url: string,
+  filename: string,
+  onSuccess?: () => void,
+  fallbackOnFail: boolean = true
+): Promise<void> {
   try {
     if (typeof GM_download === 'function') {
-      await downloadWithGM(url, filename, onSuccess);
+      try {
+        await downloadWithGM(url, filename, onSuccess);
+      } catch (e) {
+        if (fallbackOnFail) {
+          log.warn('GM_download failed, attempting fallback to anchor tag:', (e as Error).message);
+          await downloadViaAnchor(url, filename);
+          onSuccess?.();
+        } else {
+          throw e;
+        }
+      }
     } else {
       log.info('GM_download unavailable, using anchor fallback');
       await downloadViaAnchor(url, filename);
