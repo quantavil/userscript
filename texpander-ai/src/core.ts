@@ -2,7 +2,7 @@ import type { EditContext, Editor, TemplateResult, HotkeySpec } from './types'
 import { CONFIG, state } from './config'
 
 // ─────────────────────────────────────────────────────────────
-// Utilities
+// DOM Utilities
 // ─────────────────────────────────────────────────────────────
 
 export const $ = <T extends Element = Element>(s: string, r: ParentNode = document): T | null =>
@@ -10,6 +10,10 @@ export const $ = <T extends Element = Element>(s: string, r: ParentNode = docume
 
 export const $$ = <T extends Element = Element>(s: string, r: ParentNode = document): T[] =>
   Array.from(r.querySelectorAll<T>(s))
+
+// ─────────────────────────────────────────────────────────────
+// Common Utilities
+// ─────────────────────────────────────────────────────────────
 
 export const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => {
   let t: ReturnType<typeof setTimeout>
@@ -19,37 +23,59 @@ export const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: numb
 export const clamp = (v: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, v))
 
-const pad2 = (n: number): string => String(n).padStart(2, '0')
+export const pad2 = (n: number): string => String(n).padStart(2, '0')
 
-const HTML_ENTITIES = Object.freeze<Record<string, string>>({
+export const genId = (): string => 'c' + Math.random().toString(36).slice(2, 9)
+
+// ─────────────────────────────────────────────────────────────
+// String Utilities
+// ─────────────────────────────────────────────────────────────
+
+const HTML_ENTITIES: Readonly<Record<string, string>> = Object.freeze({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 })
 
 export const escHtml = (s: string): string =>
   String(s).replace(/[&<>"']/g, c => HTML_ENTITIES[c] ?? c)
 
-export const genId = (): string => 'c' + Math.random().toString(36).slice(2, 9)
-
-export const smartTruncate = (text: string, maxLen = 100): string => {
+export const smartTruncate = (text: string, maxLen: number): string => {
   const cleaned = text.replace(/\s+/g, ' ').trim()
   if (cleaned.length <= maxLen) return cleaned
   const half = Math.floor((maxLen - 5) / 2)
   return `${cleaned.slice(0, half).trim()} ... ${cleaned.slice(-half).trim()}`
 }
 
-// Word char detection with Unicode
+// Word character detection with Unicode support
 const isWordChar = (() => {
-  try { const re = /[\p{L}\p{N}_-]/u; return (c: string) => re.test(c) }
-  catch { return (c: string) => /[\w-]/.test(c) }
+  try {
+    const re = /[\p{L}\p{N}_-]/u
+    return (c: string) => re.test(c)
+  } catch {
+    return (c: string) => /[\w-]/.test(c)
+  }
 })()
 
 // ─────────────────────────────────────────────────────────────
-// Input Event Dispatch
+// Focus & Input Utilities
 // ─────────────────────────────────────────────────────────────
+
+export const safeFocus = (el: HTMLElement | null): boolean => {
+  if (!el) return false
+  try {
+    el.focus({ preventScroll: true })
+    return true
+  } catch {
+    return false
+  }
+}
 
 export function dispatchInput(el: HTMLElement, data: string): void {
   try {
-    el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data }))
+    el.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      inputType: 'insertReplacementText',
+      data
+    }))
   } catch {
     el.dispatchEvent(new Event('input', { bubbles: true }))
   }
@@ -59,19 +85,23 @@ export function dispatchInput(el: HTMLElement, data: string): void {
 // Editable Detection
 // ─────────────────────────────────────────────────────────────
 
+const EDITABLE_INPUT_TYPES = ['text', 'search', 'url', 'email', 'tel']
+
 export function getEditable(el: EventTarget | null): HTMLElement | null {
   if (!el || !(el instanceof HTMLElement)) return null
 
   if (el instanceof HTMLTextAreaElement) return el
+
   if (el instanceof HTMLInputElement) {
     const t = (el.type || 'text').toLowerCase()
-    return ['text', 'search', 'url', 'email', 'tel'].includes(t) ? el : null
+    return EDITABLE_INPUT_TYPES.includes(t) ? el : null
   }
 
   let curr: HTMLElement | null = el
   while (curr) {
     if (curr.nodeType === 1 && curr.isContentEditable) return curr
-    curr = curr.parentElement ?? (curr.parentNode instanceof ShadowRoot ? curr.parentNode.host as HTMLElement : null)
+    curr = curr.parentElement ??
+      (curr.parentNode instanceof ShadowRoot ? curr.parentNode.host as HTMLElement : null)
     if (!curr || curr === document.documentElement) break
   }
   return null
@@ -79,13 +109,20 @@ export function getEditable(el: EventTarget | null): HTMLElement | null {
 
 export function captureContext(): EditContext | null {
   let active = document.activeElement as HTMLElement | null
-  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement as HTMLElement
+  while (active?.shadowRoot?.activeElement) {
+    active = active.shadowRoot.activeElement as HTMLElement
+  }
 
   const el = getEditable(active)
   if (!el) return null
 
   if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
-    return { kind: 'input', el, start: el.selectionStart ?? 0, end: el.selectionEnd ?? 0 }
+    return {
+      kind: 'input',
+      el,
+      start: el.selectionStart ?? 0,
+      end: el.selectionEnd ?? 0
+    }
   }
 
   const sel = window.getSelection?.()
@@ -98,7 +135,7 @@ export function getContextOrFallback(): EditContext | null {
   if (ctx) return ctx
 
   if (state.lastEditableEl?.isConnected) {
-    try { state.lastEditableEl.focus({ preventScroll: true }) } catch { /* ignore */ }
+    safeFocus(state.lastEditableEl)
     return captureContext()
   }
   return null
@@ -115,11 +152,13 @@ export function makeEditor(ctx: EditContext | null): Editor | null {
     const el = ctx.el
     return {
       getText() {
-        const s = el.selectionStart ?? 0, e = el.selectionEnd ?? 0
+        const s = el.selectionStart ?? 0
+        const e = el.selectionEnd ?? 0
         return s !== e ? el.value.slice(s, e) : el.value
       },
       replace(text: string) {
-        const s = el.selectionStart ?? 0, e = el.selectionEnd ?? 0
+        const s = el.selectionStart ?? 0
+        const e = el.selectionEnd ?? 0
         const [start, end] = s !== e ? [s, e] : [0, el.value.length]
         el.setRangeText(text, start, end, 'end')
         dispatchInput(el, text)
@@ -147,12 +186,14 @@ export function makeEditor(ctx: EditContext | null): Editor | null {
         sel.addRange(r)
       }
 
-      if (!document.execCommand('insertText', false, text)) {
-        if (!document.execCommand('insertHTML', false, escHtml(text).replace(/\n/g, '<br>'))) {
-          const r = sel.getRangeAt(0)
-          r.deleteContents()
-          r.insertNode(document.createTextNode(text))
-        }
+      const insertedWithExec =
+        document.execCommand('insertText', false, text) ||
+        document.execCommand('insertHTML', false, escHtml(text).replace(/\n/g, '<br>'))
+
+      if (!insertedWithExec) {
+        const r = sel.getRangeAt(0)
+        r.deleteContents()
+        r.insertNode(document.createTextNode(text))
       }
       dispatchInput(root, text)
     },
@@ -192,7 +233,9 @@ async function readClipboard(): Promise<string> {
       navigator.clipboard.readText(),
       new Promise<string>(r => setTimeout(() => r(''), CONFIG.clipboardReadTimeoutMs)),
     ]) || ''
-  } catch { return '' }
+  } catch {
+    return ''
+  }
 }
 
 const TAGS: Readonly<Record<string, (arg: string, now: Date) => Promise<TagResult>>> = Object.freeze({
@@ -205,7 +248,9 @@ const TAGS: Readonly<Record<string, (arg: string, now: Date) => Promise<TagResul
 
 export async function renderTemplate(tmpl: string): Promise<TemplateResult> {
   const now = new Date()
-  let out = '', cursor = -1, idx = 0
+  let out = ''
+  let cursor = -1
+  let idx = 0
   const re = /\{\{\s*(\w+)(?::([^}]+))?\s*\}\}/g
   let m: RegExpExecArray | null
 
@@ -213,7 +258,10 @@ export async function renderTemplate(tmpl: string): Promise<TemplateResult> {
     out += tmpl.slice(idx, m.index)
     idx = m.index + m[0].length
     const handler = TAGS[m[1].toLowerCase()]
-    if (!handler) { out += m[0]; continue }
+    if (!handler) {
+      out += m[0]
+      continue
+    }
     const res = await handler((m[2] || '').trim(), now)
     if (res.cursor && cursor < 0) cursor = out.length
     out += res.text ?? ''
@@ -223,14 +271,15 @@ export async function renderTemplate(tmpl: string): Promise<TemplateResult> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Abbreviation Expansion
+// ContentEditable Range Helpers
 // ─────────────────────────────────────────────────────────────
 
 function lastTextIn(node: Node | null): Text | null {
   if (!node) return null
   if (node.nodeType === 3) return node as Text
   const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
-  let last: Text | null = null, n: Text | null
+  let last: Text | null = null
+  let n: Text | null
   while ((n = walker.nextNode() as Text | null)) last = n
   return last
 }
@@ -238,15 +287,22 @@ function lastTextIn(node: Node | null): Text | null {
 function moveRangeBack(range: Range, n: number, root: HTMLElement): void {
   let remaining = n
   while (remaining > 0) {
-    const sc = range.startContainer, so = range.startOffset
+    const { startContainer: sc, startOffset: so } = range
+
     if (sc.nodeType === 3) {
       const move = Math.min(so, remaining)
       range.setStart(sc, so - move)
       remaining -= move
       if (remaining === 0) break
+
+      // Find previous text node
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-      let prev: Text | null = null, node: Text | null
-      while ((node = walker.nextNode() as Text | null)) { if (node === sc) break; prev = node }
+      let prev: Text | null = null
+      let node: Text | null
+      while ((node = walker.nextNode() as Text | null)) {
+        if (node === sc) break
+        prev = node
+      }
       if (!prev) break
       range.setStart(prev, prev.nodeValue!.length)
     } else {
@@ -260,42 +316,82 @@ function moveRangeBack(range: Range, n: number, root: HTMLElement): void {
   }
 }
 
+function setCursorInCE(root: HTMLElement, position: number): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let remaining = position
+  let node: Text | null
+
+  while ((node = walker.nextNode() as Text | null)) {
+    const len = node.nodeValue?.length ?? 0
+    if (remaining <= len) {
+      const sel = window.getSelection()
+      if (sel) {
+        const range = document.createRange()
+        range.setStart(node, remaining)
+        range.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+      return
+    }
+    remaining -= len
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Abbreviation Expansion
+// ─────────────────────────────────────────────────────────────
+
 export async function doExpansion(): Promise<void> {
   const ctx = captureContext()
   if (!ctx) return
 
-  let token = '', tokenStart = 0, tokenEnd = 0, tokenRange: Range | null = null
+  let token = ''
+  let tokenStart = 0
+  let tokenEnd = 0
+  let tokenRange: Range | null = null
 
   if (ctx.kind === 'input') {
     const el = ctx.el
     if (ctx.start !== ctx.end) return
+
     const text = el.value.slice(0, ctx.start)
     let i = text.length
     while (i > 0 && isWordChar(text[i - 1]) && text.length - i < CONFIG.maxAbbrevLen) i--
+
     token = text.slice(i)
     tokenStart = i
     tokenEnd = ctx.start
   } else {
     const sel = window.getSelection?.()
     if (!sel?.rangeCount || !sel.isCollapsed) return
+
     const r = sel.getRangeAt(0)
     const prefixRange = document.createRange()
     prefixRange.selectNodeContents(ctx.root)
-    try { prefixRange.setEnd(r.startContainer, r.startOffset) } catch { return }
+    try {
+      prefixRange.setEnd(r.startContainer, r.startOffset)
+    } catch {
+      return
+    }
+
     const prefix = prefixRange.toString()
     let i = prefix.length
     while (i > 0 && isWordChar(prefix[i - 1]) && prefix.length - i < CONFIG.maxAbbrevLen) i--
+
     token = prefix.slice(i)
     tokenRange = r.cloneRange()
     moveRangeBack(tokenRange, token.length, ctx.root)
   }
 
   if (!token || token.length > CONFIG.maxAbbrevLen) return
+
   const tmpl = state.dict[token.toLowerCase()]
   if (!tmpl) return
 
   try {
     const rendered = await renderTemplate(tmpl)
+
     if (ctx.kind === 'input') {
       ctx.el.setRangeText(rendered.text, tokenStart, tokenEnd, 'end')
       ctx.el.selectionStart = ctx.el.selectionEnd = tokenStart + rendered.cursor
@@ -305,58 +401,18 @@ export async function doExpansion(): Promise<void> {
       sel.removeAllRanges()
       sel.addRange(tokenRange)
       document.execCommand('insertText', false, rendered.text)
+
+      // Position cursor correctly for ContentEditable
+      if (rendered.cursor < rendered.text.length) {
+        const baseOffset = tokenRange.startOffset
+        setCursorInCE(ctx.root, baseOffset + rendered.cursor)
+      }
+
       dispatchInput(ctx.root, rendered.text)
     }
-  } catch (err) { console.warn('Expand error:', err) }
-}
-
-// ─────────────────────────────────────────────────────────────
-// Gemini API
-// ─────────────────────────────────────────────────────────────
-
-function cleanAIResponse(s: string): string {
-  if (!s) return s
-  let out = s.trim()
-  const m = out.match(/^```\w*\n?([\s\S]*?)\n?```$/)
-  if (m) out = m[1].trim()
-  if ((out.startsWith('"') && out.endsWith('"')) || (out.startsWith("'") && out.endsWith("'"))) {
-    out = out.slice(1, -1)
+  } catch (err) {
+    console.warn('[texpander-ai] Expand error:', err)
   }
-  return out
-}
-
-export async function callGemini(systemPrompt: string, userText: string): Promise<string | null> {
-  const { GMX } = await import('./config')
-  const keys = (state.apiKey || '').split(';').map(k => k.trim()).filter(Boolean)
-  if (!keys.length) return null
-
-  const truncated = userText.slice(0, CONFIG.gemini.maxInputChars)
-  const prompt = `${systemPrompt}\n\nText:\n${truncated}`
-
-  for (let i = 0; i < keys.length; i++) {
-    const idx = (state.apiKeyIndex + i) % keys.length
-    try {
-      const res = await GMX.request({
-        method: 'POST',
-        url: `${CONFIG.gemini.endpoint}/${CONFIG.gemini.model}:generateContent?key=${encodeURIComponent(keys[idx])}`,
-        headers: { 'Content-Type': 'application/json' },
-        data: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: CONFIG.gemini.temperature },
-        }),
-      })
-
-      if (res.status >= 200 && res.status < 300) {
-        const json = JSON.parse(res.text)
-        const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-        if (text) {
-          state.apiKeyIndex = idx
-          return cleanAIResponse(text)
-        }
-      }
-    } catch { continue }
-  }
-  return null
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -383,11 +439,22 @@ export const hotkeyStr = (spec: HotkeySpec): string => {
 export function captureHotkey(): Promise<HotkeySpec | null> {
   return new Promise(resolve => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { cleanup(); resolve(null); return }
+      if (e.key === 'Escape') {
+        cleanup()
+        resolve(null)
+        return
+      }
       if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return
+
       e.preventDefault()
       cleanup()
-      resolve({ code: e.code, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey })
+      resolve({
+        code: e.code,
+        shift: e.shiftKey,
+        alt: e.altKey,
+        ctrl: e.ctrlKey,
+        meta: e.metaKey
+      })
     }
     const cleanup = () => document.removeEventListener('keydown', handler, true)
     document.addEventListener('keydown', handler, true)

@@ -18,16 +18,30 @@ export interface GeminiConfig {
   readonly maxInputChars: number
 }
 
+export interface ToastConfig {
+  readonly defaultMs: number
+  readonly shortMs: number
+}
+
+export interface UIConfig {
+  readonly menuWidth: number
+  readonly menuHeight: number
+  readonly previewMaxChars: number
+  readonly previewExpandedChars: number
+  readonly spacing: { readonly sm: number; readonly md: number }
+}
+
 export interface Config {
   trigger: HotkeySpec
   palette: HotkeySpec
   aiMenu: HotkeySpec
   readonly maxAbbrevLen: number
   readonly styleId: string
-  readonly toast: { readonly throttleMs: number }
+  readonly toast: ToastConfig
   readonly clipboardReadTimeoutMs: number
   readonly searchDebounceMs: number
   readonly gemini: GeminiConfig
+  readonly ui: UIConfig
 }
 
 export interface StoreKeys {
@@ -59,7 +73,8 @@ export interface State {
   disabledBuiltins: string[]
   settings: Settings
   lastEditableEl: HTMLElement | null
-  activeIndex: number
+  paletteIndex: number
+  aiMenuIndex: number
 }
 
 // ─────────────────────────────────────────────────────────────

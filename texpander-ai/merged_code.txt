@@ -1,0 +1,1738 @@
+
+--- package.json ---
+
+{
+    "name": "texpander-ai",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "check": "tsc --noEmit",
+        "build": "tsc && vite build",
+        "preview": "vite preview"
+    },
+    "devDependencies": {
+        "typescript": "^5.9.3",
+        "vite": "^7.3.1",
+        "vite-plugin-monkey": "^7.1.9"
+    }
+}
+--- src/config.ts ---
+
+import { GM_getValue, GM_setValue, GM_registerMenuCommand, GM_xmlhttpRequest } from '$'
+import type { Config, StoreKeys, AIPrompt, State, GMRequestOptions, GMResponse, HotkeySpec } from './types'
+
+// ─────────────────────────────────────────────────────────────
+// Store Keys
+// ─────────────────────────────────────────────────────────────
+
+export const STORE_KEYS: StoreKeys = Object.freeze({
+    dict: 'sae.dict.v1',
+    keys: 'sae.keys.v1',
+    apiKey: 'sae.gemini.apiKey.v1',
+    customPrompts: 'sae.prompts.v1',
+    disabledBuiltins: 'sae.disabledBuiltins.v1',
+    settings: 'sae.settings.v1',
+})
+
+// ─────────────────────────────────────────────────────────────
+// Configuration
+// ─────────────────────────────────────────────────────────────
+
+export const CONFIG: Config = {
+    trigger: { code: 'Space', shift: true },
+    palette: { code: 'KeyP', alt: true },
+    aiMenu: { code: 'KeyG', alt: true },
+    maxAbbrevLen: 80,
+    styleId: 'sae-styles',
+    toast: Object.freeze({ throttleMs: 3000 }),
+    clipboardReadTimeoutMs: 350,
+    searchDebounceMs: 150,
+    gemini: Object.freeze({
+        endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
+        model: 'gemini-2.5-flash-lite',
+        temperature: 0.15,
+        timeoutMs: 20000,
+        maxInputChars: 32000,
+    }),
+}
+
+// ─────────────────────────────────────────────────────────────
+// Built-in Prompts & Default Dict
+// ─────────────────────────────────────────────────────────────
+
+export const BUILTIN_PROMPTS: readonly AIPrompt[] = Object.freeze([
+    { id: 'grammar', icon: '✨', label: 'Fix Grammar', prompt: 'Fix grammar, spelling, and punctuation. Improve clarity. Preserve meaning and original language. Return only the corrected text, no explanations.' },
+    { id: 'expand', icon: '📝', label: 'Expand', prompt: 'Expand this text with more detail, examples, and depth. Maintain the original tone. Return only the expanded text.' },
+    { id: 'summarize', icon: '📋', label: 'Summarize', prompt: 'Summarize this text concisely in 2-3 sentences. Capture key points. Return only the summary.' },
+    { id: 'formal', icon: '💼', label: 'Formal', prompt: 'Rewrite in a formal, professional tone suitable for business communication. Return only the rewritten text.' },
+    { id: 'friendly', icon: '😊', label: 'Friendly', prompt: 'Rewrite in a warm, friendly, conversational tone. Return only the rewritten text.' },
+    { id: 'concise', icon: '🎯', label: 'Concise', prompt: 'Make this shorter and more direct. Remove unnecessary words. Return only the concise text.' },
+])
+
+export const DEFAULT_DICT: Readonly<Record<string, string>> = Object.freeze({
+    brb: 'Be right back.',
+    ty: 'Thank you!',
+    hth: 'Hope this helps!',
+    opt: 'Optional: {{cursor}}',
+    log: 'Log Entry - {{date:iso}} {{time}}: {{cursor}}',
+    track: 'The tracking number for your order is {{clipboard}}. {{cursor}}',
+    dt: 'Today is {{day}}, {{date:long}} at {{time}}.',
+})
+
+// ─────────────────────────────────────────────────────────────
+// GM Abstraction Layer
+// ─────────────────────────────────────────────────────────────
+
+export const GMX = {
+    get: <T>(key: string, def: T): T => GM_getValue(key, def),
+    set: <T>(key: string, val: T): void => GM_setValue(key, val),
+    menu: (title: string, fn: () => void): unknown => GM_registerMenuCommand(title, fn),
+
+    request: (opts: GMRequestOptions): Promise<GMResponse> =>
+        new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: opts.method ?? 'GET',
+                url: opts.url,
+                headers: opts.headers ?? {},
+                data: opts.data,
+                timeout: opts.timeout ?? CONFIG.gemini.timeoutMs,
+                onload: (r: { status: number; responseText: string }) => resolve({ status: r.status, text: r.responseText }),
+                onerror: () => reject(new Error('Network error')),
+                ontimeout: () => reject(new Error('Timeout')),
+            })
+        }),
+}
+
+// ─────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────
+
+export const state: State = {
+    dict: {},
+    apiKey: '',
+    apiKeyIndex: 0,
+    customPrompts: [],
+    disabledBuiltins: [],
+    settings: { aiMenuInlineCount: 6 },
+    lastEditableEl: null,
+    activeIndex: 0,
+}
+
+// ─────────────────────────────────────────────────────────────
+// Prompt Helpers
+// ─────────────────────────────────────────────────────────────
+
+export const isBuiltinEnabled = (id: string): boolean => !state.disabledBuiltins.includes(id)
+export const isCustomEnabled = (p: AIPrompt): boolean => p.enabled !== false
+
+export const getEnabledPrompts = (): AIPrompt[] => [
+    ...BUILTIN_PROMPTS.filter(p => isBuiltinEnabled(p.id)),
+    ...state.customPrompts.filter(isCustomEnabled),
+]
+
+export const getAllPrompts = (): AIPrompt[] => [...BUILTIN_PROMPTS, ...state.customPrompts]
+
+// ─────────────────────────────────────────────────────────────
+// State Persistence
+// ─────────────────────────────────────────────────────────────
+
+export function normalizeDict(obj: unknown): Record<string, string> {
+    const out: Record<string, string> = {}
+    if (obj && typeof obj === 'object') {
+        for (const [k, v] of Object.entries(obj)) {
+            if (typeof k === 'string' && typeof v === 'string' && k.trim()) {
+                out[k.trim().toLowerCase()] = v
+            }
+        }
+    }
+    return out
+}
+
+export function loadState(): void {
+    state.dict = normalizeDict(GMX.get(STORE_KEYS.dict, DEFAULT_DICT))
+    if (!Object.keys(state.dict).length) state.dict = normalizeDict(DEFAULT_DICT)
+
+    state.apiKey = GMX.get(STORE_KEYS.apiKey, '')
+    state.customPrompts = GMX.get<AIPrompt[]>(STORE_KEYS.customPrompts, [])
+        .map(p => ({ ...p, enabled: p.enabled !== false }))
+    state.disabledBuiltins = GMX.get(STORE_KEYS.disabledBuiltins, [])
+    state.settings = GMX.get(STORE_KEYS.settings, { aiMenuInlineCount: 6 })
+
+    const savedKeys = GMX.get<{ palette?: HotkeySpec; aiMenu?: HotkeySpec }>(STORE_KEYS.keys, {})
+    if (savedKeys.palette) Object.assign(CONFIG.palette, savedKeys.palette)
+    if (savedKeys.aiMenu) Object.assign(CONFIG.aiMenu, savedKeys.aiMenu)
+}
+--- src/core.ts ---
+
+import type { EditContext, Editor, TemplateResult, HotkeySpec } from './types'
+import { CONFIG, state } from './config'
+
+// ─────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────
+
+export const $ = <T extends Element = Element>(s: string, r: ParentNode = document): T | null =>
+  r.querySelector<T>(s)
+
+export const $$ = <T extends Element = Element>(s: string, r: ParentNode = document): T[] =>
+  Array.from(r.querySelectorAll<T>(s))
+
+export const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => {
+  let t: ReturnType<typeof setTimeout>
+  return (...a: Parameters<T>) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms) }
+}
+
+export const clamp = (v: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, v))
+
+const pad2 = (n: number): string => String(n).padStart(2, '0')
+
+const HTML_ENTITIES = Object.freeze<Record<string, string>>({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+})
+
+export const escHtml = (s: string): string =>
+  String(s).replace(/[&<>"']/g, c => HTML_ENTITIES[c] ?? c)
+
+export const genId = (): string => 'c' + Math.random().toString(36).slice(2, 9)
+
+export const smartTruncate = (text: string, maxLen = 100): string => {
+  const cleaned = text.replace(/\s+/g, ' ').trim()
+  if (cleaned.length <= maxLen) return cleaned
+  const half = Math.floor((maxLen - 5) / 2)
+  return `${cleaned.slice(0, half).trim()} ... ${cleaned.slice(-half).trim()}`
+}
+
+// Word char detection with Unicode
+const isWordChar = (() => {
+  try { const re = /[\p{L}\p{N}_-]/u; return (c: string) => re.test(c) }
+  catch { return (c: string) => /[\w-]/.test(c) }
+})()
+
+// ─────────────────────────────────────────────────────────────
+// Input Event Dispatch
+// ─────────────────────────────────────────────────────────────
+
+export function dispatchInput(el: HTMLElement, data: string): void {
+  try {
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data }))
+  } catch {
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Editable Detection
+// ─────────────────────────────────────────────────────────────
+
+export function getEditable(el: EventTarget | null): HTMLElement | null {
+  if (!el || !(el instanceof HTMLElement)) return null
+
+  if (el instanceof HTMLTextAreaElement) return el
+  if (el instanceof HTMLInputElement) {
+    const t = (el.type || 'text').toLowerCase()
+    return ['text', 'search', 'url', 'email', 'tel'].includes(t) ? el : null
+  }
+
+  let curr: HTMLElement | null = el
+  while (curr) {
+    if (curr.nodeType === 1 && curr.isContentEditable) return curr
+    curr = curr.parentElement ?? (curr.parentNode instanceof ShadowRoot ? curr.parentNode.host as HTMLElement : null)
+    if (!curr || curr === document.documentElement) break
+  }
+  return null
+}
+
+export function captureContext(): EditContext | null {
+  let active = document.activeElement as HTMLElement | null
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement as HTMLElement
+
+  const el = getEditable(active)
+  if (!el) return null
+
+  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
+    return { kind: 'input', el, start: el.selectionStart ?? 0, end: el.selectionEnd ?? 0 }
+  }
+
+  const sel = window.getSelection?.()
+  if (!sel?.rangeCount) return null
+  return { kind: 'ce', root: el, range: sel.getRangeAt(0).cloneRange() }
+}
+
+export function getContextOrFallback(): EditContext | null {
+  const ctx = captureContext()
+  if (ctx) return ctx
+
+  if (state.lastEditableEl?.isConnected) {
+    try { state.lastEditableEl.focus({ preventScroll: true }) } catch { /* ignore */ }
+    return captureContext()
+  }
+  return null
+}
+
+// ─────────────────────────────────────────────────────────────
+// Editor Abstraction
+// ─────────────────────────────────────────────────────────────
+
+export function makeEditor(ctx: EditContext | null): Editor | null {
+  if (!ctx) return null
+
+  if (ctx.kind === 'input') {
+    const el = ctx.el
+    return {
+      getText() {
+        const s = el.selectionStart ?? 0, e = el.selectionEnd ?? 0
+        return s !== e ? el.value.slice(s, e) : el.value
+      },
+      replace(text: string) {
+        const s = el.selectionStart ?? 0, e = el.selectionEnd ?? 0
+        const [start, end] = s !== e ? [s, e] : [0, el.value.length]
+        el.setRangeText(text, start, end, 'end')
+        dispatchInput(el, text)
+      },
+    }
+  }
+
+  const root = ctx.root
+  return {
+    getText() {
+      const sel = window.getSelection?.()
+      if (sel?.rangeCount && !sel.isCollapsed) return sel.toString()
+      const r = document.createRange()
+      r.selectNodeContents(root)
+      return r.toString()
+    },
+    replace(text: string) {
+      const sel = window.getSelection?.()
+      if (!sel) return
+
+      if (sel.isCollapsed) {
+        const r = document.createRange()
+        r.selectNodeContents(root)
+        sel.removeAllRanges()
+        sel.addRange(r)
+      }
+
+      if (!document.execCommand('insertText', false, text)) {
+        if (!document.execCommand('insertHTML', false, escHtml(text).replace(/\n/g, '<br>'))) {
+          const r = sel.getRangeAt(0)
+          r.deleteContents()
+          r.insertNode(document.createTextNode(text))
+        }
+      }
+      dispatchInput(root, text)
+    },
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Template System
+// ─────────────────────────────────────────────────────────────
+
+type TagResult = { text: string; cursor?: boolean }
+
+const formatDate = (d: Date, arg = 'iso'): string => {
+  const a = arg.toLowerCase()
+  if (a === 'long') return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+  if (a === 'short') return d.toLocaleDateString()
+  if (a === 'mdy' || a === 'us') return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}/${d.getFullYear()}`
+  if (a === 'dmy') return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
+const formatTime = (d: Date, arg = '12'): string => {
+  if (arg === '24' || arg === '24h') return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  let h = d.getHours()
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  h = h % 12 || 12
+  return `${pad2(h)}:${pad2(d.getMinutes())} ${ampm}`
+}
+
+const formatDay = (d: Date, arg = 'long'): string =>
+  d.toLocaleDateString(undefined, { weekday: arg.toLowerCase() === 'short' ? 'short' : 'long' })
+
+async function readClipboard(): Promise<string> {
+  try {
+    if (!navigator.clipboard?.readText) return ''
+    return await Promise.race([
+      navigator.clipboard.readText(),
+      new Promise<string>(r => setTimeout(() => r(''), CONFIG.clipboardReadTimeoutMs)),
+    ]) || ''
+  } catch { return '' }
+}
+
+const TAGS: Readonly<Record<string, (arg: string, now: Date) => Promise<TagResult>>> = Object.freeze({
+  cursor: async () => ({ text: '', cursor: true }),
+  date: async (arg, now) => ({ text: formatDate(now, arg) }),
+  time: async (arg, now) => ({ text: formatTime(now, arg) }),
+  day: async (arg, now) => ({ text: formatDay(now, arg) }),
+  clipboard: async () => ({ text: await readClipboard() }),
+})
+
+export async function renderTemplate(tmpl: string): Promise<TemplateResult> {
+  const now = new Date()
+  let out = '', cursor = -1, idx = 0
+  const re = /\{\{\s*(\w+)(?::([^}]+))?\s*\}\}/g
+  let m: RegExpExecArray | null
+
+  while ((m = re.exec(tmpl))) {
+    out += tmpl.slice(idx, m.index)
+    idx = m.index + m[0].length
+    const handler = TAGS[m[1].toLowerCase()]
+    if (!handler) { out += m[0]; continue }
+    const res = await handler((m[2] || '').trim(), now)
+    if (res.cursor && cursor < 0) cursor = out.length
+    out += res.text ?? ''
+  }
+  out += tmpl.slice(idx)
+  return { text: out, cursor: cursor >= 0 ? cursor : out.length }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Abbreviation Expansion
+// ─────────────────────────────────────────────────────────────
+
+function lastTextIn(node: Node | null): Text | null {
+  if (!node) return null
+  if (node.nodeType === 3) return node as Text
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
+  let last: Text | null = null, n: Text | null
+  while ((n = walker.nextNode() as Text | null)) last = n
+  return last
+}
+
+function moveRangeBack(range: Range, n: number, root: HTMLElement): void {
+  let remaining = n
+  while (remaining > 0) {
+    const sc = range.startContainer, so = range.startOffset
+    if (sc.nodeType === 3) {
+      const move = Math.min(so, remaining)
+      range.setStart(sc, so - move)
+      remaining -= move
+      if (remaining === 0) break
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      let prev: Text | null = null, node: Text | null
+      while ((node = walker.nextNode() as Text | null)) { if (node === sc) break; prev = node }
+      if (!prev) break
+      range.setStart(prev, prev.nodeValue!.length)
+    } else {
+      if (so > 0) {
+        const child = sc.childNodes[so - 1]
+        const textNode = lastTextIn(child)
+        if (textNode) range.setStart(textNode, textNode.nodeValue!.length)
+        else break
+      } else break
+    }
+  }
+}
+
+export async function doExpansion(): Promise<void> {
+  const ctx = captureContext()
+  if (!ctx) return
+
+  let token = '', tokenStart = 0, tokenEnd = 0, tokenRange: Range | null = null
+
+  if (ctx.kind === 'input') {
+    const el = ctx.el
+    if (ctx.start !== ctx.end) return
+    const text = el.value.slice(0, ctx.start)
+    let i = text.length
+    while (i > 0 && isWordChar(text[i - 1]) && text.length - i < CONFIG.maxAbbrevLen) i--
+    token = text.slice(i)
+    tokenStart = i
+    tokenEnd = ctx.start
+  } else {
+    const sel = window.getSelection?.()
+    if (!sel?.rangeCount || !sel.isCollapsed) return
+    const r = sel.getRangeAt(0)
+    const prefixRange = document.createRange()
+    prefixRange.selectNodeContents(ctx.root)
+    try { prefixRange.setEnd(r.startContainer, r.startOffset) } catch { return }
+    const prefix = prefixRange.toString()
+    let i = prefix.length
+    while (i > 0 && isWordChar(prefix[i - 1]) && prefix.length - i < CONFIG.maxAbbrevLen) i--
+    token = prefix.slice(i)
+    tokenRange = r.cloneRange()
+    moveRangeBack(tokenRange, token.length, ctx.root)
+  }
+
+  if (!token || token.length > CONFIG.maxAbbrevLen) return
+  const tmpl = state.dict[token.toLowerCase()]
+  if (!tmpl) return
+
+  try {
+    const rendered = await renderTemplate(tmpl)
+    if (ctx.kind === 'input') {
+      ctx.el.setRangeText(rendered.text, tokenStart, tokenEnd, 'end')
+      ctx.el.selectionStart = ctx.el.selectionEnd = tokenStart + rendered.cursor
+      dispatchInput(ctx.el, rendered.text)
+    } else if (tokenRange) {
+      const sel = window.getSelection()!
+      sel.removeAllRanges()
+      sel.addRange(tokenRange)
+      document.execCommand('insertText', false, rendered.text)
+      dispatchInput(ctx.root, rendered.text)
+    }
+  } catch (err) { console.warn('Expand error:', err) }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Gemini API
+// ─────────────────────────────────────────────────────────────
+
+function cleanAIResponse(s: string): string {
+  if (!s) return s
+  let out = s.trim()
+  const m = out.match(/^```\w*\n?([\s\S]*?)\n?```$/)
+  if (m) out = m[1].trim()
+  if ((out.startsWith('"') && out.endsWith('"')) || (out.startsWith("'") && out.endsWith("'"))) {
+    out = out.slice(1, -1)
+  }
+  return out
+}
+
+export async function callGemini(systemPrompt: string, userText: string): Promise<string | null> {
+  const { GMX } = await import('./config')
+  const keys = (state.apiKey || '').split(';').map(k => k.trim()).filter(Boolean)
+  if (!keys.length) return null
+
+  const truncated = userText.slice(0, CONFIG.gemini.maxInputChars)
+  const prompt = `${systemPrompt}\n\nText:\n${truncated}`
+
+  for (let i = 0; i < keys.length; i++) {
+    const idx = (state.apiKeyIndex + i) % keys.length
+    try {
+      const res = await GMX.request({
+        method: 'POST',
+        url: `${CONFIG.gemini.endpoint}/${CONFIG.gemini.model}:generateContent?key=${encodeURIComponent(keys[idx])}`,
+        headers: { 'Content-Type': 'application/json' },
+        data: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature: CONFIG.gemini.temperature },
+        }),
+      })
+
+      if (res.status >= 200 && res.status < 300) {
+        const json = JSON.parse(res.text)
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+        if (text) {
+          state.apiKeyIndex = idx
+          return cleanAIResponse(text)
+        }
+      }
+    } catch { continue }
+  }
+  return null
+}
+
+// ─────────────────────────────────────────────────────────────
+// Hotkey Helpers
+// ─────────────────────────────────────────────────────────────
+
+export const matchHotkey = (e: KeyboardEvent, spec: HotkeySpec): boolean =>
+  e.shiftKey === !!spec.shift &&
+  e.altKey === !!spec.alt &&
+  e.ctrlKey === !!spec.ctrl &&
+  e.metaKey === !!spec.meta &&
+  e.code === (spec.code || 'Space')
+
+export const hotkeyStr = (spec: HotkeySpec): string => {
+  const parts: string[] = []
+  if (spec.ctrl) parts.push('Ctrl')
+  if (spec.meta) parts.push('Cmd')
+  if (spec.alt) parts.push('Alt')
+  if (spec.shift) parts.push('Shift')
+  parts.push(spec.code?.replace(/^Key/, '').replace(/^Digit/, '') || 'Space')
+  return parts.join('+')
+}
+
+export function captureHotkey(): Promise<HotkeySpec | null> {
+  return new Promise(resolve => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { cleanup(); resolve(null); return }
+      if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return
+      e.preventDefault()
+      cleanup()
+      resolve({ code: e.code, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey })
+    }
+    const cleanup = () => document.removeEventListener('keydown', handler, true)
+    document.addEventListener('keydown', handler, true)
+  })
+}
+--- src/main.ts ---
+
+import { GM_addStyle } from '$'
+import { CONFIG, state, GMX, loadState } from './config'
+import { getEditable, captureContext, getContextOrFallback, matchHotkey, doExpansion } from './core'
+import { STYLES, notify, openPalette, closePalette, openAIMenu, closeAIMenu, isAIMenuOpen, isPaletteOpen } from './ui'
+
+function handleGlobalKey(e: KeyboardEvent): void {
+  if (e.isComposing) return
+  const target = (e.composedPath?.()?.[0] || e.target) as EventTarget | null
+
+  if (e.key === 'Escape') {
+    if (isAIMenuOpen()) { e.preventDefault(); e.stopPropagation(); closeAIMenu(); return }
+    if (isPaletteOpen()) { e.preventDefault(); e.stopPropagation(); closePalette(); return }
+    return
+  }
+
+  if (isAIMenuOpen()) return
+  if (isPaletteOpen() && (target as HTMLElement)?.closest?.('.sae-palette')) return
+
+  if (matchHotkey(e, CONFIG.palette)) {
+    e.preventDefault()
+    e.stopPropagation()
+    openPalette()
+    return
+  }
+
+  if (matchHotkey(e, CONFIG.aiMenu) && getEditable(target)) {
+    e.preventDefault()
+    e.stopPropagation()
+    const ctx = captureContext()
+    ctx ? openAIMenu(ctx) : notify.toast('No editable field')
+    return
+  }
+
+  if (matchHotkey(e, CONFIG.trigger) && getEditable(target)) {
+    e.preventDefault()
+    e.stopPropagation()
+    doExpansion()
+  }
+}
+
+function init(): void {
+  GM_addStyle(STYLES)
+  loadState()
+
+  window.addEventListener('focusin', e => {
+    const t = (e.composedPath?.()?.[0] || e.target) as HTMLElement
+    if (t?.closest?.('.sae-palette, .sae-ai-menu')) return
+    const el = getEditable(t)
+    if (el) state.lastEditableEl = el
+  }, true)
+
+  GMX.menu('Open Palette (Alt+P)', openPalette)
+  GMX.menu('AI Actions (Alt+G)', () => {
+    const ctx = getContextOrFallback()
+    ctx ? openAIMenu(ctx) : notify.toast('No editable field')
+  })
+
+  window.addEventListener('keydown', handleGlobalKey, true)
+  console.log('[texpander-ai] v3.0')
+}
+
+init()
+--- src/types.ts ---
+
+// ─────────────────────────────────────────────────────────────
+// Core Types
+// ─────────────────────────────────────────────────────────────
+
+export interface HotkeySpec {
+  code: string
+  shift?: boolean
+  alt?: boolean
+  ctrl?: boolean
+  meta?: boolean
+}
+
+export interface GeminiConfig {
+  readonly endpoint: string
+  readonly model: string
+  readonly temperature: number
+  readonly timeoutMs: number
+  readonly maxInputChars: number
+}
+
+export interface Config {
+  trigger: HotkeySpec
+  palette: HotkeySpec
+  aiMenu: HotkeySpec
+  readonly maxAbbrevLen: number
+  readonly styleId: string
+  readonly toast: { readonly throttleMs: number }
+  readonly clipboardReadTimeoutMs: number
+  readonly searchDebounceMs: number
+  readonly gemini: GeminiConfig
+}
+
+export interface StoreKeys {
+  readonly dict: string
+  readonly keys: string
+  readonly apiKey: string
+  readonly customPrompts: string
+  readonly disabledBuiltins: string
+  readonly settings: string
+}
+
+export interface AIPrompt {
+  readonly id: string
+  icon: string
+  label: string
+  prompt: string
+  enabled?: boolean
+}
+
+export interface Settings {
+  aiMenuInlineCount: number
+}
+
+export interface State {
+  dict: Record<string, string>
+  apiKey: string
+  apiKeyIndex: number
+  customPrompts: AIPrompt[]
+  disabledBuiltins: string[]
+  settings: Settings
+  lastEditableEl: HTMLElement | null
+  activeIndex: number
+}
+
+// ─────────────────────────────────────────────────────────────
+// Editor Types
+// ─────────────────────────────────────────────────────────────
+
+export interface InputContext {
+  readonly kind: 'input'
+  readonly el: HTMLInputElement | HTMLTextAreaElement
+  readonly start: number
+  readonly end: number
+}
+
+export interface CEContext {
+  readonly kind: 'ce'
+  readonly root: HTMLElement
+  readonly range: Range
+}
+
+export type EditContext = InputContext | CEContext
+
+export interface Editor {
+  getText(): string
+  replace(text: string): void
+}
+
+export interface TemplateResult {
+  readonly text: string
+  readonly cursor: number
+}
+
+// ─────────────────────────────────────────────────────────────
+// GM Types
+// ─────────────────────────────────────────────────────────────
+
+export interface GMRequestOptions {
+  method?: 'GET' | 'POST'
+  url: string
+  headers?: Record<string, string>
+  data?: string
+  timeout?: number
+}
+
+export interface GMResponse {
+  readonly status: number
+  readonly text: string
+}
+--- src/ui/ai-menu.ts ---
+
+import type { EditContext, AIPrompt } from '../types'
+import { state, BUILTIN_PROMPTS, isBuiltinEnabled, isCustomEnabled, getAllPrompts } from '../config'
+import { $, escHtml, smartTruncate, captureContext, makeEditor, callGemini } from '../core'
+import { notify } from './notify'
+import { aiMenuHTML } from './templates'
+
+interface AIMenuState {
+  ctx: EditContext
+  text: string
+  expanded: boolean
+  activeIndex: number
+  keyHandler: ((e: KeyboardEvent) => void) | null
+}
+
+let menuEl: HTMLDivElement | null = null
+let menuState: AIMenuState | null = null
+let clickHandler: ((e: MouseEvent) => void) | null = null
+let scrollHandler: ((e: Event) => void) | null = null
+
+function ensureMenu(): HTMLDivElement {
+  if (menuEl) return menuEl
+
+  menuEl = document.createElement('div')
+  menuEl.className = 'sae-ai-menu'
+  menuEl.innerHTML = aiMenuHTML()
+  document.documentElement.appendChild(menuEl)
+
+  clickHandler = (e: MouseEvent) => {
+    if (menuEl?.classList.contains('open') && !menuEl.contains(e.target as Node)) {
+      closeAIMenu()
+    }
+  }
+  document.addEventListener('mousedown', clickHandler, true)
+
+  return menuEl
+}
+
+function getVisiblePills(): HTMLButtonElement[] {
+  if (!menuEl || !menuState) return []
+  
+  const primary = [...menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pills.primary .sae-ai-pill')]
+  if (!menuState.expanded) return primary
+  
+  const secondary = [...menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pills.secondary .sae-ai-pill')]
+  const custom = [...menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pills.custom .sae-ai-pill')]
+  return [...primary, ...secondary, ...custom]
+}
+
+function renderPills(): void {
+  if (!menuEl || !menuState) return
+
+  const primary = $<HTMLDivElement>('.sae-ai-pills.primary', menuEl)!
+  const secondary = $<HTMLDivElement>('.sae-ai-pills.secondary', menuEl)!
+  const customWrap = $<HTMLDivElement>('.sae-ai-custom', menuEl)!
+  const customPills = $<HTMLDivElement>('.sae-ai-pills.custom', menuEl)!
+  const moreSection = $<HTMLDivElement>('.sae-ai-more', menuEl)!
+  const toggle = $<HTMLDivElement>('.sae-ai-toggle', menuEl)!
+
+  const enabledBuiltins = BUILTIN_PROMPTS.filter(p => isBuiltinEnabled(p.id))
+  const enabledCustoms = state.customPrompts.filter(isCustomEnabled)
+
+  const inlineCount = state.settings.aiMenuInlineCount
+  const primaryPrompts = enabledBuiltins.slice(0, inlineCount)
+  const secondaryPrompts = enabledBuiltins.slice(inlineCount)
+
+  let idx = 1
+  const pill = (p: AIPrompt) => `
+    <button class="sae-ai-pill" data-id="${p.id}">
+      <span class="icon">${p.icon}</span>
+      <span>${escHtml(p.label)}</span>
+      <span class="key">${idx++}</span>
+    </button>
+  `
+
+  primary.innerHTML = primaryPrompts.map(pill).join('')
+  secondary.innerHTML = secondaryPrompts.map(pill).join('')
+
+  if (enabledCustoms.length) {
+    customPills.innerHTML = enabledCustoms.map(p => `
+      <button class="sae-ai-pill" data-id="${p.id}">
+        <span class="icon">${p.icon || '⚡'}</span>
+        <span>${escHtml(p.label)}</span>
+        <span class="key">${idx++}</span>
+      </button>
+    `).join('')
+    customWrap.style.display = 'block'
+  } else {
+    customWrap.style.display = 'none'
+  }
+
+  const moreCount = secondaryPrompts.length + enabledCustoms.length
+  toggle.style.display = moreCount ? 'flex' : 'none'
+  moreSection.style.display = menuState.expanded ? 'block' : 'none'
+  toggle.textContent = menuState.expanded ? '▴ Less' : `▾ More (${moreCount})`
+
+  menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pill').forEach(btn => {
+    btn.onclick = () => execute(btn.dataset.id!)
+  })
+
+  toggle.onclick = () => {
+    if (!menuState) return
+    menuState.expanded = !menuState.expanded
+    moreSection.style.display = menuState.expanded ? 'block' : 'none'
+    toggle.textContent = menuState.expanded ? '▴ Less' : `▾ More (${moreCount})`
+    updateActive()
+  }
+
+  updateActive()
+}
+
+function updateActive(): void {
+  if (!menuEl || !menuState) return
+  const visible = getVisiblePills()
+  menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pill').forEach(p => p.classList.remove('active'))
+  visible[menuState.activeIndex]?.classList.add('active')
+}
+
+function handleKey(e: KeyboardEvent): void {
+  if (!menuEl || !menuState) return
+
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    e.stopPropagation()
+    closeAIMenu()
+    return
+  }
+
+  const visible = getVisiblePills()
+
+  const num = parseInt(e.key)
+  if (num >= 1 && num <= 9 && visible[num - 1]) {
+    e.preventDefault()
+    e.stopPropagation()
+    execute(visible[num - 1].dataset.id!)
+    return
+  }
+
+  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+    e.preventDefault()
+    e.stopPropagation()
+    menuState.activeIndex = Math.min(visible.length - 1, menuState.activeIndex + 1)
+    updateActive()
+  } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+    e.preventDefault()
+    e.stopPropagation()
+    menuState.activeIndex = Math.max(0, menuState.activeIndex - 1)
+    updateActive()
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    e.stopPropagation()
+    if (visible[menuState.activeIndex]) execute(visible[menuState.activeIndex].dataset.id!)
+  } else if (e.key === 'Tab') {
+    e.preventDefault()
+    e.stopPropagation()
+    menuState.expanded = !menuState.expanded
+    renderPills()
+  }
+}
+
+function position(ctx: EditContext): void {
+  if (!menuEl) return
+
+  const rect = ctx.kind === 'input'
+    ? ctx.el.getBoundingClientRect()
+    : (window.getSelection?.()?.rangeCount
+      ? window.getSelection()!.getRangeAt(0).getBoundingClientRect()
+      : ctx.root.getBoundingClientRect())
+
+  let top = rect.bottom + 8
+  let left = Math.max(8, rect.left)
+
+  if (top + 260 > innerHeight - 16) {
+    top = Math.max(8, rect.top - 260 - 8)
+    menuEl.classList.add('above')
+    menuEl.classList.remove('below')
+  } else {
+    menuEl.classList.add('below')
+    menuEl.classList.remove('above')
+  }
+
+  if (left + 360 > innerWidth - 16) left = innerWidth - 360 - 16
+
+  menuEl.style.top = `${top}px`
+  menuEl.style.left = `${left}px`
+}
+
+async function execute(promptId: string): Promise<void> {
+  if (!menuEl || !menuState) return
+
+  const prompt = getAllPrompts().find(p => p.id === promptId)
+  if (!prompt) return
+
+  const { ctx, text } = menuState
+
+  menuEl.classList.add('loading')
+  $<HTMLSpanElement>('.sae-ai-loading span', menuEl)!.textContent = `${prompt.label}...`
+
+  try {
+    const result = await callGemini(prompt.prompt, text)
+    if (result) {
+      closeAIMenu()
+      try { (ctx.kind === 'input' ? ctx.el : ctx.root).focus({ preventScroll: true }) } catch { /* ignore */ }
+
+      const editor = makeEditor(captureContext() || ctx)
+      if (editor) {
+        editor.replace(result)
+        notify.toast(`${prompt.icon} Applied!`, 1200)
+      }
+    } else {
+      menuEl?.classList.remove('loading')
+      notify.toast('Set API key in Settings (Alt+P → ⚙️)')
+    }
+  } catch (err) {
+    console.warn('AI error:', err)
+    menuEl?.classList.remove('loading')
+    notify.toast('AI request failed')
+  }
+}
+
+export function openAIMenu(ctx: EditContext): void {
+  const menu = ensureMenu()
+  const editor = makeEditor(ctx)
+  if (!editor) return
+
+  const text = editor.getText().trim()
+  if (!text) return notify.toast('No text to transform')
+
+  menuState = { ctx, text, expanded: false, activeIndex: 0, keyHandler: null }
+
+  $<HTMLDivElement>('.sae-ai-preview', menu)!.textContent = smartTruncate(text, 120)
+
+  renderPills()
+  position(ctx)
+
+  menu.classList.add('open')
+  menu.classList.remove('loading')
+
+  menuState.keyHandler = handleKey
+  document.addEventListener('keydown', menuState.keyHandler, true)
+
+  scrollHandler = (e: Event) => {
+    if (menuEl?.contains(e.target as Node)) return
+    closeAIMenu()
+  }
+  window.addEventListener('scroll', scrollHandler, true)
+}
+
+export function closeAIMenu(): void {
+  if (!menuEl) return
+  menuEl.classList.remove('open', 'loading')
+  if (menuState?.keyHandler) {
+    document.removeEventListener('keydown', menuState.keyHandler, true)
+  }
+  if (scrollHandler) {
+    window.removeEventListener('scroll', scrollHandler, true)
+    scrollHandler = null
+  }
+  menuState = null
+}
+
+export function destroyAIMenu(): void {
+  closeAIMenu()
+  if (clickHandler) {
+    document.removeEventListener('mousedown', clickHandler, true)
+    clickHandler = null
+  }
+  menuEl?.remove()
+  menuEl = null
+}
+
+export const isAIMenuOpen = (): boolean => menuEl?.classList.contains('open') ?? false
+--- src/ui/components.ts ---
+
+import { $, escHtml } from '../core'
+import { notify } from './notify'
+
+export function mountAbbrevEditor(
+  container: HTMLDivElement,
+  key: string,
+  val: string,
+  onSave: (k: string, v: string) => void,
+  onCancel: () => void
+): void {
+  container.innerHTML = `
+    <input class="sae-input" placeholder="abbreviation" value="${escHtml(key)}" data-field="key" style="max-width:140px" />
+    <input class="sae-input" placeholder="expansion (supports {{templates}})" value="${escHtml(val)}" data-field="val" />
+    <div class="sae-item-actions">
+      <button data-action="save">Save</button>
+      <button data-action="cancel">Cancel</button>
+    </div>
+  `
+
+  const keyIn = $<HTMLInputElement>('[data-field="key"]', container)!
+  const valIn = $<HTMLInputElement>('[data-field="val"]', container)!
+
+  const save = () => {
+    const k = keyIn.value.trim().toLowerCase()
+    if (!/^[\w-]+$/i.test(k)) return notify.toast('Invalid: letters, numbers, -, _ only')
+    onSave(k, valIn.value)
+  }
+
+  $<HTMLButtonElement>('[data-action="save"]', container)!.onclick = save
+  $<HTMLButtonElement>('[data-action="cancel"]', container)!.onclick = onCancel
+
+  const handleKey = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      e.target === keyIn ? valIn.focus() : save()
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      onCancel()
+    }
+  }
+
+  keyIn.addEventListener('keydown', handleKey)
+  valIn.addEventListener('keydown', handleKey)
+  keyIn.focus()
+  keyIn.select?.()
+}
+--- src/ui/index.ts ---
+
+export { STYLES } from './styles'
+export { notify } from './notify'
+export { openPalette, closePalette, isPaletteOpen, rerenderPalette } from './palette'
+export { openAIMenu, closeAIMenu, isAIMenuOpen, destroyAIMenu } from './ai-menu'
+--- src/ui/notify.ts ---
+
+let toastEl: HTMLDivElement | null = null
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+export const notify = {
+  toast(msg: string, ms = 2200): void {
+    this.close()
+    toastEl = document.createElement('div')
+    toastEl.className = 'sae-toast'
+    toastEl.textContent = msg
+    document.documentElement.appendChild(toastEl)
+    toastTimer = setTimeout(() => this.close(), ms)
+  },
+
+  close(): void {
+    if (toastTimer) clearTimeout(toastTimer)
+    toastEl?.remove()
+    toastEl = toastTimer = null
+  },
+}
+--- src/ui/palette.ts ---
+
+import type { HotkeySpec } from '../types'
+import { CONFIG, STORE_KEYS, state, GMX, BUILTIN_PROMPTS, DEFAULT_DICT, isBuiltinEnabled, normalizeDict } from '../config'
+import { $, $$, debounce, clamp, escHtml, genId, captureContext, getContextOrFallback, makeEditor, renderTemplate, hotkeyStr, captureHotkey } from '../core'
+import { notify } from './notify'
+import { mountAbbrevEditor } from './components'
+import { paletteHTML, settingsHTML, promptItemHTML, promptEditFormHTML } from './templates'
+
+let paletteEl: HTMLDivElement | null = null
+let prevOverflow = ''
+let renderList: (filter?: string) => void
+
+function ensurePalette(): HTMLDivElement {
+    if (paletteEl) return paletteEl
+
+    paletteEl = document.createElement('div')
+    paletteEl.className = 'sae-palette'
+    paletteEl.innerHTML = paletteHTML()
+    document.documentElement.appendChild(paletteEl)
+
+    const panel = $<HTMLDivElement>('.sae-panel', paletteEl)!
+    const search = $<HTMLInputElement>('.sae-search', paletteEl)!
+    const list = $<HTMLDivElement>('.sae-list', paletteEl)!
+    const settings = $<HTMLDivElement>('.sae-settings', paletteEl)!
+    const backBtn = $<HTMLButtonElement>('[data-action="back"]', paletteEl)!
+
+    paletteEl.addEventListener('click', e => { if (e.target === paletteEl) closePalette() })
+    $<HTMLButtonElement>('[data-action="close"]', paletteEl)!.onclick = closePalette
+    $<HTMLButtonElement>('[data-action="settings"]', paletteEl)!.onclick = () => showSettings(true)
+    backBtn.onclick = () => showSettings(false)
+    $<HTMLButtonElement>('[data-action="add"]', paletteEl)!.onclick = addNew
+
+    const renderDebounced = debounce(() => renderList(search.value), CONFIG.searchDebounceMs)
+    search.addEventListener('input', renderDebounced)
+
+    paletteEl.addEventListener('keydown', e => {
+        if (panel.classList.contains('settings-open')) {
+            if (e.key === 'Escape') { e.preventDefault(); showSettings(false) }
+            return
+        }
+        if ((e.target as HTMLElement).closest('.sae-item.editing')) return
+        if (e.key === 'Escape') { e.preventDefault(); closePalette(); return }
+        if (e.key === 'Enter') {
+            e.preventDefault()
+            const active = list.querySelector<HTMLDivElement>('.sae-item.active:not(.editing)')
+            if (active?.dataset.key) insertAbbrev(active.dataset.key)
+            return
+        }
+        const items = $$<HTMLDivElement>('.sae-item:not(.editing)', list)
+        if (!items.length) return
+        if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            state.activeIndex = Math.min(items.length - 1, state.activeIndex + 1)
+            updateActive(items)
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault()
+            state.activeIndex = Math.max(0, state.activeIndex - 1)
+            updateActive(items)
+        }
+    })
+
+    list.addEventListener('click', e => {
+        const item = (e.target as HTMLElement).closest<HTMLDivElement>('.sae-item')
+        if (!item || item.classList.contains('editing')) return
+        const action = (e.target as HTMLElement).closest<HTMLElement>('[data-action]')?.dataset.action
+        const key = item.dataset.key!
+        if (action === 'edit') editAbbrev(item, key)
+        else if (action === 'delete') deleteAbbrev(key)
+        else insertAbbrev(key)
+    })
+
+    function showSettings(show: boolean): void {
+        panel.classList.toggle('settings-open', show)
+        backBtn.style.display = show ? 'flex' : 'none'
+        show ? renderSettings() : search.focus()
+    }
+
+    renderList = (filter = ''): void => {
+        const q = filter.toLowerCase()
+        const keys = Object.keys(state.dict).sort()
+        const items = q ? keys.filter(k => k.includes(q) || state.dict[k].toLowerCase().includes(q)) : keys
+        state.activeIndex = clamp(state.activeIndex, 0, Math.max(0, items.length - 1))
+        list.innerHTML = items.length ? items.map((k, i) => `
+      <div class="sae-item${i === state.activeIndex ? ' active' : ''}" data-key="${escHtml(k)}">
+        <div class="sae-key">${escHtml(k)}</div>
+        <div class="sae-val">${escHtml(state.dict[k])}</div>
+        <div class="sae-item-actions"><button data-action="edit">Edit</button><button data-action="delete">Del</button></div>
+      </div>
+    `).join('') : '<div class="sae-empty">No abbreviations found</div>'
+    }
+
+    function updateActive(items: HTMLDivElement[]): void {
+        items.forEach((item, i) => item.classList.toggle('active', i === state.activeIndex))
+        items[state.activeIndex]?.scrollIntoView({ block: 'nearest' })
+    }
+
+    function addNew(): void {
+        search.value = ''
+        renderList()
+        const temp = document.createElement('div')
+        temp.className = 'sae-item editing'
+        list.insertBefore(temp, list.firstChild)
+        mountAbbrevEditor(temp, '', '', (k, v) => {
+            if (!k || !v) return notify.toast('Both fields required')
+            state.dict[k] = v
+            saveAndRender('Added')
+        }, () => { temp.remove(); renderList() })
+    }
+
+    function editAbbrev(item: HTMLDivElement, key: string): void {
+        item.classList.add('editing')
+        mountAbbrevEditor(item, key, state.dict[key], (nk, nv) => {
+            if (!nk || !nv) return notify.toast('Both fields required')
+            if (nk !== key) delete state.dict[key]
+            state.dict[nk] = nv
+            saveAndRender('Saved')
+        }, () => renderList(search.value))
+    }
+
+    function deleteAbbrev(key: string): void {
+        if (!confirm(`Delete "${key}"?`)) return
+        delete state.dict[key]
+        saveAndRender('Deleted')
+    }
+
+    function saveAndRender(msg: string): void {
+        GMX.set(STORE_KEYS.dict, state.dict)
+        renderList(search.value)
+        notify.toast(msg)
+    }
+
+    async function insertAbbrev(key: string): Promise<void> {
+        closePalette()
+        const tmpl = state.dict[key]
+        if (!tmpl) return
+        
+        const ctx = getContextOrFallback()
+        if (!ctx) return notify.toast('No editable field')
+        
+        const rendered = await renderTemplate(tmpl)
+        makeEditor(captureContext() || ctx)?.replace(rendered.text)
+    }
+
+    function renderSettings(): void {
+        settings.innerHTML = settingsHTML(state.apiKey, hotkeyStr(CONFIG.palette), hotkeyStr(CONFIG.aiMenu), state.settings.aiMenuInlineCount)
+
+        const apiIn = $<HTMLInputElement>('#sae-api', settings)!
+        const verifyBtn = $<HTMLButtonElement>('#sae-verify', settings)!
+        let verifying = false
+
+        apiIn.onchange = () => { state.apiKey = apiIn.value.trim(); GMX.set(STORE_KEYS.apiKey, state.apiKey) }
+
+        verifyBtn.onclick = async () => {
+            if (verifying) return
+            const k = apiIn.value.split(';')[0]?.trim()
+            if (!k) return notify.toast('Enter key first')
+
+            verifying = true
+            verifyBtn.disabled = true
+            verifyBtn.textContent = '...'
+
+            try {
+                const r = await GMX.request({ method: 'GET', url: `${CONFIG.gemini.endpoint}?key=${encodeURIComponent(k)}`, timeout: 5000 })
+                verifyBtn.textContent = r.status < 300 ? '✓' : '✗'
+                if (r.status < 300) {
+                    state.apiKey = apiIn.value.trim()
+                    GMX.set(STORE_KEYS.apiKey, state.apiKey)
+                    notify.toast('Valid')
+                } else notify.toast('Invalid')
+            } catch {
+                verifyBtn.textContent = '✗'
+                notify.toast('Failed')
+            }
+            setTimeout(() => { verifyBtn.textContent = 'Verify'; verifyBtn.disabled = false; verifying = false }, 2000)
+        }
+
+        $$<HTMLButtonElement>('[data-hk]', settings).forEach(btn => {
+            btn.onclick = async () => {
+                notify.toast('Press new hotkey...')
+                const spec = await captureHotkey()
+                if (!spec) return
+                const name = btn.dataset.hk as 'palette' | 'aiMenu'
+                Object.assign(CONFIG[name], spec)
+                const keys = GMX.get<Record<string, HotkeySpec>>(STORE_KEYS.keys, {})
+                keys[name] = spec
+                GMX.set(STORE_KEYS.keys, keys)
+                renderSettings()
+                notify.toast(`Set: ${hotkeyStr(spec)}`)
+            }
+        })
+
+        $<HTMLInputElement>('#sae-inline', settings)!.onchange = (e) => {
+            const el = e.target as HTMLInputElement
+            const v = clamp(parseInt(el.value) || 6, 1, 20)
+            el.value = String(v)
+            state.settings.aiMenuInlineCount = v
+            GMX.set(STORE_KEYS.settings, state.settings)
+        }
+
+        renderBuiltins()
+        renderCustoms()
+        $<HTMLButtonElement>('#sae-add-prompt', settings)!.onclick = addPrompt
+
+        $<HTMLButtonElement>('#sae-export', settings)!.onclick = () => {
+            const a = document.createElement('a')
+            a.href = URL.createObjectURL(new Blob([JSON.stringify(state.dict, null, 2)], { type: 'application/json' }))
+            a.download = `texpander-${new Date().toISOString().slice(0, 10)}.json`
+            a.click()
+            notify.toast('Exported')
+        }
+
+        $<HTMLButtonElement>('#sae-import', settings)!.onclick = () => {
+            const inp = Object.assign(document.createElement('input'), { type: 'file', accept: '.json' })
+            inp.onchange = async () => {
+                try {
+                    let o = JSON.parse(await inp.files![0].text())
+                    if (o.dict) o = o.dict
+                    const imp = normalizeDict(o)
+                    if (!Object.keys(imp).length) return notify.toast('No entries')
+                    Object.assign(state.dict, imp)
+                    GMX.set(STORE_KEYS.dict, state.dict)
+                    renderList()
+                    notify.toast(`Imported ${Object.keys(imp).length}`)
+                } catch { notify.toast('Invalid JSON') }
+            }
+            inp.click()
+        }
+
+        $<HTMLButtonElement>('#sae-reset', settings)!.onclick = () => {
+            if (!confirm('Reset to defaults?')) return
+            state.dict = normalizeDict(DEFAULT_DICT)
+            GMX.set(STORE_KEYS.dict, state.dict)
+            renderList()
+            notify.toast('Reset')
+        }
+    }
+
+    function renderBuiltins(): void {
+        const c = $<HTMLDivElement>('#sae-builtins', settings)!
+        c.innerHTML = BUILTIN_PROMPTS.map(p => promptItemHTML(p, 0, true, isBuiltinEnabled(p.id))).join('')
+
+        c.querySelectorAll<HTMLDivElement>('[data-toggle]').forEach(t => {
+            t.onclick = () => {
+                const id = t.closest<HTMLDivElement>('.sae-prompt-item')!.dataset.id!
+                const i = state.disabledBuiltins.indexOf(id)
+                i >= 0 ? state.disabledBuiltins.splice(i, 1) : state.disabledBuiltins.push(id)
+                GMX.set(STORE_KEYS.disabledBuiltins, state.disabledBuiltins)
+                renderBuiltins()
+            }
+        })
+    }
+
+    function renderCustoms(): void {
+        const c = $<HTMLDivElement>('#sae-customs', settings)!
+        c.innerHTML = state.customPrompts.length
+            ? state.customPrompts.map((p, i) => promptItemHTML(p, i, false, p.enabled !== false)).join('')
+            : '<div class="sae-empty">No custom prompts</div>'
+
+        c.querySelectorAll<HTMLDivElement>('[data-toggle]').forEach(t => {
+            t.onclick = () => {
+                const i = +t.closest<HTMLDivElement>('.sae-prompt-item')!.dataset.idx!
+                state.customPrompts[i].enabled = !state.customPrompts[i].enabled
+                GMX.set(STORE_KEYS.customPrompts, state.customPrompts)
+                renderCustoms()
+            }
+        })
+
+        c.querySelectorAll<HTMLButtonElement>('[data-edit]').forEach(b => {
+            b.onclick = () => editPrompt(+b.closest<HTMLDivElement>('.sae-prompt-item')!.dataset.idx!)
+        })
+
+        c.querySelectorAll<HTMLButtonElement>('[data-del]').forEach(b => {
+            b.onclick = () => {
+                const i = +b.closest<HTMLDivElement>('.sae-prompt-item')!.dataset.idx!
+                if (!confirm(`Delete "${state.customPrompts[i].label}"?`)) return
+                state.customPrompts.splice(i, 1)
+                GMX.set(STORE_KEYS.customPrompts, state.customPrompts)
+                renderCustoms()
+                notify.toast('Deleted')
+            }
+        })
+    }
+
+    function addPrompt(): void {
+        const c = $<HTMLDivElement>('#sae-customs', settings)!
+        c.querySelector('.sae-empty')?.remove()
+        const el = document.createElement('div')
+        el.className = 'sae-prompt-item editing'
+        el.innerHTML = promptEditFormHTML('⚡', '', '')
+        c.insertBefore(el, c.firstChild)
+
+        $<HTMLButtonElement>('#ps', el)!.onclick = () => {
+            const ic = $<HTMLInputElement>('#pi', el)!.value.trim() || '⚡'
+            const lb = $<HTMLInputElement>('#pl', el)!.value.trim()
+            const pr = $<HTMLTextAreaElement>('#pp', el)!.value.trim()
+            if (!lb || !pr) return notify.toast('Required')
+            state.customPrompts.push({ id: genId(), icon: ic, label: lb, prompt: pr, enabled: true })
+            GMX.set(STORE_KEYS.customPrompts, state.customPrompts)
+            renderCustoms()
+            notify.toast('Added')
+        }
+        $<HTMLButtonElement>('#pc', el)!.onclick = () => renderCustoms()
+        $<HTMLInputElement>('#pl', el)!.focus()
+    }
+
+    function editPrompt(idx: number): void {
+        const p = state.customPrompts[idx]
+        if (!p) return
+        const c = $<HTMLDivElement>('#sae-customs', settings)!
+        const el = c.querySelector<HTMLDivElement>(`[data-idx="${idx}"]`)!
+        el.className = 'sae-prompt-item editing'
+        el.innerHTML = promptEditFormHTML(p.icon || '⚡', p.label, p.prompt)
+
+        $<HTMLButtonElement>('#ps', el)!.onclick = () => {
+            const ic = $<HTMLInputElement>('#pi', el)!.value.trim() || '⚡'
+            const lb = $<HTMLInputElement>('#pl', el)!.value.trim()
+            const pr = $<HTMLTextAreaElement>('#pp', el)!.value.trim()
+            if (!lb || !pr) return notify.toast('Required')
+            Object.assign(p, { icon: ic, label: lb, prompt: pr })
+            GMX.set(STORE_KEYS.customPrompts, state.customPrompts)
+            renderCustoms()
+            notify.toast('Saved')
+        }
+        $<HTMLButtonElement>('#pc', el)!.onclick = () => renderCustoms()
+    }
+
+    return paletteEl
+}
+
+export function openPalette(): void {
+    const p = ensurePalette()
+    p.classList.add('open')
+    prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    $<HTMLDivElement>('.sae-panel', p)!.classList.remove('settings-open')
+    $<HTMLButtonElement>('[data-action="back"]', p)!.style.display = 'none'
+    const s = $<HTMLInputElement>('.sae-search', p)!
+    s.value = ''
+    state.activeIndex = 0
+    renderList?.()
+    s.focus()
+}
+
+export function closePalette(): void {
+    if (!paletteEl) return
+    paletteEl.classList.remove('open')
+    document.body.style.overflow = prevOverflow
+    prevOverflow = ''
+}
+
+export function rerenderPalette(): void {
+    renderList?.()
+}
+
+export const isPaletteOpen = (): boolean => paletteEl?.classList.contains('open') ?? false
+--- src/ui/styles.ts ---
+
+export const STYLES = `
+  .sae-palette *,.sae-ai-menu *,.sae-toast{box-sizing:border-box}
+  .sae-toast{position:fixed;z-index:2147483647;right:16px;bottom:16px;max-width:min(480px,85vw);box-shadow:0 8px 32px rgba(0,0,0,.28);border-radius:12px;background:rgba(17,17,17,.95);backdrop-filter:blur(12px);color:#fff;padding:12px 16px;font:13px/1.4 system-ui,-apple-system,sans-serif;white-space:pre-wrap;border:1px solid rgba(255,255,255,.08)}
+  .sae-palette{all:initial;position:fixed;z-index:2147483647;inset:0;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px);background:rgba(0,0,0,.4);font-family:system-ui,-apple-system,sans-serif}
+  .sae-palette.open{display:flex}
+  .sae-panel{width:min(680px,94vw);max-height:80vh;overflow:hidden;background:#0d0d0d;color:#fff;border:1px solid rgba(255,255,255,.1);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.5);display:flex;flex-direction:column;font-size:13px;line-height:1.4}
+  .sae-panel-header{display:flex;align-items:center;gap:8px;padding:12px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .sae-search{flex:1;background:#1a1a1a;color:#fff;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px 12px;outline:none;font:inherit}
+  .sae-search:focus{border-color:#4a9eff;box-shadow:0 0 0 3px rgba(74,158,255,.15)}
+  .sae-icon-btn{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:#1a1a1a;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+  .sae-icon-btn:hover{background:#252525;border-color:#4a9eff}
+  .sae-icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .sae-list{flex:1;overflow:auto;padding:8px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}
+  .sae-list::-webkit-scrollbar{width:6px}
+  .sae-list::-webkit-scrollbar-track{background:transparent}
+  .sae-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:3px}
+  .sae-list::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3)}
+  .sae-item{display:grid;grid-template-columns:140px 1fr auto;gap:12px;padding:10px 12px;border-radius:8px;border:1px solid transparent;cursor:pointer;align-items:center;transition:all .1s}
+  .sae-item:hover,.sae-item.active{background:#1a1a1a;border-color:rgba(255,255,255,.06)}
+  .sae-key{font-weight:600;color:#4a9eff;word-break:break-all}
+  .sae-val{color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sae-item-actions{display:flex;gap:4px}
+  .sae-item-actions button{padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:#1a1a1a;color:#fff;cursor:pointer;font-size:11px;transition:all .1s}
+  .sae-item-actions button:hover{background:#2a2a2a;border-color:#4a9eff}
+  .sae-item.editing{background:#0f1a2a;border-color:#2563eb;display:flex;flex-wrap:wrap;gap:8px}
+  .sae-item.editing input{background:#0a0a0a;color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:6px 8px;font:inherit;flex:1;min-width:100px}
+  .sae-item.editing input:focus{border-color:#4a9eff;outline:none}
+  .sae-add-new{padding:12px;text-align:center;border-top:1px solid rgba(255,255,255,.06)}
+  .sae-add-new button{padding:10px 20px;border-radius:8px;border:1px solid #4a9eff;background:rgba(74,158,255,.1);color:#4a9eff;cursor:pointer;font-weight:600;transition:all .15s}
+  .sae-add-new button:hover{background:rgba(74,158,255,.2)}
+  .sae-footer{padding:10px 12px;border-top:1px solid rgba(255,255,255,.06);color:#666;font-size:12px}
+  .sae-panel.settings-open .sae-list,.sae-panel.settings-open .sae-add-new,.sae-panel.settings-open .sae-search{display:none}
+  .sae-settings{display:none;flex:1;overflow:auto;padding:16px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}
+  .sae-settings::-webkit-scrollbar{width:6px}
+  .sae-settings::-webkit-scrollbar-track{background:transparent}
+  .sae-settings::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:3px}
+  .sae-settings::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3)}
+  .sae-panel.settings-open .sae-settings{display:block}
+  .sae-hrow{padding:16px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+  .sae-hrow:last-child{border-bottom:none}
+  .sae-hrow-label{color:#fff;font-weight:600;font-size:14px;margin-bottom:10px}
+  .sae-hrow-content{display:flex;flex-direction:column;gap:10px}
+  .sae-input,.sae-textarea{background:#1a1a1a;color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:10px 12px;font:inherit;width:100%;max-width:100%}
+  .sae-input:focus,.sae-textarea:focus{border-color:#4a9eff;outline:none;box-shadow:0 0 0 3px rgba(74,158,255,.15)}
+  .sae-textarea{min-height:80px;resize:vertical}
+  .sae-help{font-size:11px;color:#666;margin-top:4px}
+  .sae-btn{padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:#1a1a1a;color:#fff;cursor:pointer;font-size:13px;transition:all .15s;white-space:nowrap;flex-shrink:0}
+  .sae-btn:hover{background:#252525;border-color:#4a9eff}
+  .sae-btn.primary{background:#1d4ed8;border-color:#3b82f6;color:#fff}
+  .sae-btn.primary:hover{background:#2563eb}
+  .sae-btn.success{background:#166534;border-color:#22c55e}
+  .sae-btn.danger{background:#7f1d1d;border-color:#ef4444}
+  .sae-btn.danger:hover{background:#991b1b}
+  .sae-btn.sm{padding:6px 10px;font-size:12px}
+  .sae-btn:disabled{opacity:.5;cursor:not-allowed}
+  .sae-chip{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;background:#1a1a1a;border:1px solid rgba(255,255,255,.15);color:#ddd;font-size:13px}
+  .sae-btn-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .sae-hk-row{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+  .sae-hk-item{display:flex;align-items:center;gap:8px}
+  .sae-hk-item .sae-chip{border-color:#4a9eff;min-width:140px;justify-content:center}
+  .sae-inline-row{display:flex;align-items:center;gap:12px}
+  .sae-inline-row input[type="number"]{width:80px;text-align:center}
+  .sae-prompt-section{margin-top:8px}
+  .sae-prompt-section-title{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .sae-prompt-list{display:flex;flex-direction:column;gap:6px}
+  .sae-prompt-item{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#1a1a1a;border-radius:8px;border:1px solid rgba(255,255,255,.08)}
+  .sae-prompt-item .icon{font-size:18px;width:28px;text-align:center;flex-shrink:0}
+  .sae-prompt-item .label{font-weight:500;min-width:100px;color:#fff}
+  .sae-prompt-item .prompt-text{flex:1;color:#666;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sae-prompt-item .actions{display:flex;gap:6px;align-items:center;margin-left:auto}
+  .sae-prompt-item.disabled{opacity:.5}
+  .sae-prompt-item.builtin{border-color:rgba(74,158,255,.2)}
+  .sae-prompt-item.builtin .label::after{content:'Built-in';font-size:9px;background:#1d4ed8;color:#fff;padding:2px 6px;border-radius:4px;margin-left:8px;font-weight:400}
+  .sae-prompt-item.editing{flex-direction:column;align-items:stretch;gap:10px;border-color:#3b82f6}
+  .sae-prompt-edit-form{display:flex;flex-direction:column;gap:10px;width:100%}
+  .sae-prompt-edit-row{display:flex;gap:8px;align-items:center}
+  .sae-prompt-edit-row .icon-input{width:60px;text-align:center;font-size:16px}
+  .sae-prompt-edit-row .label-input{flex:1}
+  .sae-prompt-edit-actions{display:flex;gap:8px;justify-content:flex-end}
+  .sae-toggle{position:relative;width:44px;height:24px;background:#333;border-radius:12px;cursor:pointer;transition:background .2s;flex-shrink:0;border:1px solid rgba(255,255,255,.1)}
+  .sae-toggle.on{background:#22c55e;border-color:#22c55e}
+  .sae-toggle::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s}
+  .sae-toggle.on::after{transform:translateX(20px)}
+  .sae-empty{color:#666;padding:16px;text-align:center;background:#1a1a1a;border-radius:8px;border:1px dashed rgba(255,255,255,.1)}
+  .sae-ai-menu{position:fixed;z-index:2147483647;background:#0d0d0d;border:1px solid rgba(255,255,255,.12);border-radius:14px;box-shadow:0 16px 64px rgba(0,0,0,.5);padding:10px;font:13px/1.4 system-ui,-apple-system,sans-serif;min-width:200px;max-width:90vw;max-height:80vh;overflow-y:auto;opacity:0;pointer-events:none;transform:scale(.96) translateY(-4px);transition:opacity .15s,transform .15s;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}
+  .sae-ai-menu::-webkit-scrollbar{width:6px}
+  .sae-ai-menu::-webkit-scrollbar-track{background:transparent}
+  .sae-ai-menu::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:3px}
+  .sae-ai-menu::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3)}
+  .sae-ai-menu.open{opacity:1;pointer-events:auto;transform:scale(1) translateY(0)}
+  .sae-ai-menu.above{transform-origin:bottom center}
+  .sae-ai-menu.below{transform-origin:top center}
+  .sae-ai-preview{padding:10px 12px;margin-bottom:8px;background:#1a1a1a;border-radius:10px;color:#999;font-size:12px;line-height:1.5;border:1px solid rgba(255,255,255,.06);word-break:break-word;max-width:500px}
+  .sae-ai-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .sae-ai-pill{display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border-radius:10px;background:#1a1a1a;border:1px solid rgba(255,255,255,.1);color:#fff;cursor:pointer;font-size:13px;font-weight:500;transition:all .12s;white-space:nowrap}
+  .sae-ai-pill:hover,.sae-ai-pill.active{background:#252525;border-color:#4a9eff;transform:translateY(-1px)}
+  .sae-ai-pill .icon{font-size:15px}
+  .sae-ai-pill .key{color:#4a9eff;font-size:10px;font-weight:700;opacity:.7}
+  .sae-ai-divider{height:1px;background:rgba(255,255,255,.08);margin:8px 0}
+  .sae-ai-toggle{display:flex;align-items:center;justify-content:center;gap:4px;padding:8px;color:#888;cursor:pointer;font-size:12px;border-radius:8px;transition:all .15s;border:1px solid transparent}
+  .sae-ai-toggle:hover{color:#fff;background:#1a1a1a;border-color:rgba(255,255,255,.1)}
+  .sae-ai-custom-label{font-size:10px;color:#666;padding:4px 8px;text-transform:uppercase;letter-spacing:.5px}
+  .sae-ai-menu.loading .sae-ai-pills{opacity:.5;pointer-events:none}
+  .sae-ai-loading{display:none;align-items:center;gap:8px;padding:12px;color:#4a9eff;justify-content:center}
+  .sae-ai-menu.loading .sae-ai-loading{display:flex}
+  .sae-ai-spinner{width:16px;height:16px;border:2px solid rgba(74,158,255,.3);border-top-color:#4a9eff;border-radius:50%;animation:sae-spin 1s linear infinite}
+  @keyframes sae-spin{to{transform:rotate(360deg)}}
+`
+--- src/ui/templates.ts ---
+
+import { escHtml } from '../core'
+import type { AIPrompt } from '../types'
+
+export const settingsHTML = (
+  apiKey: string,
+  paletteHk: string,
+  aiMenuHk: string,
+  inlineCount: number
+): string => `
+  <div class="sae-hrow">
+    <div class="sae-hrow-label">API Key(s)</div>
+    <div class="sae-hrow-content">
+      <div style="display:flex;gap:8px">
+        <input class="sae-input" id="sae-api" type="password" placeholder="key1;key2..." value="${escHtml(apiKey)}" style="flex:1" />
+        <button class="sae-btn primary" id="sae-verify">Verify</button>
+      </div>
+      <div class="sae-help">Multiple keys (;) rotate on rate limits</div>
+    </div>
+  </div>
+  <div class="sae-hrow">
+    <div class="sae-hrow-label">Hotkeys</div>
+    <div class="sae-hrow-content">
+      <div class="sae-hk-row">
+        <div class="sae-hk-item">
+          <span style="color:#888">Palette:</span>
+          <span class="sae-chip">${paletteHk}</span>
+          <button class="sae-btn sm" data-hk="palette">Change</button>
+        </div>
+        <div class="sae-hk-item">
+          <span style="color:#888">AI Menu:</span>
+          <span class="sae-chip">${aiMenuHk}</span>
+          <button class="sae-btn sm" data-hk="aiMenu">Change</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="sae-hrow">
+    <div class="sae-hrow-label">AI Menu Display</div>
+    <div class="sae-hrow-content">
+      <div class="sae-inline-row">
+        <label>Show inline:</label>
+        <input class="sae-input" type="number" id="sae-inline" min="1" max="20" value="${inlineCount}" />
+        <span class="sae-help" style="margin:0">prompts (rest in "More")</span>
+      </div>
+    </div>
+  </div>
+  <div class="sae-hrow">
+    <div class="sae-hrow-label">AI Prompts</div>
+    <div class="sae-hrow-content">
+      <div class="sae-prompt-section">
+        <div class="sae-prompt-section-title">Built-in</div>
+        <div class="sae-prompt-list" id="sae-builtins"></div>
+      </div>
+      <div class="sae-prompt-section" style="margin-top:16px">
+        <div class="sae-prompt-section-title">Custom</div>
+        <div class="sae-prompt-list" id="sae-customs"></div>
+        <button class="sae-btn primary" id="sae-add-prompt" style="margin-top:10px">+ Add Custom Prompt</button>
+      </div>
+    </div>
+  </div>
+  <div class="sae-hrow">
+    <div class="sae-hrow-label">Dictionary</div>
+    <div class="sae-hrow-content">
+      <div class="sae-btn-row">
+        <button class="sae-btn" id="sae-export">Export</button>
+        <button class="sae-btn" id="sae-import">Import</button>
+        <button class="sae-btn danger" id="sae-reset">Reset</button>
+      </div>
+    </div>
+  </div>
+`
+
+export const promptItemHTML = (
+  p: AIPrompt,
+  idx: number,
+  isBuiltin: boolean,
+  enabled: boolean
+): string => `
+  <div class="sae-prompt-item${isBuiltin ? ' builtin' : ''}${enabled ? '' : ' disabled'}" data-${isBuiltin ? 'id' : 'idx'}="${isBuiltin ? p.id : idx}">
+    <span class="icon">${p.icon || '⚡'}</span>
+    <span class="label">${escHtml(p.label)}</span>
+    <span class="prompt-text">${escHtml(p.prompt)}</span>
+    <div class="actions">
+      <div class="sae-toggle${enabled ? ' on' : ''}" data-toggle></div>
+      ${!isBuiltin ? '<button class="sae-btn sm" data-edit>Edit</button><button class="sae-btn sm danger" data-del>Del</button>' : ''}
+    </div>
+  </div>
+`
+
+export const promptEditFormHTML = (icon: string, label: string, prompt: string): string => `
+  <div class="sae-prompt-edit-form">
+    <div class="sae-prompt-edit-row">
+      <input class="sae-input icon-input" value="${escHtml(icon)}" maxlength="2" id="pi" />
+      <input class="sae-input label-input" placeholder="Name" value="${escHtml(label)}" id="pl" />
+    </div>
+    <textarea class="sae-textarea" placeholder="Prompt instructions..." id="pp">${escHtml(prompt)}</textarea>
+    <div class="sae-prompt-edit-actions">
+      <button class="sae-btn" id="pc">Cancel</button>
+      <button class="sae-btn primary" id="ps">Save</button>
+    </div>
+  </div>
+`
+
+export const paletteHTML = (): string => `
+  <div class="sae-panel" role="dialog">
+    <div class="sae-panel-header">
+      <input class="sae-search" type="search" placeholder="Search abbreviations..." />
+      <button class="sae-icon-btn" data-action="settings" title="Settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <button class="sae-icon-btn" data-action="back" title="Back" style="display:none">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <button class="sae-icon-btn" data-action="close" title="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="sae-list"></div>
+    <div class="sae-settings"></div>
+    <div class="sae-add-new"><button data-action="add">+ Add Abbreviation</button></div>
+    <div class="sae-footer">Shift+Space to expand · Alt+G for AI actions</div>
+  </div>
+`
+
+export const aiMenuHTML = (): string => `
+  <div class="sae-ai-preview"></div>
+  <div class="sae-ai-pills primary"></div>
+  <div class="sae-ai-more" style="display:none">
+    <div class="sae-ai-divider"></div>
+    <div class="sae-ai-pills secondary"></div>
+    <div class="sae-ai-custom" style="display:none">
+      <div class="sae-ai-divider"></div>
+      <div class="sae-ai-custom-label">My Prompts</div>
+      <div class="sae-ai-pills custom"></div>
+    </div>
+  </div>
+  <div class="sae-ai-toggle">▾ More</div>
+  <div class="sae-ai-loading"><div class="sae-ai-spinner"></div><span>Processing...</span></div>
+`
+--- tsconfig.json ---
+
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["vite-plugin-monkey/client"],
+    "outDir": "dist"
+  },
+  "include": ["src"]
+}
+--- vite.config.ts ---
+
+import { defineConfig } from 'vite'
+import monkey from 'vite-plugin-monkey'
+
+export default defineConfig({
+  plugins: [
+    monkey({
+      entry: 'src/main.ts',
+      userscript: {
+        name: 'texpander-ai',
+        namespace: 'https://github.com/quantavil/texpander-ai',
+        version: '3.0.0',
+        description: 'AI-powered text expander with Gemini integration',
+        author: 'quantavil',
+        match: ['*://*/*'],
+        grant: ['GM_getValue', 'GM_setValue', 'GM_registerMenuCommand', 'GM_addStyle', 'GM_xmlhttpRequest'],
+        connect: ['generativelanguage.googleapis.com'],
+        'run-at': 'document-start',
+        license: 'MIT',
+      },
+      build: { externalGlobals: {} },
+    }),
+  ],
+})

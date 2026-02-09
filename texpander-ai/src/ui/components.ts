@@ -1,5 +1,7 @@
-import { $, escHtml } from '../core'
+import { $ } from '../core'
 import { notify } from './notify'
+
+const VALID_KEY_PATTERN = /^[\w-]+$/i
 
 export function mountAbbrevEditor(
   container: HTMLDivElement,
@@ -9,8 +11,8 @@ export function mountAbbrevEditor(
   onCancel: () => void
 ): void {
   container.innerHTML = `
-    <input class="sae-input" placeholder="abbreviation" value="${escHtml(key)}" data-field="key" style="max-width:140px" />
-    <input class="sae-input" placeholder="expansion (supports {{templates}})" value="${escHtml(val)}" data-field="val" />
+    <input class="sae-input" placeholder="abbreviation" value="${key}" data-field="key" style="max-width:140px" aria-label="Abbreviation" />
+    <input class="sae-input" placeholder="expansion (supports {{templates}})" value="${val}" data-field="val" aria-label="Expansion" />
     <div class="sae-item-actions">
       <button data-action="save">Save</button>
       <button data-action="cancel">Cancel</button>
@@ -22,7 +24,10 @@ export function mountAbbrevEditor(
 
   const save = () => {
     const k = keyIn.value.trim().toLowerCase()
-    if (!/^[\w-]+$/i.test(k)) return notify.toast('Invalid: letters, numbers, -, _ only')
+    if (!VALID_KEY_PATTERN.test(k)) {
+      notify.toast('Invalid: letters, numbers, -, _ only')
+      return
+    }
     onSave(k, valIn.value)
   }
 
