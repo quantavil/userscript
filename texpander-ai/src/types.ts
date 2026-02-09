@@ -29,6 +29,7 @@ export interface UIConfig {
   readonly previewMaxChars: number
   readonly previewExpandedChars: number
   readonly spacing: { readonly sm: number; readonly md: number }
+  readonly inlinePrompts: number
 }
 
 export interface Config {
@@ -50,7 +51,6 @@ export interface StoreKeys {
   readonly apiKey: string
   readonly customPrompts: string
   readonly disabledBuiltins: string
-  readonly settings: string
 }
 
 export interface AIPrompt {
@@ -61,9 +61,7 @@ export interface AIPrompt {
   enabled?: boolean
 }
 
-export interface Settings {
-  aiMenuInlineCount: number
-}
+
 
 export interface State {
   dict: Record<string, string>
@@ -71,7 +69,6 @@ export interface State {
   apiKeyIndex: number
   customPrompts: AIPrompt[]
   disabledBuiltins: string[]
-  settings: Settings
   lastEditableEl: HTMLElement | null
   paletteIndex: number
   aiMenuIndex: number

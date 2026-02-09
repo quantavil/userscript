@@ -11,7 +11,6 @@ export const STORE_KEYS: StoreKeys = Object.freeze({
   apiKey: 'sae.gemini.apiKey.v1',
   customPrompts: 'sae.prompts.v1',
   disabledBuiltins: 'sae.disabledBuiltins.v1',
-  settings: 'sae.settings.v1',
 })
 
 // ─────────────────────────────────────────────────────────────
@@ -36,6 +35,7 @@ export const CONFIG: Config = {
     previewMaxChars: 150,
     previewExpandedChars: 2000,
     spacing: { sm: 8, md: 16 },
+    inlinePrompts: 4,
   }),
   gemini: Object.freeze({
     endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
@@ -104,7 +104,6 @@ export const state: State = {
   apiKeyIndex: 0,
   customPrompts: [],
   disabledBuiltins: [],
-  settings: { aiMenuInlineCount: 6 },
   lastEditableEl: null,
   paletteIndex: 0,
   aiMenuIndex: 0,
@@ -152,7 +151,7 @@ export function loadState(): void {
   state.customPrompts = GMX.get<AIPrompt[]>(STORE_KEYS.customPrompts, [])
     .map(p => ({ ...p, enabled: p.enabled !== false }))
   state.disabledBuiltins = GMX.get(STORE_KEYS.disabledBuiltins, [])
-  state.settings = GMX.get(STORE_KEYS.settings, { aiMenuInlineCount: 6 })
+
 
   const savedKeys = GMX.get<{ palette?: HotkeySpec; aiMenu?: HotkeySpec }>(STORE_KEYS.keys, {})
   if (savedKeys.palette) Object.assign(CONFIG.palette, savedKeys.palette)

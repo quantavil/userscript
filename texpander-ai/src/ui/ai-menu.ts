@@ -117,7 +117,7 @@ function renderPills(): void {
   const enabledBuiltins = BUILTIN_PROMPTS.filter(p => isBuiltinEnabled(p.id))
   const enabledCustoms = state.customPrompts.filter(isCustomEnabled)
 
-  const inlineCount = state.settings.aiMenuInlineCount
+  const inlineCount = CONFIG.ui.inlinePrompts
   const primaryPrompts = enabledBuiltins.slice(0, inlineCount)
   const secondaryPrompts = enabledBuiltins.slice(inlineCount)
 
@@ -220,8 +220,8 @@ function position(ctx: EditContext): void {
   const rect = ctx.kind === 'input'
     ? ctx.el.getBoundingClientRect()
     : (window.getSelection?.()?.rangeCount
-        ? window.getSelection()!.getRangeAt(0).getBoundingClientRect()
-        : ctx.root.getBoundingClientRect())
+      ? window.getSelection()!.getRangeAt(0).getBoundingClientRect()
+      : ctx.root.getBoundingClientRect())
 
   const { menuWidth, menuHeight, spacing } = CONFIG.ui
 

@@ -8,8 +8,7 @@ import type { AIPrompt } from '../types'
 export const settingsHTML = (
   apiKey: string,
   paletteHk: string,
-  aiMenuHk: string,
-  inlineCount: number
+  aiMenuHk: string
 ): string => `
   <div class="sae-hrow">
     <div class="sae-hrow-label">API Key(s)</div>
@@ -38,17 +37,7 @@ export const settingsHTML = (
       </div>
     </div>
   </div>
-  <div class="sae-hrow">
-    <div class="sae-hrow-label">AI Menu Display</div>
-    <div class="sae-hrow-content">
-      <div class="sae-inline-row">
-        <label for="sae-inline">Show inline:</label>
-        <input class="sae-input" type="number" id="sae-inline" min="1" max="20" value="${inlineCount}" />
-        <span class="sae-help">prompts (rest in "More")</span>
-      </div>
-    </div>
-  </div>
-  <div class="sae-hrow">
+
     <div class="sae-hrow-label">AI Prompts</div>
     <div class="sae-hrow-content">
       <div class="sae-prompt-section">

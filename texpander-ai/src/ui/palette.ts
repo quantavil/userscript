@@ -138,13 +138,12 @@ function renderSettings(): void {
   settingsEl.innerHTML = settingsHTML(
     state.apiKey,
     hotkeyStr(CONFIG.palette),
-    hotkeyStr(CONFIG.aiMenu),
-    state.settings.aiMenuInlineCount
+    hotkeyStr(CONFIG.aiMenu)
   )
 
   setupApiKeyHandlers()
   setupHotkeyHandlers()
-  setupInlineCountHandler()
+
   renderBuiltins()
   renderCustoms()
   setupDictionaryHandlers()
@@ -211,16 +210,6 @@ function setupHotkeyHandlers(): void {
       notify.toast(`Set: ${hotkeyStr(spec)}`)
     }
   })
-}
-
-function setupInlineCountHandler(): void {
-  $<HTMLInputElement>('#sae-inline', settingsEl)!.onchange = (e) => {
-    const el = e.target as HTMLInputElement
-    const v = clamp(parseInt(el.value) || 6, 1, 20)
-    el.value = String(v)
-    state.settings.aiMenuInlineCount = v
-    GMX.set(STORE_KEYS.settings, state.settings)
-  }
 }
 
 function setupDictionaryHandlers(): void {
