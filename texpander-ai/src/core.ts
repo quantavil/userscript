@@ -38,13 +38,6 @@ const HTML_ENTITIES: Readonly<Record<string, string>> = Object.freeze({
 export const escHtml = (s: string): string =>
   String(s).replace(/[&<>"']/g, c => HTML_ENTITIES[c] ?? c)
 
-export const smartTruncate = (text: string, maxLen: number): string => {
-  const cleaned = text.replace(/\s+/g, ' ').trim()
-  if (cleaned.length <= maxLen) return cleaned
-  const half = Math.floor((maxLen - 5) / 2)
-  return `${cleaned.slice(0, half).trim()} ... ${cleaned.slice(-half).trim()}`
-}
-
 // Word character detection with Unicode support
 const isWordChar = (() => {
   try {

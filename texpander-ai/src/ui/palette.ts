@@ -498,8 +498,4 @@ export function closePalette(): void {
   prevOverflow = ''
 }
 
-export function rerenderPalette(): void {
-  if (paletteEl) renderList()
-}
-
 export const isPaletteOpen = (): boolean => paletteEl?.classList.contains('open') ?? false

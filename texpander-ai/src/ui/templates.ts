@@ -38,6 +38,7 @@ export const settingsHTML = (
     </div>
   </div>
 
+  <div class="sae-hrow">
     <div class="sae-hrow-label">AI Prompts</div>
     <div class="sae-hrow-content">
       <div class="sae-prompt-section">
