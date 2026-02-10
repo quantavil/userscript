@@ -75,7 +75,6 @@
             this.timers = {};
             this.dragData = { isDragging: false };
             this.sliderData = { isSliding: false };
-            this.abLoop = { a: null, b: null, active: false };
             this.lastVolume = 100;
 
             this.timeUpdateHandler = this.handleTimeUpdate.bind(this);
@@ -154,10 +153,10 @@
             if (this._destroyed) return;
             this._destroyed = true;
 
-            try { this.intersectionObserver?.disconnect(); } catch {}
-            try { this.mutationObserver?.disconnect(); } catch {}
-            try { this.videoResizeObserver?.disconnect(); } catch {}
-            try { this.videoMutationObserver?.disconnect(); } catch {}
+            try { this.intersectionObserver?.disconnect(); } catch { }
+            try { this.mutationObserver?.disconnect(); } catch { }
+            try { this.videoResizeObserver?.disconnect(); } catch { }
+            try { this.videoMutationObserver?.disconnect(); } catch { }
 
             window.removeEventListener('resize', this._onResize);
             window.removeEventListener('scroll', this._onScroll);
@@ -196,7 +195,7 @@
             this.timers = {};
 
             this.activeVideo = null;
-            try { this.visibleVideos.clear(); } catch {}
+            try { this.visibleVideos.clear(); } catch { }
         }
 
         debounce(func, wait) {
@@ -244,7 +243,7 @@
                 if (vNew !== null) return vNew;
                 const vOld = legacyKey ? readRaw(legacyKey) : null;
                 if (vOld !== null) {
-                    try { localStorage.setItem(newKey, JSON.stringify(vOld)); } catch {}
+                    try { localStorage.setItem(newKey, JSON.stringify(vOld)); } catch { }
                     return vOld;
                 }
                 return def;
@@ -284,13 +283,13 @@
             const storageKey = `mvc_${key}`;
 
             if (opts.immediate) {
-                try { localStorage.setItem(storageKey, JSON.stringify(val)); } catch (e) {}
+                try { localStorage.setItem(storageKey, JSON.stringify(val)); } catch (e) { }
                 return;
             }
 
             clearTimeout(this.timers[`save_${key}`]);
             this.timers[`save_${key}`] = setTimeout(() => {
-                try { localStorage.setItem(storageKey, JSON.stringify(val)); } catch (e) {}
+                try { localStorage.setItem(storageKey, JSON.stringify(val)); } catch (e) { }
             }, MobileVideoController.CONFIG.STORAGE_DEBOUNCE_MS);
         }
 
@@ -423,7 +422,7 @@
                     else {
                         this.activeVideo.playbackRate = spv;
                         this.setLastRate(spv);
-                        if (this.activeVideo.paused) this.activeVideo.play().catch(() => {});
+                        if (this.activeVideo.paused) this.activeVideo.play().catch(() => { });
                     }
                     this.updateSpeedDisplay();
                     this.hideAllMenus();
@@ -442,7 +441,7 @@
                 if (!isNaN(newRate) && newRate > 0 && newRate <= 16) {
                     this.activeVideo.playbackRate = newRate;
                     this.setLastRate(newRate);
-                    if (this.activeVideo.paused) this.activeVideo.play().catch(() => {});
+                    if (this.activeVideo.paused) this.activeVideo.play().catch(() => { });
                     this.updateSpeedDisplay();
                 } else this.showToast("Invalid speed entered.");
             };
@@ -473,41 +472,6 @@
                 row.append(labelEl, slider, valueEl);
                 return { row, slider, valueEl };
             };
-
-            // --- A-B Loop ---
-            addSection('A-B Loop');
-            const abContainer = this.createEl('div', 'mvc-menu-opt mvc-settings-row');
-
-            const setA = this.createEl('button', 'mvc-settings-btn', { textContent: 'Set A' });
-            setA.dataset.mvcAb = 'a';
-
-            const setB = this.createEl('button', 'mvc-settings-btn', { textContent: 'Set B' });
-            setB.dataset.mvcAb = 'b';
-
-            const toggleLoop = this.createEl('button', 'mvc-settings-btn', { textContent: 'Loop: Off' });
-            toggleLoop.dataset.mvcAb = 'toggle';
-
-            setA.onclick = () => {
-                if (this.activeVideo) {
-                    this.abLoop.a = this.activeVideo.currentTime;
-                    setA.textContent = `A: ${this.formatTime(this.abLoop.a)}`;
-                }
-            };
-            setB.onclick = () => {
-                if (this.activeVideo) {
-                    this.abLoop.b = this.activeVideo.currentTime;
-                    setB.textContent = `B: ${this.formatTime(this.abLoop.b)}`;
-                }
-            };
-            toggleLoop.onclick = () => {
-                this.abLoop.active = !this.abLoop.active;
-                toggleLoop.textContent = `Loop: ${this.abLoop.active ? 'On' : 'Off'}`;
-                toggleLoop.style.backgroundColor = this.abLoop.active ? 'rgba(50,180,100,0.7)' : '';
-                this.toggleTimeUpdateListener(this.settings.selfCorrect);
-            };
-
-            abContainer.append(setA, setB, toggleLoop);
-            this.ui.settingsMenu.appendChild(abContainer);
 
             // --- Playback & Audio ---
             addSection('Playback & Audio');
@@ -713,7 +677,7 @@
                     toastPosition: toastPos
                 };
                 longPressActioned = false;
-                try { this.ui.speedBtn.setPointerCapture(e.pointerId); } catch (err) {}
+                try { this.ui.speedBtn.setPointerCapture(e.pointerId); } catch (err) { }
 
                 this.timers.longPress = setTimeout(() => {
                     if (this.activeVideo) {
@@ -736,7 +700,7 @@
                     this.sliderData.isSliding = true;
                     this.isSpeedSliding = true;
                     this.showUI(true);
-                    if (this.activeVideo.paused) this.activeVideo.play().catch(() => {});
+                    if (this.activeVideo.paused) this.activeVideo.play().catch(() => { });
                     this.ui.speedBtn.style.transform = 'scale(1.1)';
                     Object.assign(this.ui.speedToast.style, this.sliderData.toastPosition);
                     this.vibrate();
@@ -910,19 +874,7 @@
             this.activeVideo = v;
             this.dragData = { isDragging: false };
 
-            // Reset A-B loop when switching videos (prevents looping wrong timestamps)
-            this.abLoop = { a: null, b: null, active: false };
             this.toggleTimeUpdateListener(this.settings.selfCorrect);
-
-            if (this.ui.settingsMenu) {
-                this.ui.settingsMenu.querySelector('[data-mvc-ab="a"]')?.replaceChildren(document.createTextNode('Set A'));
-                this.ui.settingsMenu.querySelector('[data-mvc-ab="b"]')?.replaceChildren(document.createTextNode('Set B'));
-                const t = this.ui.settingsMenu.querySelector('[data-mvc-ab="toggle"]');
-                if (t) {
-                    t.replaceChildren(document.createTextNode('Loop: Off'));
-                    t.style.backgroundColor = '';
-                }
-            }
 
             if (v) {
                 this.attachUIToVideo(v);
@@ -1010,7 +962,7 @@
         handleEvent(event) {
             switch (event.type) {
                 case 'ended':
-                    if (this.settings.autoplayMode === 'loop') this.activeVideo?.play?.().catch(() => {});
+                    if (this.settings.autoplayMode === 'loop') this.activeVideo?.play?.().catch(() => { });
                     else if (this.settings.autoplayMode === 'next' && window.location.hostname.includes('youtube.com')) {
                         document.querySelector('.ytp-next-button')?.click?.();
                     }
@@ -1037,17 +989,9 @@
             }
         }
 
-        // ---------- timeupdate logic (A-B loop + selfCorrect) ----------
+        // ---------- timeupdate logic (selfCorrect) ----------
         handleTimeUpdate() {
             if (!this.activeVideo) return;
-
-            // A-B loop must stay responsive
-            if (this.abLoop.active && this.abLoop.a != null && this.abLoop.b != null) {
-                if (this.activeVideo.currentTime >= this.abLoop.b || this.activeVideo.currentTime < this.abLoop.a) {
-                    this.activeVideo.currentTime = this.abLoop.a;
-                    return;
-                }
-            }
 
             // selfCorrect actually implemented + throttled
             if (!this.settings.selfCorrect) return;
@@ -1066,7 +1010,7 @@
 
         toggleTimeUpdateListener(enable) {
             document.body.removeEventListener('timeupdate', this.timeUpdateHandler, true);
-            if (enable || this.abLoop.active) document.body.addEventListener('timeupdate', this.timeUpdateHandler, true);
+            if (enable) document.body.addEventListener('timeupdate', this.timeUpdateHandler, true);
         }
 
         // ---------- scroll parent ----------
@@ -1352,7 +1296,7 @@
 
             if (this.activeVideo.paused || this.activeVideo.ended) {
                 this.activeVideo.playbackRate = this.getPreferredRate();
-                this.activeVideo.play().catch(() => {});
+                this.activeVideo.play().catch(() => { });
             } else {
                 this.setLastRate(this.activeVideo.playbackRate);
                 this.activeVideo.pause();
@@ -1475,12 +1419,8 @@
         }
 
         // ---------- misc helpers ----------
-        formatTime(sec) {
-            return new Date(sec * 1000).toISOString().slice(14, -5);
-        }
-
         vibrate(ms = 10) {
-            if (navigator.vibrate) try { navigator.vibrate(ms); } catch (e) {}
+            if (navigator.vibrate) try { navigator.vibrate(ms); } catch (e) { }
         }
 
         showToast(message) {
