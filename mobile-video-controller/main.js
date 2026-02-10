@@ -13,6 +13,9 @@
     'use strict';
 
     class MobileVideoController {
+        // ===========================================
+        // CONFIGURATION
+        // ===========================================
         static CONFIG = {
             MIN_VIDEO_AREA: 150 * 150,
             EDGE: 10,
@@ -33,8 +36,8 @@
             BACKDROP_POINTER_EVENTS_DELAY: 150,
             SPEED_TOAST_FADE_DELAY: 750,
             MUTATION_DEBOUNCE_MS: 800,
-            INTERSECTION_THROTTLE_MS: 300,     // (kept; evaluate is already debounced)
-            TIMEUPDATE_THROTTLE_MS: 2000,       // now used for selfCorrect throttling
+            INTERSECTION_THROTTLE_MS: 300,
+            TIMEUPDATE_THROTTLE_MS: 2000,
             SCROLL_END_TIMEOUT: 150,
             STORAGE_DEBOUNCE_MS: 2000,
             VISIBILITY_GUARDIAN_DELAY: 500
@@ -50,8 +53,6 @@
         constructor() {
             this.activeVideo = null;
             this.visibleVideos = new Map();
-            this.audioContexts = new WeakMap();
-
             this.isManuallyPositioned = false;
             this.wasDragging = false;
             this.isTicking = false;
@@ -59,7 +60,6 @@
             this.isTickingSlider = false;
             this.isSpeedSliding = false;
             this.isScrolling = false;
-            this.boosterEnabled = false;
             this.lastRealUserEvent = 0;
 
             this._viewportScheduled = false;
@@ -69,19 +69,18 @@
             this.ui = {
                 wrap: null, panel: null, backdrop: null, toast: null, speedToast: null,
                 rewindBtn: null, speedBtn: null, forwardBtn: null, settingsBtn: null,
-                speedMenu: null, skipMenu: null, settingsMenu: null, muteBtn: null
+                speedMenu: null, skipMenu: null, settingsMenu: null
             };
 
             this.timers = {};
             this.dragData = { isDragging: false };
             this.sliderData = { isSliding: false };
-            this.lastVolume = 100;
 
             this.timeUpdateHandler = this.handleTimeUpdate.bind(this);
             this.boundScrollHandler = this.onViewportChange.bind(this);
             this.debouncedEvaluate = this.debounce(this.evaluateActive.bind(this), MobileVideoController.CONFIG.MUTATION_DEBOUNCE_MS);
 
-            // bindable handlers (so destroy() can remove them)
+
             this._onResize = () => this.scheduleViewportChange();
             this._onScroll = () => {
                 this.isScrolling = true;
@@ -102,7 +101,7 @@
                 }
             };
 
-            // Only count user events relevant to video/controller (prevents "scrolling anywhere" from resetting fade)
+
             this._onUserEvent = (e) => {
                 if (!e.isTrusted) return;
 
@@ -138,7 +137,13 @@
             }
         }
 
-        // ---------- lifecycle / scheduling ----------
+        // ===========================================
+        // LIFECYCLE / SCHEDULING
+        // ===========================================
+
+        /**
+         * Schedules a viewport update using requestAnimationFrame.
+         */
         scheduleViewportChange() {
             if (this._destroyed) return;
             if (this._viewportScheduled) return;
@@ -149,6 +154,9 @@
             });
         }
 
+        /**
+         * Cleans up all observers, listeners, and UI elements.
+         */
         destroy() {
             if (this._destroyed) return;
             this._destroyed = true;
@@ -184,8 +192,6 @@
 
             if (this.activeVideo) {
                 ['ended', 'play', 'pause', 'ratechange'].forEach(ev => this.activeVideo.removeEventListener(ev, this));
-                const audioData = this.audioContexts.get(this.activeVideo);
-                if (audioData?.cleanupListeners) audioData.cleanupListeners();
             }
 
             [this.ui.wrap, this.ui.backdrop, this.ui.toast, this.ui.speedToast, this.ui.speedMenu, this.ui.skipMenu, this.ui.settingsMenu]
@@ -206,6 +212,9 @@
             };
         }
 
+        /**
+         * Safely initializes the controller, waiting for the body if necessary.
+         */
         safeInit() {
             if (!document.body) {
                 setTimeout(() => this.safeInit(), 50);
@@ -214,6 +223,9 @@
             this.init();
         }
 
+        /**
+         * Main initialization logic.
+         */
         init() {
             this.injectStyles();
             this.createMainUI();
@@ -223,60 +235,39 @@
             setTimeout(() => this.evaluateActive(), MobileVideoController.CONFIG.INITIAL_EVAL_DELAY);
         }
 
-        // ---------- config / storage ----------
+        // ===========================================
+        // CONFIG & STORAGE
+        // ===========================================
         getSiteConfig() {
             const host = window.location.hostname;
             return MobileVideoController.SITE_CONFIGS[host] || null;
         }
 
+        /**
+         * Loads settings from localStorage with default fallbacks.
+         */
         loadSettings() {
-            const readRaw = (k) => {
+            const read = (key, def) => {
                 try {
-                    const v = localStorage.getItem(k);
-                    return v === null ? null : JSON.parse(v);
-                } catch { return null; }
+                    const v = localStorage.getItem(`mvc_${key}`);
+                    return v === null ? def : JSON.parse(v);
+                } catch { return def; }
             };
 
-            // read newKey first, then legacyKey; if legacy used, migrate to newKey
-            const readCompat = (newKey, legacyKey, def) => {
-                const vNew = readRaw(newKey);
-                if (vNew !== null) return vNew;
-                const vOld = legacyKey ? readRaw(legacyKey) : null;
-                if (vOld !== null) {
-                    try { localStorage.setItem(newKey, JSON.stringify(vOld)); } catch { }
-                    return vOld;
-                }
-                return def;
-            };
-
-            const asNum = (v, def) => {
-                const n = typeof v === 'number' ? v : Number(v);
-                return Number.isFinite(n) ? n : def;
-            };
-            const asBool = (v, def) => {
-                if (typeof v === 'boolean') return v;
-                if (v === 'true') return true;
-                if (v === 'false') return false;
-                return def;
-            };
-            const asStr = (v, def) => (typeof v === 'string' ? v : def);
-
-            // IMPORTANT: saveSetting stores mvc_${key} (camelCase keys).
-            // These compat reads fix the old underscore keys and prevent "settings not persisting".
             this.settings = {
-                skipSeconds: asNum(readCompat('mvc_skipSeconds', 'mvc_skip_seconds', 10), 10),
-                selfCorrect: asBool(readCompat('mvc_selfCorrect', 'mvc_self_correct', false), false),
-                autoplayMode: asStr(readCompat('mvc_autoplayMode', null, 'off'), 'off'),
-                defaultSpeed: asNum(readCompat('mvc_defaultSpeed', 'mvc_default_speed', 1.0), 1.0),
-                volume: asNum(readCompat('mvc_volume', null, 100), 100),
-
-                // last_rate: fixed + persisted immediately on change (no stale debounce reads)
-                last_rate: asNum(readCompat('mvc_last_rate', 'mvc_lastRate', 1.0), 1.0),
+                skipSeconds: read('skipSeconds', 10),
+                selfCorrect: read('selfCorrect', false),
+                defaultSpeed: read('defaultSpeed', 1.0),
+                last_rate: read('last_rate', 1.0),
             };
-
-            this.lastVolume = this.settings.volume > 0 ? this.settings.volume : 100;
         }
 
+        /**
+         * Saves a setting to localStorage, debounced by default.
+         * @param {string} key - Setting key
+         * @param {any} val - Value to store
+         * @param {object} opts - { immediate: boolean }
+         */
         saveSetting(key, val, opts = {}) {
             this.settings[key] = val;
 
@@ -305,7 +296,13 @@
             if (save) this.saveSetting('last_rate', r, { immediate: true });
         }
 
-        // ---------- dom helpers ----------
+        // ===========================================
+        // DOM HELPERS
+        // ===========================================
+
+        /**
+         * Helper to create an element with class and properties.
+         */
         createEl(tag, className, props = {}) {
             const el = document.createElement(tag);
             if (className) el.className = className;
@@ -340,7 +337,13 @@
             return document.fullscreenElement || document.webkitFullscreenElement || document.body;
         }
 
-        // ---------- UI creation ----------
+        // ===========================================
+        // UI CREATION
+        // ===========================================
+
+        /**
+         * Creates and appends the main UI elements (hidden initially).
+         */
         createMainUI() {
             this.ui.wrap = this.createEl('div', 'mvc-ui-wrap');
             this.ui.panel = this.createEl('div', 'mvc-panel');
@@ -370,7 +373,7 @@
             this.ui.panel.append(this.ui.rewindBtn, this.ui.speedBtn, this.ui.forwardBtn, this.ui.settingsBtn);
             this.ui.wrap.append(this.ui.panel);
 
-            // measure
+
             document.body.appendChild(this.ui.wrap);
             this.ui.wrap.style.visibility = 'hidden';
             this.ui.wrap.style.display = 'block';
@@ -432,21 +435,29 @@
             MobileVideoController.CONFIG.DEFAULT_SPEEDS.forEach(sp => this.ui.speedMenu.appendChild(makeOpt(sp)));
 
             const customOpt = this.createEl('div', 'mvc-menu-opt', { textContent: '✎', style: { color: '#c5a5ff', fontWeight: '600' } });
-            customOpt.onclick = () => {
-                if (!this.activeVideo) return this.hideAllMenus();
-                const choice = prompt("Enter custom playback speed:", this.activeVideo.playbackRate.toFixed(2));
-                this.hideAllMenus();
-                if (choice === null) return;
-                const newRate = parseFloat(choice);
-                if (!isNaN(newRate) && newRate > 0 && newRate <= 16) {
-                    this.activeVideo.playbackRate = newRate;
-                    this.setLastRate(newRate);
-                    if (this.activeVideo.paused) this.activeVideo.play().catch(() => { });
-                    this.updateSpeedDisplay();
-                } else this.showToast("Invalid speed entered.");
-            };
+            customOpt.onclick = () => this.handleCustomSpeedInput();
             this.ui.speedMenu.appendChild(customOpt);
             this.getOverlayContainer().appendChild(this.ui.speedMenu);
+        }
+
+        /**
+         * Handles custom speed input from the user.
+         */
+        handleCustomSpeedInput() {
+            if (!this.activeVideo) return this.hideAllMenus();
+            const choice = prompt("Enter custom playback speed:", this.activeVideo.playbackRate.toFixed(2));
+            this.hideAllMenus();
+            if (choice === null) return;
+
+            const newRate = parseFloat(choice);
+            if (!isNaN(newRate) && newRate > 0 && newRate <= 16) {
+                this.activeVideo.playbackRate = newRate;
+                this.setLastRate(newRate);
+                if (this.activeVideo.paused) this.activeVideo.play().catch(() => { });
+                this.updateSpeedDisplay();
+            } else {
+                this.showToast("Invalid speed entered.");
+            }
         }
 
         ensureSettingsMenu() {
@@ -459,22 +470,10 @@
                 this.ui.settingsMenu.appendChild(el);
             };
 
-            const createSliderRow = (label, props, fmt) => {
-                const row = this.createEl('div', 'mvc-menu-opt mvc-settings-row');
-                const labelEl = this.createEl('label', 'mvc-settings-label', { textContent: label });
-                const slider = this.createEl('input', 'mvc-settings-slider', Object.assign({ type: 'range' }, props));
-                const valueEl = this.createEl('span', 'mvc-settings-value', { textContent: fmt(props.value) });
-                slider.oninput = (e) => {
-                    valueEl.textContent = fmt(e.target.value);
-                    if (props.oninput) props.oninput(e.target.value);
-                };
-                slider.onchange = (e) => { if (props.onchange) props.onchange(e.target.value); };
-                row.append(labelEl, slider, valueEl);
-                return { row, slider, valueEl };
-            };
 
-            // --- Playback & Audio ---
-            addSection('Playback & Audio');
+
+            // --- Playback ---
+            addSection('Playback');
 
             const settingsRow1 = this.createEl('div', 'mvc-menu-opt mvc-settings-row');
             const selfCorrectBtn = this.createEl('button', 'mvc-settings-btn', {});
@@ -486,16 +485,7 @@
             };
             updateSelfCorrectText();
 
-            const autoplayBtn = this.createEl('button', 'mvc-settings-btn', {});
-            const autoplayModes = ['off', 'next', 'loop'];
-            const updateAutoplayText = () => { autoplayBtn.textContent = `Autoplay: ${this.settings.autoplayMode.charAt(0).toUpperCase() + this.settings.autoplayMode.slice(1)}`; };
-            autoplayBtn.onclick = () => {
-                const idx = autoplayModes.indexOf(this.settings.autoplayMode);
-                this.saveSetting('autoplayMode', autoplayModes[(idx + 1) % autoplayModes.length]);
-                updateAutoplayText();
-            };
-            updateAutoplayText();
-            settingsRow1.append(selfCorrectBtn, autoplayBtn);
+            settingsRow1.append(selfCorrectBtn);
             this.ui.settingsMenu.appendChild(settingsRow1);
 
             const settingsRow2 = this.createEl('div', 'mvc-menu-opt mvc-settings-row');
@@ -519,37 +509,9 @@
             settingsRow2.append(speedLabel, speedInput, skipLabel, skipInput);
             this.ui.settingsMenu.appendChild(settingsRow2);
 
-            const volumeControl = createSliderRow('Volume:', {
-                min: 0, max: 100, step: 1, value: this.settings.volume,
-                oninput: v => this.updateVolume(v),
-                onchange: v => {
-                    const n = Number(v);
-                    this.updateVolume(n);
-                    this.saveSetting('volume', Number.isFinite(n) ? n : this.settings.volume, { immediate: true });
-                }
-            }, v => `${Math.round(v)}%`);
 
-            this.ui.muteBtn = this.createEl('button', 'mvc-settings-btn mvc-mute-btn');
-            this.updateMuteButtonIcon();
-            this.ui.muteBtn.onclick = () => this.toggleMute(volumeControl);
-            const volRow = volumeControl.row;
-            volRow.insertBefore(this.ui.muteBtn, volRow.querySelector('.mvc-settings-label'));
-            this.ui.settingsMenu.appendChild(volRow);
 
-            const boosterRow = this.createEl('div', 'mvc-menu-opt mvc-settings-row', { style: { justifyContent: 'center', borderTop: 'none', paddingTop: 0 } });
-            const boosterBtn = this.createEl('button', 'mvc-settings-btn', { textContent: 'Enable Booster' });
-            boosterBtn.onclick = () => {
-                this.boosterEnabled = true;
-                boosterBtn.disabled = true;
-                boosterBtn.textContent = 'Booster: On';
-                volumeControl.slider.max = 200;
-                this.setupAudioBooster(this.activeVideo);
-                this.showToast('Booster enabled. Reload to disable.');
-            };
-            boosterRow.appendChild(boosterBtn);
-            this.ui.settingsMenu.appendChild(boosterRow);
-
-            // --- Close Controller (at bottom) ---
+            // --- Close Controller ---
             const closeRow = this.createEl('div', 'mvc-menu-opt mvc-settings-row', {
                 style: { justifyContent: 'center', borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '8px', paddingTop: '8px' }
             });
@@ -572,7 +534,13 @@
             this.ui.forwardBtn.title = `Forward ${this.settings.skipSeconds}s`;
         }
 
-        // ---------- event listeners ----------
+        // ===========================================
+        // EVENT LISTENERS
+        // ===========================================
+
+        /**
+         * Attaches all global and element-specific event listeners.
+         */
         attachEventListeners() {
             window.addEventListener('resize', this._onResize, { passive: true });
             window.addEventListener('scroll', this._onScroll, { passive: true });
@@ -657,6 +625,9 @@
             this.setupLongPress(this.ui.forwardBtn, 1);
         }
 
+        /**
+         * Attaches listeners for the speed button (tap, hold, slide).
+         */
         attachSpeedButtonListeners() {
             let longPressActioned = false;
             this.ui.speedBtn.addEventListener("touchstart", e => e.stopPropagation(), { passive: true });
@@ -768,6 +739,9 @@
             this.isTickingSlider = false;
         }
 
+        /**
+         * Attaches listeners for dragging the UI panel.
+         */
         attachPanelDragListeners() {
             this.ui.panel.addEventListener("touchstart", e => e.stopPropagation(), { passive: true });
             this.ui.panel.addEventListener("touchmove", e => { e.preventDefault(); e.stopImmediatePropagation(); }, { passive: false });
@@ -825,7 +799,13 @@
             };
         }
 
-        // ---------- active video selection ----------
+        // ===========================================
+        // VIDEO MANAGEMENT
+        // ===========================================
+
+        /**
+         * Evaluates which video should be the active one based on visibility and size.
+         */
         evaluateActive() {
             if (this.activeVideo &&
                 this.isPlaying(this.activeVideo) &&
@@ -855,6 +835,11 @@
             this.setActiveVideo(best);
         }
 
+        /**
+         * Sets the active video and updates UI state.
+         * @param {HTMLVideoElement|null} v - Video element
+         * @param {object} options - Options { immediateHide: boolean }
+         */
         setActiveVideo(v, options = {}) {
             if (this.activeVideo === v) return;
             clearTimeout(this.timers.hideGrace);
@@ -867,8 +852,6 @@
                     this.currentScrollParent.removeEventListener('scroll', this.boundScrollHandler);
                     this.currentScrollParent = null;
                 }
-                const audioData = this.audioContexts.get(this.activeVideo);
-                if (audioData?.cleanupListeners) audioData.cleanupListeners();
             }
 
             this.activeVideo = v;
@@ -886,8 +869,6 @@
                 this.videoResizeObserver?.observe(v);
                 this.videoMutationObserver?.observe(v.parentElement || v, { attributes: true, subtree: true });
                 this.applyDefaultSpeed(v);
-                this.updateVolume(this.settings.volume);
-                if (this.boosterEnabled) this.setupAudioBooster(v);
             } else {
                 const gracePeriod = options.immediateHide ? 0 : 250;
                 this.timers.hideGrace = setTimeout(() => {
@@ -896,6 +877,10 @@
             }
         }
 
+        /**
+         * Attaches the UI wrap to the video's parent or body.
+         * @param {HTMLVideoElement} video - The target video
+         */
         attachUIToVideo(video) {
             this.ui.wrap.style.visibility = 'hidden';
             const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
@@ -927,7 +912,13 @@
             ['ended', 'play', 'pause', 'ratechange'].forEach(ev => video.addEventListener(ev, this));
         }
 
-        // ---------- positioning ----------
+        // ===========================================
+        // POSITIONING
+        // ===========================================
+
+        /**
+         * Positions the UI wrapper relative to the active video.
+         */
         positionOnVideo() {
             if (!this.activeVideo || !this.ui.wrap || this.isManuallyPositioned || this.dragData?.isDragging) return;
 
@@ -958,14 +949,13 @@
             this.ui.wrap.style.bottom = "auto";
         }
 
-        // ---------- video event handler (handleEvent pattern) ----------
+        // ===========================================
+        // EVENT DISPATCHER
+        // ===========================================
+
         handleEvent(event) {
             switch (event.type) {
                 case 'ended':
-                    if (this.settings.autoplayMode === 'loop') this.activeVideo?.play?.().catch(() => { });
-                    else if (this.settings.autoplayMode === 'next' && window.location.hostname.includes('youtube.com')) {
-                        document.querySelector('.ytp-next-button')?.click?.();
-                    }
                     this.onVideoEnded();
                     break;
 
@@ -976,7 +966,6 @@
                     break;
 
                 case 'ratechange': {
-                    // Save last_rate only if a user event happened recently (prevents site scripts from overwriting preference)
                     if (this.activeVideo && !this.isSpeedSliding && !this.sliderData?.isSliding) {
                         if (Date.now() - this.lastRealUserEvent < 5000) {
                             this.setLastRate(this.activeVideo.playbackRate);
@@ -989,11 +978,17 @@
             }
         }
 
-        // ---------- timeupdate logic (selfCorrect) ----------
+        // ===========================================
+        // LOGIC & LISTENERS
+        // ===========================================
+
+        /**
+         * Handles the timeupdate event for self-correction of playback rate.
+         */
         handleTimeUpdate() {
             if (!this.activeVideo) return;
 
-            // selfCorrect actually implemented + throttled
+
             if (!this.settings.selfCorrect) return;
             if (this.isSpeedSliding || this.sliderData?.isSliding) return;
 
@@ -1008,12 +1003,20 @@
             }
         }
 
+        /**
+         * Toggles the timeupdate listener for playback rate self-correction.
+         * @param {boolean} enable - Whether to enable or disable the listener.
+         */
         toggleTimeUpdateListener(enable) {
             document.body.removeEventListener('timeupdate', this.timeUpdateHandler, true);
             if (enable) document.body.addEventListener('timeupdate', this.timeUpdateHandler, true);
         }
 
-        // ---------- scroll parent ----------
+        /**
+         * Finds the nearest scrollable parent of an element.
+         * @param {HTMLElement} element - The element to start searching from.
+         * @returns {HTMLElement|Window} The scrollable parent or the window object if none found.
+         */
         findScrollableParent(element) {
             let parent = element.parentElement;
             while (parent) {
@@ -1026,7 +1029,13 @@
             return window;
         }
 
-        // ---------- observers ----------
+        // ===========================================
+        // OBSERVERS
+        // ===========================================
+
+        /**
+         * Sets up IntersectionObserver and MutationObserver for video elements.
+         */
         setupObservers() {
             this.intersectionObserver = new IntersectionObserver(e => this.handleIntersection(e), { threshold: 0.05 });
             document.querySelectorAll('video').forEach(v => this.intersectionObserver.observe(v));
@@ -1038,6 +1047,10 @@
             else this.mutationObserver.observe(document.body || document.documentElement, { childList: true, subtree: true });
         }
 
+        /**
+         * Handles IntersectionObserver entries to track visible videos.
+         * @param {IntersectionObserverEntry[]} entries - The intersection observer entries.
+         */
         handleIntersection(entries) {
             let needsReevaluation = false;
             entries.forEach(entry => {
@@ -1061,6 +1074,10 @@
             if (needsReevaluation) this.debouncedEvaluate();
         }
 
+        /**
+         * Handles MutationObserver mutations to detect added/removed video elements.
+         * @param {MutationRecord[]} mutations - The mutation records.
+         */
         handleMutation(mutations) {
             let videoAdded = false, activeVideoRemoved = false;
             let relevantMutation = false;
@@ -1100,12 +1117,18 @@
             }
         }
 
+        /**
+         * Sets up ResizeObserver and MutationObserver for the active video's position.
+         */
         setupVideoPositionObserver() {
             if (typeof ResizeObserver === 'undefined') return;
             this.videoResizeObserver = new ResizeObserver(() => this.throttledPositionOnVideo());
             this.videoMutationObserver = new MutationObserver(() => this.throttledPositionOnVideo());
         }
 
+        /**
+         * Throttles the UI positioning to prevent excessive recalculations.
+         */
         throttledPositionOnVideo() {
             if (this.isTicking) return;
             this.isTicking = true;
@@ -1117,12 +1140,18 @@
             });
         }
 
+        /**
+         * Handles viewport changes, ensuring the UI remains in view.
+         */
         onViewportChange() {
             if (this.isManuallyPositioned) return;
             this.ensureUIInViewport();
             if (this.activeVideo) this.throttledPositionOnVideo();
         }
 
+        /**
+         * Ensures the UI wrapper stays within the viewport bounds.
+         */
         ensureUIInViewport() {
             if (!this.ui.wrap || !this.ui.width || !this.ui.height) return;
             const EDGE = MobileVideoController.CONFIG.EDGE;
@@ -1149,6 +1178,9 @@
             this.ui.wrap.style.top = `${Math.round(clampedTopPage - parentTopPage)}px`;
         }
 
+        /**
+         * Updates the UI position during a drag operation.
+         */
         updateDragPosition() {
             if (!this.dragData.isDragging) { this.isTickingDrag = false; return; }
 
@@ -1174,6 +1206,11 @@
             this.isTickingDrag = false;
         }
 
+        /**
+         * Sets up long press functionality for a button to show a skip menu.
+         * @param {HTMLElement} btn - The button element.
+         * @param {number} dir - The direction for skipping (e.g., -1 for backward, 1 for forward).
+         */
         setupLongPress(btn, dir) {
             const clear = () => clearTimeout(this.timers.longPressSkip);
             btn.addEventListener("pointerdown", () => {
@@ -1189,6 +1226,9 @@
             ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => btn.addEventListener(ev, clear));
         }
 
+        /**
+     * Returns the current visual viewport or window dimensions.
+     */
         getViewportPageBounds() {
             const v = window.visualViewport;
             const leftPage = window.scrollX + (v ? v.offsetLeft : 0);
@@ -1198,7 +1238,14 @@
             return { leftPage, topPage, width, height };
         }
 
-        // ---------- UI show/hide ----------
+        // ===========================================
+        // VISIBILITY & MENUS
+        // ===========================================
+
+        /**
+         * Shows the main UI panel.
+         * @param {boolean} force - If true, ignores the user activity timeout.
+         */
         showUI(force = false) {
             if (!this.ui.wrap || !this.activeVideo) return;
             if (!this.ui.wrap.isConnected) this.attachUIToVideo(this.activeVideo);
@@ -1214,6 +1261,9 @@
             }
         }
 
+        /**
+         * Hides the main UI panel if no user interaction is detected.
+         */
         hideUI() {
             const isInteracting = this.dragData.isDragging || this.sliderData.isSliding || this.isSpeedSliding;
             if (this.activeVideo?.paused || isInteracting) return;
@@ -1227,12 +1277,18 @@
             }
         }
 
+        /**
+         * Displays the UI backdrop.
+         */
         showBackdrop() {
             this.ui.backdrop.style.display = 'block';
             this.ui.backdrop.style.pointerEvents = 'none';
             setTimeout(() => { if (this.ui.backdrop) this.ui.backdrop.style.pointerEvents = 'auto'; }, MobileVideoController.CONFIG.BACKDROP_POINTER_EVENTS_DELAY);
         }
 
+        /**
+         * Hides all active menus and the backdrop.
+         */
         hideAllMenus() {
             [this.ui.speedMenu, this.ui.skipMenu, this.ui.settingsMenu].forEach(el => {
                 if (el) el.style.display = 'none';
@@ -1241,6 +1297,11 @@
             this.showUI(true);
         }
 
+        /**
+         * Toggles the display of a given menu.
+         * @param {HTMLElement} menuEl - The menu element to toggle.
+         * @param {HTMLElement} anchorEl - The element to anchor the menu to.
+         */
         toggleMenu(menuEl, anchorEl) {
             if (getComputedStyle(menuEl).display !== 'none') {
                 this.hideAllMenus();
@@ -1253,6 +1314,11 @@
             }
         }
 
+        /**
+         * Positions a menu relative to an anchor element, ensuring it stays within the viewport.
+         * @param {HTMLElement} menuEl - The menu element to position.
+         * @param {HTMLElement} anchorEl - The element to anchor the menu to.
+         */
         placeMenu(menuEl, anchorEl) {
             const { w, h } = this.showAndMeasure(menuEl);
             const rect = anchorEl.getBoundingClientRect();
@@ -1275,7 +1341,10 @@
             menuEl.style.top = `${Math.round(top)}px`;
         }
 
-        // ---------- playback controls ----------
+        // ===========================================
+        // PLAYBACK CONTROLS
+        // ===========================================
+
         updateSpeedDisplay() {
             if (!this.activeVideo || !this.ui.speedBtn) return;
             if (this.activeVideo.ended) this.ui.speedBtn.textContent = 'Replay';
@@ -1283,6 +1352,9 @@
             else this.ui.speedBtn.textContent = `${this.activeVideo.playbackRate.toFixed(2)}`;
         }
 
+        /**
+         * Handles the video 'ended' event, resetting playback rate and updating display.
+         */
         onVideoEnded() {
             if (this.activeVideo) {
                 this.activeVideo.playbackRate = this.settings.defaultSpeed;
@@ -1291,6 +1363,9 @@
             }
         }
 
+        /**
+         * Handles play/pause button clicks, managing video playback state.
+         */
         handlePlayPauseClick() {
             if (!this.activeVideo) return;
 
@@ -1303,11 +1378,18 @@
             }
         }
 
+        /**
+         * Skips the video forward or backward by a configured amount.
+         * @param {number} dir - The direction to skip (e.g., -1 for backward, 1 for forward).
+         */
         doSkip(dir) {
             if (this.activeVideo) this.activeVideo.currentTime = this.clampTime(this.activeVideo.currentTime + dir * this.settings.skipSeconds);
         }
 
-        // ---------- fullscreen / guardian ----------
+        // ===========================================
+        // FULLSCREEN & DOM CHECKS
+        // ===========================================
+
         onFullScreenChange() {
             const container = this.getOverlayContainer();
             [this.ui.backdrop, this.ui.toast, this.ui.speedToast, this.ui.speedMenu, this.ui.skipMenu, this.ui.settingsMenu].forEach(el => {
@@ -1317,11 +1399,14 @@
             this.guardianCheck();
         }
 
+        /**
+         * Checks if the UI is still correctly attached to the video or its parent.
+         */
         guardianCheck() {
             if (!this.activeVideo || !this.ui.wrap) return;
             const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
 
-            // More robust than the old useDefaultPositioning logic
+
             const expectedParent = fsEl || this.findParentForVideo(this.activeVideo) || document.body;
 
             if (expectedParent && (!this.ui.wrap.isConnected || this.ui.wrap.parentElement !== expectedParent)) {
@@ -1329,6 +1414,11 @@
             }
         }
 
+        /**
+         * Finds the appropriate parent element for the video based on site config.
+         * @param {HTMLVideoElement} video - The video element.
+         * @returns {HTMLElement} The parent element.
+         */
         findParentForVideo(video) {
             const config = this.getSiteConfig();
             if (config?.parentSelector) return video.closest(config.parentSelector) || video.parentElement;
@@ -1336,93 +1426,30 @@
             return document.body;
         }
 
+        /**
+         * Applies the default speed to the video if it's currently at 1.0x.
+         * @param {HTMLVideoElement} v - The video element.
+         */
         applyDefaultSpeed(v) {
             if (v && this.settings.defaultSpeed !== 1.0 && Math.abs(v.playbackRate - 1.0) < 0.1) {
                 v.playbackRate = this.settings.defaultSpeed;
             }
         }
 
-        // ---------- audio booster / volume ----------
-        setupAudioBooster(video) {
-            if (!video || video.dataset.mvcAudioReady) return;
-            try {
-                const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                const audioCtx = new AudioCtx();
-                const source = audioCtx.createMediaElementSource(video);
-                const gainNode = audioCtx.createGain();
-                gainNode.connect(audioCtx.destination);
-                source.connect(gainNode);
 
-                const suspend = () => { if (audioCtx.state === 'running') audioCtx.suspend(); };
-                const resume = () => { if (audioCtx.state === 'suspended') audioCtx.resume(); };
 
-                video.addEventListener('pause', suspend);
-                video.addEventListener('play', resume);
+        // ===========================================
+        // MISC HELPERS
+        // ===========================================
 
-                if (video.paused) suspend();
-
-                this.audioContexts.set(video, {
-                    audioCtx,
-                    gainNode,
-                    cleanupListeners: () => {
-                        video.removeEventListener('pause', suspend);
-                        video.removeEventListener('play', resume);
-                        audioCtx.close();
-                    }
-                });
-                video.dataset.mvcAudioReady = "true";
-            } catch (e) { console.error("MVC: Could not set up audio booster.", e); }
-        }
-
-        updateVolume(value) {
-            if (!this.activeVideo) return;
-            const volumeValue = parseFloat(value);
-
-            if (this.boosterEnabled) {
-                const audio = this.audioContexts.get(this.activeVideo);
-                if (volumeValue <= 100) {
-                    this.activeVideo.volume = volumeValue / 100;
-                    if (audio) audio.gainNode.gain.value = 1;
-                } else {
-                    this.activeVideo.volume = 1;
-                    if (audio) audio.gainNode.gain.value = volumeValue / 100;
-                }
-            } else {
-                const safeVolume = this.clamp(volumeValue, 0, 100);
-                this.activeVideo.volume = safeVolume / 100;
-            }
-
-            this.settings.volume = volumeValue;
-            this.updateMuteButtonIcon();
-        }
-
-        toggleMute(volumeControl) {
-            if (this.settings.volume > 0) {
-                this.lastVolume = this.settings.volume;
-                this.updateVolume(0);
-            } else {
-                this.updateVolume(this.lastVolume || 100);
-            }
-            volumeControl.slider.value = this.settings.volume;
-            volumeControl.valueEl.textContent = `${Math.round(this.settings.volume)}%`;
-            this.saveSetting('volume', this.settings.volume, { immediate: true });
-        }
-
-        updateMuteButtonIcon() {
-            if (!this.ui.muteBtn) return;
-            while (this.ui.muteBtn.firstChild) this.ui.muteBtn.removeChild(this.ui.muteBtn.firstChild);
-            const muted = this.settings.volume <= 0;
-            const pathD = muted
-                ? "M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
-                : "M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z";
-            this.ui.muteBtn.appendChild(this.createSvgIcon(pathD));
-        }
-
-        // ---------- misc helpers ----------
         vibrate(ms = 10) {
             if (navigator.vibrate) try { navigator.vibrate(ms); } catch (e) { }
         }
 
+        /**
+         * Shows a temporary toast message.
+         * @param {string} message - The message to display.
+         */
         showToast(message) {
             if (!this.ui.toast) return;
             this.ui.toast.textContent = message;
@@ -1431,6 +1458,11 @@
             this.timers.toast = setTimeout(() => { this.ui.toast.style.opacity = '0'; }, 1500);
         }
 
+        /**
+         * Shows the speed toast, optionally updating its position.
+         * @param {string} message - The speed text.
+         * @param {boolean} updatePosition - Whether to reposition the toast.
+         */
         showSpeedToast(message, updatePosition = true) {
             if (!this.ui.speedToast) return;
             if (updatePosition) {
@@ -1464,7 +1496,13 @@
             return { w: r.width, h: r.height };
         }
 
-        // ---------- styles ----------
+        // ===========================================
+        // STYLES
+        // ===========================================
+
+        /**
+         * Injects the necessary CSS styles into the document head.
+         */
         injectStyles() {
             if (document.getElementById('mvc-styles')) return;
             if (!document.head) {
@@ -1499,11 +1537,9 @@
                 .mvc-settings-label { color:rgba(255,255,255,0.9); white-space:nowrap; font-size:14px; }
                 .mvc-settings-value { color:rgba(255,255,255,0.7); font-variant-numeric:tabular-nums; min-width:45px; text-align:right; font-size:14px; }
                 .mvc-settings-input { width:60px; background:rgba(255,255,255,.12); border:none; color:white; border-radius:8px; text-align:center; font-size:14px; padding:6px; }
-                .mvc-settings-select { background:rgba(255,255,255,.12); border:none; color:white; border-radius:8px; font-size:14px; padding:6px; flex-grow:1; outline:none; }
-                .mvc-settings-slider { width:100%; flex-grow:1; accent-color:#34c759; height:4px; border-radius:2px; }
                 .mvc-settings-btn { font-size:13px; padding:8px 14px; background:rgba(255,255,255,0.12); color:white; border:none; border-radius:8px; cursor:pointer; white-space:nowrap; transition:background .2s; }
                 .mvc-settings-btn:active { background:rgba(255,255,255,0.25); }
-                .mvc-mute-btn { padding:6px; background:rgba(255,255,255,0.12); flex-shrink:0; }
+
                 .mvc-settings-section-title { font-size:11px; font-weight:700; color:rgba(235, 235, 245, 0.6); text-transform:uppercase; letter-spacing:0.5px; margin-top:16px; margin-bottom:4px; padding:0 16px; text-align:left; border-top:none; cursor:default; }
             `;
             document.head.appendChild(style);
