@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         Mobile Video Controller
 // @namespace    https://github.com/quantavil/userscript
-// @version      22.0.0-fixed
+// @version      25.0.0
 // @description  User-friendly "Card" UI, persistent skip menu, and battery optimized.
 // @match        *://*/*
 // @grant        none
+// @license      MIT
 // @run-at       document-start
 // ==/UserScript==
 
@@ -32,8 +33,8 @@
             BACKDROP_POINTER_EVENTS_DELAY: 150,
             SPEED_TOAST_FADE_DELAY: 750,
             MUTATION_DEBOUNCE_MS: 800,
-            INTERSECTION_THROTTLE_MS: 300,
-            TIMEUPDATE_THROTTLE_MS: 2000,
+            INTERSECTION_THROTTLE_MS: 300,     // (kept; evaluate is already debounced)
+            TIMEUPDATE_THROTTLE_MS: 2000,       // now used for selfCorrect throttling
             SCROLL_END_TIMEOUT: 150,
             STORAGE_DEBOUNCE_MS: 2000,
             VISIBILITY_GUARDIAN_DELAY: 500
@@ -61,6 +62,10 @@
             this.boosterEnabled = false;
             this.lastRealUserEvent = 0;
 
+            this._viewportScheduled = false;
+            this._lastSelfCorrectCheck = 0;
+            this._destroyed = false;
+
             this.ui = {
                 wrap: null, panel: null, backdrop: null, toast: null, speedToast: null,
                 rewindBtn: null, speedBtn: null, forwardBtn: null, settingsBtn: null,
@@ -77,6 +82,54 @@
             this.boundScrollHandler = this.onViewportChange.bind(this);
             this.debouncedEvaluate = this.debounce(this.evaluateActive.bind(this), MobileVideoController.CONFIG.MUTATION_DEBOUNCE_MS);
 
+            // bindable handlers (so destroy() can remove them)
+            this._onResize = () => this.scheduleViewportChange();
+            this._onScroll = () => {
+                this.isScrolling = true;
+                clearTimeout(this.timers.scrollEnd);
+                this.timers.scrollEnd = setTimeout(() => { this.isScrolling = false; }, MobileVideoController.CONFIG.SCROLL_END_TIMEOUT);
+                this.scheduleViewportChange();
+            };
+            this._onVVResize = () => this.scheduleViewportChange();
+            this._onVVScroll = () => this.scheduleViewportChange();
+
+            this._onFullscreen = () => {
+                this.onFullScreenChange();
+                setTimeout(() => this.guardianCheck(), 500);
+            };
+            this._onVisibility = () => {
+                if (document.visibilityState === 'visible') {
+                    setTimeout(() => this.guardianCheck(), MobileVideoController.CONFIG.VISIBILITY_GUARDIAN_DELAY);
+                }
+            };
+
+            // Only count user events relevant to video/controller (prevents "scrolling anywhere" from resetting fade)
+            this._onUserEvent = (e) => {
+                if (!e.isTrusted) return;
+
+                if (e.type === 'keydown') {
+                    this.lastRealUserEvent = Date.now();
+                    this.showUI(true);
+                    return;
+                }
+
+                const t = e.target;
+                const inController = t?.closest?.('.mvc-ui-wrap, .mvc-menu');
+                const isVideo = (t?.tagName === 'VIDEO') || t?.closest?.('video');
+                if (inController || isVideo) {
+                    this.lastRealUserEvent = Date.now();
+                    this.showUI(true);
+                }
+            };
+
+            this._onBackdropClick = (e) => { e.preventDefault(); e.stopPropagation(); this.hideAllMenus(); };
+
+            this._onBodyPlayCapture = (e) => {
+                if (e.target.tagName === 'VIDEO' && e.target !== this.activeVideo) {
+                    setTimeout(() => this.debouncedEvaluate(), 50);
+                }
+            };
+
             this.loadSettings();
 
             if (document.readyState === 'loading') {
@@ -84,6 +137,66 @@
             } else {
                 this.safeInit();
             }
+        }
+
+        // ---------- lifecycle / scheduling ----------
+        scheduleViewportChange() {
+            if (this._destroyed) return;
+            if (this._viewportScheduled) return;
+            this._viewportScheduled = true;
+            requestAnimationFrame(() => {
+                this._viewportScheduled = false;
+                this.onViewportChange();
+            });
+        }
+
+        destroy() {
+            if (this._destroyed) return;
+            this._destroyed = true;
+
+            try { this.intersectionObserver?.disconnect(); } catch {}
+            try { this.mutationObserver?.disconnect(); } catch {}
+            try { this.videoResizeObserver?.disconnect(); } catch {}
+            try { this.videoMutationObserver?.disconnect(); } catch {}
+
+            window.removeEventListener('resize', this._onResize);
+            window.removeEventListener('scroll', this._onScroll);
+            if (window.visualViewport) {
+                window.visualViewport.removeEventListener('resize', this._onVVResize);
+                window.visualViewport.removeEventListener('scroll', this._onVVScroll);
+            }
+
+            ['fullscreenchange', 'webkitfullscreenchange'].forEach(ev =>
+                document.removeEventListener(ev, this._onFullscreen)
+            );
+            document.removeEventListener('visibilitychange', this._onVisibility);
+
+            ['pointerdown', 'keydown', 'touchstart'].forEach(ev =>
+                window.removeEventListener(ev, this._onUserEvent)
+            );
+
+            document.body?.removeEventListener('play', this._onBodyPlayCapture, true);
+            document.body?.removeEventListener('timeupdate', this.timeUpdateHandler, true);
+
+            if (this.currentScrollParent) {
+                this.currentScrollParent.removeEventListener('scroll', this.boundScrollHandler);
+                this.currentScrollParent = null;
+            }
+
+            if (this.activeVideo) {
+                ['ended', 'play', 'pause', 'ratechange'].forEach(ev => this.activeVideo.removeEventListener(ev, this));
+                const audioData = this.audioContexts.get(this.activeVideo);
+                if (audioData?.cleanupListeners) audioData.cleanupListeners();
+            }
+
+            [this.ui.wrap, this.ui.backdrop, this.ui.toast, this.ui.speedToast, this.ui.speedMenu, this.ui.skipMenu, this.ui.settingsMenu]
+                .forEach(el => el?.remove());
+
+            Object.values(this.timers).forEach(t => clearTimeout(t));
+            this.timers = {};
+
+            this.activeVideo = null;
+            try { this.visibleVideos.clear(); } catch {}
         }
 
         debounce(func, wait) {
@@ -111,36 +224,89 @@
             setTimeout(() => this.evaluateActive(), MobileVideoController.CONFIG.INITIAL_EVAL_DELAY);
         }
 
+        // ---------- config / storage ----------
         getSiteConfig() {
             const host = window.location.hostname;
             return MobileVideoController.SITE_CONFIGS[host] || null;
         }
 
         loadSettings() {
-            const getStored = (k, d) => {
+            const readRaw = (k) => {
                 try {
                     const v = localStorage.getItem(k);
-                    return v === null ? d : JSON.parse(v);
-                } catch (e) { return d; }
+                    return v === null ? null : JSON.parse(v);
+                } catch { return null; }
             };
+
+            // read newKey first, then legacyKey; if legacy used, migrate to newKey
+            const readCompat = (newKey, legacyKey, def) => {
+                const vNew = readRaw(newKey);
+                if (vNew !== null) return vNew;
+                const vOld = legacyKey ? readRaw(legacyKey) : null;
+                if (vOld !== null) {
+                    try { localStorage.setItem(newKey, JSON.stringify(vOld)); } catch {}
+                    return vOld;
+                }
+                return def;
+            };
+
+            const asNum = (v, def) => {
+                const n = typeof v === 'number' ? v : Number(v);
+                return Number.isFinite(n) ? n : def;
+            };
+            const asBool = (v, def) => {
+                if (typeof v === 'boolean') return v;
+                if (v === 'true') return true;
+                if (v === 'false') return false;
+                return def;
+            };
+            const asStr = (v, def) => (typeof v === 'string' ? v : def);
+
+            // IMPORTANT: saveSetting stores mvc_${key} (camelCase keys).
+            // These compat reads fix the old underscore keys and prevent "settings not persisting".
             this.settings = {
-                skipSeconds: getStored('mvc_skip_seconds', 10),
-                selfCorrect: getStored('mvc_self_correct', false),
-                autoplayMode: getStored('mvc_autoplayMode', 'off'),
-                defaultSpeed: getStored('mvc_default_speed', 1.0),
-                volume: getStored('mvc_volume', 100),
+                skipSeconds: asNum(readCompat('mvc_skipSeconds', 'mvc_skip_seconds', 10), 10),
+                selfCorrect: asBool(readCompat('mvc_selfCorrect', 'mvc_self_correct', false), false),
+                autoplayMode: asStr(readCompat('mvc_autoplayMode', null, 'off'), 'off'),
+                defaultSpeed: asNum(readCompat('mvc_defaultSpeed', 'mvc_default_speed', 1.0), 1.0),
+                volume: asNum(readCompat('mvc_volume', null, 100), 100),
+
+                // last_rate: fixed + persisted immediately on change (no stale debounce reads)
+                last_rate: asNum(readCompat('mvc_last_rate', 'mvc_lastRate', 1.0), 1.0),
             };
+
             this.lastVolume = this.settings.volume > 0 ? this.settings.volume : 100;
         }
 
-        saveSetting(key, val) {
+        saveSetting(key, val, opts = {}) {
             this.settings[key] = val;
+
+            const storageKey = `mvc_${key}`;
+
+            if (opts.immediate) {
+                try { localStorage.setItem(storageKey, JSON.stringify(val)); } catch (e) {}
+                return;
+            }
+
             clearTimeout(this.timers[`save_${key}`]);
             this.timers[`save_${key}`] = setTimeout(() => {
-                try { localStorage.setItem(`mvc_${key}`, JSON.stringify(val)); } catch (e) {}
+                try { localStorage.setItem(storageKey, JSON.stringify(val)); } catch (e) {}
             }, MobileVideoController.CONFIG.STORAGE_DEBOUNCE_MS);
         }
 
+        getPreferredRate() {
+            const r = Number(this.settings.last_rate);
+            if (Number.isFinite(r) && r > 0) return r;
+            return this.settings.defaultSpeed || 1.0;
+        }
+
+        setLastRate(rate, { save = true } = {}) {
+            const r = this.clamp(Number(rate) || 1.0, 0.1, 16);
+            this.settings.last_rate = r;
+            if (save) this.saveSetting('last_rate', r, { immediate: true });
+        }
+
+        // ---------- dom helpers ----------
         createEl(tag, className, props = {}) {
             const el = document.createElement(tag);
             if (className) el.className = className;
@@ -171,6 +337,11 @@
             return this.createSvgIcon(paths[name] || "");
         }
 
+        getOverlayContainer() {
+            return document.fullscreenElement || document.webkitFullscreenElement || document.body;
+        }
+
+        // ---------- UI creation ----------
         createMainUI() {
             this.ui.wrap = this.createEl('div', 'mvc-ui-wrap');
             this.ui.panel = this.createEl('div', 'mvc-panel');
@@ -179,7 +350,7 @@
             this.ui.speedToast = this.createEl('div', 'mvc-speed-toast');
 
             this.ui.wrap.style.zIndex = '2147483647';
-            document.body.append(this.ui.backdrop, this.ui.toast, this.ui.speedToast);
+            this.getOverlayContainer().append(this.ui.backdrop, this.ui.toast, this.ui.speedToast);
 
             const makeBtn = (content, title, extraClass) => {
                 const btn = this.createEl('button', `mvc-btn ${extraClass}`);
@@ -200,6 +371,7 @@
             this.ui.panel.append(this.ui.rewindBtn, this.ui.speedBtn, this.ui.forwardBtn, this.ui.settingsBtn);
             this.ui.wrap.append(this.ui.panel);
 
+            // measure
             document.body.appendChild(this.ui.wrap);
             this.ui.wrap.style.visibility = 'hidden';
             this.ui.wrap.style.display = 'block';
@@ -231,7 +403,7 @@
                 };
                 this.ui.skipMenu.appendChild(opt);
             });
-            document.body.appendChild(this.ui.skipMenu);
+            this.getOverlayContainer().appendChild(this.ui.skipMenu);
         }
 
         ensureSpeedMenu() {
@@ -250,8 +422,8 @@
                     if (spv === 0) this.handlePlayPauseClick();
                     else {
                         this.activeVideo.playbackRate = spv;
-                        this.saveSetting('last_rate', String(spv));
-                        if (this.activeVideo.paused) this.activeVideo.play();
+                        this.setLastRate(spv);
+                        if (this.activeVideo.paused) this.activeVideo.play().catch(() => {});
                     }
                     this.updateSpeedDisplay();
                     this.hideAllMenus();
@@ -269,13 +441,13 @@
                 const newRate = parseFloat(choice);
                 if (!isNaN(newRate) && newRate > 0 && newRate <= 16) {
                     this.activeVideo.playbackRate = newRate;
-                    this.saveSetting('last_rate', String(newRate));
-                    if (this.activeVideo.paused) this.activeVideo.play();
+                    this.setLastRate(newRate);
+                    if (this.activeVideo.paused) this.activeVideo.play().catch(() => {});
                     this.updateSpeedDisplay();
                 } else this.showToast("Invalid speed entered.");
             };
             this.ui.speedMenu.appendChild(customOpt);
-            document.body.appendChild(this.ui.speedMenu);
+            this.getOverlayContainer().appendChild(this.ui.speedMenu);
         }
 
         ensureSettingsMenu() {
@@ -305,17 +477,35 @@
             // --- A-B Loop ---
             addSection('A-B Loop');
             const abContainer = this.createEl('div', 'mvc-menu-opt mvc-settings-row');
+
             const setA = this.createEl('button', 'mvc-settings-btn', { textContent: 'Set A' });
+            setA.dataset.mvcAb = 'a';
+
             const setB = this.createEl('button', 'mvc-settings-btn', { textContent: 'Set B' });
+            setB.dataset.mvcAb = 'b';
+
             const toggleLoop = this.createEl('button', 'mvc-settings-btn', { textContent: 'Loop: Off' });
-            setA.onclick = () => { if (this.activeVideo) { this.abLoop.a = this.activeVideo.currentTime; setA.textContent = `A: ${this.formatTime(this.abLoop.a)}`; } };
-            setB.onclick = () => { if (this.activeVideo) { this.abLoop.b = this.activeVideo.currentTime; setB.textContent = `B: ${this.formatTime(this.abLoop.b)}`; } };
+            toggleLoop.dataset.mvcAb = 'toggle';
+
+            setA.onclick = () => {
+                if (this.activeVideo) {
+                    this.abLoop.a = this.activeVideo.currentTime;
+                    setA.textContent = `A: ${this.formatTime(this.abLoop.a)}`;
+                }
+            };
+            setB.onclick = () => {
+                if (this.activeVideo) {
+                    this.abLoop.b = this.activeVideo.currentTime;
+                    setB.textContent = `B: ${this.formatTime(this.abLoop.b)}`;
+                }
+            };
             toggleLoop.onclick = () => {
                 this.abLoop.active = !this.abLoop.active;
                 toggleLoop.textContent = `Loop: ${this.abLoop.active ? 'On' : 'Off'}`;
                 toggleLoop.style.backgroundColor = this.abLoop.active ? 'rgba(50,180,100,0.7)' : '';
                 this.toggleTimeUpdateListener(this.settings.selfCorrect);
             };
+
             abContainer.append(setA, setB, toggleLoop);
             this.ui.settingsMenu.appendChild(abContainer);
 
@@ -331,6 +521,7 @@
                 this.toggleTimeUpdateListener(this.settings.selfCorrect);
             };
             updateSelfCorrectText();
+
             const autoplayBtn = this.createEl('button', 'mvc-settings-btn', {});
             const autoplayModes = ['off', 'next', 'loop'];
             const updateAutoplayText = () => { autoplayBtn.textContent = `Autoplay: ${this.settings.autoplayMode.charAt(0).toUpperCase() + this.settings.autoplayMode.slice(1)}`; };
@@ -351,6 +542,7 @@
                 if (!isNaN(val) && val > 0 && val <= 16) this.saveSetting('defaultSpeed', val);
                 else speedInput.value = this.settings.defaultSpeed;
             };
+
             const skipLabel = this.createEl('label', 'mvc-settings-label', { textContent: 'Skip Time:' });
             const skipInput = this.createEl('input', 'mvc-settings-input', { type: 'number', value: this.settings.skipSeconds });
             skipInput.onchange = () => {
@@ -366,8 +558,13 @@
             const volumeControl = createSliderRow('Volume:', {
                 min: 0, max: 100, step: 1, value: this.settings.volume,
                 oninput: v => this.updateVolume(v),
-                onchange: v => { this.updateVolume(v); this.saveSetting('volume', v); }
+                onchange: v => {
+                    const n = Number(v);
+                    this.updateVolume(n);
+                    this.saveSetting('volume', Number.isFinite(n) ? n : this.settings.volume, { immediate: true });
+                }
             }, v => `${Math.round(v)}%`);
+
             this.ui.muteBtn = this.createEl('button', 'mvc-settings-btn mvc-mute-btn');
             this.updateMuteButtonIcon();
             this.ui.muteBtn.onclick = () => this.toggleMute(volumeControl);
@@ -398,12 +595,12 @@
             });
             closeBtn.onclick = () => {
                 this.hideAllMenus();
-                this.ui.wrap.style.display = 'none';
+                this.destroy(); // real cleanup
             };
             closeRow.appendChild(closeBtn);
             this.ui.settingsMenu.appendChild(closeRow);
 
-            document.body.appendChild(this.ui.settingsMenu);
+            this.getOverlayContainer().appendChild(this.ui.settingsMenu);
         }
 
         updateSkipButtonText() {
@@ -411,44 +608,28 @@
             this.ui.forwardBtn.title = `Forward ${this.settings.skipSeconds}s`;
         }
 
+        // ---------- event listeners ----------
         attachEventListeners() {
-            window.addEventListener('resize', () => this.onViewportChange(), { passive: true });
-            window.addEventListener('scroll', () => {
-                this.isScrolling = true;
-                clearTimeout(this.timers.scrollEnd);
-                this.timers.scrollEnd = setTimeout(() => { this.isScrolling = false; }, MobileVideoController.CONFIG.SCROLL_END_TIMEOUT);
-                this.onViewportChange();
-            }, { passive: true });
+            window.addEventListener('resize', this._onResize, { passive: true });
+            window.addEventListener('scroll', this._onScroll, { passive: true });
             if (window.visualViewport) {
-                window.visualViewport.addEventListener('resize', () => this.onViewportChange(), { passive: true });
-                window.visualViewport.addEventListener('scroll', () => this.onViewportChange(), { passive: true });
+                window.visualViewport.addEventListener('resize', this._onVVResize, { passive: true });
+                window.visualViewport.addEventListener('scroll', this._onVVScroll, { passive: true });
             }
 
             ['fullscreenchange', 'webkitfullscreenchange'].forEach(ev =>
-                document.addEventListener(ev, () => {
-                    this.onFullScreenChange();
-                    setTimeout(() => this.guardianCheck(), 500);
-                }, { passive: true })
+                document.addEventListener(ev, this._onFullscreen, { passive: true })
             );
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible') {
-                    setTimeout(() => this.guardianCheck(), MobileVideoController.CONFIG.VISIBILITY_GUARDIAN_DELAY);
-                }
-            }, { passive: true });
+            document.addEventListener('visibilitychange', this._onVisibility, { passive: true });
 
-            ['pointerdown', 'keydown', 'touchstart'].forEach(ev => window.addEventListener(ev, e => {
-                if (e.isTrusted) {
-                    this.lastRealUserEvent = Date.now();
-                    this.showUI(true);
-                }
-            }, { passive: true }));
-            this.ui.backdrop.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); this.hideAllMenus(); });
+            ['pointerdown', 'keydown', 'touchstart'].forEach(ev =>
+                window.addEventListener(ev, this._onUserEvent, { passive: true })
+            );
 
-            document.body.addEventListener('play', e => {
-                if (e.target.tagName === 'VIDEO' && e.target !== this.activeVideo) {
-                    setTimeout(() => this.debouncedEvaluate(), 50);
-                }
-            }, true);
+            this.ui.backdrop.addEventListener('click', this._onBackdropClick);
+
+            document.body.addEventListener('play', this._onBodyPlayCapture, true);
+
             this.toggleTimeUpdateListener(this.settings.selfCorrect);
             this.attachSpeedButtonListeners();
             this.attachPanelDragListeners();
@@ -462,7 +643,7 @@
             let settingsLongPressJustEnded = false;
             let preLongPressRate = 1;
 
-            this.ui.settingsBtn.onpointerdown = (e) => {
+            this.ui.settingsBtn.onpointerdown = () => {
                 isSettingsLongPress = false;
                 settingsLongPressJustEnded = false;
                 settingsTimer = setTimeout(() => {
@@ -507,6 +688,7 @@
                 this.ensureSettingsMenu();
                 this.toggleMenu(this.ui.settingsMenu, this.ui.settingsBtn);
             };
+
             this.setupLongPress(this.ui.rewindBtn, -1);
             this.setupLongPress(this.ui.forwardBtn, 1);
         }
@@ -531,11 +713,12 @@
                     toastPosition: toastPos
                 };
                 longPressActioned = false;
-                try { this.ui.speedBtn.setPointerCapture(e.pointerId); } catch (err) { }
+                try { this.ui.speedBtn.setPointerCapture(e.pointerId); } catch (err) {}
 
                 this.timers.longPress = setTimeout(() => {
                     if (this.activeVideo) {
                         this.activeVideo.playbackRate = 1.0;
+                        this.setLastRate(1.0);
                         this.showToast("Speed reset to 1.00x");
                         this.vibrate(MobileVideoController.CONFIG.LONG_PRESS_VIBRATE_MS);
                     }
@@ -553,7 +736,7 @@
                     this.sliderData.isSliding = true;
                     this.isSpeedSliding = true;
                     this.showUI(true);
-                    if (this.activeVideo.paused) this.activeVideo.play();
+                    if (this.activeVideo.paused) this.activeVideo.play().catch(() => {});
                     this.ui.speedBtn.style.transform = 'scale(1.1)';
                     Object.assign(this.ui.speedToast.style, this.sliderData.toastPosition);
                     this.vibrate();
@@ -566,19 +749,23 @@
                     }
                 }
             });
+
             this.ui.speedBtn.addEventListener("pointerup", e => {
                 e.stopPropagation();
                 clearTimeout(this.timers.longPress);
+
                 if (this.sliderData.isSliding && this.activeVideo) {
-                    this.saveSetting('last_rate', this.activeVideo.playbackRate.toString());
+                    this.setLastRate(this.activeVideo.playbackRate);
                     this.updateSpeedDisplay();
                 } else if (!longPressActioned) {
-                    if (this.ui.speedBtn.textContent === '▶︎' || this.ui.speedBtn.textContent === 'Replay') this.handlePlayPauseClick();
-                    else {
+                    if (this.ui.speedBtn.textContent === '▶︎' || this.ui.speedBtn.textContent === 'Replay') {
+                        this.handlePlayPauseClick();
+                    } else {
                         this.ensureSpeedMenu();
                         this.toggleMenu(this.ui.speedMenu, this.ui.speedBtn);
                     }
                 }
+
                 this.isSpeedSliding = false;
                 this.isTickingSlider = false;
                 this.sliderData = { isSliding: false };
@@ -594,9 +781,11 @@
         updateSpeedSlider() {
             if (!this.sliderData.isSliding || !this.activeVideo) { this.isTickingSlider = false; return; }
             this.showUI(true);
+
             const dy = this.sliderData.startY - this.sliderData.currentY;
             const delta = Math.sign(dy) * Math.pow(Math.abs(dy), MobileVideoController.CONFIG.SLIDER_POWER) * MobileVideoController.CONFIG.SLIDER_SENSITIVITY;
             let newRate = this.clamp(this.sliderData.startRate + delta, 0.1, 16);
+
             let isSnapped = false;
             for (const point of MobileVideoController.CONFIG.DEFAULT_SNAP_POINTS) {
                 const dist = Math.abs(newRate - point);
@@ -607,6 +796,7 @@
                     break;
                 }
             }
+
             this.activeVideo.playbackRate = newRate;
             this.showSpeedToast(`${newRate.toFixed(2)}x`, false);
             this.ui.speedBtn.classList.toggle('snapped', isSnapped);
@@ -617,6 +807,7 @@
         attachPanelDragListeners() {
             this.ui.panel.addEventListener("touchstart", e => e.stopPropagation(), { passive: true });
             this.ui.panel.addEventListener("touchmove", e => { e.preventDefault(); e.stopImmediatePropagation(); }, { passive: false });
+
             this.ui.panel.onpointerdown = e => {
                 e.stopPropagation();
                 this.wasDragging = false;
@@ -631,6 +822,7 @@
                     startY: e.clientY,
                     isDragging: false
                 };
+
                 const onDragMove = moveEvent => {
                     moveEvent.stopPropagation();
                     moveEvent.stopImmediatePropagation();
@@ -638,6 +830,7 @@
 
                     this.dragData.dx = moveEvent.clientX - this.dragData.startX;
                     this.dragData.dy = moveEvent.clientY - this.dragData.startY;
+
                     if (!this.dragData.isDragging && Math.sqrt(this.dragData.dx ** 2 + this.dragData.dy ** 2) > MobileVideoController.CONFIG.DRAG_THRESHOLD) {
                         this.dragData.isDragging = true;
                         this.ui.panel.style.cursor = 'grabbing';
@@ -649,6 +842,7 @@
                         this.isTickingDrag = true;
                     }
                 };
+
                 const onDragEnd = () => {
                     window.removeEventListener('pointermove', onDragMove);
                     window.removeEventListener('pointerup', onDragEnd);
@@ -667,6 +861,7 @@
             };
         }
 
+        // ---------- active video selection ----------
         evaluateActive() {
             if (this.activeVideo &&
                 this.isPlaying(this.activeVideo) &&
@@ -702,8 +897,8 @@
 
             if (this.activeVideo) {
                 ['ended', 'play', 'pause', 'ratechange'].forEach(ev => this.activeVideo.removeEventListener(ev, this));
-                this.videoResizeObserver.unobserve(this.activeVideo);
-                this.videoMutationObserver.disconnect();
+                this.videoResizeObserver?.unobserve(this.activeVideo);
+                this.videoMutationObserver?.disconnect();
                 if (this.currentScrollParent) {
                     this.currentScrollParent.removeEventListener('scroll', this.boundScrollHandler);
                     this.currentScrollParent = null;
@@ -715,6 +910,20 @@
             this.activeVideo = v;
             this.dragData = { isDragging: false };
 
+            // Reset A-B loop when switching videos (prevents looping wrong timestamps)
+            this.abLoop = { a: null, b: null, active: false };
+            this.toggleTimeUpdateListener(this.settings.selfCorrect);
+
+            if (this.ui.settingsMenu) {
+                this.ui.settingsMenu.querySelector('[data-mvc-ab="a"]')?.replaceChildren(document.createTextNode('Set A'));
+                this.ui.settingsMenu.querySelector('[data-mvc-ab="b"]')?.replaceChildren(document.createTextNode('Set B'));
+                const t = this.ui.settingsMenu.querySelector('[data-mvc-ab="toggle"]');
+                if (t) {
+                    t.replaceChildren(document.createTextNode('Loop: Off'));
+                    t.style.backgroundColor = '';
+                }
+            }
+
             if (v) {
                 this.attachUIToVideo(v);
                 const scrollParent = this.findScrollableParent(v);
@@ -722,8 +931,8 @@
                     this.currentScrollParent = scrollParent;
                     this.currentScrollParent.addEventListener('scroll', this.boundScrollHandler, { passive: true });
                 }
-                this.videoResizeObserver.observe(v);
-                this.videoMutationObserver.observe(v.parentElement || v, { attributes: true, subtree: true });
+                this.videoResizeObserver?.observe(v);
+                this.videoMutationObserver?.observe(v.parentElement || v, { attributes: true, subtree: true });
                 this.applyDefaultSpeed(v);
                 this.updateVolume(this.settings.volume);
                 if (this.boosterEnabled) this.setupAudioBooster(v);
@@ -743,6 +952,7 @@
             let parent = fsEl;
             if (!parent && siteConfig?.parentSelector) parent = video.closest(siteConfig.parentSelector);
             if (siteConfig?.attachToParent) parent = video.parentElement;
+
             if (parent && parent.isConnected) {
                 if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
                 parent.appendChild(this.ui.wrap);
@@ -761,14 +971,15 @@
                 this.showUI(true);
                 this.updateSpeedDisplay();
             }, 50);
+
             ['ended', 'play', 'pause', 'ratechange'].forEach(ev => video.addEventListener(ev, this));
         }
 
+        // ---------- positioning ----------
         positionOnVideo() {
             if (!this.activeVideo || !this.ui.wrap || this.isManuallyPositioned || this.dragData?.isDragging) return;
 
             this.ui.wrap.style.transform = '';
-
             const vr = this.activeVideo.getBoundingClientRect();
 
             const desiredLeftPage = vr.left + window.scrollX + vr.width - this.ui.width - MobileVideoController.CONFIG.DEFAULT_RIGHT_OFFSET;
@@ -780,8 +991,10 @@
             const maxPageX = v.leftPage + v.width - this.ui.width - MobileVideoController.CONFIG.EDGE;
             const minPageY = v.topPage + MobileVideoController.CONFIG.EDGE;
             const maxPageY = v.topPage + v.height - this.ui.height - MobileVideoController.CONFIG.EDGE;
+
             const clampedLeftPage = this.clamp(desiredLeftPage, minPageX, maxPageX);
             const clampedTopPage = this.isScrolling ? desiredTopPage : this.clamp(desiredTopPage, minPageY, maxPageY);
+
             const parent = this.ui.wrap.parentElement || document.body;
             const parentRect = parent.getBoundingClientRect();
             const parentLeftPage = parentRect.left + window.scrollX;
@@ -793,31 +1006,61 @@
             this.ui.wrap.style.bottom = "auto";
         }
 
+        // ---------- video event handler (handleEvent pattern) ----------
         handleEvent(event) {
             switch (event.type) {
                 case 'ended':
-                    if (this.settings.autoplayMode === 'loop') this.activeVideo?.play();
-                    else if (this.settings.autoplayMode === 'next' && window.location.hostname.includes('youtube.com')) document.querySelector('.ytp-next-button')?.click();
+                    if (this.settings.autoplayMode === 'loop') this.activeVideo?.play?.().catch(() => {});
+                    else if (this.settings.autoplayMode === 'next' && window.location.hostname.includes('youtube.com')) {
+                        document.querySelector('.ytp-next-button')?.click?.();
+                    }
                     this.onVideoEnded();
                     break;
+
                 case 'play':
                 case 'pause':
                     this.updateSpeedDisplay();
                     this.showUI();
                     break;
-                case 'ratechange':
+
+                case 'ratechange': {
+                    // Save last_rate only if a user event happened recently (prevents site scripts from overwriting preference)
+                    if (this.activeVideo && !this.isSpeedSliding && !this.sliderData?.isSliding) {
+                        if (Date.now() - this.lastRealUserEvent < 5000) {
+                            this.setLastRate(this.activeVideo.playbackRate);
+                        }
+                    }
                     this.updateSpeedDisplay();
                     if (!this.isSpeedSliding) this.showUI();
                     break;
+                }
             }
         }
 
-        handleTimeUpdate(e) {
+        // ---------- timeupdate logic (A-B loop + selfCorrect) ----------
+        handleTimeUpdate() {
             if (!this.activeVideo) return;
+
+            // A-B loop must stay responsive
             if (this.abLoop.active && this.abLoop.a != null && this.abLoop.b != null) {
                 if (this.activeVideo.currentTime >= this.abLoop.b || this.activeVideo.currentTime < this.abLoop.a) {
                     this.activeVideo.currentTime = this.abLoop.a;
+                    return;
                 }
+            }
+
+            // selfCorrect actually implemented + throttled
+            if (!this.settings.selfCorrect) return;
+            if (this.isSpeedSliding || this.sliderData?.isSliding) return;
+
+            const now = performance.now();
+            if (now - this._lastSelfCorrectCheck < MobileVideoController.CONFIG.TIMEUPDATE_THROTTLE_MS) return;
+            this._lastSelfCorrectCheck = now;
+
+            const desired = this.getPreferredRate();
+            const current = this.activeVideo.playbackRate;
+            if (Math.abs(current - desired) > 0.01 && !this.activeVideo.ended) {
+                this.activeVideo.playbackRate = desired;
             }
         }
 
@@ -826,6 +1069,7 @@
             if (enable || this.abLoop.active) document.body.addEventListener('timeupdate', this.timeUpdateHandler, true);
         }
 
+        // ---------- scroll parent ----------
         findScrollableParent(element) {
             let parent = element.parentElement;
             while (parent) {
@@ -838,6 +1082,7 @@
             return window;
         }
 
+        // ---------- observers ----------
         setupObservers() {
             this.intersectionObserver = new IntersectionObserver(e => this.handleIntersection(e), { threshold: 0.05 });
             document.querySelectorAll('video').forEach(v => this.intersectionObserver.observe(v));
@@ -875,6 +1120,7 @@
         handleMutation(mutations) {
             let videoAdded = false, activeVideoRemoved = false;
             let relevantMutation = false;
+
             mutations.forEach(mutation => {
                 if (mutation.addedNodes.length) {
                     mutation.addedNodes.forEach(node => {
@@ -901,6 +1147,7 @@
                     });
                 }
             });
+
             if (!relevantMutation) return;
 
             if (activeVideoRemoved) this.setActiveVideo(null);
@@ -910,6 +1157,7 @@
         }
 
         setupVideoPositionObserver() {
+            if (typeof ResizeObserver === 'undefined') return;
             this.videoResizeObserver = new ResizeObserver(() => this.throttledPositionOnVideo());
             this.videoMutationObserver = new MutationObserver(() => this.throttledPositionOnVideo());
         }
@@ -964,6 +1212,7 @@
             const parentRect = parent.getBoundingClientRect();
             const parentLeftPage = parentRect.left + window.scrollX;
             const parentTopPage = parentRect.top + window.scrollY;
+
             let newPageX = this.dragData.startPageX + this.dragData.dx;
             let newPageY = this.dragData.startPageY + this.dragData.dy;
 
@@ -972,6 +1221,7 @@
             const maxPageX = v.leftPage + v.width - this.ui.width - MobileVideoController.CONFIG.EDGE;
             const minPageY = v.topPage + MobileVideoController.CONFIG.EDGE;
             const maxPageY = v.topPage + v.height - this.ui.height - MobileVideoController.CONFIG.EDGE;
+
             newPageX = this.clamp(newPageX, minPageX, maxPageX);
             newPageY = this.clamp(newPageY, minPageY, maxPageY);
 
@@ -1004,6 +1254,7 @@
             return { leftPage, topPage, width, height };
         }
 
+        // ---------- UI show/hide ----------
         showUI(force = false) {
             if (!this.ui.wrap || !this.activeVideo) return;
             if (!this.ui.wrap.isConnected) this.attachUIToVideo(this.activeVideo);
@@ -1014,7 +1265,6 @@
             clearTimeout(this.timers.hide);
 
             const isInteracting = this.dragData.isDragging || this.sliderData.isSliding || this.isSpeedSliding;
-
             if (!isInteracting && !this.activeVideo.paused) {
                 this.timers.hide = setTimeout(() => this.hideUI(), MobileVideoController.CONFIG.UI_FADE_TIMEOUT);
             }
@@ -1073,35 +1323,38 @@
             const v = window.visualViewport;
             const viewportWidth = v ? v.width : window.innerWidth;
             const viewportHeight = v ? v.height : window.innerHeight;
+
             left = this.clamp(left, MobileVideoController.CONFIG.EDGE, viewportWidth - w - MobileVideoController.CONFIG.EDGE);
             top = this.clamp(top, MobileVideoController.CONFIG.EDGE, viewportHeight - h - MobileVideoController.CONFIG.EDGE);
+
             menuEl.style.left = `${Math.round(left)}px`;
             menuEl.style.top = `${Math.round(top)}px`;
         }
 
+        // ---------- playback controls ----------
         updateSpeedDisplay() {
             if (!this.activeVideo || !this.ui.speedBtn) return;
             if (this.activeVideo.ended) this.ui.speedBtn.textContent = 'Replay';
             else if (this.activeVideo.paused) this.ui.speedBtn.textContent = '▶︎';
             else this.ui.speedBtn.textContent = `${this.activeVideo.playbackRate.toFixed(2)}`;
-            this.saveSetting('last_rate', String(this.activeVideo.playbackRate));
         }
 
         onVideoEnded() {
             if (this.activeVideo) {
                 this.activeVideo.playbackRate = this.settings.defaultSpeed;
-                this.saveSetting('last_rate', String(this.settings.defaultSpeed));
+                this.setLastRate(this.settings.defaultSpeed);
                 this.updateSpeedDisplay();
             }
         }
 
         handlePlayPauseClick() {
             if (!this.activeVideo) return;
+
             if (this.activeVideo.paused || this.activeVideo.ended) {
-                this.activeVideo.playbackRate = parseFloat(localStorage.getItem('mvc_last_rate')) || this.settings.defaultSpeed;
+                this.activeVideo.playbackRate = this.getPreferredRate();
                 this.activeVideo.play().catch(() => {});
             } else {
-                this.saveSetting('last_rate', this.activeVideo.playbackRate.toString());
+                this.setLastRate(this.activeVideo.playbackRate);
                 this.activeVideo.pause();
             }
         }
@@ -1110,9 +1363,9 @@
             if (this.activeVideo) this.activeVideo.currentTime = this.clampTime(this.activeVideo.currentTime + dir * this.settings.skipSeconds);
         }
 
+        // ---------- fullscreen / guardian ----------
         onFullScreenChange() {
-            const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-            const container = fsEl || document.body;
+            const container = this.getOverlayContainer();
             [this.ui.backdrop, this.ui.toast, this.ui.speedToast, this.ui.speedMenu, this.ui.skipMenu, this.ui.settingsMenu].forEach(el => {
                 if (el) container.appendChild(el);
             });
@@ -1123,9 +1376,9 @@
         guardianCheck() {
             if (!this.activeVideo || !this.ui.wrap) return;
             const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-            const siteConfig = this.getSiteConfig();
-            const isSimpleSite = siteConfig && !siteConfig.useDefaultPositioning;
-            const expectedParent = fsEl ? fsEl : (isSimpleSite ? this.findParentForVideo(this.activeVideo) : document.body);
+
+            // More robust than the old useDefaultPositioning logic
+            const expectedParent = fsEl || this.findParentForVideo(this.activeVideo) || document.body;
 
             if (expectedParent && (!this.ui.wrap.isConnected || this.ui.wrap.parentElement !== expectedParent)) {
                 this.attachUIToVideo(this.activeVideo);
@@ -1135,7 +1388,8 @@
         findParentForVideo(video) {
             const config = this.getSiteConfig();
             if (config?.parentSelector) return video.closest(config.parentSelector) || video.parentElement;
-            return video.parentElement;
+            if (config?.attachToParent) return video.parentElement;
+            return document.body;
         }
 
         applyDefaultSpeed(v) {
@@ -1144,6 +1398,7 @@
             }
         }
 
+        // ---------- audio booster / volume ----------
         setupAudioBooster(video) {
             if (!video || video.dataset.mvcAudioReady) return;
             try {
@@ -1178,6 +1433,7 @@
         updateVolume(value) {
             if (!this.activeVideo) return;
             const volumeValue = parseFloat(value);
+
             if (this.boosterEnabled) {
                 const audio = this.audioContexts.get(this.activeVideo);
                 if (volumeValue <= 100) {
@@ -1191,6 +1447,7 @@
                 const safeVolume = this.clamp(volumeValue, 0, 100);
                 this.activeVideo.volume = safeVolume / 100;
             }
+
             this.settings.volume = volumeValue;
             this.updateMuteButtonIcon();
         }
@@ -1204,7 +1461,7 @@
             }
             volumeControl.slider.value = this.settings.volume;
             volumeControl.valueEl.textContent = `${Math.round(this.settings.volume)}%`;
-            this.saveSetting('volume', this.settings.volume);
+            this.saveSetting('volume', this.settings.volume, { immediate: true });
         }
 
         updateMuteButtonIcon() {
@@ -1217,6 +1474,7 @@
             this.ui.muteBtn.appendChild(this.createSvgIcon(pathD));
         }
 
+        // ---------- misc helpers ----------
         formatTime(sec) {
             return new Date(sec * 1000).toISOString().slice(14, -5);
         }
@@ -1266,9 +1524,13 @@
             return { w: r.width, h: r.height };
         }
 
+        // ---------- styles ----------
         injectStyles() {
             if (document.getElementById('mvc-styles')) return;
-            if (!document.head) return;
+            if (!document.head) {
+                setTimeout(() => this.injectStyles(), 50);
+                return;
+            }
             const style = document.createElement('style');
             style.id = 'mvc-styles';
             style.textContent = `
@@ -1309,5 +1571,4 @@
     }
 
     new MobileVideoController();
-
 })();
