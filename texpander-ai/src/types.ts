@@ -1,7 +1,3 @@
-// ─────────────────────────────────────────────────────────────
-// Core Types
-// ─────────────────────────────────────────────────────────────
-
 export interface HotkeySpec {
   code: string
   shift?: boolean
@@ -10,47 +6,29 @@ export interface HotkeySpec {
   meta?: boolean
 }
 
-export interface GeminiConfig {
-  readonly endpoint: string
-  readonly model: string
-  readonly temperature: number
-  readonly timeoutMs: number
-  readonly maxInputChars: number
-}
-
-export interface ToastConfig {
-  readonly defaultMs: number
-  readonly shortMs: number
-}
-
-export interface UIConfig {
-  readonly menuWidth: number
-  readonly menuHeight: number
-  readonly previewMaxChars: number
-  readonly previewExpandedChars: number
-  readonly spacing: { readonly sm: number; readonly md: number }
-  readonly inlinePrompts: number
-}
-
 export interface Config {
-  readonly trigger: Readonly<HotkeySpec>
-  readonly palette: Readonly<HotkeySpec>
-  readonly aiMenu: Readonly<HotkeySpec>
+  readonly trigger: HotkeySpec
+  readonly palette: HotkeySpec
+  readonly aiMenu: HotkeySpec
   readonly maxAbbrevLen: number
   readonly styleId: string
-  readonly toast: ToastConfig
   readonly clipboardReadTimeoutMs: number
   readonly searchDebounceMs: number
-  readonly gemini: GeminiConfig
-  readonly ui: UIConfig
-}
-
-export interface StoreKeys {
-  readonly dict: string
-  readonly keys: string
-  readonly apiKey: string
-  readonly customPrompts: string
-  readonly disabledBuiltins: string
+  readonly toast: { readonly defaultMs: number; readonly shortMs: number }
+  readonly gemini: {
+    readonly endpoint: string
+    readonly model: string
+    readonly temperature: number
+    readonly timeoutMs: number
+    readonly maxInputChars: number
+  }
+  readonly ui: {
+    readonly menuWidth: number
+    readonly menuHeight: number
+    readonly previewMaxChars: number
+    readonly spacing: { readonly sm: number; readonly md: number }
+    readonly inlinePrompts: number
+  }
 }
 
 export interface AIPrompt {
@@ -70,15 +48,8 @@ export interface State {
   lastEditableEl: HTMLElement | null
   paletteIndex: number
   aiMenuIndex: number
-  hotkeys: {
-    palette: HotkeySpec
-    aiMenu: HotkeySpec
-  }
+  hotkeys: { palette: HotkeySpec; aiMenu: HotkeySpec }
 }
-
-// ─────────────────────────────────────────────────────────────
-// Editor Types
-// ─────────────────────────────────────────────────────────────
 
 export interface InputContext {
   readonly kind: 'input'
@@ -104,10 +75,6 @@ export interface TemplateResult {
   readonly text: string
   readonly cursor: number
 }
-
-// ─────────────────────────────────────────────────────────────
-// GM Types
-// ─────────────────────────────────────────────────────────────
 
 export interface GMRequestOptions {
   method?: 'GET' | 'POST'

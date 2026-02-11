@@ -1,81 +1,48 @@
-import type { GMRequestOptions } from './types'
 import { CONFIG, state, GMX } from './config'
 
-// ─────────────────────────────────────────────────────────────
-// Gemini API
-// ─────────────────────────────────────────────────────────────
-
-function cleanAIResponse(s: string): string {
-  if (!s) return s
+function cleanResponse(s: string): string {
   let out = s.trim()
-
-  const codeBlockMatch = out.match(/^```\w*\n?([\s\S]*?)\n?```$/)
-  if (codeBlockMatch) out = codeBlockMatch[1].trim()
-
-  if ((out.startsWith('"') && out.endsWith('"')) ||
-      (out.startsWith("'") && out.endsWith("'"))) {
+  const m = out.match(/^```\w*\n?([\s\S]*?)\n?```$/)
+  if (m) out = m[1].trim()
+  if ((out[0] === '"' && out.at(-1) === '"') || (out[0] === "'" && out.at(-1) === "'"))
     out = out.slice(1, -1)
-  }
-
   return out
 }
 
-function getApiKeys(): string[] {
-  return (state.apiKey || '')
-    .split(';')
-    .map(k => k.trim())
-    .filter(Boolean)
-}
-
-function buildRequestOptions(key: string, prompt: string): GMRequestOptions {
-  return {
-    method: 'POST',
-    url: `${CONFIG.gemini.endpoint}/${CONFIG.gemini.model}:generateContent?key=${encodeURIComponent(key)}`,
-    headers: { 'Content-Type': 'application/json' },
-    data: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: CONFIG.gemini.temperature },
-    }),
-  }
-}
-
 export async function callGemini(systemPrompt: string, userText: string): Promise<string | null> {
-  const keys = getApiKeys()
+  const keys = state.apiKey.split(';').map(k => k.trim()).filter(Boolean)
   if (!keys.length) return null
 
-  const truncated = userText.slice(0, CONFIG.gemini.maxInputChars)
-  const prompt = `${systemPrompt}\n\nText:\n${truncated}`
+  const prompt = `${systemPrompt}\n\nText:\n${userText.slice(0, CONFIG.gemini.maxInputChars)}`
+  const { endpoint, model, temperature } = CONFIG.gemini
 
   for (let i = 0; i < keys.length; i++) {
     const idx = (state.apiKeyIndex + i) % keys.length
     try {
-      const res = await GMX.request(buildRequestOptions(keys[idx], prompt))
-
+      const res = await GMX.request({
+        method: 'POST',
+        url: `${endpoint}/${model}:generateContent?key=${encodeURIComponent(keys[idx])}`,
+        headers: { 'Content-Type': 'application/json' },
+        data: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature },
+        }),
+      })
       if (res.status >= 200 && res.status < 300) {
-        const json = JSON.parse(res.text)
-        const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-        if (text) {
-          // Advance to next key for actual rotation
-          state.apiKeyIndex = (idx + 1) % keys.length
-          return cleanAIResponse(text)
-        }
+        const text = JSON.parse(res.text).candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+        if (text) { state.apiKeyIndex = (idx + 1) % keys.length; return cleanResponse(text) }
       }
-    } catch {
-      continue
-    }
+    } catch { continue }
   }
   return null
 }
 
 export async function verifyApiKey(key: string): Promise<boolean> {
   try {
-    const res = await GMX.request({
+    return (await GMX.request({
       method: 'GET',
       url: `${CONFIG.gemini.endpoint}?key=${encodeURIComponent(key)}`,
       timeout: 5000
-    })
-    return res.status < 300
-  } catch {
-    return false
-  }
+    })).status < 300
+  } catch { return false }
 }
