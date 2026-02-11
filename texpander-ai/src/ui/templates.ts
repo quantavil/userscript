@@ -65,7 +65,7 @@ export const settingsHTML = (
 `
 
 // ─────────────────────────────────────────────────────────────
-// Prompt Item Templates
+// Prompt Item Templates — p.icon NOW ESCAPED
 // ─────────────────────────────────────────────────────────────
 
 export const promptItemHTML = (
@@ -80,11 +80,11 @@ export const promptItemHTML = (
     enabled ? '' : 'disabled'
   ].filter(Boolean).join(' ')
 
-  const dataAttr = isBuiltin ? `data-id="${p.id}"` : `data-idx="${idx}"`
+  const dataAttr = isBuiltin ? `data-id="${escHtml(p.id)}"` : `data-idx="${idx}"`
 
   return `
     <div class="${classes}" ${dataAttr} role="listitem">
-      <span class="icon">${p.icon || '⚡'}</span>
+      <span class="icon">${escHtml(p.icon || '⚡')}</span>
       <span class="label">${escHtml(p.label)}</span>
       <span class="prompt-text">${escHtml(p.prompt)}</span>
       <div class="actions">

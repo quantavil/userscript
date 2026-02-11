@@ -186,7 +186,19 @@ export function makeEditor(ctx: EditContext | null): Editor | null {
       if (!insertedWithExec) {
         const r = sel.getRangeAt(0)
         r.deleteContents()
-        r.insertNode(document.createTextNode(text))
+        const textNode = document.createTextNode(text)
+        r.insertNode(textNode)
+        r.setStartAfter(textNode)
+        r.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(r)
+
+        root.dispatchEvent(new InputEvent('beforeinput', {
+          bubbles: true,
+          cancelable: true,
+          inputType: 'insertText',
+          data: text,
+        }))
       }
       dispatchInput(root, text)
     },
@@ -272,44 +284,50 @@ function extractPrecedingText(root: HTMLElement, range: Range, maxLength: number
   let node: Node | null = range.startContainer
   let offset = range.startOffset
 
-  // If starting in an element, find the text node before that offset
-  if (node.nodeType === 1) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+
+  if (node.nodeType === Node.ELEMENT_NODE) {
     if (offset > 0) {
       const child = node.childNodes[offset - 1]
-      // Use walker to find last text node in this child
-      const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT)
+      // Find last text node within this child
+      walker.currentNode = child
       let last: Node | null = null
-      let curr: Node | null
-      while ((curr = walker.nextNode())) last = curr
+      if (child.nodeType === Node.TEXT_NODE) {
+        last = child
+      } else {
+        let curr: Node | null
+        while ((curr = walker.nextNode())) {
+          if (!child.contains(curr)) break
+          last = curr
+        }
+      }
 
       if (last) {
         node = last
-        offset = node.nodeValue?.length ?? 0
-      } else if (child.nodeType === 3) {
-        node = child
-        offset = child.nodeValue?.length ?? 0
+        offset = last.nodeValue?.length ?? 0
+        walker.currentNode = last
       } else {
         node = null
       }
     } else {
-      // Offset 0 in element, finding previous node from here is hard without walker from root or parent
-      // But we can just start walking back from the element itself
-    }
-  }
-
-  // Set up walker to go backwards
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  if (node) {
-    walker.currentNode = node
-
-    // Get text from current node up to offset
-    if (node.nodeType === 3) {
-      const val = node.nodeValue || ''
-      text = val.slice(0, offset)
+      // Offset 0 in element — walk backward from this position
+      walker.currentNode = node
+      const prev = walker.previousNode()
+      if (prev) {
+        node = prev
+        offset = prev.nodeValue?.length ?? 0
+      } else {
+        return '' // at very start of root
+      }
     }
   } else {
-    // Fallback: try to find startContainer in walker
-    walker.currentNode = range.startContainer
+    // Text node — position walker here
+    walker.currentNode = node
+  }
+
+  // Get text from current node up to offset
+  if (node?.nodeType === Node.TEXT_NODE) {
+    text = (node.nodeValue || '').slice(0, offset)
   }
 
   // Walk backwards until we have enough text
@@ -320,63 +338,106 @@ function extractPrecedingText(root: HTMLElement, range: Range, maxLength: number
   }
 
   return text.slice(-maxLength)
-} function moveRangeBack(range: Range, n: number, root: HTMLElement): void {
+}
+
+function moveRangeBack(range: Range, n: number, root: HTMLElement): void {
+  if (n <= 0) return
+
   let remaining = n
-
-  if (remaining <= 0) return
-
-  // Start from current position
   let node: Node | null = range.startContainer
   let offset = range.startOffset
 
-  while (remaining > 0 && node) {
-    // If in text node, move offset back
-    if (node.nodeType === 3) {
+  // Create walker ONCE outside the loop
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+
+  // Position walker at current node
+  if (node.nodeType === Node.TEXT_NODE) {
+    walker.currentNode = node
+  } else if (offset > 0 && node.childNodes[offset - 1]) {
+    // Find deepest last text node within the child before offset
+    walker.currentNode = node.childNodes[offset - 1]
+    let last: Node | null = walker.currentNode
+    if (last.nodeType !== Node.TEXT_NODE) {
+      last = walker.nextNode()
+      // Navigate to the last text node within that subtree
+      while (walker.nextNode()) {
+        if (!node.childNodes[offset - 1].contains(walker.currentNode)) break
+        last = walker.currentNode
+      }
+    }
+    if (last?.nodeType === Node.TEXT_NODE) {
+      node = last
+      offset = last.nodeValue?.length ?? 0
+      walker.currentNode = last
+    } else {
+      range.setStart(root, 0)
+      return
+    }
+  }
+
+  while (remaining > 0) {
+    if (node?.nodeType === Node.TEXT_NODE) {
       const move = Math.min(offset, remaining)
       offset -= move
       remaining -= move
 
       if (remaining === 0) {
         range.setStart(node, offset)
-        break
+        return
       }
     }
 
-    // Need to move to previous node
-    const walker = document.createTreeWalker(
-      root,
-      NodeFilter.SHOW_TEXT,
-      null
-    )
-    walker.currentNode = node
-
-    // Move to previous text node
+    // Reuse walker — O(1) per step
     const prev = walker.previousNode()
     if (!prev) {
-      // Reached start of root
       range.setStart(root, 0)
-      break
+      return
     }
 
     node = prev
-    offset = node.nodeValue?.length ?? 0
+    offset = prev.nodeValue?.length ?? 0
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Token Extraction (Synchronous — for pre-check before preventDefault)
+// ─────────────────────────────────────────────────────────────
 
+export function peekToken(ctx: EditContext): string | null {
+  if (ctx.kind === 'input') {
+    if (ctx.start !== ctx.end) return null
+    const text = ctx.el.value.slice(0, ctx.start)
+    let i = text.length
+    while (i > 0 && isWordChar(text[i - 1]) && text.length - i < CONFIG.maxAbbrevLen) i--
+    const token = text.slice(i)
+    return token && token.length <= CONFIG.maxAbbrevLen ? token : null
+  }
+
+  const sel = window.getSelection?.()
+  if (!sel?.rangeCount || !sel.isCollapsed) return null
+
+  const r = sel.getRangeAt(0)
+  const prefix = extractPrecedingText(ctx.root, r, CONFIG.maxAbbrevLen)
+
+  let i = prefix.length
+  while (i > 0 && isWordChar(prefix[i - 1])) i--
+  const token = prefix.slice(i)
+  return token && token.length <= CONFIG.maxAbbrevLen ? token : null
+}
 
 // ─────────────────────────────────────────────────────────────
 // Abbreviation Expansion
 // ─────────────────────────────────────────────────────────────
 
-export async function doExpansion(): Promise<void> {
-  const ctx = captureContext()
+export async function doExpansion(preCtx?: EditContext): Promise<void> {
+  const ctx = preCtx ?? captureContext()
   if (!ctx) return
 
   let token = ''
   let tokenStart = 0
   let tokenEnd = 0
   let tokenRange: Range | null = null
+  let inputSnapshot: string | undefined
 
   if (ctx.kind === 'input') {
     const el = ctx.el
@@ -389,13 +450,12 @@ export async function doExpansion(): Promise<void> {
     token = text.slice(i)
     tokenStart = i
     tokenEnd = ctx.start
+    inputSnapshot = el.value // snapshot for race-condition check
   } else {
     const sel = window.getSelection?.()
     if (!sel?.rangeCount || !sel.isCollapsed) return
 
     const r = sel.getRangeAt(0)
-
-    // Optimize: traverse backwards instead of serializing whole doc
     const prefix = extractPrecedingText(ctx.root, r, CONFIG.maxAbbrevLen)
 
     let i = prefix.length
@@ -415,6 +475,9 @@ export async function doExpansion(): Promise<void> {
     const rendered = await renderTemplate(tmpl)
 
     if (ctx.kind === 'input') {
+      // Race-condition guard: bail if content changed during async render
+      if (ctx.el.value !== inputSnapshot) return
+
       ctx.el.setRangeText(rendered.text, tokenStart, tokenEnd, 'end')
       ctx.el.selectionStart = ctx.el.selectionEnd = tokenStart + rendered.cursor
       dispatchInput(ctx.el, rendered.text)
@@ -424,20 +487,18 @@ export async function doExpansion(): Promise<void> {
       sel.addRange(tokenRange)
       document.execCommand('insertText', false, rendered.text)
 
-      // Position cursor correctly for ContentEditable
       if (rendered.cursor < rendered.text.length) {
-        const sel = window.getSelection()
-        if (sel?.rangeCount) {
-          const range = sel.getRangeAt(0) // Cursor is at end of inserted text
+        const curSel = window.getSelection()
+        if (curSel?.rangeCount) {
+          const range = curSel.getRangeAt(0)
           const charsToMove = rendered.text.length - rendered.cursor
 
-          // Move cursor back relative to current position
           range.collapse(true)
           moveRangeBack(range, charsToMove, ctx.root)
           range.collapse(true)
 
-          sel.removeAllRanges()
-          sel.addRange(range)
+          curSel.removeAllRanges()
+          curSel.addRange(range)
         }
       }
 

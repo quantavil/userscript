@@ -14,13 +14,13 @@ export const STORE_KEYS: StoreKeys = Object.freeze({
 })
 
 // ─────────────────────────────────────────────────────────────
-// Configuration
+// Configuration (Fully immutable at runtime)
 // ─────────────────────────────────────────────────────────────
 
-export const CONFIG: Config = {
-  trigger: { code: 'Space', shift: true },
-  palette: { code: 'KeyP', alt: true },
-  aiMenu: { code: 'KeyG', alt: true },
+export const CONFIG: Readonly<Config> = Object.freeze({
+  trigger: Object.freeze({ code: 'Space', shift: true }),
+  palette: Object.freeze({ code: 'KeyP', alt: true }),
+  aiMenu: Object.freeze({ code: 'KeyG', alt: true }),
   maxAbbrevLen: 80,
   styleId: 'sae-styles',
   clipboardReadTimeoutMs: 350,
@@ -34,7 +34,7 @@ export const CONFIG: Config = {
     menuHeight: 260,
     previewMaxChars: 150,
     previewExpandedChars: 2000,
-    spacing: { sm: 8, md: 16 },
+    spacing: Object.freeze({ sm: 8, md: 16 }),
     inlinePrompts: 4,
   }),
   gemini: Object.freeze({
@@ -44,7 +44,7 @@ export const CONFIG: Config = {
     timeoutMs: 20000,
     maxInputChars: 32000,
   }),
-}
+})
 
 // ─────────────────────────────────────────────────────────────
 // Built-in Prompts & Default Dict
@@ -95,7 +95,7 @@ export const GMX = {
 }
 
 // ─────────────────────────────────────────────────────────────
-// State
+// State (Hotkey overrides live here, not in CONFIG)
 // ─────────────────────────────────────────────────────────────
 
 export const state: State = {
@@ -107,6 +107,10 @@ export const state: State = {
   lastEditableEl: null,
   paletteIndex: 0,
   aiMenuIndex: 0,
+  hotkeys: {
+    palette: { ...CONFIG.palette },
+    aiMenu: { ...CONFIG.aiMenu },
+  },
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -152,8 +156,7 @@ export function loadState(): void {
     .map(p => ({ ...p, enabled: p.enabled !== false }))
   state.disabledBuiltins = GMX.get(STORE_KEYS.disabledBuiltins, [])
 
-
   const savedKeys = GMX.get<{ palette?: HotkeySpec; aiMenu?: HotkeySpec }>(STORE_KEYS.keys, {})
-  if (savedKeys.palette) Object.assign(CONFIG.palette, savedKeys.palette)
-  if (savedKeys.aiMenu) Object.assign(CONFIG.aiMenu, savedKeys.aiMenu)
+  if (savedKeys.palette) state.hotkeys.palette = { ...CONFIG.palette, ...savedKeys.palette }
+  if (savedKeys.aiMenu) state.hotkeys.aiMenu = { ...CONFIG.aiMenu, ...savedKeys.aiMenu }
 }

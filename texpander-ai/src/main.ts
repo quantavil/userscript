@@ -1,6 +1,6 @@
 import { GM_addStyle } from '$'
 import { CONFIG, state, GMX, loadState } from './config'
-import { getEditable, captureContext, getContextOrFallback, matchHotkey, doExpansion } from './core'
+import { getEditable, captureContext, getContextOrFallback, matchHotkey, peekToken, doExpansion } from './core'
 import { STYLES, notify, openPalette, closePalette, openAIMenu, closeAIMenu, isAIMenuOpen, isPaletteOpen } from './ui'
 
 // ─────────────────────────────────────────────────────────────
@@ -54,11 +54,17 @@ function handleGlobalKey(e: KeyboardEvent): void {
     return
   }
 
-  // Expansion trigger
+  // Expansion trigger — only preventDefault if abbreviation exists
   if (matchHotkey(e, CONFIG.trigger) && getEditable(target)) {
+    const ctx = captureContext()
+    if (!ctx) return
+
+    const token = peekToken(ctx)
+    if (!token || !state.dict[token.toLowerCase()]) return // let keystroke through
+
     e.preventDefault()
     e.stopPropagation()
-    doExpansion()
+    doExpansion(ctx)
   }
 }
 
@@ -92,7 +98,7 @@ function init(): void {
   // Global keyboard handler
   window.addEventListener('keydown', handleGlobalKey, true)
 
-  console.log('[texpander-ai] v3.1 loaded')
+  console.log('[texpander-ai] v3.2 loaded')
 }
 
 init()

@@ -33,9 +33,9 @@ export interface UIConfig {
 }
 
 export interface Config {
-  trigger: HotkeySpec
-  palette: HotkeySpec
-  aiMenu: HotkeySpec
+  readonly trigger: Readonly<HotkeySpec>
+  readonly palette: Readonly<HotkeySpec>
+  readonly aiMenu: Readonly<HotkeySpec>
   readonly maxAbbrevLen: number
   readonly styleId: string
   readonly toast: ToastConfig
@@ -61,8 +61,6 @@ export interface AIPrompt {
   enabled?: boolean
 }
 
-
-
 export interface State {
   dict: Record<string, string>
   apiKey: string
@@ -72,6 +70,10 @@ export interface State {
   lastEditableEl: HTMLElement | null
   paletteIndex: number
   aiMenuIndex: number
+  hotkeys: {
+    palette: HotkeySpec
+    aiMenu: HotkeySpec
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

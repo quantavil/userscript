@@ -13,7 +13,6 @@ import { paletteHTML, settingsHTML, promptItemHTML, promptEditFormHTML } from '.
 let paletteEl: HTMLDivElement | null = null
 let prevOverflow = ''
 
-// Internal references (set after palette creation)
 let listEl: HTMLDivElement
 let settingsEl: HTMLDivElement
 let searchEl: HTMLInputElement
@@ -137,8 +136,8 @@ function showSettings(show: boolean): void {
 function renderSettings(): void {
   settingsEl.innerHTML = settingsHTML(
     state.apiKey,
-    hotkeyStr(CONFIG.palette),
-    hotkeyStr(CONFIG.aiMenu)
+    hotkeyStr(state.hotkeys.palette),
+    hotkeyStr(state.hotkeys.aiMenu)
   )
 
   setupApiKeyHandlers()
@@ -200,7 +199,7 @@ function setupHotkeyHandlers(): void {
       if (!spec) return
 
       const name = btn.dataset.hk as 'palette' | 'aiMenu'
-      Object.assign(CONFIG[name], spec)
+      state.hotkeys[name] = spec
 
       const keys = GMX.get<Record<string, HotkeySpec>>(STORE_KEYS.keys, {})
       keys[name] = spec
@@ -293,7 +292,6 @@ function renderCustoms(): void {
     .map((p, i) => promptItemHTML(p, i, false, p.enabled !== false))
     .join('')
 
-  // Toggle handlers
   container.querySelectorAll<HTMLDivElement>('[data-toggle]').forEach(t => {
     t.onclick = () => {
       const i = +t.closest<HTMLDivElement>('.sae-prompt-item')!.dataset.idx!
@@ -303,12 +301,10 @@ function renderCustoms(): void {
     }
   })
 
-  // Edit handlers
   container.querySelectorAll<HTMLButtonElement>('[data-edit]').forEach(b => {
     b.onclick = () => editPrompt(+b.closest<HTMLDivElement>('.sae-prompt-item')!.dataset.idx!)
   })
 
-  // Delete handlers
   container.querySelectorAll<HTMLButtonElement>('[data-del]').forEach(b => {
     b.onclick = () => {
       const i = +b.closest<HTMLDivElement>('.sae-prompt-item')!.dataset.idx!
@@ -387,14 +383,12 @@ function ensurePalette(): HTMLDivElement {
   paletteEl.innerHTML = paletteHTML()
   document.documentElement.appendChild(paletteEl)
 
-  // Cache element references
   panelEl = $<HTMLDivElement>('.sae-panel', paletteEl)!
   searchEl = $<HTMLInputElement>('.sae-search', paletteEl)!
   listEl = $<HTMLDivElement>('.sae-list', paletteEl)!
   settingsEl = $<HTMLDivElement>('.sae-settings', paletteEl)!
   backBtn = $<HTMLButtonElement>('[data-action="back"]', paletteEl)!
 
-  // Event handlers
   paletteEl.addEventListener('click', e => {
     if (e.target === paletteEl) closePalette()
   })
@@ -404,14 +398,10 @@ function ensurePalette(): HTMLDivElement {
   backBtn.onclick = () => showSettings(false)
   $<HTMLButtonElement>('[data-action="add"]', paletteEl)!.onclick = addNew
 
-  // Search handler
   const renderDebounced = debounce(() => renderList(searchEl.value), CONFIG.searchDebounceMs)
   searchEl.addEventListener('input', renderDebounced)
 
-  // Keyboard navigation
   paletteEl.addEventListener('keydown', handlePaletteKey)
-
-  // List click handler
   listEl.addEventListener('click', handleListClick)
 
   return paletteEl

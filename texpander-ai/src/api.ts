@@ -9,11 +9,9 @@ function cleanAIResponse(s: string): string {
   if (!s) return s
   let out = s.trim()
 
-  // Remove markdown code blocks
   const codeBlockMatch = out.match(/^```\w*\n?([\s\S]*?)\n?```$/)
   if (codeBlockMatch) out = codeBlockMatch[1].trim()
 
-  // Remove wrapping quotes
   if ((out.startsWith('"') && out.endsWith('"')) ||
       (out.startsWith("'") && out.endsWith("'"))) {
     out = out.slice(1, -1)
@@ -57,7 +55,8 @@ export async function callGemini(systemPrompt: string, userText: string): Promis
         const json = JSON.parse(res.text)
         const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
         if (text) {
-          state.apiKeyIndex = idx
+          // Advance to next key for actual rotation
+          state.apiKeyIndex = (idx + 1) % keys.length
           return cleanAIResponse(text)
         }
       }
