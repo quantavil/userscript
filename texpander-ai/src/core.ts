@@ -267,69 +267,103 @@ export async function renderTemplate(tmpl: string): Promise<TemplateResult> {
 // ContentEditable Range Helpers
 // ─────────────────────────────────────────────────────────────
 
-function lastTextIn(node: Node | null): Text | null {
-  if (!node) return null
-  if (node.nodeType === 3) return node as Text
-  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
-  let last: Text | null = null
-  let n: Text | null
-  while ((n = walker.nextNode() as Text | null)) last = n
-  return last
-}
+function extractPrecedingText(root: HTMLElement, range: Range, maxLength: number): string {
+  let text = ''
+  let node: Node | null = range.startContainer
+  let offset = range.startOffset
 
-function moveRangeBack(range: Range, n: number, root: HTMLElement): void {
-  let remaining = n
-  while (remaining > 0) {
-    const { startContainer: sc, startOffset: so } = range
+  // If starting in an element, find the text node before that offset
+  if (node.nodeType === 1) {
+    if (offset > 0) {
+      const child = node.childNodes[offset - 1]
+      // Use walker to find last text node in this child
+      const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT)
+      let last: Node | null = null
+      let curr: Node | null
+      while ((curr = walker.nextNode())) last = curr
 
-    if (sc.nodeType === 3) {
-      const move = Math.min(so, remaining)
-      range.setStart(sc, so - move)
-      remaining -= move
-      if (remaining === 0) break
-
-      // Find previous text node
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-      let prev: Text | null = null
-      let node: Text | null
-      while ((node = walker.nextNode() as Text | null)) {
-        if (node === sc) break
-        prev = node
+      if (last) {
+        node = last
+        offset = node.nodeValue?.length ?? 0
+      } else if (child.nodeType === 3) {
+        node = child
+        offset = child.nodeValue?.length ?? 0
+      } else {
+        node = null
       }
-      if (!prev) break
-      range.setStart(prev, prev.nodeValue!.length)
     } else {
-      if (so > 0) {
-        const child = sc.childNodes[so - 1]
-        const textNode = lastTextIn(child)
-        if (textNode) range.setStart(textNode, textNode.nodeValue!.length)
-        else break
-      } else break
+      // Offset 0 in element, finding previous node from here is hard without walker from root or parent
+      // But we can just start walking back from the element itself
     }
   }
-}
 
-function setCursorInCE(root: HTMLElement, position: number): void {
+  // Set up walker to go backwards
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  let remaining = position
-  let node: Text | null
+  if (node) {
+    walker.currentNode = node
 
-  while ((node = walker.nextNode() as Text | null)) {
-    const len = node.nodeValue?.length ?? 0
-    if (remaining <= len) {
-      const sel = window.getSelection()
-      if (sel) {
-        const range = document.createRange()
-        range.setStart(node, remaining)
-        range.collapse(true)
-        sel.removeAllRanges()
-        sel.addRange(range)
-      }
-      return
+    // Get text from current node up to offset
+    if (node.nodeType === 3) {
+      const val = node.nodeValue || ''
+      text = val.slice(0, offset)
     }
-    remaining -= len
+  } else {
+    // Fallback: try to find startContainer in walker
+    walker.currentNode = range.startContainer
+  }
+
+  // Walk backwards until we have enough text
+  while (text.length < maxLength) {
+    const prev = walker.previousNode()
+    if (!prev) break
+    text = (prev.nodeValue || '') + text
+  }
+
+  return text.slice(-maxLength)
+} function moveRangeBack(range: Range, n: number, root: HTMLElement): void {
+  let remaining = n
+
+  if (remaining <= 0) return
+
+  // Start from current position
+  let node: Node | null = range.startContainer
+  let offset = range.startOffset
+
+  while (remaining > 0 && node) {
+    // If in text node, move offset back
+    if (node.nodeType === 3) {
+      const move = Math.min(offset, remaining)
+      offset -= move
+      remaining -= move
+
+      if (remaining === 0) {
+        range.setStart(node, offset)
+        break
+      }
+    }
+
+    // Need to move to previous node
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_TEXT,
+      null
+    )
+    walker.currentNode = node
+
+    // Move to previous text node
+    const prev = walker.previousNode()
+    if (!prev) {
+      // Reached start of root
+      range.setStart(root, 0)
+      break
+    }
+
+    node = prev
+    offset = node.nodeValue?.length ?? 0
   }
 }
+
+
 
 // ─────────────────────────────────────────────────────────────
 // Abbreviation Expansion
@@ -360,17 +394,12 @@ export async function doExpansion(): Promise<void> {
     if (!sel?.rangeCount || !sel.isCollapsed) return
 
     const r = sel.getRangeAt(0)
-    const prefixRange = document.createRange()
-    prefixRange.selectNodeContents(ctx.root)
-    try {
-      prefixRange.setEnd(r.startContainer, r.startOffset)
-    } catch {
-      return
-    }
 
-    const prefix = prefixRange.toString()
+    // Optimize: traverse backwards instead of serializing whole doc
+    const prefix = extractPrecedingText(ctx.root, r, CONFIG.maxAbbrevLen)
+
     let i = prefix.length
-    while (i > 0 && isWordChar(prefix[i - 1]) && prefix.length - i < CONFIG.maxAbbrevLen) i--
+    while (i > 0 && isWordChar(prefix[i - 1])) i--
 
     token = prefix.slice(i)
     tokenRange = r.cloneRange()
@@ -397,8 +426,19 @@ export async function doExpansion(): Promise<void> {
 
       // Position cursor correctly for ContentEditable
       if (rendered.cursor < rendered.text.length) {
-        const baseOffset = tokenRange.startOffset
-        setCursorInCE(ctx.root, baseOffset + rendered.cursor)
+        const sel = window.getSelection()
+        if (sel?.rangeCount) {
+          const range = sel.getRangeAt(0) // Cursor is at end of inserted text
+          const charsToMove = rendered.text.length - rendered.cursor
+
+          // Move cursor back relative to current position
+          range.collapse(true)
+          moveRangeBack(range, charsToMove, ctx.root)
+          range.collapse(true)
+
+          sel.removeAllRanges()
+          sel.addRange(range)
+        }
       }
 
       dispatchInput(ctx.root, rendered.text)

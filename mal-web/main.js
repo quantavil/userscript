@@ -1,10 +1,9 @@
 // ==UserScript==
-// @name         MAL Rating Hover Provider
+// @name         Show MyAnimeList Rating
 // @namespace    http://github.com/quantavil
-// @version      3.2
-// @description  Shows MAL rating on hover. Features: Gold Badge (>8), Smart Caching, Color Grading, and Menu option to Clear Cache.
-// @author       Quantavil 
-
+// @version      3.6.0
+// @description  Shows MAL rating on hover (desktop) and touch/tap (mobile). Features: Gold Badge (>8), Smart Caching, Color Grading.
+// @author       Quantavil
 // --- Domain Wildcards ---
 // @match        *://123animes.*/*
 // @match        *://9anime.*/*
@@ -45,7 +44,7 @@
 // @match        *://senshi.*/*
 // @match        *://wcostream.*/*
 // @match        *://yugenanime.*/*
-
+//
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -53,6 +52,7 @@
 // @grant        GM_listValues
 // @grant        GM_registerMenuCommand
 // @grant        GM_openInTab
+// @grant        GM_xmlhttpRequest
 // @run-at       document-end
 // @license      MIT
 // ==/UserScript==
@@ -62,22 +62,25 @@
 
     const CONFIG = {
         CACHE_PREFIX: 'mal_v5_',
-        CACHE_EXPIRY_SUCCESS: 14 * 24 * 60 * 60 * 1000, // 14 Days
-        CACHE_EXPIRY_ERROR: 12 * 60 * 60 * 1000,        // 12 Hours
-        DEBOUNCE_DELAY: 200,
-        LONG_PRESS_DELAY: 200,
-        API_INTERVAL: 350,
-        MATCH_THRESHOLD: 0.5,
+        CACHE_EXPIRY_SUCCESS: 14 * 24 * 60 * 60 * 1000,
+        CACHE_EXPIRY_ERROR: 12 * 60 * 60 * 1000,
+        DEBOUNCE_DELAY: 250,
+        API_INTERVAL: 400,
+        MATCH_THRESHOLD: 0.7,
+        TOUCH_MOVE_THRESHOLD: 10,
+
         SELECTORS: {
-            ITEM: `
+            ITEM_CARD: `
                 .flw-item, .film_list-wrap > div, .poster-card, .f-item, .aitem, .anime-item, .ep-item, .anicard,
-                .bsx, .bs, .item, .coverListItem,
+                .bsx, .bs, .coverListItem,
                 .content-card, .new-card-animate, .pe-episode-card, .news-item, .TPostMv, .gallery, .mini-previews,
-                .video-block, .card, 
-                a[href*="/series/"], a[data-discover], a[href*="/watch/"], .anime-card,
-                .vod-item, a[href*="/anime/info/"], .chart2g, .items li,
-                .snap-center, [class*="MovieCardSmall"], article.group, app-anime-item,
-                div:has(.item-title)
+                .video-block,
+                .anime-card,
+                .vod-item, .chart2g, .items li,
+                .snap-center, [class*="MovieCardSmall"], article.group, app-anime-item
+            `,
+            ITEM_LINK: `
+                a[href*="/series/"], a[data-discover], a[href*="/anime/info/"]
             `,
             TITLE: `
                 .film-name, .dynamic-name, .film-name a,
@@ -90,73 +93,12 @@
     };
 
     let hoverTimeout;
-    let longPressTimeout;
-    let isTouchInteraction = false;
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
     const KEY_REGEX = /[^a-z0-9]/g;
+    const processedItems = new WeakSet();
 
-    // === Request Queue ===
-    const requestQueue = {
-        queue: [],
-        processing: false,
-        currentJob: null,
-
-        add(title, cleanT, callback) {
-            if ((this.currentJob && this.currentJob.cleanT === cleanT) ||
-                this.queue.some(q => q.cleanT === cleanT)) {
-                return;
-            }
-            this.queue.push({ title, cleanT, callback, retries: 0 });
-            this.process();
-        },
-        async process() {
-            if (this.processing || this.queue.length === 0) return;
-            this.processing = true;
-
-            const job = this.queue.shift();
-            this.currentJob = job; // Set current job
-            const { cleanT, callback, retries } = job;
-
-            try {
-                const data = await fetchMalData(cleanT);
-
-                if (data && data.status === 429) {
-                    if (retries < 2) {
-                        job.retries++;
-                        this.queue.unshift(job);
-                        this.currentJob = null; // Clear current before timeout return
-                        setTimeout(() => {
-                            this.processing = false;
-                            this.process();
-                        }, 2500);
-                        return;
-                    } else {
-                        callback({ error: true, temp: true });
-                    }
-                } else {
-                    if (!data.temp && !data.error) {
-                        const cacheKey = cleanT.toLowerCase().replace(KEY_REGEX, '');
-                        // Check if key is valid before caching
-                        if (cacheKey.length > 0) setCache(cacheKey, data);
-                    }
-                    callback(data);
-                }
-            } catch (e) {
-                console.error(e);
-                callback({ error: true, temp: true });
-            }
-
-            this.currentJob = null; // Clear current job
-            setTimeout(() => {
-                this.processing = false;
-                this.process();
-            }, CONFIG.API_INTERVAL);
-        }
-    };
-
-    // === CSS Styles ===
+    // === Styles ===
     GM_addStyle(`
-        .mal-container-rel { position: relative !important; }
-        
         .mal-rating-badge {
             position: absolute;
             top: 6px; right: 6px;
@@ -169,7 +111,7 @@
             font-family: sans-serif;
             font-size: 11px;
             font-weight: 700;
-            z-index: 9999;
+            z-index: 9990;
             box-shadow: 0 4px 12px rgba(0,0,0,0.5);
             cursor: pointer;
             display: flex;
@@ -179,79 +121,71 @@
             opacity: 0;
             transform: translateY(-4px);
             animation: malFadeIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-            transition: all 0.2s ease;
-            pointer-events: auto; 
-            user-select: none;
+            pointer-events: auto;
         }
-
-        .mal-rating-badge:hover, .mal-rating-badge.mobile-active {
+        .mal-rating-badge:hover {
             transform: translateY(0) scale(1.05);
             background: rgba(25, 28, 45, 1);
             box-shadow: 0 6px 16px rgba(0,0,0,0.7);
             z-index: 10000;
         }
 
-        .mal-rating-badge .score { 
-            font-size: 13px; color: #fff; display: flex; align-items: center; gap: 2px;
-        }
+        .mal-rating-badge .score { font-size: 13px; color: #fff; display: flex; align-items: center; gap: 2px; }
         .mal-rating-badge .score::before { content: '★'; font-size: 10px; opacity: 0.8; }
         .mal-rating-badge .members { font-size: 9px; color: #9aa0b0; font-weight: 500; }
 
-        /* Color Grading */
-        
-        /* 8+ : Golden Yellow */
         .mal-rating-badge.score-gold { border-color: rgba(234, 179, 8, 0.5); background: rgba(30, 25, 10, 0.95); box-shadow: 0 0 8px rgba(234, 179, 8, 0.3); }
-        .mal-rating-badge.score-gold .score { color: #facc15; text-shadow: 0 0 5px rgba(250, 204, 21, 0.4); } 
-        .mal-rating-badge.score-gold .score::before { color: #fbbf24; font-size: 14px; } /* Bigger star */
+        .mal-rating-badge.score-gold .score { color: #facc15; }
+        .mal-rating-badge.score-green { border-color: rgba(74, 222, 128, 0.4); } .mal-rating-badge.score-green .score { color: #86efac; }
+        .mal-rating-badge.score-orange { border-color: rgba(251, 146, 60, 0.4); } .mal-rating-badge.score-orange .score { color: #fdba74; }
+        .mal-rating-badge.score-red { border-color: rgba(248, 113, 113, 0.4); } .mal-rating-badge.score-red .score { color: #fca5a5; }
+        .mal-rating-badge.score-purple { border-color: rgba(192, 132, 252, 0.4); background: rgba(20, 10, 30, 0.95); } .mal-rating-badge.score-purple .score { color: #d8b4fe; }
 
-        /* 7-8 : Green */
-        .mal-rating-badge.score-green { border-color: rgba(74, 222, 128, 0.4); }
-        .mal-rating-badge.score-green .score { color: #86efac; } .mal-rating-badge.score-green .score::before { color: #4ade80; }
+        .mal-rating-badge.loading { pointer-events: none; padding: 4px 8px; }
 
-        /* 6-7 : Orange */
-        .mal-rating-badge.score-orange { border-color: rgba(251, 146, 60, 0.4); }
-        .mal-rating-badge.score-orange .score { color: #fdba74; } .mal-rating-badge.score-orange .score::before { color: #fb923c; }
-
-        /* 5-6 : Red */
-        .mal-rating-badge.score-red { border-color: rgba(248, 113, 113, 0.4); }
-        .mal-rating-badge.score-red .score { color: #fca5a5; } .mal-rating-badge.score-red .score::before { color: #f87171; }
-        
-        /* <5 : Purple */
-        .mal-rating-badge.score-purple { border-color: rgba(192, 132, 252, 0.4); background: rgba(20, 10, 30, 0.95); }
-        .mal-rating-badge.score-purple .score { color: #d8b4fe; } .mal-rating-badge.score-purple .score::before { color: #c084fc; }
-
-        .mal-rating-badge.loading { 
-            background: rgba(0, 0, 0, 0.8); 
-            min-width: unset; 
-            padding: 6px 10px;
-            pointer-events: none;
-        }
-        .mal-rating-badge.error { background: rgba(80, 80, 80, 0.9); color: #bbb; border-color: rgba(255,255,255,0.1); }
-
-        /* Toast Notification */
-        #mal-toast {
-            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            background: rgba(30,30,30,0.9); color: white; padding: 10px 20px;
-            border-radius: 8px; font-family: sans-serif; font-size: 13px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 9999999;
-            opacity: 0; transition: opacity 0.3s ease; pointer-events: none;
-        }
-        #mal-toast.show { opacity: 1; }
-
-        @media (pointer: coarse) { .mal-rating-badge { padding: 6px 10px; top: 8px; right: 8px; } }
         @keyframes malFadeIn { to { opacity: 1; transform: translateY(0); } }
         @keyframes malPulse { from { opacity: 0.5; } to { opacity: 1; } }
     `);
 
-    // === Logic ===
+    // === Helpers ===
+    function cleanTitle(title) {
+        return title
+            .replace(/^Title:\s*/i, '')
+            .replace(/(\(|\[)\s*(sub|dub|uncensored|blu-?ray|blue-ray|4k|hd|re-upload).+?(\)|\])/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function getClosestItem(el) {
+        const card = el.closest(CONFIG.SELECTORS.ITEM_CARD);
+        if (card) return card;
+
+        const link = el.closest(CONFIG.SELECTORS.ITEM_LINK);
+        if (!link) return null;
+
+        // Skip links that live inside a card (the card itself is the canonical container)
+        if (link.closest(CONFIG.SELECTORS.ITEM_CARD)) return null;
+        return link;
+    }
+
+    function extractTitleFromItem(item) {
+        const titleEl = item.querySelector(CONFIG.SELECTORS.TITLE);
+        let title = item.getAttribute('data-title') || item.getAttribute('aria-label');
+
+        if (!title && titleEl) {
+            title = titleEl.getAttribute('title') ||
+                titleEl.textContent ||
+                titleEl.getAttribute('alt');
+        }
+
+        return title ? cleanTitle(title) : '';
+    }
+
     function getCache(key) {
-        const fullKey = CONFIG.CACHE_PREFIX + key;
+        const fullKey = CONFIG.CACHE_PREFIX + key.toLowerCase().replace(KEY_REGEX, '');
         const data = GM_getValue(fullKey);
         if (!data) return null;
-
-        const expiryDuration = data.expiryDuration || CONFIG.CACHE_EXPIRY_SUCCESS;
-
-        if (Date.now() - data.timestamp > expiryDuration) {
+        if (Date.now() - data.timestamp > data.expiryDuration) {
             GM_deleteValue(fullKey);
             return null;
         }
@@ -259,303 +193,337 @@
     }
 
     function setCache(key, payload) {
-        // Double check we aren't caching errors
-        if (payload.temp || (payload.error && !payload.found)) return;
-
+        if (payload.temp) return;
+        const fullKey = CONFIG.CACHE_PREFIX + key.toLowerCase().replace(KEY_REGEX, '');
         const expiryDuration = payload.found ? CONFIG.CACHE_EXPIRY_SUCCESS : CONFIG.CACHE_EXPIRY_ERROR;
-        GM_setValue(CONFIG.CACHE_PREFIX + key, {
-            payload,
-            timestamp: Date.now(),
-            expiryDuration: expiryDuration
-        });
+        GM_setValue(fullKey, { payload, timestamp: Date.now(), expiryDuration });
     }
 
-    // === Menu Command: Clear Cache ===
-    function showToast(msg) {
-        let toast = document.getElementById('mal-toast');
-        if (!toast) {
-            toast = document.createElement('div');
-            toast.id = 'mal-toast';
-            document.body.appendChild(toast);
-        }
-        toast.innerText = msg;
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 3000);
-    }
+    function jaroWinkler(s1, s2) {
+        let m = 0;
+        if (s1.length === 0 || s2.length === 0) return 0;
+        if (s1 === s2) return 1;
 
-    function clearMalCache() {
-        const keys = GM_listValues();
-        let count = 0;
-        keys.forEach(key => {
-            if (key.startsWith(CONFIG.CACHE_PREFIX)) {
-                GM_deleteValue(key);
-                count++;
+        const range = Math.max(0, (Math.floor(Math.max(s1.length, s2.length) / 2)) - 1);
+        const match1 = new Array(s1.length);
+        const match2 = new Array(s2.length);
+
+        for (let i = 0; i < s1.length; i++) {
+            const start = Math.max(0, i - range);
+            const end = Math.min(i + range + 1, s2.length);
+            for (let j = start; j < end; j++) {
+                if (match2[j]) continue;
+                if (s1[i] !== s2[j]) continue;
+                match1[i] = true; match2[j] = true; m++; break;
             }
-        });
-        showToast(`🗑️ Cleared ${count} items from MAL Cache.`);
-    }
+        }
+        if (m === 0) return 0;
 
-    GM_registerMenuCommand("🗑️ Clear MAL Cache", clearMalCache);
+        let k = 0;
+        let t = 0;
+        for (let i = 0; i < s1.length; i++) {
+            if (match1[i]) {
+                while (!match2[k]) k++;
+                if (s1[i] !== s2[k]) t++;
+                k++;
+            }
+        }
+        const j = ((m / s1.length) + (m / s2.length) + ((m - (t / 2)) / m)) / 3;
+
+        let l = 0;
+        while (l < 4 && l < s1.length && l < s2.length && s1[l] === s2[l]) l++;
+        return j + l * 0.1 * (1 - j);
+    }
 
     function formatMembers(num) {
         if (!num) return '0';
-        return num >= 1e6 ? (num / 1e6).toFixed(1) + 'M' : num >= 1e3 ? (num / 1e3).toFixed(1) + 'K' : num;
+        return num >= 1e6 ? (num / 1e6).toFixed(1) + 'M'
+            : num >= 1e3 ? (num / 1e3).toFixed(1) + 'K'
+                : String(num);
     }
 
-    function getSimilarity(s1, s2) {
-        const len1 = s1.length, len2 = s2.length;
-        const maxDist = Math.max(len1, len2);
-        if (len1 === 0 || len2 === 0) return maxDist === 0 ? 1 : 0;
-        const row = Array(len1 + 1).fill(0).map((_, i) => i);
-        for (let i = 1; i <= len2; i++) {
-            let prev = i;
-            for (let j = 1; j <= len1; j++) {
-                const val = (s2[i - 1] === s1[j - 1]) ? row[j - 1] : Math.min(row[j - 1] + 1, prev + 1, row[j] + 1);
-                row[j - 1] = prev;
-                prev = val;
+    function isVisualCard(item) {
+        if (item.querySelector('img, picture, video, canvas')) return true;
+        const rect = item.getBoundingClientRect();
+        if (rect.width > 50 && rect.height > 50 && rect.width < 800) return true;
+        return false;
+    }
+
+    function fetchMalData(cleanT) {
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanT)}&limit=8`,
+                timeout: 10000,
+                responseType: "json",
+                onload: (res) => {
+                    if (res.status === 429) {
+                        resolve({ found: false, error: true, status: 429 });
+                        return;
+                    }
+                    if (res.status !== 200) {
+                        resolve({ found: false, error: true, temp: true });
+                        return;
+                    }
+
+                    try {
+                        const json = res.response;
+                        const results = json?.data || [];
+
+                        if (results.length === 0) {
+                            resolve({ found: false });
+                            return;
+                        }
+
+                        const target = cleanT.toLowerCase();
+                        let bestMatch = null;
+                        let bestScore = -1;
+
+                        for (let i = 0; i < Math.min(results.length, 5); i++) {
+                            const item = results[i];
+                            const t1 = (item.title || '').toLowerCase();
+                            const t2 = (item.title_english || '').toLowerCase();
+
+                            if (t1 === target || t2 === target) {
+                                bestMatch = item;
+                                bestScore = 2.0;
+                                break;
+                            }
+
+                            const s1 = jaroWinkler(target, t1);
+                            const s2 = jaroWinkler(target, t2);
+                            const textScore = Math.max(s1, s2);
+                            const rankScore = textScore - (i * 0.03);
+
+                            if (rankScore > bestScore) {
+                                bestScore = rankScore;
+                                bestMatch = item;
+                            }
+                        }
+
+                        if (bestMatch && bestScore > CONFIG.MATCH_THRESHOLD) {
+                            resolve({
+                                found: true,
+                                score: bestMatch.score || 'N/A',
+                                members: formatMembers(bestMatch.members),
+                                url: bestMatch.url
+                            });
+                        } else {
+                            resolve({ found: false });
+                        }
+                    } catch (e) {
+                        resolve({ found: false, error: true, temp: true });
+                    }
+                },
+                onerror: () => resolve({ found: false, error: true, temp: true }),
+                ontimeout: () => resolve({ found: false, error: true, temp: true })
+            });
+        });
+    }
+
+    // === Request Queue ===
+    const requestQueue = {
+        queue: [],
+        jobs: new Map(),
+        processing: false,
+        lastRun: 0,
+
+        add(cleanT, callback) {
+            const existing = this.jobs.get(cleanT);
+            if (existing) {
+                existing.callbacks.push(callback);
+                return;
             }
-            row[len1] = prev;
+            this.jobs.set(cleanT, { cleanT, callbacks: [callback], retried: false });
+            this.queue.push(cleanT);
+            this.process();
+        },
+
+        async process() {
+            if (this.processing) return;
+            if (this.queue.length === 0) return;
+
+            const now = Date.now();
+            const timeSinceLast = now - this.lastRun;
+            if (timeSinceLast < CONFIG.API_INTERVAL) {
+                setTimeout(() => this.process(), CONFIG.API_INTERVAL - timeSinceLast);
+                return;
+            }
+
+            this.processing = true;
+            this.lastRun = Date.now();
+
+            const key = this.queue.shift();
+            const job = this.jobs.get(key);
+
+            if (!job) {
+                this.processing = false;
+                this.process();
+                return;
+            }
+
+            try {
+                const data = await fetchMalData(job.cleanT);
+
+                if (data.status === 429) {
+                    if (!job.retried) {
+                        job.retried = true;
+                        this.queue.unshift(key);
+                        this.processing = false;
+                        setTimeout(() => this.process(), 2000);
+                        return;
+                    } else {
+                        job.callbacks.forEach(cb => cb({ found: false, error: true, temp: true }));
+                        this.jobs.delete(key);
+                    }
+                } else {
+                    if (!data.temp) setCache(job.cleanT, data);
+                    job.callbacks.forEach(cb => cb(data));
+                    this.jobs.delete(key);
+                }
+            } catch (e) {
+                console.error("[MAL-Userscript] Request Error:", e);
+                job.callbacks.forEach(cb => cb({ found: false, error: true, temp: true }));
+                this.jobs.delete(key);
+            }
+
+            this.processing = false;
+            if (this.queue.length > 0) setTimeout(() => this.process(), 50);
         }
-        return 1 - (row[len1] / maxDist);
-    }
+    };
 
-    function cleanTitle(title) {
-        let clean = title
-            .replace(/^Title:\s*/i, '') // Remove "Title: " prefix
-            .replace(/(\(|\[)\s*(sub|dub|uncensored|tv|bd|blu-ray|4k|hd|special|ova|ona|complete|re-upload).+?(\)|\])/gi, '')
-            .replace(/[-:]\s*season\s*\d+/gi, '')
-            .replace(/S\d+$/, '')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-        return clean;
-    }
-
-    async function fetchMalData(cleanT) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
-            const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanT)}&limit=10`, { signal: controller.signal });
-            clearTimeout(timeoutId);
-            if (res.status === 429) return { status: 429 };
-
-            const json = await res.json();
-            const results = json.data || [];
-
-            let bestMatch = null;
-            let highestScore = -1;
-
-            if (results.length > 0) {
-                const targetLower = cleanT.toLowerCase();
-                const targetKey = targetLower.replace(/[^a-z0-9]/g, '');
-
-                // Keywords that imply we are looking for a special type
-                const typeKeywords = ['movie', 'special', 'ova', 'film', 'theater'];
-                const hasTypeInQuery = typeKeywords.some(k => targetLower.includes(k));
-
-                results.forEach(item => {
-                    const titleLower = (item.title || '').toLowerCase();
-                    const titleEngLower = (item.title_english || '').toLowerCase();
-                    const titleJapLower = (item.title_japanese || '').toLowerCase();
-
-                    const sim1 = getSimilarity(targetLower, titleLower);
-                    const sim2 = getSimilarity(targetLower, titleEngLower);
-                    const sim3 = getSimilarity(targetLower, titleJapLower);
-
-                    let score = Math.max(sim1, sim2, sim3);
-
-                    // --- Scoring Adjustments ---
-
-                    // 1. Exact Match Bonus
-                    // Check strict alphanumeric match to handle "Fullmetal Alchemist: Brotherhood" vs "Fullmetal Alchemist"
-                    const itemKey = titleLower.replace(/[^a-z0-9]/g, '');
-                    const itemEngKey = titleEngLower.replace(/[^a-z0-9]/g, '');
-                    const itemJapKey = titleJapLower.replace(/[^a-z0-9]/g, '');
-
-                    if (targetKey === itemKey || targetKey === itemEngKey || targetKey === itemJapKey) {
-                        score += 0.3; // Major boost for exact match
-                    } else if ((itemKey.includes(targetKey) && itemKey.length < targetKey.length + 5) ||
-                        (itemEngKey.includes(targetKey) && itemEngKey.length < targetKey.length + 5) ||
-                        (itemJapKey.includes(targetKey) && itemJapKey.length < targetKey.length + 5)) {
-                        score += 0.1; // Minor boost for very close containment
-                    }
-
-                    // 2. Type Penalty
-                    // If query doesn't ask for Movie/Special, penalize them.
-                    const isTypeVariant = ['Movie', 'Special', 'OVA', 'ONA', 'Music'].includes(item.type);
-                    if (isTypeVariant && !hasTypeInQuery) {
-                        score -= 0.25;
-                    }
-
-                    // 3. Popularity Bias as Tie-Breaker
-                    // Add tiny score based on log of members to favor popular shows (TV series) over obscure OVAs in ties
-                    if (item.members) {
-                        score += (Math.log10(item.members) * 0.01);
-                    }
-
-                    if (score > highestScore) {
-                        highestScore = score;
-                        bestMatch = item;
-                    }
-                });
-            }
-
-            // Threshold check (slightly lower threshold due to penalties potentially lowering valid scores, 
-            // but the exact match bonus raises them)
-            // We use 0.45 as a safe baseline since purely different titles will have scores < 0.3 usually.
-            if (bestMatch && highestScore > 0.45) {
-                return {
-                    found: true,
-                    score: bestMatch.score ? bestMatch.score : 'N/A',
-                    members: formatMembers(bestMatch.members),
-                    url: bestMatch.url,
-                };
-            } else {
-                return { found: false };
-            }
-
-        } catch (e) {
-            return { error: true, temp: true };
-        }
-    }
-
-    // === Render Logic ===
+    // === Rendering ===
     function renderBadge(container, data) {
-        const existing = container.querySelector('.mal-rating-badge');
-        if (existing) existing.remove();
+        container.querySelectorAll('.mal-rating-badge').forEach(el => el.remove());
 
-        // If it's a temp error, don't show badge (or show loading state if you prefer)
-        if (data.temp && !data.loading) return;
-        if (data.error && !data.found && !data.loading) return; // Silent fail on error
+        if (!data.found && !data.loading) return;
 
         const badge = document.createElement('div');
         badge.className = 'mal-rating-badge';
-        if (isTouchInteraction) badge.classList.add('mobile-active');
 
         if (data.loading) {
             badge.classList.add('loading');
-            badge.innerText = '• • •';
+            badge.innerText = '•••';
             badge.style.animation = 'malPulse 0.8s infinite alternate';
-        } else if (data.found) {
+        } else {
             badge.title = "View on MyAnimeList";
             badge.innerHTML = `<span class="score">${data.score}</span><span class="members">${data.members}</span>`;
 
-            const numScore = parseFloat(data.score);
-            if (!isNaN(numScore)) {
-                if (numScore >= 8.0) badge.classList.add('score-gold'); // >8 Golden
-                else if (numScore >= 7.0) badge.classList.add('score-green'); // 7-8 Green
-                else if (numScore >= 6.0) badge.classList.add('score-orange'); // 6-7 Orange
-                else if (numScore >= 5.0) badge.classList.add('score-red'); // 5-6 Red
-                else badge.classList.add('score-purple'); // <5 Purple
+            const s = parseFloat(data.score);
+            if (!isNaN(s)) {
+                if (s >= 8.0) badge.classList.add('score-gold');
+                else if (s >= 7.0) badge.classList.add('score-green');
+                else if (s >= 6.0) badge.classList.add('score-orange');
+                else if (s >= 5.0) badge.classList.add('score-red');
+                else badge.classList.add('score-purple');
             } else {
-                badge.classList.add('score-purple'); // N/A
+                badge.classList.add('score-purple');
             }
 
             badge.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+                e.preventDefault(); e.stopPropagation();
                 GM_openInTab(data.url, { active: true });
-            }, { once: true });
-
-        } else {
-            badge.classList.add('error');
-            badge.innerText = '?';
-            badge.title = "Not found (Cached 12h)";
+            });
         }
 
-        if (!container.classList.contains('mal-container-rel') && window.getComputedStyle(container).position === 'static') {
-            container.classList.add('mal-container-rel');
+        // FIX #2: Ensure container can act as a positioning ancestor
+        const computed = window.getComputedStyle(container);
+        if (computed.position === 'static') {
+            container.style.position = 'relative';
+        }
+        if (computed.display === 'inline') {
+            container.style.display = 'inline-block';
         }
 
-        if (!data.loading) badge.style.animation = '';
         container.appendChild(badge);
     }
 
+    // === Core Processing ===
     function processItem(item) {
-        if (item.querySelector('.mal-rating-badge')) return;
+        if (processedItems.has(item)) return;
+        if (!isVisualCard(item)) return;
 
-        const titleEl = item.querySelector(CONFIG.SELECTORS.TITLE);
-        let title = item.getAttribute('data-title') || item.getAttribute('aria-label');
-        if (!title && titleEl) {
-            title = titleEl.getAttribute('title') || titleEl.innerText || titleEl.getAttribute('alt');
-        }
-        if (!title) return;
-
-        const cleanT = cleanTitle(title);
+        const cleanT = extractTitleFromItem(item);
         if (!cleanT || cleanT.length < 2) return;
 
-        const cacheKey = cleanT.toLowerCase().replace(KEY_REGEX, '');
-        if (!cacheKey) return;
+        processedItems.add(item);
 
-        const cachedData = getCache(cacheKey);
-        if (cachedData) {
-            renderBadge(item, cachedData);
+        const cached = getCache(cleanT);
+        if (cached) {
+            renderBadge(item, cached);
             return;
         }
 
-        const interactionId = Date.now() + Math.random().toString();
-        item.dataset.malInteraction = interactionId;
         renderBadge(item, { loading: true });
 
-        requestQueue.add(title, cleanT, (data) => {
-            if (document.body.contains(item) && item.dataset.malInteraction === interactionId) {
-                renderBadge(item, data);
+        requestQueue.add(cleanT, (data) => {
+            if (!document.body.contains(item)) return;
+            renderBadge(item, data);
+
+            // Temp error: allow retry on next hover/touch
+            if (data.temp) {
+                processedItems.delete(item);
             }
         });
     }
 
-    // === Event Listeners ===
-    document.body.addEventListener('mouseover', function (e) {
-        if (isTouchInteraction) return;
-        const item = e.target.closest(CONFIG.SELECTORS.ITEM);
-        if (!item) return;
+    // === Event Triggers ===
 
-        clearTimeout(hoverTimeout);
-        hoverTimeout = setTimeout(() => {
-            processItem(item);
-        }, CONFIG.DEBOUNCE_DELAY);
-    });
+    // Desktop: Hover (mouseover with debounce)
+    if (!isTouch) {
+        document.body.addEventListener('mouseover', (e) => {
+            const item = getClosestItem(e.target);
+            if (!item) return;
 
-    document.body.addEventListener('mouseout', (e) => {
-        if (isTouchInteraction) return;
-        const item = e.target.closest(CONFIG.SELECTORS.ITEM);
-        if (item) {
-            if (item.contains(e.relatedTarget)) return;
             clearTimeout(hoverTimeout);
-            const badge = item.querySelector('.mal-rating-badge.loading');
-            if (badge) {
-                badge.remove();
-                delete item.dataset.malInteraction;
-            }
-        }
-    });
+            hoverTimeout = setTimeout(() => processItem(item), CONFIG.DEBOUNCE_DELAY);
+        }, { passive: true });
+    }
 
-    // Mobile Logic
-    let touchStartX = 0;
-    let touchStartY = 0;
-    document.body.addEventListener('touchstart', (e) => {
-        const item = e.target.closest(CONFIG.SELECTORS.ITEM);
-        if (!item) return;
-        isTouchInteraction = true;
-        touchStartX = e.touches[0].clientX;
-        touchStartY = e.touches[0].clientY;
-        longPressTimeout = setTimeout(() => {
+    // Mobile: Touch-tap (touchstart/touchend with scroll rejection)
+    // Mirrors desktop hover — a tap on a card triggers rating fetch.
+    // Scroll/swipe gestures are ignored via movement threshold.
+    if (isTouch) {
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        document.body.addEventListener('touchstart', (e) => {
+            if (e.touches.length !== 1) return;
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+
+        document.body.addEventListener('touchend', (e) => {
+            const touch = e.changedTouches[0];
+            if (!touch) return;
+
+            const dx = Math.abs(touch.clientX - touchStartX);
+            const dy = Math.abs(touch.clientY - touchStartY);
+
+            // Reject scrolls/swipes
+            if (dx > CONFIG.TOUCH_MOVE_THRESHOLD || dy > CONFIG.TOUCH_MOVE_THRESHOLD) return;
+
+            // Don't trigger if tapping an existing badge (let its own click handler run)
+            if (e.target.closest('.mal-rating-badge')) return;
+
+            const item = getClosestItem(e.target);
+            if (!item) return;
+
             processItem(item);
-            if (navigator.vibrate) navigator.vibrate(40);
-        }, CONFIG.LONG_PRESS_DELAY);
-    }, { passive: true });
+        }, { passive: true });
+    }
 
-    document.body.addEventListener('touchmove', (e) => {
-        if (!longPressTimeout) return;
-        if (Math.abs(e.touches[0].clientX - touchStartX) > 15 || Math.abs(e.touches[0].clientY - touchStartY) > 15) {
-            clearTimeout(longPressTimeout);
-            longPressTimeout = null;
-        }
-    }, { passive: true });
-
-    document.body.addEventListener('touchend', () => {
-        if (longPressTimeout) clearTimeout(longPressTimeout);
-        setTimeout(() => { isTouchInteraction = false; }, 600);
+    // === Menu Command ===
+    GM_registerMenuCommand("🗑️ Clear Cache", () => {
+        const keys = GM_listValues();
+        let count = 0;
+        keys.forEach(k => {
+            if (k.startsWith(CONFIG.CACHE_PREFIX)) {
+                GM_deleteValue(k);
+                count++;
+            }
+        });
+        console.log(`MAL Cache Cleared (${count} entries)`);
     });
 
 })();

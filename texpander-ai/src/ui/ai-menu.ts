@@ -1,6 +1,6 @@
 import type { EditContext, AIPrompt } from '../types'
 import { CONFIG, state, BUILTIN_PROMPTS, isBuiltinEnabled, isCustomEnabled, getAllPrompts } from '../config'
-import { $, escHtml, safeFocus, captureContext, makeEditor } from '../core'
+import { $, safeFocus, captureContext, makeEditor } from '../core'
 import { callGemini } from '../api'
 import { notify } from './notify'
 import { aiMenuHTML } from './templates'
@@ -94,14 +94,30 @@ function renderPreview(): void {
 // Pills Rendering
 // ─────────────────────────────────────────────────────────────
 
-function createPillHTML(p: AIPrompt, index: number): string {
-  return `
-    <button class="sae-ai-pill" data-id="${p.id}" role="menuitem">
-      <span class="icon">${p.icon || '⚡'}</span>
-      <span>${escHtml(p.label)}</span>
-      <span class="key">${index}</span>
-    </button>
-  `
+function createPillElement(p: AIPrompt, index: number): HTMLButtonElement {
+  const btn = document.createElement('button')
+  btn.className = 'sae-ai-pill'
+  btn.dataset.id = p.id
+  btn.setAttribute('role', 'menuitem')
+
+  const iconSpan = document.createElement('span')
+  iconSpan.className = 'icon'
+  iconSpan.textContent = p.icon || '⚡'
+
+  const labelSpan = document.createElement('span')
+  labelSpan.textContent = p.label
+
+  const keySpan = document.createElement('span')
+  keySpan.className = 'key'
+  keySpan.textContent = String(index)
+
+  btn.appendChild(iconSpan)
+  btn.appendChild(labelSpan)
+  btn.appendChild(keySpan)
+
+  btn.onclick = () => execute(p.id)
+
+  return btn
 }
 
 function renderPills(): void {
@@ -122,13 +138,14 @@ function renderPills(): void {
   const secondaryPrompts = enabledBuiltins.slice(inlineCount)
 
   let idx = 1
-  primary.innerHTML = primaryPrompts.map(p => createPillHTML(p, idx++)).join('')
-  secondary.innerHTML = secondaryPrompts.map(p => createPillHTML(p, idx++)).join('')
+  primary.replaceChildren(...primaryPrompts.map(p => createPillElement(p, idx++)))
+  secondary.replaceChildren(...secondaryPrompts.map(p => createPillElement(p, idx++)))
 
   if (enabledCustoms.length) {
-    customPills.innerHTML = enabledCustoms.map(p => createPillHTML(p, idx++)).join('')
+    customPills.replaceChildren(...enabledCustoms.map(p => createPillElement(p, idx++)))
     customWrap.style.display = 'block'
   } else {
+    customPills.innerHTML = ''
     customWrap.style.display = 'none'
   }
 
@@ -137,10 +154,7 @@ function renderPills(): void {
   moreSection.style.display = menuState.expanded ? 'block' : 'none'
   toggle.textContent = menuState.expanded ? '▴ Less' : `▾ More (${moreCount})`
 
-  // Attach click handlers
-  menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pill').forEach(btn => {
-    btn.onclick = () => execute(btn.dataset.id!)
-  })
+  // Click handlers are attached in createPillElement
 
   toggle.onclick = () => {
     if (!menuState) return

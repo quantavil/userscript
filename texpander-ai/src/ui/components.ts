@@ -1,4 +1,3 @@
-import { $ } from '../core'
 import { notify } from './notify'
 
 const VALID_KEY_PATTERN = /^[\w-]+$/i
@@ -10,34 +9,58 @@ export function mountAbbrevEditor(
   onSave: (k: string, v: string) => void,
   onCancel: () => void
 ): void {
-  container.innerHTML = `
-    <input class="sae-input" placeholder="abbreviation" value="${key}" data-field="key" style="max-width:140px" aria-label="Abbreviation" />
-    <input class="sae-input" placeholder="expansion (supports {{templates}})" value="${val}" data-field="val" aria-label="Expansion" />
-    <div class="sae-item-actions">
-      <button data-action="save">Save</button>
-      <button data-action="cancel">Cancel</button>
-    </div>
-  `
+  // Clear container first
+  container.innerHTML = ''
 
-  const keyIn = $<HTMLInputElement>('[data-field="key"]', container)!
-  const valIn = $<HTMLInputElement>('[data-field="val"]', container)!
+  const keyInput = document.createElement('input')
+  keyInput.className = 'sae-input'
+  keyInput.placeholder = 'abbreviation'
+  keyInput.value = key
+  keyInput.dataset.field = 'key'
+  keyInput.style.maxWidth = '140px'
+  keyInput.ariaLabel = 'Abbreviation'
+
+  const valInput = document.createElement('input')
+  valInput.className = 'sae-input'
+  valInput.placeholder = 'expansion (supports {{templates}})'
+  valInput.value = val
+  valInput.dataset.field = 'val'
+  valInput.ariaLabel = 'Expansion'
+
+  const actionsDiv = document.createElement('div')
+  actionsDiv.className = 'sae-item-actions'
+
+  const saveBtn = document.createElement('button')
+  saveBtn.dataset.action = 'save'
+  saveBtn.textContent = 'Save'
+
+  const cancelBtn = document.createElement('button')
+  cancelBtn.dataset.action = 'cancel'
+  cancelBtn.textContent = 'Cancel'
+
+  actionsDiv.appendChild(saveBtn)
+  actionsDiv.appendChild(cancelBtn)
+
+  container.appendChild(keyInput)
+  container.appendChild(valInput)
+  container.appendChild(actionsDiv)
 
   const save = () => {
-    const k = keyIn.value.trim().toLowerCase()
+    const k = keyInput.value.trim().toLowerCase()
     if (!VALID_KEY_PATTERN.test(k)) {
       notify.toast('Invalid: letters, numbers, -, _ only')
       return
     }
-    onSave(k, valIn.value)
+    onSave(k, valInput.value)
   }
 
-  $<HTMLButtonElement>('[data-action="save"]', container)!.onclick = save
-  $<HTMLButtonElement>('[data-action="cancel"]', container)!.onclick = onCancel
+  saveBtn.onclick = save
+  cancelBtn.onclick = onCancel
 
   const handleKey = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      e.target === keyIn ? valIn.focus() : save()
+      e.target === keyInput ? valInput.focus() : save()
     }
     if (e.key === 'Escape') {
       e.preventDefault()
@@ -45,8 +68,12 @@ export function mountAbbrevEditor(
     }
   }
 
-  keyIn.addEventListener('keydown', handleKey)
-  valIn.addEventListener('keydown', handleKey)
-  keyIn.focus()
-  keyIn.select?.()
+  keyInput.addEventListener('keydown', handleKey)
+  valInput.addEventListener('keydown', handleKey)
+
+  // Focus logic
+  requestAnimationFrame(() => {
+    keyInput.focus()
+    keyInput.select?.()
+  })
 }
