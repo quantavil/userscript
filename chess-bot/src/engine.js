@@ -1072,7 +1072,7 @@ function parseBestLine(data) {
 }
 
 // ---------------------------------------------------
-// Premove Safety Logic
+// Premove Safety Logic (legacy — kept for shouldPremove)
 // ---------------------------------------------------
 function isEnPassantCapture(fen, from, to, ourColor) {
     const parts = fen.split(' ');
@@ -1082,180 +1082,301 @@ function isEnPassantCapture(fen, from, to, ourColor) {
     return ep && ep !== '-' && to === ep && from[0] !== to[0];
 }
 
-function checkPremoveSafety(fen, uci, ourColor) {
-    if (!fen || !uci || uci.length < 4) return { safe: false, reason: 'Invalid move', riskLevel: 100 };
-
-    const board = parseFenToBoard(fen);
-    if (!board) return { safe: false, reason: 'Invalid FEN', riskLevel: 100 };
-
-    const from = uci.substring(0, 2);
-    const to = uci.substring(2, 4);
-    const oppColor = ourColor === 'w' ? 'b' : 'w';
-    const movingCh = board.get(from);
-    const movingPiece = pieceFromFenChar(movingCh);
-
-    if (!movingPiece || movingPiece.color !== ourColor) return { safe: false, reason: 'Not our piece', riskLevel: 100 };
-
-    const destCh = board.get(to);
-    const destPiece = pieceFromFenChar(destCh);
-    let riskLevel = 0;
-    const reasons = [];
-
-    // King safety — use pre-parsed board
-    if (movingPiece.type === 'k') {
-        if (isAttackedOnBoard(board, to, oppColor)) return { safe: false, reason: 'King moves into check', riskLevel: 100 };
-    } else {
-        const newBoard = makeMoveOnBoard(board, from, to);
-        const kingPos = findKingOnBoard(newBoard, ourColor);
-        if (kingPos && isAttackedOnBoard(newBoard, kingPos, oppColor)) return { safe: false, reason: 'Exposes king to check', riskLevel: 100 };
-    }
-
-    // Don't hang queen — use pre-parsed board
-    if (movingPiece.type === 'q') {
-        const attackers = getAttackersOnBoard(board, to, oppColor);
-        if (attackers.length > 0) {
-            const hasDefender = getAttackersOnBoard(board, to, ourColor).length > 1;
-            if (!hasDefender || !destPiece) return { safe: false, reason: 'Hangs queen', riskLevel: 90 };
-        }
-    }
-
-    // Don't hang rook
-    if (movingPiece.type === 'r') {
-        const attackers = getAttackersOnBoard(board, to, oppColor);
-        if (attackers.length > 0) {
-            const captureValue = destPiece ? PIECE_VALUES[destPiece.type] : 0;
-            if (captureValue < PIECE_VALUES.r) {
-                const hasDefender = getAttackersOnBoard(board, to, ourColor).length > 1;
-                if (!hasDefender) { reasons.push('Hangs rook'); riskLevel += 60; }
-            }
-        }
-    }
-
-    // Destination safety
-    const destAttackers = getAttackersOnBoard(board, to, oppColor);
-    if (destAttackers.length > 0 && !destPiece) {
-        const defenders = getAttackersOnBoard(board, to, ourColor).length;
-        if (defenders === 0) { reasons.push('Undefended attacked square'); riskLevel += 30; }
-        else if (destAttackers.length > defenders) { reasons.push('Heavily attacked square'); riskLevel += 20; }
-    }
-
-    // Bad trades
-    if (destPiece && destPiece.color === oppColor) {
-        const ourValue = PIECE_VALUES[movingPiece.type];
-        const theirValue = PIECE_VALUES[destPiece.type];
-        if (destAttackers.length > 0 && ourValue > theirValue) {
-            reasons.push(`Bad trade: ${movingPiece.type} for ${destPiece.type}`);
-            riskLevel += 25;
-        }
-    }
-
-    const safe = riskLevel < 50;
-    const reason = reasons.length > 0 ? reasons.join(', ') : (safe ? 'Move appears safe' : 'Move risky');
-    return { safe, reason, riskLevel };
-}
-
 // ---------------------------------------------------
-// Premove Quality Assessment (Multi-Signal Intelligence)
+// Unified Premove Evaluation (replaces checkPremoveSafety + assessPremoveQuality)
 // ---------------------------------------------------
+// Piece values for the local engine (centipawns, matches PIECE_VAL)
+const HANGING_THRESHOLDS = { 6: 100, 5: 90, 4: 60, 3: 40, 2: 40, 1: 15 };
+
 const premoveEngine = new LocalEngine();
 
-function assessPremoveQuality(fen, opponentUci, ourUci) {
-    const bonuses = [];
-    let totalBonus = 0;
+/**
+ * Unified premove evaluation — all intelligence in one function.
+ * Simulates the opponent's predicted move FIRST, then validates our premove
+ * on the resulting board (the board that will actually exist when the premove fires).
+ *
+ * @param {string} fen - Current board position (opponent's turn to move)
+ * @param {string|null} opponentUci - Predicted opponent move from PV
+ * @param {string} ourUci - Our premove UCI string
+ * @param {string} ourColor - 'w' or 'b'
+ * @param {string} evalDisplay - Score display string for base chance calc
+ * @returns {{ execute: boolean, chance: number, reasons: string[], blocked: string|null }}
+ */
+function evaluatePremove(fen, opponentUci, ourUci, ourColor, evalDisplay) {
+    if (!ourUci || ourUci.length < 4) {
+        return { execute: false, chance: 0, reasons: [], blocked: 'Invalid move' };
+    }
 
-    if (!opponentUci || opponentUci.length < 4 || !ourUci || ourUci.length < 4) {
-        return { bonus: 0, reasons: [] };
+    // Base chance from eval
+    let chance = getEvalBasedPremoveChance(evalDisplay, ourColor);
+    const reasons = [];
+    const oppSide = ourColor === 'w' ? -1 : 1;
+    const ourSide = -oppSide;
+
+    // If no predicted opponent move, we can't do post-move validation
+    if (!opponentUci || opponentUci.length < 4) {
+        return { execute: false, chance: 0, reasons: [], blocked: 'No predicted opponent move' };
     }
 
     try {
-        // Load current position and simulate opponent's move
         premoveEngine.loadFen(fen);
+
+        // --- Step 1: Simulate opponent's predicted move ---
         const oppFrom = nameToSq(opponentUci.substring(0, 2));
         const oppTo = nameToSq(opponentUci.substring(2, 4));
         const oppMoves = premoveEngine.generateLegalMoves();
         const oppMove = oppMoves.find(m => m.from === oppFrom && m.to === oppTo);
-
-        if (!oppMove) return { bonus: 0, reasons: [] };
+        if (!oppMove) return { execute: false, chance: 0, reasons: [], blocked: 'Opponent move not legal' };
 
         premoveEngine.makeMove(oppMove);
 
-        // Now we're in our turn — analyze the position
+        // --- Step 2: Validate our move is legal in the post-opponent-move position ---
         const ourLegalMoves = premoveEngine.generateLegalMoves();
-
-        // Signal 1: Forced move (only 1 legal move)
-        if (ourLegalMoves.length === 1) {
-            totalBonus += 40;
-            bonuses.push('forced');
-        } else if (ourLegalMoves.length <= 3) {
-            totalBonus += 15;
-            bonuses.push('few options');
-        }
-
-        // Parse our move
         const ourFrom = nameToSq(ourUci.substring(0, 2));
         const ourTo = nameToSq(ourUci.substring(2, 4));
         const ourMove = ourLegalMoves.find(m => m.from === ourFrom && m.to === ourTo);
 
-        if (ourMove) {
-            // Signal 2: Recapture (same destination as opponent's move)
-            if (ourTo === oppTo) {
-                totalBonus += 20;
-                bonuses.push('recapture');
-            }
+        if (!ourMove) {
+            premoveEngine.unmakeMove(oppMove);
+            return { execute: false, chance: 0, reasons: [], blocked: 'Our move illegal after opponent plays' };
+        }
 
-            // Signal 3: Check — simulate our move and see if opponent is in check
+        // --- Step 3: Safety checks on POST-MOVE board ---
+        const movingAbs = Math.abs(ourMove.piece);
+
+        // 3a: King exposure — make our move, check if our king is attacked
+        // (Already guaranteed legal by generateLegalMoves, but check for discovered attacks AFTER opponent responds)
+
+        // 3b: Hanging piece detection — check if our piece lands on an attacked square
+        // with insufficient defense (all piece types)
+        const destPieceAbs = movingAbs; // The piece we're moving
+        const capturedAbs = ourMove.captured !== EMPTY ? Math.abs(ourMove.captured) : 0;
+        const capturedVal = capturedAbs > 0 ? (PIECE_VAL[capturedAbs] || 0) : 0;
+        const movedVal = PIECE_VAL[destPieceAbs] || 0;
+
+        if (destPieceAbs !== 6) { // Not king (king can't "hang" the same way)
             premoveEngine.makeMove(ourMove);
-            if (premoveEngine.inCheck(premoveEngine.side)) {
-                totalBonus += 10;
-                bonuses.push('check');
-            }
+            // Check if opponent can attack our destination
+            const isDestAttacked = premoveEngine.isAttacked(ourTo, premoveEngine.side);
             premoveEngine.unmakeMove(ourMove);
 
-            // Signal 4: Safe square (destination not attacked by opponent)
-            const destAttacked = premoveEngine.isAttacked(ourTo, -premoveEngine.side);
-            if (!destAttacked) {
-                totalBonus += 10;
-                bonuses.push('safe sq');
-            }
-
-            // Signal 5: Center control (d4/d5/e4/e5)
-            const centerSquares = [nameToSq('d4'), nameToSq('d5'), nameToSq('e4'), nameToSq('e5')];
-            if (centerSquares.includes(ourTo)) {
-                totalBonus += 5;
-                bonuses.push('center');
-            }
-
-            // Signal 6: Dominant move — our move is much better than alternatives
-            if (ourLegalMoves.length > 1 && ourLegalMoves.length <= 30) {
-                // Quick depth-1 eval comparison
+            if (isDestAttacked && destPieceAbs >= 2) {
+                // Count attackers vs defenders after our move
                 premoveEngine.makeMove(ourMove);
-                const ourScore = -premoveEngine.evaluate();
+                // Simplified SEE: is it a net loss?
+                const oppAttacksPost = [];
+                const ourDefendsPost = [];
+                // Generate opponent's captures on our destination
+                const oppReplies = premoveEngine.generateLegalMoves();
+                for (const reply of oppReplies) {
+                    if (reply.to === ourTo) oppAttacksPost.push(reply);
+                }
                 premoveEngine.unmakeMove(ourMove);
 
-                let secondBest = -Infinity;
-                for (const alt of ourLegalMoves) {
-                    if (alt.from === ourFrom && alt.to === ourTo) continue;
-                    premoveEngine.makeMove(alt);
-                    const altScore = -premoveEngine.evaluate();
-                    premoveEngine.unmakeMove(alt);
-                    if (altScore > secondBest) secondBest = altScore;
-                }
+                if (oppAttacksPost.length > 0 && capturedVal < movedVal) {
+                    // We're moving a valuable piece to an attacked square and not capturing enough
+                    const riskThreshold = HANGING_THRESHOLDS[destPieceAbs] || 50;
+                    const pieceNames = { 5: 'queen', 4: 'rook', 3: 'bishop', 2: 'knight' };
+                    const pieceName = pieceNames[destPieceAbs] || 'piece';
 
-                if (secondBest > -Infinity && (ourScore - secondBest) >= 150) {
-                    // Our move is ≥1.5 pawns better than the next best
-                    totalBonus += 20;
-                    bonuses.push('dominant');
+                    // Check if we have defenders
+                    const defenderCount = premoveEngine.isAttacked(ourTo, premoveEngine.side) ? 1 : 0;
+                    const lowestAttackerVal = Math.min(...oppAttacksPost.map(r => PIECE_VAL[Math.abs(r.piece)] || 100));
+
+                    if (defenderCount === 0 || lowestAttackerVal < movedVal) {
+                        if (destPieceAbs >= 5) {
+                            // Queen hanging — hard block
+                            premoveEngine.unmakeMove(oppMove);
+                            return { execute: false, chance: 0, reasons: [], blocked: `Hangs ${pieceName}` };
+                        }
+                        // Rook/minor — penalty
+                        chance = Math.max(5, chance - riskThreshold);
+                        reasons.push(`${pieceName} at risk`);
+                    }
                 }
             }
         }
 
-        premoveEngine.unmakeMove(oppMove);
+        // 3c: Back-rank mate vulnerability
+        // After our move, check if opponent has a back-rank mate threat
+        premoveEngine.makeMove(ourMove);
+        const ourKingSq = premoveEngine.findKingSq(ourSide);
+        if (ourKingSq >= 0) {
+            const kRank = sqRank(ourKingSq);
+            const isBackRank = (ourSide === 1 && kRank === 0) || (ourSide === -1 && kRank === 7);
+            if (isBackRank) {
+                // Check if all squares in front of king are blocked (pawn shield broken)
+                const shieldRank = kRank + ourSide;
+                if (shieldRank >= 0 && shieldRank <= 7) {
+                    const kFile = sqFile(ourKingSq);
+                    let escapable = false;
+                    for (let df = -1; df <= 1; df++) {
+                        const sf = kFile + df;
+                        if (sf < 0 || sf > 7) continue;
+                        const shieldSq = shieldRank * 8 + sf;
+                        if (premoveEngine.board[shieldSq] === EMPTY &&
+                            !premoveEngine.isAttacked(shieldSq, premoveEngine.side)) {
+                            escapable = true;
+                            break;
+                        }
+                    }
+                    if (!escapable) {
+                        // Check if opponent has a rook/queen on the back rank file
+                        const backRankAttacked = premoveEngine.isAttacked(ourKingSq, premoveEngine.side);
+                        if (backRankAttacked) {
+                            premoveEngine.unmakeMove(ourMove);
+                            premoveEngine.unmakeMove(oppMove);
+                            return { execute: false, chance: 0, reasons: [], blocked: 'Back-rank mate threat' };
+                        }
+                        // Even without immediate threat, penalize for vulnerability
+                        chance = Math.max(10, chance - 20);
+                        reasons.push('back-rank weak');
+                    }
+                }
+            }
+        }
+        premoveEngine.unmakeMove(ourMove);
+
+        // --- Step 4: Quality signals (bonuses) ---
+
+        // Signal 1: Forced move (only 1 legal move)
+        if (ourLegalMoves.length === 1) {
+            chance = Math.min(95, chance + 40);
+            reasons.push('forced');
+        } else if (ourLegalMoves.length <= 3) {
+            chance = Math.min(95, chance + 15);
+            reasons.push('few options');
+        }
+
+        // Signal 2: Recapture
+        if (ourTo === oppTo) {
+            chance = Math.min(95, chance + 20);
+            reasons.push('recapture');
+        }
+
+        // Signal 3: Check
+        premoveEngine.makeMove(ourMove);
+        if (premoveEngine.inCheck(premoveEngine.side)) {
+            chance = Math.min(95, chance + 10);
+            reasons.push('check');
+        }
+        premoveEngine.unmakeMove(ourMove);
+
+        // Signal 4: Safe square
+        const destAttacked = premoveEngine.isAttacked(ourTo, -premoveEngine.side);
+        if (!destAttacked) {
+            chance = Math.min(95, chance + 10);
+            reasons.push('safe sq');
+        }
+
+        // Signal 5: Center control
+        const centerSquares = [nameToSq('d4'), nameToSq('d5'), nameToSq('e4'), nameToSq('e5')];
+        if (centerSquares.includes(ourTo)) {
+            chance = Math.min(95, chance + 5);
+            reasons.push('center');
+        }
+
+        // Signal 6: Dominant move — depth-3 search comparison
+        if (ourLegalMoves.length > 1 && ourLegalMoves.length <= 30) {
+            // Use depth-3 search for our move
+            premoveEngine.makeMove(ourMove);
+            const ourSearchResult = premoveEngine.searchRoot(3, 200);
+            const ourScore = ourSearchResult.score ? -ourSearchResult.score : -premoveEngine.evaluate();
+            premoveEngine.unmakeMove(ourMove);
+
+            // Quick depth-1 eval for alternatives (full depth-3 for all would be too slow)
+            let secondBest = -Infinity;
+            for (const alt of ourLegalMoves) {
+                if (alt.from === ourFrom && alt.to === ourTo) continue;
+                premoveEngine.makeMove(alt);
+                const altScore = -premoveEngine.evaluate();
+                premoveEngine.unmakeMove(alt);
+                if (altScore > secondBest) secondBest = altScore;
+            }
+
+            if (secondBest > -Infinity && (ourScore - secondBest) >= 150) {
+                chance = Math.min(95, chance + 25);
+                reasons.push('dominant');
+            }
+        }
+
+        // --- Step 5: Multi-response stability check ---
+        // Test our premove against opponent's top 3 likely moves (not just the predicted one)
+        premoveEngine.unmakeMove(oppMove); // Back to original position
+
+        // Score opponent's legal moves to find top candidates
+        const oppScoredMoves = [];
+        for (const oMove of oppMoves) {
+            premoveEngine.makeMove(oMove);
+            const score = -premoveEngine.evaluate(); // From opponent's perspective
+            premoveEngine.unmakeMove(oMove);
+            oppScoredMoves.push({ move: oMove, score });
+        }
+        oppScoredMoves.sort((a, b) => b.score - a.score);
+
+        // Test against top 3 (or fewer if less available), skip the predicted move
+        const topOppMoves = oppScoredMoves
+            .filter(m => !(m.move.from === oppFrom && m.move.to === oppTo))
+            .slice(0, 3);
+
+        let illegalCount = 0;
+        let badScoreCount = 0;
+
+        for (const { move: altOppMove } of topOppMoves) {
+            premoveEngine.makeMove(altOppMove);
+            const altLegal = premoveEngine.generateLegalMoves();
+            const altOurMove = altLegal.find(m => m.from === ourFrom && m.to === ourTo);
+
+            if (!altOurMove) {
+                illegalCount++;
+            } else {
+                // Check if our move is terrible in this scenario
+                premoveEngine.makeMove(altOurMove);
+                const postScore = -premoveEngine.evaluate();
+                premoveEngine.unmakeMove(altOurMove);
+
+                // Compare against doing nothing (best alternative)
+                let bestAlt = -Infinity;
+                for (const alt of altLegal) {
+                    if (alt.from === ourFrom && alt.to === ourTo) continue;
+                    premoveEngine.makeMove(alt);
+                    const altS = -premoveEngine.evaluate();
+                    premoveEngine.unmakeMove(alt);
+                    if (altS > bestAlt) bestAlt = altS;
+                }
+
+                if (bestAlt > -Infinity && (bestAlt - postScore) >= 200) {
+                    badScoreCount++;
+                }
+            }
+            premoveEngine.unmakeMove(altOppMove);
+        }
+
+        // Stability penalties
+        if (topOppMoves.length >= 2 && illegalCount >= 2) {
+            chance = Math.max(5, chance - 35);
+            reasons.push('unstable (illegal)');
+        } else if (illegalCount >= 1) {
+            chance = Math.max(10, chance - 15);
+            reasons.push('sometimes illegal');
+        }
+
+        if (topOppMoves.length >= 2 && badScoreCount >= 2) {
+            chance = Math.max(5, chance - 30);
+            reasons.push('unstable (bad)');
+        } else if (badScoreCount >= 1) {
+            chance = Math.max(10, chance - 10);
+            reasons.push('risky alt');
+        }
+
     } catch (e) {
-        console.warn('GabiBot: assessPremoveQuality error:', e);
-        return { bonus: 0, reasons: [] };
+        console.warn('GabiBot: evaluatePremove error:', e);
+        return { execute: false, chance: 0, reasons: [], blocked: 'Evaluation error' };
     }
 
-    return { bonus: totalBonus, reasons: bonuses };
+    chance = Math.min(95, Math.max(0, Math.round(chance)));
+    const execute = chance > 0;
+    return { execute, chance, reasons, blocked: null };
 }
 
 function shouldPremove(uci, fen) {
@@ -1398,42 +1519,36 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                     return;
                 }
 
-                const safetyCheck = checkPremoveSafety(fen, ourUci, ourColor);
-                if (!safetyCheck.safe) {
-                    BotState.statusInfo = `🛡️ Premove blocked: ${safetyCheck.reason}${sourceLabel}`;
+                // Unified premove evaluation — safety + quality + stability in one pass
+                const premoveResult = evaluatePremove(fen, opponentUci, ourUci, ourColor, premoveEvalDisplay);
+                BotState.currentPremoveReasons = premoveResult.reasons.length > 0 ? premoveResult.reasons.join(', ') : '';
+
+                if (premoveResult.blocked) {
+                    BotState.statusInfo = `🛡️ Premove blocked: ${premoveResult.blocked}${sourceLabel}`;
                     BotState.currentPremoveReasons = '';
                     if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                     lastFenProcessedPremove = fen;
                     return;
                 }
 
-                // Base premove chance from eval
-                let currentChance = getEvalBasedPremoveChance(premoveEvalDisplay, ourColor);
-
-                // Quality assessment: multi-signal intelligence
-                const quality = assessPremoveQuality(fen, opponentUci, ourUci);
-                currentChance = Math.min(95, currentChance + quality.bonus);
-                BotState.currentPremoveReasons = quality.reasons.length > 0 ? quality.reasons.join(', ') : '';
-
-                if (quality.bonus > 0) {
-                    console.log(`GabiBot: 🧠 Quality +${quality.bonus}% [${quality.reasons.join(', ')}] → ${currentChance.toFixed(0)}%`);
+                if (!premoveResult.execute) {
+                    BotState.statusInfo = `Premove skipped (no confidence)${sourceLabel}`;
+                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+                    lastFenProcessedPremove = fen;
+                    return;
                 }
 
-                // Risk penalty from safety check
-                if (safetyCheck.riskLevel > 0) {
-                    currentChance = Math.max(5, currentChance - safetyCheck.riskLevel * 0.5);
-                    console.log(`GabiBot: Risk ${safetyCheck.riskLevel}%, confidence: ${currentChance.toFixed(0)}%`);
-                }
-
+                const currentChance = premoveResult.chance;
                 BotState.currentPremoveChance = currentChance;
+
+                if (premoveResult.reasons.length > 0) {
+                    console.log(`GabiBot: 🧠 Premove [${premoveResult.reasons.join(', ')}] → ${currentChance}%`);
+                }
 
                 const roll = Math.random() * 100;
                 if (roll > currentChance) {
-                    const reasonTag = quality.reasons.length > 0 ? ` [${quality.reasons.join(', ')}]` : '';
-                    const skipReason = safetyCheck.riskLevel > 0
-                        ? `${safetyCheck.reason}${reasonTag} (${roll.toFixed(0)}% > ${currentChance.toFixed(0)}%)`
-                        : `eval: ${premoveEvalDisplay}${reasonTag}, ${roll.toFixed(0)}% > ${currentChance.toFixed(0)}%`;
-                    BotState.statusInfo = `Premove skipped: ${skipReason}${sourceLabel}`;
+                    const reasonTag = premoveResult.reasons.length > 0 ? ` [${premoveResult.reasons.join(', ')}]` : '';
+                    BotState.statusInfo = `Premove skipped: eval ${premoveEvalDisplay}${reasonTag}, ${roll.toFixed(0)}% > ${currentChance}%${sourceLabel}`;
                     if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                     lastFenProcessedPremove = fen;
                     return;
@@ -1448,9 +1563,8 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
 
                 lastPremoveFen = fen;
                 lastPremoveUci = ourUci;
-                const safetyEmoji = safetyCheck.riskLevel === 0 ? '✅' : safetyCheck.riskLevel < 25 ? '⚠️' : '🔶';
-                const reasonSuffix = quality.reasons.length > 0 ? ` [${quality.reasons.join(', ')}]` : '';
-                BotState.statusInfo = `${safetyEmoji} Premove: ${ourUci} (${Math.round(currentChance)}%)${reasonSuffix}${sourceLabel}`;
+                const reasonSuffix = premoveResult.reasons.length > 0 ? ` [${premoveResult.reasons.join(', ')}]` : '';
+                BotState.statusInfo = `✅ Premove: ${ourUci} (${currentChance}%)${reasonSuffix}${sourceLabel}`;
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                 lastFenProcessedPremove = fen;
             }

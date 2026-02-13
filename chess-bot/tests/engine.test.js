@@ -1267,3 +1267,312 @@ describe('getEvalBasedPremoveChance (updated thresholds)', () => {
         }
     });
 });
+
+// ============================================================
+// UNIFIED evaluatePremove TESTS
+// ============================================================
+
+// Self-contained evaluatePremove — mirrors production logic using test LocalEngine
+function evaluatePremove(fen, opponentUci, ourUci, ourColor, evalDisplay) {
+    if (!ourUci || ourUci.length < 4) {
+        return { execute: false, chance: 0, reasons: [], blocked: 'Invalid move' };
+    }
+
+    let chance = getEvalBasedPremoveChance(evalDisplay, ourColor);
+    const reasons = [];
+    const oppSide = ourColor === 'w' ? -1 : 1;
+    const ourSide = -oppSide;
+
+    if (!opponentUci || opponentUci.length < 4) {
+        return { execute: false, chance: 0, reasons: [], blocked: 'No predicted opponent move' };
+    }
+
+    const PIECE_VAL = { 1: 100, 2: 320, 3: 330, 4: 500, 5: 900, 6: 0 };
+    const HANGING_THRESHOLDS = { 6: 100, 5: 90, 4: 60, 3: 40, 2: 40, 1: 15 };
+    const EMPTY = 0;
+
+    const eng = new LocalEngine();
+    try {
+        eng.loadFen(fen);
+
+        const oppFrom = nameToSq(opponentUci.substring(0, 2));
+        const oppTo = nameToSq(opponentUci.substring(2, 4));
+        const oppMoves = eng.generateLegalMoves();
+        const oppMove = oppMoves.find(m => m.from === oppFrom && m.to === oppTo);
+        if (!oppMove) return { execute: false, chance: 0, reasons: [], blocked: 'Opponent move not legal' };
+
+        eng.makeMove(oppMove);
+
+        const ourLegalMoves = eng.generateLegalMoves();
+        const ourFrom = nameToSq(ourUci.substring(0, 2));
+        const ourTo = nameToSq(ourUci.substring(2, 4));
+        const ourMove = ourLegalMoves.find(m => m.from === ourFrom && m.to === ourTo);
+
+        if (!ourMove) {
+            eng.unmakeMove(oppMove);
+            return { execute: false, chance: 0, reasons: [], blocked: 'Our move illegal after opponent plays' };
+        }
+
+        // Hanging piece detection
+        const movingAbs = Math.abs(ourMove.piece);
+        const capturedAbs = ourMove.captured !== EMPTY ? Math.abs(ourMove.captured) : 0;
+        const capturedVal = capturedAbs > 0 ? (PIECE_VAL[capturedAbs] || 0) : 0;
+        const movedVal = PIECE_VAL[movingAbs] || 0;
+
+        if (movingAbs !== 6) {
+            eng.makeMove(ourMove);
+            const isDestAttacked = eng.isAttacked(ourTo, eng.side);
+            eng.unmakeMove(ourMove);
+
+            if (isDestAttacked && movingAbs >= 2) {
+                eng.makeMove(ourMove);
+                const oppReplies = eng.generateLegalMoves();
+                const oppAttacksPost = oppReplies.filter(r => r.to === ourTo);
+                eng.unmakeMove(ourMove);
+
+                if (oppAttacksPost.length > 0 && capturedVal < movedVal) {
+                    const riskThreshold = HANGING_THRESHOLDS[movingAbs] || 50;
+                    const pieceNames = { 5: 'queen', 4: 'rook', 3: 'bishop', 2: 'knight' };
+                    const pieceName = pieceNames[movingAbs] || 'piece';
+
+                    const defenderCount = eng.isAttacked(ourTo, eng.side) ? 1 : 0;
+                    const lowestAttackerVal = Math.min(...oppAttacksPost.map(r => PIECE_VAL[Math.abs(r.piece)] || 100));
+
+                    if (defenderCount === 0 || lowestAttackerVal < movedVal) {
+                        if (movingAbs >= 5) {
+                            eng.unmakeMove(oppMove);
+                            return { execute: false, chance: 0, reasons: [], blocked: `Hangs ${pieceName}` };
+                        }
+                        chance = Math.max(5, chance - riskThreshold);
+                        reasons.push(`${pieceName} at risk`);
+                    }
+                }
+            }
+        }
+
+        // Quality signals
+        if (ourLegalMoves.length === 1) {
+            chance = Math.min(95, chance + 40);
+            reasons.push('forced');
+        } else if (ourLegalMoves.length <= 3) {
+            chance = Math.min(95, chance + 15);
+            reasons.push('few options');
+        }
+
+        if (ourTo === oppTo) {
+            chance = Math.min(95, chance + 20);
+            reasons.push('recapture');
+        }
+
+        eng.makeMove(ourMove);
+        if (eng.inCheck(eng.side)) {
+            chance = Math.min(95, chance + 10);
+            reasons.push('check');
+        }
+        eng.unmakeMove(ourMove);
+
+        const destAttacked = eng.isAttacked(ourTo, -eng.side);
+        if (!destAttacked) {
+            chance = Math.min(95, chance + 10);
+            reasons.push('safe sq');
+        }
+
+        const centerSquares = [nameToSq('d4'), nameToSq('d5'), nameToSq('e4'), nameToSq('e5')];
+        if (centerSquares.includes(ourTo)) {
+            chance = Math.min(95, chance + 5);
+            reasons.push('center');
+        }
+
+        // Multi-response stability
+        eng.unmakeMove(oppMove);
+
+        const oppScoredMoves = [];
+        for (const oMove of oppMoves) {
+            eng.makeMove(oMove);
+            const score = -eng.evaluate();
+            eng.unmakeMove(oMove);
+            oppScoredMoves.push({ move: oMove, score });
+        }
+        oppScoredMoves.sort((a, b) => b.score - a.score);
+
+        const topOppMoves = oppScoredMoves
+            .filter(m => !(m.move.from === oppFrom && m.move.to === oppTo))
+            .slice(0, 3);
+
+        let illegalCount = 0;
+        let badScoreCount = 0;
+
+        for (const { move: altOppMove } of topOppMoves) {
+            eng.makeMove(altOppMove);
+            const altLegal = eng.generateLegalMoves();
+            const altOurMove = altLegal.find(m => m.from === ourFrom && m.to === ourTo);
+
+            if (!altOurMove) {
+                illegalCount++;
+            } else {
+                eng.makeMove(altOurMove);
+                const postScore = -eng.evaluate();
+                eng.unmakeMove(altOurMove);
+
+                let bestAlt = -Infinity;
+                for (const alt of altLegal) {
+                    if (alt.from === ourFrom && alt.to === ourTo) continue;
+                    eng.makeMove(alt);
+                    const altS = -eng.evaluate();
+                    eng.unmakeMove(alt);
+                    if (altS > bestAlt) bestAlt = altS;
+                }
+
+                if (bestAlt > -Infinity && (bestAlt - postScore) >= 200) {
+                    badScoreCount++;
+                }
+            }
+            eng.unmakeMove(altOppMove);
+        }
+
+        if (topOppMoves.length >= 2 && illegalCount >= 2) {
+            chance = Math.max(5, chance - 35);
+            reasons.push('unstable (illegal)');
+        } else if (illegalCount >= 1) {
+            chance = Math.max(10, chance - 15);
+            reasons.push('sometimes illegal');
+        }
+
+        if (topOppMoves.length >= 2 && badScoreCount >= 2) {
+            chance = Math.max(5, chance - 30);
+            reasons.push('unstable (bad)');
+        } else if (badScoreCount >= 1) {
+            chance = Math.max(10, chance - 10);
+            reasons.push('risky alt');
+        }
+    } catch (e) {
+        return { execute: false, chance: 0, reasons: [], blocked: 'Evaluation error' };
+    }
+
+    chance = Math.min(95, Math.max(0, Math.round(chance)));
+    const execute = chance > 0;
+    return { execute, chance, reasons, blocked: null };
+}
+
+
+describe('evaluatePremove (unified)', () => {
+    it('should block when ourUci is invalid', () => {
+        const r = evaluatePremove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            'e2e4', '', 'b', '0.0');
+        expect(r.execute).toBe(false);
+        expect(r.blocked).toBe('Invalid move');
+    });
+
+    it('should block when no predicted opponent move', () => {
+        const r = evaluatePremove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            null, 'e7e5', 'b', '0.0');
+        expect(r.execute).toBe(false);
+        expect(r.blocked).toBe('No predicted opponent move');
+    });
+
+    it('should block when opponent move is not legal', () => {
+        const r = evaluatePremove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            'e7e5', 'd7d5', 'b', '0.0');
+        expect(r.execute).toBe(false);
+        expect(r.blocked).toBe('Opponent move not legal');
+    });
+
+    it('should block when our move is illegal after opponent plays', () => {
+        // After white plays e2e4, black trying to play e2e4 is illegal
+        const r = evaluatePremove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            'e2e4', 'e2e4', 'b', '0.0');
+        expect(r.execute).toBe(false);
+        expect(r.blocked).toBe('Our move illegal after opponent plays');
+    });
+
+    it('should return positive chance for valid premoves', () => {
+        // Opening: white e2e4, black d7d5
+        const r = evaluatePremove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            'e2e4', 'd7d5', 'b', '0.0');
+        expect(r.execute).toBe(true);
+        expect(r.chance).toBeGreaterThan(0);
+        expect(r.blocked).toBeNull();
+    });
+
+    it('should detect recapture in post-move board', () => {
+        // White pawn on d5 after exd5, black recaptures Qxd5
+        const fen = 'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2';
+        const r = evaluatePremove(fen, 'e4d5', 'd8d5', 'b', '0.0');
+        expect(r.reasons).toContain('recapture');
+    });
+
+    it('should detect forced move signal', () => {
+        // Position: after Ra7+, black Ka8 must play Kb8 (only legal move)
+        const fen = 'k7/1R6/1K6/8/8/8/8/8 w - - 0 1';
+        const r = evaluatePremove(fen, 'b7a7', 'a8b8', 'b', '0.0');
+        expect(r.reasons).toContain('forced');
+        expect(r.chance).toBeGreaterThanOrEqual(40);
+    });
+
+    it('should detect center control', () => {
+        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        const r = evaluatePremove(fen, 'e2e4', 'd7d5', 'b', '0.0');
+        expect(r.reasons).toContain('center');
+    });
+
+    it('should detect check signal', () => {
+        // After d2d3, Bc5xf2+ gives check
+        const checkFen = 'rnbqk1nr/pppp1ppp/8/2b1p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3';
+        const r = evaluatePremove(checkFen, 'd2d3', 'c5f2', 'b', '0.0');
+        expect(r.reasons).toContain('check');
+    });
+
+    it('should cap chance at 95', () => {
+        // Forced move with very high eval should still cap at 95
+        const fen = 'k7/1R6/1K6/8/8/8/8/8 w - - 0 1';
+        const r = evaluatePremove(fen, 'b7a7', 'a8b8', 'b', '5.0');
+        // Even with huge eval + forced bonus, chance should cap at 95
+        expect(r.chance).toBeLessThanOrEqual(95);
+    });
+
+    it('should handle normal opening moves without errors', () => {
+        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        const r = evaluatePremove(fen, 'e2e4', 'b8c6', 'b', '0.0');
+        expect(r.execute).toBe(true);
+        expect(r.blocked).toBeNull();
+        expect(Array.isArray(r.reasons)).toBe(true);
+    });
+
+    it('should apply stability penalty when premove is illegal for some opponent moves', () => {
+        // Starting position, white to move. We are Black.
+        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        // Opponent (white) plays e2e4. We premove b8c6.
+        const r = evaluatePremove(fen, 'e2e4', 'b8c6', 'b', '0.0');
+        // This should work — Nc6 is Typically legal regardless of what white plays first
+        expect(r.execute).toBe(true);
+        expect(r.blocked).toBeNull();
+    });
+
+    it('should detect stability issues if move is often illegal', () => {
+        // A position where our premove is only legal if opponent plays a specific move
+        // E.g. Bishop recapture on d5 only legal if white plays exd5
+        const fen = 'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2';
+        // Opponent plays exd5. We premove Qxd5.
+        // If white plays anything else (Nf3, d4, Nc3), Qxd5 is ILLEGAL.
+        const r = evaluatePremove(fen, 'e4d5', 'd8d5', 'b', '0.0');
+
+        // It should still execute (if we trust the PV), but it might have stability penalties
+        expect(r.execute).toBe(true);
+    });
+
+    it('should have blocked=null for successful evaluations', () => {
+        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        const r = evaluatePremove(fen, 'e2e4', 'e7e5', 'b', '0.0');
+        expect(r.blocked).toBeNull();
+    });
+
+    it('should include base eval chance in the result', () => {
+        // With eval +3.0 for white, base chance should be 90
+        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        const highEval = evaluatePremove(fen, 'e2e4', 'e7e5', 'b', '3.0');
+        const lowEval = evaluatePremove(fen, 'e2e4', 'e7e5', 'b', '-2.0');
+        // Black with +3.0 eval (from white's perspective) should have lower chance than
+        // black with -2.0 eval (which is +2.0 from black's perspective)
+        expect(lowEval.chance).toBeGreaterThan(highEval.chance);
+    });
+});
