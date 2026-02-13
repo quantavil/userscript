@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name          ♟-super-chess-bot
+// @name          ♟Super-chess-Bot
 // @namespace     http://tampermonkey.net/
-// @version       8.1
-// @description   superchessbot is a tournament level hyperbullet bot 
+// @version       8.1.1
+// @description   Super chess Bot is a tournament level bullet bot
 // @author        quantavil
 // @match         https://www.chess.com/play/computer*
 // @match         https://www.chess.com/game/*
@@ -10,6 +10,7 @@
 // @license       MIT
 // @icon          https://www.google.com/s2/favicons?sz=64&domain=chess.com
 // @grant         none
+// @antifeature   membership
 // ==/UserScript==
 
 (async function () {
@@ -30,137 +31,6 @@
     const AUTO_MOVE_STEP = 300;            // ⚡ 500 → 300ms for bullet
     const RANDOM_JITTER_MIN = 50;          // ⚡ 120 → 50ms for bullet
 
-    // ═══════════════════════════════════════════════════════════
-    // OPENING BOOK - Aggressive Openings
-    // ═══════════════════════════════════════════════════════════
-    const OPENING_BOOK = [
-        { name: "Evans Gambit", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "b2b4"] },
-        { name: "Scotch Gambit", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f1c4"] },
-        { name: "Danish Gambit", moves: ["e2e4", "e7e5", "d2d4", "e5d4", "c2c3", "d4c3", "f1c4"] },
-        { name: "Blackmar-Diemer Gambit", moves: ["d2d4", "d7d5", "e2e4", "d5e4", "b1c3", "g8f6", "f2f3"] },
-        { name: "Latvian Gambit", moves: ["e2e4", "e7e5", "g1f3", "f7f5"] },
-        { name: "Albin Countergambit", moves: ["d2d4", "d7d5", "c2c4", "e7e5"] },
-        { name: "Budapest Gambit", moves: ["d2d4", "g8f6", "c2c4", "e7e5"] },
-        { name: "Smith-Morra Gambit", moves: ["e2e4", "c7c5", "d2d4", "c5d4", "c2c3"] },
-        { name: "Göring Gambit", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "c2c3"] },
-        { name: "Halloween Gambit", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "c3e5"] },
-        { name: "Max Lange Attack", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "d2d4", "e5d4", "e1g1", "d7d6", "f3g5"] },
-        { name: "Vienna Game", moves: ["e2e4", "e7e5", "b1c3"] },
-        { name: "Four Knights Scotch", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "d2d4"] },
-        { name: "Trompowsky Attack", moves: ["d2d4", "g8f6", "c1g5"] },
-        { name: "Jobava London", moves: ["d2d4", "d7d5", "c1f4", "g8f6", "b1c3", "c7c5", "e2e3", "b8c6", "h2h4"] },
-        { name: "Grand Prix Attack", moves: ["e2e4", "c7c5", "b1c3", "b8c6", "f2f4"] },
-        { name: "St. George Aggressive", moves: ["e2e4", "a7a6", "d2d4", "b7b5", "b1c3", "c8b7"] },
-        { name: "Italian Game", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4"] },
-        { name: "Fried Liver Attack", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "f3g5", "d7d5", "e4d5", "f6d5", "g5f7"] },
-        { name: "King's Gambit", moves: ["e2e4", "e7e5", "f2f4"] },
-        { name: "Wing Gambit", moves: ["e2e4", "c7c5", "b2b4"] },
-        { name: "Muzio Gambit", moves: ["e2e4", "e7e5", "f2f4", "e5f4", "g1f3", "g7g5", "f1c4", "g5g4", "e1g1"] },
-        { name: "Double Muzio (wild)", moves: ["e2e4", "e7e5", "f2f4", "e5f4", "g1f3", "g7g5", "f1c4", "g5g4", "e1g1", "g4f3", "d1f3"] },
-        { name: "Allgaier Gambit", moves: ["e2e4", "e7e5", "f2f4", "e5f4", "g1f3", "g7g5", "h2h4", "g5g4", "f3e5"] },
-        { name: "Kieseritzky Gambit", moves: ["e2e4", "e7e5", "f2f4", "e5f4", "g1f3", "g7g5", "h2h4", "g5g4", "f3g5"] },
-        { name: "Bishop's Gambit", moves: ["e2e4", "e7e5", "f2f4", "e5f4", "f1c4"] },
-        { name: "Vienna Gambit", moves: ["e2e4", "e7e5", "b1c3", "g8f6", "f2f4"] },
-        { name: "Vienna, Frankenstein-Dracula", moves: ["e2e4", "e7e5", "b1c3", "g8f6", "f1c4", "f6e4", "d1h5"] },
-        { name: "Hamppe-Allgaier Gambit (Vienna)", moves: ["e2e4", "e7e5", "b1c3", "g8f6", "f2f4", "d7d5", "f4e5", "f6e4", "g1f3", "g7g5"] },
-        { name: "Jerome Gambit", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "c4f7", "e8f7", "f3e5"] },
-        { name: "Traxler Counterattack (Wilkes-Barre)", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "f3g5", "f8c5"] },
-        { name: "Cochrane Gambit (Petrov)", moves: ["e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "d7d6", "e5f7"] },
-        { name: "Stafford Gambit", moves: ["e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "b8c6"] },
-        { name: "Elephant Gambit", moves: ["e2e4", "e7e5", "g1f3", "d7d5"] },
-        { name: "Englund Gambit", moves: ["d2d4", "e7e5"] },
-        { name: "Englund Gambit, Charlick", moves: ["d2d4", "e7e5", "d4e5", "b8c6"] },
-        { name: "Portuguese Gambit (Scandinavian)", moves: ["e2e4", "d7d5", "e4d5", "g8f6", "d2d4", "c8g4"] },
-        { name: "Icelandic Gambit (Scandinavian)", moves: ["e2e4", "d7d5", "e4d5", "g8f6", "c2c4", "e7e6"] },
-        { name: "Ponziani Countergambit", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "c2c3", "d7d5"] },
-        { name: "Philidor Countergambit", moves: ["e2e4", "e7e5", "g1f3", "d7d6", "d2d4", "f7f5"] },
-        { name: "French: Albin-Chatard Attack", moves: ["e2e4", "e7e6", "d2d4", "d7d5", "b1c3", "g8f6", "c1g5", "f8e7", "e4e5", "f6d7", "h2h4"] },
-        { name: "French Wing Gambit", moves: ["e2e4", "e7e6", "g1f3", "d7d5", "e4e5", "c7c5", "b2b4"] },
-        { name: "Milner-Barry Gambit (French Advance)", moves: ["e2e4", "e7e6", "d2d4", "d7d5", "e4e5", "c7c5", "c2c3", "b8c6", "g1f3", "d8b6", "f1d3"] },
-        { name: "Caro-Kann: Fantasy Variation", moves: ["e2e4", "c7c6", "d2d4", "d7d5", "f2f3"] },
-        { name: "Caro-Kann: Pseudo-Blackmar Gambit", moves: ["e2e4", "c7c6", "d2d4", "d7d5", "b1c3", "d5e4", "f2f3"] },
-        { name: "Alekhine: Four Pawns Attack", moves: ["e2e4", "g8f6", "e4e5", "f6d5", "d2d4", "d7d6", "c2c4", "d5b6", "f2f4"] },
-        { name: "Pirc: Austrian Attack", moves: ["e2e4", "d7d6", "d2d4", "g8f6", "b1c3", "g7g6", "f2f4"] },
-        { name: "Modern: Three Pawns Attack", moves: ["e2e4", "g7g6", "d2d4", "f8g7", "c2c4", "d7d6", "f2f4"] },
-        { name: "King's Indian: Four Pawns Attack", moves: ["d2d4", "g8f6", "c2c4", "g7g6", "e2e4", "d7d6", "f2f4"] },
-        { name: "Modern Benoni: Flick-Knife Attack", moves: ["d2d4", "g8f6", "c2c4", "c7c5", "d4d5", "e7e6", "b1c3", "e6d5", "c4d5", "d7d6", "e2e4", "g7g6", "f2f4"] },
-        { name: "Benko Gambit", moves: ["d2d4", "g8f6", "c2c4", "c7c5", "d4d5", "b7b5"] },
-        { name: "Blumenfeld Gambit", moves: ["d2d4", "g8f6", "c2c4", "e7e6", "g1f3", "c7c5", "d4d5", "b7b5"] },
-        { name: "Old Benoni: Mokele Mbembe", moves: ["d2d4", "c7c5", "d4d5", "e7e5"] },
-        { name: "Chigorin Defense (QGD)", moves: ["d2d4", "d7d5", "c2c4", "b8c6"] },
-        { name: "Staunton Gambit (Dutch)", moves: ["d2d4", "f7f5", "e2e4"] },
-        { name: "Dutch: Krejcik Gambit", moves: ["d2d4", "f7f5", "g2g4"] },
-        { name: "From Gambit (vs Bird)", moves: ["f2f4", "e7e5"] },
-        { name: "Grob Attack", moves: ["g2g4", "d7d5", "f1g2"] },
-        { name: "Kadas Gambit", moves: ["d2d4", "g8f6", "g2g4"] },
-        { name: "Tennison Gambit", moves: ["g1f3", "d7d5", "e2e4", "d5e4", "f3g5"] },
-        { name: "Reti Gambit", moves: ["g1f3", "d7d5", "c2c4", "d5c4"] },
-        { name: "Sokolsky Gambit (Orangutan)", moves: ["b2b4", "e7e5", "c1b2", "f8b4"] },
-        { name: "No-Name: Sicilian g-pawn Storm", moves: ["e2e4", "c7c5", "g2g4"] },
-        { name: "Sicilian: Keres Attack idea", moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "e7e6", "g2g4"] },
-        { name: "Sicilian: Wing Gambit (Deferred)", moves: ["e2e4", "c7c5", "g1f3", "e7e6", "b2b4"] },
-        { name: "Nakhmanson Gambit (Italian/Two Knights)", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "d2d4", "e5d4", "e1g1", "f6e4", "f1e1"] },
-        { name: "Belgrade Gambit (Four Knights)", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "d2d4", "e5d4", "c3d5"] },
-        { name: "Ruy Lopez: Marshall Attack", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1g1", "f8e7", "f1e1", "b7b5", "a4b3", "e8g8", "c2c3", "d7d5"] },
-        { name: "Italian Game: Rousseau Gambit", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f7f5"] },
-        { name: "Budapest Gambit Accepted: Alekhine (4...Ng4)", moves: ["d2d4", "g8f6", "c2c4", "e7e5", "d4e5", "f6g4"] },
-        { name: "Benko Accepted: Vitolins Gambit (g4)", moves: ["d2d4", "g8f6", "c2c4", "c7c5", "d4d5", "b7b5", "c4b5", "a7a6", "b5a6", "g7g6", "g2g4"] },
-        { name: "Grob: Toilet Variation", moves: ["g2g4", "d7d5", "f1g2", "c8g4", "c2c4"] },
-        { name: "Budapest: Kieninger Trap", moves: ["d2d4", "g8f6", "c2c4", "e7e5", "d4e5", "f6g4", "c1f4", "b8c6", "g1f3", "f8b4", "b1d2", "d8e7", "a2a3", "g4e5", "a3b4", "e5d3"] },
-        { name: "Center Game", moves: ["e2e4", "e7e5", "d2d4", "e5d4", "d1d4"] },
-        { name: "Center Game: Halasz Gambit", moves: ["e2e4", "e7e5", "d2d4", "e5d4", "d1d4", "b8c6", "d4e3", "g8f6", "b1c3", "f8b4", "c1d2", "e8g8", "e1c1"] },
-        { name: "Falkbeer Counter Gambit", moves: ["e2e4", "e7e5", "f2f4", "d7d5"] },
-        { name: "Falkbeer: Charousek Gambit", moves: ["e2e4", "e7e5", "f2f4", "d7d5", "e4d5", "e5e4"] },
-        { name: "Sicilian: Dragon Yugoslav Attack", moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "g7g6", "c1e3", "f8g7", "f2f3", "e8g8", "d1d2", "b8c6", "e1c1"] },
-        { name: "Sicilian: Najdorf English Attack", moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "c1e3", "e7e5", "d4b3", "c8e6", "f2f3", "h7h5"] },
-        { name: "Sicilian: Velimirovic Attack", moves: ["e2e4", "c7c5", "g1f3", "b8c6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "d7d6", "f1c4", "e7e6", "c1e3", "f8e7", "d1e2", "e8g8", "e1c1"] },
-        { name: "Sicilian: Sozin Attack", moves: ["e2e4", "c7c5", "g1f3", "b8c6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "d7d6", "f1c4"] },
-        { name: "Sicilian: Rossolimo h4-h5 Attack", moves: ["e2e4", "c7c5", "g1f3", "b8c6", "f1b5", "g7g6", "e1g1", "f8g7", "f1e1", "e7e5", "b2b4", "c6b4", "h2h4"] },
-        { name: "Sicilian: Closed Kingside Storm", moves: ["e2e4", "c7c5", "b1c3", "b8c6", "g2g3", "g7g6", "f1g2", "f8g7", "d2d3", "d7d6", "f2f4", "e7e6", "g1f3", "g8e7", "e1g1", "e8g8", "f4f5"] },
-        { name: "Sicilian: Moscow Variation", moves: ["e2e4", "c7c5", "g1f3", "d7d6", "f1b5"] },
-        { name: "Sicilian: Accelerated Dragon g4 Attack", moves: ["e2e4", "c7c5", "g1f3", "b8c6", "d2d4", "c5d4", "f3d4", "g7g6", "c2c4", "f8g7", "c1e3", "g8f6", "b1c3", "e8g8", "f1e2", "d7d6", "e1g1", "c8d7", "d4c2", "d8a5", "g2g4"] },
-        { name: "French: Winawer Poisoned Pawn", moves: ["e2e4", "e7e6", "d2d4", "d7d5", "b1c3", "f8b4", "e4e5", "c7c5", "a2a3", "b4c3", "b2c3", "g8e7", "d1g4"] },
-        { name: "French: Tarrasch Aggressive", moves: ["e2e4", "e7e6", "d2d4", "d7d5", "b1d2", "g8f6", "e4e5", "f6d7", "f1d3", "c7c5", "c2c3", "b8c6", "g1e2", "c5d4", "c3d4", "f7f6", "e5f6"] },
-        { name: "Caro-Kann: Panov Attack", moves: ["e2e4", "c7c6", "d2d4", "d7d5", "e4d5", "c6d5", "c2c4"] },
-        { name: "Caro-Kann: Bronstein-Larsen", moves: ["e2e4", "c7c6", "d2d4", "d7d5", "b1c3", "d5e4", "c3e4", "g8f6", "e4f6", "g7f6", "c1c4"] },
-        { name: "Caro-Kann: Rasa-Studier Gambit", moves: ["e2e4", "c7c6", "d2d4", "d7d5", "b1c3", "d5e4", "f2f3", "e4f3", "g1f3"] },
-        { name: "Pirc: 150 Attack", moves: ["e2e4", "d7d6", "d2d4", "g8f6", "b1c3", "g7g6", "c1e3", "c7c5", "d1d2", "f8g7", "g1f3", "e8g8", "f1h6"] },
-        { name: "Pirc: Bayonet Attack", moves: ["e2e4", "d7d6", "d2d4", "g8f6", "b1c3", "g7g6", "c1e3", "f8g7", "d1d2", "c7c6", "f2f3", "b7b5", "g1e2", "b8d7", "h2h4"] },
-        { name: "QGA: Showalter Variation", moves: ["d2d4", "d7d5", "c2c4", "d5c4", "g1f3", "g8f6", "b1c3", "a7a6", "e2e4"] },
-        { name: "QGA: Mannheim Variation", moves: ["d2d4", "d7d5", "c2c4", "d5c4", "g1f3", "g8f6", "d1a4", "b8c6", "b1c3", "e7e5"] },
-        { name: "QGD: Marshall Gambit", moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "c7c6", "e2e4"] },
-        { name: "King's Indian: Sämisch Attack", moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "f2f3", "e8g8", "c1e3"] },
-        { name: "King's Indian: Petrosian h4 Attack", moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "g1f3", "e8g8", "f1e2", "e7e5", "d4d5", "a7a5", "c1g5", "h7h6", "g5h4", "b8a6", "h2h4"] },
-        { name: "King's Indian: Mar del Plata with h4", moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "g1f3", "e8g8", "f1e2", "e7e5", "e1g1", "b8c6", "d4d5", "c6e7", "b2b4", "f6h5", "g2g3", "f7f5", "c3d5", "e7d5", "c4d5", "f5e4", "f3g5", "h5f6", "h2h4"] },
-        { name: "Benoni: Taimanov Attack", moves: ["d2d4", "g8f6", "c2c4", "c7c5", "d4d5", "e7e6", "b1c3", "e6d5", "c4d5", "d7d6", "e2e4", "g7g6", "f2f4", "f8g7", "f1b5"] },
-        { name: "Benoni: Four Pawns Attack", moves: ["d2d4", "g8f6", "c2c4", "c7c5", "d4d5", "e7e6", "b1c3", "e6d5", "c4d5", "d7d6", "e2e4", "g7g6", "f2f4", "f8g7", "g1f3"] },
-        { name: "Slav: Geller Gambit", moves: ["d2d4", "d7d5", "c2c4", "c7c6", "g1f3", "g8f6", "b1c3", "d5c4", "e2e4"] },
-        { name: "Slav: Winawer Countergambit", moves: ["d2d4", "d7d5", "c2c4", "c7c6", "b1c3", "e7e5"] },
-        { name: "Nimzo-Indian: Sämisch f3-e4", moves: ["d2d4", "g8f6", "c2c4", "e7e6", "b1c3", "f8b4", "a2a3", "b4c3", "b2c3", "e8g8", "f2f3", "d7d5", "c4d5", "e6d5", "e2e4"] },
-        { name: "Nimzo-Indian: Leningrad h4", moves: ["d2d4", "g8f6", "c2c4", "e7e6", "b1c3", "f8b4", "c1g5", "h7h6", "g5h4", "c7c5", "d4d5", "b7b5", "h2h4"] },
-        { name: "Dutch: Leningrad g4 Storm", moves: ["d2d4", "f7f5", "g2g3", "g8f6", "f1g2", "g7g6", "g1f3", "f8g7", "e1g1", "e8g8", "c2c4", "d7d6", "b1c3", "d8e8", "h2h3", "e8h5", "g2g4"] },
-        { name: "Dutch: Hopton Attack", moves: ["d2d4", "f7f5", "c1g5"] },
-        { name: "Grünfeld: Russian h4 Attack", moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "d7d5", "g1f3", "f8g7", "d1b3", "d5c4", "b3c4", "e8g8", "e2e4", "c8g4", "c1e3", "g4f3", "g2f3", "c7c6", "h2h4"] },
-        { name: "Two Knights: Lolli Attack", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "f3g5", "d7d5", "e4d5", "f6d5", "d2d4"] },
-        { name: "Evans Gambit Accepted: McDonnell", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "b2b4", "c5b4", "c2c3", "b4c5", "d2d4", "e5d4", "e1g1", "d7d6", "c3d4", "c5b6"] },
-        { name: "Veresov Attack", moves: ["d2d4", "d7d5", "b1c3", "g8f6", "c1g5"] },
-        { name: "Veresov: Aggressive f3", moves: ["d2d4", "d7d5", "b1c3", "g8f6", "c1g5", "b8d7", "f2f3"] },
-        { name: "Scotch Game: Steinitz Variation", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f3d4", "d8h4", "d4c6", "h4e4", "c1e3"] },
-        { name: "Alekhine: Chase Variation", moves: ["e2e4", "g8f6", "e4e5", "f6d5", "c2c4", "d5b6", "c4c5"] },
-        { name: "Philidor: Lion Variation", moves: ["e2e4", "d7d6", "d2d4", "g8f6", "b1c3", "e7e5", "g1f3", "b8d7", "f1c4", "f8e7", "e1g1", "e8g8", "d1e2", "c7c6", "a2a4", "d8c7", "f1d1", "h7h6", "c1e3", "e5d4", "e3d4"] },
-        { name: "London: f4-f5 Attack", moves: ["d2d4", "g8f6", "g1f3", "e7e6", "c1f4", "c7c5", "e2e3", "b8c6", "c2c3", "d8b6", "d1c2", "d7d5", "b1d2", "f8e7", "h2h3", "e8g8", "f1e2", "c8d7", "e1g1", "a8c8", "f4e5", "f6d7", "e5g3", "f7f5", "f2f4"] },
-        { name: "Torre Attack: g4 Storm", moves: ["d2d4", "g8f6", "g1f3", "e7e6", "c1g5", "h7h6", "g5h4", "c7c5", "e2e3", "c5d4", "e3d4", "d8a5", "c2c3", "f8e7", "b1d2", "e8g8", "f1d3", "d7d6", "e1g1", "b8c6", "h2h3", "e6e5", "d3c2", "f8e8", "g2g4"] },
-        { name: "Nimzowitsch Defense: Williams Gambit", moves: ["e2e4", "b8c6", "g1f3", "e7e5", "d2d4", "e5d4", "f3d4", "d8h4"] },
-        { name: "Owen Defense: Matovinsky Gambit", moves: ["e2e4", "b7b6", "d2d4", "c8b7", "f1d3", "f7f5", "e4f5", "b7g2", "d1h5", "g7g6", "f5g6"] },
-        { name: "Scandinavian: Gubinsky-Melts Attack", moves: ["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5d6", "d2d4", "g8f6", "f1c4", "a7a6", "g1f3", "b7b5", "c4b3", "c8b7", "e1g1", "e7e6", "f1e1"] },
-        { name: "King's Gambit: Fischer Defense", moves: ["e2e4", "e7e5", "f2f4", "e5f4", "g1f3", "d7d6"] },
-        { name: "King's Gambit: Becker Defense", moves: ["e2e4", "e7e5", "f2f4", "e5f4", "g1f3", "h7h6"] },
-        { name: "Benko: Fianchetto g4 Storm", moves: ["d2d4", "g8f6", "c2c4", "c7c5", "d4d5", "b7b5", "c4b5", "a7a6", "b5a6", "c8a6", "b1c3", "d7d6", "g1f3", "g7g6", "g2g3", "f8g7", "f1g2", "e8g8", "e1g1", "b8d7", "f1e1", "d8a5", "c1f4", "d7b6", "g2g4"] },
-        { name: "Ruy Lopez: Schliemann Gambit", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "f7f5"] },
-        { name: "Two Knights: Ulvestad Variation", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "f3g5", "d7d5", "e4d5", "b7b5"] },
-        { name: "Ponziani Opening with d4 Break", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "c2c3", "g8f6", "d2d4"] },
-        { name: "Belgrade Gambit Accepted", moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "d2d4", "e5d4", "c3d5", "f6e4", "d1e2", "f7f5"] },
-    ];
     console.log('GabiBot: Script loaded, waiting for board...');
 
     // Debounce helper
@@ -172,7 +42,7 @@
         };
     }
 
-    // Position cache system 
+    // Position cache system
     const PositionCache = {};
 
     function getRandomDepth() {
@@ -267,9 +137,8 @@
         try {
             const board = await waitForElement('.board, chess-board, .board-layout-vertical, .board-layout-horizontal').catch(() => null);
             await buildUI();
-            // Initialize opening book
-            try { initOpeningBook(); } catch (e) { console.warn('GabiBot: Opening book init failed:', e); }
-            attachToBoard(board || qs('chess-board') || qs('.board') || qs('[class*="board"]')); startDomBoardWatcher(); // observe board replacements (SPA safe)
+            attachToBoard(board || qs('chess-board') || qs('.board') || qs('[class*="board"]'));
+            startDomBoardWatcher(); // observe board replacements (SPA safe)
             startAutoWatchers();    // game start/end watchers
             console.log('GabiBot: Initialized.');
         } catch (error) {
@@ -1050,15 +919,13 @@
                     console.warn(`GabiBot: ❌ API failed (${res.status}) after ${duration.toFixed(0)}ms`);
                     throw new Error(`API error ${res.status}`);
                 }
-                const response = await res.json();
-                if (response.success === false) {
-                    const errorMsg = typeof response.data === 'string' ? response.data : 'API success=false';
-                    console.warn(`GabiBot: ❌ API error after ${duration.toFixed(0)}ms: ${errorMsg}`);
-                    throw new Error(errorMsg);
+                const data = await res.json();
+                if (data.success === false) {
+                    console.warn(`GabiBot: ❌ API success=false after ${duration.toFixed(0)}ms`);
+                    throw new Error('API success=false');
                 }
                 console.log(`GabiBot: ✅ API success in ${duration.toFixed(0)}ms | FEN: ${fen.substring(0, 20)}...`);
-                // Extract the actual engine data for simpler consumption
-                return response.data || {};
+                return data;
             } finally {
                 clearTimeout(to);
                 signal?.removeEventListener('abort', onAbort);
@@ -1125,26 +992,13 @@
         else if (Array.isArray(data.lines)) addFromArray(data.lines);
         else if (Array.isArray(data.pvs)) addFromArray(data.pvs);
 
-        if (!lines.length && (data.bestmove || data.best_move)) {
-            const bestmoveText = data.bestmove || data.best_move;
-            if (typeof bestmoveText === 'string') {
-                const parts = bestmoveText.split(' ');
-                let uci = parts.length > 1 ? parts[1] : parts[0];
-                if (uci === 'bestmove' && parts[1]) uci = parts[1];
-                const pv = data.continuation || data.pv || data.line || uci;
-
-                // Handle API v2 fields: eval (float) and mate (integer or null)
-                let scoreObj = {};
-                if (data.mate !== undefined && data.mate !== null) {
-                    scoreObj = { mate: parseInt(data.mate, 10) };
-                } else if (data.eval !== undefined && data.eval !== null) {
-                    scoreObj = { cp: Math.round(parseFloat(data.eval) * 100) };
-                } else {
-                    scoreObj = data.evaluation || data.score || {};
-                }
-                const score = scoreFrom(scoreObj);
-                pushLine(uci, pv, score);
-            }
+        if (!lines.length && typeof data.bestmove === 'string') {
+            const parts = data.bestmove.split(' ');
+            let uci = parts.length > 1 ? parts[1] : parts[0];
+            if (uci === 'bestmove' && parts[1]) uci = parts[1];
+            const pv = data.pv || data.continuation || uci;
+            const score = scoreFrom(data.evaluation);
+            pushLine(uci, pv, score);
         }
         lines.sort((a, b) => scoreNumeric(b.score) - scoreNumeric(a.score));
         return lines[0] || null;
@@ -1236,53 +1090,6 @@
         return { color: isUpper ? 'w' : 'b', type: ch.toLowerCase() };
     }
 
-    // ===== Transposition-safe placement helpers =====
-    function fenPlacementToBoard(placement) {
-        const ranks = placement.split('/');
-        const board = Array.from({ length: 8 }, () => Array(8).fill(null));
-        for (let r = 0; r < 8; r++) {
-            let f = 0;
-            for (const ch of ranks[r]) {
-                if (/\d/.test(ch)) {
-                    f += parseInt(ch, 10);
-                } else {
-                    board[r][f] = ch;
-                    f++;
-                }
-            }
-        }
-        return board;
-    }
-
-    function boardToPlacement(board) {
-        const ranks = [];
-        for (let r = 0; r < 8; r++) {
-            let row = '';
-            let empties = 0;
-            for (let f = 0; f < 8; f++) {
-                const ch = board[r][f];
-                if (!ch) {
-                    empties++;
-                } else {
-                    if (empties > 0) {
-                        row += String(empties);
-                        empties = 0;
-                    }
-                    row += ch;
-                }
-            }
-            if (empties > 0) row += String(empties);
-            ranks.push(row);
-        }
-        return ranks.join('/');
-    }
-
-    function sqToIdx(sq) {
-        const file = 'abcdefgh'.indexOf(sq[0]);
-        const rank = parseInt(sq[1], 10);
-        return { r: 8 - rank, f: file }; // r: 0 (rank 8) -> 7 (rank 1), f: 0..7
-    }
-
     // En passant detection for premove capture mode
     function isEnPassantCapture(fen, from, to, ourColor) {
         const parts = fen.split(' ');
@@ -1372,81 +1179,6 @@
             }
 
             const ctrl = new AbortController(); // Local controller per analysis
-
-            // ── Opening book attempt (before engine) ────────────────────────────────
-            if (kind === 'main') {
-                try {
-                    const ourColor = getPlayerColor(game);
-                    if (isPlayersTurn(game)) {
-                        const book = (typeof findBookMoveForFen === 'function') ? findBookMoveForFen(fen, ourColor) : null;
-
-                        // Quick plausibility validator (esp. castling rules)
-                        const isBookMovePlausible = (fenStr, uci, color) => {
-                            if (!uci || uci.length < 4) return false;
-                            const from = uci.slice(0, 2);
-                            const to = uci.slice(2, 4);
-                            const chFrom = fenCharAtSquare(fenStr, from);
-                            const fromP = pieceFromFenChar(chFrom);
-                            if (!fromP || fromP.color !== color) return false;
-                            const chTo = fenCharAtSquare(fenStr, to);
-                            const toP = pieceFromFenChar(chTo);
-                            if (toP && toP.color === color) return false;
-
-                            // Castling checks
-                            const isCastle = (uci === 'e1g1' || uci === 'e1c1' || uci === 'e8g8' || uci === 'e8c8');
-                            if (!isCastle) return true;
-
-                            const parts = fenStr.split(' ');
-                            const rights = parts[2] || '-';
-                            const opp = color === 'w' ? 'b' : 'w';
-
-                            if (uci === 'e1g1') { // White O-O
-                                if (!rights.includes('K')) return false;
-                                if (fenCharAtSquare(fenStr, 'f1') || fenCharAtSquare(fenStr, 'g1')) return false;
-                                if (isSquareAttackedBy(fenStr, 'e1', opp) || isSquareAttackedBy(fenStr, 'f1', opp) || isSquareAttackedBy(fenStr, 'g1', opp)) return false;
-                                return true;
-                            }
-                            if (uci === 'e1c1') { // White O-O-O
-                                if (!rights.includes('Q')) return false;
-                                if (fenCharAtSquare(fenStr, 'd1') || fenCharAtSquare(fenStr, 'c1') || fenCharAtSquare(fenStr, 'b1')) return false;
-                                if (isSquareAttackedBy(fenStr, 'e1', opp) || isSquareAttackedBy(fenStr, 'd1', opp) || isSquareAttackedBy(fenStr, 'c1', opp)) return false;
-                                return true;
-                            }
-                            if (uci === 'e8g8') { // Black O-O
-                                if (!rights.includes('k')) return false;
-                                if (fenCharAtSquare(fenStr, 'f8') || fenCharAtSquare(fenStr, 'g8')) return false;
-                                if (isSquareAttackedBy(fenStr, 'e8', opp) || isSquareAttackedBy(fenStr, 'f8', opp) || isSquareAttackedBy(fenStr, 'g8', opp)) return false;
-                                return true;
-                            }
-                            if (uci === 'e8c8') { // Black O-O-O
-                                if (!rights.includes('q')) return false;
-                                if (fenCharAtSquare(fenStr, 'd8') || fenCharAtSquare(fenStr, 'c8') || fenCharAtSquare(fenStr, 'b8')) return false;
-                                if (isSquareAttackedBy(fenStr, 'e8', opp) || isSquareAttackedBy(fenStr, 'd8', opp) || isSquareAttackedBy(fenStr, 'c8', opp)) return false;
-                                return true;
-                            }
-                            return true;
-                        };
-
-                        if (book && book.nextUci && isBookMovePlausible(fen, book.nextUci, ourColor)) {
-                            const pvHint = `📘 ${book.name} • ${book.pv}`; // subtle book hint in PV
-                            BotState.bestMove = book.nextUci;
-                            BotState.currentEvaluation = '-';
-                            BotState.principalVariation = pvHint;
-                            BotState.statusInfo = 'Book move';
-                            ui.updateDisplay(pa());
-
-                            await executeAction(book.nextUci, fen);
-                            lastFenProcessedMain = fen;
-                            if (typeof OpeningBookState !== 'undefined') OpeningBookState.lastUsed = 1;
-                            return; // Do not call engine; book used
-                        } else {
-                            if (typeof OpeningBookState !== 'undefined') OpeningBookState.lastUsed = 0;
-                        }
-                    }
-                } catch (e) {
-                    console.warn('GabiBot: Opening book lookup failed:', e);
-                }
-            }
 
             try {
                 BotState.statusInfo = kind === 'main' ? '🔄 Analyzing...' : '🔄 Analyzing (premove)...';
@@ -1670,169 +1402,88 @@
     }
 
     // Simple FEN after move simulation (for king safety check)
-    function makeSimpleMove(fen, from, to, promotionChar) {
-        if (!fen || !from || !to) return fen;
-
+    function makeSimpleMove(fen, from, to) {
         const parts = fen.split(' ');
-        const placement = parts[0] || '';
-        const side = parts[1] || 'w';
+        const placement = parts[0];
+        const ranks = placement.split('/');
 
-        const board = fenPlacementToBoard(placement);
-        const fromIdx = sqToIdx(from);
-        const toIdx = sqToIdx(to);
+        const fromFile = 'abcdefgh'.indexOf(from[0]);
+        const fromRank = parseInt(from[1], 10);
+        const toFile = 'abcdefgh'.indexOf(to[0]);
+        const toRank = parseInt(to[1], 10);
 
-        const moving = board?.[fromIdx.r]?.[fromIdx.f] || null;
-        if (!moving) return fen;
+        if (fromFile < 0 || toFile < 0 || fromRank < 1 || toRank < 1) return fen;
 
-        const color = moving === moving.toUpperCase() ? 'w' : 'b';
-        const type = moving.toLowerCase();
+        const fromRowIdx = 8 - fromRank;
+        const toRowIdx = 8 - toRank;
 
-        const dest = board?.[toIdx.r]?.[toIdx.f] || null;
-        const isPawn = type === 'p';
+        // -------------------------------------------------------------------------
+        // Helpers
+        // -------------------------------------------------------------------------
 
-        // En passant: pawn moves diagonally to empty square
-        const isEnPassant = isPawn && fromIdx.f !== toIdx.f && !dest;
-        if (isEnPassant) {
-            const capRow = color === 'w' ? toIdx.r + 1 : toIdx.r - 1;
-            if (capRow >= 0 && capRow < 8) board[capRow][toIdx.f] = null;
-        }
-
-        // Castling: king moves two files
-        const isCastle = type === 'k' && Math.abs(toIdx.f - fromIdx.f) === 2;
-        if (isCastle) {
-            if (color === 'w' && fromIdx.r === 7) {
-                // White
-                if (toIdx.f === 6) { // e1g1 (O-O)
-                    if (board[7][7]) { board[7][5] = board[7][7]; board[7][7] = null; }
-                } else if (toIdx.f === 2) { // e1c1 (O-O-O)
-                    if (board[7][0]) { board[7][3] = board[7][0]; board[7][0] = null; }
-                }
-            } else if (color === 'b' && fromIdx.r === 0) {
-                // Black
-                if (toIdx.f === 6) { // e8g8 (O-O)
-                    if (board[0][7]) { board[0][5] = board[0][7]; board[0][7] = null; }
-                } else if (toIdx.f === 2) { // e8c8 (O-O-O)
-                    if (board[0][0]) { board[0][3] = board[0][0]; board[0][0] = null; }
+        // Expand rank string to array (pieces or '1's)
+        const expandRank = (rankStr) => {
+            let row = [];
+            for (const ch of rankStr) {
+                if (/\d/.test(ch)) {
+                    const spaces = parseInt(ch, 10);
+                    for (let i = 0; i < spaces; i++) row.push('1');
+                } else {
+                    row.push(ch);
                 }
             }
-        }
+            return row;
+        };
 
-        // Move piece
-        board[toIdx.r][toIdx.f] = moving;
-        board[fromIdx.r][fromIdx.f] = null;
-
-        // Promotion
-        if (isPawn && (toIdx.r === 0 || toIdx.r === 7)) {
-            const prom = (promotionChar || 'q').toLowerCase();
-            board[toIdx.r][toIdx.f] = color === 'w' ? prom.toUpperCase() : prom;
-        }
-
-        const newPlacement = boardToPlacement(board);
-
-        // Keep other FEN fields conservative; for indexing/safety we only need correct placement + side
-        const castling = parts[2] || '-';
-        const ep = '-';
-        const halfmove = parts[4] || '0';
-        const fullmove = parts[5] || '1';
-        const newSide = side === 'w' ? 'b' : 'w';
-
-        return `${newPlacement} ${newSide} ${castling} ${ep} ${halfmove} ${fullmove}`;
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // OPENING BOOK SYSTEM (piece-placement + side-to-move matching)
-    // ═══════════════════════════════════════════════════════════
-    const START_POSITION_PLACEMENT = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
-    let BOOK_INDEX = new Map(); // key: "placement side" -> [{ name, nextUci, pv }]
-    let OpeningBookState = { enabled: 1, lastUsed: 0 };
-
-    function getFenSignature(fen) {
-        if (!fen) return '';
-        const parts = fen.split(' ');
-        const placement = parts[0] || '';
-        const side = parts[1] || 'w';
-        return `${placement} ${side}`;
-    }
-
-    function applyUciToFenSignature(sig, uci) {
-        if (!sig || !uci || uci.length < 4) return null;
-
-        const sp = sig.indexOf(' ');
-        const placement = sig.slice(0, sp);
-        const side = sig.slice(sp + 1);
-
-        const from = uci.substring(0, 2);
-        const to = uci.substring(2, 4);
-        const promo = uci.length >= 5 ? uci[4] : null;
-
-        // Use robust move application to keep placement correct across castling / EP / promotions
-        const fakeFenBefore = `${placement} ${side} - - 0 1`;
-        const fakeFenAfter = makeSimpleMove(fakeFenBefore, from, to, promo);
-        const parts = fakeFenAfter.split(' ');
-
-        return `${parts[0]} ${parts[1]}`;
-    }
-
-    function addBookMapping(sigBefore, opening, plyIndex) {
-        const nextUci = opening.moves[plyIndex];
-        if (!nextUci) return;
-        const pv = opening.moves.slice(plyIndex).join(' ');
-        const list = BOOK_INDEX.get(sigBefore) || [];
-        list.push({ name: opening.name, nextUci, pv });
-        BOOK_INDEX.set(sigBefore, list);
-    }
-
-    function initOpeningBook() {
-        BOOK_INDEX = new Map();
-        for (const opening of OPENING_BOOK) {
-            let sig = `${START_POSITION_PLACEMENT} w`;
-            for (let i = 0; i < opening.moves.length; i++) {
-                addBookMapping(sig, opening, i);
-                sig = applyUciToFenSignature(sig, opening.moves[i]);
-                if (!sig) break;
+        // Compress array back to rank string
+        const compressRank = (rowArr) => {
+            let rankStr = '';
+            let emptyCount = 0;
+            for (const ch of rowArr) {
+                if (ch === '1') {
+                    emptyCount++;
+                } else {
+                    if (emptyCount > 0) {
+                        rankStr += emptyCount;
+                        emptyCount = 0;
+                    }
+                    rankStr += ch;
+                }
             }
+            if (emptyCount > 0) rankStr += emptyCount;
+            return rankStr;
+        };
+
+        // -------------------------------------------------------------------------
+        // Core Logic
+        // -------------------------------------------------------------------------
+
+        const movingPiece = fenCharAtSquare(fen, from);
+        if (!movingPiece) return fen;
+
+        // 1. Expand ranks
+        // If same rank, modify the same array in-place
+        const fromRowArr = expandRank(ranks[fromRowIdx]);
+        const toRowArr = (fromRowIdx === toRowIdx)
+            ? fromRowArr
+            : expandRank(ranks[toRowIdx]);
+
+        // 2. Clear source square
+        fromRowArr[fromFile] = '1';
+
+        // 3. Set destination square
+        toRowArr[toFile] = movingPiece;
+
+        // 4. Compress and update FEN ranks
+        ranks[fromRowIdx] = compressRank(fromRowArr);
+        if (fromRowIdx !== toRowIdx) {
+            ranks[toRowIdx] = compressRank(toRowArr);
         }
-        console.log(`GabiBot: 📘 Opening book indexed: ${BOOK_INDEX.size} signatures`);
+
+        parts[0] = ranks.join('/');
+        return parts.join(' ');
     }
 
-    function findBookMoveForFen(fen, ourColor) {
-        if (!OpeningBookState.enabled || !fen) return null;
-        const sig = getFenSignature(fen);
-        const parts = sig.split(' ');
-        const sideToMove = parts[1] || 'w';
-        if (sideToMove !== ourColor) return null;
-
-        const candidates = BOOK_INDEX.get(sig) || [];
-        if (!candidates.length) return null;
-
-        // Validate plausibility (same as before)
-        const valid = candidates.filter(c => {
-            const from = c.nextUci.slice(0, 2);
-            const to = c.nextUci.slice(2, 4);
-            const chFrom = fenCharAtSquare(fen, from);
-            const pFrom = pieceFromFenChar(chFrom);
-            if (!pFrom || pFrom.color !== ourColor) return false;
-            const chTo = fenCharAtSquare(fen, to);
-            const pTo = pieceFromFenChar(chTo);
-            if (pTo && pTo.color === ourColor) return false;
-            return true;
-        });
-        if (!valid.length) return null;
-
-        // UNBIASED PICK: choose uniformly across unique UCIs
-        const byMove = valid.reduce((acc, item) => {
-            (acc[item.nextUci] ||= []).push(item);
-            return acc;
-        }, {});
-        const uniqueMoves = Object.keys(byMove);
-        const movePick = uniqueMoves[Math.floor(Math.random() * uniqueMoves.length)];
-
-        // Pick one representative for PV/name (if multiple lines share this move)
-        const group = byMove[movePick];
-        const infoPick = group[Math.floor(Math.random() * group.length)];
-
-        return infoPick; // { name, nextUci, pv }
-    }
     // Main premove safety check
     function checkPremoveSafety(fen, uci, ourColor) {
         if (!fen || !uci || uci.length < 4) {
@@ -1863,7 +1514,7 @@
             }
         } else {
             // Check if move exposes our king
-            const newFen = makeSimpleMove(fen, from, to, (uci.length >= 5 ? uci[4] : null));
+            const newFen = makeSimpleMove(fen, from, to);
             const kingPos = findKing(newFen, ourColor);
             if (kingPos && isSquareAttackedBy(newFen, kingPos, oppColor)) {
                 return { safe: false, reason: 'Exposes king to check', riskLevel: 100 };
