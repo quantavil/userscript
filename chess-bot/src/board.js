@@ -1,11 +1,17 @@
-import { qs, qsa, sleep, debounce } from './utils.js';
+
+import { sleep, debounce } from './utils.js';
 import { BotState, getGame, getFen, getPlayerColor, isPlayersTurn, invalidateGameCache, pa, isBoardFlipped } from './state.js';
-import { AUTO_MOVE_BASE, AUTO_MOVE_STEP, RANDOM_JITTER_MIN } from './config.js';
+import { AUTO_MOVE_BASE, AUTO_MOVE_STEP } from './config.js';
 import { getHumanDelay } from './utils.js';
 
 let boardCtx = null;
 let domObserver = null;
 let pendingMoveTimeoutId = null;
+
+// Move Watcher State
+let boardMoveObserver = null;
+const mutationListeners = new Set();
+let debounceTimer = null;
 
 // Re-export for UI usage
 export function getBoardCtx() { return boardCtx; }
@@ -76,6 +82,12 @@ export function attachToBoard(boardEl) {
     };
 
     if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+
+    // Restart watcher if it was running, to attach to new board
+    if (boardMoveObserver) {
+        stopMoveWatcher();
+        startMoveWatcher();
+    }
 }
 
 export function detachFromBoard() {
@@ -87,7 +99,7 @@ export function detachFromBoard() {
 export function startDomBoardWatcher() {
     if (domObserver) try { domObserver.disconnect(); } catch { }
     domObserver = new MutationObserver(debounce(() => {
-        const newBoard = qs('chess-board') || qs('.board') || qs('[class*="board"]');
+        const newBoard = document.querySelector('chess-board') || document.querySelector('.board') || document.querySelector('[class*="board"]');
         if (!newBoard) return;
         if (!boardCtx || boardCtx.boardEl !== newBoard) {
             console.log('GabiBot: Board element changed, re-attaching.');
@@ -95,6 +107,50 @@ export function startDomBoardWatcher() {
         }
     }, 200));
     domObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+// --- Efficient Move Watcher (Replaces Polling) ---
+
+export function onBoardMutation(cb) {
+    mutationListeners.add(cb);
+    return () => mutationListeners.delete(cb);
+}
+
+export function startMoveWatcher() {
+    stopMoveWatcher();
+    const game = getGame();
+    // Try to find the board element from game or DOM
+    const board = game && (document.querySelector('chess-board') || document.querySelector('.board'));
+
+    if (!board) return;
+
+    boardMoveObserver = new MutationObserver(() => {
+        // Debounce rapid DOM changes
+        if (debounceTimer) return;
+        debounceTimer = setTimeout(() => {
+            debounceTimer = null;
+            invalidateGameCache();
+
+            // Notify all listeners
+            mutationListeners.forEach(cb => cb());
+        }, 50);
+    });
+
+    boardMoveObserver.observe(board, {
+        childList: true, subtree: true,
+        attributes: true, attributeFilter: ['class', 'style', 'data-piece']
+    });
+}
+
+export function stopMoveWatcher() {
+    if (boardMoveObserver) {
+        boardMoveObserver.disconnect();
+        boardMoveObserver = null;
+    }
+    if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+    }
 }
 
 export function clearArrows() {
@@ -211,13 +267,42 @@ export async function simulateDragMove(from, to) {
 
 export async function waitForFenChange(prevFen, timeout = 1000) {
     return new Promise(resolve => {
+        // Immediate check
+        let g = getGame();
+        let fen = g?.getFEN ? g.getFEN() : null;
+        if (fen && fen !== prevFen) return resolve(true);
+
         const start = performance.now();
+        let resolved = false;
+
+        const cleanup = onBoardMutation(() => {
+            if (resolved) return;
+            g = getGame();
+            fen = g?.getFEN ? g.getFEN() : null;
+            if (fen && fen !== prevFen) {
+                resolved = true;
+                resolve(true);
+            }
+        });
+
+        // Fallback polling for safety + Timeout
         const check = () => {
-            const g = getGame();
-            const fen = g?.getFEN ? g.getFEN() : null;
-            if (fen && fen !== prevFen) return resolve(true);
-            if (performance.now() - start > timeout) return resolve(false);
-            requestAnimationFrame(check);
+            if (resolved) return;
+
+            g = getGame();
+            fen = g?.getFEN ? g.getFEN() : null;
+            if (fen && fen !== prevFen) {
+                resolved = true;
+                cleanup();
+                return resolve(true);
+            }
+
+            if (performance.now() - start > timeout) {
+                resolved = true;
+                cleanup();
+                return resolve(false);
+            }
+            requestAnimationFrame(check); // Keep polling as a backup for non-DOM based games (rare but safe)
         };
         requestAnimationFrame(check);
     });
@@ -225,7 +310,7 @@ export async function waitForFenChange(prevFen, timeout = 1000) {
 
 async function maybeSelectPromotion(prefer = 'q') {
     const preferList = (prefer ? [prefer] : ['q', 'r', 'b', 'n']).map(c => c.toLowerCase());
-    const getCandidates = () => qsa('[data-test-element*="promotion"], [class*="promotion"] [class*="piece"], [class*="promotion"] button, .promotion-piece');
+    const getCandidates = () => Array.from(document.querySelectorAll('[data-test-element*="promotion"], [class*="promotion"] [class*="piece"], [class*="promotion"] button, .promotion-piece'));
     const tryClick = (el) => {
         try {
             el.click?.();

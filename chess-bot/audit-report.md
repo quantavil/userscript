@@ -2,7 +2,6 @@
 
 | Severity | File/Module | Issue | Recommended Refactor |
 | :--- | :--- | :--- | :--- |
-| **Critical** | `src/utils.js` | Significant logic redundancy: `makeSimpleMove`, `getAttackersOfSquare`, and `parseFenToBoard` duplicate logic found in `LocalEngine`. | Consolidate core chess logic into `LocalEngine`. Remove redundant utility functions and use `LocalEngine` as the single source of truth for move simulation and square attacking logic. |
 | **Major** | `src/index.js` | Overlapping timers and intervals (`tickTimer`, `gameStartInterval`, `gameEndInterval`, `BoardMoveObserver`) create race condition risks and inconsistent state sync. | Centralize loop and state management into a single `Controller` class or a robust state machine. Replace multiple intervals with a unified event-driven dispatcher. |
 | **Major** | `src/engine.js` | Performance bottlenecks: `ttKey()` uses expensive `this.board.join(',')` (O(N) string allocation) and `evaluate()` performs full board scans in search. | Implement **Zobrist hashing** for O(1) transposition table keys. Optimize `evaluate()` by implementing **incremental updates** or piece-lists to avoid repeated board traversal. |
 | **Major** | `src/board.js` | Polling inefficiency: `waitForFenChange` uses `requestAnimationFrame` for polling/searching DOM changes, which is less efficient than mutation events. | Replace frame-based polling in `waitForFenChange` with a `Promise`-based listener that resolves via the existing `MutationObserver` in `index.js` or `board.js`. |

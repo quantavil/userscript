@@ -161,7 +161,7 @@ function zobXor(hash, key) {
     hash[0] ^= key[0]; hash[1] ^= key[1];
 }
 
-class LocalEngine {
+export class LocalEngine {
     constructor() {
         this.board = new Array(64).fill(EMPTY);
         this.side = 1;     // 1=white, -1=black
@@ -179,10 +179,22 @@ class LocalEngine {
         this.pvTable = [];
         this.killers = [];
         this.history = new Int32Array(64 * 64);
-        this.tt = new Map(); // Transposition table
+        this.tt = new Array(TT_SIZE); // Fixed size hash table (array of objects)
+        // Pre-allocate eval buffers to avoid garbage collection in hot path
+        this.evalBufs = {
+            wPawnFiles: new Uint8Array(8), bPawnFiles: new Uint8Array(8),
+            wPawnRanks: new Int8Array(8), bPawnRanks: new Int8Array(8),
+            rookSquares: new Int8Array(4), rookSides: new Int8Array(4)
+        };
         this.hash = [0, 0]; // Zobrist hash [hi, lo]
         this.positionHistory = []; // For 3-fold repetition detection
         this.contempt = 0; // Dirty play: positive=avoid draws, negative=seek draws
+
+        // Incremental evaluation state
+        this.mgPstMat = 0;
+        this.egPstMat = 0;
+        this.wBishops = 0;
+        this.bBishops = 0;
     }
 
     loadFen(fen) {
@@ -213,7 +225,70 @@ class LocalEngine {
         this.fullmove = parseInt(parts[5]) || 1;
         this.stateStack = [];
         this.positionHistory = [];
+        this._initIncrementalScores();
         this._computeHash();
+    }
+
+    _initIncrementalScores() {
+        this.mgPstMat = 0;
+        this.egPstMat = 0;
+        this.wBishops = 0;
+        this.bBishops = 0;
+
+        for (let sq = 0; sq < 64; sq++) {
+            const p = this.board[sq];
+            if (p === EMPTY) continue;
+            this._addPieceScore(p, sq);
+        }
+    }
+
+    _addPieceScore(p, sq) {
+        const side = p > 0 ? 1 : -1;
+        const abs = Math.abs(p);
+        const val = PIECE_VAL[abs];
+        const pstSq = side === 1 ? sq : mirrorSq(sq);
+
+        // Material
+        this.mgPstMat += val * side;
+        this.egPstMat += val * side;
+
+        // PST
+        if (abs <= 5 && PST[abs]) {
+            this.mgPstMat += PST[abs][pstSq] * side;
+            this.egPstMat += PST[abs][pstSq] * side;
+        } else if (abs === 6) {
+            this.mgPstMat += PST_KING_MG[pstSq] * side;
+            this.egPstMat += PST_KING_EG[pstSq] * side;
+        }
+
+        // Bishop count
+        if (abs === 3) {
+            if (side === 1) this.wBishops++;
+            else this.bBishops++;
+        }
+    }
+
+    _removePieceScore(p, sq) {
+        const side = p > 0 ? 1 : -1;
+        const abs = Math.abs(p);
+        const val = PIECE_VAL[abs];
+        const pstSq = side === 1 ? sq : mirrorSq(sq);
+
+        this.mgPstMat -= val * side;
+        this.egPstMat -= val * side;
+
+        if (abs <= 5 && PST[abs]) {
+            this.mgPstMat -= PST[abs][pstSq] * side;
+            this.egPstMat -= PST[abs][pstSq] * side;
+        } else if (abs === 6) {
+            this.mgPstMat -= PST_KING_MG[pstSq] * side;
+            this.egPstMat -= PST_KING_EG[pstSq] * side;
+        }
+
+        if (abs === 3) {
+            if (side === 1) this.wBishops--;
+            else this.bBishops--;
+        }
     }
 
     _computeHash() {
@@ -274,7 +349,10 @@ class LocalEngine {
             castling: this.castling, epSquare: this.epSquare,
             halfmove: this.halfmove, fullmove: this.fullmove,
             wKingSq: this.wKingSq, bKingSq: this.bKingSq,
-            hash: [this.hash[0], this.hash[1]]
+            hash: [this.hash[0], this.hash[1]],
+            // Incremental eval state
+            mgPstMat: this.mgPstMat, egPstMat: this.egPstMat,
+            wBishops: this.wBishops, bBishops: this.bBishops
         });
 
         const { from, to, flags, piece, promo } = mv;
@@ -285,11 +363,16 @@ class LocalEngine {
         // Remove captured piece (if any)
         if (mv.captured !== EMPTY && !(flags & FLAG_EP)) {
             zobXor(this.hash, zobPieceKey(mv.captured, to));
+            this._removePieceScore(mv.captured, to);
         }
 
         this.board[from] = EMPTY;
+        this._removePieceScore(piece, from);
+
         const landed = (flags & FLAG_PROMO) ? promo : piece;
         this.board[to] = landed;
+        this._addPieceScore(landed, to);
+
         // Add piece at destination
         zobXor(this.hash, zobPieceKey(landed, to));
 
@@ -302,7 +385,9 @@ class LocalEngine {
         // En passant capture
         if (flags & FLAG_EP) {
             const epCapSq = to - this.side * 8;
-            zobXor(this.hash, zobPieceKey(this.board[epCapSq] || (-this.side), epCapSq));
+            const capPawn = this.board[epCapSq] || (-this.side); // Should be -side * WP
+            zobXor(this.hash, zobPieceKey(capPawn, epCapSq));
+            this._removePieceScore(capPawn, epCapSq);
             this.board[epCapSq] = EMPTY;
         }
 
@@ -311,15 +396,23 @@ class LocalEngine {
             if (to > from) { // Kingside
                 const rook = this.side * WR;
                 zobXor(this.hash, zobPieceKey(rook, from + 3));
+                this._removePieceScore(rook, from + 3);
+
                 this.board[from + 3] = EMPTY;
                 this.board[from + 1] = rook;
+
                 zobXor(this.hash, zobPieceKey(rook, from + 1));
+                this._addPieceScore(rook, from + 1);
             } else { // Queenside
                 const rook = this.side * WR;
                 zobXor(this.hash, zobPieceKey(rook, from - 4));
+                this._removePieceScore(rook, from - 4);
+
                 this.board[from - 4] = EMPTY;
                 this.board[from - 1] = rook;
+
                 zobXor(this.hash, zobPieceKey(rook, from - 1));
+                this._addPieceScore(rook, from - 1);
             }
         }
 
@@ -377,7 +470,12 @@ class LocalEngine {
         this.fullmove = st.fullmove;
         this.wKingSq = st.wKingSq;
         this.bKingSq = st.bKingSq;
-        this.hash = st.hash; // Restore hash directly — no incremental unmake needed
+        this.hash = st.hash;
+
+        this.mgPstMat = st.mgPstMat;
+        this.egPstMat = st.egPstMat;
+        this.wBishops = st.wBishops;
+        this.bBishops = st.bBishops;
 
         const { from, to, flags, piece, captured, promo } = mv;
 
@@ -612,20 +710,17 @@ class LocalEngine {
 
     // ---- Evaluation ----
     evaluate() {
-        let mgScore = 0, egScore = 0, phase = 0;
-        let wBishops = 0, bBishops = 0;
+        let mgScore = this.mgPstMat, egScore = this.egPstMat;
+        let phase = 0;
         const bd = this.board;
 
-        // Per-file pawn tracking for structure evaluation
-        const wPawnFiles = new Uint8Array(8);
-        const bPawnFiles = new Uint8Array(8);
-        const wPawnRanks = new Int8Array(8).fill(-1);
-        const bPawnRanks = new Int8Array(8).fill(8);
+        // Reset pre-allocated buffers
+        const { wPawnFiles, bPawnFiles, wPawnRanks, bPawnRanks, rookSquares, rookSides } = this.evalBufs;
+        wPawnFiles.fill(0); bPawnFiles.fill(0);
+        wPawnRanks.fill(-1); bPawnRanks.fill(8);
 
-        // Rook squares collected during main loop (avoids second board scan)
+        // Rook squares collected during scanned loop
         let rookCount = 0;
-        const rookSquares = new Int8Array(4); // max 4 rooks (2 per side unlikely but safe)
-        const rookSides = new Int8Array(4);
 
         // King attack zone tracking
         let wKingAttackers = 0, bKingAttackers = 0;
@@ -637,27 +732,14 @@ class LocalEngine {
         for (let sq = 0; sq < 64; sq++) {
             const p = bd[sq];
             if (p === EMPTY) continue;
+
             const side = p > 0 ? 1 : -1;
             const abs = p > 0 ? p : -p;
-            const val = PIECE_VAL[abs];
-            const pstSq = side === 1 ? sq : mirrorSq(sq);
-            const file = sq & 7, rank = sq >> 3;
+            // Material and PST are already in mgPstMat / egPstMat
 
-            let pstVal = 0;
-            if (abs <= 5 && PST[abs]) pstVal = PST[abs][pstSq];
-
-            let mgKing = 0, egKing = 0;
-            if (abs === 6) {
-                mgKing = PST_KING_MG[pstSq];
-                egKing = PST_KING_EG[pstSq];
-            }
-
-            if (abs === 3) { if (side === 1) wBishops++; else bBishops++; }
             if (abs >= 2 && abs <= 5) phase += PHASE_VAL[abs];
 
-            const material = val * side;
-            mgScore += material + (abs === 6 ? mgKing * side : pstVal * side);
-            egScore += material + (abs === 6 ? egKing * side : pstVal * side);
+            const file = sq & 7, rank = sq >> 3;
 
             // Track pawns for structure eval
             if (abs === 1) {
@@ -682,8 +764,7 @@ class LocalEngine {
                 }
                 mgScore += (mob - 4) * 4 * side;
                 egScore += (mob - 4) * 4 * side;
-            }
-            if (abs === 3) { // Bishop mobility
+            } else if (abs === 3) { // Bishop mobility
                 let mob = 0;
                 for (let di = 0; di < 4; di++) {
                     const dir = DIAG_DIRS[di];
@@ -700,8 +781,7 @@ class LocalEngine {
                 }
                 mgScore += (mob - 5) * 5 * side;
                 egScore += (mob - 5) * 5 * side;
-            }
-            if (abs === 4) { // Rook mobility + collect for open file eval
+            } else if (abs === 4) { // Rook mobility + collect for open file eval
                 if (rookCount < 4) { rookSquares[rookCount] = sq; rookSides[rookCount] = side; rookCount++; }
                 let mob = 0;
                 for (let di = 0; di < 4; di++) {
@@ -720,8 +800,7 @@ class LocalEngine {
                 }
                 mgScore += (mob - 7) * 3 * side;
                 egScore += (mob - 7) * 4 * side;
-            }
-            if (abs === 5) { // Queen mobility
+            } else if (abs === 5) { // Queen mobility
                 let mob = 0;
                 for (let di = 0; di < 8; di++) {
                     const dir = ALL_DIRS[di];
@@ -761,8 +840,8 @@ class LocalEngine {
         }
 
         // Bishop pair bonus
-        if (wBishops >= 2) { mgScore += 30; egScore += 50; }
-        if (bBishops >= 2) { mgScore -= 30; egScore -= 50; }
+        if (this.wBishops >= 2) { mgScore += 30; egScore += 50; }
+        if (this.bBishops >= 2) { mgScore -= 30; egScore -= 50; }
 
         // Pawn structure
         for (let f = 0; f < 8; f++) {
@@ -897,30 +976,41 @@ class LocalEngine {
 
     // --- Transposition Table (Zobrist-based) ---
     ttKey() {
-        // Combine hi/lo into a single string key (fast & collision-resistant)
+        // String key for repetition detection history
         return this.hash[0] + '|' + this.hash[1];
     }
 
+    ttIndex() {
+        return this.hash[1] & 0xFFFF; // 65536 entries
+    }
+
     ttProbe(depth, alpha, beta) {
-        const entry = this.tt.get(this.ttKey());
-        if (!entry || entry.depth < depth) return null;
+        const index = this.ttIndex();
+        const entry = this.tt[index];
+
+        // Match full hash to avoid collision errors
+        if (!entry || entry.hashKey[0] !== this.hash[0] || entry.hashKey[1] !== this.hash[1]) return null;
+
+        if (entry.depth < depth) return null;
         if (entry.flag === TT_EXACT) return { score: entry.score, move: entry.move };
         if (entry.flag === TT_ALPHA && entry.score <= alpha) return { score: alpha, move: entry.move };
         if (entry.flag === TT_BETA && entry.score >= beta) return { score: beta, move: entry.move };
-        return { score: null, move: entry.move }; // Return move for ordering even if score isn't usable
+        return { score: null, move: entry.move };
     }
 
     ttStore(depth, score, flag, move) {
-        const key = this.ttKey();
-        const existing = this.tt.get(key);
-        // Replace if deeper or same depth
+        const index = this.ttIndex();
+        const existing = this.tt[index];
+
+        // Replacement strategy:
+        // Replace if empty, or if new depth is >= existing depth, 
+        // or if we are overwriting a different position (collision) that is shallower (implied by depth check usually, but let's be aggressive)
+        // Simple depth-preferred:
         if (!existing || existing.depth <= depth) {
-            this.tt.set(key, { depth, score, flag, move });
-            // Evict if too large
-            if (this.tt.size > TT_SIZE) {
-                const firstKey = this.tt.keys().next().value;
-                this.tt.delete(firstKey);
-            }
+            this.tt[index] = {
+                hashKey: [this.hash[0], this.hash[1]],
+                depth, score, flag, move
+            };
         }
     }
 
@@ -1123,7 +1213,12 @@ class LocalEngine {
         this.stopped = false;
         this.killers = [];
         this.history.fill(0);
-        this.tt.clear();
+        this.killers = [];
+        this.history.fill(0);
+        // this.tt.fill(undefined); // Optional: Clearing TT between searches is safer but standard engines don't always do it. 
+        // For now, let's NOT clear it to improve strength across moves, 
+        // BUT we must handle age if we keep it. Since we don't have age, let's clear it to be safe and deterministic.
+        for (let i = 0; i < this.tt.length; i++) this.tt[i] = undefined;
 
         let bestMove = null;
         let bestScore = 0;
@@ -1404,7 +1499,7 @@ const premoveEngine = new LocalEngine();
  * @param {string} ourColor - 'w' or 'b'
  * @returns {{ execute: boolean, reasons: string[], blocked: string|null }}
  */
-function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
+export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
     if (!ourUci || ourUci.length < 4) {
         return { execute: false, reasons: [], blocked: 'Invalid move' };
     }
@@ -1419,6 +1514,11 @@ function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
 
     try {
         premoveEngine.loadFen(fen);
+        // Prepare engine for search (required for quiesce to not abort immediately)
+        premoveEngine.startTime = performance.now();
+        premoveEngine.timeLimit = 100; // ample time for just quiescence
+        premoveEngine.stopped = false;
+        premoveEngine.nodes = 0;
 
         // --- Step 1: Simulate opponent's predicted move ---
         const oppFrom = nameToSq(opponentUci.substring(0, 2));
@@ -1541,7 +1641,7 @@ function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
         const oppScoredMoves = [];
         for (const oMove of oppMoves) {
             premoveEngine.makeMove(oMove);
-            const score = -premoveEngine.evaluate();
+            const score = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
             premoveEngine.unmakeMove(oMove);
             oppScoredMoves.push({ move: oMove, score });
         }
@@ -1563,14 +1663,14 @@ function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
                 illegalCount++;
             } else {
                 premoveEngine.makeMove(altOurMove);
-                const postScore = -premoveEngine.evaluate();
+                const postScore = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
                 premoveEngine.unmakeMove(altOurMove);
 
                 let bestAlt = -Infinity;
                 for (const alt of altLegal) {
                     if (alt.from === ourFrom && alt.to === ourTo) continue;
                     premoveEngine.makeMove(alt);
-                    const altS = -premoveEngine.evaluate();
+                    const altS = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
                     premoveEngine.unmakeMove(alt);
                     if (altS > bestAlt) bestAlt = altS;
                 }

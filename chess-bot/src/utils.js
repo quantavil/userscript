@@ -1,3 +1,4 @@
+
 // Debounce helper
 export function debounce(fn, wait = 150) {
     let t = null;
@@ -19,17 +20,15 @@ export function getHumanDelay(baseDelay, randomDelay) {
 
 // Helpers
 export const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-export const qs = (sel, root = document) => root.querySelector(sel);
-export const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
 export async function waitForElement(selector, timeout = 15000) {
     return new Promise((resolve, reject) => {
-        const existing = qs(selector);
+        const existing = document.querySelector(selector);
         if (existing) return resolve(existing);
 
         let timeoutId;
         const obs = new MutationObserver(() => {
-            const el = qs(selector);
+            const el = document.querySelector(selector);
             if (el) {
                 clearTimeout(timeoutId);
                 obs.disconnect();
@@ -76,4 +75,3 @@ export function scoreNumeric(s) {
     if (typeof s.cp === 'number') return s.cp;
     return -Infinity;
 }
-

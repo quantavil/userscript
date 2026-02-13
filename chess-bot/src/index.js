@@ -1,9 +1,9 @@
 
-import { BotState, PositionCache, getGame, getFen, getPlayerColor, isPlayersTurn, pa, invalidateGameCache } from './state.js';
-import { qs, qsa, waitForElement, debounce, sleep } from './utils.js';
-import { attachToBoard, startDomBoardWatcher, clearArrows, cancelPendingMove, detachFromBoard } from './board.js';
+import { BotState, pa } from './state.js';
+import { waitForElement } from './utils.js';
+import { attachToBoard, startDomBoardWatcher } from './board.js';
 import { ui, buildUI } from './ui.js';
-import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, getLastFenProcessedPremove, setLastFenProcessedPremove } from './engine.js';
+import { controller } from './controller.js';
 
 (async function () {
     'use strict';
@@ -17,13 +17,6 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
 
     console.log('GabiBot: Script loaded, waiting for board...');
 
-    // Global loop state
-    let tickTimer = null;
-    let gameStartInterval = null;
-    let gameEndInterval = null;
-    let lastFenSeen = '';
-    let boardMoveObserver = null;
-
     // Main init
     async function init() {
         try {
@@ -32,234 +25,19 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
 
             const board = await waitForElement('.board, chess-board, .board-layout-vertical, .board-layout-horizontal').catch(() => null);
             await buildUI();
-            attachToBoard(board || qs('chess-board') || qs('.board') || qs('[class*="board"]'));
-            startDomBoardWatcher();
-            startAutoWatchers();
 
-            // Start loop watcher
-            startStateWatcher();
+            // Attach board logic
+            const boardEl = board || document.querySelector('chess-board') || document.querySelector('.board') || document.querySelector('[class*="board"]');
+            attachToBoard(boardEl);
+
+            // Start the centralized controller
+            controller.init();
 
             console.log('GabiBot: Initialized.');
         } catch (error) {
             console.error('GabiBot Error:', error);
             alert('GabiBot: Could not find chess board. Please refresh or check console.');
         }
-    }
-
-    // Tick loop logic
-    function tick() {
-        if (!BotState.hackEnabled) return;
-
-        invalidateGameCache(); // Always get fresh game state
-        const game = getGame();
-        if (!game) return;
-
-        if (game.isGameOver && game.isGameOver()) {
-            BotState.currentEvaluation = 'GAME OVER';
-            BotState.bestMove = '-';
-            BotState.principalVariation = 'Game ended';
-            BotState.statusInfo = 'Game finished';
-            clearArrows();
-            ui.updateDisplay(pa());
-            return;
-        }
-
-        const fen = getFen(game);
-        if (!fen) return;
-
-        if (fen !== lastFenSeen) {
-            lastFenSeen = fen;
-            cancelPendingMove();
-            clearArrows();
-        }
-
-        if (isPlayersTurn(game)) {
-            if (getLastFenProcessedMain() !== fen) {
-                scheduleAnalysis('main', fen, () => tick()); // Pass tick as callback
-            }
-        } else {
-            if (BotState.premoveEnabled) {
-                if (getLastFenProcessedPremove() !== fen) {
-                    scheduleAnalysis('premove', fen);
-                } else {
-                    BotState.statusInfo = 'Waiting for opponent...';
-                    ui.updateDisplay(pa());
-                }
-            } else {
-                BotState.statusInfo = 'Waiting for opponent...';
-                ui.updateDisplay(pa());
-            }
-        }
-    }
-
-    // Watch board DOM for instant move detection (no polling delay)
-    function startBoardMoveObserver() {
-        stopBoardMoveObserver();
-        const board = getGame() && (document.querySelector('chess-board') || document.querySelector('.board'));
-        if (!board) return;
-
-        let debounceTimer = null;
-        boardMoveObserver = new MutationObserver(() => {
-            if (!BotState.hackEnabled) return;
-            // Debounce rapid DOM changes (e.g. animation frames) to a single tick
-            if (debounceTimer) return;
-            debounceTimer = setTimeout(() => {
-                debounceTimer = null;
-                invalidateGameCache();
-                tick();
-            }, 50); // 50ms debounce — fast enough to feel instant
-        });
-        boardMoveObserver.observe(board, {
-            childList: true, subtree: true,
-            attributes: true, attributeFilter: ['class', 'style', 'data-piece']
-        });
-    }
-
-    function stopBoardMoveObserver() {
-        if (boardMoveObserver) { boardMoveObserver.disconnect(); boardMoveObserver = null; }
-    }
-
-    function startTickLoop() {
-        stopTickLoop();
-        startBoardMoveObserver();
-        const interval = Math.max(100, 1100 - (Number(BotState.updateSpeed) || 8) * 100);
-
-        const scheduleNext = () => {
-            tickTimer = setTimeout(() => {
-                tick();
-                if (BotState.hackEnabled) scheduleNext();
-            }, interval);
-        };
-
-        tick(); // Immediate first tick
-        scheduleNext();
-    }
-
-    function stopTickLoop() {
-        if (tickTimer) clearTimeout(tickTimer);
-        tickTimer = null;
-        stopBoardMoveObserver();
-    }
-
-    // React to enable/disable or speed changes
-    function startStateWatcher() {
-        let lastHackEnabled = BotState.hackEnabled;
-        let lastUpdateSpeed = BotState.updateSpeed;
-        let lastPremoveEnabled = BotState.premoveEnabled;
-
-        setInterval(() => {
-            if (BotState.hackEnabled !== lastHackEnabled) {
-                lastHackEnabled = BotState.hackEnabled;
-                if (BotState.hackEnabled) {
-                    BotState.statusInfo = 'Ready';
-                    ui.updateDisplay(pa());
-                    startTickLoop();
-                } else {
-                    stopTickLoop();
-                    // Clear cache
-                    PositionCache.clear();
-                    clearArrows();
-                    cancelPendingMove();
-                    BotState.statusInfo = 'Bot disabled';
-                    BotState.currentEvaluation = '-';
-                    BotState.bestMove = '-';
-                    ui.updateDisplay(pa());
-                }
-                ui.Settings.save();
-            }
-            if (BotState.updateSpeed !== lastUpdateSpeed) {
-                lastUpdateSpeed = BotState.updateSpeed;
-                if (BotState.hackEnabled) startTickLoop();
-            }
-            if (BotState.premoveEnabled !== lastPremoveEnabled) {
-                lastPremoveEnabled = BotState.premoveEnabled;
-                if (BotState.hackEnabled) startTickLoop();
-            }
-        }, 200);
-
-        // Initial check
-        if (BotState.hackEnabled) startTickLoop();
-    }
-
-    function startAutoWatchers() {
-        if (gameStartInterval) clearInterval(gameStartInterval);
-        if (gameEndInterval) clearInterval(gameEndInterval);
-
-        let gameEndDetected = false;
-
-        gameEndInterval = setInterval(() => {
-            const gameOverModal = qs('.game-over-modal-content');
-
-            if (gameOverModal && !gameEndDetected) {
-                console.log('GabiBot: Game over detected');
-
-                clearArrows();
-                cancelPendingMove();
-
-                BotState.statusInfo = 'Game ended, preparing new game...';
-                BotState.currentEvaluation = '-';
-                BotState.bestMove = '-';
-                ui?.updateDisplay(pa());
-
-                gameEndDetected = true;
-
-                if (BotState.autoRematch) {
-                    console.log('GabiBot: Auto-rematch enabled');
-                    setTimeout(() => {
-                        const modal = qs('.game-over-modal-content');
-                        if (!modal) return console.log('GabiBot: [2s] Modal closed');
-
-                        const btn = qsa('button', modal).find(b =>
-                            /rematch/i.test((b.textContent || '').trim()) ||
-                            /rematch/i.test((b.getAttribute?.('aria-label') || '').trim())
-                        );
-
-                        if (btn) btn.click();
-                    }, 2000);
-
-                    setTimeout(() => {
-                        const modal = qs('.game-over-modal-content');
-                        if (!modal) return;
-                        const btn = qsa('button', modal).find(b => /new.*\d+.*min/i.test(b.textContent || ''));
-                        if (btn) btn.click();
-                    }, 12000);
-
-                    setTimeout(async () => {
-                        const modal = qs('.game-over-modal-content');
-                        if (!modal) return;
-                        const closeBtn = qs('[aria-label="Close"]', modal);
-                        if (closeBtn) { closeBtn.click(); await sleep(500); }
-
-                        const tab = qs('[data-tab="newGame"]') ||
-                            qsa('.tabs-tab').find(t => /new.*game/i.test(t.textContent || ''));
-
-                        if (tab) {
-                            tab.click(); await sleep(400);
-                            const startBtn = qsa('button').find(b => /start.*game/i.test((b.textContent || '').trim()));
-                            if (startBtn) startBtn.click();
-                        }
-                    }, 22000);
-                }
-            }
-
-            if (!gameOverModal && gameEndDetected) {
-                console.log('GabiBot: New game started, bot analyzing...');
-                gameEndDetected = false;
-
-                // Reset FEN tracking so first move of new game is always analyzed
-                setLastFenProcessedMain('');
-                setLastFenProcessedPremove('');
-                lastFenSeen = '';
-
-                if (BotState.hackEnabled) {
-                    BotState.statusInfo = 'Ready';
-                    ui?.updateDisplay(pa());
-                    setTimeout(() => {
-                        if (BotState.hackEnabled) tick();
-                    }, 500);
-                }
-            }
-        }, 1000);
     }
 
     // Kick off

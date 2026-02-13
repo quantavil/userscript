@@ -1,4 +1,5 @@
-import { debounce, qs, qsa } from './utils.js';
+
+import { debounce } from './utils.js';
 import { GAME_CACHE_TTL, RANDOM_JITTER_MIN } from './config.js';
 
 // Encapsulated state (avoid global pollution)
@@ -52,7 +53,7 @@ export const PositionCache = new LRUCache(2000);
 export const Settings = {
     save: debounce(() => {
         try {
-            const menuWrap = qs('#menuWrap');
+            const menuWrap = document.querySelector('#menuWrap');
             const settings = {
                 hackEnabled: BotState.hackEnabled,
                 botPower: BotState.botPower,
@@ -98,7 +99,7 @@ let cachedBoardFlipped = false;
 let cachedFlipTimestamp = 0;
 
 // Need a way to inject board access or generic way to get board
-export const getBoard = () => qs('chess-board') || qs('.board') || qs('[class*="board"]');
+export const getBoard = () => document.querySelector('chess-board') || document.querySelector('.board') || document.querySelector('[class*="board"]');
 
 export const getGame = () => {
     const now = Date.now();

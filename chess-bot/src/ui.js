@@ -1,5 +1,5 @@
 import { BotState, Settings } from './state.js';
-import { qs, qsa, debounce } from './utils.js';
+import { debounce } from './utils.js';
 import { updateEvaluationBar } from './board.js';
 
 export const ui = {

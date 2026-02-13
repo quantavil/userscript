@@ -1,6 +1,6 @@
 {
   "name": "super-chess-bot",
-  "version": "9.0.0",
+  "version": "9.1.0",
   "description": "Super chess Bot is a tournament level bullet bot",
   "main": "src/index.js",
   "scripts": {

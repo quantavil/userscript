@@ -2,10 +2,12 @@ const esbuild = require('esbuild');
 const fs = require('fs');
 const path = require('path');
 
+const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
+
 const metadata = `// ==UserScript==
 // @name          ♟Super-chess-Bot
 // @namespace     http://tampermonkey.net/
-// @version       8.1.1
+// @version       ${pkg.version}
 // @description   Super chess Bot is a tournament level bullet bot
 // @author        quantavil
 // @match         https://www.chess.com/play/computer*
