@@ -7,7 +7,7 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
 
 (async function () {
     'use strict';
-    
+
     // Single-instance guard
     if (window.__GABIBOT_RUNNING__) {
         console.log('GabiBot: Already running, skipping init.');
@@ -32,12 +32,12 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
             const board = await waitForElement('.board, chess-board, .board-layout-vertical, .board-layout-horizontal').catch(() => null);
             await buildUI();
             attachToBoard(board || qs('chess-board') || qs('.board') || qs('[class*="board"]'));
-            startDomBoardWatcher(); 
+            startDomBoardWatcher();
             startAutoWatchers();
-            
+
             // Start loop watcher
             startStateWatcher();
-            
+
             console.log('GabiBot: Initialized.');
         } catch (error) {
             console.error('GabiBot Error:', error);
@@ -84,8 +84,8 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
                 } else {
                     // Update Premove chance display if needed
                     const chanceEl = qs('[name="premoveChance"] .itemState');
-                     if (chanceEl && BotState.currentPremoveChance !== undefined) {
-                         chanceEl.textContent = `${Math.round(BotState.currentPremoveChance)}%`;
+                    if (chanceEl && BotState.currentPremoveChance !== undefined) {
+                        chanceEl.textContent = `${Math.round(BotState.currentPremoveChance)}%`;
                     }
 
                     BotState.statusInfo = (getLastPremoveUci() && getLastPremoveFen() === fen) ? 'Waiting (premove ready)...' : 'Waiting for opponent...';
@@ -129,7 +129,7 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
                 } else {
                     stopTickLoop();
                     // Clear cache
-                    for (const key in PositionCache) delete PositionCache[key];
+                    PositionCache.clear();
                     clearArrows();
                     cancelPendingMove();
                     BotState.statusInfo = 'Bot disabled';
@@ -148,7 +148,7 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
                 if (BotState.hackEnabled) startTickLoop();
             }
         }, 200);
-        
+
         // Initial check
         if (BotState.hackEnabled) startTickLoop();
     }
@@ -180,29 +180,29 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
                     setTimeout(() => {
                         const modal = qs('.game-over-modal-content');
                         if (!modal) return console.log('GabiBot: [2s] Modal closed');
-                        
-                        const btn = qsa('button', modal).find(b => 
-                            /rematch/i.test((b.textContent || '').trim()) || 
+
+                        const btn = qsa('button', modal).find(b =>
+                            /rematch/i.test((b.textContent || '').trim()) ||
                             /rematch/i.test((b.getAttribute?.('aria-label') || '').trim())
                         );
 
                         if (btn) btn.click();
                     }, 2000);
-                    
+
                     setTimeout(() => {
                         const modal = qs('.game-over-modal-content');
                         if (!modal) return;
                         const btn = qsa('button', modal).find(b => /new.*\d+.*min/i.test(b.textContent || ''));
                         if (btn) btn.click();
                     }, 12000);
-                    
+
                     setTimeout(async () => {
                         const modal = qs('.game-over-modal-content');
                         if (!modal) return;
                         const closeBtn = qs('[aria-label="Close"]', modal);
                         if (closeBtn) { closeBtn.click(); await sleep(500); }
 
-                        const tab = qs('[data-tab="newGame"]') || 
+                        const tab = qs('[data-tab="newGame"]') ||
                             qsa('.tabs-tab').find(t => /new.*game/i.test(t.textContent || ''));
 
                         if (tab) {

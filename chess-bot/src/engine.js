@@ -129,16 +129,20 @@ async function fetchEngineData(fen, depth, signal) {
         });
     };
     try { return await call(`multipv=${MULTIPV}&mode=analysis`); }
-    catch {
+    catch (e) {
+        if (e.name === 'AbortError') throw e;
         try { return await call(`multipv=${MULTIPV}&mode=bestmove`); }
-        catch { return await call('mode=bestmove'); }
+        catch (e2) {
+            if (e2.name === 'AbortError') throw e2;
+            return await call('mode=bestmove');
+        }
     }
 }
 
 async function fetchEngineDataWithRetry(fen, depth, signal, maxRetries = 1) {
-    if (PositionCache[fen]) {
+    if (PositionCache.get(fen)) {
         console.log('GabiBot: 🗃️ Using cached analysis');
-        return PositionCache[fen];
+        return PositionCache.get(fen);
     }
 
     let lastError;
@@ -156,7 +160,7 @@ async function fetchEngineDataWithRetry(fen, depth, signal, maxRetries = 1) {
 
         try {
             const data = await fetchEngineData(fen, depth, signal);
-            PositionCache[fen] = data;
+            PositionCache.set(fen, data);
             if (attempt > 0) {
                 console.log(`GabiBot: 🎯 Retry succeeded on attempt #${attempt + 1}`);
             }

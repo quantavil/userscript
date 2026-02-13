@@ -21,7 +21,35 @@ export const BotState = {
 };
 
 // Position cache system
-export const PositionCache = {};
+// Position cache system (LRU)
+class LRUCache {
+    constructor(limit = 2000) {
+        this.limit = limit;
+        this.cache = new Map();
+    }
+
+    get(key) {
+        if (!this.cache.has(key)) return undefined;
+        const val = this.cache.get(key);
+        this.cache.delete(key);
+        this.cache.set(key, val);
+        return val;
+    }
+
+    set(key, value) {
+        if (this.cache.has(key)) this.cache.delete(key);
+        else if (this.cache.size >= this.limit) {
+            this.cache.delete(this.cache.keys().next().value);
+        }
+        this.cache.set(key, value);
+    }
+
+    clear() {
+        this.cache.clear();
+    }
+}
+
+export const PositionCache = new LRUCache(2000);
 
 // Settings persistence
 export const Settings = {
