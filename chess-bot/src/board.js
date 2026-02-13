@@ -173,14 +173,14 @@ export async function simulateClickMove(from, to) {
     const upEnd = { clientX: b.x, clientY: b.y, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: 0 };
 
     dispatchPointerOrMouse(startEl, usePointer ? 'pointerdown' : 'mousedown', downStart, usePointer);
-    await sleep(10);
+    await sleep(2);
     dispatchPointerOrMouse(startEl, usePointer ? 'pointerup' : 'mouseup', upStart, usePointer);
     startEl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, clientX: a.x, clientY: a.y }));
 
-    await sleep(20);
+    await sleep(4);
 
     dispatchPointerOrMouse(endEl, usePointer ? 'pointerdown' : 'mousedown', downEnd, usePointer);
-    await sleep(10);
+    await sleep(2);
     dispatchPointerOrMouse(endEl, usePointer ? 'pointerup' : 'mouseup', upEnd, usePointer);
     endEl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, clientX: b.x, clientY: b.y }));
 
@@ -273,7 +273,7 @@ async function makeMove(from, to, expectedFen, promotionChar) {
     await simulateClickMove(from, to);
     if (promotionChar) await maybeSelectPromotion(String(promotionChar).toLowerCase());
 
-    const changed = await waitForFenChange(beforeFen, 1000);
+    const changed = await waitForFenChange(beforeFen, 400);
     return !!changed;
 }
 

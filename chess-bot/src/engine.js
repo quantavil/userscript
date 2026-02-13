@@ -1,11 +1,11 @@
 import { API_URL, MULTIPV, ANALYZE_TIMEOUT_MS, PIECE_VALUES } from './config.js';
-import { BotState, PositionCache, getGame, getPlayerColor, getSideToMove, pa } from './state.js';
+import { BotState, PositionCache, getGame, getPlayerColor, getSideToMove, pa, invalidateGameCache } from './state.js';
 import { scoreFrom, scoreToDisplay, scoreNumeric, getRandomDepth, sleep, fenCharAtSquare, pieceFromFenChar, getAttackersOfSquare, isSquareAttackedBy, findKing, makeSimpleMove, parseFenToBoard, getAttackersOnBoard, isAttackedOnBoard, findKingOnBoard, makeMoveOnBoard } from './utils.js';
 import { drawArrow, clearArrows, executeMove, simulateClickMove } from './board.js';
 
-let analysisQueue = Promise.resolve();
 let currentAnalysisId = 0;
-let analysisQueueBusy = false;
+let currentAbortController = null;
+let analysisRunning = false;
 
 let lastFenProcessedMain = '';
 let lastFenProcessedPremove = '';
@@ -875,9 +875,9 @@ class LocalEngine {
     analyze(fen, depth) {
         this.loadFen(fen);
 
-        // Time limit scales with depth
-        const timeMs = Math.min(depth * 500, 4000);
-        const searchDepth = Math.min(depth, 8); // Cap local engine depth
+        // Time limit scales with depth — aggressive for speed
+        const timeMs = Math.min(depth * 150, 500);
+        const searchDepth = Math.min(depth, 6); // ⚡ Cap at depth 6 (was 8)
 
         const result = this.searchRoot(searchDepth, timeMs);
 
@@ -1215,21 +1215,30 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
     if (kind === 'main') scheduledMainFen = fen;
     else scheduledPremoveFen = fen;
 
+    // Cancel any in-flight analysis immediately — no waiting in queue
     const analysisId = ++currentAnalysisId;
+    if (currentAbortController) {
+        currentAbortController.abort('superseded');
+        currentAbortController = null;
+    }
+
+    const ctrl = new AbortController();
+    currentAbortController = ctrl;
+
     const run = async () => {
-        analysisQueueBusy = true;
+        analysisRunning = true;
         if (analysisId !== currentAnalysisId || !BotState.hackEnabled) {
-            analysisQueueBusy = false;
+            analysisRunning = false;
             return;
         }
 
+        // Invalidate game cache for fresh turn detection
+        invalidateGameCache();
         const game = getGame();
-        if (!game) { analysisQueueBusy = false; return; }
+        if (!game) { analysisRunning = false; return; }
 
-        if (kind === 'main' && lastFenProcessedMain === fen) { analysisQueueBusy = false; return; }
-        if (kind !== 'main' && lastFenProcessedPremove === fen) { analysisQueueBusy = false; return; }
-
-        const ctrl = new AbortController();
+        if (kind === 'main' && lastFenProcessedMain === fen) { analysisRunning = false; return; }
+        if (kind !== 'main' && lastFenProcessedPremove === fen) { analysisRunning = false; return; }
 
         try {
             BotState.statusInfo = kind === 'main' ? '🔄 Analyzing...' : '🔄 Analyzing (premove)...';
@@ -1324,20 +1333,21 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
         } catch (error) {
             if (String(error?.name || error).toLowerCase().includes('abort') ||
                 String(error?.message || error).toLowerCase().includes('superseded')) {
-                BotState.statusInfo = '⏸ Analysis canceled';
+                // Silently skip — superseded by newer analysis
             } else {
                 console.error('GabiBot Error:', error);
                 BotState.statusInfo = '❌ Analysis Error';
                 BotState.currentEvaluation = 'Error';
+                if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
             }
-            if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
         } finally {
             // Clear dedup guard so this FEN can be re-scheduled if needed
             if (kind === 'main' && scheduledMainFen === fen) scheduledMainFen = '';
             else if (kind !== 'main' && scheduledPremoveFen === fen) scheduledPremoveFen = '';
-            analysisQueueBusy = false;
+            if (currentAbortController === ctrl) currentAbortController = null;
+            analysisRunning = false;
         }
     };
-    // Chain onto queue, reset when done to prevent unbounded chain growth
-    analysisQueue = analysisQueue.then(run).catch(() => { analysisQueueBusy = false; });
+    // Fire directly — no queue chaining. Prior analysis is already aborted above.
+    run();
 }

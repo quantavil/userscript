@@ -22,6 +22,7 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
     let gameStartInterval = null;
     let gameEndInterval = null;
     let lastFenSeen = '';
+    let boardMoveObserver = null;
 
     // Main init
     async function init() {
@@ -49,6 +50,7 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
     function tick() {
         if (!BotState.hackEnabled) return;
 
+        invalidateGameCache(); // Always get fresh game state
         const game = getGame();
         if (!game) return;
 
@@ -101,9 +103,37 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
         }
     }
 
+    // Watch board DOM for instant move detection (no polling delay)
+    function startBoardMoveObserver() {
+        stopBoardMoveObserver();
+        const board = getGame() && (document.querySelector('chess-board') || document.querySelector('.board'));
+        if (!board) return;
+
+        let debounceTimer = null;
+        boardMoveObserver = new MutationObserver(() => {
+            if (!BotState.hackEnabled) return;
+            // Debounce rapid DOM changes (e.g. animation frames) to a single tick
+            if (debounceTimer) return;
+            debounceTimer = setTimeout(() => {
+                debounceTimer = null;
+                invalidateGameCache();
+                tick();
+            }, 50); // 50ms debounce — fast enough to feel instant
+        });
+        boardMoveObserver.observe(board, {
+            childList: true, subtree: true,
+            attributes: true, attributeFilter: ['class', 'style', 'data-piece']
+        });
+    }
+
+    function stopBoardMoveObserver() {
+        if (boardMoveObserver) { boardMoveObserver.disconnect(); boardMoveObserver = null; }
+    }
+
     function startTickLoop() {
         stopTickLoop();
-        const interval = Math.max(150, 1100 - (Number(BotState.updateSpeed) || 8) * 100);
+        startBoardMoveObserver();
+        const interval = Math.max(100, 1100 - (Number(BotState.updateSpeed) || 8) * 100);
 
         const scheduleNext = () => {
             tickTimer = setTimeout(() => {
@@ -119,6 +149,7 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
     function stopTickLoop() {
         if (tickTimer) clearTimeout(tickTimer);
         tickTimer = null;
+        stopBoardMoveObserver();
     }
 
     // React to enable/disable or speed changes
