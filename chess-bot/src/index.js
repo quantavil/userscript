@@ -104,12 +104,20 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
     function startTickLoop() {
         stopTickLoop();
         const interval = Math.max(150, 1100 - (Number(BotState.updateSpeed) || 8) * 100);
-        tickTimer = setInterval(tick, interval);
-        tick();
+
+        const scheduleNext = () => {
+            tickTimer = setTimeout(() => {
+                tick();
+                if (BotState.hackEnabled) scheduleNext();
+            }, interval);
+        };
+
+        tick(); // Immediate first tick
+        scheduleNext();
     }
 
     function stopTickLoop() {
-        if (tickTimer) clearInterval(tickTimer);
+        if (tickTimer) clearTimeout(tickTimer);
         tickTimer = null;
     }
 
@@ -217,6 +225,13 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
             if (!gameOverModal && gameEndDetected) {
                 console.log('GabiBot: New game started, bot analyzing...');
                 gameEndDetected = false;
+
+                // Reset FEN tracking so first move of new game is always analyzed
+                setLastFenProcessedMain('');
+                setLastFenProcessedPremove('');
+                setLastPremoveFen('');
+                setLastPremoveUci('');
+                lastFenSeen = '';
 
                 if (BotState.hackEnabled) {
                     BotState.statusInfo = 'Ready';

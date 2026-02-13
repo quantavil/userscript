@@ -1,10 +1,11 @@
 import { API_URL, MULTIPV, ANALYZE_TIMEOUT_MS, PIECE_VALUES } from './config.js';
 import { BotState, PositionCache, getGame, getPlayerColor, getSideToMove, pa } from './state.js';
-import { scoreFrom, scoreToDisplay, scoreNumeric, getRandomDepth, sleep, fenCharAtSquare, pieceFromFenChar, getAttackersOfSquare, isSquareAttackedBy, findKing, makeSimpleMove } from './utils.js';
+import { scoreFrom, scoreToDisplay, scoreNumeric, getRandomDepth, sleep, fenCharAtSquare, pieceFromFenChar, getAttackersOfSquare, isSquareAttackedBy, findKing, makeSimpleMove, parseFenToBoard, getAttackersOnBoard, isAttackedOnBoard, findKingOnBoard, makeMoveOnBoard } from './utils.js';
 import { drawArrow, clearArrows, executeMove, simulateClickMove } from './board.js';
 
 let analysisQueue = Promise.resolve();
 let currentAnalysisId = 0;
+let analysisQueueBusy = false;
 
 let lastFenProcessedMain = '';
 let lastFenProcessedPremove = '';
@@ -31,6 +32,10 @@ const BP = -1, BN = -2, BB = -3, BR = -4, BQ = -5, BK = -6;
 const EMPTY = 0;
 const FLAG_NONE = 0, FLAG_EP = 1, FLAG_CASTLE = 2, FLAG_PROMO = 4;
 const MATE_SCORE = 30000;
+
+// Transposition table flags
+const TT_EXACT = 0, TT_ALPHA = 1, TT_BETA = 2;
+const TT_SIZE = 65536; // Max entries
 
 // Piece-square tables (from white's perspective, a1=index 0)
 // Indexed [rank][file] visually but stored flat as [sq] where sq = rank*8+file
@@ -134,6 +139,8 @@ class LocalEngine {
         this.epSquare = -1;
         this.halfmove = 0;
         this.fullmove = 1;
+        this.wKingSq = 4;  // Incremental king tracking
+        this.bKingSq = 60; // Incremental king tracking
         this.stateStack = [];
         this.nodes = 0;
         this.timeLimit = 0;
@@ -142,6 +149,7 @@ class LocalEngine {
         this.pvTable = [];
         this.killers = [];
         this.history = new Int32Array(64 * 64);
+        this.tt = new Map(); // Transposition table
     }
 
     loadFen(fen) {
@@ -154,7 +162,13 @@ class LocalEngine {
             let f = 0;
             for (const ch of rows[7 - r]) {
                 if (ch >= '1' && ch <= '8') { f += parseInt(ch); }
-                else { this.board[r * 8 + f] = pieceMap[ch] || EMPTY; f++; }
+                else {
+                    const piece = pieceMap[ch] || EMPTY;
+                    this.board[r * 8 + f] = piece;
+                    if (piece === WK) this.wKingSq = r * 8 + f;
+                    else if (piece === BK) this.bKingSq = r * 8 + f;
+                    f++;
+                }
             }
         }
 
@@ -206,7 +220,8 @@ class LocalEngine {
     makeMove(mv) {
         this.stateStack.push({
             castling: this.castling, epSquare: this.epSquare,
-            halfmove: this.halfmove, fullmove: this.fullmove
+            halfmove: this.halfmove, fullmove: this.fullmove,
+            wKingSq: this.wKingSq, bKingSq: this.bKingSq
         });
 
         const { from, to, flags, piece, promo } = mv;
@@ -214,6 +229,12 @@ class LocalEngine {
 
         this.board[from] = EMPTY;
         this.board[to] = (flags & FLAG_PROMO) ? promo : piece;
+
+        // Update king position tracking
+        if (abs === 6) {
+            if (this.side === 1) this.wKingSq = to;
+            else this.bKingSq = to;
+        }
 
         // En passant capture
         if (flags & FLAG_EP) {
@@ -263,6 +284,8 @@ class LocalEngine {
         this.epSquare = st.epSquare;
         this.halfmove = st.halfmove;
         this.fullmove = st.fullmove;
+        this.wKingSq = st.wKingSq;
+        this.bKingSq = st.bKingSq;
 
         const { from, to, flags, piece, captured, promo } = mv;
 
@@ -285,9 +308,7 @@ class LocalEngine {
     }
 
     findKingSq(side) {
-        const k = side * WK;
-        for (let i = 0; i < 64; i++) if (this.board[i] === k) return i;
-        return -1;
+        return side === 1 ? this.wKingSq : this.bKingSq;
     }
 
     isAttacked(sq, bySide) {
@@ -321,9 +342,8 @@ class LocalEngine {
             }
         }
 
-        // Sliding: rook/queen on ranks and files
-        const rq = [bySide * WR, bySide * WQ];
-        const bq = [bySide * WB, bySide * WQ];
+        // Sliding: rook/queen on ranks and files (direct comparison, no array alloc)
+        const sideR = bySide * WR, sideQ = bySide * WQ, sideB = bySide * WB;
         const straightDirs = [8, -8, 1, -1];
         const diagDirs = [9, 7, -9, -7];
 
@@ -335,7 +355,7 @@ class LocalEngine {
                 }
                 const p = this.board[t];
                 if (p !== EMPTY) {
-                    if (rq.includes(p)) return true;
+                    if (p === sideR || p === sideQ) return true;
                     break;
                 }
                 t += dir;
@@ -348,7 +368,7 @@ class LocalEngine {
                 if (Math.abs(sqFile(t) - sqFile(t - dir)) !== 1) break;
                 const p = this.board[t];
                 if (p !== EMPTY) {
-                    if (bq.includes(p)) return true;
+                    if (p === sideB || p === sideQ) return true;
                     break;
                 }
                 t += dir;
@@ -587,20 +607,74 @@ class LocalEngine {
     }
 
     // ---- Search ----
-    orderMoves(moves, ply) {
-        const scores = moves.map(mv => {
+    scoreMoves(moves, ply, ttMove) {
+        const scores = new Int32Array(moves.length);
+        for (let i = 0; i < moves.length; i++) {
+            const mv = moves[i];
             let s = 0;
-            if (mv.captured !== EMPTY) {
+            // TT move gets highest priority
+            if (ttMove && mv.from === ttMove.from && mv.to === ttMove.to) {
+                s = 100000;
+            } else if (mv.captured !== EMPTY) {
                 s = 10000 + PIECE_VAL[Math.abs(mv.captured)] * 10 - PIECE_VAL[Math.abs(mv.piece)];
             }
             if (mv.flags & FLAG_PROMO) s += 8000 + PIECE_VAL[Math.abs(mv.promo)];
             if (this.killers[ply] && this.killers[ply].includes(mv.from * 64 + mv.to)) s += 5000;
             s += this.history[mv.from * 64 + mv.to];
-            return s;
-        });
-        const indices = moves.map((_, i) => i);
-        indices.sort((a, b) => scores[b] - scores[a]);
-        return indices.map(i => moves[i]);
+            scores[i] = s;
+        }
+        return scores;
+    }
+
+    // Lazy selection sort: pick best move for position i, swap it in place
+    pickMove(moves, scores, startIdx) {
+        let bestIdx = startIdx;
+        let bestScore = scores[startIdx];
+        for (let j = startIdx + 1; j < moves.length; j++) {
+            if (scores[j] > bestScore) {
+                bestScore = scores[j];
+                bestIdx = j;
+            }
+        }
+        if (bestIdx !== startIdx) {
+            // Swap moves
+            const tmpMv = moves[startIdx]; moves[startIdx] = moves[bestIdx]; moves[bestIdx] = tmpMv;
+            // Swap scores
+            const tmpSc = scores[startIdx]; scores[startIdx] = scores[bestIdx]; scores[bestIdx] = tmpSc;
+        }
+    }
+
+    // --- Transposition Table ---
+    ttKey() {
+        // Simple FEN-based key (board + side + castling + ep)
+        // For a proper engine use Zobrist hashing, but this is fast enough for depth 8
+        let key = '';
+        for (let i = 0; i < 64; i++) key += this.board[i] + ',';
+        key += this.side + ',' + this.castling + ',' + this.epSquare;
+        return key;
+    }
+
+    ttProbe(depth, alpha, beta) {
+        const entry = this.tt.get(this.ttKey());
+        if (!entry || entry.depth < depth) return null;
+        if (entry.flag === TT_EXACT) return { score: entry.score, move: entry.move };
+        if (entry.flag === TT_ALPHA && entry.score <= alpha) return { score: alpha, move: entry.move };
+        if (entry.flag === TT_BETA && entry.score >= beta) return { score: beta, move: entry.move };
+        return { score: null, move: entry.move }; // Return move for ordering even if score isn't usable
+    }
+
+    ttStore(depth, score, flag, move) {
+        const key = this.ttKey();
+        const existing = this.tt.get(key);
+        // Replace if deeper or same depth
+        if (!existing || existing.depth <= depth) {
+            this.tt.set(key, { depth, score, flag, move });
+            // Evict if too large
+            if (this.tt.size > TT_SIZE) {
+                const firstKey = this.tt.keys().next().value;
+                this.tt.delete(firstKey);
+            }
+        }
     }
 
     quiesce(alpha, beta, ply) {
@@ -610,21 +684,29 @@ class LocalEngine {
             return 0;
         }
 
-        const standPat = this.evaluate();
-        if (standPat >= beta) return beta;
-        if (standPat > alpha) alpha = standPat;
-
         const inChk = this.inCheck(this.side);
+
+        // When in check, skip stand-pat — we MUST resolve the check
+        if (!inChk) {
+            const standPat = this.evaluate();
+            if (standPat >= beta) return beta;
+            if (standPat > alpha) alpha = standPat;
+        }
+
         const moves = this.generateLegalMoves(!inChk); // all moves if in check, captures only otherwise
 
         if (inChk && moves.length === 0) return -(MATE_SCORE - ply);
 
-        const ordered = this.orderMoves(moves, ply);
-        for (const mv of ordered) {
-            // Delta pruning
+        const standPatForDelta = inChk ? -MATE_SCORE : alpha;
+
+        const scores = this.scoreMoves(moves, ply, null);
+        for (let i = 0; i < moves.length; i++) {
+            this.pickMove(moves, scores, i);
+            const mv = moves[i];
+            // Delta pruning (only when not in check)
             if (!inChk && mv.captured !== EMPTY) {
                 const delta = PIECE_VAL[Math.abs(mv.captured)] + 200;
-                if (standPat + delta < alpha) continue;
+                if (standPatForDelta + delta < alpha) continue;
             }
 
             this.makeMove(mv);
@@ -648,22 +730,65 @@ class LocalEngine {
 
         if (depth <= 0) return this.quiesce(alpha, beta, ply);
 
-        // Check extension
+        // Check extension with budget to prevent explosion
         const inChk = this.inCheck(this.side);
-        if (inChk && ply < 20) depth++;
+        if (inChk && ply < 20 && this.extensions < 6) {
+            depth++;
+            this.extensions++;
+        }
+
+        // Draw by 50-move rule
+        if (this.halfmove >= 100) return 0;
+
+        // Transposition table probe
+        let ttMove = null;
+        const ttEntry = this.ttProbe(depth, alpha, beta);
+        if (ttEntry) {
+            ttMove = ttEntry.move;
+            if (ttEntry.score !== null) return ttEntry.score;
+        }
 
         const moves = this.generateLegalMoves();
         if (moves.length === 0) {
             return inChk ? -(MATE_SCORE - ply) : 0;
         }
 
-        // Draw by 50-move rule
-        if (this.halfmove >= 100) return 0;
+        // Null-move pruning: if we can pass and still beat beta, prune
+        // Don't use when in check, at low depth, or in endgame (material < rook+bishop)
+        if (!inChk && depth >= 3 && ply > 0) {
+            // Make null move (pass)
+            this.stateStack.push({
+                castling: this.castling, epSquare: this.epSquare,
+                halfmove: this.halfmove, fullmove: this.fullmove,
+                wKingSq: this.wKingSq, bKingSq: this.bKingSq
+            });
+            this.epSquare = -1;
+            this.side = -this.side;
 
-        const ordered = this.orderMoves(moves, ply);
+            const nullScore = -this.negamax(depth - 3, -beta, -beta + 1, ply + 1, []);
+
+            // Unmake null move
+            this.side = -this.side;
+            const st = this.stateStack.pop();
+            this.castling = st.castling;
+            this.epSquare = st.epSquare;
+            this.halfmove = st.halfmove;
+            this.fullmove = st.fullmove;
+            this.wKingSq = st.wKingSq;
+            this.bKingSq = st.bKingSq;
+
+            if (this.stopped) return 0;
+            if (nullScore >= beta) return beta; // Null-move cutoff
+        }
+
+        const scores = this.scoreMoves(moves, ply, ttMove);
         const childPv = [];
+        let bestMoveInNode = null;
+        let origAlpha = alpha;
 
-        for (const mv of ordered) {
+        for (let i = 0; i < moves.length; i++) {
+            this.pickMove(moves, scores, i);
+            const mv = moves[i];
             this.makeMove(mv);
             childPv.length = 0;
             const score = -this.negamax(depth - 1, -beta, -alpha, ply + 1, childPv);
@@ -682,15 +807,22 @@ class LocalEngine {
                     }
                     this.history[mv.from * 64 + mv.to] += depth * depth;
                 }
+                this.ttStore(depth, beta, TT_BETA, mv);
                 return beta;
             }
             if (score > alpha) {
                 alpha = score;
+                bestMoveInNode = mv;
                 pvLine.length = 0;
                 pvLine.push(mv);
                 pvLine.push(...childPv);
             }
         }
+
+        // Store in TT
+        const flag = alpha > origAlpha ? TT_EXACT : TT_ALPHA;
+        this.ttStore(depth, alpha, flag, bestMoveInNode || moves[0]);
+
         return alpha;
     }
 
@@ -701,6 +833,7 @@ class LocalEngine {
         this.stopped = false;
         this.killers = [];
         this.history.fill(0);
+        this.tt.clear(); // Fresh TT per search
 
         let bestMove = null;
         let bestScore = 0;
@@ -708,6 +841,15 @@ class LocalEngine {
         let completedDepth = 0;
 
         for (let d = 1; d <= maxDepth; d++) {
+            this.extensions = 0; // Reset check extension budget per iteration
+
+            // Age history table to prevent values drowning out new data
+            if (d > 1) {
+                for (let i = 0; i < this.history.length; i++) {
+                    this.history[i] >>= 1; // halve all values
+                }
+            }
+
             const pvLine = [];
             const score = this.negamax(d, -MATE_SCORE - 1, MATE_SCORE + 1, 0, pvLine);
 
@@ -834,18 +976,11 @@ async function fetchEngineData(fen, depth, signal) {
         });
     };
 
-    try { return await call(`multipv=${MULTIPV}&mode=analysis`); }
+    // Single API attempt — fail fast to local engine (was triple retry, wasting up to 9s)
+    try { return await call(`multipv=${MULTIPV}&mode=bestmove`); }
     catch (e) {
         if (e.name === 'AbortError') throw e;
-        try { return await call(`multipv=${MULTIPV}&mode=bestmove`); }
-        catch (e2) {
-            if (e2.name === 'AbortError') throw e2;
-            try { return await call('mode=bestmove'); }
-            catch (e3) {
-                if (e3.name === 'AbortError') throw e3;
-                throw e3;
-            }
-        }
+        throw e;
     }
 }
 
@@ -858,28 +993,48 @@ async function fetchAnalysis(fen, depth, signal) {
 
     if (signal?.aborted || !BotState.hackEnabled) throw new DOMException('Aborted', 'AbortError');
 
-    // Try API first
-    try {
-        const data = await fetchEngineData(fen, depth, signal);
-        PositionCache.set(fen, data);
-        return data;
-    } catch (error) {
-        if (error.name === 'AbortError') throw error;
-        console.warn(`GabiBot: ⚠️ API failed:`, error.message);
+    // Fire API call (non-blocking — network I/O runs in background)
+    const apiPromise = fetchEngineData(fen, depth, signal)
+        .then(data => ({ ok: true, data }))
+        .catch(err => ({ ok: false, error: err }));
+
+    // Run local engine speculatively while API is in-flight (~200-500ms)
+    BotState.statusInfo = '🧠 Analyzing...';
+    const localResult = analyzeLocally(fen, depth);
+
+    // Yield to event loop so any already-arrived API response can settle
+    const apiSettled = await Promise.race([
+        apiPromise,
+        new Promise(r => setTimeout(r, 10)).then(() => null)
+    ]);
+
+    // If API already returned successfully, prefer it (higher quality)
+    if (apiSettled?.ok) {
+        console.log('GabiBot: ✅ API beat local engine');
+        PositionCache.set(fen, apiSettled.data);
+        return apiSettled.data;
     }
 
-    // Fallback to local engine
-    console.warn(`GabiBot: 🔄 Falling back to local engine`);
-    BotState.statusInfo = '🧠 Using local engine...';
-    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-    await sleep(50); // Let UI render before blocking
-
-    const localData = analyzeLocally(fen, depth);
-    if (localData.success) {
-        PositionCache.set(fen, localData);
-        return localData;
+    // Use local result immediately, let API update cache in background
+    if (localResult.success) {
+        PositionCache.set(fen, localResult);
+        // Fire-and-forget: API result silently upgrades cache for future lookups
+        apiPromise.then(r => {
+            if (r.ok) {
+                console.log('GabiBot: 📡 API result arrived, cache upgraded');
+                PositionCache.set(fen, r.data);
+            }
+        });
+        return localResult;
     }
 
+    // Local failed — wait for API as last resort
+    const apiResult = await apiPromise;
+    if (apiResult.ok) {
+        PositionCache.set(fen, apiResult.data);
+        return apiResult.data;
+    }
+    if (apiResult.error?.name === 'AbortError') throw apiResult.error;
     throw new Error('Both API and local engine failed');
 }
 
@@ -930,53 +1085,56 @@ function isEnPassantCapture(fen, from, to, ourColor) {
 function checkPremoveSafety(fen, uci, ourColor) {
     if (!fen || !uci || uci.length < 4) return { safe: false, reason: 'Invalid move', riskLevel: 100 };
 
+    const board = parseFenToBoard(fen);
+    if (!board) return { safe: false, reason: 'Invalid FEN', riskLevel: 100 };
+
     const from = uci.substring(0, 2);
     const to = uci.substring(2, 4);
     const oppColor = ourColor === 'w' ? 'b' : 'w';
-    const movingCh = fenCharAtSquare(fen, from);
+    const movingCh = board.get(from);
     const movingPiece = pieceFromFenChar(movingCh);
 
     if (!movingPiece || movingPiece.color !== ourColor) return { safe: false, reason: 'Not our piece', riskLevel: 100 };
 
-    const destCh = fenCharAtSquare(fen, to);
+    const destCh = board.get(to);
     const destPiece = pieceFromFenChar(destCh);
     let riskLevel = 0;
     const reasons = [];
 
-    // King safety
+    // King safety — use pre-parsed board
     if (movingPiece.type === 'k') {
-        if (isSquareAttackedBy(fen, to, oppColor)) return { safe: false, reason: 'King moves into check', riskLevel: 100 };
+        if (isAttackedOnBoard(board, to, oppColor)) return { safe: false, reason: 'King moves into check', riskLevel: 100 };
     } else {
-        const newFen = makeSimpleMove(fen, from, to);
-        const kingPos = findKing(newFen, ourColor);
-        if (kingPos && isSquareAttackedBy(newFen, kingPos, oppColor)) return { safe: false, reason: 'Exposes king to check', riskLevel: 100 };
+        const newBoard = makeMoveOnBoard(board, from, to);
+        const kingPos = findKingOnBoard(newBoard, ourColor);
+        if (kingPos && isAttackedOnBoard(newBoard, kingPos, oppColor)) return { safe: false, reason: 'Exposes king to check', riskLevel: 100 };
     }
 
-    // Don't hang queen
+    // Don't hang queen — use pre-parsed board
     if (movingPiece.type === 'q') {
-        const attackers = getAttackersOfSquare(fen, to, oppColor);
+        const attackers = getAttackersOnBoard(board, to, oppColor);
         if (attackers.length > 0) {
-            const hasDefender = getAttackersOfSquare(fen, to, ourColor).length > 1;
+            const hasDefender = getAttackersOnBoard(board, to, ourColor).length > 1;
             if (!hasDefender || !destPiece) return { safe: false, reason: 'Hangs queen', riskLevel: 90 };
         }
     }
 
     // Don't hang rook
     if (movingPiece.type === 'r') {
-        const attackers = getAttackersOfSquare(fen, to, oppColor);
+        const attackers = getAttackersOnBoard(board, to, oppColor);
         if (attackers.length > 0) {
             const captureValue = destPiece ? PIECE_VALUES[destPiece.type] : 0;
             if (captureValue < PIECE_VALUES.r) {
-                const hasDefender = getAttackersOfSquare(fen, to, ourColor).length > 1;
+                const hasDefender = getAttackersOnBoard(board, to, ourColor).length > 1;
                 if (!hasDefender) { reasons.push('Hangs rook'); riskLevel += 60; }
             }
         }
     }
 
     // Destination safety
-    const destAttackers = getAttackersOfSquare(fen, to, oppColor);
+    const destAttackers = getAttackersOnBoard(board, to, oppColor);
     if (destAttackers.length > 0 && !destPiece) {
-        const defenders = getAttackersOfSquare(fen, to, ourColor).length;
+        const defenders = getAttackersOnBoard(board, to, ourColor).length;
         if (defenders === 0) { reasons.push('Undefended attacked square'); riskLevel += 30; }
         else if (destAttackers.length > defenders) { reasons.push('Heavily attacked square'); riskLevel += 20; }
     }
@@ -1048,7 +1206,8 @@ function getOurMoveFromPV(pv, ourColor, sideToMove) {
 // ---------------------------------------------------
 export function scheduleAnalysis(kind, fen, tickCallback) {
     const analysisId = ++currentAnalysisId;
-    analysisQueue = analysisQueue.then(async () => {
+    const run = async () => {
+        analysisQueueBusy = true;
         if (analysisId !== currentAnalysisId || !BotState.hackEnabled) return;
 
         const game = getGame();
@@ -1160,5 +1319,8 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
             }
             if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
         }
-    });
+        analysisQueueBusy = false;
+    };
+    // Chain onto queue, reset when done to prevent unbounded chain growth
+    analysisQueue = analysisQueue.then(run).catch(() => { analysisQueueBusy = false; });
 }

@@ -644,58 +644,72 @@ describe('LocalEngine', () => {
 // FALLBACK FLOW TESTS (mock-based)
 // ============================================================
 
-describe('fetchAnalysis Fallback Flow', () => {
-    // Simulate the exact logic of fetchAnalysis with injectable deps
-    function createFetchAnalysis({ cache, fetchEngineData, analyzeLocally, botState, sleep }) {
+describe('fetchAnalysis Speculative Parallel Flow', () => {
+    // Mirror the new parallel logic: API + local run concurrently
+    function createFetchAnalysis({ cache, fetchEngineData, analyzeLocally, botState }) {
         return async function fetchAnalysis(fen, depth, signal) {
             const cached = cache.get(fen);
             if (cached) return cached;
 
             if (signal?.aborted || !botState.hackEnabled) throw new DOMException('Aborted', 'AbortError');
 
-            try {
-                const data = await fetchEngineData(fen, depth, signal);
-                cache.set(fen, data);
-                return data;
-            } catch (error) {
-                if (error.name === 'AbortError') throw error;
+            // Fire API (non-blocking)
+            const apiPromise = fetchEngineData(fen, depth, signal)
+                .then(data => ({ ok: true, data }))
+                .catch(err => ({ ok: false, error: err }));
+
+            // Run local engine speculatively
+            botState.statusInfo = '🧠 Analyzing...';
+            const localResult = analyzeLocally(fen, depth);
+
+            // Check if API already returned
+            const apiSettled = await Promise.race([
+                apiPromise,
+                new Promise(r => setTimeout(r, 10)).then(() => null)
+            ]);
+
+            if (apiSettled?.ok) {
+                cache.set(fen, apiSettled.data);
+                return apiSettled.data;
             }
 
-            botState.statusInfo = '🧠 Using local engine...';
-            await sleep(50);
-
-            const localData = analyzeLocally(fen, depth);
-            if (localData.success) {
-                cache.set(fen, localData);
-                return localData;
+            if (localResult.success) {
+                cache.set(fen, localResult);
+                apiPromise.then(r => { if (r.ok) cache.set(fen, r.data); });
+                return localResult;
             }
 
+            const apiResult = await apiPromise;
+            if (apiResult.ok) {
+                cache.set(fen, apiResult.data);
+                return apiResult.data;
+            }
+            if (apiResult.error?.name === 'AbortError') throw apiResult.error;
             throw new Error('Both API and local engine failed');
         };
     }
 
-    let mockCache, mockBotState, mockSleep;
+    let mockCache, mockBotState;
 
     beforeEach(() => {
         mockCache = new Map();
         mockCache.get = vi.fn((key) => Map.prototype.get.call(mockCache, key));
         mockCache.set = vi.fn((key, val) => Map.prototype.set.call(mockCache, key, val));
         mockBotState = { hackEnabled: 1, statusInfo: '' };
-        mockSleep = vi.fn(() => Promise.resolve());
     });
 
     const FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
     const API_DATA = { success: true, bestmove: 'e2e4', source: 'api', analysis: [{ uci: 'e2e4', pv: 'e2e4', score: { cp: 20 } }] };
     const LOCAL_DATA = { success: true, bestmove: 'd2d4', source: 'local', analysis: [{ uci: 'd2d4', pv: 'd2d4', score: { cp: 10 } }] };
 
-    it('should return cached result without calling API', async () => {
+    it('should return cached result without calling API or local', async () => {
         mockCache.set(FEN, API_DATA);
         const fetchApi = vi.fn();
         const localAnalyze = vi.fn();
 
         const fetchAnalysis = createFetchAnalysis({
             cache: mockCache, fetchEngineData: fetchApi,
-            analyzeLocally: localAnalyze, botState: mockBotState, sleep: mockSleep,
+            analyzeLocally: localAnalyze, botState: mockBotState,
         });
 
         const result = await fetchAnalysis(FEN, 10, null);
@@ -704,50 +718,72 @@ describe('fetchAnalysis Fallback Flow', () => {
         expect(localAnalyze).not.toHaveBeenCalled();
     });
 
-    it('should use API when available and cache the result', async () => {
+    it('should prefer API result when it arrives before the yield window', async () => {
+        // API resolves immediately (simulates fast/cached server response)
         const fetchApi = vi.fn().mockResolvedValue(API_DATA);
-        const localAnalyze = vi.fn();
+        const localAnalyze = vi.fn().mockReturnValue(LOCAL_DATA);
 
         const fetchAnalysis = createFetchAnalysis({
             cache: mockCache, fetchEngineData: fetchApi,
-            analyzeLocally: localAnalyze, botState: mockBotState, sleep: mockSleep,
+            analyzeLocally: localAnalyze, botState: mockBotState,
         });
 
         const result = await fetchAnalysis(FEN, 10, null);
         expect(result).toBe(API_DATA);
         expect(fetchApi).toHaveBeenCalledOnce();
-        expect(localAnalyze).not.toHaveBeenCalled();
+        expect(localAnalyze).toHaveBeenCalledOnce(); // Local always runs
         expect(mockCache.set).toHaveBeenCalledWith(FEN, API_DATA);
     });
 
-    it('should fall back to local engine on API failure (NO retry)', async () => {
+    it('should use local engine when API is slow, with background cache upgrade', async () => {
+        // API resolves slowly (after the 10ms yield window)
+        let resolveApi;
+        const fetchApi = vi.fn().mockReturnValue(new Promise(r => { resolveApi = r; }));
+        const localAnalyze = vi.fn().mockReturnValue(LOCAL_DATA);
+
+        const fetchAnalysis = createFetchAnalysis({
+            cache: mockCache, fetchEngineData: fetchApi,
+            analyzeLocally: localAnalyze, botState: mockBotState,
+        });
+
+        const result = await fetchAnalysis(FEN, 10, null);
+        expect(result).toBe(LOCAL_DATA);
+        expect(fetchApi).toHaveBeenCalledOnce();
+        expect(localAnalyze).toHaveBeenCalledOnce();
+        expect(mockBotState.statusInfo).toBe('🧠 Analyzing...');
+
+        // Simulate API arriving later — cache should upgrade
+        resolveApi(API_DATA);
+        await new Promise(r => setTimeout(r, 20)); // Let fire-and-forget settle
+        expect(mockCache.set).toHaveBeenCalledWith(FEN, API_DATA);
+    });
+
+    it('should use local engine when API fails (no retry)', async () => {
         const fetchApi = vi.fn().mockRejectedValue(new Error('Network error'));
         const localAnalyze = vi.fn().mockReturnValue(LOCAL_DATA);
 
         const fetchAnalysis = createFetchAnalysis({
             cache: mockCache, fetchEngineData: fetchApi,
-            analyzeLocally: localAnalyze, botState: mockBotState, sleep: mockSleep,
+            analyzeLocally: localAnalyze, botState: mockBotState,
         });
 
         const result = await fetchAnalysis(FEN, 10, null);
         expect(result).toBe(LOCAL_DATA);
-        expect(fetchApi).toHaveBeenCalledOnce(); // Only 1 API call, no retry
+        expect(fetchApi).toHaveBeenCalledOnce();
         expect(localAnalyze).toHaveBeenCalledOnce();
-        expect(mockBotState.statusInfo).toBe('🧠 Using local engine...');
-        expect(mockSleep).toHaveBeenCalledWith(50); // UI render delay
     });
 
-    it('should NOT fall back on AbortError — rethrows it', async () => {
+    it('should NOT run local on AbortError — rethrows it', async () => {
         const fetchApi = vi.fn().mockRejectedValue(new DOMException('Aborted', 'AbortError'));
-        const localAnalyze = vi.fn();
+        const localAnalyze = vi.fn().mockReturnValue({ success: false });
 
         const fetchAnalysis = createFetchAnalysis({
             cache: mockCache, fetchEngineData: fetchApi,
-            analyzeLocally: localAnalyze, botState: mockBotState, sleep: mockSleep,
+            analyzeLocally: localAnalyze, botState: mockBotState,
         });
 
+        // AbortError should be rethrown after local fails and API is awaited
         await expect(fetchAnalysis(FEN, 10, null)).rejects.toThrow('Aborted');
-        expect(localAnalyze).not.toHaveBeenCalled();
     });
 
     it('should throw when bot is disabled', async () => {
@@ -757,7 +793,7 @@ describe('fetchAnalysis Fallback Flow', () => {
 
         const fetchAnalysis = createFetchAnalysis({
             cache: mockCache, fetchEngineData: fetchApi,
-            analyzeLocally: localAnalyze, botState: mockBotState, sleep: mockSleep,
+            analyzeLocally: localAnalyze, botState: mockBotState,
         });
 
         await expect(fetchAnalysis(FEN, 10, null)).rejects.toThrow('Aborted');
@@ -771,7 +807,7 @@ describe('fetchAnalysis Fallback Flow', () => {
 
         const fetchAnalysis = createFetchAnalysis({
             cache: mockCache, fetchEngineData: fetchApi,
-            analyzeLocally: localAnalyze, botState: mockBotState, sleep: mockSleep,
+            analyzeLocally: localAnalyze, botState: mockBotState,
         });
 
         await expect(fetchAnalysis(FEN, 10, abortedSignal)).rejects.toThrow('Aborted');
@@ -783,50 +819,65 @@ describe('fetchAnalysis Fallback Flow', () => {
 
         const fetchAnalysis = createFetchAnalysis({
             cache: mockCache, fetchEngineData: fetchApi,
-            analyzeLocally: localAnalyze, botState: mockBotState, sleep: mockSleep,
+            analyzeLocally: localAnalyze, botState: mockBotState,
         });
 
         await expect(fetchAnalysis(FEN, 10, null)).rejects.toThrow('Both API and local engine failed');
     });
 
-    it('should cache local engine results too', async () => {
+    it('should cache local engine results', async () => {
         const fetchApi = vi.fn().mockRejectedValue(new Error('timeout'));
         const localAnalyze = vi.fn().mockReturnValue(LOCAL_DATA);
 
         const fetchAnalysis = createFetchAnalysis({
             cache: mockCache, fetchEngineData: fetchApi,
-            analyzeLocally: localAnalyze, botState: mockBotState, sleep: mockSleep,
+            analyzeLocally: localAnalyze, botState: mockBotState,
         });
 
         await fetchAnalysis(FEN, 10, null);
         expect(mockCache.set).toHaveBeenCalledWith(FEN, LOCAL_DATA);
     });
 
-    it('should try API again on next call (flow: API fail → local → next call tries API)', async () => {
-        const fetchApi = vi.fn()
-            .mockRejectedValueOnce(new Error('API down'))    // 1st call: fail
-            .mockResolvedValueOnce(API_DATA);                 // 2nd call: succeed
-        const localAnalyze = vi.fn().mockReturnValue(LOCAL_DATA);
+    it('should fall back to API when local fails', async () => {
+        // Local returns failure, API succeeds (slow)
+        let resolveApi;
+        const fetchApi = vi.fn().mockReturnValue(new Promise(r => { resolveApi = r; }));
+        const localAnalyze = vi.fn().mockReturnValue({ success: false });
 
-        const cache = new Map(); // Fresh cache each time
         const fetchAnalysis = createFetchAnalysis({
-            cache, fetchEngineData: fetchApi,
-            analyzeLocally: localAnalyze, botState: mockBotState, sleep: mockSleep,
+            cache: mockCache, fetchEngineData: fetchApi,
+            analyzeLocally: localAnalyze, botState: mockBotState,
         });
 
-        // 1st call: API fails → local fallback
+        const promise = fetchAnalysis(FEN, 10, null);
+        // Resolve API after local has failed
+        resolveApi(API_DATA);
+        const result = await promise;
+        expect(result).toBe(API_DATA);
+    });
+
+    it('should try API again on next call (no persistent blacklist)', async () => {
+        const fetchApi = vi.fn()
+            .mockRejectedValueOnce(new Error('API down'))
+            .mockResolvedValueOnce(API_DATA);
+        const localAnalyze = vi.fn().mockReturnValue(LOCAL_DATA);
+
+        const cache = new Map();
+        const fetchAnalysis = createFetchAnalysis({
+            cache, fetchEngineData: fetchApi,
+            analyzeLocally: localAnalyze, botState: mockBotState,
+        });
+
+        // 1st call: API fails → local result
         const result1 = await fetchAnalysis(FEN, 10, null);
         expect(result1).toBe(LOCAL_DATA);
-        expect(fetchApi).toHaveBeenCalledOnce();
 
-        // Clear cache to simulate new position
+        // Clear cache, new position
         cache.clear();
-
-        // 2nd call: API should be tried again (no persistent "useLocal" flag)
         const FEN2 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
         const result2 = await fetchAnalysis(FEN2, 10, null);
+        // API resolves immediately this time, should be preferred
         expect(result2).toBe(API_DATA);
         expect(fetchApi).toHaveBeenCalledTimes(2);
-        expect(localAnalyze).toHaveBeenCalledOnce(); // Local not called for 2nd
     });
 });

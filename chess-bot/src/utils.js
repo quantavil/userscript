@@ -77,6 +77,34 @@ export function scoreNumeric(s) {
     return -Infinity;
 }
 
+// Parse FEN placement once into 8x8 array for fast repeated lookups
+// Returns an object with .get(square) method e.g. board.get('e4') → 'P' or null
+export function parseFenToBoard(fen) {
+    if (!fen) return null;
+    const placement = fen.split(' ')[0];
+    const ranks = placement.split('/');
+    if (ranks.length !== 8) return null;
+    const cells = new Array(64).fill(null);
+    for (let rankIdx = 0; rankIdx < 8; rankIdx++) {
+        const rank = 7 - rankIdx; // ranks[0] = rank 8 → index 7
+        let file = 0;
+        for (const ch of ranks[rankIdx]) {
+            if (ch >= '1' && ch <= '8') { file += parseInt(ch, 10); }
+            else { cells[rank * 8 + file] = ch; file++; }
+        }
+    }
+    return {
+        cells,
+        get(square) {
+            if (!square || square.length < 2) return null;
+            const f = square.charCodeAt(0) - 97; // 'a' = 0
+            const r = parseInt(square[1], 10) - 1;
+            if (f < 0 || f > 7 || r < 0 || r > 7) return null;
+            return cells[r * 8 + f];
+        }
+    };
+}
+
 // FEN helpers for piece info
 export function fenCharAtSquare(fen, square) {
     if (!fen || !square) return null;
@@ -287,4 +315,96 @@ export function getAttackersOfSquare(fen, targetSquare, attackerColor) {
 // Check if square is attacked by opponent
 export function isSquareAttackedBy(fen, square, attackerColor) {
     return getAttackersOfSquare(fen, square, attackerColor).length > 0;
+}
+
+// Fast board-based versions (operate on pre-parsed board from parseFenToBoard)
+export function getAttackersOnBoard(board, targetSquare, attackerColor) {
+    const attackers = [];
+    const tFile = targetSquare.charCodeAt(0) - 97;
+    const tRank = parseInt(targetSquare[1], 10);
+    if (tFile < 0 || tFile > 7 || tRank < 1 || tRank > 8) return attackers;
+
+    const checkSq = (file, rank, pieceTypes) => {
+        if (file < 0 || file > 7 || rank < 1 || rank > 8) return;
+        const sq = 'abcdefgh'[file] + rank;
+        const ch = board.get(sq);
+        if (!ch) return;
+        const piece = pieceFromFenChar(ch);
+        if (piece && piece.color === attackerColor && pieceTypes.includes(piece.type)) {
+            attackers.push({ square: sq, piece: piece.type });
+        }
+    };
+
+    // Pawn attacks
+    const pawnDir = attackerColor === 'w' ? 1 : -1;
+    checkSq(tFile - 1, tRank - pawnDir, ['p']);
+    checkSq(tFile + 1, tRank - pawnDir, ['p']);
+
+    // Knight
+    for (const [df, dr] of [[2, 1], [2, -1], [-2, 1], [-2, -1], [1, 2], [1, -2], [-1, 2], [-1, -2]]) {
+        checkSq(tFile + df, tRank + dr, ['n']);
+    }
+
+    // King
+    for (let df = -1; df <= 1; df++) for (let dr = -1; dr <= 1; dr++) {
+        if (df === 0 && dr === 0) continue;
+        checkSq(tFile + df, tRank + dr, ['k']);
+    }
+
+    // Sliding pieces
+    for (const { dx, dy, pieces } of [
+        { dx: 1, dy: 0, pieces: ['r', 'q'] }, { dx: -1, dy: 0, pieces: ['r', 'q'] },
+        { dx: 0, dy: 1, pieces: ['r', 'q'] }, { dx: 0, dy: -1, pieces: ['r', 'q'] },
+        { dx: 1, dy: 1, pieces: ['b', 'q'] }, { dx: 1, dy: -1, pieces: ['b', 'q'] },
+        { dx: -1, dy: 1, pieces: ['b', 'q'] }, { dx: -1, dy: -1, pieces: ['b', 'q'] }
+    ]) {
+        let f = tFile + dx, r = tRank + dy;
+        while (f >= 0 && f <= 7 && r >= 1 && r <= 8) {
+            const sq = 'abcdefgh'[f] + r;
+            const ch = board.get(sq);
+            if (ch) {
+                const piece = pieceFromFenChar(ch);
+                if (piece && piece.color === attackerColor && pieces.includes(piece.type)) {
+                    attackers.push({ square: sq, piece: piece.type });
+                }
+                break;
+            }
+            f += dx; r += dy;
+        }
+    }
+
+    return attackers;
+}
+
+export function isAttackedOnBoard(board, square, attackerColor) {
+    return getAttackersOnBoard(board, square, attackerColor).length > 0;
+}
+
+// Fast board-based king finder
+export function findKingOnBoard(board, color) {
+    const king = color === 'w' ? 'K' : 'k';
+    for (let r = 0; r < 8; r++) {
+        for (let f = 0; f < 8; f++) {
+            if (board.cells[r * 8 + f] === king) return 'abcdefgh'[f] + (r + 1);
+        }
+    }
+    return null;
+}
+
+// Fast board-based simple move (returns a new board with the move applied)
+export function makeMoveOnBoard(board, from, to) {
+    const ff = from.charCodeAt(0) - 97, fr = parseInt(from[1], 10) - 1;
+    const tf = to.charCodeAt(0) - 97, tr = parseInt(to[1], 10) - 1;
+    const newCells = board.cells.slice();
+    newCells[tr * 8 + tf] = newCells[fr * 8 + ff];
+    newCells[fr * 8 + ff] = null;
+    return {
+        cells: newCells,
+        get(sq) {
+            if (!sq || sq.length < 2) return null;
+            const f2 = sq.charCodeAt(0) - 97, r2 = parseInt(sq[1], 10) - 1;
+            if (f2 < 0 || f2 > 7 || r2 < 0 || r2 > 7) return null;
+            return newCells[r2 * 8 + f2];
+        }
+    };
 }

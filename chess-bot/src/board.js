@@ -210,14 +210,17 @@ export async function simulateDragMove(from, to) {
 }
 
 export async function waitForFenChange(prevFen, timeout = 1000) {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-        const g = getGame();
-        const fen = g?.getFEN ? g.getFEN() : null;
-        if (fen && fen !== prevFen) return true;
-        await sleep(40);
-    }
-    return false;
+    return new Promise(resolve => {
+        const start = performance.now();
+        const check = () => {
+            const g = getGame();
+            const fen = g?.getFEN ? g.getFEN() : null;
+            if (fen && fen !== prevFen) return resolve(true);
+            if (performance.now() - start > timeout) return resolve(false);
+            requestAnimationFrame(check);
+        };
+        requestAnimationFrame(check);
+    });
 }
 
 async function maybeSelectPromotion(prefer = 'q') {
@@ -317,7 +320,7 @@ export function executeMove(from, to, analysisFen, promotionChar, tickCallback) 
                     if (BotState.hackEnabled && isPlayersTurn(getGame())) {
                         if (tickCallback) tickCallback();
                     }
-                }, 800);
+                }, 250);
             }
 
         }, totalDelay);
