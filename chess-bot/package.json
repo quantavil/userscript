@@ -1,0 +1,15 @@
+{
+  "name": "super-chess-bot",
+  "version": "8.1.1",
+  "description": "Super chess Bot is a tournament level bullet bot",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch"
+  },
+  "author": "quantavil",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.20.0"
+  }
+}

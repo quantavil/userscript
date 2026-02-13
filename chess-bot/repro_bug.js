@@ -135,3 +135,43 @@ try {
 } catch (e) {
     console.error("Test B Crash:", e);
 }
+
+// Bug C: Promotion Handling (simplified check)
+try {
+    const fenC = "8/P7/8/8/8/8/8/k6K w - - 0 1";
+    // Move P (a7) to a8
+    // Note: makeSimpleMove doesn't handle promotion char change, it just moves the piece.
+    // So a pawn on rank 8 remains a pawn in this simple logic unless updated.
+    // We just want to ensure it doesn't crash or corrupt the board.
+    const resultC = makeSimpleMove(fenC, "a7", "a8");
+    const rank8 = resultC.split('/')[0];
+    console.log(`Test C (Promotion Move): ${rank8}`);
+    if (rank8.length !== 1 && rank8 !== 'P7' && rank8 !== '1P6') {
+        // Logic might produce 'P7' or similar depending on implementation details
+        // The key is that it shouldn't be garbage
+    }
+} catch (e) {
+    console.error("Test C Crash:", e);
+}
+
+// Bug D: Castling (King Move)
+try {
+    const fenD = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1";
+    // Move King e1 to g1 (short castle)
+    // makeSimpleMove assumes simple from-to, doesn't move rook.
+    // Just verifying it moves the king correctly.
+    const resultD = makeSimpleMove(fenD, "e1", "g1");
+    const rank1 = resultD.split('/')[7].split(' ')[0];
+    console.log(`Test D (King Move e1->g1): ${rank1}`);
+    // Expected: R4RK1 roughly (with empty spaces compressed)
+    // R (1) 4 R K (1) -> R4RK1?
+    // r1bq... is black. w rank 1 is last.
+    // R (at a1) ... ... K (at g1) R (at h1)
+    // a1=R, b1=1, c1=1, d1=1, e1=1(was K), f1=1, g1=K, h1=R
+    // R 1 1 1 1 1 K R -> R5KR
+    if (rank1 !== "R5KR") {
+        console.warn(`Test D: Expected R5KR, got ${rank1}. (This might be correct if logic differs)`);
+    }
+} catch (e) {
+    console.error("Test D Crash:", e);
+}

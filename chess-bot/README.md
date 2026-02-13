@@ -14,7 +14,7 @@ A Tampermonkey userscript that provides a hyper-bullet level chess bot for Chess
 
 ## Usage
 
-Install via Tampermonkey from the main.js file. Enable on Chess.com games or play computer modes.
+Install via Tampermonkey from the `dist/bundle.user.js` file. Enable on Chess.com games or play computer modes.
 
 ## Settings
 
