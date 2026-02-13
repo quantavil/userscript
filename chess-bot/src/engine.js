@@ -1204,17 +1204,30 @@ function getOurMoveFromPV(pv, ourColor, sideToMove) {
 // ---------------------------------------------------
 // Analysis Schedule
 // ---------------------------------------------------
+let scheduledMainFen = '';
+let scheduledPremoveFen = '';
+
 export function scheduleAnalysis(kind, fen, tickCallback) {
+    // Dedup guard: don't re-schedule if already analyzing this exact FEN
+    if (kind === 'main' && scheduledMainFen === fen) return;
+    if (kind !== 'main' && scheduledPremoveFen === fen) return;
+
+    if (kind === 'main') scheduledMainFen = fen;
+    else scheduledPremoveFen = fen;
+
     const analysisId = ++currentAnalysisId;
     const run = async () => {
         analysisQueueBusy = true;
-        if (analysisId !== currentAnalysisId || !BotState.hackEnabled) return;
+        if (analysisId !== currentAnalysisId || !BotState.hackEnabled) {
+            analysisQueueBusy = false;
+            return;
+        }
 
         const game = getGame();
-        if (!game) return;
+        if (!game) { analysisQueueBusy = false; return; }
 
-        if (kind === 'main' && lastFenProcessedMain === fen) return;
-        if (kind !== 'main' && lastFenProcessedPremove === fen) return;
+        if (kind === 'main' && lastFenProcessedMain === fen) { analysisQueueBusy = false; return; }
+        if (kind !== 'main' && lastFenProcessedPremove === fen) { analysisQueueBusy = false; return; }
 
         const ctrl = new AbortController();
 
@@ -1318,8 +1331,12 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                 BotState.currentEvaluation = 'Error';
             }
             if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+        } finally {
+            // Clear dedup guard so this FEN can be re-scheduled if needed
+            if (kind === 'main' && scheduledMainFen === fen) scheduledMainFen = '';
+            else if (kind !== 'main' && scheduledPremoveFen === fen) scheduledPremoveFen = '';
+            analysisQueueBusy = false;
         }
-        analysisQueueBusy = false;
     };
     // Chain onto queue, reset when done to prevent unbounded chain growth
     analysisQueue = analysisQueue.then(run).catch(() => { analysisQueueBusy = false; });
