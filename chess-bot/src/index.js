@@ -3,7 +3,7 @@ import { BotState, PositionCache, getGame, getFen, getPlayerColor, isPlayersTurn
 import { qs, qsa, waitForElement, debounce, sleep } from './utils.js';
 import { attachToBoard, startDomBoardWatcher, clearArrows, cancelPendingMove, detachFromBoard } from './board.js';
 import { ui, buildUI } from './ui.js';
-import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, getLastFenProcessedPremove, setLastFenProcessedPremove, getLastPremoveFen, setLastPremoveFen, getLastPremoveUci, setLastPremoveUci } from './engine.js';
+import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, getLastFenProcessedPremove, setLastFenProcessedPremove } from './engine.js';
 
 (async function () {
     'use strict';
@@ -71,8 +71,6 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
             lastFenSeen = fen;
             cancelPendingMove();
             clearArrows();
-            setLastPremoveFen('');
-            setLastPremoveUci('');
         }
 
         if (isPlayersTurn(game)) {
@@ -84,19 +82,10 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
                 if (getLastFenProcessedPremove() !== fen) {
                     scheduleAnalysis('premove', fen);
                 } else {
-                    // Update Premove chance display if needed
-                    const chanceEl = qs('[name="premoveChance"] .itemState');
-                    if (chanceEl && BotState.currentPremoveChance !== undefined) {
-                        chanceEl.textContent = `${Math.round(BotState.currentPremoveChance)}%`;
-                    }
-
-                    BotState.statusInfo = (getLastPremoveUci() && getLastPremoveFen() === fen) ? 'Waiting (premove ready)...' : 'Waiting for opponent...';
+                    BotState.statusInfo = 'Waiting for opponent...';
                     ui.updateDisplay(pa());
                 }
             } else {
-                const chanceEl = qs('[name="premoveChance"] .itemState');
-                if (chanceEl) chanceEl.textContent = '0%';
-
                 BotState.statusInfo = 'Waiting for opponent...';
                 ui.updateDisplay(pa());
             }
@@ -260,8 +249,6 @@ import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, get
                 // Reset FEN tracking so first move of new game is always analyzed
                 setLastFenProcessedMain('');
                 setLastFenProcessedPremove('');
-                setLastPremoveFen('');
-                setLastPremoveUci('');
                 lastFenSeen = '';
 
                 if (BotState.hackEnabled) {

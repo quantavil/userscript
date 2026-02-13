@@ -14,10 +14,6 @@ export const BotState = {
     principalVariation: '-',
     statusInfo: 'Ready',
     premoveEnabled: 0,
-    premoveMode: 'every',
-    premovePieces: { q: 1, r: 1, b: 1, n: 1, k: 1, p: 1 },
-    premoveChance: 85,
-    currentPremoveReasons: '',
     autoRematch: 0
 };
 
@@ -65,8 +61,6 @@ export const Settings = {
                 autoMoveSpeed: BotState.autoMoveSpeed,
                 randomDelay: Math.max(RANDOM_JITTER_MIN, BotState.randomDelay),
                 premoveEnabled: BotState.premoveEnabled,
-                premoveMode: BotState.premoveMode,
-                premovePieces: BotState.premovePieces,
                 autoRematch: BotState.autoRematch,
                 menuPosition: menuWrap ? { top: menuWrap.style.top, left: menuWrap.style.left } : null
             };
@@ -87,8 +81,6 @@ export const Settings = {
             BotState.autoMoveSpeed = s.autoMoveSpeed ?? 8;
             BotState.randomDelay = Math.max(RANDOM_JITTER_MIN, s.randomDelay ?? 300);
             BotState.premoveEnabled = s.premoveEnabled ?? 0;
-            BotState.premoveMode = s.premoveMode ?? 'every';
-            BotState.premovePieces = s.premovePieces ?? { q: 1, r: 1, b: 1, n: 1, k: 1, p: 1 };
             BotState.autoRematch = s.autoRematch ?? 0;
             return s;
         } catch (e) {

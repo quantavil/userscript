@@ -21,6 +21,28 @@ const PST_KING_EG = [-50, -30, -30, -30, -30, -30, -30, -50, -30, -30, 0, 0, 0, 
 const PST = { [WP]: PST_PAWN, [WN]: PST_KNIGHT, [WB]: PST_BISHOP, [WR]: PST_ROOK, [WQ]: PST_QUEEN };
 const PIECE_VAL = { 1: 100, 2: 320, 3: 330, 4: 500, 5: 900, 6: 0 };
 
+// --- Zobrist Hashing ---
+const ZOBRIST = (() => {
+    let seed = 1070372;
+    const rand32 = () => { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return seed >>> 0; };
+    const table = new Uint32Array(13 * 64 * 2);
+    for (let i = 0; i < table.length; i++) table[i] = rand32();
+    const sideKey = [rand32(), rand32()];
+    const castlingKeys = new Uint32Array(16 * 2);
+    for (let i = 0; i < castlingKeys.length; i++) castlingKeys[i] = rand32();
+    const epKeys = new Uint32Array(8 * 2);
+    for (let i = 0; i < epKeys.length; i++) epKeys[i] = rand32();
+    return { table, sideKey, castlingKeys, epKeys };
+})();
+
+function zobPieceIdx(piece) { return piece > 0 ? (piece - 1) : (-piece + 5); }
+function zobPieceKey(piece, sq) {
+    const base = (zobPieceIdx(piece) * 64 + sq) * 2;
+    return [ZOBRIST.table[base], ZOBRIST.table[base + 1]];
+}
+function zobXor(hash, key) { hash[0] ^= key[0]; hash[1] ^= key[1]; }
+
+
 function mirrorSq(sq) { return (7 - (sq >> 3)) * 8 + (sq & 7); }
 function sqFile(sq) { return sq & 7; }
 function sqRank(sq) { return sq >> 3; }
@@ -36,6 +58,7 @@ class LocalEngine {
         this.nodes = 0; this.timeLimit = 0; this.startTime = 0;
         this.stopped = false; this.pvTable = [];
         this.killers = []; this.history = new Int32Array(64 * 64);
+        this.hash = [0, 0]; this.positionHistory = []; this.contempt = 0;
     }
 
     loadFen(fen) {
@@ -57,7 +80,19 @@ class LocalEngine {
         this.halfmove = parseInt(parts[4]) || 0;
         this.fullmove = parseInt(parts[5]) || 1;
         this.stateStack = [];
+        this._computeHash();
+        this.positionHistory = [];
     }
+
+    _computeHash() {
+        this.hash = [0, 0];
+        for (let i = 0; i < 64; i++) { if (this.board[i] !== EMPTY) zobXor(this.hash, zobPieceKey(this.board[i], i)); }
+        if (this.side === -1) zobXor(this.hash, ZOBRIST.sideKey);
+        zobXor(this.hash, [ZOBRIST.castlingKeys[this.castling * 2], ZOBRIST.castlingKeys[this.castling * 2 + 1]]);
+        if (this.epSquare !== -1) zobXor(this.hash, [ZOBRIST.epKeys[(this.epSquare & 7) * 2], ZOBRIST.epKeys[(this.epSquare & 7) * 2 + 1]]);
+    }
+
+    ttKey() { return this.hash[0] + '|' + this.hash[1]; }
 
     toFen() {
         let fen = '';
@@ -91,41 +126,91 @@ class LocalEngine {
     }
 
     makeMove(mv) {
+        this.positionHistory.push(this.ttKey());
         this.stateStack.push({ castling: this.castling, epSquare: this.epSquare, halfmove: this.halfmove, fullmove: this.fullmove });
         const { from, to, flags, piece, promo } = mv;
-        const abs = Math.abs(piece);
+        const abs = piece > 0 ? piece : -piece;
+
+        zobXor(this.hash, zobPieceKey(piece, from));
+        if (mv.captured !== EMPTY) {
+            const capSq = (flags & FLAG_EP) ? to - this.side * 8 : to;
+            zobXor(this.hash, zobPieceKey(this.board[capSq], capSq));
+            this.board[capSq] = EMPTY;
+        }
+        zobXor(this.hash, [ZOBRIST.castlingKeys[this.castling * 2], ZOBRIST.castlingKeys[this.castling * 2 + 1]]);
+        if (this.epSquare !== -1) zobXor(this.hash, [ZOBRIST.epKeys[(this.epSquare & 7) * 2], ZOBRIST.epKeys[(this.epSquare & 7) * 2 + 1]]);
+
         this.board[from] = EMPTY;
         this.board[to] = (flags & FLAG_PROMO) ? promo : piece;
         if (flags & FLAG_EP) this.board[to - this.side * 8] = EMPTY;
         if (flags & FLAG_CASTLE) {
-            if (to > from) { this.board[from + 3] = EMPTY; this.board[from + 1] = this.side * WR; }
-            else { this.board[from - 4] = EMPTY; this.board[from - 1] = this.side * WR; }
+            if (to > from) {
+                zobXor(this.hash, zobPieceKey(this.side * WR, from + 3));
+                zobXor(this.hash, zobPieceKey(this.side * WR, from + 1));
+                this.board[from + 3] = EMPTY; this.board[from + 1] = this.side * WR;
+            } else {
+                zobXor(this.hash, zobPieceKey(this.side * WR, from - 4));
+                zobXor(this.hash, zobPieceKey(this.side * WR, from - 1));
+                this.board[from - 4] = EMPTY; this.board[from - 1] = this.side * WR;
+            }
         }
-        if (abs === 1 && Math.abs(to - from) === 16) this.epSquare = (from + to) >> 1;
+
+        zobXor(this.hash, zobPieceKey(this.board[to], to));
+
+        if (abs === 1 && (to - from === 16 || to - from === -16)) this.epSquare = (from + to) >> 1;
         else this.epSquare = -1;
         if (abs === 6) { if (this.side === 1) this.castling &= ~3; else this.castling &= ~12; }
         if (from === 0 || to === 0) this.castling &= ~2;
         if (from === 7 || to === 7) this.castling &= ~1;
         if (from === 56 || to === 56) this.castling &= ~8;
         if (from === 63 || to === 63) this.castling &= ~4;
+
+        zobXor(this.hash, [ZOBRIST.castlingKeys[this.castling * 2], ZOBRIST.castlingKeys[this.castling * 2 + 1]]);
+        if (this.epSquare !== -1) zobXor(this.hash, [ZOBRIST.epKeys[(this.epSquare & 7) * 2], ZOBRIST.epKeys[(this.epSquare & 7) * 2 + 1]]);
+
         this.halfmove = (abs === 1 || mv.captured !== EMPTY) ? 0 : this.halfmove + 1;
         if (this.side === -1) this.fullmove++;
         this.side = -this.side;
+        zobXor(this.hash, ZOBRIST.sideKey);
     }
 
     unmakeMove(mv) {
         this.side = -this.side;
+        zobXor(this.hash, ZOBRIST.sideKey);
         const st = this.stateStack.pop();
-        this.castling = st.castling; this.epSquare = st.epSquare;
-        this.halfmove = st.halfmove; this.fullmove = st.fullmove;
-        const { from, to, flags, piece, captured } = mv;
+
+        zobXor(this.hash, [ZOBRIST.castlingKeys[this.castling * 2], ZOBRIST.castlingKeys[this.castling * 2 + 1]]);
+        if (this.epSquare !== -1) zobXor(this.hash, [ZOBRIST.epKeys[(this.epSquare & 7) * 2], ZOBRIST.epKeys[(this.epSquare & 7) * 2 + 1]]);
+
+        const { from, to, flags, piece, captured, promo } = mv;
+        zobXor(this.hash, zobPieceKey(this.board[to], to));
         this.board[from] = piece;
         this.board[to] = (flags & FLAG_EP) ? EMPTY : captured;
         if (flags & FLAG_EP) this.board[to - this.side * 8] = -this.side;
         if (flags & FLAG_CASTLE) {
-            if (to > from) { this.board[from + 1] = EMPTY; this.board[from + 3] = this.side * WR; }
-            else { this.board[from - 1] = EMPTY; this.board[from - 4] = this.side * WR; }
+            if (to > from) {
+                this.board[from + 1] = EMPTY; this.board[from + 3] = this.side * WR;
+                zobXor(this.hash, zobPieceKey(this.side * WR, from + 1));
+                zobXor(this.hash, zobPieceKey(this.side * WR, from + 3));
+            } else {
+                this.board[from - 1] = EMPTY; this.board[from - 4] = this.side * WR;
+                zobXor(this.hash, zobPieceKey(this.side * WR, from - 1));
+                zobXor(this.hash, zobPieceKey(this.side * WR, from - 4));
+            }
         }
+        if (captured !== EMPTY) {
+            const capSq = (flags & FLAG_EP) ? to - this.side * 8 : to;
+            zobXor(this.hash, zobPieceKey(captured, capSq));
+        }
+        zobXor(this.hash, zobPieceKey(piece, from));
+
+        this.castling = st.castling; this.epSquare = st.epSquare;
+        this.halfmove = st.halfmove; this.fullmove = st.fullmove;
+
+        zobXor(this.hash, [ZOBRIST.castlingKeys[this.castling * 2], ZOBRIST.castlingKeys[this.castling * 2 + 1]]);
+        if (this.epSquare !== -1) zobXor(this.hash, [ZOBRIST.epKeys[(this.epSquare & 7) * 2], ZOBRIST.epKeys[(this.epSquare & 7) * 2 + 1]]);
+
+        this.positionHistory.pop();
     }
 
     findKingSq(side) {
@@ -278,13 +363,15 @@ class LocalEngine {
         let wBishops = 0, bBishops = 0;
         const phaseVal = { 2: 1, 3: 1, 4: 2, 5: 4 };
 
-        // Per-file pawn tracking for structure evaluation
         const wPawnFiles = new Uint8Array(8);
         const bPawnFiles = new Uint8Array(8);
         const wPawnRanks = new Int8Array(8).fill(-1);
         const bPawnRanks = new Int8Array(8).fill(8);
 
-        // King attack zone tracking
+        // Collect rook info during main loop to avoid second scan
+        let rookCount = 0;
+        const rookSquares = []; const rookSides = [];
+
         let wKingAttackers = 0, bKingAttackers = 0;
         let wKingAttackWeight = 0, bKingAttackWeight = 0;
         const wKingSq = this.findKingSq(1), bKingSq = this.findKingSq(-1);
@@ -306,13 +393,12 @@ class LocalEngine {
             mgScore += material + (abs === 6 ? mgKing * side : pstVal * side);
             egScore += material + (abs === 6 ? egKing * side : pstVal * side);
 
-            // Track pawns
             if (abs === 1) {
                 if (side === 1) { wPawnFiles[file]++; if (rank > wPawnRanks[file]) wPawnRanks[file] = rank; }
                 else { bPawnFiles[file]++; if (rank < bPawnRanks[file]) bPawnRanks[file] = rank; }
             }
 
-            // Mobility
+            // Mobility: knights, bishops, rooks, queens
             if (abs === 2) {
                 let mob = 0;
                 for (const off of [-17, -15, -10, -6, 6, 10, 15, 17]) {
@@ -338,8 +424,39 @@ class LocalEngine {
                 }
                 mgScore += (mob - 5) * 5 * side; egScore += (mob - 5) * 5 * side;
             }
+            if (abs === 4) { // Rook mobility
+                rookSquares.push(sq); rookSides.push(side);
+                let mob = 0;
+                for (const dir of [8, -8, 1, -1]) {
+                    let t = sq + dir;
+                    while (t >= 0 && t <= 63) {
+                        if (dir === 1 || dir === -1) { if (sqRank(t) !== sqRank(t - dir)) break; }
+                        const tp = this.board[t];
+                        if (tp !== EMPTY && Math.sign(tp) === side) break;
+                        mob++;
+                        if (tp !== EMPTY) break;
+                        t += dir;
+                    }
+                }
+                mgScore += (mob - 7) * 3 * side; egScore += (mob - 7) * 4 * side;
+            }
+            if (abs === 5) { // Queen mobility
+                let mob = 0;
+                for (const dir of [9, 7, -9, -7, 8, -8, 1, -1]) {
+                    let t = sq + dir;
+                    while (t >= 0 && t <= 63) {
+                        const fd = Math.abs(sqFile(t) - sqFile(t - dir));
+                        if (fd > 1) break;
+                        const tp = this.board[t];
+                        if (tp !== EMPTY && Math.sign(tp) === side) break;
+                        mob++;
+                        if (tp !== EMPTY) break;
+                        t += dir;
+                    }
+                }
+                mgScore += (mob - 14) * 1 * side; egScore += (mob - 14) * 2 * side;
+            }
 
-            // King attack: pieces near enemy king
             if (abs >= 2 && abs <= 5) {
                 if (side === 1) {
                     const df = Math.abs(file - bkf), dr = Math.abs(rank - bkr);
@@ -354,14 +471,11 @@ class LocalEngine {
         if (wBishops >= 2) { mgScore += 30; egScore += 50; }
         if (bBishops >= 2) { mgScore -= 30; egScore -= 50; }
 
-        // Pawn structure
         for (let f = 0; f < 8; f++) {
             if (wPawnFiles[f] > 1) { mgScore -= 10 * (wPawnFiles[f] - 1); egScore -= 20 * (wPawnFiles[f] - 1); }
             if (bPawnFiles[f] > 1) { mgScore += 10 * (bPawnFiles[f] - 1); egScore += 20 * (bPawnFiles[f] - 1); }
-            // Isolated pawn penalty
             if (wPawnFiles[f] > 0) { if (!(f > 0 && wPawnFiles[f - 1] > 0) && !(f < 7 && wPawnFiles[f + 1] > 0)) { mgScore -= 15; egScore -= 20; } }
             if (bPawnFiles[f] > 0) { if (!(f > 0 && bPawnFiles[f - 1] > 0) && !(f < 7 && bPawnFiles[f + 1] > 0)) { mgScore += 15; egScore += 20; } }
-            // Passed pawn bonus
             if (wPawnRanks[f] >= 0) {
                 let passed = true;
                 for (let ff = Math.max(0, f - 1); ff <= Math.min(7, f + 1); ff++) { if (bPawnRanks[ff] <= wPawnRanks[f]) { passed = false; break; } }
@@ -374,17 +488,15 @@ class LocalEngine {
             }
         }
 
-        // Rook on open/semi-open file
-        for (let sq = 0; sq < 64; sq++) {
-            const p = this.board[sq]; if (Math.abs(p) !== 4) continue;
-            const f = sqFile(sq); const side = Math.sign(p);
+        // Rook on open/semi-open file (using collected rook squares)
+        for (let i = 0; i < rookSquares.length; i++) {
+            const f = sqFile(rookSquares[i]); const side = rookSides[i];
             const hasFriendlyPawn = side === 1 ? wPawnFiles[f] > 0 : bPawnFiles[f] > 0;
             const hasEnemyPawn = side === 1 ? bPawnFiles[f] > 0 : wPawnFiles[f] > 0;
             if (!hasFriendlyPawn && !hasEnemyPawn) { mgScore += 20 * side; egScore += 20 * side; }
             else if (!hasFriendlyPawn) { mgScore += 10 * side; egScore += 10 * side; }
         }
 
-        // King safety: pawn shield
         for (const side of [1, -1]) {
             const ksq = this.findKingSq(side); if (ksq < 0) continue;
             const kf = sqFile(ksq); const kr = sqRank(ksq); const shieldRank = kr + side;
@@ -395,7 +507,6 @@ class LocalEngine {
             }
         }
 
-        // King attack bonus
         if (wKingAttackers >= 2) { mgScore += Math.min(wKingAttackWeight * wKingAttackers / 4, 300); }
         if (bKingAttackers >= 2) { mgScore -= Math.min(bKingAttackWeight * bKingAttackers / 4, 300); }
 
@@ -446,7 +557,13 @@ class LocalEngine {
         if (inChk && ply < 20) depth++;
         const moves = this.generateLegalMoves();
         if (moves.length === 0) return inChk ? -(MATE_SCORE - ply) : 0;
-        if (this.halfmove >= 100) return 0;
+
+        if (this.halfmove >= 100) return -this.contempt;
+        const key = this.ttKey();
+        let reps = 0;
+        for (let i = this.positionHistory.length - 1; i >= 0; i--) {
+            if (this.positionHistory[i] === key) { reps++; if (reps >= 2) return -this.contempt; }
+        }
         const ordered = this.orderMoves(moves, ply);
         const childPv = [];
         for (const mv of ordered) {
@@ -473,6 +590,15 @@ class LocalEngine {
         this.stopped = false; this.killers = []; this.history.fill(0);
         let bestMove = null, bestScore = 0, bestPv = [], completedDepth = 0;
         for (let d = 1; d <= maxDepth; d++) {
+            // Dynamic contempt based on score
+            if (d > 1 && completedDepth > 0) {
+                const whiteScore = bestScore * this.side;
+                if (whiteScore > 100) this.contempt = 25;
+                else if (whiteScore > 50) this.contempt = 15;
+                else if (whiteScore < -100) this.contempt = -25;
+                else if (whiteScore < -50) this.contempt = -15;
+                else this.contempt = 0;
+            }
             const pvLine = [];
             const score = this.negamax(d, -MATE_SCORE - 1, MATE_SCORE + 1, 0, pvLine);
             if (this.stopped && d > 1) break;
@@ -487,7 +613,14 @@ class LocalEngine {
         this.loadFen(fen);
         const timeMs = Math.min(depth * 500, 4000);
         const searchDepth = Math.min(depth, 8);
+        this.contempt = 0;
         const result = this.searchRoot(searchDepth, timeMs);
+
+        let dirtyPlayTimeScale = 1.0;
+        if (result.score < -500) dirtyPlayTimeScale = 0.4;
+        else if (result.score < -200) dirtyPlayTimeScale = 0.6;
+        else if (result.score < -100) dirtyPlayTimeScale = 0.8;
+
         if (!result.move) return { success: false, bestmove: '(none)', evaluation: 0 };
         const uci = this.moveToUci(result.move);
         const pvStr = result.pv.map(m => this.moveToUci(m)).join(' ');
@@ -496,7 +629,7 @@ class LocalEngine {
             const mateIn = Math.ceil((MATE_SCORE - Math.abs(result.score)) / 2);
             scoreObj = { mate: result.score > 0 ? mateIn : -mateIn };
         } else { scoreObj = { cp: result.score }; }
-        return { success: true, bestmove: uci, evaluation: result.score / 100, analysis: [{ uci, pv: pvStr, score: scoreObj }], depth: result.depth, nodes: result.nodes, source: 'local' };
+        return { success: true, bestmove: uci, evaluation: result.score / 100, analysis: [{ uci, pv: pvStr, score: scoreObj }], depth: result.depth, nodes: result.nodes, source: 'local', dirtyPlayTimeScale };
     }
 }
 
@@ -665,7 +798,7 @@ describe('LocalEngine', () => {
             eng.loadFen('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1');
             const whiteToMove = eng.evaluate();
             // They should be opposite signs (approximately)
-            expect(Math.sign(blackToMove)).toBe(-Math.sign(whiteToMove) || 0);
+            expect(blackToMove + whiteToMove).toBe(0);
         });
     });
 
@@ -1043,617 +1176,158 @@ function assessPremoveQuality(fen, opponentUci, ourUci) {
         eng.unmakeMove(oppMove);
     } catch (e) {
         return { bonus: 0, reasons: [] };
+        return { execute: false, reasons: [], blocked: 'Evaluation error' };
     }
 
-    return { bonus: totalBonus, reasons: bonuses };
-}
-
-// Self-contained getEvalBasedPremoveChance (no BotState dependency)
-function getEvalBasedPremoveChance(evaluation, ourColor, premoveEnabled = true) {
-    if (!premoveEnabled) return 0;
-    let evalScore = 0;
-    if (typeof evaluation === 'string') {
-        if (evaluation === '-' || evaluation === 'Error') return 0;
-        if (evaluation.includes('M')) {
-            const mateNum = parseInt(evaluation.replace('M', '').replace('+', ''), 10);
-            if (!isNaN(mateNum)) return (ourColor === 'w' ? mateNum : -mateNum) > 0 ? 100 : 25;
-        }
-        evalScore = parseFloat(evaluation);
-    } else evalScore = parseFloat(evaluation);
-    if (isNaN(evalScore)) return 0;
-
-    const ourEval = ourColor === 'w' ? evalScore : -evalScore;
-    if (ourEval >= 3.0) return 90;
-    if (ourEval >= 2.0) return 75;
-    if (ourEval >= 1.0) return 55;
-    if (ourEval >= 0.5) return 40;
-    if (ourEval >= 0) return 30;
-    if (ourEval >= -0.5) return 25;
-    return 20;
+    return { execute: true, reasons, blocked: null };
 }
 
 
-describe('assessPremoveQuality', () => {
-    it('should return 0 bonus for invalid/missing UCI strings', () => {
-        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        expect(assessPremoveQuality(fen, null, 'e2e4')).toEqual({ bonus: 0, reasons: [] });
-        expect(assessPremoveQuality(fen, 'e7e5', null)).toEqual({ bonus: 0, reasons: [] });
-        expect(assessPremoveQuality(fen, '', 'e2e4')).toEqual({ bonus: 0, reasons: [] });
-        expect(assessPremoveQuality(fen, 'ab', 'e2e4')).toEqual({ bonus: 0, reasons: [] });
+
+
+describe('Rook & Queen Mobility', () => {
+    it('should give higher eval to rook with more mobility', () => {
+        const eng = new LocalEngine();
+        // Rook on d4 — maximum mobility on open board
+        eng.loadFen('4k3/8/8/8/3R4/8/8/4K3 w - - 0 1');
+        const highMobEval = eng.evaluate();
+
+        // Rook on h1 next to king — less mobility (corner)
+        eng.loadFen('4k3/8/8/8/8/8/8/4K2R w - - 0 1');
+        const lowMobEval = eng.evaluate();
+
+        // Central rook should score higher due to more squares
+        expect(highMobEval).toBeGreaterThan(lowMobEval);
     });
 
-    it('should return 0 bonus when opponent move is not legal', () => {
-        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        // e7e5 is not legal for white
-        const result = assessPremoveQuality(fen, 'e7e5', 'e2e4');
-        expect(result.bonus).toBe(0);
-        expect(result.reasons).toEqual([]);
+    it('should give non-zero mobility bonus for centralized rook', () => {
+        const eng = new LocalEngine();
+        // Rook on d4 — high mobility in open board
+        eng.loadFen('4k3/8/8/8/3R4/8/8/4K3 w - - 0 1');
+        const centralEval = eng.evaluate();
+
+        // Rook on a1 — corner, likely lower mobility
+        eng.loadFen('4k3/8/8/8/8/8/8/R3K3 w Q - 0 1');
+        const cornerEval = eng.evaluate();
+
+        // Central rook should evaluate higher
+        expect(centralEval).toBeGreaterThan(cornerEval);
     });
 
-    it('should detect recapture signal', () => {
-        // White pawn takes on d5, black recaptures with queen on d5
-        const fen = 'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2';
-        // White plays exd5, black recaptures Qxd5
-        const result = assessPremoveQuality(fen, 'e4d5', 'd8d5');
-        expect(result.reasons).toContain('recapture');
-        expect(result.bonus).toBeGreaterThanOrEqual(20);
-    });
+    it('should give queen mobility bonus on open board', () => {
+        const eng = new LocalEngine();
+        // Queen on d4 — maximum mobility in open board
+        eng.loadFen('4k3/8/8/8/3Q4/8/8/4K3 w - - 0 1');
+        const openEval = eng.evaluate();
 
-    it('should detect center control signal', () => {
-        // A position where our response moves to center
-        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        // White plays e2e4, black responds d7d5 (center)
-        const result = assessPremoveQuality(fen, 'e2e4', 'd7d5');
-        expect(result.reasons).toContain('center');
-    });
+        // Queen on a1 — corner, restricted
+        eng.loadFen('4k3/8/8/8/8/8/8/Q3K3 w - - 0 1');
+        const cornerEval = eng.evaluate();
 
-    it('should detect check signal when move gives check', () => {
-        // Position: White queen can give check
-        // After opponent move, our response gives check
-        // Fen where black queen on d8, white king on e1. White plays Nf3, black plays Qh4+ style...
-        // Simpler: Scholar's mate prep kind of position
-        // FEN: white has moved e4, Bc4, Qh5... let's use a direct check scenario
-        // Position: Black to move, white king on e1, black queen on a5
-        // After white plays Ke2, black plays Qa5-e1+ ... no that's not right.
-
-        // Let's use: White has king on g1, black has queen on d8, rook on f8
-        // White plays h2h3, black plays Qd8-d1 (check if on back rank)
-        // Simpler approach: set up a position where after opp move, our Qxf2+ is check
-        const fen = 'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4';
-        // White plays Qxf7+, which is check. But we need it as OUR response.
-        // Let's reverse: it's black's turn, white plays Bc4-f7 (Bxf7+)
-        // Actually let me try: fen with white to move. Opp = white moves something, then black (us) gives check.
-        // FEN: Black queen on d8, white king on e1
-        const fen2 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2';
-        // White played Nf3, now it's black's turn. We want to test: after white's Nf3,
-        // does black's Qh4 give check? No, Qh4 doesn't give check with knight on f3.
-        // Let's use a simpler forced check position
-        const fen3 = 'rnb1kbnr/ppppqppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 2 3';
-        // White to move. opp=white plays d2d3. Then black's Qe7-h4 — does it give check? No.
-        // Let me craft a clear position: black bishop on c5 can give check on f2
-        const checkFen = 'rnbqk1nr/pppp1ppp/8/2b1p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3';
-        // White plays d2d3, then black plays Bc5-xf2+ (check!)
-        const result = assessPremoveQuality(checkFen, 'd2d3', 'c5f2');
-        // f2 square is next to white king on e1, bishop on f2 gives check
-        expect(result.reasons).toContain('check');
-    });
-
-    it('should detect safe square signal when landing on unattacked square', () => {
-        // Starting position: white plays e2e4, black responds Nb8-c6 (safe square, likely unattacked)
-        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        const result = assessPremoveQuality(fen, 'e2e4', 'b8c6');
-        expect(result.reasons).toContain('safe sq');
-    });
-
-    it('should detect forced move (only 1 legal move)', () => {
-        // Position where after opponent's move, we have exactly 1 legal move
-        // King in corner with only one escape square
-        // FEN: Black king on h8, white queen on g6, white king on f6. After white Qg7, black must play Kh8 wait...
-        // Simpler: K+R vs K endgame where king is forced
-        // Let's use: Black Kh8, white Qf7 Kg6. White plays Qg7# — no, that's checkmate.
-        // Better: Black Kh8, pawn h7. White Rg1. White plays Rg8+, black must play Rxg8 or move king.
-        // Even simpler: position where only move is king move
-        // FEN: black king a8, white queen b6, white king c6. Black to move — only Ka8 queen checks.
-        // Actually in stalemate-adjacent positions...
-        // Let's try: 8/8/8/8/8/5k2/4q3/7K w - - 0 1
-        // White king h1, black queen e2, black king f3. White to move; only Kg1.
-        // Then after black plays (say Qe1+), white has only Kh2
-        const fen = '8/8/8/8/8/5k2/4q3/7K w - - 0 1';
-        // White's only move is Kg1. Then black can play Qe1+ and white must Kh2.
-        // Test: opp(white)=Kh1g1, our(black)=Qe2e1 — is it forced? Let's see.
-        // After Kg1, black has many queen moves. Not forced.
-
-        // Better FEN for forced: 8/8/8/8/8/8/r7/K7 w - - 0 1
-        // White king a1, black rook a2. White's only move is Kb1.
-        const forcedFen = '8/8/8/8/8/8/r6k/K7 w - - 0 1';
-        // White to move, Ka1 with Ra2 blocking. Only move is Kb1.
-        // Then black has many moves. Not forced for black.
-
-        // I need a position where after opponent's move, WE have exactly 1 legal move.
-        // FEN: 7k/5Q2/6K1/8/8/8/8/8 b - - 0 1
-        // Black Kh8, white Qf7, Kg6. Black to move: only Kg8 (forced).
-        // opp is white... wait, it's black to move. So this is black's turn to move.
-        // We need: it's opponent's turn. Opp makes a move. Then we have 1 legal move.
-        // FEN: Q4b1k/6pp/8/8/8/8/8/4K3 w - - 0 1 -- doesn't work easily.
-
-        // Simplest approach: double check position after opponent's move.
-        // Or just: after opponent captures our piece, we have only 1 legal Kxsomething
-        // FEN with upcoming forced recapture:
-        // 4k3/8/8/8/8/8/3r4/3RK3 w - - 0 1
-        // White Ke1, Rd1. Black Ke8, Rd2. White plays Rd1xd2 (captures rook).
-        // Now black's turn: Kd8,Ke7,Kf8,Kf7,Kd7. Many moves, not forced.
-
-        // Fine — let me try a true forced move position:
-        // 6k1/5ppp/8/8/8/8/8/4K2R w - - 0 1
-        // White Ke1, Rh1. After white plays Rh8+, black Kxh8 or Kg7... not forced.
-
-        // k7/1R6/1K6/8/8/8/8/8 w - - 0 1
-        // White Kb6, Rb7. Black Ka8. White plays Ra7+. Black must play Kb8.
-        // That IS forced (Ka8 blocked by Rb7→Ra7, so only Kb8).
-        const forcedFen2 = 'k7/1R6/1K6/8/8/8/8/8 w - - 0 1';
-        const result = assessPremoveQuality(forcedFen2, 'b7a7', 'a8b8');
-        expect(result.reasons).toContain('forced');
-        expect(result.bonus).toBeGreaterThanOrEqual(40);
-    });
-
-    it('should detect few-options signal (2-3 legal moves)', () => {
-        // k7/8/1K6/8/8/8/8/1R6 w - - 0 1
-        // White Kb6, Rb1. Black Ka8. White plays Rb8+? No, Rb1-a1 is check? No.
-        // Let me try: 1k6/8/1K6/8/8/8/8/R7 w - - 0 1
-        // White Ka1→... wait. Let me think carefully.
-        // k7/8/1K6/8/8/8/8/R7 w - - 0 1
-        // White: Ka1? No Kb6 + Ra1. Black Ka8. White plays Ra7+ — black Kb8 only. That's 1 move (forced).
-        // Let me loosen it: put king somewhere with 2-3 escapes.
-        // 1k6/8/8/8/8/8/8/R3K3 w - - 0 1
-        // White Ke1, Ra1. Black Kb8. White plays Ra8+, black Kc7 or Kb7... few options.
-        const fewOptFen = '1k6/8/8/8/8/8/8/R3K3 w - - 0 1';
-        const result = assessPremoveQuality(fewOptFen, 'a1a8', 'b8c7');
-        // After Ra8+, black has Kb7, Kc7 — exactly 2 moves (few options)
-        if (result.reasons.includes('few options')) {
-            expect(result.bonus).toBeGreaterThanOrEqual(15);
-        } else if (result.reasons.includes('forced')) {
-            // might only have 1 legal move depending on exact position
-            expect(result.bonus).toBeGreaterThanOrEqual(40);
-        }
-    });
-
-    it('should stack multiple bonuses additively', () => {
-        // Recapture on center square that's safe = recapture(20) + center(5) + safe_sq(10) = at least 35
-        // Plus potentially few-options or dominant
-        const fen = 'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2';
-        // White exd5, black Qxd5 (recapture + center d5)
-        const result = assessPremoveQuality(fen, 'e4d5', 'd8d5');
-        expect(result.reasons).toContain('recapture');
-        expect(result.reasons).toContain('center');
-        // Bonuses should stack
-        expect(result.bonus).toBeGreaterThanOrEqual(25); // recapture(20) + center(5)
-    });
-
-    it('should handle starting position gracefully', () => {
-        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        // e2e4, d7d5 — a normal opening. Should get some signals but not crash.
-        const result = assessPremoveQuality(fen, 'e2e4', 'd7d5');
-        expect(result.bonus).toBeGreaterThanOrEqual(0);
-        expect(Array.isArray(result.reasons)).toBe(true);
-    });
-
-    it('should return 0 when our move is not legal after opponent move', () => {
-        // After e4, black tries to play e2e4 which is not legal for black
-        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        const result = assessPremoveQuality(fen, 'e2e4', 'e2e4');
-        // e2e4 is not a legal black move; ourMove won't be found
-        // Should still not crash, bonus from forced/few-options may still apply
-        expect(result.bonus).toBeGreaterThanOrEqual(0);
+        // Central queen should evaluate higher
+        expect(openEval).toBeGreaterThan(cornerEval);
     });
 });
 
+describe('Advanced: Repetition & Dirty Play', () => {
+    describe('Zobrist Hashing', () => {
+        it('should maintain a consistent hash value through make/unmake', () => {
+            const eng = new LocalEngine();
+            eng.loadFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+            const startHash = [...eng.hash];
 
-describe('getEvalBasedPremoveChance (updated thresholds)', () => {
-    it('should return 0 when premove is disabled', () => {
-        expect(getEvalBasedPremoveChance('1.5', 'w', false)).toBe(0);
+            const move = eng.generateLegalMoves().find(m => eng.moveToUci(m) === 'e2e4');
+            eng.makeMove(move);
+            expect(eng.hash).not.toEqual(startHash);
+
+            eng.unmakeMove(move);
+            expect(eng.hash).toEqual(startHash);
+        });
+
+        it('should generate same hash for same position via different paths', () => {
+            const eng = new LocalEngine();
+            // Path 1: 1. e3 e6 2. Nf3 Nc6 (Single pawn pushes to avoid EP state diff)
+            eng.loadFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+            ['e2e3', 'e7e6', 'g1f3', 'b8c6'].forEach(uci => {
+                const m = eng.generateLegalMoves().find(x => eng.moveToUci(x) === uci);
+                eng.makeMove(m);
+            });
+            const hash1 = [...eng.hash];
+
+            // Path 2: 1. Nf3 Nc6 2. e3 e6
+            eng.loadFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+            ['g1f3', 'b8c6', 'e2e3', 'e7e6'].forEach(uci => {
+                const m = eng.generateLegalMoves().find(x => eng.moveToUci(x) === uci);
+                eng.makeMove(m);
+            });
+            const hash2 = [...eng.hash];
+
+            expect(hash1).toEqual(hash2);
+        });
     });
 
-    it('should return 0 for dash or Error evaluations', () => {
-        expect(getEvalBasedPremoveChance('-', 'w')).toBe(0);
-        expect(getEvalBasedPremoveChance('Error', 'w')).toBe(0);
-    });
+    describe('3-Fold Repetition', () => {
+        it('should detect 3-fold repetition as a draw in negamax', () => {
+            const eng = new LocalEngine();
+            eng.loadFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
 
-    it('should return 0 for NaN evaluations', () => {
-        expect(getEvalBasedPremoveChance('abc', 'w')).toBe(0);
-        expect(getEvalBasedPremoveChance(NaN, 'w')).toBe(0);
-    });
+            // Repeat back to the *starting position* twice:
+            // start (1st), after 4 plies (2nd), after 8 plies (3rd)
+            const seq = [
+                'g1f3', 'g8f6',
+                'f3g1', 'f6g8',
+                'g1f3', 'g8f6',
+                'f3g1', 'f6g8',
+            ];
 
-    it('should return 100 for mate-in-N for us', () => {
-        expect(getEvalBasedPremoveChance('M3', 'w')).toBe(100);
-        expect(getEvalBasedPremoveChance('+M5', 'w')).toBe(100);
-    });
-
-    it('should return 25 for mate-in-N against us', () => {
-        expect(getEvalBasedPremoveChance('M3', 'b')).toBe(25);
-        expect(getEvalBasedPremoveChance('+M5', 'b')).toBe(25);
-    });
-
-    // Updated threshold curve tests
-    it('should return 90 for eval >= 3.0 (winning)', () => {
-        expect(getEvalBasedPremoveChance('3.5', 'w')).toBe(90);
-        expect(getEvalBasedPremoveChance('5.0', 'w')).toBe(90);
-        expect(getEvalBasedPremoveChance('-3.5', 'b')).toBe(90); // black perspective
-    });
-
-    it('should return 75 for eval >= 2.0', () => {
-        expect(getEvalBasedPremoveChance('2.0', 'w')).toBe(75);
-        expect(getEvalBasedPremoveChance('2.5', 'w')).toBe(75);
-    });
-
-    it('should return 55 for eval >= 1.0 (raised from 50)', () => {
-        expect(getEvalBasedPremoveChance('1.0', 'w')).toBe(55);
-        expect(getEvalBasedPremoveChance('1.5', 'w')).toBe(55);
-    });
-
-    it('should return 40 for eval >= 0.5 (raised from 35)', () => {
-        expect(getEvalBasedPremoveChance('0.5', 'w')).toBe(40);
-        expect(getEvalBasedPremoveChance('0.8', 'w')).toBe(40);
-    });
-
-    it('should return 30 for eval >= 0 (raised from 25)', () => {
-        expect(getEvalBasedPremoveChance('0.0', 'w')).toBe(30);
-        expect(getEvalBasedPremoveChance('0.3', 'w')).toBe(30);
-    });
-
-    it('should return 25 for eval >= -0.5 (new tier)', () => {
-        expect(getEvalBasedPremoveChance('-0.3', 'w')).toBe(25);
-        expect(getEvalBasedPremoveChance('-0.5', 'w')).toBe(25);
-    });
-
-    it('should return 20 floor for very negative eval', () => {
-        expect(getEvalBasedPremoveChance('-1.0', 'w')).toBe(20);
-        expect(getEvalBasedPremoveChance('-5.0', 'w')).toBe(20);
-    });
-
-    it('should handle numeric inputs (not just strings)', () => {
-        expect(getEvalBasedPremoveChance(2.5, 'w')).toBe(75);
-        expect(getEvalBasedPremoveChance(0, 'w')).toBe(30);
-        expect(getEvalBasedPremoveChance(-1.0, 'w')).toBe(20);
-    });
-
-    it('should invert eval for black perspective', () => {
-        // +2.0 from white perspective = -2.0 for black
-        expect(getEvalBasedPremoveChance('2.0', 'b')).toBe(20);
-        // -2.0 from white perspective = +2.0 for black
-        expect(getEvalBasedPremoveChance('-2.0', 'b')).toBe(75);
-    });
-
-    it('should handle boundary values precisely', () => {
-        // Exact boundaries
-        expect(getEvalBasedPremoveChance('3.0', 'w')).toBe(90);
-        expect(getEvalBasedPremoveChance('2.0', 'w')).toBe(75);
-        expect(getEvalBasedPremoveChance('1.0', 'w')).toBe(55);
-        expect(getEvalBasedPremoveChance('0.5', 'w')).toBe(40);
-        expect(getEvalBasedPremoveChance('0.0', 'w')).toBe(30);
-        expect(getEvalBasedPremoveChance('-0.5', 'w')).toBe(25);
-        // Just below
-        expect(getEvalBasedPremoveChance('2.99', 'w')).toBe(75);
-        expect(getEvalBasedPremoveChance('1.99', 'w')).toBe(55);
-        expect(getEvalBasedPremoveChance('0.99', 'w')).toBe(40);
-        expect(getEvalBasedPremoveChance('0.49', 'w')).toBe(30);
-        expect(getEvalBasedPremoveChance('-0.01', 'w')).toBe(25);
-        expect(getEvalBasedPremoveChance('-0.51', 'w')).toBe(20);
-    });
-
-    it('monotonically: higher eval should give >= premove chance', () => {
-        const evals = [-2, -1, -0.5, 0, 0.5, 1.0, 2.0, 3.0, 5.0];
-        const chances = evals.map(e => getEvalBasedPremoveChance(String(e), 'w'));
-        for (let i = 1; i < chances.length; i++) {
-            expect(chances[i]).toBeGreaterThanOrEqual(chances[i - 1]);
-        }
-    });
-});
-
-// ============================================================
-// UNIFIED evaluatePremove TESTS
-// ============================================================
-
-// Self-contained evaluatePremove — mirrors production logic using test LocalEngine
-function evaluatePremove(fen, opponentUci, ourUci, ourColor, evalDisplay) {
-    if (!ourUci || ourUci.length < 4) {
-        return { execute: false, chance: 0, reasons: [], blocked: 'Invalid move' };
-    }
-
-    let chance = getEvalBasedPremoveChance(evalDisplay, ourColor);
-    const reasons = [];
-    const oppSide = ourColor === 'w' ? -1 : 1;
-    const ourSide = -oppSide;
-
-    if (!opponentUci || opponentUci.length < 4) {
-        return { execute: false, chance: 0, reasons: [], blocked: 'No predicted opponent move' };
-    }
-
-    const PIECE_VAL = { 1: 100, 2: 320, 3: 330, 4: 500, 5: 900, 6: 0 };
-    const HANGING_THRESHOLDS = { 6: 100, 5: 90, 4: 60, 3: 40, 2: 40, 1: 15 };
-    const EMPTY = 0;
-
-    const eng = new LocalEngine();
-    try {
-        eng.loadFen(fen);
-
-        const oppFrom = nameToSq(opponentUci.substring(0, 2));
-        const oppTo = nameToSq(opponentUci.substring(2, 4));
-        const oppMoves = eng.generateLegalMoves();
-        const oppMove = oppMoves.find(m => m.from === oppFrom && m.to === oppTo);
-        if (!oppMove) return { execute: false, chance: 0, reasons: [], blocked: 'Opponent move not legal' };
-
-        eng.makeMove(oppMove);
-
-        const ourLegalMoves = eng.generateLegalMoves();
-        const ourFrom = nameToSq(ourUci.substring(0, 2));
-        const ourTo = nameToSq(ourUci.substring(2, 4));
-        const ourMove = ourLegalMoves.find(m => m.from === ourFrom && m.to === ourTo);
-
-        if (!ourMove) {
-            eng.unmakeMove(oppMove);
-            return { execute: false, chance: 0, reasons: [], blocked: 'Our move illegal after opponent plays' };
-        }
-
-        // Hanging piece detection
-        const movingAbs = Math.abs(ourMove.piece);
-        const capturedAbs = ourMove.captured !== EMPTY ? Math.abs(ourMove.captured) : 0;
-        const capturedVal = capturedAbs > 0 ? (PIECE_VAL[capturedAbs] || 0) : 0;
-        const movedVal = PIECE_VAL[movingAbs] || 0;
-
-        if (movingAbs !== 6) {
-            eng.makeMove(ourMove);
-            const isDestAttacked = eng.isAttacked(ourTo, eng.side);
-            eng.unmakeMove(ourMove);
-
-            if (isDestAttacked && movingAbs >= 2) {
-                eng.makeMove(ourMove);
-                const oppReplies = eng.generateLegalMoves();
-                const oppAttacksPost = oppReplies.filter(r => r.to === ourTo);
-                eng.unmakeMove(ourMove);
-
-                if (oppAttacksPost.length > 0 && capturedVal < movedVal) {
-                    const riskThreshold = HANGING_THRESHOLDS[movingAbs] || 50;
-                    const pieceNames = { 5: 'queen', 4: 'rook', 3: 'bishop', 2: 'knight' };
-                    const pieceName = pieceNames[movingAbs] || 'piece';
-
-                    const defenderCount = eng.isAttacked(ourTo, eng.side) ? 1 : 0;
-                    const lowestAttackerVal = Math.min(...oppAttacksPost.map(r => PIECE_VAL[Math.abs(r.piece)] || 100));
-
-                    if (defenderCount === 0 || lowestAttackerVal < movedVal) {
-                        if (movingAbs >= 5) {
-                            eng.unmakeMove(oppMove);
-                            return { execute: false, chance: 0, reasons: [], blocked: `Hangs ${pieceName}` };
-                        }
-                        chance = Math.max(5, chance - riskThreshold);
-                        reasons.push(`${pieceName} at risk`);
-                    }
-                }
+            for (const uci of seq) {
+                const m = eng.generateLegalMoves().find(x => eng.moveToUci(x) === uci);
+                eng.makeMove(m);
             }
-        }
 
-        // Quality signals
-        if (ourLegalMoves.length === 1) {
-            chance = Math.min(95, chance + 40);
-            reasons.push('forced');
-        } else if (ourLegalMoves.length <= 3) {
-            chance = Math.min(95, chance + 15);
-            reasons.push('few options');
-        }
+            // Now current position is the start position again (3rd time), so negamax should return draw
+            const score = eng.negamax(1, -MATE_SCORE, MATE_SCORE, 0, []);
+            expect(Math.abs(score)).toBe(0);
+        });
 
-        if (ourTo === oppTo) {
-            chance = Math.min(95, chance + 20);
-            reasons.push('recapture');
-        }
+        it('should avoid repetition when winning (positive contempt)', () => {
+            const eng = new LocalEngine();
+            // A position where a move is repeating, but engine has a better move
+            // We'll set contempt and see if it avoids the draw
+            eng.loadFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+            eng.contempt = 25; // Winning contempt
 
-        eng.makeMove(ourMove);
-        if (eng.inCheck(eng.side)) {
-            chance = Math.min(95, chance + 10);
-            reasons.push('check');
-        }
-        eng.unmakeMove(ourMove);
+            // Manually add history to simulate 2 repetitions
+            const key = eng.ttKey();
+            eng.positionHistory.push(key);
+            eng.positionHistory.push(key);
 
-        const destAttacked = eng.isAttacked(ourTo, -eng.side);
-        if (!destAttacked) {
-            chance = Math.min(95, chance + 10);
-            reasons.push('safe sq');
-        }
-
-        const centerSquares = [nameToSq('d4'), nameToSq('d5'), nameToSq('e4'), nameToSq('e5')];
-        if (centerSquares.includes(ourTo)) {
-            chance = Math.min(95, chance + 5);
-            reasons.push('center');
-        }
-
-        // Multi-response stability
-        eng.unmakeMove(oppMove);
-
-        const oppScoredMoves = [];
-        for (const oMove of oppMoves) {
-            eng.makeMove(oMove);
-            const score = -eng.evaluate();
-            eng.unmakeMove(oMove);
-            oppScoredMoves.push({ move: oMove, score });
-        }
-        oppScoredMoves.sort((a, b) => b.score - a.score);
-
-        const topOppMoves = oppScoredMoves
-            .filter(m => !(m.move.from === oppFrom && m.move.to === oppTo))
-            .slice(0, 3);
-
-        let illegalCount = 0;
-        let badScoreCount = 0;
-
-        for (const { move: altOppMove } of topOppMoves) {
-            eng.makeMove(altOppMove);
-            const altLegal = eng.generateLegalMoves();
-            const altOurMove = altLegal.find(m => m.from === ourFrom && m.to === ourTo);
-
-            if (!altOurMove) {
-                illegalCount++;
-            } else {
-                eng.makeMove(altOurMove);
-                const postScore = -eng.evaluate();
-                eng.unmakeMove(altOurMove);
-
-                let bestAlt = -Infinity;
-                for (const alt of altLegal) {
-                    if (alt.from === ourFrom && alt.to === ourTo) continue;
-                    eng.makeMove(alt);
-                    const altS = -eng.evaluate();
-                    eng.unmakeMove(alt);
-                    if (altS > bestAlt) bestAlt = altS;
-                }
-
-                if (bestAlt > -Infinity && (bestAlt - postScore) >= 200) {
-                    badScoreCount++;
-                }
-            }
-            eng.unmakeMove(altOppMove);
-        }
-
-        if (topOppMoves.length >= 2 && illegalCount >= 2) {
-            chance = Math.max(5, chance - 35);
-            reasons.push('unstable (illegal)');
-        } else if (illegalCount >= 1) {
-            chance = Math.max(10, chance - 15);
-            reasons.push('sometimes illegal');
-        }
-
-        if (topOppMoves.length >= 2 && badScoreCount >= 2) {
-            chance = Math.max(5, chance - 30);
-            reasons.push('unstable (bad)');
-        } else if (badScoreCount >= 1) {
-            chance = Math.max(10, chance - 10);
-            reasons.push('risky alt');
-        }
-    } catch (e) {
-        return { execute: false, chance: 0, reasons: [], blocked: 'Evaluation error' };
-    }
-
-    chance = Math.min(95, Math.max(0, Math.round(chance)));
-    const execute = chance > 0;
-    return { execute, chance, reasons, blocked: null };
-}
-
-
-describe('evaluatePremove (unified)', () => {
-    it('should block when ourUci is invalid', () => {
-        const r = evaluatePremove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-            'e2e4', '', 'b', '0.0');
-        expect(r.execute).toBe(false);
-        expect(r.blocked).toBe('Invalid move');
+            // With 2 prior occurrences in history, current position is treated as a repetition draw
+            const score = eng.negamax(1, -MATE_SCORE, MATE_SCORE, 0, []);
+            expect(score).toBe(-25);
+        });
     });
 
-    it('should block when no predicted opponent move', () => {
-        const r = evaluatePremove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-            null, 'e7e5', 'b', '0.0');
-        expect(r.execute).toBe(false);
-        expect(r.blocked).toBe('No predicted opponent move');
-    });
+    describe('Dirty Play Logic', () => {
+        it('should scale down time budget when evaluation is poor', () => {
+            const eng = new LocalEngine();
+            const evalSpy = vi.spyOn(eng, 'evaluate');
 
-    it('should block when opponent move is not legal', () => {
-        const r = evaluatePremove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-            'e7e5', 'd7d5', 'b', '0.0');
-        expect(r.execute).toBe(false);
-        expect(r.blocked).toBe('Opponent move not legal');
-    });
+            // Model white losing by 300cp (-300 absolute)
+            // evaluate() returns score relative to side to move
+            // If white (1): -300. If black (-1): +300.
+            evalSpy.mockImplementation(() => -300 * eng.side);
 
-    it('should block when our move is illegal after opponent plays', () => {
-        // After white plays e2e4, black trying to play e2e4 is illegal
-        const r = evaluatePremove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-            'e2e4', 'e2e4', 'b', '0.0');
-        expect(r.execute).toBe(false);
-        expect(r.blocked).toBe('Our move illegal after opponent plays');
-    });
+            const result = eng.analyze('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 5);
+            expect(result.dirtyPlayTimeScale).toBe(0.6);
 
-    it('should return positive chance for valid premoves', () => {
-        // Opening: white e2e4, black d7d5
-        const r = evaluatePremove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-            'e2e4', 'd7d5', 'b', '0.0');
-        expect(r.execute).toBe(true);
-        expect(r.chance).toBeGreaterThan(0);
-        expect(r.blocked).toBeNull();
-    });
+            // Model white losing by 600cp (-600 absolute)
+            evalSpy.mockImplementation(() => -600 * eng.side);
 
-    it('should detect recapture in post-move board', () => {
-        // White pawn on d5 after exd5, black recaptures Qxd5
-        const fen = 'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2';
-        const r = evaluatePremove(fen, 'e4d5', 'd8d5', 'b', '0.0');
-        expect(r.reasons).toContain('recapture');
-    });
+            const result2 = eng.analyze('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 5);
+            expect(result2.dirtyPlayTimeScale).toBe(0.4);
 
-    it('should detect forced move signal', () => {
-        // Position: after Ra7+, black Ka8 must play Kb8 (only legal move)
-        const fen = 'k7/1R6/1K6/8/8/8/8/8 w - - 0 1';
-        const r = evaluatePremove(fen, 'b7a7', 'a8b8', 'b', '0.0');
-        expect(r.reasons).toContain('forced');
-        expect(r.chance).toBeGreaterThanOrEqual(40);
-    });
-
-    it('should detect center control', () => {
-        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        const r = evaluatePremove(fen, 'e2e4', 'd7d5', 'b', '0.0');
-        expect(r.reasons).toContain('center');
-    });
-
-    it('should detect check signal', () => {
-        // After d2d3, Bc5xf2+ gives check
-        const checkFen = 'rnbqk1nr/pppp1ppp/8/2b1p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3';
-        const r = evaluatePremove(checkFen, 'd2d3', 'c5f2', 'b', '0.0');
-        expect(r.reasons).toContain('check');
-    });
-
-    it('should cap chance at 95', () => {
-        // Forced move with very high eval should still cap at 95
-        const fen = 'k7/1R6/1K6/8/8/8/8/8 w - - 0 1';
-        const r = evaluatePremove(fen, 'b7a7', 'a8b8', 'b', '5.0');
-        // Even with huge eval + forced bonus, chance should cap at 95
-        expect(r.chance).toBeLessThanOrEqual(95);
-    });
-
-    it('should handle normal opening moves without errors', () => {
-        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        const r = evaluatePremove(fen, 'e2e4', 'b8c6', 'b', '0.0');
-        expect(r.execute).toBe(true);
-        expect(r.blocked).toBeNull();
-        expect(Array.isArray(r.reasons)).toBe(true);
-    });
-
-    it('should apply stability penalty when premove is illegal for some opponent moves', () => {
-        // Starting position, white to move. We are Black.
-        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        // Opponent (white) plays e2e4. We premove b8c6.
-        const r = evaluatePremove(fen, 'e2e4', 'b8c6', 'b', '0.0');
-        // This should work — Nc6 is Typically legal regardless of what white plays first
-        expect(r.execute).toBe(true);
-        expect(r.blocked).toBeNull();
-    });
-
-    it('should detect stability issues if move is often illegal', () => {
-        // A position where our premove is only legal if opponent plays a specific move
-        // E.g. Bishop recapture on d5 only legal if white plays exd5
-        const fen = 'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2';
-        // Opponent plays exd5. We premove Qxd5.
-        // If white plays anything else (Nf3, d4, Nc3), Qxd5 is ILLEGAL.
-        const r = evaluatePremove(fen, 'e4d5', 'd8d5', 'b', '0.0');
-
-        // It should still execute (if we trust the PV), but it might have stability penalties
-        expect(r.execute).toBe(true);
-    });
-
-    it('should have blocked=null for successful evaluations', () => {
-        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        const r = evaluatePremove(fen, 'e2e4', 'e7e5', 'b', '0.0');
-        expect(r.blocked).toBeNull();
-    });
-
-    it('should include base eval chance in the result', () => {
-        // With eval +3.0 for white, base chance should be 90
-        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        const highEval = evaluatePremove(fen, 'e2e4', 'e7e5', 'b', '3.0');
-        const lowEval = evaluatePremove(fen, 'e2e4', 'e7e5', 'b', '-2.0');
-        // Black with +3.0 eval (from white's perspective) should have lower chance than
-        // black with -2.0 eval (which is +2.0 from black's perspective)
-        expect(lowEval.chance).toBeGreaterThan(highEval.chance);
+            evalSpy.mockRestore();
+        });
     });
 });

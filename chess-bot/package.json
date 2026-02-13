@@ -5,11 +5,13 @@
   "main": "src/index.js",
   "scripts": {
     "build": "node build.js",
-    "watch": "node build.js --watch"
+    "watch": "node build.js --watch",
+    "test": "vitest run"
   },
   "author": "quantavil",
   "license": "MIT",
   "devDependencies": {
-    "esbuild": "^0.20.0"
+    "esbuild": "^0.20.0",
+    "vitest": "^4.0.18"
   }
 }
