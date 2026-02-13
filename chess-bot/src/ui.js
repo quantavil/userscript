@@ -3,41 +3,44 @@ import { qs, qsa, debounce } from './utils.js';
 import { updateEvaluationBar } from './board.js';
 
 export const ui = {
-    menuWrap: null,
-    setText(name, value, title) {
-        if (!this.menuWrap) return;
-        const el = this.menuWrap.querySelector(`[name="${name}"]`);
-        if (!el) return;
-        const state = el.querySelector('.itemState') || el.children[el.children.length - 1];
-        if (state) {
-            state.textContent = value ?? '-';
-            if (title) state.title = title;
-        }
-    },
-    updateDisplay(playingAs) {
-        this.setText('currentEvaluation', BotState.currentEvaluation);
-        this.setText('bestMove', BotState.bestMove);
-        this.setText('pvDisplay', BotState.principalVariation, BotState.principalVariation);
-        this.setText('statusInfo', BotState.statusInfo);
+  menuWrap: null,
+  setText(name, value, title) {
+    if (!this.menuWrap) return;
+    const el = this.menuWrap.querySelector(`[name="${name}"]`);
+    if (!el) return;
+    const state = el.querySelector('.itemState') || el.children[el.children.length - 1];
+    if (state) {
+      state.textContent = value ?? '-';
+      if (title) state.title = title;
+    }
+  },
+  updateDisplay(playingAs) {
+    this.setText('currentEvaluation', BotState.currentEvaluation);
+    this.setText('bestMove', BotState.bestMove);
+    this.setText('pvDisplay', BotState.principalVariation, BotState.principalVariation);
+    this.setText('statusInfo', BotState.statusInfo);
 
-        // Premove Display
-        const chanceEl = this.menuWrap?.querySelector('[name="premoveChance"] .itemState');
-        if (chanceEl && BotState.currentPremoveChance !== undefined) {
-            chanceEl.textContent = `${Math.round(BotState.currentPremoveChance)}%`;
-        }
+    // Premove Display with quality reasons
+    const chanceEl = this.menuWrap?.querySelector('[name="premoveChance"] .itemState');
+    if (chanceEl && BotState.currentPremoveChance !== undefined) {
+      const pct = `${Math.round(BotState.currentPremoveChance)}%`;
+      const reasons = BotState.currentPremoveReasons;
+      chanceEl.textContent = reasons ? `${pct} (${reasons})` : pct;
+      chanceEl.title = reasons || 'Premove confidence';
+    }
 
-        updateEvaluationBar(BotState.currentEvaluation, playingAs);
-    },
-    Settings
+    updateEvaluationBar(BotState.currentEvaluation, playingAs);
+  },
+  Settings
 };
 
 export function buildUI() {
-    // Create menu
-    const menuWrap = document.createElement('div');
-    menuWrap.id = 'menuWrap';
-    const menuWrapStyle = document.createElement('style');
+  // Create menu
+  const menuWrap = document.createElement('div');
+  menuWrap.id = 'menuWrap';
+  const menuWrapStyle = document.createElement('style');
 
-    menuWrap.innerHTML = `
+  menuWrap.innerHTML = `
   <div id="topText">
     <a id="modTitle">♟ GabiBot</a>
     <button id="minimizeBtn" title="Minimize (Ctrl+B)">─</button>
@@ -138,7 +141,7 @@ export function buildUI() {
   </div>
 `;
 
-    menuWrapStyle.innerHTML = `
+  menuWrapStyle.innerHTML = `
   #menuWrap {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     border-radius: 8px;
@@ -236,197 +239,197 @@ export function buildUI() {
   .pieceFilters .chip input:checked + span { color: #fff; font-weight: 600; }
 `;
 
-    document.body.appendChild(menuWrap);
-    document.body.appendChild(menuWrapStyle);
-    ui.menuWrap = menuWrap;
+  document.body.appendChild(menuWrap);
+  document.body.appendChild(menuWrapStyle);
+  ui.menuWrap = menuWrap;
 
-    // Load Settings
-    const saved = Settings.load();
-    if (saved?.menuPosition) {
-        menuWrap.style.top = saved.menuPosition.top || '20px';
-        menuWrap.style.left = saved.menuPosition.left || '';
-        menuWrap.style.right = saved.menuPosition.left ? 'auto' : '20px';
+  // Load Settings
+  const saved = Settings.load();
+  if (saved?.menuPosition) {
+    menuWrap.style.top = saved.menuPosition.top || '20px';
+    menuWrap.style.left = saved.menuPosition.left || '';
+    menuWrap.style.right = saved.menuPosition.left ? 'auto' : '20px';
+  }
+
+  // Control binding helpers
+  const getElementByName = (name, el) => el.querySelector(`[name="${name}"]`);
+  const getInputElement = (el) => el.children[0];
+  const getStateElement = (el) => el.children[el.children.length - 1];
+
+  function bindControl(name, type, variable) {
+    const modElement = getElementByName(name, menuWrap);
+    if (!modElement) return;
+    const modState = getStateElement(modElement);
+    const modInput = getInputElement(modElement);
+    const key = variable.replace('BotState.', '');
+    if (type === 'checkbox') {
+      modInput.checked = !!BotState[key];
+      modState.textContent = BotState[key] ? 'On' : 'Off';
+      modInput.addEventListener('input', () => {
+        BotState[key] = modInput.checked ? 1 : 0;
+        modState.textContent = BotState[key] ? 'On' : 'Off';
+        Settings.save();
+      });
+    } else if (type === 'range') {
+      modInput.value = BotState[key];
+      modState.textContent = BotState[key];
+      modInput.addEventListener('input', () => {
+        let value = parseInt(modInput.value, 10);
+        const min = parseInt(modInput.min, 10);
+        const max = parseInt(modInput.max, 10);
+        value = Math.max(min, Math.min(max, value));
+        BotState[key] = value;
+        modInput.value = value;
+        modState.textContent = value;
+        Settings.save();
+      });
     }
-
-    // Control binding helpers
-    const getElementByName = (name, el) => el.querySelector(`[name="${name}"]`);
-    const getInputElement = (el) => el.children[0];
-    const getStateElement = (el) => el.children[el.children.length - 1];
-
-    function bindControl(name, type, variable) {
-        const modElement = getElementByName(name, menuWrap);
-        if (!modElement) return;
-        const modState = getStateElement(modElement);
-        const modInput = getInputElement(modElement);
-        const key = variable.replace('BotState.', '');
-        if (type === 'checkbox') {
-            modInput.checked = !!BotState[key];
-            modState.textContent = BotState[key] ? 'On' : 'Off';
-            modInput.addEventListener('input', () => {
-                BotState[key] = modInput.checked ? 1 : 0;
-                modState.textContent = BotState[key] ? 'On' : 'Off';
-                Settings.save();
-            });
-        } else if (type === 'range') {
-            modInput.value = BotState[key];
-            modState.textContent = BotState[key];
-            modInput.addEventListener('input', () => {
-                let value = parseInt(modInput.value, 10);
-                const min = parseInt(modInput.min, 10);
-                const max = parseInt(modInput.max, 10);
-                value = Math.max(min, Math.min(max, value));
-                BotState[key] = value;
-                modInput.value = value;
-                modState.textContent = value;
-                Settings.save();
-            });
-        }
-    }
-    function bindSelect(name, variable) {
-        const el = getElementByName(name, menuWrap);
-        if (!el) return;
-        const select = el.querySelector('select');
-        const key = variable.replace('BotState.', '');
-        select.value = BotState[key];
-        select.addEventListener('change', () => {
-            BotState[key] = select.value;
-            refreshPremoveUIVisibility();
-            Settings.save();
-        });
-    }
-    function bindPieceFilters() {
-        const el = getElementByName('premovePieces', menuWrap);
-        if (!el) return;
-        const checks = qsa('.pieceFilters input[type="checkbox"]', el);
-        checks.forEach(chk => {
-            const p = String(chk.dataset.piece || '').toLowerCase();
-            chk.checked = !!BotState.premovePieces[p];
-        });
-        checks.forEach(chk => {
-            chk.addEventListener('input', () => {
-                const p = String(chk.dataset.piece || '').toLowerCase();
-                BotState.premovePieces[p] = chk.checked ? 1 : 0;
-                Settings.save();
-            });
-        });
-    }
-    function refreshPremoveUIVisibility() {
-        const row = getElementByName('premovePieces', menuWrap);
-        if (row) row.style.display = (BotState.premoveMode === 'filter') ? 'flex' : 'none';
-    }
-
-    bindControl('enableHack', 'checkbox', 'BotState.hackEnabled');
-    bindControl('autoMove', 'checkbox', 'BotState.autoMove');
-    bindControl('botPower', 'range', 'BotState.botPower');
-    bindControl('autoMoveSpeed', 'range', 'BotState.autoMoveSpeed');
-    bindControl('updateSpeed', 'range', 'BotState.updateSpeed');
-    bindControl('randomDelay', 'range', 'BotState.randomDelay');
-
-    bindControl('premoveEnabled', 'checkbox', 'BotState.premoveEnabled');
-    bindSelect('premoveMode', 'BotState.premoveMode');
-    bindPieceFilters();
-    refreshPremoveUIVisibility();
-
-    bindControl('autoRematch', 'checkbox', 'BotState.autoRematch');
-
-    // Drag/move panel
-    makePanelDraggable(menuWrap);
-
-    // Minimize
-    document.getElementById('minimizeBtn').addEventListener('click', () => menuWrap.classList.toggle('minimized'));
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'b' && e.ctrlKey) {
-            e.preventDefault();
-            menuWrap.classList.toggle('minimized');
-        }
+  }
+  function bindSelect(name, variable) {
+    const el = getElementByName(name, menuWrap);
+    if (!el) return;
+    const select = el.querySelector('select');
+    const key = variable.replace('BotState.', '');
+    select.value = BotState[key];
+    select.addEventListener('change', () => {
+      BotState[key] = select.value;
+      refreshPremoveUIVisibility();
+      Settings.save();
     });
+  }
+  function bindPieceFilters() {
+    const el = getElementByName('premovePieces', menuWrap);
+    if (!el) return;
+    const checks = qsa('.pieceFilters input[type="checkbox"]', el);
+    checks.forEach(chk => {
+      const p = String(chk.dataset.piece || '').toLowerCase();
+      chk.checked = !!BotState.premovePieces[p];
+    });
+    checks.forEach(chk => {
+      chk.addEventListener('input', () => {
+        const p = String(chk.dataset.piece || '').toLowerCase();
+        BotState.premovePieces[p] = chk.checked ? 1 : 0;
+        Settings.save();
+      });
+    });
+  }
+  function refreshPremoveUIVisibility() {
+    const row = getElementByName('premovePieces', menuWrap);
+    if (row) row.style.display = (BotState.premoveMode === 'filter') ? 'flex' : 'none';
+  }
+
+  bindControl('enableHack', 'checkbox', 'BotState.hackEnabled');
+  bindControl('autoMove', 'checkbox', 'BotState.autoMove');
+  bindControl('botPower', 'range', 'BotState.botPower');
+  bindControl('autoMoveSpeed', 'range', 'BotState.autoMoveSpeed');
+  bindControl('updateSpeed', 'range', 'BotState.updateSpeed');
+  bindControl('randomDelay', 'range', 'BotState.randomDelay');
+
+  bindControl('premoveEnabled', 'checkbox', 'BotState.premoveEnabled');
+  bindSelect('premoveMode', 'BotState.premoveMode');
+  bindPieceFilters();
+  refreshPremoveUIVisibility();
+
+  bindControl('autoRematch', 'checkbox', 'BotState.autoRematch');
+
+  // Drag/move panel
+  makePanelDraggable(menuWrap);
+
+  // Minimize
+  document.getElementById('minimizeBtn').addEventListener('click', () => menuWrap.classList.toggle('minimized'));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'b' && e.ctrlKey) {
+      e.preventDefault();
+      menuWrap.classList.toggle('minimized');
+    }
+  });
 }
 
 function makePanelDraggable(panel) {
-    function clampToViewport() {
-        const rect = panel.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        const margin = 8;
+  function clampToViewport() {
+    const rect = panel.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const margin = 8;
 
-        panel.style.right = 'auto';
+    panel.style.right = 'auto';
 
-        let left = parseFloat(panel.style.left || rect.left);
-        let top = parseFloat(panel.style.top || rect.top);
+    let left = parseFloat(panel.style.left || rect.left);
+    let top = parseFloat(panel.style.top || rect.top);
 
-        left = Math.max(margin, Math.min(left, vw - rect.width - margin));
-        top = Math.max(margin, Math.min(top, vh - rect.height - margin));
+    left = Math.max(margin, Math.min(left, vw - rect.width - margin));
+    top = Math.max(margin, Math.min(top, vh - rect.height - margin));
 
-        panel.style.left = left + 'px';
-        panel.style.top = top + 'px';
-    }
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
+  }
 
-    function allowDragFromTarget(target, e) {
-        if (e.altKey) return true;
+  function allowDragFromTarget(target, e) {
+    if (e.altKey) return true;
 
-        const rect = panel.getBoundingClientRect();
-        const m = 14;
-        const nearEdge =
-            e.clientX <= rect.left + m ||
-            e.clientX >= rect.right - m ||
-            e.clientY <= rect.top + m ||
-            e.clientY >= rect.bottom - m;
+    const rect = panel.getBoundingClientRect();
+    const m = 14;
+    const nearEdge =
+      e.clientX <= rect.left + m ||
+      e.clientX >= rect.right - m ||
+      e.clientY <= rect.top + m ||
+      e.clientY >= rect.bottom - m;
 
-        if (nearEdge) return true;
+    if (nearEdge) return true;
 
-        if (target.closest('input, select, textarea, button, label, a')) return false;
+    if (target.closest('input, select, textarea, button, label, a')) return false;
 
-        return true;
-    }
+    return true;
+  }
 
-    function startDrag(e) {
-        e.preventDefault();
-        const startRect = panel.getBoundingClientRect();
+  function startDrag(e) {
+    e.preventDefault();
+    const startRect = panel.getBoundingClientRect();
 
-        panel.classList.add('grabbing');
-        panel.style.right = 'auto';
-        panel.style.left = startRect.left + 'px';
-        panel.style.top = startRect.top + 'px';
+    panel.classList.add('grabbing');
+    panel.style.right = 'auto';
+    panel.style.left = startRect.left + 'px';
+    panel.style.top = startRect.top + 'px';
 
-        const startX = e.clientX;
-        const startY = e.clientY;
+    const startX = e.clientX;
+    const startY = e.clientY;
 
-        const move = (ev) => {
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
-            const vw = window.innerWidth;
-            const vh = window.innerHeight;
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
 
-            let newLeft = startRect.left + dx;
-            let newTop = startRect.top + dy;
+      let newLeft = startRect.left + dx;
+      let newTop = startRect.top + dy;
 
-            const margin = 8;
-            const maxLeft = Math.max(margin, vw - startRect.width - margin);
-            const maxTop = Math.max(margin, vh - startRect.height - margin);
-            newLeft = Math.min(Math.max(newLeft, margin), maxLeft);
-            newTop = Math.min(Math.max(newTop, margin), maxTop);
+      const margin = 8;
+      const maxLeft = Math.max(margin, vw - startRect.width - margin);
+      const maxTop = Math.max(margin, vh - startRect.height - margin);
+      newLeft = Math.min(Math.max(newLeft, margin), maxLeft);
+      newTop = Math.min(Math.max(newTop, margin), maxTop);
 
-            panel.style.left = newLeft + 'px';
-            panel.style.top = newTop + 'px';
-        };
+      panel.style.left = newLeft + 'px';
+      panel.style.top = newTop + 'px';
+    };
 
-        const up = () => {
-            document.removeEventListener('mousemove', move);
-            document.removeEventListener('mouseup', up);
-            panel.classList.remove('grabbing');
-            try { Settings.save(); } catch { }
-        };
+    const up = () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+      panel.classList.remove('grabbing');
+      try { Settings.save(); } catch { }
+    };
 
-        document.addEventListener('mousemove', move);
-        document.addEventListener('mouseup', up);
-    }
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  }
 
-    panel.addEventListener('mousedown', (e) => {
-        if (e.button !== 0) return;
-        if (!allowDragFromTarget(e.target, e)) return;
-        startDrag(e);
-    });
+  panel.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    if (!allowDragFromTarget(e.target, e)) return;
+    startDrag(e);
+  });
 
-    window.addEventListener('resize', clampToViewport);
-    setTimeout(clampToViewport, 50);
+  window.addEventListener('resize', clampToViewport);
+  setTimeout(clampToViewport, 50);
 }

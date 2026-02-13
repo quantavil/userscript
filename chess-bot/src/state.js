@@ -17,6 +17,7 @@ export const BotState = {
     premoveMode: 'every',
     premovePieces: { q: 1, r: 1, b: 1, n: 1, k: 1, p: 1 },
     premoveChance: 85,
+    currentPremoveReasons: '',
     autoRematch: 0
 };
 
