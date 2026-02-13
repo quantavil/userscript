@@ -1,6 +1,6 @@
 import { API_URL, MULTIPV, ANALYZE_TIMEOUT_MS, PIECE_VALUES } from './config.js';
 import { BotState, PositionCache, getGame, getPlayerColor, getSideToMove, pa, invalidateGameCache } from './state.js';
-import { scoreFrom, scoreToDisplay, scoreNumeric, getRandomDepth, sleep, fenCharAtSquare, pieceFromFenChar, getAttackersOfSquare, isSquareAttackedBy, findKing, makeSimpleMove, parseFenToBoard, getAttackersOnBoard, isAttackedOnBoard, findKingOnBoard, makeMoveOnBoard } from './utils.js';
+import { scoreFrom, scoreToDisplay, scoreNumeric, getRandomDepth, sleep } from './utils.js';
 import { drawArrow, clearArrows, executeMove, simulateClickMove } from './board.js';
 
 let currentAnalysisId = 0;
@@ -25,6 +25,21 @@ export function setLastPremoveUci(uci) { lastPremoveUci = uci; }
 // LOCAL CHESS ENGINE
 // ============================================================
 // Pieces: P=1,N=2,B=3,R=4,Q=5,K=6. White positive, black negative.
+// --- Zobrist Hashing ---
+// Pre-computed random 64-bit keys stored as pairs of 32-bit ints for speed
+const ZOBRIST = (() => {
+    // Simple seeded PRNG (xorshift32) for deterministic keys
+    let seed = 1070372;
+    const rand32 = () => { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return seed >>> 0; };
+    const table = new Uint32Array(13 * 64 * 2); // piece(0-12) * 64 squares * 2 (hi/lo)
+    for (let i = 0; i < table.length; i++) table[i] = rand32();
+    const sideKey = [rand32(), rand32()];
+    const castlingKeys = new Uint32Array(16 * 2);
+    for (let i = 0; i < castlingKeys.length; i++) castlingKeys[i] = rand32();
+    const epKeys = new Uint32Array(8 * 2); // per-file
+    for (let i = 0; i < epKeys.length; i++) epKeys[i] = rand32();
+    return { table, sideKey, castlingKeys, epKeys };
+})();
 // Board: 64-element array, index = rank*8+file, a1=0, h8=63
 
 const WP = 1, WN = 2, WB = 3, WR = 4, WQ = 5, WK = 6;
@@ -131,6 +146,19 @@ function sqRank(sq) { return sq >> 3; }
 function sqName(sq) { return 'abcdefgh'[sqFile(sq)] + (sqRank(sq) + 1); }
 function nameToSq(s) { return (s.charCodeAt(0) - 97) + (s.charCodeAt(1) - 49) * 8; }
 
+// Zobrist helpers
+function zobPieceIdx(piece) {
+    // Map piece value (-6..-1, 1..6) to index 0-11. Empty=invalid
+    return piece > 0 ? (piece - 1) : (Math.abs(piece) + 5);
+}
+function zobPieceKey(piece, sq) {
+    const base = (zobPieceIdx(piece) * 64 + sq) * 2;
+    return [ZOBRIST.table[base], ZOBRIST.table[base + 1]];
+}
+function zobXor(hash, key) {
+    hash[0] ^= key[0]; hash[1] ^= key[1];
+}
+
 class LocalEngine {
     constructor() {
         this.board = new Array(64).fill(EMPTY);
@@ -150,6 +178,7 @@ class LocalEngine {
         this.killers = [];
         this.history = new Int32Array(64 * 64);
         this.tt = new Map(); // Transposition table
+        this.hash = [0, 0]; // Zobrist hash [hi, lo]
     }
 
     loadFen(fen) {
@@ -179,6 +208,22 @@ class LocalEngine {
         this.halfmove = parseInt(parts[4]) || 0;
         this.fullmove = parseInt(parts[5]) || 1;
         this.stateStack = [];
+        this._computeHash();
+    }
+
+    _computeHash() {
+        this.hash = [0, 0];
+        for (let sq = 0; sq < 64; sq++) {
+            const p = this.board[sq];
+            if (p !== EMPTY) zobXor(this.hash, zobPieceKey(p, sq));
+        }
+        if (this.side === -1) zobXor(this.hash, ZOBRIST.sideKey);
+        const ck = this.castling * 2;
+        zobXor(this.hash, [ZOBRIST.castlingKeys[ck], ZOBRIST.castlingKeys[ck + 1]]);
+        if (this.epSquare >= 0) {
+            const ef = sqFile(this.epSquare) * 2;
+            zobXor(this.hash, [ZOBRIST.epKeys[ef], ZOBRIST.epKeys[ef + 1]]);
+        }
     }
 
     toFen() {
@@ -221,14 +266,25 @@ class LocalEngine {
         this.stateStack.push({
             castling: this.castling, epSquare: this.epSquare,
             halfmove: this.halfmove, fullmove: this.fullmove,
-            wKingSq: this.wKingSq, bKingSq: this.bKingSq
+            wKingSq: this.wKingSq, bKingSq: this.bKingSq,
+            hash: [this.hash[0], this.hash[1]]
         });
 
         const { from, to, flags, piece, promo } = mv;
         const abs = Math.abs(piece);
 
+        // Incremental Zobrist: remove piece from source
+        zobXor(this.hash, zobPieceKey(piece, from));
+        // Remove captured piece (if any)
+        if (mv.captured !== EMPTY && !(flags & FLAG_EP)) {
+            zobXor(this.hash, zobPieceKey(mv.captured, to));
+        }
+
         this.board[from] = EMPTY;
-        this.board[to] = (flags & FLAG_PROMO) ? promo : piece;
+        const landed = (flags & FLAG_PROMO) ? promo : piece;
+        this.board[to] = landed;
+        // Add piece at destination
+        zobXor(this.hash, zobPieceKey(landed, to));
 
         // Update king position tracking
         if (abs === 6) {
@@ -238,25 +294,44 @@ class LocalEngine {
 
         // En passant capture
         if (flags & FLAG_EP) {
-            this.board[to - this.side * 8] = EMPTY;
+            const epCapSq = to - this.side * 8;
+            zobXor(this.hash, zobPieceKey(this.board[epCapSq] || (-this.side), epCapSq));
+            this.board[epCapSq] = EMPTY;
         }
 
         // Castling rook movement
         if (flags & FLAG_CASTLE) {
             if (to > from) { // Kingside
+                const rook = this.side * WR;
+                zobXor(this.hash, zobPieceKey(rook, from + 3));
                 this.board[from + 3] = EMPTY;
-                this.board[from + 1] = this.side * WR;
+                this.board[from + 1] = rook;
+                zobXor(this.hash, zobPieceKey(rook, from + 1));
             } else { // Queenside
+                const rook = this.side * WR;
+                zobXor(this.hash, zobPieceKey(rook, from - 4));
                 this.board[from - 4] = EMPTY;
-                this.board[from - 1] = this.side * WR;
+                this.board[from - 1] = rook;
+                zobXor(this.hash, zobPieceKey(rook, from - 1));
             }
         }
 
-        // Update en passant square
+        // Update castling rights (with hash update)
+        const oldCastling = this.castling;
+
+        // Update en passant square (with hash update)
+        if (this.epSquare >= 0) {
+            const ef = sqFile(this.epSquare) * 2;
+            zobXor(this.hash, [ZOBRIST.epKeys[ef], ZOBRIST.epKeys[ef + 1]]);
+        }
         if (abs === 1 && Math.abs(to - from) === 16) {
             this.epSquare = (from + to) >> 1;
         } else {
             this.epSquare = -1;
+        }
+        if (this.epSquare >= 0) {
+            const ef = sqFile(this.epSquare) * 2;
+            zobXor(this.hash, [ZOBRIST.epKeys[ef], ZOBRIST.epKeys[ef + 1]]);
         }
 
         // Update castling rights
@@ -270,11 +345,19 @@ class LocalEngine {
         if (from === 56 || to === 56) this.castling &= ~8;
         if (from === 63 || to === 63) this.castling &= ~4;
 
+        // Hash castling change
+        if (oldCastling !== this.castling) {
+            const oc = oldCastling * 2, nc = this.castling * 2;
+            zobXor(this.hash, [ZOBRIST.castlingKeys[oc], ZOBRIST.castlingKeys[oc + 1]]);
+            zobXor(this.hash, [ZOBRIST.castlingKeys[nc], ZOBRIST.castlingKeys[nc + 1]]);
+        }
+
         // Halfmove clock
         this.halfmove = (abs === 1 || mv.captured !== EMPTY) ? 0 : this.halfmove + 1;
 
         if (this.side === -1) this.fullmove++;
         this.side = -this.side;
+        zobXor(this.hash, ZOBRIST.sideKey);
     }
 
     unmakeMove(mv) {
@@ -286,6 +369,7 @@ class LocalEngine {
         this.fullmove = st.fullmove;
         this.wKingSq = st.wKingSq;
         this.bKingSq = st.bKingSq;
+        this.hash = st.hash; // Restore hash directly — no incremental unmake needed
 
         const { from, to, flags, piece, captured, promo } = mv;
 
@@ -520,6 +604,20 @@ class LocalEngine {
         let wBishops = 0, bBishops = 0;
         const phaseVal = { 2: 1, 3: 1, 4: 2, 5: 4 };
 
+        // Per-file pawn tracking for structure evaluation
+        const wPawnFiles = new Uint8Array(8);
+        const bPawnFiles = new Uint8Array(8);
+        const wPawnRanks = new Int8Array(8).fill(-1); // Most advanced white pawn rank per file
+        const bPawnRanks = new Int8Array(8).fill(8);  // Most advanced black pawn rank per file
+
+        // King attack zone tracking
+        let wKingAttackers = 0, bKingAttackers = 0;
+        let wKingAttackWeight = 0, bKingAttackWeight = 0;
+        const wKingSq = this.wKingSq, bKingSq = this.bKingSq;
+        const wkf = sqFile(wKingSq), wkr = sqRank(wKingSq);
+        const bkf = sqFile(bKingSq), bkr = sqRank(bKingSq);
+        const ATTACK_WEIGHTS = { 2: 20, 3: 20, 4: 40, 5: 80 }; // N, B, R, Q
+
         for (let sq = 0; sq < 64; sq++) {
             const p = this.board[sq];
             if (p === EMPTY) continue;
@@ -527,6 +625,7 @@ class LocalEngine {
             const side = Math.sign(p);
             const val = PIECE_VAL[abs];
             const pstSq = side === 1 ? sq : mirrorSq(sq);
+            const file = sqFile(sq), rank = sqRank(sq);
 
             let pstVal = 0;
             if (abs <= 5 && PST[abs]) pstVal = PST[abs][pstSq];
@@ -543,23 +642,112 @@ class LocalEngine {
             const material = val * side;
             mgScore += material + (abs === 6 ? mgKing * side : pstVal * side);
             egScore += material + (abs === 6 ? egKing * side : pstVal * side);
+
+            // Track pawns for structure eval
+            if (abs === 1) {
+                if (side === 1) {
+                    wPawnFiles[file]++;
+                    if (rank > wPawnRanks[file]) wPawnRanks[file] = rank;
+                } else {
+                    bPawnFiles[file]++;
+                    if (rank < bPawnRanks[file]) bPawnRanks[file] = rank;
+                }
+            }
+
+            // Mobility: count pseudo-legal moves for knights and bishops
+            if (abs === 2) { // Knight
+                let mob = 0;
+                for (const off of [-17, -15, -10, -6, 6, 10, 15, 17]) {
+                    const t = sq + off;
+                    if (t < 0 || t > 63 || Math.abs(sqFile(t) - file) > 2) continue;
+                    const tp = this.board[t];
+                    if (tp === EMPTY || Math.sign(tp) !== side) mob++;
+                }
+                mgScore += (mob - 4) * 4 * side; // Centered at 4 squares
+                egScore += (mob - 4) * 4 * side;
+            }
+            if (abs === 3) { // Bishop
+                let mob = 0;
+                for (const dir of [9, 7, -9, -7]) {
+                    let t = sq + dir;
+                    while (t >= 0 && t <= 63) {
+                        if (Math.abs(sqFile(t) - sqFile(t - dir)) !== 1) break;
+                        const tp = this.board[t];
+                        if (tp !== EMPTY && Math.sign(tp) === side) break;
+                        mob++;
+                        if (tp !== EMPTY) break;
+                        t += dir;
+                    }
+                }
+                mgScore += (mob - 5) * 5 * side;
+                egScore += (mob - 5) * 5 * side;
+            }
+
+            // King attack: pieces near enemy king
+            if (abs >= 2 && abs <= 5) {
+                if (side === 1) {
+                    // White piece attacking near black king
+                    const df = Math.abs(file - bkf), dr = Math.abs(rank - bkr);
+                    if (df <= 2 && dr <= 2) {
+                        wKingAttackers++;
+                        wKingAttackWeight += ATTACK_WEIGHTS[abs] || 0;
+                    }
+                } else {
+                    // Black piece attacking near white king
+                    const df = Math.abs(file - wkf), dr = Math.abs(rank - wkr);
+                    if (df <= 2 && dr <= 2) {
+                        bKingAttackers++;
+                        bKingAttackWeight += ATTACK_WEIGHTS[abs] || 0;
+                    }
+                }
+            }
         }
 
         // Bishop pair bonus
         if (wBishops >= 2) { mgScore += 30; egScore += 50; }
         if (bBishops >= 2) { mgScore -= 30; egScore -= 50; }
 
-        // Pawn structure bonuses
+        // Pawn structure
         for (let f = 0; f < 8; f++) {
-            let wPawnsOnFile = 0, bPawnsOnFile = 0;
-            for (let r = 0; r < 8; r++) {
-                const p = this.board[r * 8 + f];
-                if (p === WP) wPawnsOnFile++;
-                if (p === BP) bPawnsOnFile++;
-            }
             // Doubled pawns penalty
-            if (wPawnsOnFile > 1) { mgScore -= 10 * (wPawnsOnFile - 1); egScore -= 20 * (wPawnsOnFile - 1); }
-            if (bPawnsOnFile > 1) { mgScore += 10 * (bPawnsOnFile - 1); egScore += 20 * (bPawnsOnFile - 1); }
+            if (wPawnFiles[f] > 1) { mgScore -= 10 * (wPawnFiles[f] - 1); egScore -= 20 * (wPawnFiles[f] - 1); }
+            if (bPawnFiles[f] > 1) { mgScore += 10 * (bPawnFiles[f] - 1); egScore += 20 * (bPawnFiles[f] - 1); }
+
+            // Isolated pawn penalty (no friendly pawns on adjacent files)
+            if (wPawnFiles[f] > 0) {
+                const hasNeighbor = (f > 0 && wPawnFiles[f - 1] > 0) || (f < 7 && wPawnFiles[f + 1] > 0);
+                if (!hasNeighbor) { mgScore -= 15; egScore -= 20; }
+            }
+            if (bPawnFiles[f] > 0) {
+                const hasNeighbor = (f > 0 && bPawnFiles[f - 1] > 0) || (f < 7 && bPawnFiles[f + 1] > 0);
+                if (!hasNeighbor) { mgScore += 15; egScore += 20; }
+            }
+
+            // Passed pawn bonus (no enemy pawns blocking or on adjacent files ahead)
+            if (wPawnRanks[f] >= 0) {
+                let passed = true;
+                for (let ff = Math.max(0, f - 1); ff <= Math.min(7, f + 1); ff++) {
+                    if (bPawnRanks[ff] <= wPawnRanks[f]) { passed = false; break; }
+                }
+                if (passed) {
+                    const advance = wPawnRanks[f]; // 1-6 (higher = more advanced)
+                    const bonus = [0, 5, 10, 20, 40, 70, 120][advance] || 0;
+                    mgScore += bonus / 2;
+                    egScore += bonus;
+                }
+            }
+            if (bPawnRanks[f] < 8) {
+                let passed = true;
+                for (let ff = Math.max(0, f - 1); ff <= Math.min(7, f + 1); ff++) {
+                    if (wPawnRanks[ff] >= bPawnRanks[f]) { passed = false; break; }
+                }
+                if (passed) {
+                    const advance = 7 - bPawnRanks[f]; // mirror: higher = more advanced
+                    const bonus = [0, 5, 10, 20, 40, 70, 120][advance] || 0;
+                    mgScore -= bonus / 2;
+                    egScore -= bonus;
+                }
+            }
         }
 
         // Rook on open/semi-open file
@@ -567,16 +755,13 @@ class LocalEngine {
             const p = this.board[sq];
             if (Math.abs(p) !== 4) continue;
             const f = sqFile(sq);
-            let hasFriendlyPawn = false, hasEnemyPawn = false;
-            for (let r = 0; r < 8; r++) {
-                const pp = this.board[r * 8 + f];
-                if (pp === Math.sign(p) * WP) hasFriendlyPawn = true;
-                if (pp === -Math.sign(p) * WP) hasEnemyPawn = true;
-            }
+            const side = Math.sign(p);
+            const hasFriendlyPawn = side === 1 ? wPawnFiles[f] > 0 : bPawnFiles[f] > 0;
+            const hasEnemyPawn = side === 1 ? bPawnFiles[f] > 0 : wPawnFiles[f] > 0;
             if (!hasFriendlyPawn && !hasEnemyPawn) {
-                mgScore += 20 * Math.sign(p); egScore += 20 * Math.sign(p);
+                mgScore += 20 * side; egScore += 20 * side;
             } else if (!hasFriendlyPawn) {
-                mgScore += 10 * Math.sign(p); egScore += 10 * Math.sign(p);
+                mgScore += 10 * side; egScore += 10 * side;
             }
         }
 
@@ -596,6 +781,17 @@ class LocalEngine {
                 }
                 mgScore += (shield * 15) * side;
             }
+        }
+
+        // King attack bonus (aggressive play reward)
+        // Scale quadratically with number of attackers
+        if (wKingAttackers >= 2) {
+            const bonus = Math.min(wKingAttackWeight * wKingAttackers / 4, 300);
+            mgScore += bonus;
+        }
+        if (bKingAttackers >= 2) {
+            const bonus = Math.min(bKingAttackWeight * bKingAttackers / 4, 300);
+            mgScore -= bonus;
         }
 
         // Tapered eval
@@ -644,14 +840,10 @@ class LocalEngine {
         }
     }
 
-    // --- Transposition Table ---
+    // --- Transposition Table (Zobrist-based) ---
     ttKey() {
-        // Simple FEN-based key (board + side + castling + ep)
-        // For a proper engine use Zobrist hashing, but this is fast enough for depth 8
-        let key = '';
-        for (let i = 0; i < 64; i++) key += this.board[i] + ',';
-        key += this.side + ',' + this.castling + ',' + this.epSquare;
-        return key;
+        // Combine hi/lo into a single string key (fast & collision-resistant)
+        return this.hash[0] + '|' + this.hash[1];
     }
 
     ttProbe(depth, alpha, beta) {
@@ -732,7 +924,7 @@ class LocalEngine {
 
         // Check extension with budget to prevent explosion
         const inChk = this.inCheck(this.side);
-        if (inChk && ply < 20 && this.extensions < 6) {
+        if (inChk && ply < 20 && this.extensions < 8) {
             depth++;
             this.extensions++;
         }
@@ -754,18 +946,24 @@ class LocalEngine {
         }
 
         // Null-move pruning: if we can pass and still beat beta, prune
-        // Don't use when in check, at low depth, or in endgame (material < rook+bishop)
         if (!inChk && depth >= 3 && ply > 0) {
-            // Make null move (pass)
             this.stateStack.push({
                 castling: this.castling, epSquare: this.epSquare,
                 halfmove: this.halfmove, fullmove: this.fullmove,
-                wKingSq: this.wKingSq, bKingSq: this.bKingSq
+                wKingSq: this.wKingSq, bKingSq: this.bKingSq,
+                hash: [this.hash[0], this.hash[1]]
             });
+            // Hash updates for null move
+            if (this.epSquare >= 0) {
+                const ef = sqFile(this.epSquare) * 2;
+                zobXor(this.hash, [ZOBRIST.epKeys[ef], ZOBRIST.epKeys[ef + 1]]);
+            }
             this.epSquare = -1;
             this.side = -this.side;
+            zobXor(this.hash, ZOBRIST.sideKey);
 
-            const nullScore = -this.negamax(depth - 3, -beta, -beta + 1, ply + 1, []);
+            const R = depth >= 6 ? 3 : 2; // Adaptive null-move reduction
+            const nullScore = -this.negamax(depth - 1 - R, -beta, -beta + 1, ply + 1, []);
 
             // Unmake null move
             this.side = -this.side;
@@ -776,23 +974,50 @@ class LocalEngine {
             this.fullmove = st.fullmove;
             this.wKingSq = st.wKingSq;
             this.bKingSq = st.bKingSq;
+            this.hash = st.hash;
 
             if (this.stopped) return 0;
-            if (nullScore >= beta) return beta; // Null-move cutoff
+            if (nullScore >= beta) return beta;
         }
 
         const scores = this.scoreMoves(moves, ply, ttMove);
         const childPv = [];
         let bestMoveInNode = null;
         let origAlpha = alpha;
+        let movesSearched = 0;
 
         for (let i = 0; i < moves.length; i++) {
             this.pickMove(moves, scores, i);
             const mv = moves[i];
             this.makeMove(mv);
             childPv.length = 0;
-            const score = -this.negamax(depth - 1, -beta, -alpha, ply + 1, childPv);
+
+            let score;
+            // Late Move Reductions (LMR) + Principal Variation Search (PVS)
+            if (movesSearched === 0) {
+                // First move: full window search
+                score = -this.negamax(depth - 1, -beta, -alpha, ply + 1, childPv);
+            } else {
+                // LMR: reduce depth for late, non-tactical moves
+                let reduction = 0;
+                if (movesSearched >= 3 && depth >= 3 && !inChk
+                    && mv.captured === EMPTY && !(mv.flags & FLAG_PROMO)) {
+                    reduction = 1;
+                    if (movesSearched >= 6) reduction = 2;
+                }
+
+                // PVS: narrow window first
+                score = -this.negamax(depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, childPv);
+
+                // Re-search with full window if it beat alpha
+                if (score > alpha && (reduction > 0 || score < beta)) {
+                    childPv.length = 0;
+                    score = -this.negamax(depth - 1, -beta, -alpha, ply + 1, childPv);
+                }
+            }
+
             this.unmakeMove(mv);
+            movesSearched++;
 
             if (this.stopped) return 0;
 
@@ -875,9 +1100,9 @@ class LocalEngine {
     analyze(fen, depth) {
         this.loadFen(fen);
 
-        // Time limit scales with depth — aggressive for speed
-        const timeMs = Math.min(depth * 150, 500);
-        const searchDepth = Math.min(depth, 6); // ⚡ Cap at depth 6 (was 8)
+        // Time limit scales with depth — with LMR/PVS we can afford deeper search
+        const timeMs = Math.min(depth * 200, 800);
+        const searchDepth = Math.min(depth, 8); // ⚡ Raised from 6 to 8 (LMR makes this feasible)
 
         const result = this.searchRoot(searchDepth, timeMs);
 
@@ -1074,12 +1299,19 @@ function parseBestLine(data) {
 // ---------------------------------------------------
 // Premove Safety Logic (legacy — kept for shouldPremove)
 // ---------------------------------------------------
+const _epCheckEngine = new LocalEngine();
 function isEnPassantCapture(fen, from, to, ourColor) {
     const parts = fen.split(' ');
     const ep = parts[3];
-    const fromPiece = pieceFromFenChar(fenCharAtSquare(fen, from));
-    if (!fromPiece || fromPiece.color !== ourColor || fromPiece.type !== 'p') return false;
-    return ep && ep !== '-' && to === ep && from[0] !== to[0];
+    if (!ep || ep === '-' || to !== ep || from[0] === to[0]) return false;
+    _epCheckEngine.loadFen(fen);
+    const fromSq = nameToSq(from);
+    const piece = _epCheckEngine.board[fromSq];
+    if (piece === EMPTY) return false;
+    const abs = Math.abs(piece);
+    const side = Math.sign(piece);
+    const color = side === 1 ? 'w' : 'b';
+    return abs === 1 && color === ourColor;
 }
 
 // ---------------------------------------------------
@@ -1379,21 +1611,32 @@ function evaluatePremove(fen, opponentUci, ourUci, ourColor, evalDisplay) {
     return { execute, chance, reasons, blocked: null };
 }
 
+const _premoveCheckEngine = new LocalEngine();
 function shouldPremove(uci, fen) {
     if (!uci || uci.length < 4) return false;
     const game = getGame();
     const ourColor = getPlayerColor(game);
     const from = uci.substring(0, 2);
     const to = uci.substring(2, 4);
-    const fromPiece = pieceFromFenChar(fenCharAtSquare(fen, from));
-    const toPiece = pieceFromFenChar(fenCharAtSquare(fen, to));
-
-    if (!fromPiece || fromPiece.color !== ourColor) return false;
+    _premoveCheckEngine.loadFen(fen);
+    const fromSq = nameToSq(from);
+    const toSq = nameToSq(to);
+    const fromPc = _premoveCheckEngine.board[fromSq];
+    const toPc = _premoveCheckEngine.board[toSq];
+    if (fromPc === EMPTY) return false;
+    const fromSide = Math.sign(fromPc);
+    const fromColor = fromSide === 1 ? 'w' : 'b';
+    if (fromColor !== ourColor) return false;
     if (BotState.premoveMode === 'every') return true;
     if (BotState.premoveMode === 'capture') {
-        return !!(toPiece && toPiece.color !== ourColor) || isEnPassantCapture(fen, from, to, ourColor);
+        const isCapture = toPc !== EMPTY && Math.sign(toPc) !== fromSide;
+        return isCapture || isEnPassantCapture(fen, from, to, ourColor);
     }
-    if (BotState.premoveMode === 'filter') return !!BotState.premovePieces[fromPiece.type];
+    if (BotState.premoveMode === 'filter') {
+        const pieceTypeMap = { 1: 'p', 2: 'n', 3: 'b', 4: 'r', 5: 'q', 6: 'k' };
+        const type = pieceTypeMap[Math.abs(fromPc)];
+        return !!BotState.premovePieces[type];
+    }
     return false;
 }
 

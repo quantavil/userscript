@@ -277,10 +277,26 @@ class LocalEngine {
         let mgScore = 0, egScore = 0, phase = 0;
         let wBishops = 0, bBishops = 0;
         const phaseVal = { 2: 1, 3: 1, 4: 2, 5: 4 };
+
+        // Per-file pawn tracking for structure evaluation
+        const wPawnFiles = new Uint8Array(8);
+        const bPawnFiles = new Uint8Array(8);
+        const wPawnRanks = new Int8Array(8).fill(-1);
+        const bPawnRanks = new Int8Array(8).fill(8);
+
+        // King attack zone tracking
+        let wKingAttackers = 0, bKingAttackers = 0;
+        let wKingAttackWeight = 0, bKingAttackWeight = 0;
+        const wKingSq = this.findKingSq(1), bKingSq = this.findKingSq(-1);
+        const wkf = wKingSq >= 0 ? sqFile(wKingSq) : 4, wkr = wKingSq >= 0 ? sqRank(wKingSq) : 0;
+        const bkf = bKingSq >= 0 ? sqFile(bKingSq) : 4, bkr = bKingSq >= 0 ? sqRank(bKingSq) : 7;
+        const ATTACK_WEIGHTS = { 2: 20, 3: 20, 4: 40, 5: 80 };
+
         for (let sq = 0; sq < 64; sq++) {
             const p = this.board[sq]; if (p === EMPTY) continue;
             const abs = Math.abs(p); const side = Math.sign(p);
             const val = PIECE_VAL[abs]; const pstSq = side === 1 ? sq : mirrorSq(sq);
+            const file = sqFile(sq), rank = sqRank(sq);
             let pstVal = 0; if (abs <= 5 && PST[abs]) pstVal = PST[abs][pstSq];
             let mgKing = 0, egKing = 0;
             if (abs === 6) { mgKing = PST_KING_MG[pstSq]; egKing = PST_KING_EG[pstSq]; }
@@ -289,26 +305,86 @@ class LocalEngine {
             const material = val * side;
             mgScore += material + (abs === 6 ? mgKing * side : pstVal * side);
             egScore += material + (abs === 6 ? egKing * side : pstVal * side);
+
+            // Track pawns
+            if (abs === 1) {
+                if (side === 1) { wPawnFiles[file]++; if (rank > wPawnRanks[file]) wPawnRanks[file] = rank; }
+                else { bPawnFiles[file]++; if (rank < bPawnRanks[file]) bPawnRanks[file] = rank; }
+            }
+
+            // Mobility
+            if (abs === 2) {
+                let mob = 0;
+                for (const off of [-17, -15, -10, -6, 6, 10, 15, 17]) {
+                    const t = sq + off;
+                    if (t < 0 || t > 63 || Math.abs(sqFile(t) - file) > 2) continue;
+                    const tp = this.board[t];
+                    if (tp === EMPTY || Math.sign(tp) !== side) mob++;
+                }
+                mgScore += (mob - 4) * 4 * side; egScore += (mob - 4) * 4 * side;
+            }
+            if (abs === 3) {
+                let mob = 0;
+                for (const dir of [9, 7, -9, -7]) {
+                    let t = sq + dir;
+                    while (t >= 0 && t <= 63) {
+                        if (Math.abs(sqFile(t) - sqFile(t - dir)) !== 1) break;
+                        const tp = this.board[t];
+                        if (tp !== EMPTY && Math.sign(tp) === side) break;
+                        mob++;
+                        if (tp !== EMPTY) break;
+                        t += dir;
+                    }
+                }
+                mgScore += (mob - 5) * 5 * side; egScore += (mob - 5) * 5 * side;
+            }
+
+            // King attack: pieces near enemy king
+            if (abs >= 2 && abs <= 5) {
+                if (side === 1) {
+                    const df = Math.abs(file - bkf), dr = Math.abs(rank - bkr);
+                    if (df <= 2 && dr <= 2) { wKingAttackers++; wKingAttackWeight += ATTACK_WEIGHTS[abs] || 0; }
+                } else {
+                    const df = Math.abs(file - wkf), dr = Math.abs(rank - wkr);
+                    if (df <= 2 && dr <= 2) { bKingAttackers++; bKingAttackWeight += ATTACK_WEIGHTS[abs] || 0; }
+                }
+            }
         }
+
         if (wBishops >= 2) { mgScore += 30; egScore += 50; }
         if (bBishops >= 2) { mgScore -= 30; egScore -= 50; }
+
+        // Pawn structure
         for (let f = 0; f < 8; f++) {
-            let wPawnsOnFile = 0, bPawnsOnFile = 0;
-            for (let r = 0; r < 8; r++) { const p = this.board[r * 8 + f]; if (p === WP) wPawnsOnFile++; if (p === BP) bPawnsOnFile++; }
-            if (wPawnsOnFile > 1) { mgScore -= 10 * (wPawnsOnFile - 1); egScore -= 20 * (wPawnsOnFile - 1); }
-            if (bPawnsOnFile > 1) { mgScore += 10 * (bPawnsOnFile - 1); egScore += 20 * (bPawnsOnFile - 1); }
+            if (wPawnFiles[f] > 1) { mgScore -= 10 * (wPawnFiles[f] - 1); egScore -= 20 * (wPawnFiles[f] - 1); }
+            if (bPawnFiles[f] > 1) { mgScore += 10 * (bPawnFiles[f] - 1); egScore += 20 * (bPawnFiles[f] - 1); }
+            // Isolated pawn penalty
+            if (wPawnFiles[f] > 0) { if (!(f > 0 && wPawnFiles[f - 1] > 0) && !(f < 7 && wPawnFiles[f + 1] > 0)) { mgScore -= 15; egScore -= 20; } }
+            if (bPawnFiles[f] > 0) { if (!(f > 0 && bPawnFiles[f - 1] > 0) && !(f < 7 && bPawnFiles[f + 1] > 0)) { mgScore += 15; egScore += 20; } }
+            // Passed pawn bonus
+            if (wPawnRanks[f] >= 0) {
+                let passed = true;
+                for (let ff = Math.max(0, f - 1); ff <= Math.min(7, f + 1); ff++) { if (bPawnRanks[ff] <= wPawnRanks[f]) { passed = false; break; } }
+                if (passed) { const bonus = [0, 5, 10, 20, 40, 70, 120][wPawnRanks[f]] || 0; mgScore += bonus / 2; egScore += bonus; }
+            }
+            if (bPawnRanks[f] < 8) {
+                let passed = true;
+                for (let ff = Math.max(0, f - 1); ff <= Math.min(7, f + 1); ff++) { if (wPawnRanks[ff] >= bPawnRanks[f]) { passed = false; break; } }
+                if (passed) { const bonus = [0, 5, 10, 20, 40, 70, 120][7 - bPawnRanks[f]] || 0; mgScore -= bonus / 2; egScore -= bonus; }
+            }
         }
+
+        // Rook on open/semi-open file
         for (let sq = 0; sq < 64; sq++) {
             const p = this.board[sq]; if (Math.abs(p) !== 4) continue;
-            const f = sqFile(sq); let hasFriendlyPawn = false, hasEnemyPawn = false;
-            for (let r = 0; r < 8; r++) {
-                const pp = this.board[r * 8 + f];
-                if (pp === Math.sign(p) * WP) hasFriendlyPawn = true;
-                if (pp === -Math.sign(p) * WP) hasEnemyPawn = true;
-            }
-            if (!hasFriendlyPawn && !hasEnemyPawn) { mgScore += 20 * Math.sign(p); egScore += 20 * Math.sign(p); }
-            else if (!hasFriendlyPawn) { mgScore += 10 * Math.sign(p); egScore += 10 * Math.sign(p); }
+            const f = sqFile(sq); const side = Math.sign(p);
+            const hasFriendlyPawn = side === 1 ? wPawnFiles[f] > 0 : bPawnFiles[f] > 0;
+            const hasEnemyPawn = side === 1 ? bPawnFiles[f] > 0 : wPawnFiles[f] > 0;
+            if (!hasFriendlyPawn && !hasEnemyPawn) { mgScore += 20 * side; egScore += 20 * side; }
+            else if (!hasFriendlyPawn) { mgScore += 10 * side; egScore += 10 * side; }
         }
+
+        // King safety: pawn shield
         for (const side of [1, -1]) {
             const ksq = this.findKingSq(side); if (ksq < 0) continue;
             const kf = sqFile(ksq); const kr = sqRank(ksq); const shieldRank = kr + side;
@@ -318,6 +394,11 @@ class LocalEngine {
                 mgScore += (shield * 15) * side;
             }
         }
+
+        // King attack bonus
+        if (wKingAttackers >= 2) { mgScore += Math.min(wKingAttackWeight * wKingAttackers / 4, 300); }
+        if (bKingAttackers >= 2) { mgScore -= Math.min(bKingAttackWeight * bKingAttackers / 4, 300); }
+
         const maxPhase = 24; const p = Math.min(phase, maxPhase);
         return Math.round((mgScore * p + egScore * (maxPhase - p)) / maxPhase) * this.side;
     }

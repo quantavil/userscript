@@ -1,27 +1,37 @@
-# Chess Bot
+# ♟️ Super Chess Bot for chess.com
 
-A Tampermonkey userscript that provides a hyper-bullet level chess bot for Chess.com.
+A  high-performance Tampermonkey userscript designed for **Chess.com**. It provides tournament-level analysis and execution, optimized for hyper-bullet and blitz games.
 
-## Features
+## 🚀 Key Features
 
-- Tournament level AI powered by Stockfish
-- Opening book with aggressive gambits
-- Auto move with configurable timing
-- Premove system with safety checks
-- Hover to switch scroll containers
-- Evaluation bar and visual feedback
-- Auto rematch capability
+### 🧠 Dual-Engine Intelligence
+- **Hybrid Analysis:** Seamlessly switches between a high-speed cloud-based Stockfish API and a built-in **Local Chess Engine**.
+- **Local Fallback:** Never lose a move—if the API is slow or throttled, the local engine kicks in instantly to ensure continuity.
+- **PV (Principal Variation):** Displays recommended move sequences to help you understand the strategic line.
 
-## Usage
+### ⚡ Professional-Grade Automation
+- **Hyper-Bullet AutoMove:** Configurable move speeds with ultra-low latency. Make moves near-instantly with fine-grained control.
+- **Smart Jitter:** Add natural human-like variation to move timings to mimic realistic play.
+- **Auto-Promotion:** Intelligent queen promotion logic handles endgame transitions smoothly.
 
-Install via Tampermonkey from the `dist/bundle.user.js` file. Enable on Chess.com games or play computer modes.
+### 🛡️ Advanced Premove System
+- **Context-Aware Premoves:** Smarter than standard premoves—select filters for specific pieces or capture-only modes.
+- **Safety Checks:** Automatically prioritizes king safety and avoids hanging pieces during rapid play.
 
-## Settings
+### 📊 Tactical UI & Oversight
+- **Live Evaluation Bar:** Real-time visual representation of the board state (CP/Mate).
+- **Dynamic Highlights:** Visualizes best moves and engine lines directly on the board.
+- **Tournament Mode:** Optimized for fast-paced tournament environments with auto-rematch and instant board initialization.
 
-- Bot depth and speed controls
-- Auto move toggle and timing
-- Premove modes (every move, captures only, piece filters)
-- Opening book toggle
-- Auto rematch after games
+### 🛠️ Customization & Persistence
+- **Draggable Control Panel:** A sleek, glassmorphism-inspired UI that stays out of your way.
+- **Persistent Settings:** Your configurations for bot power, speed, and filters are saved automatically.
 
-Supports various Chess.com game types including online and computer play.
+## 📥 Installation
+
+1. Install the [Tampermonkey](https://www.tampermonkey.net/) extension.
+2. Load the `dist/bundle.user.js` file into Tampermonkey.
+3. Open any game on **Chess.com** and look for the GabiBot panel.
+
+---
+*Disclaimer: Use responsibly. This tool is for educational and analysis purposes.*
