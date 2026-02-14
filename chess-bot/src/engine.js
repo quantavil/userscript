@@ -189,6 +189,7 @@ export class LocalEngine {
         this.hash = [0, 0]; // Zobrist hash [hi, lo]
         this.positionHistory = []; // For 3-fold repetition detection
         this.contempt = 0; // Dirty play: positive=avoid draws, negative=seek draws
+        this.rootSide = 1; // Set properly in searchRoot
 
         // Incremental evaluation state
         this.mgPstMat = 0;
@@ -1075,7 +1076,8 @@ export class LocalEngine {
         }
 
         // Draw by 50-move rule
-        if (this.halfmove >= 100) return -this.contempt;
+        const drawContempt = this.side === this.rootSide ? -this.contempt : this.contempt;
+        if (this.halfmove >= 100) return drawContempt;
 
         // Draw by 3-fold repetition
         const posKey = this.ttKey();
@@ -1083,7 +1085,7 @@ export class LocalEngine {
         for (let i = this.positionHistory.length - 1; i >= 0; i--) {
             if (this.positionHistory[i] === posKey) {
                 reps++;
-                if (reps >= 2) return -this.contempt; // 3rd occurrence = draw
+                if (reps >= 2) return drawContempt; // 3rd occurrence = draw
             }
         }
 
@@ -1213,11 +1215,7 @@ export class LocalEngine {
         this.stopped = false;
         this.killers = [];
         this.history.fill(0);
-        this.killers = [];
-        this.history.fill(0);
-        // this.tt.fill(undefined); // Optional: Clearing TT between searches is safer but standard engines don't always do it. 
-        // For now, let's NOT clear it to improve strength across moves, 
-        // BUT we must handle age if we keep it. Since we don't have age, let's clear it to be safe and deterministic.
+        this.rootSide = this.side; // track who the root player is for contempt
         for (let i = 0; i < this.tt.length; i++) this.tt[i] = undefined;
 
         let bestMove = null;
@@ -1235,15 +1233,12 @@ export class LocalEngine {
                 }
             }
 
-            // Dirty play: set contempt dynamically based on score
-            // When winning: positive contempt = avoid draws
-            // When losing: negative contempt = seek draws
+            // Contempt from ROOT player's perspective (bestScore is already root-relative)
             if (d > 1 && completedDepth > 0) {
-                const whiteScore = bestScore * this.side;
-                if (whiteScore > 100) this.contempt = 25;
-                else if (whiteScore > 50) this.contempt = 15;
-                else if (whiteScore < -100) this.contempt = -25;
-                else if (whiteScore < -50) this.contempt = -15;
+                if (bestScore > 100) this.contempt = 25;
+                else if (bestScore > 50) this.contempt = 15;
+                else if (bestScore < -100) this.contempt = -25;
+                else if (bestScore < -50) this.contempt = -15;
                 else this.contempt = 0;
             }
 
@@ -1546,31 +1541,38 @@ export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
         const capturedVal = capturedAbs > 0 ? (PIECE_VAL[capturedAbs] || 0) : 0;
         const movedVal = PIECE_VAL[movingAbs] || 0;
 
-        // 3a: Hanging piece detection
+        // 3a: Hanging piece detection (single makeMove pass, correct defender check)
         if (movingAbs !== 6) {
             premoveEngine.makeMove(ourMove);
+            // premoveEngine.side is now oppSide — correct for checking enemy attacks
             const isDestAttacked = premoveEngine.isAttacked(ourTo, premoveEngine.side);
-            premoveEngine.unmakeMove(ourMove);
 
             if (isDestAttacked && movingAbs >= 2) {
-                premoveEngine.makeMove(ourMove);
                 const oppReplies = premoveEngine.generateLegalMoves();
                 const oppAttacksPost = oppReplies.filter(r => r.to === ourTo);
-                premoveEngine.unmakeMove(ourMove);
 
                 if (oppAttacksPost.length > 0 && capturedVal < movedVal) {
                     const pieceNames = { 5: 'queen', 4: 'rook', 3: 'bishop', 2: 'knight' };
                     const pieceName = pieceNames[movingAbs] || 'piece';
-                    const defenderCount = premoveEngine.isAttacked(ourTo, premoveEngine.side) ? 1 : 0;
+
+                    // Check if OUR pieces defend ourTo in POST-MOVE position
+                    // Temporarily remove our piece so we find other friendly defenders
+                    const savedPiece = premoveEngine.board[ourTo];
+                    premoveEngine.board[ourTo] = EMPTY;
+                    // -premoveEngine.side = ourSide (we want our defenders)
+                    const isDefended = premoveEngine.isAttacked(ourTo, -premoveEngine.side);
+                    premoveEngine.board[ourTo] = savedPiece;
+
                     const lowestAttackerVal = Math.min(...oppAttacksPost.map(r => PIECE_VAL[Math.abs(r.piece)] || 100));
 
-                    if (defenderCount === 0 || lowestAttackerVal < movedVal) {
-                        // Any piece hanging with no defense or unfavorable exchange → block
+                    if (!isDefended || lowestAttackerVal < movedVal) {
+                        premoveEngine.unmakeMove(ourMove);
                         premoveEngine.unmakeMove(oppMove);
                         return { execute: false, reasons: [], blocked: `Hangs ${pieceName}` };
                     }
                 }
             }
+            premoveEngine.unmakeMove(ourMove);
         }
 
         // 3b: Back-rank mate vulnerability
@@ -1635,8 +1637,13 @@ export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
         }
 
         // --- Step 5: Multi-response stability check ---
-        // Test our premove against opponent's top 3 likely moves
         premoveEngine.unmakeMove(oppMove);
+
+        // Reset timer so quiesce actually works (prior steps consumed the original budget)
+        premoveEngine.startTime = performance.now();
+        premoveEngine.timeLimit = 200;
+        premoveEngine.stopped = false;
+        premoveEngine.nodes = 0;
 
         const oppScoredMoves = [];
         for (const oMove of oppMoves) {
@@ -1647,51 +1654,47 @@ export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
         }
         oppScoredMoves.sort((a, b) => b.score - a.score);
 
+        // Check top 6 opponent responses (was 3 — too few to catch refutations)
         const topOppMoves = oppScoredMoves
             .filter(m => !(m.move.from === oppFrom && m.move.to === oppTo))
-            .slice(0, 3);
-
-        let illegalCount = 0;
-        let badScoreCount = 0;
+            .slice(0, 6);
 
         for (const { move: altOppMove } of topOppMoves) {
             premoveEngine.makeMove(altOppMove);
             const altLegal = premoveEngine.generateLegalMoves();
             const altOurMove = altLegal.find(m => m.from === ourFrom && m.to === ourTo);
 
+            // If move is illegal in alternate response (e.g. piece captured or blocked),
+            // it's a conditional premove. We just skip this variation (move won't happen).
             if (!altOurMove) {
-                illegalCount++;
-            } else {
-                premoveEngine.makeMove(altOurMove);
-                const postScore = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
-                premoveEngine.unmakeMove(altOurMove);
-
-                let bestAlt = -Infinity;
-                for (const alt of altLegal) {
-                    if (alt.from === ourFrom && alt.to === ourTo) continue;
-                    premoveEngine.makeMove(alt);
-                    const altS = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
-                    premoveEngine.unmakeMove(alt);
-                    if (altS > bestAlt) bestAlt = altS;
-                }
-
-                if (bestAlt > -Infinity && (bestAlt - postScore) >= 200) {
-                    badScoreCount++;
-                }
+                premoveEngine.unmakeMove(altOppMove);
+                continue;
             }
+
+            // Fresh node counter to avoid mid-variation timeout
+            premoveEngine.stopped = false;
+            premoveEngine.nodes = 0;
+
+            premoveEngine.makeMove(altOurMove);
+            const postScore = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
+            premoveEngine.unmakeMove(altOurMove);
+
+            let bestAlt = -Infinity;
+            for (const alt of altLegal) {
+                if (alt.from === ourFrom && alt.to === ourTo) continue;
+                premoveEngine.makeMove(alt);
+                const altS = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
+                premoveEngine.unmakeMove(alt);
+                if (altS > bestAlt) bestAlt = altS;
+            }
+
             premoveEngine.unmakeMove(altOppMove);
-        }
 
-        // Stability hard blocks — if move is unstable across opponent responses, don't premove
-        if (topOppMoves.length >= 2 && illegalCount >= 2) {
-            return { execute: false, reasons: ['unstable (illegal)'], blocked: 'Move illegal in most opponent responses' };
+            // 150cp threshold (was 200 — catches real blunders without over-blocking in bullet)
+            if (bestAlt > -Infinity && (bestAlt - postScore) >= 150) {
+                return { execute: false, reasons: ['unstable'], blocked: 'Move suboptimal in alternate opponent response' };
+            }
         }
-        if (topOppMoves.length >= 2 && badScoreCount >= 2) {
-            return { execute: false, reasons: ['unstable (bad)'], blocked: 'Move is bad in most opponent responses' };
-        }
-
-        if (illegalCount >= 1) reasons.push('sometimes illegal');
-        if (badScoreCount >= 1) reasons.push('risky alt');
 
     } catch (e) {
         console.warn('GabiBot: evaluatePremove error:', e);

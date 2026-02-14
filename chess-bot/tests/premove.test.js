@@ -144,4 +144,45 @@ describe('evaluatePremove', () => {
         expect(result.execute).toBe(true);
     });
 
+    it('should allow conditional premove (illegal in alternate response)', () => {
+        // Position where our premove is legal in predicted line, but impossible in alternate line.
+        // FEN: R3K3/8/8/8/8/8/8/4k2r w - - 0 1
+        // White to move. White R a8, K e8. Black R h1, K e1.
+        // Predicted: Ra8-a7 (safe move).
+        // Our premove (Black): Rh1-h2.
+        // Alternate opponent move: Ra8xh8 (captures our rook).
+        // If White captures our rook, Rh1-h2 is illegal (piece gone).
+        // We should NOT block the premove just because it might become impossible.
+
+        const fen = "R3K3/8/8/8/8/8/8/4k2r w - - 0 1";
+        const opponentUci = "a8a7";
+        const ourUci = "h1h2";
+        const ourColor = "b";
+
+        const result = evaluatePremove(fen, opponentUci, ourUci, ourColor);
+        console.log('Conditional result:', result);
+        expect(result.execute).toBe(true);
+    });
+
+    it('should allow forced recapture premove', () => {
+        // Position where recapturing is the only sensible move regardless of
+        // which opponent move was played — high stability.
+        //
+        // FEN: 8/8/8/3r4/3R4/4K3/8/7k b - - 0 1
+        // White King e3 can recapture on d4.
+        // Predicted: ...Rxd4
+        // Our premove: Kxd4
+
+        const fen = "8/8/8/3r4/3R4/4K3/8/7k b - - 0 1";
+        const opponentUci = "d5d4"; // ...Rxd4
+        const ourUci = "e3d4";      // Kxd4
+        const ourColor = "w";
+
+        const result = evaluatePremove(fen, opponentUci, ourUci, ourColor);
+        console.log('Recapture result:', result);
+        // After ...Rxd4, Kxd4 recaptures. Stable across alternatives:
+        // If black plays ...Rd8 instead, Kd4 is still fine (king advances, rook still ours)
+        // If black plays ...Kg1, Kd4 is fine
+        expect(result.execute).toBe(true);
+    });
 });
