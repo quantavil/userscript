@@ -1,11 +1,10 @@
-import { API_URL, MULTIPV, ANALYZE_TIMEOUT_MS, PIECE_VALUES } from './config.js';
+import { API_URL, MULTIPV, ANALYZE_TIMEOUT_MS } from './config.js';
 import { BotState, PositionCache, getGame, getPlayerColor, getSideToMove, pa, invalidateGameCache } from './state.js';
 import { scoreFrom, scoreToDisplay, scoreNumeric, getRandomDepth, sleep } from './utils.js';
 import { drawArrow, clearArrows, executeMove, simulateClickMove } from './board.js';
 
 let currentAnalysisId = 0;
 let currentAbortController = null;
-let analysisRunning = false;
 
 let lastFenProcessedMain = '';
 let lastFenProcessedPremove = '';
@@ -58,89 +57,141 @@ const TT_SIZE = 65536; // Max entries
 // Indexed [rank][file] visually but stored flat as [sq] where sq = rank*8+file
 // So index 0 = a1, index 7 = h1, index 56 = a8, index 63 = h8
 
-const PST_PAWN = [
-    0, 0, 0, 0, 0, 0, 0, 0,   // rank 1
-    5, 10, 10, -20, -20, 10, 10, 5,   // rank 2
-    5, -5, -10, 0, 0, -10, -5, 5,   // rank 3
-    0, 0, 0, 20, 20, 0, 0, 0,   // rank 4
-    5, 5, 10, 25, 25, 10, 5, 5,   // rank 5
-    10, 10, 20, 30, 30, 20, 10, 10,   // rank 6
-    50, 50, 50, 50, 50, 50, 50, 50,   // rank 7
-    0, 0, 0, 0, 0, 0, 0, 0    // rank 8 (never has pawns)
-];
-
-const PST_KNIGHT = [
-    -50, -40, -30, -30, -30, -30, -40, -50,
-    -40, -20, 0, 5, 5, 0, -20, -40,
-    -30, 5, 10, 15, 15, 10, 5, -30,
-    -30, 0, 15, 20, 20, 15, 0, -30,
-    -30, 5, 15, 20, 20, 15, 5, -30,
-    -30, 0, 10, 15, 15, 10, 0, -30,
-    -40, -20, 0, 0, 0, 0, -20, -40,
-    -50, -40, -30, -30, -30, -30, -40, -50
-];
-
-const PST_BISHOP = [
-    -20, -10, -10, -10, -10, -10, -10, -20,
-    -10, 5, 0, 0, 0, 0, 5, -10,
-    -10, 10, 10, 10, 10, 10, 10, -10,
-    -10, 0, 10, 10, 10, 10, 0, -10,
-    -10, 5, 5, 10, 10, 5, 5, -10,
-    -10, 0, 5, 10, 10, 5, 0, -10,
-    -10, 0, 0, 0, 0, 0, 0, -10,
-    -20, -10, -10, -10, -10, -10, -10, -20
-];
-
-const PST_ROOK = [
-    0, 0, 0, 5, 5, 0, 0, 0,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    -5, 0, 0, 0, 0, 0, 0, -5,
-    5, 10, 10, 10, 10, 10, 10, 5,
+// --- PeSTO Piece-Square Tables (a1=index 0, h8=index 63, white perspective) ---
+// Middlegame tables
+const PST_PAWN_MG = [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    -35, -1, -20, -23, -15, 24, 38, -22,
+    -26, -4, -4, -10, 3, 3, 33, -12,
+    -27, -2, -5, 12, 17, 6, 10, -25,
+    -14, 13, 6, 21, 23, 12, 17, -23,
+    -6, 7, 26, 31, 65, 56, 25, -20,
+    98, 134, 61, 95, 68, 126, 34, -11,
     0, 0, 0, 0, 0, 0, 0, 0
 ];
-
-const PST_QUEEN = [
-    -20, -10, -10, -5, -5, -10, -10, -20,
-    -10, 0, 5, 0, 0, 0, 0, -10,
-    -10, 5, 5, 5, 5, 5, 0, -10,
-    0, 0, 5, 5, 5, 5, 0, -5,
-    -5, 0, 5, 5, 5, 5, 0, -5,
-    -10, 0, 5, 5, 5, 5, 0, -10,
-    -10, 0, 0, 0, 0, 0, 0, -10,
-    -20, -10, -10, -5, -5, -10, -10, -20
+const PST_KNIGHT_MG = [
+    -105, -21, -58, -33, -17, -28, -19, -23,
+    -29, -53, -12, -3, -1, 18, -14, -19,
+    -23, -9, 12, 10, 19, 17, 25, -16,
+    -13, 4, 16, 13, 28, 19, 21, -8,
+    -9, 17, 19, 53, 37, 69, 18, 22,
+    -47, 60, 37, 65, 84, 129, 73, 44,
+    -73, -41, 72, 36, 23, 62, 7, -17,
+    -167, -89, -34, -49, 61, -97, -15, -107
 ];
-
+const PST_BISHOP_MG = [
+    -33, -3, -14, -21, -13, -12, -39, -21,
+    4, 15, 16, 0, 7, 21, 33, 1,
+    0, 15, 15, 15, 14, 27, 18, 10,
+    -6, 13, 13, 26, 34, 12, 10, 4,
+    -4, 5, 19, 50, 37, 37, 7, -2,
+    -16, 37, 43, 40, 35, 50, 37, -2,
+    -26, 16, -18, -13, 30, 59, 18, -47,
+    -29, 4, -82, -37, -25, -42, 7, -8
+];
+const PST_ROOK_MG = [
+    -19, -13, 1, 17, 16, 7, -37, -26,
+    -44, -16, -20, -9, -1, 11, -6, -71,
+    -45, -25, -16, -17, 3, 0, -5, -33,
+    -36, -26, -12, -1, 9, -7, 6, -23,
+    -24, -11, 7, 26, 24, 35, -8, -20,
+    -5, 19, 26, 36, 17, 45, 61, 16,
+    27, 32, 58, 62, 80, 67, 26, 44,
+    32, 42, 32, 51, 63, 9, 31, 43
+];
+const PST_QUEEN_MG = [
+    -1, -18, -9, 10, -15, -25, -31, -50,
+    -35, -8, 11, 2, 8, 15, -3, 1,
+    -14, 2, -11, -2, -5, 2, 14, 5,
+    -9, -26, -9, -10, -2, -4, 3, -3,
+    -27, -27, -16, -16, -1, 17, -2, 1,
+    -13, -17, 7, 8, 29, 56, 47, 57,
+    -24, -39, -5, 1, -16, 57, 28, 54,
+    -28, 0, 29, 12, 59, 44, 43, 45
+];
 const PST_KING_MG = [
-    20, 30, 10, 0, 0, 10, 30, 20,
-    20, 20, 0, 0, 0, 0, 20, 20,
-    -10, -20, -20, -20, -20, -20, -20, -10,
-    -20, -30, -30, -40, -40, -30, -30, -20,
-    -30, -40, -40, -50, -50, -40, -40, -30,
-    -30, -40, -40, -50, -50, -40, -40, -30,
-    -30, -40, -40, -50, -50, -40, -40, -30,
-    -30, -40, -40, -50, -50, -40, -40, -30
+    -15, 36, 12, -54, 8, -28, 24, 14,
+    1, 7, -8, -64, -43, -16, 9, 8,
+    -14, -14, -22, -46, -44, -30, -15, -27,
+    -49, -1, -27, -39, -46, -44, -33, -51,
+    -17, -20, -12, -27, -30, -25, -14, -36,
+    -9, 24, 2, -16, -20, 6, 22, -22,
+    29, -1, -20, -7, -8, -4, -38, -29,
+    -65, 23, 16, -15, -56, -34, 2, 13
 ];
 
+// Endgame tables
+const PST_PAWN_EG = [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    13, 8, 8, 10, 13, 0, 2, -7,
+    4, 7, -6, 1, 0, -5, -1, -8,
+    13, 9, -3, -7, -7, -8, 3, -1,
+    32, 24, 13, 5, -2, 4, 17, 17,
+    94, 100, 85, 67, 56, 53, 82, 84,
+    178, 173, 158, 134, 147, 132, 165, 187,
+    0, 0, 0, 0, 0, 0, 0, 0
+];
+const PST_KNIGHT_EG = [
+    -29, -51, -23, -15, -22, -18, -50, -64,
+    -42, -20, -10, -5, -2, -20, -23, -44,
+    -23, -3, -1, 15, 10, -3, -20, -22,
+    -18, -6, 16, 25, 16, 17, 4, -18,
+    -17, 3, 22, 22, 22, 11, 8, -18,
+    -24, -20, 10, 9, -1, -9, -19, -41,
+    -25, -8, -25, -2, -9, -25, -24, -52,
+    -58, -38, -13, -28, -31, -27, -63, -99
+];
+const PST_BISHOP_EG = [
+    -23, -9, -23, -5, -9, -16, -5, -17,
+    -14, -18, -7, -1, 4, -9, -15, -27,
+    -12, -3, 8, 10, 13, 3, -7, -15,
+    -6, 3, 13, 19, 7, 10, -3, -9,
+    -3, 9, 12, 9, 14, 10, 3, 2,
+    2, -8, 0, -1, -2, 6, 0, 4,
+    -8, -4, 7, -12, -3, -13, -4, -14,
+    -14, -21, -11, -8, -7, -9, -17, -24
+];
+const PST_ROOK_EG = [
+    -9, 2, 3, -1, -5, -13, 4, -20,
+    -6, -6, 0, 2, -9, -9, -11, -3,
+    -4, 0, -5, -1, -7, -12, -8, -16,
+    3, 5, 8, 4, -5, -6, -8, -11,
+    4, 3, 13, 1, 2, 1, -1, 2,
+    7, 7, 7, 5, 4, -3, -5, -3,
+    11, 13, 13, 11, -3, 3, 8, 3,
+    13, 10, 18, 15, 12, 12, 8, 5
+];
+const PST_QUEEN_EG = [
+    -33, -28, -22, -43, -5, -32, -20, -41,
+    -22, -23, -30, -16, -16, -23, -36, -32,
+    -16, -27, 15, 6, 9, 17, 10, 5,
+    -18, 28, 19, 47, 31, 34, 39, 23,
+    3, 22, 24, 45, 57, 40, 57, 36,
+    -20, 6, 9, 49, 47, 35, 19, 9,
+    -17, 20, 32, 41, 58, 25, 30, 0,
+    -9, 22, 22, 27, 27, 19, 10, 20
+];
 const PST_KING_EG = [
-    -50, -30, -30, -30, -30, -30, -30, -50,
-    -30, -30, 0, 0, 0, 0, -30, -30,
-    -30, -10, 20, 30, 30, 20, -10, -30,
-    -30, -10, 30, 40, 40, 30, -10, -30,
-    -30, -10, 30, 40, 40, 30, -10, -30,
-    -30, -10, 20, 30, 30, 20, -10, -30,
-    -30, -20, -10, 0, 0, -10, -20, -30,
-    -50, -40, -30, -20, -20, -30, -40, -50
+    -53, -34, -21, -11, -28, -14, -24, -43,
+    -27, -11, 4, 13, 14, 4, -5, -17,
+    -19, -3, 11, 21, 23, 16, 7, -9,
+    -18, -4, 21, 24, 27, 23, 9, -11,
+    -8, 22, 24, 27, 26, 33, 26, 3,
+    10, 17, 23, 15, 20, 45, 44, 13,
+    -12, 17, 14, 17, 17, 38, 23, 11,
+    -74, -35, -18, -18, -11, 15, 4, -17
 ];
 
-const PST = {
-    [WP]: PST_PAWN, [WN]: PST_KNIGHT, [WB]: PST_BISHOP,
-    [WR]: PST_ROOK, [WQ]: PST_QUEEN
-};
+// Lookup arrays indexed by abs piece type (0=unused, 1=P, 2=N, 3=B, 4=R, 5=Q, 6=K)
+const PST_MG = [null, PST_PAWN_MG, PST_KNIGHT_MG, PST_BISHOP_MG, PST_ROOK_MG, PST_QUEEN_MG, PST_KING_MG];
+const PST_EG = [null, PST_PAWN_EG, PST_KNIGHT_EG, PST_BISHOP_EG, PST_ROOK_EG, PST_QUEEN_EG, PST_KING_EG];
 
-const PIECE_VAL = { 1: 100, 2: 320, 3: 330, 4: 500, 5: 900, 6: 0 };
+// PeSTO material values (MG/EG) for incremental eval
+const MAT_MG = [0, 82, 337, 365, 477, 1025, 0];
+const MAT_EG = [0, 94, 281, 297, 512, 936, 0];
+
+// Single-value table for move ordering, SEE, and premove safety checks
+const PIECE_VAL = { 1: 82, 2: 337, 3: 365, 4: 477, 5: 1025, 6: 20000 };
 
 function mirrorSq(sq) { return (7 - (sq >> 3)) * 8 + (sq & 7); }
 function sqFile(sq) { return sq & 7; }
@@ -184,9 +235,11 @@ export class LocalEngine {
         this.evalBufs = {
             wPawnFiles: new Uint8Array(8), bPawnFiles: new Uint8Array(8),
             wPawnRanks: new Int8Array(8), bPawnRanks: new Int8Array(8),
+            bPawnMaxRanks: new Int8Array(8), wPawnMinRanks: new Int8Array(8),
             rookSquares: new Int8Array(4), rookSides: new Int8Array(4)
         };
         this.hash = [0, 0]; // Zobrist hash [hi, lo]
+        this.phase = 0;
         this.positionHistory = []; // For 3-fold repetition detection
         this.contempt = 0; // Dirty play: positive=avoid draws, negative=seek draws
         this.rootSide = 1; // Set properly in searchRoot
@@ -233,6 +286,7 @@ export class LocalEngine {
     _initIncrementalScores() {
         this.mgPstMat = 0;
         this.egPstMat = 0;
+        this.phase = 0;
         this.wBishops = 0;
         this.bBishops = 0;
 
@@ -245,24 +299,13 @@ export class LocalEngine {
 
     _addPieceScore(p, sq) {
         const side = p > 0 ? 1 : -1;
-        const abs = Math.abs(p);
-        const val = PIECE_VAL[abs];
+        const abs = p > 0 ? p : -p;
         const pstSq = side === 1 ? sq : mirrorSq(sq);
 
-        // Material
-        this.mgPstMat += val * side;
-        this.egPstMat += val * side;
+        this.mgPstMat += (MAT_MG[abs] + PST_MG[abs][pstSq]) * side;
+        this.egPstMat += (MAT_EG[abs] + PST_EG[abs][pstSq]) * side;
 
-        // PST
-        if (abs <= 5 && PST[abs]) {
-            this.mgPstMat += PST[abs][pstSq] * side;
-            this.egPstMat += PST[abs][pstSq] * side;
-        } else if (abs === 6) {
-            this.mgPstMat += PST_KING_MG[pstSq] * side;
-            this.egPstMat += PST_KING_EG[pstSq] * side;
-        }
-
-        // Bishop count
+        if (abs >= 2 && abs <= 5) this.phase += PHASE_VAL[abs];
         if (abs === 3) {
             if (side === 1) this.wBishops++;
             else this.bBishops++;
@@ -271,21 +314,13 @@ export class LocalEngine {
 
     _removePieceScore(p, sq) {
         const side = p > 0 ? 1 : -1;
-        const abs = Math.abs(p);
-        const val = PIECE_VAL[abs];
+        const abs = p > 0 ? p : -p;
         const pstSq = side === 1 ? sq : mirrorSq(sq);
 
-        this.mgPstMat -= val * side;
-        this.egPstMat -= val * side;
+        this.mgPstMat -= (MAT_MG[abs] + PST_MG[abs][pstSq]) * side;
+        this.egPstMat -= (MAT_EG[abs] + PST_EG[abs][pstSq]) * side;
 
-        if (abs <= 5 && PST[abs]) {
-            this.mgPstMat -= PST[abs][pstSq] * side;
-            this.egPstMat -= PST[abs][pstSq] * side;
-        } else if (abs === 6) {
-            this.mgPstMat -= PST_KING_MG[pstSq] * side;
-            this.egPstMat -= PST_KING_EG[pstSq] * side;
-        }
-
+        if (abs >= 2 && abs <= 5) this.phase -= PHASE_VAL[abs];
         if (abs === 3) {
             if (side === 1) this.wBishops--;
             else this.bBishops--;
@@ -351,8 +386,8 @@ export class LocalEngine {
             halfmove: this.halfmove, fullmove: this.fullmove,
             wKingSq: this.wKingSq, bKingSq: this.bKingSq,
             hash: [this.hash[0], this.hash[1]],
-            // Incremental eval state
             mgPstMat: this.mgPstMat, egPstMat: this.egPstMat,
+            phase: this.phase,
             wBishops: this.wBishops, bBishops: this.bBishops
         });
 
@@ -475,6 +510,7 @@ export class LocalEngine {
 
         this.mgPstMat = st.mgPstMat;
         this.egPstMat = st.egPstMat;
+        this.phase = st.phase;
         this.wBishops = st.wBishops;
         this.bBishops = st.bBishops;
 
@@ -712,18 +748,15 @@ export class LocalEngine {
     // ---- Evaluation ----
     evaluate() {
         let mgScore = this.mgPstMat, egScore = this.egPstMat;
-        let phase = 0;
         const bd = this.board;
 
-        // Reset pre-allocated buffers
-        const { wPawnFiles, bPawnFiles, wPawnRanks, bPawnRanks, rookSquares, rookSides } = this.evalBufs;
+        const { wPawnFiles, bPawnFiles, wPawnRanks, bPawnRanks,
+            bPawnMaxRanks, wPawnMinRanks, rookSquares, rookSides } = this.evalBufs;
         wPawnFiles.fill(0); bPawnFiles.fill(0);
         wPawnRanks.fill(-1); bPawnRanks.fill(8);
+        bPawnMaxRanks.fill(-1); wPawnMinRanks.fill(8);
 
-        // Rook squares collected during scanned loop
         let rookCount = 0;
-
-        // King attack zone tracking
         let wKingAttackers = 0, bKingAttackers = 0;
         let wKingAttackWeight = 0, bKingAttackWeight = 0;
         const wKingSq = this.wKingSq, bKingSq = this.bKingSq;
@@ -736,25 +769,21 @@ export class LocalEngine {
 
             const side = p > 0 ? 1 : -1;
             const abs = p > 0 ? p : -p;
-            // Material and PST are already in mgPstMat / egPstMat
-
-            if (abs >= 2 && abs <= 5) phase += PHASE_VAL[abs];
-
             const file = sq & 7, rank = sq >> 3;
 
-            // Track pawns for structure eval
             if (abs === 1) {
                 if (side === 1) {
                     wPawnFiles[file]++;
                     if (rank > wPawnRanks[file]) wPawnRanks[file] = rank;
+                    if (rank < wPawnMinRanks[file]) wPawnMinRanks[file] = rank;
                 } else {
                     bPawnFiles[file]++;
                     if (rank < bPawnRanks[file]) bPawnRanks[file] = rank;
+                    if (rank > bPawnMaxRanks[file]) bPawnMaxRanks[file] = rank;
                 }
             }
 
-            // Mobility: knights, bishops, rooks, queens
-            if (abs === 2) { // Knight mobility
+            if (abs === 2) {
                 let mob = 0;
                 for (let i = 0; i < 8; i++) {
                     const t = sq + KNIGHT_OFFSETS[i];
@@ -765,7 +794,7 @@ export class LocalEngine {
                 }
                 mgScore += (mob - 4) * 4 * side;
                 egScore += (mob - 4) * 4 * side;
-            } else if (abs === 3) { // Bishop mobility
+            } else if (abs === 3) {
                 let mob = 0;
                 for (let di = 0; di < 4; di++) {
                     const dir = DIAG_DIRS[di];
@@ -782,7 +811,7 @@ export class LocalEngine {
                 }
                 mgScore += (mob - 5) * 5 * side;
                 egScore += (mob - 5) * 5 * side;
-            } else if (abs === 4) { // Rook mobility + collect for open file eval
+            } else if (abs === 4) {
                 if (rookCount < 4) { rookSquares[rookCount] = sq; rookSides[rookCount] = side; rookCount++; }
                 let mob = 0;
                 for (let di = 0; di < 4; di++) {
@@ -801,7 +830,7 @@ export class LocalEngine {
                 }
                 mgScore += (mob - 7) * 3 * side;
                 egScore += (mob - 7) * 4 * side;
-            } else if (abs === 5) { // Queen mobility
+            } else if (abs === 5) {
                 let mob = 0;
                 for (let di = 0; di < 8; di++) {
                     const dir = ALL_DIRS[di];
@@ -820,7 +849,6 @@ export class LocalEngine {
                 egScore += (mob - 14) * 2 * side;
             }
 
-            // King attack: pieces near enemy king
             if (abs >= 2 && abs <= 5) {
                 if (side === 1) {
                     const df = file - bkf; const adf = df > 0 ? df : -df;
@@ -840,15 +868,17 @@ export class LocalEngine {
             }
         }
 
-        // Bishop pair bonus
+        // Bishop pair
         if (this.wBishops >= 2) { mgScore += 30; egScore += 50; }
         if (this.bBishops >= 2) { mgScore -= 30; egScore -= 50; }
 
         // Pawn structure
         for (let f = 0; f < 8; f++) {
+            // Doubled pawns
             if (wPawnFiles[f] > 1) { mgScore -= 10 * (wPawnFiles[f] - 1); egScore -= 20 * (wPawnFiles[f] - 1); }
             if (bPawnFiles[f] > 1) { mgScore += 10 * (bPawnFiles[f] - 1); egScore += 20 * (bPawnFiles[f] - 1); }
 
+            // Isolated pawns
             if (wPawnFiles[f] > 0) {
                 const hasNeighbor = (f > 0 && wPawnFiles[f - 1] > 0) || (f < 7 && wPawnFiles[f + 1] > 0);
                 if (!hasNeighbor) { mgScore -= 15; egScore -= 20; }
@@ -858,12 +888,13 @@ export class LocalEngine {
                 if (!hasNeighbor) { mgScore += 15; egScore += 20; }
             }
 
-            // Passed pawn bonus
+            // --- FIXED passed pawn detection ---
+            // White: passed if no black pawn ahead (higher rank) on adjacent files
             if (wPawnRanks[f] >= 0) {
                 let passed = true;
                 const fmin = f > 0 ? f - 1 : 0, fmax = f < 7 ? f + 1 : 7;
                 for (let ff = fmin; ff <= fmax; ff++) {
-                    if (bPawnRanks[ff] <= wPawnRanks[f]) { passed = false; break; }
+                    if (bPawnMaxRanks[ff] > wPawnRanks[f]) { passed = false; break; }
                 }
                 if (passed) {
                     const advance = wPawnRanks[f];
@@ -872,11 +903,12 @@ export class LocalEngine {
                     egScore += bonus;
                 }
             }
+            // Black: passed if no white pawn ahead (lower rank) on adjacent files
             if (bPawnRanks[f] < 8) {
                 let passed = true;
                 const fmin = f > 0 ? f - 1 : 0, fmax = f < 7 ? f + 1 : 7;
                 for (let ff = fmin; ff <= fmax; ff++) {
-                    if (wPawnRanks[ff] >= bPawnRanks[f]) { passed = false; break; }
+                    if (wPawnMinRanks[ff] < bPawnRanks[f]) { passed = false; break; }
                 }
                 if (passed) {
                     const advance = 7 - bPawnRanks[f];
@@ -887,7 +919,7 @@ export class LocalEngine {
             }
         }
 
-        // Rook on open/semi-open file (using collected rook squares — no second scan)
+        // Rook on open/semi-open file
         for (let i = 0; i < rookCount; i++) {
             const f = rookSquares[i] & 7;
             const side = rookSides[i];
@@ -900,7 +932,7 @@ export class LocalEngine {
             }
         }
 
-        // King safety: pawn shield in middlegame
+        // King safety: pawn shield
         for (let si = 0; si < 2; si++) {
             const side = si === 0 ? 1 : -1;
             const ksq = side === 1 ? wKingSq : bKingSq;
@@ -913,7 +945,7 @@ export class LocalEngine {
                 for (let df = -1; df <= 1; df++) {
                     const sf = kf + df;
                     if (sf < 0 || sf > 7) continue;
-                    if (bd[shieldRank * 8 + sf] === side) shield++; // side*WP = side*1 = side
+                    if (bd[shieldRank * 8 + sf] === side) shield++;
                 }
                 mgScore += (shield * 15) * side;
             }
@@ -929,9 +961,9 @@ export class LocalEngine {
             mgScore -= bonus > 300 ? 300 : bonus;
         }
 
-        // Tapered eval
+        // Tapered eval — phase is tracked incrementally
         const maxPhase = 24;
-        const ph = phase < maxPhase ? phase : maxPhase;
+        const ph = this.phase < maxPhase ? this.phase : maxPhase;
         const score = ((mgScore * ph + egScore * (maxPhase - ph)) / maxPhase + 0.5) | 0;
 
         return score * this.side;
@@ -989,10 +1021,10 @@ export class LocalEngine {
         const index = this.ttIndex();
         const entry = this.tt[index];
 
-        // Match full hash to avoid collision errors
         if (!entry || entry.hashKey[0] !== this.hash[0] || entry.hashKey[1] !== this.hash[1]) return null;
 
-        if (entry.depth < depth) return null;
+        // Always return the stored move for ordering, even at insufficient depth
+        if (entry.depth < depth) return { score: null, move: entry.move };
         if (entry.flag === TT_EXACT) return { score: entry.score, move: entry.move };
         if (entry.flag === TT_ALPHA && entry.score <= alpha) return { score: alpha, move: entry.move };
         if (entry.flag === TT_BETA && entry.score >= beta) return { score: beta, move: entry.move };
@@ -1024,27 +1056,25 @@ export class LocalEngine {
 
         const inChk = this.inCheck(this.side);
 
-        // When in check, skip stand-pat — we MUST resolve the check
+        // Capture standPat BEFORE alpha update for delta pruning
+        let standPatVal = -MATE_SCORE;
         if (!inChk) {
-            const standPat = this.evaluate();
-            if (standPat >= beta) return beta;
-            if (standPat > alpha) alpha = standPat;
+            standPatVal = this.evaluate();
+            if (standPatVal >= beta) return beta;
+            if (standPatVal > alpha) alpha = standPatVal;
         }
 
-        const moves = this.generateLegalMoves(!inChk); // all moves if in check, captures only otherwise
+        const moves = this.generateLegalMoves(!inChk);
 
         if (inChk && moves.length === 0) return -(MATE_SCORE - ply);
-
-        const standPatForDelta = inChk ? -MATE_SCORE : alpha;
 
         const scores = this.scoreMoves(moves, ply, null);
         for (let i = 0; i < moves.length; i++) {
             this.pickMove(moves, scores, i);
             const mv = moves[i];
-            // Delta pruning (only when not in check)
+            // Delta pruning: skip captures that can't possibly raise alpha
             if (!inChk && mv.captured !== EMPTY) {
-                const delta = PIECE_VAL[Math.abs(mv.captured)] + 200;
-                if (standPatForDelta + delta < alpha) continue;
+                if (standPatVal + PIECE_VAL[Math.abs(mv.captured)] + 200 < alpha) continue;
             }
 
             this.makeMove(mv);
@@ -1058,7 +1088,7 @@ export class LocalEngine {
         return alpha;
     }
 
-    negamax(depth, alpha, beta, ply, pvLine) {
+    negamax(depth, alpha, beta, ply, pvLine, ext) {
         this.nodes++;
         if (this.stopped) return 0;
         if (this.nodes % 4096 === 0 && performance.now() - this.startTime > this.timeLimit) {
@@ -1068,11 +1098,11 @@ export class LocalEngine {
 
         if (depth <= 0) return this.quiesce(alpha, beta, ply);
 
-        // Check extension with budget to prevent explosion
+        // Check extension — per-path budget (each branch gets its own counter)
         const inChk = this.inCheck(this.side);
-        if (inChk && ply < 20 && this.extensions < 8) {
+        if (inChk && ext < 16) {
             depth++;
-            this.extensions++;
+            ext++;
         }
 
         // Draw by 50-move rule
@@ -1102,39 +1132,50 @@ export class LocalEngine {
             return inChk ? -(MATE_SCORE - ply) : 0;
         }
 
-        // Null-move pruning: if we can pass and still beat beta, prune
+        // Null-move pruning with zugzwang guard: skip in pure K+P endgames
         if (!inChk && depth >= 3 && ply > 0) {
-            this.stateStack.push({
-                castling: this.castling, epSquare: this.epSquare,
-                halfmove: this.halfmove, fullmove: this.fullmove,
-                wKingSq: this.wKingSq, bKingSq: this.bKingSq,
-                hash: [this.hash[0], this.hash[1]]
-            });
-            // Hash updates for null move
-            if (this.epSquare >= 0) {
-                const ef = sqFile(this.epSquare) * 2;
-                zobXor(this.hash, [ZOBRIST.epKeys[ef], ZOBRIST.epKeys[ef + 1]]);
+            let hasNonPawnMat = false;
+            for (let sq = 0; sq < 64; sq++) {
+                const a = this.board[sq];
+                if (a !== EMPTY && (a > 0 ? 1 : -1) === this.side) {
+                    const at = a > 0 ? a : -a;
+                    if (at >= 2 && at <= 5) { hasNonPawnMat = true; break; }
+                }
             }
-            this.epSquare = -1;
-            this.side = -this.side;
-            zobXor(this.hash, ZOBRIST.sideKey);
+            if (!hasNonPawnMat) { /* skip null-move */ }
+            else {
+                this.stateStack.push({
+                    castling: this.castling, epSquare: this.epSquare,
+                    halfmove: this.halfmove, fullmove: this.fullmove,
+                    wKingSq: this.wKingSq, bKingSq: this.bKingSq,
+                    hash: [this.hash[0], this.hash[1]]
+                });
+                // Hash updates for null move
+                if (this.epSquare >= 0) {
+                    const ef = sqFile(this.epSquare) * 2;
+                    zobXor(this.hash, [ZOBRIST.epKeys[ef], ZOBRIST.epKeys[ef + 1]]);
+                }
+                this.epSquare = -1;
+                this.side = -this.side;
+                zobXor(this.hash, ZOBRIST.sideKey);
 
-            const R = depth >= 6 ? 3 : 2; // Adaptive null-move reduction
-            const nullScore = -this.negamax(depth - 1 - R, -beta, -beta + 1, ply + 1, []);
+                const R = depth >= 6 ? 3 : 2; // Adaptive null-move reduction
+                const nullScore = -this.negamax(depth - 1 - R, -beta, -beta + 1, ply + 1, [], ext);
 
-            // Unmake null move
-            this.side = -this.side;
-            const st = this.stateStack.pop();
-            this.castling = st.castling;
-            this.epSquare = st.epSquare;
-            this.halfmove = st.halfmove;
-            this.fullmove = st.fullmove;
-            this.wKingSq = st.wKingSq;
-            this.bKingSq = st.bKingSq;
-            this.hash = st.hash;
+                // Unmake null move
+                this.side = -this.side;
+                const st = this.stateStack.pop();
+                this.castling = st.castling;
+                this.epSquare = st.epSquare;
+                this.halfmove = st.halfmove;
+                this.fullmove = st.fullmove;
+                this.wKingSq = st.wKingSq;
+                this.bKingSq = st.bKingSq;
+                this.hash = st.hash;
 
-            if (this.stopped) return 0;
-            if (nullScore >= beta) return beta;
+                if (this.stopped) return 0;
+                if (nullScore >= beta) return beta;
+            } // end else (hasNonPawnMat)
         }
 
         const scores = this.scoreMoves(moves, ply, ttMove);
@@ -1153,7 +1194,7 @@ export class LocalEngine {
             // Late Move Reductions (LMR) + Principal Variation Search (PVS)
             if (movesSearched === 0) {
                 // First move: full window search
-                score = -this.negamax(depth - 1, -beta, -alpha, ply + 1, childPv);
+                score = -this.negamax(depth - 1, -beta, -alpha, ply + 1, childPv, ext);
             } else {
                 // LMR: reduce depth for late, non-tactical moves
                 let reduction = 0;
@@ -1164,12 +1205,12 @@ export class LocalEngine {
                 }
 
                 // PVS: narrow window first
-                score = -this.negamax(depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, childPv);
+                score = -this.negamax(depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, childPv, ext);
 
                 // Re-search with full window if it beat alpha
                 if (score > alpha && (reduction > 0 || score < beta)) {
                     childPv.length = 0;
-                    score = -this.negamax(depth - 1, -beta, -alpha, ply + 1, childPv);
+                    score = -this.negamax(depth - 1, -beta, -alpha, ply + 1, childPv, ext);
                 }
             }
 
@@ -1224,8 +1265,6 @@ export class LocalEngine {
         let completedDepth = 0;
 
         for (let d = 1; d <= maxDepth; d++) {
-            this.extensions = 0;
-
             // Age history table
             if (d > 1) {
                 for (let i = 0; i < this.history.length; i++) {
@@ -1243,7 +1282,7 @@ export class LocalEngine {
             }
 
             const pvLine = [];
-            const score = this.negamax(d, -MATE_SCORE - 1, MATE_SCORE + 1, 0, pvLine);
+            const score = this.negamax(d, -MATE_SCORE - 1, MATE_SCORE + 1, 0, pvLine, 0);
 
             if (this.stopped && d > 1) break;
 
@@ -1383,11 +1422,7 @@ async function fetchEngineData(fen, depth, signal) {
     };
 
     // Single API attempt — fail fast to local engine (was triple retry, wasting up to 9s)
-    try { return await call(`multipv=${MULTIPV}&mode=bestmove`); }
-    catch (e) {
-        if (e.name === 'AbortError') throw e;
-        throw e;
-    }
+    return await call(`multipv=${MULTIPV}&mode=bestmove`);
 }
 
 async function fetchAnalysis(fen, depth, signal) {
@@ -1541,30 +1576,35 @@ export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
         const capturedVal = capturedAbs > 0 ? (PIECE_VAL[capturedAbs] || 0) : 0;
         const movedVal = PIECE_VAL[movingAbs] || 0;
 
-        // 3a: Hanging piece detection (single makeMove pass, correct defender check)
+        // 3a: Hanging piece detection (single makeMove pass, explicit side checks)
         if (movingAbs !== 6) {
             premoveEngine.makeMove(ourMove);
-            // premoveEngine.side is now oppSide — correct for checking enemy attacks
-            const isDestAttacked = premoveEngine.isAttacked(ourTo, premoveEngine.side);
+
+            // Check if destination is attacked by opponent
+            // Use 'oppSide' explicitly instead of premoveEngine.side for clarity
+            const isDestAttacked = premoveEngine.isAttacked(ourTo, oppSide);
 
             if (isDestAttacked && movingAbs >= 2) {
                 const oppReplies = premoveEngine.generateLegalMoves();
                 const oppAttacksPost = oppReplies.filter(r => r.to === ourTo);
 
+                // Only worry if there are actual attackers
                 if (oppAttacksPost.length > 0 && capturedVal < movedVal) {
                     const pieceNames = { 5: 'queen', 4: 'rook', 3: 'bishop', 2: 'knight' };
                     const pieceName = pieceNames[movingAbs] || 'piece';
 
-                    // Check if OUR pieces defend ourTo in POST-MOVE position
-                    // Temporarily remove our piece so we find other friendly defenders
                     const savedPiece = premoveEngine.board[ourTo];
                     premoveEngine.board[ourTo] = EMPTY;
-                    // -premoveEngine.side = ourSide (we want our defenders)
-                    const isDefended = premoveEngine.isAttacked(ourTo, -premoveEngine.side);
+
+                    // FIX: Use explicit 'ourSide' instead of '-premoveEngine.side'
+                    // This ensures we are definitely checking if OUR pieces defend the square.
+                    const isDefended = premoveEngine.isAttacked(ourTo, ourSide);
+
                     premoveEngine.board[ourTo] = savedPiece;
 
                     const lowestAttackerVal = Math.min(...oppAttacksPost.map(r => PIECE_VAL[Math.abs(r.piece)] || 100));
 
+                    // LOGIC: Block if it is undefended OR if the trade is bad (attacker is weaker than us)
                     if (!isDefended || lowestAttackerVal < movedVal) {
                         premoveEngine.unmakeMove(ourMove);
                         premoveEngine.unmakeMove(oppMove);
@@ -1736,19 +1776,17 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
     currentAbortController = ctrl;
 
     const run = async () => {
-        analysisRunning = true;
         if (analysisId !== currentAnalysisId || !BotState.hackEnabled) {
-            analysisRunning = false;
             return;
         }
 
         // Invalidate game cache for fresh turn detection
         invalidateGameCache();
         const game = getGame();
-        if (!game) { analysisRunning = false; return; }
+        if (!game) { return; }
 
-        if (kind === 'main' && lastFenProcessedMain === fen) { analysisRunning = false; return; }
-        if (kind !== 'main' && lastFenProcessedPremove === fen) { analysisRunning = false; return; }
+        if (kind === 'main' && lastFenProcessedMain === fen) { return; }
+        if (kind !== 'main' && lastFenProcessedPremove === fen) { return; }
 
         try {
             BotState.statusInfo = kind === 'main' ? '🔄 Analyzing...' : '🔄 Analyzing (premove)...';
@@ -1839,7 +1877,6 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
             if (kind === 'main' && scheduledMainFen === fen) scheduledMainFen = '';
             else if (kind !== 'main' && scheduledPremoveFen === fen) scheduledPremoveFen = '';
             if (currentAbortController === ctrl) currentAbortController = null;
-            analysisRunning = false;
         }
     };
     // Fire directly — no queue chaining. Prior analysis is already aborted above.
