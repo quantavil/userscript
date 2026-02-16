@@ -3,7 +3,7 @@ import { BotState, PositionCache, getGame, getFen, isPlayersTurn, pa, invalidate
 import { sleep } from './utils.js';
 import { clearArrows, cancelPendingMove, startDomBoardWatcher, startMoveWatcher, stopMoveWatcher, onBoardMutation } from './board.js';
 import { ui } from './ui.js';
-import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, getLastFenProcessedPremove, setLastFenProcessedPremove } from './engine.js';
+import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, getLastFenProcessedPremove, setLastFenProcessedPremove } from './engine/scheduler.js';
 
 class BotController {
     constructor() {

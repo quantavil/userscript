@@ -1,47 +1,10 @@
 // ============================================================
-// LOCAL CHESS ENGINE
+// PIECE-SQUARE TABLES (PeSTO)
 // ============================================================
-// Pieces: P=1,N=2,B=3,R=4,Q=5,K=6. White positive, black negative.
-// --- Zobrist Hashing ---
-// Pre-computed random 64-bit keys stored as pairs of 32-bit ints for speed
-export const ZOBRIST = (() => {
-    // Simple seeded PRNG (xorshift32) for deterministic keys
-    let seed = 1070372;
-    const rand32 = () => { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return seed >>> 0; };
-    const table = new Uint32Array(13 * 64 * 2); // piece(0-12) * 64 squares * 2 (hi/lo)
-    for (let i = 0; i < table.length; i++) table[i] = rand32();
-    const sideKey = [rand32(), rand32()];
-    const castlingKeys = new Uint32Array(16 * 2);
-    for (let i = 0; i < castlingKeys.length; i++) castlingKeys[i] = rand32();
-    const epKeys = new Uint32Array(8 * 2); // per-file
-    for (let i = 0; i < epKeys.length; i++) epKeys[i] = rand32();
-    return { table, sideKey, castlingKeys, epKeys };
-})();
-// Board: 64-element array, index = rank*8+file, a1=0, h8=63
-
-export const WP = 1, WN = 2, WB = 3, WR = 4, WQ = 5, WK = 6;
-export const BP = -1, BN = -2, BB = -3, BR = -4, BQ = -5, BK = -6;
-export const EMPTY = 0;
-export const FLAG_NONE = 0, FLAG_EP = 1, FLAG_CASTLE = 2, FLAG_PROMO = 4;
-export const MATE_SCORE = 30000;
-
-// --- Hot-path constants (hoisted to avoid per-call allocation) ---
-export const KNIGHT_OFFSETS = [-17, -15, -10, -6, 6, 10, 15, 17];
-export const STRAIGHT_DIRS = [8, -8, 1, -1];
-export const DIAG_DIRS = [9, 7, -9, -7];
-export const ALL_DIRS = [9, 7, -9, -7, 8, -8, 1, -1];
-export const PHASE_VAL = [0, 0, 1, 1, 2, 4]; // indexed by abs piece type (0=empty,1=P,2=N,3=B,4=R,5=Q)
-export const ATTACK_WEIGHT = [0, 0, 20, 20, 40, 80]; // indexed by abs piece type
-
-// Transposition table flags
-export const TT_EXACT = 0, TT_ALPHA = 1, TT_BETA = 2;
-export const TT_SIZE = 65536; // Max entries
 
 // Piece-square tables (from white's perspective, a1=index 0)
 // Indexed [rank][file] visually but stored flat as [sq] where sq = rank*8+file
-// So index 0 = a1, index 7 = h1, index 56 = a8, index 63 = h8
 
-// --- PeSTO Piece-Square Tables (a1=index 0, h8=index 63, white perspective) ---
 // Middlegame tables
 export const PST_PAWN_MG = [
     0, 0, 0, 0, 0, 0, 0, 0,
@@ -100,7 +63,7 @@ export const PST_KING_MG = [
     -49, -1, -27, -39, -46, -44, -33, -51,
     -17, -20, -12, -27, -30, -25, -14, -36,
     -9, 24, 2, -16, -20, 6, 22, -22,
-    29, -1, -20, -7, -8, -4, -38, -29,
+    103, 29, -1, -20, -7, -8, -4, -38, -29,
     -65, 23, 16, -15, -56, -34, 2, 13
 ];
 
@@ -173,26 +136,3 @@ export const PST_EG = [null, PST_PAWN_EG, PST_KNIGHT_EG, PST_BISHOP_EG, PST_ROOK
 // PeSTO material values (MG/EG) for incremental eval
 export const MAT_MG = [0, 82, 337, 365, 477, 1025, 0];
 export const MAT_EG = [0, 94, 281, 297, 512, 936, 0];
-
-// Single-value table for move ordering, SEE, and premove safety checks
-export const PIECE_VAL = { 1: 82, 2: 337, 3: 365, 4: 477, 5: 1025, 6: 20000 };
-
-export function mirrorSq(sq) { return (7 - (sq >> 3)) * 8 + (sq & 7); }
-export function sqFile(sq) { return sq & 7; }
-export function sqRank(sq) { return sq >> 3; }
-export function sqName(sq) { return 'abcdefgh'[sqFile(sq)] + (sqRank(sq) + 1); }
-export function nameToSq(s) { return (s.charCodeAt(0) - 97) + (s.charCodeAt(1) - 49) * 8; }
-
-// Zobrist helpers
-export function zobPieceIdx(piece) {
-    // Map piece value (-6..-1, 1..6) to index 0-11. Empty=invalid
-    return piece > 0 ? (piece - 1) : (-piece + 5);
-}
-export function zobPieceKey(piece, sq) {
-    const base = (zobPieceIdx(piece) * 64 + sq) * 2;
-    return [ZOBRIST.table[base], ZOBRIST.table[base + 1]];
-}
-export function zobXor(hash, key) {
-    hash[0] ^= key[0]; hash[1] ^= key[1];
-}
-

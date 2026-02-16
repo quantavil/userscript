@@ -1,5 +1,4 @@
 import {
-    ZOBRIST,
     WP, WN, WB, WR, WQ, WK,
     BP, BN, BB, BR, BQ, BK,
     EMPTY,
@@ -8,14 +7,21 @@ import {
     KNIGHT_OFFSETS, STRAIGHT_DIRS, DIAG_DIRS, ALL_DIRS,
     PHASE_VAL, ATTACK_WEIGHT,
     TT_EXACT, TT_ALPHA, TT_BETA, TT_SIZE,
+    PIECE_VAL
+} from './constants.js';
+import {
     PST_PAWN_MG, PST_KNIGHT_MG, PST_BISHOP_MG, PST_ROOK_MG, PST_QUEEN_MG, PST_KING_MG,
     PST_PAWN_EG, PST_KNIGHT_EG, PST_BISHOP_EG, PST_ROOK_EG, PST_QUEEN_EG, PST_KING_EG,
     PST_MG, PST_EG,
-    MAT_MG, MAT_EG,
-    PIECE_VAL,
-    mirrorSq, sqFile, sqRank, sqName, nameToSq,
+    MAT_MG, MAT_EG
+} from './pst.js';
+import {
+    ZOBRIST,
     zobPieceIdx, zobPieceKey, zobXor
-} from './data.js';
+} from './zobrist.js';
+import {
+    mirrorSq, sqFile, sqRank, sqName, nameToSq
+} from './utils.js';
 import { SearchMethods } from './search.js';
 
 export class LocalEngine {

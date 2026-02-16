@@ -1,5 +1,5 @@
 
-import { LocalEngine } from '../src/engine/core.js';
+import { LocalEngine } from '../src/engine/local-engine.js';
 import { performance } from 'perf_hooks';
 
 console.log('--- Verifying LocalEngine ---');
