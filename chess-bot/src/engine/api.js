@@ -14,6 +14,13 @@ export function analyzeLocally(fen, depth) {
     return result;
 }
 
+export function resetEngine() {
+    if (localEngine && typeof localEngine.clearTT === 'function') {
+        localEngine.clearTT();
+        // console.log('GabiBot: Engine TT cleared.');
+    }
+}
+
 // ============================================================
 // API FETCHING WITH LOCAL FALLBACK
 // ============================================================

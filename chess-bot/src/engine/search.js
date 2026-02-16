@@ -25,6 +25,12 @@ import {
 
 export const SearchMethods = {
     // ---- Evaluation ----
+    clearTT() {
+        for (let i = 0; i < this.tt.length; i++) {
+            this.tt[i] = undefined;
+        }
+    },
+
     evaluate() {
         let mgScore = this.mgPstMat, egScore = this.egPstMat;
         const bd = this.board;

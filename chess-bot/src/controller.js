@@ -4,6 +4,7 @@ import { sleep } from './utils.js';
 import { clearArrows, cancelPendingMove, startDomBoardWatcher, startMoveWatcher, stopMoveWatcher, onBoardMutation } from './board.js';
 import { ui } from './ui.js';
 import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, getLastFenProcessedPremove, setLastFenProcessedPremove } from './engine/scheduler.js';
+import { resetEngine } from './engine/api.js';
 
 class BotController {
     constructor() {
@@ -234,6 +235,9 @@ class BotController {
             setLastFenProcessedMain('');
             setLastFenProcessedPremove('');
             this.lastFenSeen = '';
+
+            // Clear Engine Memory (TT) for fresh game
+            resetEngine();
 
             BotState.statusInfo = 'Ready';
             ui.updateDisplay(pa());
