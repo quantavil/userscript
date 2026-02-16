@@ -175,7 +175,7 @@ class BotController {
 
     checkFailsafe(fen) {
         const now = Date.now();
-        const backoffWait = Math.min(3000 * Math.pow(2, this.failsafeAttempts), 24000);
+        const backoffWait = Math.min(1000 * Math.pow(2, this.failsafeAttempts), 24000);
 
         if (now - this.fenFirstSeenTime > backoffWait) {
             console.log(`GabiBot: 🛡️ Failsafe triggered (${backoffWait}ms stuck), full reset. Attempt #${this.failsafeAttempts + 1}`);
@@ -249,38 +249,32 @@ class BotController {
     }
 
     handleAutoRematch() {
-        console.log('GabiBot: Auto-rematch sequence initiated'); // Keep this one as it's a major event
-        // Sequence: Rematch -> New X min -> Close -> Tab -> Start
-        setTimeout(() => {
-            const modal = document.querySelector('.game-over-modal-content');
-            if (!modal) return;
-            const btn = Array.from(modal.querySelectorAll('button')).find(b =>
-                /rematch/i.test((b.textContent || '').trim()) ||
-                /rematch/i.test((b.getAttribute?.('aria-label') || '').trim())
-            );
-            if (btn) btn.click();
-        }, 2000);
+        console.log('GabiBot: Arena/Rematch sequence initiated');
 
+        // Delay to allow game-over UI to settle
         setTimeout(() => {
-            const modal = document.querySelector('.game-over-modal-content');
-            if (!modal) return;
-            const btn = Array.from(modal.querySelectorAll('button')).find(b => /new.*\d+.*min/i.test(b.textContent || ''));
-            if (btn) btn.click();
-        }, 12000);
+            // 1. Try Arena "Next Game" buttons
+            const arenaBtn = document.querySelector('[data-cy="next-arena-game-button"]') ||
+                document.querySelector('[data-cy="request-arena-game"]');
+            if (arenaBtn && arenaBtn.offsetParent !== null) {
+                console.log('GabiBot: Clicking Arena "Next Game" button');
+                arenaBtn.click();
+                return;
+            }
 
-        setTimeout(async () => {
+            // 2. Fallback: Generic Rematch button
             const modal = document.querySelector('.game-over-modal-content');
             if (modal) {
-                const closeBtn = modal.querySelector('[aria-label="Close"]');
-                if (closeBtn) { closeBtn.click(); await sleep(500); }
+                const rematchBtn = Array.from(modal.querySelectorAll('button')).find(b =>
+                    /rematch/i.test((b.textContent || '').trim()) ||
+                    /rematch/i.test((b.getAttribute?.('aria-label') || '').trim())
+                );
+                if (rematchBtn) {
+                    console.log('GabiBot: Clicking Rematch button');
+                    rematchBtn.click();
+                }
             }
-            const tab = document.querySelector('[data-tab="newGame"]') || Array.from(document.querySelectorAll('.tabs-tab')).find(t => /new.*game/i.test(t.textContent || ''));
-            if (tab) {
-                tab.click(); await sleep(400);
-                const startBtn = Array.from(document.querySelectorAll('button')).find(b => /start.*game/i.test((b.textContent || '').trim()));
-                if (startBtn) startBtn.click();
-            }
-        }, 22000);
+        }, 2000);
     }
 
     // --- Settings / State Watcher ---
