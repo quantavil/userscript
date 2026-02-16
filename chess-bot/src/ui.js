@@ -219,8 +219,8 @@ export function buildUI() {
     /* border-radius: 0 0 8px 8px; */ /* Optional: matches bottom corners */
     padding: 12px;
     /* margin-top: 8px; REMOVED separate margin */
-    min-height: 160px; /* Increased height */
-    max-height: 300px;
+    min-height: 80px;
+    max-height: 150px;
     overflow-y: auto;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 12px; /* Increased font */
