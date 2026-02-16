@@ -1,6 +1,6 @@
 
 import { describe, it, expect } from 'vitest';
-import { evaluatePremove } from '../src/engine.js';
+import { evaluatePremove } from '../src/engine/premove.js';
 
 describe('evaluatePremove', () => {
 

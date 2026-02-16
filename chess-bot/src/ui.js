@@ -159,8 +159,8 @@ export function buildUI() {
     border-radius: 8px;
     z-index: 9999999;
     display: grid;
-    grid-template-rows: auto 1fr auto; /* Header, Settings, Console */
-    width: 360px; max-height: 800px;
+    grid-template-rows: auto minmax(0, 1fr) auto; /* Header, Settings, Console */
+    width: 360px; max-height: 85vh;
     position: fixed;
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(20, 20, 20, 0.95);

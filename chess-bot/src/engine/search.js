@@ -41,6 +41,11 @@ export const SearchMethods = {
         wPawnRanks.fill(-1); bPawnRanks.fill(8);
         bPawnMaxRanks.fill(-1); wPawnMinRanks.fill(8);
 
+        this.wQueens = 0;
+        this.bQueens = 0;
+        this.wBishops = 0;
+        this.bBishops = 0;
+
         let rookCount = 0;
         let wKingAttackers = 0, bKingAttackers = 0;
         let wKingAttackWeight = 0, bKingAttackWeight = 0;
@@ -66,6 +71,14 @@ export const SearchMethods = {
                     if (rank < bPawnRanks[file]) bPawnRanks[file] = rank;
                     if (rank > bPawnMaxRanks[file]) bPawnMaxRanks[file] = rank;
                 }
+            }
+
+            if (abs === 5) {
+                if (side === 1) this.wQueens++;
+                else this.bQueens++;
+            } else if (abs === 3) {
+                if (side === 1) this.wBishops++;
+                else this.bBishops++;
             }
 
             if (abs === 2) {
@@ -233,14 +246,61 @@ export const SearchMethods = {
             }
         }
 
-        // King attack bonus
-        if (wKingAttackers >= 2) {
-            const bonus = wKingAttackWeight * wKingAttackers / 4;
-            mgScore += bonus > 300 ? 300 : bonus;
+        // King attack bonus (Boosted for aggression)
+        if (wKingAttackers >= 1) {
+            const bonus = wKingAttackWeight * wKingAttackers / 2.5; // Was /4
+            mgScore += bonus > 500 ? 500 : bonus;
         }
-        if (bKingAttackers >= 2) {
-            const bonus = bKingAttackWeight * bKingAttackers / 4;
-            mgScore -= bonus > 300 ? 300 : bonus;
+        if (bKingAttackers >= 1) {
+            const bonus = bKingAttackWeight * bKingAttackers / 2.5; // Was /4
+            mgScore -= bonus > 500 ? 500 : bonus;
+        }
+
+        // --- Aggression: Flank Pawn Storm ---
+        // Bonus for advancing pawns on the enemy King's side
+        if (bKingSq >= 0) {
+            const kf = bKingSq & 7;
+            const fMin = kf > 0 ? kf - 1 : 0;
+            const fMax = kf < 7 ? kf + 1 : 7;
+            for (let f = fMin; f <= fMax; f++) {
+                // White pawns advancing towards Black King
+                const rank = wPawnRanks[f];
+                // Rank 0-7. White starts at 1. Rank 4, 5, 6 are good (indices 3, 4, 5).
+                if (rank >= 3 && rank <= 6) {
+                    const bonus = (rank - 2) * 20; // +15, +30, +45, +60
+                    mgScore += bonus;
+                    egScore += bonus / 2;
+                }
+            }
+        }
+        if (wKingSq >= 0) {
+            const kf = wKingSq & 7;
+            const fMin = kf > 0 ? kf - 1 : 0;
+            const fMax = kf < 7 ? kf + 1 : 7;
+            for (let f = fMin; f <= fMax; f++) {
+                // Black pawns advancing towards White King
+                const rank = bPawnRanks[f];
+                // Black starts at 6. Rank 3, 2, 1 are good.
+                if (rank <= 4 && rank >= 1) {
+                    const bonus = (5 - rank) * 15; // +15, +30, +45, +60
+                    mgScore -= bonus;
+                    egScore -= bonus / 2;
+                }
+            }
+        }
+
+        // --- Aggression: Avoid Queen Trades ---
+        // Bonus for positions where both sides have queens (more tactical chances)
+        if (this.wQueens > 0 && this.bQueens > 0) {
+            const tradeAvoidanceBonus = 50;
+            const rootSide = this.rootSide ?? this.side; // Fallback to current side
+            if (rootSide === 1) {
+                mgScore += tradeAvoidanceBonus;
+                egScore += tradeAvoidanceBonus;
+            } else {
+                mgScore -= tradeAvoidanceBonus;
+                egScore -= tradeAvoidanceBonus;
+            }
         }
 
         // Tapered eval — phase is tracked incrementally
@@ -388,16 +448,21 @@ export const SearchMethods = {
         }
 
         // Draw by 50-move rule
-        const drawContempt = this.side === this.rootSide ? -this.contempt : this.contempt;
+        const rootSide = this.rootSide ?? this.side;
+        const drawContempt = this.side === rootSide ? -this.contempt : this.contempt;
         if (this.halfmove >= 100) return drawContempt;
 
-        // Draw by 3-fold repetition
+        // Draw by 3-fold repetition - discourage repetitions more aggressively
         const posKey = this.ttKey();
         let reps = 0;
         for (let i = this.positionHistory.length - 1; i >= 0; i--) {
             if (this.positionHistory[i] === posKey) {
                 reps++;
                 if (reps >= 2) return drawContempt; // 3rd occurrence = draw
+                // Even approaching repetition is slightly bad if we want to win
+                if (reps === 1 && this.contempt > 0) {
+                    // Soft penalty for getting close to repetition (will be searched further)
+                }
             }
         }
 
@@ -539,7 +604,6 @@ export const SearchMethods = {
         this.killers = [];
         this.history.fill(0);
         this.rootSide = this.side; // track who the root player is for contempt
-        for (let i = 0; i < this.tt.length; i++) this.tt[i] = undefined;
 
         let bestMove = null;
         let bestScore = 0;
@@ -554,13 +618,17 @@ export const SearchMethods = {
                 }
             }
 
-            // Contempt from ROOT player's perspective (bestScore is already root-relative)
+            // Contempt: positive = avoid draws, negative = accept draws
+            // Bot should fight for wins unless clearly losing
             if (d > 1 && completedDepth > 0) {
-                if (bestScore > 100) this.contempt = 25;
-                else if (bestScore > 50) this.contempt = 15;
-                else if (bestScore < -100) this.contempt = -25;
-                else if (bestScore < -50) this.contempt = -15;
-                else this.contempt = 0;
+                if (bestScore > 200) this.contempt = 60;       // Winning big - push hard
+                else if (bestScore > 100) this.contempt = 45;  // Winning - avoid draws
+                else if (bestScore > 50) this.contempt = 35;   // Slight edge - keep fighting
+                else if (bestScore > -100) this.contempt = 25; // Equal/slight disadvantage - still fight
+                else if (bestScore > -250) this.contempt = 10; // Losing - try but accept good draws
+                else this.contempt = -15;                       // Losing badly - draw is okay
+            } else {
+                this.contempt = 25; // Default: fight for wins
             }
 
             const pvLine = [];
@@ -589,13 +657,18 @@ export const SearchMethods = {
     analyze(fen, depth) {
         this.loadFen(fen);
 
+        // Clear TT if analyzing as different side than before
+        if (this.rootSide !== this.side) {
+            this.clearTT();
+        }
+
         // Time limit scales with depth — with LMR/PVS we can afford deeper search
         let timeMs = depth * 200;
         if (timeMs > 800) timeMs = 800;
         const searchDepth = depth < 8 ? depth : 8;
 
         // Reset contempt for fresh analysis
-        this.contempt = 0;
+        this.contempt = 25; // Default: prefer winning over drawing
 
         const result = this.searchRoot(searchDepth, timeMs);
 
