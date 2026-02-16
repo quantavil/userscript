@@ -83,6 +83,15 @@ export async function fetchAnalysis(fen, depth, signal) {
 
     if (signal?.aborted || !BotState.hackEnabled) throw new DOMException('Aborted', 'AbortError');
 
+    // Local-only mode: skip API entirely
+    if (BotState.analysisMode === 'local') {
+        console.log('GabiBot: 🔒 Local-only mode enforced');
+        const res = analyzeLocally(fen, depth);
+        // Simulate minimal async delay to not block UI
+        await new Promise(r => setTimeout(r, 10));
+        return res;
+    }
+
     // Fire API call (non-blocking — network I/O runs in background)
     const apiPromise = fetchEngineData(fen, depth, signal)
         .then(data => ({ ok: true, data }))

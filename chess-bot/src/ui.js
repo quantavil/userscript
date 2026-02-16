@@ -48,6 +48,18 @@ export function buildUI() {
       <a class="itemState">Off</a>
     </div>
 
+    <div name="moveMethod" class="listItem">
+      <input class="checkboxMod" type="checkbox">
+      <a class="itemDescription">Drag Move</a>
+      <a class="itemState">Off</a>
+    </div>
+
+    <div name="analysisMode" class="listItem">
+      <input class="checkboxMod" type="checkbox">
+      <a class="itemDescription">Local Only</a>
+      <a class="itemState">Off</a>
+    </div>
+
     <div class="divider"></div>
 
     <div name="premoveEnabled" class="listItem">
@@ -197,9 +209,24 @@ export function buildUI() {
     if (type === 'checkbox') {
       modInput.checked = !!BotState[key];
       modState.textContent = BotState[key] ? 'On' : 'Off';
+      if (name === 'moveMethod') {
+        modInput.checked = BotState[key] === 'drag';
+        modState.textContent = BotState[key] === 'drag' ? 'On' : 'Off';
+      } else if (name === 'analysisMode') {
+        modInput.checked = BotState[key] === 'local';
+        modState.textContent = BotState[key] === 'local' ? 'On' : 'Off';
+      }
       modInput.addEventListener('input', () => {
-        BotState[key] = modInput.checked ? 1 : 0;
-        modState.textContent = BotState[key] ? 'On' : 'Off';
+        if (name === 'moveMethod') {
+          BotState[key] = modInput.checked ? 'drag' : 'click';
+          modState.textContent = BotState[key] === 'drag' ? 'On' : 'Off';
+        } else if (name === 'analysisMode') {
+          BotState[key] = modInput.checked ? 'local' : 'hybrid';
+          modState.textContent = BotState[key] === 'local' ? 'On' : 'Off';
+        } else {
+          BotState[key] = modInput.checked ? 1 : 0;
+          modState.textContent = BotState[key] ? 'On' : 'Off';
+        }
         Settings.save();
       });
     } else if (type === 'range') {
@@ -219,7 +246,9 @@ export function buildUI() {
   }
 
   bindControl('enableHack', 'checkbox', 'BotState.hackEnabled');
+  bindControl('analysisMode', 'checkbox', 'BotState.analysisMode');
   bindControl('autoMove', 'checkbox', 'BotState.autoMove');
+  bindControl('moveMethod', 'checkbox', 'BotState.moveMethod');
   bindControl('botPower', 'range', 'BotState.botPower');
   bindControl('autoMoveSpeed', 'range', 'BotState.autoMoveSpeed');
   bindControl('updateSpeed', 'range', 'BotState.updateSpeed');

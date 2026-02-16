@@ -1,6 +1,6 @@
 import { BotState, getGame, getPlayerColor, getSideToMove, pa, invalidateGameCache } from '../state.js';
 import { scoreToDisplay, getRandomDepth, sleep } from '../utils.js';
-import { drawArrow, clearArrows, executeMove, simulateClickMove } from '../board.js';
+import { drawArrow, clearArrows, executeMove, simulateClickMove, simulateDragMove } from '../board.js';
 import { fetchAnalysis, parseBestLine } from './api.js';
 import { evaluatePremove, getOurMoveFromPV } from './premove.js';
 
@@ -117,7 +117,16 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                 const to = ourUci.substring(2, 4);
                 clearArrows();
                 drawArrow(from, to, 'rgba(80, 180, 255, 0.7)', 3);
-                await simulateClickMove(from, to);
+                if (BotState.moveMethod === 'drag') {
+                    // Start drag immediately
+                    const dragged = await simulateDragMove(from, to);
+                    if (!dragged) {
+                        // Fallback? or just log error
+                        console.warn('Premove drag failed');
+                    }
+                } else {
+                    await simulateClickMove(from, to);
+                }
                 await sleep(80);
 
                 const reasonSuffix = premoveResult.reasons.length > 0 ? ` [${premoveResult.reasons.join(', ')}]` : '';

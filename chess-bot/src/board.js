@@ -216,17 +216,35 @@ function getTargetAt(x, y) {
     return document.elementFromPoint(x, y) || boardCtx?.boardEl || document.body;
 }
 
+function getMoveCoordinates(from, to) {
+    const a = getSquareCenterClientXY(from);
+    const b = getSquareCenterClientXY(to);
+    if (!a || !b) return null;
+    return { a, b };
+}
+
+function createPointerOpts(x, y, buttons) {
+    return {
+        clientX: x, clientY: y,
+        buttons,
+        pointerId: 1, pointerType: 'mouse', isPrimary: true,
+        bubbles: true, cancelable: true, composed: true
+    };
+}
+
 export async function simulateClickMove(from, to) {
-    const a = getSquareCenterClientXY(from), b = getSquareCenterClientXY(to);
-    if (!a || !b) return false;
+    const coords = getMoveCoordinates(from, to);
+    if (!coords) return false;
+    const { a, b } = coords;
     const usePointer = !!window.PointerEvent;
+
     const startEl = getTargetAt(a.x, a.y);
     const endEl = getTargetAt(b.x, b.y);
 
-    const downStart = { clientX: a.x, clientY: a.y, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: 1 };
-    const upStart = { clientX: a.x, clientY: a.y, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: 0 };
-    const downEnd = { clientX: b.x, clientY: b.y, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: 1 };
-    const upEnd = { clientX: b.x, clientY: b.y, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: 0 };
+    const downStart = createPointerOpts(a.x, a.y, 1);
+    const upStart = createPointerOpts(a.x, a.y, 0);
+    const downEnd = createPointerOpts(b.x, b.y, 1);
+    const upEnd = createPointerOpts(b.x, b.y, 0);
 
     dispatchPointerOrMouse(startEl, usePointer ? 'pointerdown' : 'mousedown', downStart, usePointer);
     await sleep(2);
@@ -244,24 +262,39 @@ export async function simulateClickMove(from, to) {
 }
 
 export async function simulateDragMove(from, to) {
-    const a = getSquareCenterClientXY(from), b = getSquareCenterClientXY(to);
-    if (!a || !b) return false;
+    const coords = getMoveCoordinates(from, to);
+    if (!coords) return false;
+    const { a, b } = coords;
     const usePointer = !!window.PointerEvent;
-    const startEl = getTargetAt(a.x, a.y);
-    const endEl = getTargetAt(b.x, b.y);
-    const down = { clientX: a.x, clientY: a.y, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: 1 };
-    const up = { clientX: b.x, clientY: b.y, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: 0 };
 
+    const startEl = getTargetAt(a.x, a.y);
+
+    // Dispatch down
+    const down = createPointerOpts(a.x, a.y, 1);
     dispatchPointerOrMouse(startEl, usePointer ? 'pointerdown' : 'mousedown', down, usePointer);
-    const steps = 3;
+
+    // Critical delay for UI to register the "grab"
+    await sleep(20);
+
+    // Drag steps - increased for better registration
+    const steps = 10;
     for (let i = 1; i <= steps; i++) {
         const t = i / steps;
         const mx = a.x + (b.x - a.x) * t;
         const my = a.y + (b.y - a.y) * t;
-        dispatchPointerOrMouse(endEl, usePointer ? 'pointermove' : 'mousemove', { clientX: mx, clientY: my, buttons: 1 }, usePointer);
+
+        const stepTarget = getTargetAt(mx, my);
+        const moveOpts = createPointerOpts(mx, my, 1);
+        dispatchPointerOrMouse(stepTarget, usePointer ? 'pointermove' : 'mousemove', moveOpts, usePointer);
+        // Slightly longer sleep between steps
         await sleep(12);
     }
+
+    // Dispatch up
+    const endEl = getTargetAt(b.x, b.y);
+    const up = createPointerOpts(b.x, b.y, 0);
     dispatchPointerOrMouse(endEl, usePointer ? 'pointerup' : 'mouseup', up, usePointer);
+
     return true;
 }
 
@@ -355,7 +388,12 @@ async function makeMove(from, to, expectedFen, promotionChar) {
     const beforeFen = getFen(game);
     if (!beforeFen || beforeFen !== expectedFen || !isPlayersTurn(game)) return false;
 
-    await simulateClickMove(from, to);
+    if (BotState.moveMethod === 'drag') {
+        const dragged = await simulateDragMove(from, to);
+        if (!dragged) return false;
+    } else {
+        await simulateClickMove(from, to);
+    }
     if (promotionChar) await maybeSelectPromotion(String(promotionChar).toLowerCase());
 
     const changed = await waitForFenChange(beforeFen, 400);
