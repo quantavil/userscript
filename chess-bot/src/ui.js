@@ -32,7 +32,20 @@ export const ui = {
   updateDisplay(playingAs) {
     // Only log if status changed
     if (BotState.statusInfo !== this.lastStatus) {
-      this.log(BotState.statusInfo, 'status');
+      // Filter out spammy routine updates
+      const blocked = [
+        'Making move...',
+        'Move made',
+        'Waiting for opponent',
+        'Ready',
+        'Analyzing...',
+        'Move canceled'
+      ];
+      const isBlocked = blocked.some(s => BotState.statusInfo.includes(s));
+
+      if (!isBlocked) {
+        this.log(BotState.statusInfo, 'status');
+      }
       this.lastStatus = BotState.statusInfo;
     }
 
@@ -68,7 +81,7 @@ export function buildUI() {
     <a id="modTitle">♟ GabiBot</a>
     <button id="minimizeBtn" title="Minimize (Ctrl+B)">─</button>
   </div>
-  <div id="itemsList">
+    <div id="itemsList">
     <div name="enableHack" class="listItem">
       <input class="checkboxMod" type="checkbox">
       <a class="itemDescription">Enable Bot</a>
@@ -132,11 +145,11 @@ export function buildUI() {
     </div>
 
     <div class="divider"></div>
-
-    <!-- Terminal Console -->
-    <div id="consoleWindow" class="console-window">
-       <div class="log-line info"><span class="timestamp">--:--:--</span> GabiBot Terminal Ready</div>
-    </div>
+  </div>
+  
+  <!-- Terminal Console (Edge-to-Edge) -->
+  <div id="consoleWindow" class="console-window">
+     <div class="log-line info"><span class="timestamp">--:--:--</span> GabiBot Terminal Ready</div>
   </div>
 `;
 
@@ -146,8 +159,8 @@ export function buildUI() {
     border-radius: 8px;
     z-index: 9999999;
     display: grid;
-    grid-template-rows: auto 1fr;
-    width: 320px; max-height: 600px;
+    grid-template-rows: auto 1fr auto; /* Header, Settings, Console */
+    width: 360px; max-height: 800px;
     position: fixed;
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(20, 20, 20, 0.95);
@@ -157,8 +170,8 @@ export function buildUI() {
     top: 20px; right: 20px;
     transition: opacity 0.3s ease, transform 0.3s ease;
   }
-  #menuWrap.minimized { grid-template-rows: auto 0fr; max-height: 50px; }
-  #menuWrap.minimized #itemsList { overflow: hidden; opacity: 0; }
+  #menuWrap.minimized { grid-template-rows: auto 0fr 0fr; max-height: 50px; }
+  #menuWrap.minimized #itemsList, #menuWrap.minimized #consoleWindow { overflow: hidden; opacity: 0; display: none; }
   #menuWrap.grabbing { cursor: grabbing !important; opacity: 0.9; }
   .divider { height: 1px; background: rgba(255, 255, 255, 0.1); margin: 10px 0; }
   
@@ -177,7 +190,7 @@ export function buildUI() {
   #evaluationBarWhite { position: absolute; top: 0; left: 0; right: 0; background: #f0d9b5; transition: height 0.3s ease; }
   #evaluationBarBlack { position: absolute; bottom: 0; left: 0; right: 0; background: #000; transition: height 0.3s ease; }
   #topText { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;
-    background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(255, 255, 255, 0.1); cursor: move; }
+    background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(255, 255, 255, 0.05); cursor: move; }
   #modTitle { color: #fff; font-size: 16px; font-weight: 600; letter-spacing: 0.5px; }
   #minimizeBtn { background: rgba(255, 255, 255, 0.1); border: none; color: #fff; width: 24px; height: 24px;
     border-radius: 4px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
@@ -199,29 +212,28 @@ export function buildUI() {
   .itemState { color: #fff; font-size: 12px; min-width: 35px; text-align: right; font-weight: 500; }
   #arrowCanvas { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important; pointer-events: none !important; z-index: 100 !important; }
 
-  /* Console Window Styles */
+  /* Console Window Styles - Edge to Edge */
   .console-window {
-    background: #000000;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    padding: 8px;
-    margin-top: 8px;
-    flex-grow: 1;
-    min-height: 120px;
-    max-height: 200px;
+    background: rgba(0, 0, 0, 0.3);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    /* border-radius: 0 0 8px 8px; */ /* Optional: matches bottom corners */
+    padding: 12px;
+    /* margin-top: 8px; REMOVED separate margin */
+    min-height: 160px; /* Increased height */
+    max-height: 300px;
     overflow-y: auto;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
-    font-size: 11px;
+    font-size: 12px; /* Increased font */
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3px;
   }
-  .log-line { color: #bbb; line-height: 1.4; word-break: break-all; }
+  .log-line { color: #bbb; line-height: 1.5; word-break: break-all; }
   .log-line.status { color: #4CAF50; font-weight: bold; }
   .log-line.error { color: #ff5252; }
   .log-line.warn { color: #ffab40; }
   .log-line.info { color: #81d4fa; }
-  .timestamp { color: #555; margin-right: 6px; user-select: none; }
+  .timestamp { color: #555; margin-right: 8px; user-select: none; font-size: 11px; }
 `;
 
   document.body.appendChild(menuWrap);

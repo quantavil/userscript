@@ -6,11 +6,11 @@ import { LocalEngine } from './local-engine.js';
 const localEngine = new LocalEngine();
 
 export function analyzeLocally(fen, depth) {
-    console.log(`GabiBot: 🧠 Local engine analyzing FEN: ${fen.substring(0, 20)}... | Depth: ${depth}`);
+    // console.log(`GabiBot: 🧠 Local engine analyzing FEN: ${fen.substring(0, 20)}... | Depth: ${depth}`);
     const start = performance.now();
     const result = localEngine.analyze(fen, depth);
     const elapsed = performance.now() - start;
-    console.log(`GabiBot: 🧠 Local engine done in ${elapsed.toFixed(0)}ms | ${result.nodes} nodes | Depth: ${result.depth} | Best: ${result.bestmove}`);
+    // console.log(`GabiBot: 🧠 Local engine done in ${elapsed.toFixed(0)}ms | ${result.nodes} nodes | Depth: ${result.depth} | Best: ${result.bestmove}`);
     return result;
 }
 
@@ -20,7 +20,7 @@ export function analyzeLocally(fen, depth) {
 
 async function fetchEngineData(fen, depth, signal) {
     const startTime = performance.now();
-    console.log(`GabiBot: 📡 API request for FEN: ${fen.substring(0, 20)}... | Depth: ${depth}`);
+    // console.log(`GabiBot: 📡 API request for FEN: ${fen.substring(0, 20)}... | Depth: ${depth}`);
 
     const call = async (params) => {
         const url = `${API_URL}?fen=${encodeURIComponent(fen)}&depth=${depth}&${params}`;
@@ -45,7 +45,6 @@ async function fetchEngineData(fen, depth, signal) {
                                 const data = JSON.parse(r.responseText);
                                 if (data.success === false) reject(new Error('API success=false'));
                                 else {
-                                    console.log(`GabiBot: ✅ API ok in ${(performance.now() - startTime).toFixed(0)}ms`);
                                     resolve(data);
                                 }
                             } catch { reject(new Error('Invalid JSON')); }
@@ -62,7 +61,6 @@ async function fetchEngineData(fen, depth, signal) {
                         if (!res.ok) throw new Error(`API error ${res.status}`);
                         const data = await res.json();
                         if (data.success === false) throw new Error('API success=false');
-                        console.log(`GabiBot: ✅ API ok in ${(performance.now() - startTime).toFixed(0)}ms`);
                         resolve(data);
                     })
                     .catch(err => { clearTimeout(timeoutId); signal?.removeEventListener('abort', abortHandler); reject(err); });
@@ -77,7 +75,7 @@ async function fetchEngineData(fen, depth, signal) {
 export async function fetchAnalysis(fen, depth, signal) {
     const cached = PositionCache.get(fen);
     if (cached) {
-        console.log('GabiBot: 🗃️ Using cached analysis');
+        // console.log('GabiBot: 🗃️ Using cached analysis');
         return cached;
     }
 
@@ -85,7 +83,7 @@ export async function fetchAnalysis(fen, depth, signal) {
 
     // Local-only mode: skip API entirely
     if (BotState.analysisMode === 'local') {
-        console.log('GabiBot: 🔒 Local-only mode enforced');
+        // console.log('GabiBot: 🔒 Local-only mode enforced');
         const res = analyzeLocally(fen, depth);
         // Simulate minimal async delay to not block UI
         await new Promise(r => setTimeout(r, 10));
@@ -109,7 +107,6 @@ export async function fetchAnalysis(fen, depth, signal) {
 
     // If API already returned successfully, prefer it (higher quality)
     if (apiSettled?.ok) {
-        console.log('GabiBot: ✅ API beat local engine');
         PositionCache.set(fen, apiSettled.data);
         return apiSettled.data;
     }
@@ -120,7 +117,6 @@ export async function fetchAnalysis(fen, depth, signal) {
         // Fire-and-forget: API result silently upgrades cache for future lookups
         apiPromise.then(r => {
             if (r.ok) {
-                console.log('GabiBot: 📡 API result arrived, cache upgraded');
                 PositionCache.set(fen, r.data);
             }
         });

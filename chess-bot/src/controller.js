@@ -209,7 +209,7 @@ class BotController {
 
         // Game Over Detected via UI
         if (gameOverModal && !this.gameEndDetected) {
-            console.log('GabiBot: Game over detected (UI)');
+            // console.log('GabiBot: Game over detected (UI)');
             this.gameEndDetected = true;
 
             clearArrows();
@@ -227,7 +227,7 @@ class BotController {
 
         // New Game Detected
         if (!gameOverModal && this.gameEndDetected) {
-            console.log('GabiBot: New game started');
+            // console.log('GabiBot: New game started');
             this.gameEndDetected = false;
 
             // Reset tracking
@@ -244,7 +244,7 @@ class BotController {
     }
 
     handleAutoRematch() {
-        console.log('GabiBot: Auto-rematch sequence initiated');
+        console.log('GabiBot: Auto-rematch sequence initiated'); // Keep this one as it's a major event
         // Sequence: Rematch -> New X min -> Close -> Tab -> Start
         setTimeout(() => {
             const modal = document.querySelector('.game-over-modal-content');

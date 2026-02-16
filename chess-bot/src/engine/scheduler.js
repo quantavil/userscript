@@ -76,6 +76,11 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                     const from = best.uci.substring(0, 2);
                     const to = best.uci.substring(2, 4);
                     const promo = best.uci.length >= 5 ? best.uci[4] : null;
+
+                    // Visual feedback for main move
+                    clearArrows();
+                    drawArrow(from, to, 'rgba(100, 255, 100, 0.7)', 3);
+
                     await executeMove(from, to, fen, promo, tickCallback);
                 }
                 lastFenProcessedMain = fen;
@@ -122,15 +127,15 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                     const dragged = await simulateDragMove(from, to);
                     if (!dragged) {
                         // Fallback? or just log error
-                        console.warn('Premove drag failed');
+                        // console.warn('Premove drag failed');
                     }
                 } else {
                     await simulateClickMove(from, to);
                 }
                 await sleep(80);
 
-                const reasonSuffix = premoveResult.reasons.length > 0 ? ` [${premoveResult.reasons.join(', ')}]` : '';
-                console.log(`GabiBot: ✅ Premove ${ourUci}${reasonSuffix}`);
+                // const reasonSuffix = premoveResult.reasons.length > 0 ? ` [${premoveResult.reasons.join(', ')}]` : '';
+                // console.log(`GabiBot: ✅ Premove ${ourUci}${reasonSuffix}`);
                 BotState.statusInfo = `✅ Premove: ${ourUci}`; // Simplified for UI
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                 lastFenProcessedPremove = fen;

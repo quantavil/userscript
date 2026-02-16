@@ -102,7 +102,7 @@ export function startDomBoardWatcher() {
         const newBoard = document.querySelector('chess-board') || document.querySelector('.board') || document.querySelector('[class*="board"]');
         if (!newBoard) return;
         if (!boardCtx || boardCtx.boardEl !== newBoard) {
-            console.log('GabiBot: Board element changed, re-attaching.');
+            // console.log('GabiBot: Board element changed, re-attaching.');
             attachToBoard(newBoard);
         }
     }, 200));
@@ -414,7 +414,7 @@ export function executeMove(from, to, analysisFen, promotionChar, tickCallback) 
         const baseDelay = Math.max(0, AUTO_MOVE_BASE - BotState.autoMoveSpeed * AUTO_MOVE_STEP);
         const totalDelay = getHumanDelay(baseDelay, BotState.randomDelay);
 
-        console.log(`GabiBot: Delay ${totalDelay}ms`);
+        // console.log(`GabiBot: Delay ${totalDelay}ms`);
         BotState.statusInfo = `Moving in ${(totalDelay / 1000).toFixed(1)}s`;
         if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
 
