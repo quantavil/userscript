@@ -59,7 +59,8 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
             const randomDepth = getRandomDepth(BotState.botPower);
             if (analysisId !== currentAnalysisId) { ctrl.abort('superseded'); return; }
 
-            const data = await fetchAnalysis(fen, randomDepth, ctrl.signal);
+            // Pass moveTime (timeLimit) to API
+            const data = await fetchAnalysis(fen, randomDepth, BotState.moveTime, ctrl.signal);
             if (analysisId !== currentAnalysisId) return;
 
             const sourceLabel = data.source === 'local' ? ' [local]' : '';

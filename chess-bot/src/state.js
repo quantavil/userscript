@@ -1,15 +1,12 @@
-
 import { debounce } from './utils.js';
-import { GAME_CACHE_TTL, RANDOM_JITTER_MIN } from './config.js';
+import { GAME_CACHE_TTL } from './config.js';
 
 // Encapsulated state (avoid global pollution)
 export const BotState = {
     hackEnabled: 0,
-    botPower: 8,
-    updateSpeed: 10,
+    botPower: 12,      // Depth (default 12)
+    moveTime: 1000,    // Max Think Time (ms)
     autoMove: 1,
-    autoMoveSpeed: 10,
-    randomDelay: 50,
     currentEvaluation: '-',
     bestMove: '-',
     principalVariation: '-',
@@ -58,10 +55,8 @@ export const Settings = {
             const settings = {
                 hackEnabled: BotState.hackEnabled,
                 botPower: BotState.botPower,
-                updateSpeed: BotState.updateSpeed,
+                moveTime: BotState.moveTime,
                 autoMove: BotState.autoMove,
-                autoMoveSpeed: BotState.autoMoveSpeed,
-                randomDelay: Math.max(RANDOM_JITTER_MIN, BotState.randomDelay),
                 premoveEnabled: BotState.premoveEnabled,
                 autoRematch: BotState.autoRematch,
                 moveMethod: BotState.moveMethod,
@@ -79,11 +74,9 @@ export const Settings = {
             if (!saved) return null;
             const s = JSON.parse(saved);
             BotState.hackEnabled = s.hackEnabled ?? 0;
-            BotState.botPower = s.botPower ?? 8;
-            BotState.updateSpeed = s.updateSpeed ?? 10;
+            BotState.botPower = s.botPower ?? 12;
+            BotState.moveTime = s.moveTime ?? 1000;
             BotState.autoMove = s.autoMove ?? 1;
-            BotState.autoMoveSpeed = s.autoMoveSpeed ?? 8;
-            BotState.randomDelay = Math.max(RANDOM_JITTER_MIN, s.randomDelay ?? 300);
             BotState.premoveEnabled = s.premoveEnabled ?? 0;
             BotState.autoRematch = s.autoRematch ?? 0;
             BotState.moveMethod = s.moveMethod ?? 'click';

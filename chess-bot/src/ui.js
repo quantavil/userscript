@@ -123,25 +123,18 @@ export function buildUI() {
 
     <div class="divider"></div>
 
+    <div class="divider"></div>
+
     <div name="botPower" class="listItem">
-      <input min="1" max="15" value="10" class="rangeSlider" type="range">
+      <input min="1" max="15" value="12" class="rangeSlider" type="range">
       <a class="itemDescription">Depth</a>
       <a class="itemState">12</a>
     </div>
-    <div name="autoMoveSpeed" class="listItem">
-      <input min="1" max="10" value="8" class="rangeSlider" type="range">
-      <a class="itemDescription">Move Speed</a>
-      <a class="itemState">4</a>
-    </div>
-    <div name="randomDelay" class="listItem">
-      <input min="120" max="2000" value="300" class="rangeSlider" type="range">
-      <a class="itemDescription">Random Delay (ms)</a>
-      <a class="itemState">1000</a>
-    </div>
-    <div name="updateSpeed" class="listItem">
-      <input min="1" max="10" value="8" class="rangeSlider" type="range">
-      <a class="itemDescription">Update Rate</a>
-      <a class="itemState">8</a>
+    <div name="moveTime" class="listItem">
+      <!-- Mapped slider: 0-100 map to 100ms-10000ms log scale -->
+      <input min="0" max="100" value="50" class="rangeSlider" type="range">
+      <a class="itemDescription">Max Think Time</a>
+      <a class="itemState">1.0s</a>
     </div>
 
     <div class="divider"></div>
@@ -283,18 +276,36 @@ export function buildUI() {
         Settings.save();
       });
     } else if (type === 'range') {
-      modInput.value = BotState[key];
-      modState.textContent = BotState[key];
-      modInput.addEventListener('input', () => {
-        let value = parseInt(modInput.value, 10);
-        const min = parseInt(modInput.min, 10);
-        const max = parseInt(modInput.max, 10);
-        value = Math.max(min, Math.min(max, value));
-        BotState[key] = value;
-        modInput.value = value;
-        modState.textContent = value;
-        Settings.save();
-      });
+      // Helper for log scale mapping (0-100 -> 100ms-10000ms)
+      const toLog = (v) => Math.round(100 * Math.pow(100, v / 100)); // 100 * (100^x)
+      const toLin = (v) => Math.log(v / 100) / Math.log(100) * 100;
+
+      if (name === 'moveTime') {
+        modInput.value = toLin(BotState.moveTime);
+        modState.textContent = (BotState.moveTime / 1000).toFixed(1) + 's';
+
+        modInput.addEventListener('input', () => {
+          const val = parseInt(modInput.value, 10);
+          const timeMs = toLog(val);
+          BotState.moveTime = timeMs;
+          modState.textContent = (timeMs / 1000).toFixed(1) + 's';
+          Settings.save();
+        });
+      } else {
+        // Standard linear slider (e.g. depth)
+        modInput.value = BotState[key];
+        modState.textContent = BotState[key];
+        modInput.addEventListener('input', () => {
+          let value = parseInt(modInput.value, 10);
+          const min = parseInt(modInput.min, 10);
+          const max = parseInt(modInput.max, 10);
+          value = Math.max(min, Math.min(max, value));
+          BotState[key] = value;
+          modInput.value = value;
+          modState.textContent = value;
+          Settings.save();
+        });
+      }
     }
   }
 
@@ -303,9 +314,7 @@ export function buildUI() {
   bindControl('autoMove', 'checkbox', 'BotState.autoMove');
   bindControl('moveMethod', 'checkbox', 'BotState.moveMethod');
   bindControl('botPower', 'range', 'BotState.botPower');
-  bindControl('autoMoveSpeed', 'range', 'BotState.autoMoveSpeed');
-  bindControl('updateSpeed', 'range', 'BotState.updateSpeed');
-  bindControl('randomDelay', 'range', 'BotState.randomDelay');
+  bindControl('moveTime', 'range', 'BotState.moveTime');
   bindControl('premoveEnabled', 'checkbox', 'BotState.premoveEnabled');
 
   bindControl('autoRematch', 'checkbox', 'BotState.autoRematch');

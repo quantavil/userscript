@@ -1,8 +1,6 @@
 
 import { sleep, debounce } from './utils.js';
 import { BotState, getGame, getFen, getPlayerColor, isPlayersTurn, invalidateGameCache, pa, isBoardFlipped } from './state.js';
-import { AUTO_MOVE_BASE, AUTO_MOVE_STEP } from './config.js';
-import { getHumanDelay } from './utils.js';
 
 let boardCtx = null;
 let domObserver = null;
@@ -133,7 +131,7 @@ export function startMoveWatcher() {
 
             // Notify all listeners
             mutationListeners.forEach(cb => cb());
-        }, 50);
+        }, 80);
     });
 
     boardMoveObserver.observe(board, {
@@ -411,11 +409,14 @@ export function executeMove(from, to, analysisFen, promotionChar, tickCallback) 
 
         cancelPendingMove();
 
-        const baseDelay = Math.max(0, AUTO_MOVE_BASE - BotState.autoMoveSpeed * AUTO_MOVE_STEP);
-        const totalDelay = getHumanDelay(baseDelay, BotState.randomDelay);
+        cancelPendingMove();
 
-        // console.log(`GabiBot: Delay ${totalDelay}ms`);
-        BotState.statusInfo = `Moving in ${(totalDelay / 1000).toFixed(1)}s`;
+        // Use moveTime as the "think time" before moving
+        // We simulate this by delaying the move execution
+        const thinkTime = BotState.moveTime;
+
+        // console.log(`GabiBot: Thinking for ${(thinkTime / 1000).toFixed(1)}s`);
+        BotState.statusInfo = `Thinking (${(thinkTime / 1000).toFixed(1)}s)...`;
         if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
 
         pendingMoveTimeoutId = setTimeout(async () => {
@@ -426,6 +427,8 @@ export function executeMove(from, to, analysisFen, promotionChar, tickCallback) 
                 return;
             }
             if (getFen(g) !== analysisFen) {
+                // Determine if we should really cancel or if it's just a visual artifact?
+                // Strict safety: if FEN changed, abort.
                 BotState.statusInfo = 'Move canceled (position changed)';
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                 return;
@@ -446,7 +449,7 @@ export function executeMove(from, to, analysisFen, promotionChar, tickCallback) 
                 }, 250);
             }
 
-        }, totalDelay);
+        }, thinkTime);
     } else {
         BotState.statusInfo = 'Ready (manual)';
         if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());

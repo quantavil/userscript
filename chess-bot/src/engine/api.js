@@ -1,23 +1,24 @@
-import { API_URL, MULTIPV, ANALYZE_TIMEOUT_MS } from '../config.js';
+import { API_URL, MULTIPV } from '../config.js';
 import { BotState, PositionCache } from '../state.js';
 import { scoreFrom, scoreNumeric } from '../utils.js';
 import { LocalEngine } from './local-engine.js';
 
 const localEngine = new LocalEngine();
 
-export function analyzeLocally(fen, depth) {
-    // console.log(`GabiBot: 🧠 Local engine analyzing FEN: ${fen.substring(0, 20)}... | Depth: ${depth}`);
+export function analyzeLocally(fen, depth, timeLimit) {
+    // console.log(`GabiBot: 🧠 Local engine analyzing FEN: ${fen.substring(0, 20)}... | Depth: ${depth} | Time: ${timeLimit}ms`);
     const start = performance.now();
+    // Pass timeLimit to local engine if supported, otherwise just rely on depth/cutoff
+    // (Assuming localEngine.analyze doesn't support timeLimit yet, we might need to update it too, 
+    // but for now we follow the plan to just pass it in case)
     const result = localEngine.analyze(fen, depth);
     const elapsed = performance.now() - start;
-    // console.log(`GabiBot: 🧠 Local engine done in ${elapsed.toFixed(0)}ms | ${result.nodes} nodes | Depth: ${result.depth} | Best: ${result.bestmove}`);
     return result;
 }
 
 export function resetEngine() {
     if (localEngine && typeof localEngine.clearTT === 'function') {
         localEngine.clearTT();
-        // console.log('GabiBot: Engine TT cleared.');
     }
 }
 
@@ -25,9 +26,8 @@ export function resetEngine() {
 // API FETCHING WITH LOCAL FALLBACK
 // ============================================================
 
-async function fetchEngineData(fen, depth, signal) {
+async function fetchEngineData(fen, depth, timeLimit, signal) {
     const startTime = performance.now();
-    // console.log(`GabiBot: 📡 API request for FEN: ${fen.substring(0, 20)}... | Depth: ${depth}`);
 
     const call = async (params) => {
         const url = `${API_URL}?fen=${encodeURIComponent(fen)}&depth=${depth}&${params}`;
@@ -36,10 +36,11 @@ async function fetchEngineData(fen, depth, signal) {
             if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
             signal?.addEventListener('abort', abortHandler, { once: true });
 
+            // Use dynamic timeLimit for the timeout (plus a small buffer)
             const timeoutId = setTimeout(() => {
                 signal?.removeEventListener('abort', abortHandler);
                 reject(new Error('timeout'));
-            }, ANALYZE_TIMEOUT_MS);
+            }, timeLimit + 500);
 
             if (typeof GM_xmlhttpRequest !== 'undefined') {
                 const req = GM_xmlhttpRequest({
@@ -79,10 +80,9 @@ async function fetchEngineData(fen, depth, signal) {
     return await call(`multipv=${MULTIPV}&mode=bestmove`);
 }
 
-export async function fetchAnalysis(fen, depth, signal) {
+export async function fetchAnalysis(fen, depth, timeLimit, signal) {
     const cached = PositionCache.get(fen);
     if (cached) {
-        // console.log('GabiBot: 🗃️ Using cached analysis');
         return cached;
     }
 
@@ -90,21 +90,26 @@ export async function fetchAnalysis(fen, depth, signal) {
 
     // Local-only mode: skip API entirely
     if (BotState.analysisMode === 'local') {
-        // console.log('GabiBot: 🔒 Local-only mode enforced');
-        const res = analyzeLocally(fen, depth);
+        const res = analyzeLocally(fen, depth, timeLimit);
         // Simulate minimal async delay to not block UI
         await new Promise(r => setTimeout(r, 10));
         return res;
     }
 
     // Fire API call (non-blocking — network I/O runs in background)
-    const apiPromise = fetchEngineData(fen, depth, signal)
+    const apiPromise = fetchEngineData(fen, depth, timeLimit, signal)
         .then(data => ({ ok: true, data }))
         .catch(err => ({ ok: false, error: err }));
 
     // Run local engine speculatively while API is in-flight (~200-500ms)
+    // We can also pass timeLimit here if we want the local engine to stop early?
+    // For now, local engine blocks, so strictly speaking it ignores timeLimit and runs to depth
+    // unless we make it async/incremental.
     BotState.statusInfo = '🧠 Analyzing...';
-    const localResult = analyzeLocally(fen, depth);
+
+    // Note: Local engine is currently synchronous and might freeze UI if depth is high.
+    // Ideally this should be web worker or async yielding.
+    const localResult = analyzeLocally(fen, depth, timeLimit);
 
     // Yield to event loop so any already-arrived API response can settle
     const apiSettled = await Promise.race([

@@ -90,9 +90,10 @@ class BotController {
 
             this.tick();
 
-            // Dynamic interval based on speed setting
-            const interval = Math.max(100, 1100 - (Number(BotState.updateSpeed) || 8) * 100);
-            this.tickTimer = setTimeout(loop, interval);
+            this.tick();
+
+            // Fixed failsafe interval (1000ms) - primarily for redundancy
+            this.tickTimer = setTimeout(loop, 1000);
         };
 
         loop();
@@ -298,12 +299,7 @@ class BotController {
                 Settings.save();
             }
 
-            // Check for speed change
-            if (BotState.updateSpeed !== lastUpdateSpeed) {
-                lastUpdateSpeed = BotState.updateSpeed;
-                // Restart loop to apply new speed if active
-                if (this.isActive) this.startTickLoop();
-            }
+
 
             // Note: premoveEnabled doesn't need a restart, just used in tick()
         }, 200);
