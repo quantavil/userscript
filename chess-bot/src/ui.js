@@ -4,21 +4,53 @@ import { updateEvaluationBar } from './board.js';
 
 export const ui = {
   menuWrap: null,
-  setText(name, value, title) {
-    if (!this.menuWrap) return;
-    const el = this.menuWrap.querySelector(`[name="${name}"]`);
-    if (!el) return;
-    const state = el.querySelector('.itemState') || el.children[el.children.length - 1];
-    if (state) {
-      state.textContent = value ?? '-';
-      if (title) state.title = title;
+  consoleEl: null,
+  lastStatus: '',
+  lastBestMove: '',
+
+  log(msg, type = 'info') {
+    if (!this.consoleEl && this.menuWrap) {
+      this.consoleEl = this.menuWrap.querySelector('#consoleWindow');
     }
+    if (!this.consoleEl) return;
+
+    const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+    const line = document.createElement('div');
+    line.className = `log-line ${type}`;
+    line.innerHTML = `<span class="timestamp">[${time}]</span> ${msg}`;
+
+    this.consoleEl.appendChild(line);
+
+    // Memory protection: Limit log size
+    while (this.consoleEl.childElementCount > 100) {
+      this.consoleEl.removeChild(this.consoleEl.firstChild);
+    }
+
+    this.consoleEl.scrollTop = this.consoleEl.scrollHeight;
   },
+
   updateDisplay(playingAs) {
-    this.setText('currentEvaluation', BotState.currentEvaluation);
-    this.setText('bestMove', BotState.bestMove);
-    this.setText('pvDisplay', BotState.principalVariation, BotState.principalVariation);
-    this.setText('statusInfo', BotState.statusInfo);
+    // Only log if status changed
+    if (BotState.statusInfo !== this.lastStatus) {
+      this.log(BotState.statusInfo, 'status');
+      this.lastStatus = BotState.statusInfo;
+    }
+
+    // Only log if best move changed significantly (e.g. from one move to another)
+    // Let's check overlap. If bestMove is different, we log it.
+    if (BotState.bestMove !== '-' && BotState.bestMove !== this.lastBestMove) {
+      let msg = `Eval: ${BotState.currentEvaluation}`;
+      if (BotState.principalVariation && BotState.principalVariation !== '-') {
+        msg += ` | PV: ${BotState.principalVariation}`;
+      } else {
+        msg += ` | Best: ${BotState.bestMove}`;
+      }
+      this.log(msg, 'info');
+      this.lastBestMove = BotState.bestMove;
+    }
+
+    // We don't log PV updates to avoid spam, or we could add a "verbose" mode later.
+    // For now, simple reports.
 
     updateEvaluationBar(BotState.currentEvaluation, playingAs);
   },
@@ -101,21 +133,9 @@ export function buildUI() {
 
     <div class="divider"></div>
 
-    <div name="currentEvaluation" class="listItem info-item">
-      <a class="itemDescription">Eval:</a>
-      <a class="itemState eval-value">-</a>
-    </div>
-    <div name="bestMove" class="listItem info-item">
-      <a class="itemDescription">Best:</a>
-      <a class="itemState">-</a>
-    </div>
-    <div name="pvDisplay" class="listItem info-item">
-      <a class="itemDescription">PV:</a>
-      <a class="itemState pv-text-state" title="Principal Variation">-</a>
-    </div>
-    <div name="statusInfo" class="listItem info-item">
-      <a class="itemDescription">Status:</a>
-      <a class="itemState status-text">Ready</a>
+    <!-- Terminal Console -->
+    <div id="consoleWindow" class="console-window">
+       <div class="log-line info"><span class="timestamp">--:--:--</span> GabiBot Terminal Ready</div>
     </div>
   </div>
 `;
@@ -127,7 +147,7 @@ export function buildUI() {
     z-index: 9999999;
     display: grid;
     grid-template-rows: auto 1fr;
-    width: 300px; max-height: 550px;
+    width: 320px; max-height: 600px;
     position: fixed;
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(20, 20, 20, 0.95);
@@ -141,10 +161,7 @@ export function buildUI() {
   #menuWrap.minimized #itemsList { overflow: hidden; opacity: 0; }
   #menuWrap.grabbing { cursor: grabbing !important; opacity: 0.9; }
   .divider { height: 1px; background: rgba(255, 255, 255, 0.1); margin: 10px 0; }
-  .pv-text-state { color: #aaa !important; font-size: 11px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .eval-value { font-weight: bold; font-size: 14px; }
-  .status-text { color: #4CAF50 !important; font-size: 11px; }
-  .info-item { opacity: 0.8; margin-bottom: 8px !important; }
+  
   #evaluationBarWrap {
     position: absolute;
     height: 100%;
@@ -165,12 +182,12 @@ export function buildUI() {
   #minimizeBtn { background: rgba(255, 255, 255, 0.1); border: none; color: #fff; width: 24px; height: 24px;
     border-radius: 4px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
   #minimizeBtn:hover { background: rgba(255, 255, 255, 0.2); }
-  #itemsList { overflow-y: auto; overflow-x: hidden; padding: 12px 16px; transition: opacity 0.3s ease; }
+  #itemsList { overflow-y: auto; overflow-x: hidden; padding: 12px 16px; display: flex; flex-direction: column; height: 100%; }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); }
   ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 3px; }
   ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
-  .listItem { display: flex; align-items: center; margin-bottom: 12px; gap: 8px; }
+  .listItem { display: flex; align-items: center; margin-bottom: 12px; gap: 8px; flex-shrink: 0; }
   .checkboxMod { appearance: none; width: 18px; height: 18px; border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 4px;
     background: rgba(255, 255, 255, 0.05); cursor: pointer; position: relative; transition: all 0.2s; flex-shrink: 0; }
   .checkboxMod:checked { background: #4CAF50; border-color: #4CAF50; }
@@ -181,6 +198,30 @@ export function buildUI() {
   .itemDescription { color: rgba(255, 255, 255, 0.7); font-size: 12px; flex: 1; }
   .itemState { color: #fff; font-size: 12px; min-width: 35px; text-align: right; font-weight: 500; }
   #arrowCanvas { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important; pointer-events: none !important; z-index: 100 !important; }
+
+  /* Console Window Styles */
+  .console-window {
+    background: #000000;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 8px;
+    flex-grow: 1;
+    min-height: 120px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .log-line { color: #bbb; line-height: 1.4; word-break: break-all; }
+  .log-line.status { color: #4CAF50; font-weight: bold; }
+  .log-line.error { color: #ff5252; }
+  .log-line.warn { color: #ffab40; }
+  .log-line.info { color: #81d4fa; }
+  .timestamp { color: #555; margin-right: 6px; user-select: none; }
 `;
 
   document.body.appendChild(menuWrap);

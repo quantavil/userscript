@@ -131,7 +131,7 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
 
                 const reasonSuffix = premoveResult.reasons.length > 0 ? ` [${premoveResult.reasons.join(', ')}]` : '';
                 console.log(`GabiBot: ✅ Premove ${ourUci}${reasonSuffix}`);
-                BotState.statusInfo = `✅ Premove: ${ourUci}${reasonSuffix}${sourceLabel}`;
+                BotState.statusInfo = `✅ Premove: ${ourUci}`; // Simplified for UI
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                 lastFenProcessedPremove = fen;
             }
