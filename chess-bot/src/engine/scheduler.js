@@ -1,7 +1,7 @@
 import { BotState, getGame, getPlayerColor, getSideToMove, pa, invalidateGameCache } from '../state.js';
 import { scoreToDisplay, getRandomDepth, sleep } from '../utils.js';
 import { drawArrow, clearArrows, executeMove, simulateClickMove, simulateDragMove } from '../board.js';
-import { fetchAnalysis, parseBestLine } from './api.js';
+import { getAnalysis, parseBestLine } from './analysis.js';
 import { evaluatePremove, getOurMoveFromPV } from './premove.js';
 
 let currentAnalysisId = 0;
@@ -60,7 +60,7 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
             if (analysisId !== currentAnalysisId) { ctrl.abort('superseded'); return; }
 
             // Pass moveTime (timeLimit) to API
-            const data = await fetchAnalysis(fen, randomDepth, BotState.moveTime, ctrl.signal);
+            const data = await getAnalysis(fen, randomDepth, BotState.moveTime, ctrl.signal);
             if (analysisId !== currentAnalysisId) return;
 
             const sourceLabel = data.source === 'local' ? ' [local]' : '';
