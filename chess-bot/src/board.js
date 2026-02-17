@@ -400,56 +400,52 @@ async function makeMove(from, to, expectedFen, promotionChar) {
 
 export function executeMove(from, to, analysisFen, promotionChar, tickCallback) {
     if (BotState.hackEnabled && BotState.autoMove) {
-        const game = getGame();
-        if (!game || !isPlayersTurn(game)) {
-            BotState.statusInfo = 'Waiting for opponent...';
-            if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-            return;
-        }
+        if (!getGame() || !isPlayersTurn(getGame())) return;
 
         cancelPendingMove();
 
-        cancelPendingMove();
+        let attempt = 0;
+        const maxAttempts = 5;
 
-        // Use moveTime as the "think time" before moving
-        // We simulate this by delaying the move execution
+        // Recursively schedule move execution
+        const scheduleAttempt = (delayMs) => {
+            pendingMoveTimeoutId = setTimeout(async () => {
+                const g = getGame();
+                if (!g || !isPlayersTurn(g) || getFen(g) !== analysisFen) {
+                    BotState.statusInfo = 'Move canceled (state changed)';
+                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+                    return;
+                }
+
+                BotState.statusInfo = attempt === 0 ? 'Making move...' : `Retry #${attempt}...`;
+                if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+
+                const success = await makeMove(from, to, analysisFen, promotionChar);
+
+                if (success) {
+                    BotState.statusInfo = '✓ Move made!';
+                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+                } else if (++attempt < maxAttempts) {
+                    // Exponential backoff: 1s, 2s, 4s, 8s
+                    const backoff = Math.pow(2, attempt - 1) * 1000;
+                    BotState.statusInfo = `❌ Failed. Retrying in ${backoff / 1000}s...`;
+                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+                    scheduleAttempt(backoff);
+                } else {
+                    BotState.statusInfo = '❌ Move failed (gave up)';
+                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+                    // Trigger failsafe if needed after giving up
+                    setTimeout(() => {
+                        if (BotState.hackEnabled && isPlayersTurn(getGame()) && tickCallback) tickCallback();
+                    }, 250);
+                }
+            }, delayMs);
+        };
+
         const thinkTime = BotState.moveTime;
-
-        // console.log(`GabiBot: Thinking for ${(thinkTime / 1000).toFixed(1)}s`);
         BotState.statusInfo = `Thinking (${(thinkTime / 1000).toFixed(1)}s)...`;
         if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-
-        pendingMoveTimeoutId = setTimeout(async () => {
-            const g = getGame(); if (!g) return;
-            if (!isPlayersTurn(g)) {
-                BotState.statusInfo = 'Move canceled (not our turn)';
-                if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-                return;
-            }
-            if (getFen(g) !== analysisFen) {
-                // Determine if we should really cancel or if it's just a visual artifact?
-                // Strict safety: if FEN changed, abort.
-                BotState.statusInfo = 'Move canceled (position changed)';
-                if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-                return;
-            }
-
-            BotState.statusInfo = 'Making move...';
-            if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-
-            const success = await makeMove(from, to, analysisFen, promotionChar);
-            BotState.statusInfo = success ? '✓ Move made!' : '❌ Move failed';
-            if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-
-            if (!success) {
-                setTimeout(() => {
-                    if (BotState.hackEnabled && isPlayersTurn(getGame())) {
-                        if (tickCallback) tickCallback();
-                    }
-                }, 250);
-            }
-
-        }, thinkTime);
+        scheduleAttempt(thinkTime);
     } else {
         BotState.statusInfo = 'Ready (manual)';
         if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());

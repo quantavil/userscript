@@ -249,32 +249,26 @@ class BotController {
     }
 
     handleAutoRematch() {
-        console.log('GabiBot: Arena/Rematch sequence initiated');
+        console.log('GabiBot: Auto-queue sequence initiated');
 
         // Delay to allow game-over UI to settle
         setTimeout(() => {
-            // 1. Try Arena "Next Game" buttons
-            const arenaBtn = document.querySelector('[data-cy="next-arena-game-button"]') ||
-                document.querySelector('[data-cy="request-arena-game"]');
-            if (arenaBtn && arenaBtn.offsetParent !== null) {
-                console.log('GabiBot: Clicking Arena "Next Game" button');
-                arenaBtn.click();
-                return;
-            }
+            const actions = [
+                { name: 'Rematch', sel: '[data-cy="sidebar-game-over-rematch-button"]' },
+                { name: 'New 1 Min', sel: '[data-cy="sidebar-game-over-new-game-button"]' },
+                { name: 'Arena Next', sel: '[data-cy="next-arena-game-button"]' },
+                { name: 'Arena Request', sel: '[data-cy="request-arena-game"]' }
+            ];
 
-            // 2. Fallback: Generic Rematch button
-            const modal = document.querySelector('.game-over-modal-content');
-            if (modal) {
-                const rematchBtn = Array.from(modal.querySelectorAll('button')).find(b =>
-                    /rematch/i.test((b.textContent || '').trim()) ||
-                    /rematch/i.test((b.getAttribute?.('aria-label') || '').trim())
-                );
-                if (rematchBtn) {
-                    console.log('GabiBot: Clicking Rematch button');
-                    rematchBtn.click();
+            for (const { name, sel } of actions) {
+                const btn = document.querySelector(sel);
+                if (btn && btn.offsetParent !== null) {
+                    console.log(`GabiBot: Clicking ${name}`);
+                    btn.click();
+                    return;
                 }
             }
-        }, 2000);
+        }, 1500);
     }
 
     // --- Settings / State Watcher ---
@@ -293,9 +287,6 @@ class BotController {
                 Settings.save();
             }
 
-
-
-            // Note: premoveEnabled doesn't need a restart, just used in tick()
         }, 200);
     }
 }
