@@ -45,6 +45,10 @@ export const SearchMethods = {
         this.bQueens = 0;
         this.wBishops = 0;
         this.bBishops = 0;
+        this.wKnights = 0;
+        this.bKnights = 0;
+        this.wRooks = 0;
+        this.bRooks = 0;
 
         let rookCount = 0;
         let wKingAttackers = 0, bKingAttackers = 0;
@@ -79,6 +83,13 @@ export const SearchMethods = {
             } else if (abs === 3) {
                 if (side === 1) this.wBishops++;
                 else this.bBishops++;
+            } else if (abs === 2) {
+                if (side === 1) this.wKnights++;
+                else this.bKnights++;
+            } else if (abs === 4) {
+                if (rookCount < 4) { rookSquares[rookCount] = sq; rookSides[rookCount] = side; rookCount++; }
+                if (side === 1) this.wRooks++;
+                else this.bRooks++;
             }
 
             if (abs === 2) {
@@ -110,7 +121,6 @@ export const SearchMethods = {
                 mgScore += (mob - 5) * 5 * side;
                 egScore += (mob - 5) * 5 * side;
             } else if (abs === 4) {
-                if (rookCount < 4) { rookSquares[rookCount] = sq; rookSides[rookCount] = side; rookCount++; }
                 let mob = 0;
                 for (let di = 0; di < 4; di++) {
                     const dir = STRAIGHT_DIRS[di];
@@ -505,7 +515,7 @@ export const SearchMethods = {
             }
         }
 
-        // Optimization: Generate PESUDO-legal moves
+        // Optimization: Generate PSEUDO-legal moves
         // If we are in check, generateMoves() generates all evasions + non-evasions?
         // Actually generateMoves() generates minimal pseudo-legal (sliding pieces don't jump, etc.)
         // But it doesn't check if King is left in check.
@@ -517,50 +527,47 @@ export const SearchMethods = {
         // Optimization: check validity of ttMove first?
         // We will just process them.
 
-        // Null-move pruning with zugzwang guard: skip in pure K+P endgames
-        if (!inChk && depth >= 3 && ply > 0) {
-            let hasNonPawnMat = false;
-            for (let sq = 0; sq < 64; sq++) {
-                const a = this.board[sq];
-                if (a !== EMPTY && (a > 0 ? 1 : -1) === this.side) {
-                    const at = a > 0 ? a : -a;
-                    if (at >= 2 && at <= 5) { hasNonPawnMat = true; break; }
+        // Efficient Null-move pruning with zugzwang guard
+        if (!inChk && depth >= 2 && ply > 0 && Math.abs(beta - alpha) <= 1) {
+            const staticEval = this.evaluate();
+            if (staticEval >= beta) {
+                const sideMat = this.side === 1 ?
+                    (this.wQueens * 900 + this.wRooks * 500 + this.wBishops * 330 + this.wKnights * 320) :
+                    (this.bQueens * 900 + this.bRooks * 500 + this.bBishops * 330 + this.bKnights * 320);
+
+                if (sideMat > 0) {
+                    this.stateStack.push({
+                        castling: this.castling, epSquare: this.epSquare,
+                        halfmove: this.halfmove, fullmove: this.fullmove,
+                        wKingSq: this.wKingSq, bKingSq: this.bKingSq,
+                        hash: [this.hash[0], this.hash[1]]
+                    });
+
+                    if (this.epSquare >= 0) {
+                        const ef = sqFile(this.epSquare) * 2;
+                        zobXor(this.hash, [ZOBRIST.epKeys[ef], ZOBRIST.epKeys[ef + 1]]);
+                    }
+                    this.epSquare = -1;
+                    this.side = -this.side;
+                    zobXor(this.hash, ZOBRIST.sideKey);
+
+                    const R = depth >= 6 ? 3 : 2;
+                    const nullScore = -this.negamax(depth - 1 - R, -beta, -beta + 1, ply + 1, [], ext);
+
+                    this.side = -this.side;
+                    const st = this.stateStack.pop();
+                    this.castling = st.castling;
+                    this.epSquare = st.epSquare;
+                    this.halfmove = st.halfmove;
+                    this.fullmove = st.fullmove;
+                    this.wKingSq = st.wKingSq;
+                    this.bKingSq = st.bKingSq;
+                    this.hash = st.hash;
+
+                    if (this.stopped) return 0;
+                    if (nullScore >= beta) return beta;
                 }
             }
-            if (!hasNonPawnMat) { /* skip null-move */ }
-            else {
-                this.stateStack.push({
-                    castling: this.castling, epSquare: this.epSquare,
-                    halfmove: this.halfmove, fullmove: this.fullmove,
-                    wKingSq: this.wKingSq, bKingSq: this.bKingSq,
-                    hash: [this.hash[0], this.hash[1]]
-                });
-                // Hash updates for null move
-                if (this.epSquare >= 0) {
-                    const ef = sqFile(this.epSquare) * 2;
-                    zobXor(this.hash, [ZOBRIST.epKeys[ef], ZOBRIST.epKeys[ef + 1]]);
-                }
-                this.epSquare = -1;
-                this.side = -this.side;
-                zobXor(this.hash, ZOBRIST.sideKey);
-
-                const R = depth >= 6 ? 3 : 2; // Adaptive null-move reduction
-                const nullScore = -this.negamax(depth - 1 - R, -beta, -beta + 1, ply + 1, [], ext);
-
-                // Unmake null move
-                this.side = -this.side;
-                const st = this.stateStack.pop();
-                this.castling = st.castling;
-                this.epSquare = st.epSquare;
-                this.halfmove = st.halfmove;
-                this.fullmove = st.fullmove;
-                this.wKingSq = st.wKingSq;
-                this.bKingSq = st.bKingSq;
-                this.hash = st.hash;
-
-                if (this.stopped) return 0;
-                if (nullScore >= beta) return beta;
-            } // end else (hasNonPawnMat)
         }
 
         const scores = this.scoreMoves(moves, ply, ttMove);
@@ -583,27 +590,20 @@ export const SearchMethods = {
             }
             legalMovesCount++;
 
+
             childPv.length = 0;
 
             let score;
-            // Late Move Reductions (LMR) + Principal Variation Search (PVS)
+            // Principal Variation Search (PVS)
             if (movesSearched === 0) {
                 // First move: full window search
                 score = -this.negamax(depth - 1, -beta, -alpha, ply + 1, childPv, ext);
             } else {
-                // LMR: reduce depth for late, non-tactical moves
-                let reduction = 0;
-                if (movesSearched >= 3 && depth >= 3 && !inChk
-                    && mv.captured === EMPTY && !(mv.flags & FLAG_PROMO)) {
-                    reduction = 1;
-                    if (movesSearched >= 6) reduction = 2;
-                }
-
                 // PVS: narrow window first
-                score = -this.negamax(depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, childPv, ext);
+                score = -this.negamax(depth - 1, -alpha - 1, -alpha, ply + 1, childPv, ext);
 
                 // Re-search with full window if it beat alpha
-                if (score > alpha && (reduction > 0 || score < beta)) {
+                if (score > alpha && score < beta) {
                     childPv.length = 0;
                     score = -this.negamax(depth - 1, -beta, -alpha, ply + 1, childPv, ext);
                 }
@@ -628,6 +628,14 @@ export const SearchMethods = {
                 this.ttStore(depth, beta, TT_BETA, mv);
                 return beta;
             }
+
+            // History Penalty for quiet moves that fail low
+            if (score <= origAlpha) {
+                if (mv.captured === EMPTY && !(mv.flags & FLAG_PROMO)) {
+                    this.history[mv.from * 64 + mv.to] -= depth * depth;
+                }
+            }
+
             if (score > alpha) {
                 alpha = score;
                 bestMoveInNode = mv;

@@ -16,7 +16,9 @@ export function analyzeLocally(fen, depth, timeLimit) {
 }
 
 export function resetEngine() {
-    if (localEngine && typeof localEngine.clearTT === 'function') {
+    if (localEngine && typeof localEngine.reset === 'function') {
+        localEngine.reset();
+    } else if (localEngine && typeof localEngine.clearTT === 'function') {
         localEngine.clearTT();
     }
 }

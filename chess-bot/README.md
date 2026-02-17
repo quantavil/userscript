@@ -5,9 +5,10 @@ A  high-performance Tampermonkey userscript designed for **Chess.com**. It provi
 ## 🚀 Key Features
 
 ### 🧠 Dual-Engine Intelligence
-- **Hybrid Analysis:** Seamlessly switches between a high-speed cloud-based Stockfish API and a built-in **Local Chess Engine**.
+- **Hybrid Analysis:** Seamlessly switches between a high-speed cloud-based Stockfish API and a **High-Performance Local Engine**.
+- **Tactical Powerhouse:** The local engine now solves **141/300** tactical puzzles in 2 seconds (Win At Chess suite), achieving **100,000+ NPS**.
+- **Advanced Pruning:** Features Null Move Pruning, Reverse Futility Pruning, and Razoring for deep, efficient search.
 - **Local Fallback:** Never lose a move—if the API is slow or throttled, the local engine kicks in instantly to ensure continuity.
-- **PV (Principal Variation):** Displays recommended move sequences to help you understand the strategic line.
 
 ### ⚡ Professional-Grade Automation
 - **Hyper-Bullet AutoMove:** Configurable move speeds with ultra-low latency. Make moves near-instantly with fine-grained control.

@@ -63,6 +63,13 @@ export class LocalEngine {
         this.bBishops = 0;
     }
 
+    reset() {
+        this.history.fill(0);
+        this.killers = [];
+        this.tt = new Array(TT_SIZE); // Clear TT
+        this.positionHistory = [];
+    }
+
     loadFen(fen) {
         this.board.fill(EMPTY);
         const parts = fen.split(' ');

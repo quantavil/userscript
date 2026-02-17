@@ -41,6 +41,7 @@ async function runBenchmark() {
         const idMatch = line.match(/id "([^"]+)"/);
         const puzzleId = idMatch ? idMatch[1] : 'unknown';
 
+        engine.reset();
         engine.loadFen(fen);
 
         // Search at depth 10 with time limit
