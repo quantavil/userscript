@@ -1,472 +1,248 @@
 import { LocalEngine } from './local-engine.js';
-import { EMPTY, MATE_SCORE, PIECE_VAL } from './constants.js';
-import { sqFile, sqRank, nameToSq } from './utils.js';
+import {
+    EMPTY,
+    MATE_SCORE,
+    PIECE_VAL
+} from './constants.js';
+import {
+    sqFile, sqRank, nameToSq
+} from './utils.js';
 
+// ---------------------------------------------------
+// Deterministic Premove Evaluation
+// ---------------------------------------------------
+// Single engine instance for all premove validation
 const premoveEngine = new LocalEngine();
-const CENTER_SQ = ['d4', 'd5', 'e4', 'e5'].map(nameToSq);
 
-
-export function parseUci(uci) {
-    if (!uci || uci.length < 4) return null;
-    const from = uci.substring(0, 2);
-    const to = uci.substring(2, 4);
-    const promo = uci.length >= 5 ? uci[4] : null;
-
-    if (!/^[a-h][1-8]$/.test(from)) return null;
-    if (!/^[a-h][1-8]$/.test(to)) return null;
-
-    const fromSq = nameToSq(from);
-    const toSq = nameToSq(to);
-    return { from, to, fromSq, toSq, promo };
-}
-
-// ═══════════════════════════════════════════════════
-// Premove Lock — prevents cascading re-premoves
-// (CORE FIX for the "premoves twice" bug)
-//
-// Flow:
-//   lockPremove()  → set before calling performPremove
-//   unlockPremove(cooldownMs) → called in finally, adds cooldown
-//   markFenHandled(fen) → remembers positions we already premoved
-//   isPremoveLocked() → scheduler checks before scheduling premove
-//   isFenHandled(fen) → scheduler checks to avoid re-premove
-// ═══════════════════════════════════════════════════
-
-let _premoveLock = false;
-let _premoveCooldownEnd = 0;
-const _handledFens = new Set();
-const MAX_HANDLED = 50;
-
-export function isPremoveLocked() {
-    return _premoveLock || performance.now() < _premoveCooldownEnd;
-}
-
-export function lockPremove() {
-    _premoveLock = true;
-}
-
-export function unlockPremove(cooldownMs = 400) {
-    _premoveLock = false;
-    _premoveCooldownEnd = performance.now() + cooldownMs;
-}
-
-export function markFenHandled(fen) {
-    _handledFens.add(fen);
-    // FIFO eviction to prevent memory leak
-    if (_handledFens.size > MAX_HANDLED) {
-        _handledFens.delete(_handledFens.values().next().value);
-    }
-}
-
-export function isFenHandled(fen) {
-    return _handledFens.has(fen);
-}
-
-export function clearHandledFens() {
-    _handledFens.clear();
-}
-
-export function resetPremoveState() {
-    _premoveLock = false;
-    _premoveCooldownEnd = 0;
-    _handledFens.clear();
-}
-
-// ═══════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════
-
-function resetTimer(ms = 200) {
-    premoveEngine.startTime = performance.now();
-    premoveEngine.timeLimit = ms;
-    premoveEngine.stopped = false;
-    premoveEngine.nodes = 0;
-}
-
-function findMove(from, to, moves) {
-    return moves.find(m => m.from === from && m.to === to) || null;
-}
-
-function buildMoveMap(moves) {
-    const map = new Map();
-    for (const mv of moves) map.set((mv.from << 6) | mv.to, mv);
-    return map;
-}
-
-function findMoveFromMap(from, to, map) {
-    return map.get((from << 6) | to) ?? null;
-}
-
-function val(absType) { return PIECE_VAL[absType] || 0; }
-
-function pieceAbs(move, sq) {
-    return move.piece
-        ? Math.abs(move.piece)
-        : Math.abs(premoveEngine.board[sq || move.from]);
-}
-
-
-function oppHasHeavyPiece(oppSide) {
-    for (let sq = 0; sq < 64; sq++) {
-        const p = premoveEngine.board[sq];
-        if (p === EMPTY) continue;
-        const abs = Math.abs(p);
-        const sign = p > 0 ? 1 : -1;
-        if (sign === oppSide && (abs === 4 || abs === 5)) return true; // R or Q
-    }
-    return false;
-}
-
-// ═══════════════════════════════════════════════════
-// Tactical Detectors (called AFTER makeMove)
-// ═══════════════════════════════════════════════════
-
-function detectHanging(move, ourSide, oppSide) {
-    const abs = pieceAbs(move, move.from);
-    if (abs <= 1 || abs === 6) return null;
-
-    const { to } = move;
-    if (!premoveEngine.isAttacked(to, oppSide)) return null;
-
-    const capAbs =
-        move.captured != null && move.captured !== EMPTY
-            ? Math.abs(move.captured)
-            : 0;
-    if (val(capAbs) >= val(abs)) return null;
-
-    const attackers = premoveEngine.generateLegalMoves().filter(r => r.to === to);
-    if (!attackers.length) return null;
-
-    const saved = premoveEngine.board[to];
-    premoveEngine.board[to] = EMPTY;
-    const defended = premoveEngine.isAttacked(to, ourSide);
-    premoveEngine.board[to] = saved;
-
-    const cheapest = Math.min(...attackers.map(r => val(pieceAbs(r, r.from))));
-    if (!defended || cheapest < val(abs)) return 'Hangs piece';
-    return null;
-}
-
-function detectBackRank(ourSide) {
-    const kSq = premoveEngine.findKingSq(ourSide);
-    if (kSq < 0) return null;
-
-    const oppSide = -ourSide;
-    if (!oppHasHeavyPiece(oppSide)) return null;
-
-    const rank = sqRank(kSq);
-    const isBack = (ourSide === 1 && rank === 0) || (ourSide === -1 && rank === 7);
-    if (!isBack) return null;
-
-    const sRank = rank + ourSide;
-    if (sRank < 0 || sRank > 7) return null;
-
-    const kFile = sqFile(kSq);
-    for (let d = -1; d <= 1; d++) {
-        const f = kFile + d;
-        if (f < 0 || f > 7) continue;
-        const sq = sRank * 8 + f;
-        if (
-            premoveEngine.board[sq] === EMPTY &&
-            !premoveEngine.isAttacked(sq, premoveEngine.side)
-        )
-            return null;
+/**
+ * Deterministic premove evaluation — no random rolls, no eval-based chance.
+ * Simulates the opponent's predicted move, then validates our premove
+ * on the resulting board. If safe → execute. If unsafe → block.
+ *
+ * @param {string} fen - Current board position (opponent's turn to move)
+ * @param {string|null} opponentUci - Predicted opponent move from PV
+ * @param {string} ourUci - Our premove UCI string
+ * @param {string} ourColor - 'w' or 'b'
+ * @returns {{ execute: boolean, reasons: string[], blocked: string|null }}
+ */
+export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
+    if (!ourUci || ourUci.length < 4) {
+        return { execute: false, reasons: [], blocked: 'Invalid move' };
     }
 
-    return premoveEngine.isAttacked(kSq, premoveEngine.side)
-        ? 'Back-rank mate threat'
-        : null;
-}
-
-// ═══════════════════════════════════════════════════
-// Phantom Capture Detection (called BEFORE opponent move)
-// ═══════════════════════════════════════════════════
-
-function detectPhantomCapture(ourFrom, ourTo, ourSide, oppSide, preOppLegal) {
-    const targetPiece = premoveEngine.board[ourTo];
-    if (targetPiece === EMPTY) return null;
-
-    const targetSign = targetPiece > 0 ? 1 : -1;
-    if (targetSign !== oppSide) return null;
-
-    const ourPiece = premoveEngine.board[ourFrom];
-    if (ourPiece === EMPTY) return null;
-    const ourAbs = Math.abs(ourPiece);
-
-    // Pawn pushes (same file) aren't captures
-    if (ourAbs === 1 && sqFile(ourFrom) === sqFile(ourTo)) return null;
-
-    // Can the target piece escape?
-    const escapes = preOppLegal.filter(m => m.from === ourTo);
-    if (escapes.length === 0) return null;
-
-    let simPiece = ourPiece;
-    if (ourAbs === 1 && (sqRank(ourTo) === 0 || sqRank(ourTo) === 7)) {
-        simPiece = 5 * ourSide; // queen with correct sign
-    }
-
-    const savedTarget = premoveEngine.board[ourTo];
-    const savedOur = premoveEngine.board[ourFrom];
-    premoveEngine.board[ourTo] = simPiece;
-    premoveEngine.board[ourFrom] = EMPTY;
-
-    const attacked = premoveEngine.isAttacked(ourTo, oppSide);
-    let hanging = false;
-    if (attacked) {
-        const tmp = premoveEngine.board[ourTo];
-        premoveEngine.board[ourTo] = EMPTY;
-        const defended = premoveEngine.isAttacked(ourTo, ourSide);
-        premoveEngine.board[ourTo] = tmp;
-        if (!defended) hanging = true;
-    }
-
-    premoveEngine.board[ourFrom] = savedOur;
-    premoveEngine.board[ourTo] = savedTarget;
-
-    return hanging ? 'Target piece can escape, piece would hang' : null;
-}
-
-// ═══════════════════════════════════════════════════
-// Safety Validation
-// ═══════════════════════════════════════════════════
-
-function validateSafety(ourFrom, ourTo, ourSide, oppSide, oppToSq) {
     const reasons = [];
-    const legal = premoveEngine.generateLegalMoves();
-    const move = findMove(ourFrom, ourTo, legal);
+    const oppSide = ourColor === 'w' ? -1 : 1;
+    const ourSide = -oppSide;
 
-    if (!move) {
-        return { safe: false, reasons: [], blocked: 'Move illegal after opponent plays', move: null };
+    if (!opponentUci || opponentUci.length < 4) {
+        return { execute: false, reasons: [], blocked: 'No predicted opponent move' };
     }
 
-    premoveEngine.makeMove(move);
+    try {
+        premoveEngine.loadFen(fen);
+        // Prepare engine for search (required for quiesce to not abort immediately)
+        premoveEngine.startTime = performance.now();
+        premoveEngine.timeLimit = 100; // ample time for just quiescence
+        premoveEngine.stopped = false;
+        premoveEngine.nodes = 0;
 
-    const hangBlock = detectHanging(move, ourSide, oppSide);
-    if (hangBlock) {
-        premoveEngine.unmakeMove(move);
-        return { safe: false, reasons: [], blocked: hangBlock, move };
-    }
+        // --- Step 1: Simulate opponent's predicted move ---
+        const oppFrom = nameToSq(opponentUci.substring(0, 2));
+        const oppTo = nameToSq(opponentUci.substring(2, 4));
+        const oppMoves = premoveEngine.generateLegalMoves();
+        const oppMove = oppMoves.find(m => m.from === oppFrom && m.to === oppTo);
+        if (!oppMove) return { execute: false, reasons: [], blocked: 'Opponent move not legal' };
 
-    const brBlock = detectBackRank(ourSide);
-    if (brBlock) {
-        premoveEngine.unmakeMove(move);
-        return { safe: false, reasons: [], blocked: brBlock, move };
-    }
+        premoveEngine.makeMove(oppMove);
 
-    if (premoveEngine.inCheck && premoveEngine.inCheck(premoveEngine.side))
-        reasons.push('check');
-
-    premoveEngine.unmakeMove(move);
-
-    if (legal.length === 1) reasons.push('forced');
-    if (oppToSq >= 0 && ourTo === oppToSq) reasons.push('recapture');
-    if (!premoveEngine.isAttacked(ourTo, oppSide)) reasons.push('safe sq');
-    if (CENTER_SQ.includes(ourTo)) reasons.push('center');
-
-    return { safe: true, reasons, blocked: null, move };
-}
-
-// ═══════════════════════════════════════════════════
-// Stability Check
-// ═══════════════════════════════════════════════════
-
-function checkStability(oppMoves, oppFrom, oppTo, ourFrom, ourTo) {
-    // Score every opponent reply with an evenly-split budget
-    const perScoreBudget = Math.max(10, Math.floor(200 / oppMoves.length));
-
-    const scored = oppMoves
-        .map(m => {
-            resetTimer(perScoreBudget);                           // FIX #2
-            premoveEngine.makeMove(m);
-            const s = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
-            premoveEngine.unmakeMove(m);
-            return { m, s };
-        })
-        .sort((a, b) => b.s - a.s);
-
-    const alts = scored
-        .filter(({ m }) => !(m.from === oppFrom && m.to === oppTo))
-        .slice(0, 6);
-
-    for (const { m: alt } of alts) {
-        premoveEngine.makeMove(alt);
-
-        const legal = premoveEngine.generateLegalMoves();
-        const moveMap = buildMoveMap(legal);                      // FIX #5
-        const ourMove = findMoveFromMap(ourFrom, ourTo, moveMap);
+        // --- Step 2: Validate our move is legal in the post-opponent-move position ---
+        const ourLegalMoves = premoveEngine.generateLegalMoves();
+        const ourFrom = nameToSq(ourUci.substring(0, 2));
+        const ourTo = nameToSq(ourUci.substring(2, 4));
+        const ourMove = ourLegalMoves.find(m => m.from === ourFrom && m.to === ourTo);
 
         if (!ourMove) {
-            premoveEngine.unmakeMove(alt);
-            continue;
+            premoveEngine.unmakeMove(oppMove);
+            return { execute: false, reasons: [], blocked: 'Our move illegal after opponent plays' };
         }
 
-        resetTimer(30);                                           // FIX #2
+        // --- Step 3: Safety checks on POST-MOVE board ---
+        const movingAbs = Math.abs(ourMove.piece);
+        const capturedAbs = ourMove.captured !== EMPTY ? Math.abs(ourMove.captured) : 0;
+        const capturedVal = capturedAbs > 0 ? (PIECE_VAL[capturedAbs] || 0) : 0;
+        const movedVal = PIECE_VAL[movingAbs] || 0;
 
+        // 3a: Hanging piece detection (single makeMove pass, explicit side checks)
+        if (movingAbs !== 6) {
+            premoveEngine.makeMove(ourMove);
+
+            // Check if destination is attacked by opponent
+            // Use 'oppSide' explicitly instead of premoveEngine.side for clarity
+            const isDestAttacked = premoveEngine.isAttacked(ourTo, oppSide);
+
+            if (isDestAttacked && movingAbs >= 2) {
+                const oppReplies = premoveEngine.generateLegalMoves();
+                const oppAttacksPost = oppReplies.filter(r => r.to === ourTo);
+
+                // Only worry if there are actual attackers
+                if (oppAttacksPost.length > 0 && capturedVal < movedVal) {
+                    const pieceNames = { 5: 'queen', 4: 'rook', 3: 'bishop', 2: 'knight' };
+                    const pieceName = pieceNames[movingAbs] || 'piece';
+
+                    const savedPiece = premoveEngine.board[ourTo];
+                    premoveEngine.board[ourTo] = EMPTY;
+
+                    // FIX: Use explicit 'ourSide' instead of '-premoveEngine.side'
+                    // This ensures we are definitely checking if OUR pieces defend the square.
+                    const isDefended = premoveEngine.isAttacked(ourTo, ourSide);
+
+                    premoveEngine.board[ourTo] = savedPiece;
+
+                    const lowestAttackerVal = Math.min(...oppAttacksPost.map(r => PIECE_VAL[Math.abs(r.piece)] || 100));
+
+                    // LOGIC: Block if it is undefended OR if the trade is bad (attacker is weaker than us)
+                    if (!isDefended || lowestAttackerVal < movedVal) {
+                        premoveEngine.unmakeMove(ourMove);
+                        premoveEngine.unmakeMove(oppMove);
+                        return { execute: false, reasons: [], blocked: `Hangs ${pieceName}` };
+                    }
+                }
+            }
+            premoveEngine.unmakeMove(ourMove);
+        }
+
+        // 3b: Back-rank mate vulnerability
         premoveEngine.makeMove(ourMove);
-        const postScore = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
+        const ourKingSq = premoveEngine.findKingSq(ourSide);
+        if (ourKingSq >= 0) {
+            const kRank = sqRank(ourKingSq);
+            const isBackRank = (ourSide === 1 && kRank === 0) || (ourSide === -1 && kRank === 7);
+            if (isBackRank) {
+                const shieldRank = kRank + ourSide;
+                if (shieldRank >= 0 && shieldRank <= 7) {
+                    const kFile = sqFile(ourKingSq);
+                    let escapable = false;
+                    for (let df = -1; df <= 1; df++) {
+                        const sf = kFile + df;
+                        if (sf < 0 || sf > 7) continue;
+                        const shieldSq = shieldRank * 8 + sf;
+                        if (premoveEngine.board[shieldSq] === EMPTY &&
+                            !premoveEngine.isAttacked(shieldSq, premoveEngine.side)) {
+                            escapable = true;
+                            break;
+                        }
+                    }
+                    if (!escapable) {
+                        const backRankAttacked = premoveEngine.isAttacked(ourKingSq, premoveEngine.side);
+                        if (backRankAttacked) {
+                            premoveEngine.unmakeMove(ourMove);
+                            premoveEngine.unmakeMove(oppMove);
+                            return { execute: false, reasons: [], blocked: 'Back-rank mate threat' };
+                        }
+                        reasons.push('back-rank weak');
+                    }
+                }
+            }
+        }
         premoveEngine.unmakeMove(ourMove);
 
-        const perAltBudget = Math.max(8, Math.floor(80 / legal.length));
-        let bestAlt = -Infinity;
-        for (const a of legal) {
-            if (a.from === ourFrom && a.to === ourTo) continue;
-            resetTimer(perAltBudget);                             // FIX #2
-            premoveEngine.makeMove(a);
-            const s = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
-            premoveEngine.unmakeMove(a);
-            if (s > bestAlt) bestAlt = s;
+        // --- Step 4: Quality signals (informational) ---
+        if (ourLegalMoves.length === 1) {
+            reasons.push('forced');
+        } else if (ourLegalMoves.length <= 3) {
+            reasons.push('few options');
         }
 
-        premoveEngine.unmakeMove(alt);
-
-        if (bestAlt > -Infinity && bestAlt - postScore >= 150) {
-            return 'Move suboptimal in alternate opponent response';
+        if (ourTo === oppTo) {
+            reasons.push('recapture');
         }
+
+        premoveEngine.makeMove(ourMove);
+        if (premoveEngine.inCheck(premoveEngine.side)) {
+            reasons.push('check');
+        }
+        premoveEngine.unmakeMove(ourMove);
+
+        if (!premoveEngine.isAttacked(ourTo, -premoveEngine.side)) {
+            reasons.push('safe sq');
+        }
+
+        const centerSquares = [nameToSq('d4'), nameToSq('d5'), nameToSq('e4'), nameToSq('e5')];
+        if (centerSquares.includes(ourTo)) {
+            reasons.push('center');
+        }
+
+        // --- Step 5: Multi-response stability check ---
+        premoveEngine.unmakeMove(oppMove);
+
+        // Reset timer so quiesce actually works (prior steps consumed the original budget)
+        premoveEngine.startTime = performance.now();
+        premoveEngine.timeLimit = 200;
+        premoveEngine.stopped = false;
+        premoveEngine.nodes = 0;
+
+        const oppScoredMoves = [];
+        for (const oMove of oppMoves) {
+            premoveEngine.makeMove(oMove);
+            const score = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
+            premoveEngine.unmakeMove(oMove);
+            oppScoredMoves.push({ move: oMove, score });
+        }
+        oppScoredMoves.sort((a, b) => b.score - a.score);
+
+        // Check top 6 opponent responses (was 3 — too few to catch refutations)
+        const topOppMoves = oppScoredMoves
+            .filter(m => !(m.move.from === oppFrom && m.move.to === oppTo))
+            .slice(0, 6);
+
+        for (const { move: altOppMove } of topOppMoves) {
+            premoveEngine.makeMove(altOppMove);
+            const altLegal = premoveEngine.generateLegalMoves();
+            const altOurMove = altLegal.find(m => m.from === ourFrom && m.to === ourTo);
+
+            // If move is illegal in alternate response (e.g. piece captured or blocked),
+            // it's a conditional premove. We just skip this variation (move won't happen).
+            if (!altOurMove) {
+                premoveEngine.unmakeMove(altOppMove);
+                continue;
+            }
+
+            // Fresh node counter to avoid mid-variation timeout
+            premoveEngine.stopped = false;
+            premoveEngine.nodes = 0;
+
+            premoveEngine.makeMove(altOurMove);
+            const postScore = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
+            premoveEngine.unmakeMove(altOurMove);
+
+            let bestAlt = -Infinity;
+            for (const alt of altLegal) {
+                if (alt.from === ourFrom && alt.to === ourTo) continue;
+                premoveEngine.makeMove(alt);
+                const altS = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
+                premoveEngine.unmakeMove(alt);
+                if (altS > bestAlt) bestAlt = altS;
+            }
+
+            premoveEngine.unmakeMove(altOppMove);
+
+            // 150cp threshold (was 200 — catches real blunders without over-blocking in bullet)
+            if (bestAlt > -Infinity && (bestAlt - postScore) >= 150) {
+                return { execute: false, reasons: ['unstable'], blocked: 'Move suboptimal in alternate opponent response' };
+            }
+        }
+
+    } catch (e) {
+        console.warn('GabiBot: evaluatePremove error:', e);
+        return { execute: false, reasons: [], blocked: 'Evaluation error' };
     }
-    return null;
-}
 
-// ═══════════════════════════════════════════════════
-// Public API
-// ═══════════════════════════════════════════════════
+    return { execute: true, reasons, blocked: null };
+}
 
 export function getOurMoveFromPV(pv, ourColor, sideToMove) {
     if (!pv) return null;
     const moves = pv.trim().split(/\s+/).filter(Boolean);
-    const idx = sideToMove === ourColor ? 0 : 1;
-    return moves[idx] || null;
-}
-
-export function evaluatePremoveChain(fen, opponentUcis, ourUcis, ourColor) {
-    const results = [];
-    const oppSide = ourColor === 'w' ? -1 : 1;
-    const ourSide = -oppSide;
-    const stack = [];
-
-    if (!ourUcis.length || !opponentUcis.length) return { premoves: [] };
-
-    // FIX #6 — suppress premoves near 50-move draw
-    const halfmove = parseInt((fen.split(' ')[4]) || '0', 10);
-    if (halfmove >= 90) return { premoves: [] };
-
-    try {
-        premoveEngine.loadFen(fen);
-
-        const count = Math.min(ourUcis.length, opponentUcis.length, 2);
-
-        for (let i = 0; i < count; i++) {
-            const oUci = opponentUcis[i];
-            const pUci = ourUcis[i];
-
-            if (!oUci || oUci.length < 4 || !pUci || pUci.length < 4) {
-                results.push({
-                    uci: pUci || '',
-                    execute: false,
-                    reasons: [],
-                    blocked:
-                        i === 0
-                            ? 'No predicted opponent move'
-                            : 'Incomplete PV for double premove',
-                });
-                break;
-            }
-
-            const oSq = parseUci(oUci);                          // FIX #1, #4
-            const pSq = parseUci(pUci);
-            if (!oSq || !pSq) {
-                results.push({ uci: pUci, execute: false, reasons: [], blocked: 'Invalid move format' });
-                break;
-            }
-
-            // Phantom capture check BEFORE opponent moves
-            const preOppLegal = premoveEngine.generateLegalMoves();
-            const phantomBlock = detectPhantomCapture(
-                pSq.fromSq, pSq.toSq, ourSide, oppSide, preOppLegal
-            );
-            if (phantomBlock) {
-                results.push({ uci: pUci, execute: false, reasons: [], blocked: phantomBlock });
-                break;
-            }
-
-            // Simulate opponent move
-            const oppMove = findMove(oSq.fromSq, oSq.toSq, preOppLegal);
-            if (!oppMove) {
-                results.push({ uci: pUci, execute: false, reasons: [], blocked: 'Opponent move not legal' });
-                break;
-            }
-
-            premoveEngine.makeMove(oppMove);
-            stack.push(oppMove);
-
-            // Safety validation
-            const v = validateSafety(pSq.fromSq, pSq.toSq, ourSide, oppSide, oSq.toSq);
-            if (!v.safe) {
-                results.push({ uci: pUci, execute: false, reasons: v.reasons, blocked: v.blocked });
-                break;
-            }
-
-            // Stability (first premove only)
-            if (i === 0) {
-                premoveEngine.unmakeMove(oppMove);
-                stack.pop();
-
-                const unstable = checkStability(
-                    preOppLegal, oSq.fromSq, oSq.toSq, pSq.fromSq, pSq.toSq
-                );
-
-                premoveEngine.makeMove(oppMove);
-                stack.push(oppMove);
-
-                if (unstable) {
-                    results.push({ uci: pUci, execute: false, reasons: ['unstable'], blocked: unstable });
-                    break;
-                }
-            }
-
-            results.push({ uci: pUci, execute: true, reasons: v.reasons, blocked: null });
-
-            // Advance board for next premove
-            premoveEngine.makeMove(v.move);
-            stack.push(v.move);
-        }
-    } catch (e) {
-        console.warn('evaluatePremoveChain error:', e);
-        if (!results.length || results[results.length - 1].execute) {
-            results.push({
-                uci: ourUcis[results.length] || '',
-                execute: false,
-                reasons: [],
-                blocked: 'Evaluation error',
-            });
-        }
-    } finally {
-        while (stack.length) premoveEngine.unmakeMove(stack.pop());
-    }
-
-    return { premoves: results };
-}
-
-export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
-    const { premoves } = evaluatePremoveChain(
-        fen,
-        opponentUci ? [opponentUci] : [],
-        ourUci ? [ourUci] : [],
-        ourColor
-    );
-    return premoves[0] || { execute: false, reasons: [], blocked: 'No premove data' };
-}
-
-export function evaluateDoublePremove(fen, opponentUci, ourUci, opponentNextUci, ourNextUci, ourColor) {
-    const { premoves } = evaluatePremoveChain(
-        fen,
-        [opponentUci, opponentNextUci].filter(Boolean),
-        [ourUci, ourNextUci].filter(Boolean),
-        ourColor
-    );
-    const second = premoves[1];
-    if (!second) {
-        const first = premoves[0];
-        return { execute: false, blocked: first?.blocked || 'Sequence failed' };
-    }
-    return { execute: second.execute, blocked: second.blocked };
+    if (!moves.length) return null;
+    return moves[sideToMove === ourColor ? 0 : 1] || null;
 }
