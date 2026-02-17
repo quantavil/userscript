@@ -96,6 +96,7 @@ Instead of a full search, we drop into **Quiescence Search (QSearch)**. QSearch 
 
 **Why it worked:**
 This filters out "hopeful" checks that lead nowhere. In puzzles, if a move leaves a piece hanging without immediate tactical compensation, Razoring detects it instantly via QSearch and prunes it, saving thousands of nodes.
+
 *   **Result:** gained another +8 solved puzzles at 100ms by ignoring bad branches faster.
 
 ### 3. Lazy Legality Checking — "Shoot First, Ask Later"
@@ -120,3 +121,39 @@ We give the opponent a free move ("pass"). If our position is still so strong th
 
 ### Summary
 We took an engine that was "meticulous" (checked everything perfectly) and made it "pragmatic" (makes safe assumptions to save time). This allows it to reach deeper depths in the same 100ms-500ms window, finding tactics that were previously just beyond its horizon.
+
+### Session 3: Search Optimizations (Attempted & Reverted)
+In this session, we explored several advanced search techniques to improve tactical performance. All attempts either regressed performance or failed to improve scaling.
+
+1.  **Aspiration Windows**:
+    -   **Goal**: Narrow search window to prune irrelevant lines.
+    -   **Result**: 200ms Solved: 75/300 (-10 regression).
+    -   **Outcome**: Reverted. Overhead of re-searches outweighed benefits at short time controls.
+
+2.  **History Pruning**:
+    -   **Original (threshold -250*d)**:
+        -   200ms: 86/300 (+1 solved).
+        -   500ms: 110/300 (-4 regression).
+    -   **Tuned (threshold -500*d)**:
+        -   200ms: 85/300 (No change).
+        -   500ms: 107/300 (-7 regression).
+    -   **Conservative (depth <= 2)**:
+        -   200ms: 84/300 (-1 regression).
+    -   **Outcome**: Reverted. Pruning based on history consistently hurt accuracy at deeper searches (500ms).
+
+3.  **Singular Extensions**:
+    -   **Goal**: Extend search for forced moves to avoid horizon effects.
+    -   **Result**: 200ms Solved: 81/300 (-4 regression).
+    -   **Outcome**: Reverted. Implementation cost (re-searches) was too high for 200ms benchmark.
+
+4.  **Tempo Bonus**:
+    -   **Goal**: Add evaluation bonus (20cp) to side-to-move.
+    -   **Result**: 200ms Solved: 78/300 (-7 regression).
+    -   **Outcome**: Reverted. Distorted evaluation of tactical positions.
+
+5.  **Razoring Refinement**:
+    -   **Relaxed (margin 450*d)**: 200ms Solved: 84/300 (-1 regression).
+    -   **Aggressive (margin 250*d)**: 200ms Solved: 80/300 (-5 regression).
+    -   **Outcome**: Reverted. Original margin (350*d) appears optimal.
+
+**Conclusion:** The engine's current search configuration (Negamax + PVS + NMP + RFP + Razoring) is highly optimized for the WAC benchmark. Further gains likely require Evaluation Tuning (PST/Material) rather than search heuristics which are currently well-balanced.
