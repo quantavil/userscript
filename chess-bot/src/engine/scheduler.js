@@ -137,7 +137,7 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
 
                     clearArrows();
                     drawArrow(from, to, 'rgba(100, 255, 100, 0.7)', 3);
-                    await executeMove(from, to, fen, promo, tickCallback);
+                    await executeMove(from, to, fen, promo, data.depth, tickCallback);
                 }
                 lastFenProcessedMain = fen;
 
