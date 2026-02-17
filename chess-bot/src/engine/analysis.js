@@ -10,7 +10,7 @@ export function analyzeLocally(fen, depth, timeLimit) {
     // Pass timeLimit to local engine if supported, otherwise just rely on depth/cutoff
     // (Assuming localEngine.analyze doesn't support timeLimit yet, we might need to update it too, 
     // but for now we follow the plan to just pass it in case)
-    const result = localEngine.analyze(fen, depth);
+    const result = localEngine.analyze(fen, depth, timeLimit);
     const elapsed = performance.now() - start;
     return result;
 }

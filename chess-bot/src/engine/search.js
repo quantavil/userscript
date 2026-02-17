@@ -654,7 +654,7 @@ export const SearchMethods = {
         return { move: bestMove, score: whiteScore, pv: bestPv, depth: completedDepth, nodes: this.nodes };
     },
 
-    analyze(fen, depth) {
+    analyze(fen, depth, timeLimit) {
         this.loadFen(fen);
 
         // Clear TT if analyzing as different side than before
@@ -662,10 +662,9 @@ export const SearchMethods = {
             this.clearTT();
         }
 
-        // Time limit scales with depth — with LMR/PVS we can afford deeper search
-        let timeMs = depth * 200;
-        if (timeMs > 800) timeMs = 800;
-        const searchDepth = depth < 8 ? depth : 8;
+        // Use passed depth and time limit directly
+        const timeMs = timeLimit || 1000;
+        const searchDepth = depth || 12;
 
         // Reset contempt for fresh analysis
         this.contempt = 25; // Default: prefer winning over drawing

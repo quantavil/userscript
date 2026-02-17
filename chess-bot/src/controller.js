@@ -276,6 +276,7 @@ class BotController {
         // Delay to allow game-over UI to settle
         setTimeout(() => {
             const actions = [
+                { name: 'Accept', sel: 'button[data-cy="game-over-modal-rematch-button"], .game-over-buttons-button', text: 'Accept' },
                 { name: 'Rematch', sel: '[data-cy="sidebar-game-over-rematch-button"]' },
                 { name: 'New 1 Min Modal', sel: '[data-cy="game-over-modal-new-game-button"]' },
                 { name: 'New 1 Min', sel: '[data-cy="sidebar-game-over-new-game-button"]' },
@@ -283,12 +284,17 @@ class BotController {
                 { name: 'Arena Request', sel: '[data-cy="request-arena-game"]' }
             ];
 
-            for (const { name, sel } of actions) {
-                const btn = document.querySelector(sel);
-                if (btn && btn.offsetParent !== null) {
-                    console.log(`GabiBot: Clicking ${name}`);
-                    btn.click();
-                    return;
+            for (const action of actions) {
+                const btns = document.querySelectorAll(action.sel);
+                for (const btn of btns) {
+                    if (btn && btn.offsetParent !== null) {
+                        if (action.text && !btn.textContent.toLowerCase().includes(action.text.toLowerCase())) {
+                            continue;
+                        }
+                        console.log(`GabiBot: Clicking ${action.name}`);
+                        btn.click();
+                        return;
+                    }
                 }
             }
         }, 1500);

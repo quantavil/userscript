@@ -1,5 +1,5 @@
 import { BotState, getGame, getPlayerColor, getSideToMove, pa, invalidateGameCache } from '../state.js';
-import { scoreToDisplay, getRandomDepth, sleep } from '../utils.js';
+import { scoreToDisplay, sleep } from '../utils.js';
 import { drawArrow, clearArrows, executeMove, simulateClickMove, simulateDragMove } from '../board.js';
 import { getAnalysis, parseBestLine } from './analysis.js';
 import { evaluatePremove, evaluatePremoveChain, getOurMoveFromPV } from './premove.js';
@@ -111,13 +111,12 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
             BotState.statusInfo = kind === 'main' ? '🔄 Analyzing...' : '🔄 Analyzing (premove)...';
             if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
 
-            const randomDepth = getRandomDepth(BotState.botPower);
+            const targetDepth = BotState.botPower || 12;
             if (analysisId !== currentAnalysisId) { ctrl.abort('superseded'); return; }
 
-            const data = await getAnalysis(fen, randomDepth, BotState.moveTime, ctrl.signal);
+            const data = await getAnalysis(fen, targetDepth, BotState.moveTime, ctrl.signal);
             if (analysisId !== currentAnalysisId) return;
 
-            const sourceLabel = data.source === 'local' ? ' [local]' : '';
             const best = parseBestLine(data);
 
             if (kind === 'main') {
@@ -125,7 +124,7 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                 BotState.bestMove = best?.uci || '-';
                 BotState.currentEvaluation = scoreToDisplay(best?.score);
                 BotState.principalVariation = best?.pv || 'Not available';
-                BotState.statusInfo = `✓ Ready${sourceLabel}`;
+                BotState.statusInfo = `✓ Ready (D${data.depth || '?'})`;
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
 
                 // Clear any stale chain when it's our turn to move normally
@@ -152,7 +151,7 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                     ((stm === ourColor) ? (best?.uci || null) : null);
 
                 if (!ourUci) {
-                    BotState.statusInfo = `Premove unavailable (no PV)${sourceLabel}`;
+                    BotState.statusInfo = `Premove unavailable (no PV)`;
                     if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                     lastFenProcessedPremove = fen;
                     return;
@@ -166,13 +165,13 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                     const premoveResult = evaluatePremove(fen, opponentUci, ourUci, ourColor);
 
                     if (premoveResult.blocked) {
-                        BotState.statusInfo = `🛡️ Premove blocked: ${premoveResult.blocked}${sourceLabel}`;
+                        BotState.statusInfo = `🛡️ Premove blocked: ${premoveResult.blocked}`;
                         if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                         lastFenProcessedPremove = fen;
                         return;
                     }
                     if (!premoveResult.execute) {
-                        BotState.statusInfo = `Premove skipped${sourceLabel}`;
+                        BotState.statusInfo = `Premove skipped`;
                         if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                         lastFenProcessedPremove = fen;
                         return;
@@ -190,7 +189,7 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                     }
                     await sleep(80);
 
-                    BotState.statusInfo = `✅ Premove: ${ourUci}${sourceLabel}`;
+                    BotState.statusInfo = `✅ Premove: ${ourUci}`;
                     if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                     lastFenProcessedPremove = fen;
                     return;
@@ -225,7 +224,7 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                 const chainInfo = premoveChain.length > 0
                     ? ` (+${premoveChain.length} queued)`
                     : '';
-                BotState.statusInfo = `✅ Premove: ${firstMove.uci}${chainInfo}${sourceLabel}`;
+                BotState.statusInfo = `✅ Premove: ${firstMove.uci}${chainInfo}`;
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                 lastFenProcessedPremove = fen;
             }

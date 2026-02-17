@@ -170,7 +170,13 @@ function getSquareCenterClientXY(square) {
     const offsetY = rect.top + (rect.height - size) / 2;
     let x = file, y = 8 - rank;
     if (isBoardFlipped()) { x = 7 - x; y = 7 - y; }
-    return { x: offsetX + (x + 0.5) * tile, y: offsetY + (y + 0.5) * tile };
+
+    const result = { x: offsetX + (x + 0.5) * tile, y: offsetY + (y + 0.5) * tile };
+    if (isNaN(result.x) || isNaN(result.y)) {
+        console.warn(`GabiBot: Invalid coordinates for square ${square}. Board size: ${rect.width}x${rect.height}`);
+        return null;
+    }
+    return result;
 }
 
 function getSquareCenterCanvasXY(square) {
@@ -394,11 +400,11 @@ async function makeMove(from, to, expectedFen, promotionChar) {
     }
     if (promotionChar) await maybeSelectPromotion(String(promotionChar).toLowerCase());
 
-    const changed = await waitForFenChange(beforeFen, 600);
+    const changed = await waitForFenChange(beforeFen, 2500); // Increased from 600ms for robustness
     return !!changed;
 }
 
-export function executeMove(from, to, analysisFen, promotionChar, tickCallback) {
+export function executeMove(from, to, analysisFen, promotionChar, depth, tickCallback) {
     if (BotState.hackEnabled && BotState.autoMove) {
         if (!getGame() || !isPlayersTurn(getGame())) return;
 
@@ -408,7 +414,8 @@ export function executeMove(from, to, analysisFen, promotionChar, tickCallback) 
         const jitter = BotState.jitter ? Math.random() * BotState.jitter : 0;
         const totalDelay = thinkTime + jitter;
 
-        BotState.statusInfo = `Thinking (${(totalDelay / 1000).toFixed(1)}s)...`;
+        const depthLabel = depth ? ` (D${depth})` : '';
+        BotState.statusInfo = `Thinking${depthLabel} (${(totalDelay / 1000).toFixed(1)}s)...`;
         if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
 
         pendingMoveTimeoutId = setTimeout(async () => {

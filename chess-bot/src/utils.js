@@ -8,11 +8,7 @@ export function debounce(fn, wait = 150) {
     };
 }
 
-export function getRandomDepth(botPower) {
-    const minDepth = 5;
-    const maxDepth = Math.max(botPower || 10, minDepth);
-    return Math.floor(Math.random() * (maxDepth - minDepth + 1)) + minDepth;
-}
+
 
 export function getHumanDelay(baseDelay, randomDelay) {
     return baseDelay + Math.floor(Math.random() * randomDelay);

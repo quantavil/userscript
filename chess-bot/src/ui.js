@@ -121,16 +121,14 @@ export function buildUI() {
     <div class="divider"></div>
 
     <div name="botPower" class="listItem">
-      <input min="1" max="15" value="12" class="rangeSlider" type="range">
+      <input min="1" max="30" value="12" class="rangeSlider" type="range">
       <a class="itemDescription">Depth</a>
       <a class="itemState">12</a>
     </div>
     <div name="moveTime" class="listItem">
       <!-- Mapped slider: 0-100 map to 100ms-10000ms log scale -->
       <input min="0" max="100" value="50" class="rangeSlider" type="range">
-      <a class="itemDescription">Max Think Time</a>
-      <a class="itemState">1.0s</a>
-      <a class="itemDescription">Max Think Time</a>
+      <a class="itemDescription">Think</a>
       <a class="itemState">1.0s</a>
     </div>
     <div name="jitter" class="listItem">
@@ -284,7 +282,6 @@ export function buildUI() {
           const val = parseInt(modInput.value, 10);
           const timeMs = toLog(val);
           BotState.moveTime = timeMs;
-          modState.textContent = (timeMs / 1000).toFixed(1) + 's';
           modState.textContent = (timeMs / 1000).toFixed(1) + 's';
           Settings.save();
         });
