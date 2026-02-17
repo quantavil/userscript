@@ -406,20 +406,30 @@ export const SearchMethods = {
             if (standPatVal > alpha) alpha = standPatVal;
         }
 
-        const moves = this.generateLegalMoves(!inChk);
-
-        if (inChk && moves.length === 0) return -(MATE_SCORE - ply);
+        // Generate moves:
+        // If in check, we must generate ALL pseudo-legal moves to find evasions.
+        // If not in check, generate only captures.
+        const moves = this.generateMoves(inChk ? false : true);
 
         const scores = this.scoreMoves(moves, ply, null);
         for (let i = 0; i < moves.length; i++) {
             this.pickMove(moves, scores, i);
             const mv = moves[i];
+
             // Delta pruning: skip captures that can't possibly raise alpha
+            // (Only if not in check, as in check we must escape)
             if (!inChk && mv.captured !== EMPTY) {
                 if (standPatVal + PIECE_VAL[Math.abs(mv.captured)] + 200 < alpha) continue;
             }
 
             this.makeMove(mv);
+
+            // Lazy legality check: if we left our king in check, this move is illegal
+            if (this.inCheck(-this.side)) {
+                this.unmakeMove(mv);
+                continue;
+            }
+
             const score = -this.quiesce(-beta, -alpha, ply + 1);
             this.unmakeMove(mv);
 
@@ -474,10 +484,17 @@ export const SearchMethods = {
             if (ttEntry.score !== null) return ttEntry.score;
         }
 
-        const moves = this.generateLegalMoves();
-        if (moves.length === 0) {
-            return inChk ? -(MATE_SCORE - ply) : 0;
-        }
+        // Optimization: Generate PESUDO-legal moves
+        // If we are in check, generateMoves() generates all evasions + non-evasions?
+        // Actually generateMoves() generates minimal pseudo-legal (sliding pieces don't jump, etc.)
+        // But it doesn't check if King is left in check.
+        const moves = this.generateMoves(false);
+
+        // If no moves at all (stalemate/mate), check immediately?
+        // No, we must filter illegal ones first.
+
+        // Optimization: check validity of ttMove first?
+        // We will just process them.
 
         // Null-move pruning with zugzwang guard: skip in pure K+P endgames
         if (!inChk && depth >= 3 && ply > 0) {
@@ -530,11 +547,21 @@ export const SearchMethods = {
         let bestMoveInNode = null;
         let origAlpha = alpha;
         let movesSearched = 0;
+        let legalMovesCount = 0;
 
         for (let i = 0; i < moves.length; i++) {
             this.pickMove(moves, scores, i);
             const mv = moves[i];
+
             this.makeMove(mv);
+
+            // Lazy Legality Check
+            if (this.inCheck(-this.side)) {
+                this.unmakeMove(mv);
+                continue;
+            }
+            legalMovesCount++;
+
             childPv.length = 0;
 
             let score;
@@ -587,6 +614,11 @@ export const SearchMethods = {
                 pvLine.push(mv);
                 pvLine.push(...childPv);
             }
+        }
+
+        // If no legal moves, check for mate or stalemate
+        if (legalMovesCount === 0) {
+            return inChk ? -(MATE_SCORE - ply) : 0;
         }
 
         // Store in TT
