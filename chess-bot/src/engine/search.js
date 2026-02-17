@@ -484,6 +484,27 @@ export const SearchMethods = {
             if (ttEntry.score !== null) return ttEntry.score;
         }
 
+        // Optimizations: Reverse Futility Pruning (RFP) and Razoring
+        // Both use static evaluation to prune/reduce search at low depths.
+        if (depth <= 3 && !inChk && ply > 0 && Math.abs(beta - alpha) <= 1) {
+            const staticEval = this.evaluate();
+
+            // Reverse Futility Pruning
+            // If static eval is high enough above beta (fail-high), prune.
+            const evalMargin = depth * 120;
+            if (staticEval - evalMargin >= beta) {
+                return beta;
+            }
+
+            // Razoring
+            // If static eval is very low (fail-low), drop to qsearch to verify.
+            const razorMargin = depth * 350;
+            if (staticEval + razorMargin < alpha) {
+                const qScore = this.quiesce(alpha, beta, ply + 1);
+                if (qScore < alpha) return alpha;
+            }
+        }
+
         // Optimization: Generate PESUDO-legal moves
         // If we are in check, generateMoves() generates all evasions + non-evasions?
         // Actually generateMoves() generates minimal pseudo-legal (sliding pieces don't jump, etc.)

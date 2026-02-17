@@ -1,6 +1,5 @@
-const esbuild = require('esbuild');
-const fs = require('fs');
-const path = require('path');
+import esbuild from 'esbuild';
+import fs from 'fs';
 
 const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
 
