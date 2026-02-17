@@ -130,6 +130,13 @@ export function buildUI() {
       <input min="0" max="100" value="50" class="rangeSlider" type="range">
       <a class="itemDescription">Max Think Time</a>
       <a class="itemState">1.0s</a>
+      <a class="itemDescription">Max Think Time</a>
+      <a class="itemState">1.0s</a>
+    </div>
+    <div name="jitter" class="listItem">
+      <input min="0" max="100" value="0" class="rangeSlider" type="range">
+      <a class="itemDescription">Jitter</a>
+      <a class="itemState">0.0s</a>
     </div>
 
     <div class="divider"></div>
@@ -278,6 +285,28 @@ export function buildUI() {
           const timeMs = toLog(val);
           BotState.moveTime = timeMs;
           modState.textContent = (timeMs / 1000).toFixed(1) + 's';
+          modState.textContent = (timeMs / 1000).toFixed(1) + 's';
+          Settings.save();
+        });
+      } else if (name === 'jitter') {
+        const toLogJitter = (v) => {
+          if (v === 0) return 0;
+          // Map 1-100 -> 100ms-10000ms
+          return Math.round(100 * Math.pow(100, v / 100));
+        };
+        const toLinJitter = (v) => {
+          if (v <= 0) return 0;
+          return Math.log(v / 100) / Math.log(100) * 100;
+        };
+
+        modInput.value = toLinJitter(BotState.jitter);
+        modState.textContent = (BotState.jitter / 1000).toFixed(1) + 's';
+
+        modInput.addEventListener('input', () => {
+          const val = parseInt(modInput.value, 10);
+          const timeMs = toLogJitter(val);
+          BotState.jitter = timeMs;
+          modState.textContent = (timeMs / 1000).toFixed(1) + 's';
           Settings.save();
         });
       } else {
@@ -303,6 +332,7 @@ export function buildUI() {
   bindControl('moveMethod', 'checkbox', 'BotState.moveMethod');
   bindControl('botPower', 'range', 'BotState.botPower');
   bindControl('moveTime', 'range', 'BotState.moveTime');
+  bindControl('jitter', 'range', 'BotState.jitter');
   bindControl('premoveEnabled', 'checkbox', 'BotState.premoveEnabled');
 
   bindControl('autoRematch', 'checkbox', 'BotState.autoRematch');

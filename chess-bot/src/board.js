@@ -404,49 +404,36 @@ export function executeMove(from, to, analysisFen, promotionChar, tickCallback) 
 
         cancelPendingMove();
 
-        let attempt = 0;
-        const maxAttempts = 5;
-
-        // Recursively schedule move execution
-        const scheduleAttempt = (delayMs) => {
-            pendingMoveTimeoutId = setTimeout(async () => {
-                const g = getGame();
-                if (!g || !isPlayersTurn(g) || getFen(g) !== analysisFen) {
-                    BotState.statusInfo = 'Move canceled (state changed)';
-                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-                    return;
-                }
-
-                BotState.statusInfo = attempt === 0 ? 'Making move...' : `Retry #${attempt}...`;
-                if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-
-                // Fast timeout for bullet (600ms check)
-                const success = await makeMove(from, to, analysisFen, promotionChar);
-
-                if (success) {
-                    BotState.statusInfo = '✓ Move made!';
-                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-                } else if (++attempt < maxAttempts) {
-                    // Fast Backoff: 200ms, 400ms, 800ms... (Beat the 1s failsafe)
-                    const backoff = Math.pow(2, attempt - 1) * 200;
-                    BotState.statusInfo = `❌ Retrying in ${backoff}ms...`;
-                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-                    scheduleAttempt(backoff);
-                } else {
-                    BotState.statusInfo = '❌ Move failed (gave up)';
-                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-                    // Trigger failsafe if needed after giving up
-                    setTimeout(() => {
-                        if (BotState.hackEnabled && isPlayersTurn(getGame()) && tickCallback) tickCallback();
-                    }, 100);
-                }
-            }, delayMs);
-        };
-
         const thinkTime = BotState.moveTime;
-        BotState.statusInfo = `Thinking (${(thinkTime / 1000).toFixed(1)}s)...`;
+        const jitter = BotState.jitter ? Math.random() * BotState.jitter : 0;
+        const totalDelay = thinkTime + jitter;
+
+        BotState.statusInfo = `Thinking (${(totalDelay / 1000).toFixed(1)}s)...`;
         if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-        scheduleAttempt(thinkTime);
+
+        pendingMoveTimeoutId = setTimeout(async () => {
+            const g = getGame();
+            if (!g || !isPlayersTurn(g) || getFen(g) !== analysisFen) {
+                BotState.statusInfo = 'Move canceled (state changed)';
+                if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+                return;
+            }
+
+            BotState.statusInfo = 'Making move...';
+            if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+
+            const success = await makeMove(from, to, analysisFen, promotionChar);
+
+            if (success) {
+                BotState.statusInfo = '✓ Move made!';
+                if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+            } else {
+                BotState.statusInfo = '❌ Move failed (gave up)';
+                if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+                // Immediate hard reset trigger
+                if (BotState.hackEnabled && isPlayersTurn(getGame()) && tickCallback) tickCallback();
+            }
+        }, totalDelay);
     } else {
         BotState.statusInfo = 'Ready (manual)';
         if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());

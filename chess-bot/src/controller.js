@@ -174,12 +174,13 @@ class BotController {
     }
 
     checkFailsafe(fen) {
-        const now = Date.now();
-        // Bullet Chess Optimized: 1s, 2s, 4s, 8s, 16s... (capped at 32s)
-        const backoffWait = Math.min(1000 * Math.pow(2, this.failsafeAttempts), 32000);
+        // Only trigger failsafe if the bot explicitly reports a failure
+        // 'Move failed (gave up)' is set by board.js after all retries are exhausted.
+        // 'Error' is set by analysis/scheduler on critical failures.
+        const hasFailed = BotState.statusInfo.includes('Move failed') || BotState.statusInfo.includes('Error');
 
-        if (now - this.fenFirstSeenTime > backoffWait) {
-            console.log(`GabiBot: 🛡️ Failsafe triggered (${backoffWait}ms stuck). HARD RESET. Attempt #${this.failsafeAttempts + 1}`);
+        if (hasFailed) {
+            console.log(`GabiBot: 🛡️ Failsafe triggered (Status: ${BotState.statusInfo}). HARD RESET. Attempt #${this.failsafeAttempts + 1}`);
 
             // 1. Clear State
             setLastFenProcessedMain('');
