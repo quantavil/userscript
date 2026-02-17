@@ -13,8 +13,7 @@ export const BotState = {
     statusInfo: 'Ready',
     premoveEnabled: 0,
     autoRematch: 0,
-    moveMethod: 'click', // 'click' or 'drag'
-    analysisMode: 'hybrid' // 'hybrid' or 'local'
+    moveMethod: 'click' // 'click' or 'drag'
 };
 
 // Position cache system (LRU)
@@ -60,7 +59,6 @@ export const Settings = {
                 premoveEnabled: BotState.premoveEnabled,
                 autoRematch: BotState.autoRematch,
                 moveMethod: BotState.moveMethod,
-                analysisMode: BotState.analysisMode,
                 menuPosition: menuWrap ? { top: menuWrap.style.top, left: menuWrap.style.left } : null
             };
             localStorage.setItem('gabibot_settings', JSON.stringify(settings));
@@ -80,7 +78,6 @@ export const Settings = {
             BotState.premoveEnabled = s.premoveEnabled ?? 0;
             BotState.autoRematch = s.autoRematch ?? 0;
             BotState.moveMethod = s.moveMethod ?? 'click';
-            BotState.analysisMode = s.analysisMode ?? 'hybrid';
             return s;
         } catch (e) {
             console.error('Failed to load settings:', e);

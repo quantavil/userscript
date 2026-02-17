@@ -1,5 +1,5 @@
 // Engine + logic constants
-export const API_URL = 'https://stockfish.online/api/s/v2.php';
+
 export const MULTIPV = 1;
 
 export const GAME_CACHE_TTL = 100; // Cache game object for 100ms

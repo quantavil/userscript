@@ -4,7 +4,7 @@ import { sleep } from './utils.js';
 import { clearArrows, cancelPendingMove, startDomBoardWatcher, startMoveWatcher, stopMoveWatcher, onBoardMutation } from './board.js';
 import { ui } from './ui.js';
 import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, getLastFenProcessedPremove, setLastFenProcessedPremove } from './engine/scheduler.js';
-import { resetEngine } from './engine/api.js';
+import { resetEngine } from './engine/analysis.js';
 
 class BotController {
     constructor() {
@@ -175,14 +175,35 @@ class BotController {
 
     checkFailsafe(fen) {
         const now = Date.now();
-        const backoffWait = Math.min(1000 * Math.pow(2, this.failsafeAttempts), 24000);
+        // Bullet Chess Optimized: 1s, 2s, 4s, 8s, 16s... (capped at 32s)
+        const backoffWait = Math.min(1000 * Math.pow(2, this.failsafeAttempts), 32000);
 
         if (now - this.fenFirstSeenTime > backoffWait) {
-            console.log(`GabiBot: 🛡️ Failsafe triggered (${backoffWait}ms stuck), full reset. Attempt #${this.failsafeAttempts + 1}`);
+            console.log(`GabiBot: 🛡️ Failsafe triggered (${backoffWait}ms stuck). HARD RESET. Attempt #${this.failsafeAttempts + 1}`);
+
+            // 1. Clear State
             setLastFenProcessedMain('');
+            setLastFenProcessedPremove('');
             cancelPendingMove();
+            clearArrows();
+
+            // 2. True Reset (Re-hook observers)
+            stopMoveWatcher();
+            startMoveWatcher();
+            startDomBoardWatcher();
+
+            // 3. Reset Engine Memory
+            resetEngine();
+
+            // 4. Reset Timer & Increment Attempt
             this.fenFirstSeenTime = now;
             this.failsafeAttempts++;
+
+            BotState.statusInfo = `⚠️ Resetting (${this.failsafeAttempts})`;
+            ui.updateDisplay(pa());
+
+            // 5. Force Tick
+            setTimeout(() => this.tick(), 100);
         }
     }
 
@@ -255,6 +276,7 @@ class BotController {
         setTimeout(() => {
             const actions = [
                 { name: 'Rematch', sel: '[data-cy="sidebar-game-over-rematch-button"]' },
+                { name: 'New 1 Min Modal', sel: '[data-cy="game-over-modal-new-game-button"]' },
                 { name: 'New 1 Min', sel: '[data-cy="sidebar-game-over-new-game-button"]' },
                 { name: 'Arena Next', sel: '[data-cy="next-arena-game-button"]' },
                 { name: 'Arena Request', sel: '[data-cy="request-arena-game"]' }

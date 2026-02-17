@@ -5,7 +5,7 @@ import { scoreToDisplay, getRandomDepth, sleep } from '../utils.js';
 import {
     drawArrow, clearArrows, executeMove, simulateClickMove, simulateDragMove
 } from '../board.js';
-import { fetchAnalysis, parseBestLine } from './api.js';
+import { getAnalysis, parseBestLine } from './analysis.js';
 import {
     evaluatePremove, evaluateDoublePremove, getOurMoveFromPV,
     parseUci,                                                     // FIX #4
@@ -13,16 +13,16 @@ import {
     markFenHandled, isFenHandled, clearHandledFens                 // CORE FIX
 } from './premove.js';
 
-let currentAnalysisId    = 0;
+let currentAnalysisId = 0;
 let currentAbortController = null;
 
-let lastFenProcessedMain    = '';
+let lastFenProcessedMain = '';
 let lastFenProcessedPremove = '';
 
-export function getLastFenProcessedMain()        { return lastFenProcessedMain; }
-export function setLastFenProcessedMain(fen)     { lastFenProcessedMain = fen; }
-export function getLastFenProcessedPremove()     { return lastFenProcessedPremove; }
-export function setLastFenProcessedPremove(fen)  { lastFenProcessedPremove = fen; }
+export function getLastFenProcessedMain() { return lastFenProcessedMain; }
+export function setLastFenProcessedMain(fen) { lastFenProcessedMain = fen; }
+export function getLastFenProcessedPremove() { return lastFenProcessedPremove; }
+export function setLastFenProcessedPremove(fen) { lastFenProcessedPremove = fen; }
 
 // ───────────────────────────────────────────────────
 // Helpers
@@ -47,16 +47,16 @@ function isStale(analysisId) {
 // ───────────────────────────────────────────────────
 // Schedule
 // ───────────────────────────────────────────────────
-let scheduledMainFen    = '';
+let scheduledMainFen = '';
 let scheduledPremoveFen = '';
 
 export function scheduleAnalysis(kind, fen, tickCallback) {
     // Dedup guard
-    if (kind === 'main'  && scheduledMainFen    === fen) return;
-    if (kind !== 'main'  && scheduledPremoveFen === fen) return;
+    if (kind === 'main' && scheduledMainFen === fen) return;
+    if (kind !== 'main' && scheduledPremoveFen === fen) return;
 
     if (kind === 'main') scheduledMainFen = fen;
-    else                 scheduledPremoveFen = fen;
+    else scheduledPremoveFen = fen;
 
     // ── CORE FIX: block premove if locked or already handled ──
     if (kind !== 'main') {
@@ -84,8 +84,8 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
         const game = getGame();
         if (!game) return;
 
-        if (kind === 'main'  && lastFenProcessedMain    === fen) return;
-        if (kind !== 'main'  && lastFenProcessedPremove  === fen) return;
+        if (kind === 'main' && lastFenProcessedMain === fen) return;
+        if (kind !== 'main' && lastFenProcessedPremove === fen) return;
 
         // ── CORE FIX: re-check lock after async gap ──
         if (kind !== 'main' && (isPremoveLocked() || isFenHandled(fen))) return;
@@ -99,20 +99,20 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
             const randomDepth = getRandomDepth(BotState.botPower);
             if (isStale(analysisId)) { ctrl.abort('superseded'); return; }
 
-            const data = await fetchAnalysis(fen, randomDepth, BotState.moveTime, ctrl.signal);
+            const data = await getAnalysis(fen, randomDepth, BotState.moveTime, ctrl.signal);
             if (isStale(analysisId)) return;
 
             const sourceLabel = data.source === 'local' ? ' [local]' : '';
-            const best        = parseBestLine(data);
+            const best = parseBestLine(data);
 
             // ===========================================================
             // MAIN MOVE
             // ===========================================================
             if (kind === 'main') {
-                BotState.bestMove             = best?.uci || '-';
-                BotState.currentEvaluation    = scoreToDisplay(best?.score);
-                BotState.principalVariation   = best?.pv || 'Not available';
-                BotState.statusInfo           = `✓ Ready${sourceLabel}`;
+                BotState.bestMove = best?.uci || '-';
+                BotState.currentEvaluation = scoreToDisplay(best?.score);
+                BotState.principalVariation = best?.pv || '-';
+                BotState.statusInfo = `✓ Ready${sourceLabel}`;
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
 
                 if (best) {
@@ -139,8 +139,8 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
             }
 
             const ourColor = getPlayerColor(game);
-            const stm      = getSideToMove(game);
-            const pvMoves  = (best?.pv || '').trim().split(/\s+/).filter(Boolean);
+            const stm = getSideToMove(game);
+            const pvMoves = (best?.pv || '').trim().split(/\s+/).filter(Boolean);
 
             const opponentUci =
                 stm !== ourColor && pvMoves.length > 0 ? pvMoves[0] : null;
@@ -198,7 +198,7 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                 // --- Double premove ---
                 if (pvMoves.length >= 4) {
                     const opponentNextUci = pvMoves[2];
-                    const ourNextUci      = pvMoves[3];
+                    const ourNextUci = pvMoves[3];
 
                     const doubleRes = evaluateDoublePremove(
                         fen, opponentUci, ourUci,
@@ -246,13 +246,13 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                 // Silently skip — superseded
             } else {
                 console.error('GabiBot Error:', error);
-                BotState.statusInfo    = '❌ Analysis Error';
+                BotState.statusInfo = '❌ Analysis Error';
                 BotState.currentEvaluation = 'Error';
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
             }
         } finally {
-            if (kind === 'main'  && scheduledMainFen    === fen) scheduledMainFen = '';
-            if (kind !== 'main'  && scheduledPremoveFen === fen) scheduledPremoveFen = '';
+            if (kind === 'main' && scheduledMainFen === fen) scheduledMainFen = '';
+            if (kind !== 'main' && scheduledPremoveFen === fen) scheduledPremoveFen = '';
             if (currentAbortController === ctrl) currentAbortController = null;
         }
     };

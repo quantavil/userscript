@@ -394,7 +394,7 @@ async function makeMove(from, to, expectedFen, promotionChar) {
     }
     if (promotionChar) await maybeSelectPromotion(String(promotionChar).toLowerCase());
 
-    const changed = await waitForFenChange(beforeFen, 400);
+    const changed = await waitForFenChange(beforeFen, 600);
     return !!changed;
 }
 
@@ -420,15 +420,16 @@ export function executeMove(from, to, analysisFen, promotionChar, tickCallback) 
                 BotState.statusInfo = attempt === 0 ? 'Making move...' : `Retry #${attempt}...`;
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
 
+                // Fast timeout for bullet (600ms check)
                 const success = await makeMove(from, to, analysisFen, promotionChar);
 
                 if (success) {
                     BotState.statusInfo = '✓ Move made!';
                     if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                 } else if (++attempt < maxAttempts) {
-                    // Exponential backoff: 1s, 2s, 4s, 8s
-                    const backoff = Math.pow(2, attempt - 1) * 1000;
-                    BotState.statusInfo = `❌ Failed. Retrying in ${backoff / 1000}s...`;
+                    // Fast Backoff: 200ms, 400ms, 800ms... (Beat the 1s failsafe)
+                    const backoff = Math.pow(2, attempt - 1) * 200;
+                    BotState.statusInfo = `❌ Retrying in ${backoff}ms...`;
                     if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                     scheduleAttempt(backoff);
                 } else {
@@ -437,7 +438,7 @@ export function executeMove(from, to, analysisFen, promotionChar, tickCallback) 
                     // Trigger failsafe if needed after giving up
                     setTimeout(() => {
                         if (BotState.hackEnabled && isPlayersTurn(getGame()) && tickCallback) tickCallback();
-                    }, 250);
+                    }, 100);
                 }
             }, delayMs);
         };
