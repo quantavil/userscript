@@ -304,6 +304,61 @@ export const SearchMethods = {
         return score * this.side;
     },
 
+
+    see(move) {
+        const from = move.from;
+        const to = move.to;
+        let victim = move.captured ? Math.abs(move.captured) : 0;
+        let attacker = move.promo ? Math.abs(move.promo) : Math.abs(move.piece);
+
+        let score = 0;
+        if (victim) score += PIECE_VAL[victim];
+        if (move.promo) score += PIECE_VAL[attacker] - PIECE_VAL[1];
+
+        const captures = [score];
+
+        // Simulate
+        const removed = [];
+        const originalFromPiece = this.board[from];
+        const originalToPiece = this.board[to];
+
+        this.board[from] = EMPTY;
+        this.board[to] = (this.side * (move.promo ? move.promo : move.piece));
+
+        let currentSide = -this.side;
+        let currentVictimVal = PIECE_VAL[attacker];
+
+        try {
+            let d = 0;
+            while (d < 30) {
+                const att = this.getSmallestAttacker(to, currentSide);
+                if (!att) break;
+
+                d++;
+                captures.push(currentVictimVal);
+                currentVictimVal = att.value;
+
+                removed.push({ sq: att.sq, p: this.board[att.sq] });
+                this.board[att.sq] = EMPTY;
+
+                currentSide = -currentSide;
+            }
+        } finally {
+            this.board[from] = originalFromPiece;
+            this.board[to] = originalToPiece;
+            for (let i = removed.length - 1; i >= 0; i--) {
+                this.board[removed[i].sq] = removed[i].p;
+            }
+        }
+
+        let val = 0;
+        for (let i = captures.length - 1; i >= 1; i--) {
+            val = Math.max(0, captures[i] - val);
+        }
+
+        return captures[0] - val;
+    },
+
     // ---- Search ----
     scoreMoves(moves, ply, ttMove) {
         const scores = new Int32Array(moves.length);

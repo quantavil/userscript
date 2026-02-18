@@ -61,54 +61,24 @@ function resetTimer(engine, ms) {
 }
 
 /**
- * Check if a moved piece is hanging after the move.
- * Must be called AFTER makeMove(ourMove).
- * Returns { hanging: boolean, reason: string|null }
+ * Check if a moved piece is safe or if the trade is favorable.
+ * Must be called BEFORE makeMove(ourMove).
+ * 
+ * Logic:
+ * 1. If we move to a square that is attacked, use SEE to check if the exchange is favorable.
+ * 2. If SEE < 0, it's considered hanging/unsafe.
  */
 function checkHanging(engine, ourMove, ourSide, oppSide) {
-    const movingAbs = Math.abs(ourMove.piece);
-    const capturedAbs = ourMove.captured !== EMPTY ? Math.abs(ourMove.captured) : 0;
-    const capturedVal = capturedAbs > 0 ? (PIECE_VAL[capturedAbs] || 0) : 0;
+    // Expects engine state BEFORE ourMove is made.
 
-    // For promotions, evaluate the promoted piece value, not the pawn
-    let effectiveAbs = movingAbs;
-    const promo = ourMove.promotedPiece || ourMove.promo || 0;
-    if (promo !== 0) {
-        effectiveAbs = Math.abs(promo);
-    }
-    const movedVal = PIECE_VAL[effectiveAbs] || 0;
+    // Check SEE
+    const seeScore = engine.see(ourMove);
 
-    // Skip king moves (handled by legality)
-    if (effectiveAbs === 6) return { hanging: false, reason: null };
-    // Skip low-value pieces
-    if (effectiveAbs < 2) return { hanging: false, reason: null };
-
-    const isDestAttacked = engine.isAttacked(ourMove.to, oppSide);
-    if (!isDestAttacked) return { hanging: false, reason: null };
-
-    // Only worry if we're not winning material already
-    if (capturedVal >= movedVal) return { hanging: false, reason: null };
-
-    // Check if destination is defended by us
-    const savedPiece = engine.board[ourMove.to];
-    engine.board[ourMove.to] = EMPTY;
-    const isDefended = engine.isAttacked(ourMove.to, ourSide);
-    engine.board[ourMove.to] = savedPiece;
-
-    // Generate opponent replies to find lowest-value attacker
-    const oppReplies = engine.generateLegalMoves();
-    const attackers = oppReplies.filter(r => r.to === ourMove.to);
-
-    if (attackers.length === 0) return { hanging: false, reason: null };
-
-    const lowestAttackerVal = Math.min(
-        ...attackers.map(r => PIECE_VAL[Math.abs(r.piece)] || 100)
-    );
-
-    // Block if undefended OR if trade is losing (attacker worth less than us)
-    if (!isDefended || lowestAttackerVal < movedVal) {
-        const names = { 5: 'queen', 4: 'rook', 3: 'bishop', 2: 'knight' };
-        return { hanging: true, reason: `Hangs ${names[effectiveAbs] || 'piece'}` };
+    if (seeScore < 0) {
+        // If SEE is negative, we lose material.
+        // It's "hanging" unless the move is a sacrifice leading to mate (which SEE won't see).
+        // For premoves, avoiding negative SEE is a good heuristic.
+        return { hanging: true, reason: `Unsafe trade (SEE ${seeScore})` };
     }
 
     return { hanging: false, reason: null };
@@ -172,15 +142,15 @@ export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
         }
 
         // --- Step 3: Single post-move safety pass ---
-        premoveEngine.makeMove(ourMove);
 
-        // 3a: Hanging piece check
+        // 3a: Hanging piece check (BEFORE moving)
         const hangResult = checkHanging(premoveEngine, ourMove, ourSide, oppSide);
         if (hangResult.hanging) {
-            premoveEngine.unmakeMove(ourMove);
             premoveEngine.unmakeMove(oppMove);
             return { execute: false, confidence: 0, reasons: [], blocked: hangResult.reason };
         }
+
+        premoveEngine.makeMove(ourMove);
 
         // 3b: Back-rank weakness detection
         const ourKingSq = premoveEngine.findKingSq(ourSide);

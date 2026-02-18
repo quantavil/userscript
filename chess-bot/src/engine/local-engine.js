@@ -640,6 +640,75 @@ export class LocalEngine {
         }
         return s;
     }
+
+    getSmallestAttacker(sq, bySide) {
+        // Pawn attacks
+        const pawnDir = bySide === 1 ? 1 : -1;
+        const attackSourceRank = (sq >> 4) - pawnDir;
+        if (attackSourceRank >= 0 && attackSourceRank <= 7) {
+            const sourceSqBase = sq - pawnDir * 16;
+            // Check capture sources
+            for (const offset of [-1, 1]) {
+                const s = sourceSqBase + offset;
+                if (!(s & 0x88) && this.board[s] === bySide) { // Pawn = 1
+                    return { piece: bySide, sq: s, value: PIECE_VAL[1] };
+                }
+            }
+        }
+
+        // Knight attacks
+        const kn = bySide * WN;
+        for (let i = 0; i < 8; i++) {
+            const t = sq + KNIGHT_OFFSETS[i];
+            if (t & 0x88) continue;
+            if (this.board[t] === kn) return { piece: kn, sq: t, value: PIECE_VAL[2] };
+        }
+
+        // Bishop/Queen
+        const sideB = bySide * WB;
+        const sideQ = bySide * WQ;
+        for (let i = 0; i < 4; i++) {
+            const dir = DIAG_DIRS[i];
+            let t = sq + dir;
+            while (!(t & 0x88)) {
+                const p = this.board[t];
+                if (p !== EMPTY) {
+                    if (p === sideB || p === sideQ) {
+                        return { piece: p, sq: t, value: PIECE_VAL[Math.abs(p)] };
+                    }
+                    break;
+                }
+                t += dir;
+            }
+        }
+
+        // Rook/Queen
+        const sideR = bySide * WR;
+        for (let i = 0; i < 4; i++) {
+            const dir = STRAIGHT_DIRS[i];
+            let t = sq + dir;
+            while (!(t & 0x88)) {
+                const p = this.board[t];
+                if (p !== EMPTY) {
+                    if (p === sideR || p === sideQ) {
+                        return { piece: p, sq: t, value: PIECE_VAL[Math.abs(p)] };
+                    }
+                    break;
+                }
+                t += dir;
+            }
+        }
+
+        // King
+        const kg = bySide * WK;
+        for (let i = 0; i < 8; i++) {
+            const t = sq + ALL_DIRS[i];
+            if (t & 0x88) continue;
+            if (this.board[t] === kg) return { piece: kg, sq: t, value: PIECE_VAL[6] };
+        }
+
+        return null;
+    }
 }
 
 // Apply Search Mixin

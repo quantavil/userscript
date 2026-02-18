@@ -179,6 +179,5 @@ More accurate, handles pins/x-rays, and replaces 50+ lines with 3.
 | 3 | Pack moves as ints | **~30% speed**, eliminates GC stalls |
 | 5 | Typed-array TT | **4× hash table**, no GC |
 | 7 | Numeric repetition | **~10% node throughput** |
-| 6 | Add SEE | Better ordering + prune losing captures |
 
 | 10 | SEE in premove | More accurate, -50 lines |
