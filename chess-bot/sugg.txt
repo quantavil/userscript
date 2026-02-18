@@ -143,32 +143,7 @@ isRepetition() {
 
 The `i -= 2` skip is valid because same-side positions only occur on even plies.
 
----
 
-
-### 10. **Merge premove safety into the engine — replace `checkHanging` with SEE**
-
-```js
-// CURRENT: 40-line checkHanging() with manual attack/defense detection
-// that misses pins, x-rays, and batteries
-
-// REPLACE with one line using SEE from suggestion #6:
-function isMoveHanging(engine, move) {
-    if (Math.abs(move.piece) <= 1 || Math.abs(move.piece) === 6) return false;
-    return engine.see(move.to, -engine.side) < 0; // opponent captures profitably
-}
-
-// In evaluatePremove:
-engine.makeMove(ourMove);
-if (isMoveHanging(engine, ourMove)) {
-    engine.unmakeMove(ourMove);
-    return { execute: false, confidence: 0, reasons: [], blocked: 'Hangs piece' };
-}
-```
-
-More accurate, handles pins/x-rays, and replaces 50+ lines with 3.
-
----
 
 ### Priority Order
 
@@ -177,7 +152,5 @@ More accurate, handles pins/x-rays, and replaces 50+ lines with 3.
 
 | 4 | Add LMR | **2–5× search depth** |
 | 3 | Pack moves as ints | **~30% speed**, eliminates GC stalls |
-| 5 | Typed-array TT | **4× hash table**, no GC |
 | 7 | Numeric repetition | **~10% node throughput** |
 
-| 10 | SEE in premove | More accurate, -50 lines |

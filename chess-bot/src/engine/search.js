@@ -437,7 +437,7 @@ export const SearchMethods = {
         }
     },
 
-    quiesce(alpha, beta, ply) {
+    quiesce(alpha, beta, ply, qply = 0) {
         this.nodes++;
         if (this.nodes % 4096 === 0 && performance.now() - this.startTime > this.timeLimit) {
             this.stopped = true;
@@ -446,7 +446,7 @@ export const SearchMethods = {
 
         const inChk = this.inCheck(this.side);
 
-        // Capture standPat BEFORE alpha update for delta pruning
+        // Stand-pat logic (only if not in check)
         let standPatVal = -MATE_SCORE;
         if (!inChk) {
             standPatVal = this.evaluate();
@@ -454,37 +454,68 @@ export const SearchMethods = {
             if (standPatVal > alpha) alpha = standPatVal;
         }
 
-        // Generate moves:
-        // If in check, we must generate ALL pseudo-legal moves to find evasions.
-        // If not in check, generate only captures.
-        const moves = this.generateMoves(inChk ? false : true);
+        // Search Checks in first ply of Q-search to resolve tactical blindness
+        const searchChecks = !inChk && qply < 1;
+
+        // Generate Moves: 
+        // If inCheck: All Pseudo-legal moves (evasions)
+        // If !inCheck: Captures Only + (Checks if qply < 1)
+        // generateMoves(capturesOnly = false) -> false = ALL, true = CAPTURES
+        // We need ALL if searching checks, then filtering
+        const moves = this.generateMoves(inChk ? false : (searchChecks ? false : true));
 
         const scores = this.scoreMoves(moves, ply, null);
+        let legalMovesCount = 0;
+
         for (let i = 0; i < moves.length; i++) {
             this.pickMove(moves, scores, i);
             const mv = moves[i];
+            const isCapture = mv.captured !== EMPTY;
+            const isPromo = (mv.flags & FLAG_PROMO);
+            const isQuiet = !isCapture && !isPromo;
 
-            // Delta pruning: skip captures that can't possibly raise alpha
-            // (Only if not in check, as in check we must escape)
-            if (!inChk && mv.captured !== EMPTY) {
-                if (standPatVal + PIECE_VAL[Math.abs(mv.captured)] + 200 < alpha) continue;
+            if (!inChk) {
+                // Filter Quiet Moves
+                if (isQuiet && !searchChecks) continue;
+
+                // Delta pruning (Captures only)
+                // Relaxed margin (300) to allow sacrifices
+                if (isCapture && !isPromo) {
+                    if (standPatVal + PIECE_VAL[Math.abs(mv.captured)] + 300 < alpha) continue;
+                }
             }
 
             this.makeMove(mv);
 
-            // Lazy legality check: if we left our king in check, this move is illegal
+            // 1. Legality Check: Verify we didn't expose our own King
             if (this.inCheck(-this.side)) {
                 this.unmakeMove(mv);
                 continue;
             }
 
-            const score = -this.quiesce(-beta, -alpha, ply + 1);
+            // 2. Check Verification for Quiet Moves (if searching checks)
+            // If we are searching checks, quiet moves MUST give check to be valid
+            if (!inChk && isQuiet && searchChecks) {
+                if (!this.inCheck(this.side)) {
+                    this.unmakeMove(mv);
+                    continue;
+                }
+            }
+            legalMovesCount++;
+
+            const score = -this.quiesce(-beta, -alpha, ply + 1, qply + 1);
             this.unmakeMove(mv);
 
             if (this.stopped) return 0;
             if (score >= beta) return beta;
             if (score > alpha) alpha = score;
         }
+
+        // Mate Detection in Quiesce
+        if (inChk && legalMovesCount === 0) {
+            return -(MATE_SCORE - ply);
+        }
+
         return alpha;
     },
 
@@ -496,7 +527,7 @@ export const SearchMethods = {
             return 0;
         }
 
-        if (depth <= 0) return this.quiesce(alpha, beta, ply);
+        if (depth <= 0) return this.quiesce(alpha, beta, ply, 0);
 
         // Check extension — per-path budget (each branch gets its own counter)
         const inChk = this.inCheck(this.side);
@@ -545,10 +576,10 @@ export const SearchMethods = {
             }
 
             // Razoring
-            // If static eval is very low (fail-low), drop to qsearch to verify.
+            // Only prune if not in check and not tactical
             const razorMargin = depth * 350;
             if (staticEval + razorMargin < alpha) {
-                const qScore = this.quiesce(alpha, beta, ply + 1);
+                const qScore = this.quiesce(alpha, beta, ply + 1, 0);
                 if (qScore < alpha) return alpha;
             }
         }

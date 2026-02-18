@@ -92,41 +92,83 @@ async function runBenchmark() {
 function checkSanMatch(engine, uci, san) {
     if (!uci || uci === '(none)') return false;
 
-    // Simplistic SAN check: if san is "Qg6", and uci is "h5g6" where piece on h5 is Queen, it might match.
-    // Better: generate all legal moves, find the one that results in 'san' representation.
-    const legalMoves = engine.generateLegalMoves();
-    for (const m of legalMoves) {
-        if (engine.moveToUci(m) === uci) {
-            // This is our move. Does it match SAN?
-            // Since we don't have a SAN generator, we can try to "parse" the SAN.
-            // WAC SAN is simple: "Qg6", "Rxb2", "Qc4+", "Ne3".
+    // Clean SAN: remove capture 'x', check '+', check '#'
+    let cleanSan = san.replace(/[+#x]/g, '');
 
-            const mUci = engine.moveToUci(m);
-            if (mUci === san) return true; // Already UCI?
+    // Handle castling
+    if (cleanSan === 'O-O') return uci === 'e1g1' || uci === 'e8g8';
+    if (cleanSan === 'O-O-O') return uci === 'e1c1' || uci === 'e8c8';
 
-            // Basic SAN parsing
-            let cleanSan = san.replace(/[+#x]/g, ''); // Remove check, mate, capture
+    // Parse target square (last 2 chars of clean SAN)
+    const targetSq = cleanSan.slice(-2);
 
-            // If SAN is e4,UCI should be something like e2e4
-            // If SAN is Nf3, UCI should be something like g1f3
+    // Parse piece type
+    const firstChar = cleanSan[0];
+    const isPawn = (firstChar >= 'a' && firstChar <= 'h');
+    const pieceType = isPawn ? 'P' : firstChar;
 
-            // Let's just use the fact that if we apply the move, we can check if it matches the target sq and piece.
-            const targetSq = san.slice(-2);
-            if (mUci.endsWith(targetSq)) {
-                // Potential match. Check piece.
-                const pieceType = san[0];
-                if (pieceType >= 'A' && pieceType <= 'Z') {
-                    const p = Math.abs(m.piece);
-                    const typeMap = { 'N': 2, 'B': 3, 'R': 4, 'Q': 5, 'K': 6 };
-                    if (typeMap[pieceType] === p) return true;
-                } else {
-                    // Pawn move
-                    if (Math.abs(m.piece) === 1) return true;
-                }
+    // Parse source hint (everything between piece and target)
+    let sourceHint = '';
+    if (isPawn) {
+        if (cleanSan.length > 2) {
+            sourceHint = cleanSan.slice(0, cleanSan.length - 2);
+        }
+    } else {
+        if (cleanSan.length > 3) {
+            sourceHint = cleanSan.slice(1, cleanSan.length - 2);
+        }
+    }
+
+    const typeMap = { 'N': 2, 'B': 3, 'R': 4, 'Q': 5, 'K': 6, 'P': 1 };
+    const requiredPieceParams = typeMap[pieceType];
+
+    const sourceSqName = uci.slice(0, 2);
+    const targetSqName = uci.slice(2, 4);
+    const promoChar = uci.length > 4 ? uci[4] : '';
+
+    if (targetSqName !== targetSq) return false;
+
+    // Check promotion
+    if (san.includes('=')) {
+        const promoSan = san.split('=')[1].replace(/[+#]/g, '').toLowerCase();
+        if (promoChar !== promoSan) return false;
+    }
+
+    const fileMap = { a: 0, b: 1, c: 2, d: 3, e: 4, f: 5, g: 6, h: 7 };
+    const rankMap = { '1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7 };
+
+    // Check legality and piece type indirectly by verifying source square 
+    // We assume the engine move is legal, so we just check if the source/target match the SAN description.
+    // However, we don't have easy access to the board state BEFORE the move here without resetting.
+    // LUCKILY, checkSanMatch is called inside loop where engine state is STARTING FEN?
+    // In runBenchmark: engine.reset(); engine.loadFen(fen); result = search().
+    // The engine state AFTER search() is... wait.
+    // engine.searchRoot internal logic does make/unmake. 
+    // BUT does it leave the board in original state? Yes.
+    // So we can check engine.board[sourceSq].
+
+    const f = fileMap[sourceSqName[0]];
+    const r = rankMap[sourceSqName[1]];
+    const sq = r * 16 + f;
+
+    const p = Math.abs(engine.board[sq]);
+
+    // Safety check: if board piece doesn't match SAN piece type, it's not a match.
+    // Note: This relies on engine.board being at root state.
+    if (p !== requiredPieceParams) return false;
+
+    // Check source hint
+    if (sourceHint) {
+        for (const char of sourceHint) {
+            if (char >= 'a' && char <= 'h') {
+                if (sourceSqName[0] !== char) return false;
+            } else if (char >= '1' && char <= '8') {
+                if (sourceSqName[1] !== char) return false;
             }
         }
     }
-    return false;
+
+    return true;
 }
 
 runBenchmark().catch(console.error);

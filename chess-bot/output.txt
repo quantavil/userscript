@@ -1,0 +1,16 @@
+--- ♟️ Puzzle Time Sensitivity Analysis (First 5) ---
+
+Analyzing WAC.001... (Qg6)
+  ❌ Could not solve within 10s.
+
+Analyzing WAC.002... (Rxb2)
+  ❌ Could not solve within 10s.
+
+Analyzing WAC.003... (Rg3)
+  ✅ Solved at ~100ms (Depth: 3, Nodes: 4096) [Move: e3g3]
+
+Analyzing WAC.004... (Qxh7+)
+  ❌ Could not solve within 10s.
+
+Analyzing WAC.005... (Qc4+)
+  ❌ Could not solve within 10s.
