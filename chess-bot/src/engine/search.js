@@ -764,11 +764,6 @@ export const SearchMethods = {
     analyze(fen, depth, timeLimit) {
         this.loadFen(fen);
 
-        // Clear TT if analyzing as different side than before
-        if (this.rootSide !== this.side) {
-            this.clearTT();
-        }
-
         // Use passed depth and time limit directly
         const timeMs = timeLimit || 1000;
         const searchDepth = depth || 12;

@@ -108,7 +108,7 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
         if (kind !== 'main' && lastFenProcessedPremove === fen) return;
 
         try {
-            BotState.statusInfo = kind === 'main' ? '🔄 Analyzing...' : '🔄 Analyzing (premove)...';
+            BotState.statusInfo = kind === 'main' ? '🔄 Analyzing...' : (BotState.premoveEnabled ? '🔄 Analyzing (premove)...' : '🔄 Pondering...');
             if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
 
             const targetDepth = BotState.botPower || 12;
@@ -151,7 +151,14 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                     ((stm === ourColor) ? (best?.uci || null) : null);
 
                 if (!ourUci) {
-                    BotState.statusInfo = `Premove unavailable (no PV)`;
+                    BotState.statusInfo = BotState.premoveEnabled ? `Premove unavailable (no PV)` : `Pondering... (D${data.depth})`;
+                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+                    lastFenProcessedPremove = fen;
+                    return;
+                }
+
+                if (!BotState.premoveEnabled) {
+                    BotState.statusInfo = `Pondering... (D${data.depth})`;
                     if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                     lastFenProcessedPremove = fen;
                     return;

@@ -148,15 +148,12 @@ class BotController {
                 scheduleAnalysis('main', fen, () => this.tick());
             }
         } else {
-            // Premove logic
-            if (BotState.premoveEnabled) {
-                if (getLastFenProcessedPremove() !== fen) {
-                    scheduleAnalysis('premove', fen);
-                } else {
-                    this.setStatus('Waiting for opponent...');
-                }
+            // Ponder / Premove logic
+            // Always ponder during opponent's turn to keep TT hot
+            if (getLastFenProcessedPremove() !== fen) {
+                scheduleAnalysis('premove', fen);
             } else {
-                this.setStatus('Waiting for opponent...');
+                this.setStatus(BotState.premoveEnabled ? 'Waiting for opponent...' : 'Pondering...');
             }
         }
     }
