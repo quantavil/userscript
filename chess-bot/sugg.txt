@@ -3,31 +3,6 @@
 # 10 High-Impact Improvements
 
 
-### 2. **Bug Fix: `evaluate()` clobbers incrementally-tracked piece counts**
-
-```js
-// BROKEN — resets counts that _addPieceScore/_removePieceScore maintain
-this.wQueens = 0; this.bQueens = 0;
-this.wBishops = 0; this.bBishops = 0;  // ← destroys incremental values
-this.wKnights = 0; this.bKnights = 0;
-this.wRooks = 0; this.bRooks = 0;
-// ...then recounts from scratch anyway
-
-// FIX — either track ALL counts incrementally (in _add/_removePieceScore)
-// and never recount, OR don't bother with incremental counts at all.
-// Best: track incrementally, remove the recount loop:
-_addPieceScore(p, sq) {
-    // ...existing PST logic...
-    if (abs === 2) { if (side === 1) this.wKnights++; else this.bKnights++; }
-    if (abs === 3) { if (side === 1) this.wBishops++; else this.bBishops++; }
-    if (abs === 4) { if (side === 1) this.wRooks++;   else this.bRooks++;   }
-    if (abs === 5) { if (side === 1) this.wQueens++;   else this.bQueens++;  }
-}
-// Mirror in _removePieceScore. Then in evaluate(), remove all the
-// recounting and use the stored values directly.
-```
-
----
 
 ### 3. **Pack moves as 32-bit integers — eliminate GC pressure in the hottest path**
 
@@ -170,37 +145,6 @@ The `i -= 2` skip is valid because same-side positions only occur on even plies.
 
 ---
 
-### 8. **Consolidate null-move into proper makeNullMove/unmakeNullMove**
-
-```js
-// Current: 25 lines of manual state save/restore duplicating makeMove logic
-// Replace with:
-makeNullMove() {
-    this.posHistoryHi[this.posHistoryLen] = this.hash[0];
-    this.posHistoryLo[this.posHistoryLen++] = this.hash[1];
-    this.stateStack.push({ castling: this.castling, epSquare: this.epSquare,
-        halfmove: this.halfmove, hash: [this.hash[0], this.hash[1]] });
-    if (this.epSquare >= 0) {
-        const ef = sqFile(this.epSquare) * 2;
-        zobXor(this.hash, [ZOBRIST.epKeys[ef], ZOBRIST.epKeys[ef + 1]]);
-    }
-    this.epSquare = -1;
-    this.side = -this.side;
-    zobXor(this.hash, ZOBRIST.sideKey);
-    this.halfmove++;
-}
-
-unmakeNullMove() {
-    this.side = -this.side;
-    this.posHistoryLen--;
-    const st = this.stateStack.pop();
-    Object.assign(this, st); // or assign fields individually
-}
-```
-
-Cuts ~40 lines from negamax, eliminates bugs from incomplete state restore.
-
----
 
 ### 10. **Merge premove safety into the engine — replace `checkHanging` with SEE**
 
@@ -230,11 +174,11 @@ More accurate, handles pins/x-rays, and replaces 50+ lines with 3.
 
 | # | Change | Impact |
 |---|--------|--------|
-| 2 | Fix incremental counts | **Bug** — wastes cycles, wrong counts during search |
+
 | 4 | Add LMR | **2–5× search depth** |
 | 3 | Pack moves as ints | **~30% speed**, eliminates GC stalls |
 | 5 | Typed-array TT | **4× hash table**, no GC |
 | 7 | Numeric repetition | **~10% node throughput** |
 | 6 | Add SEE | Better ordering + prune losing captures |
-| 8 | Null-move cleanup | Fewer bugs, -40 lines |
+
 | 10 | SEE in premove | More accurate, -50 lines |

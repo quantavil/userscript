@@ -41,14 +41,7 @@ export const SearchMethods = {
         wPawnRanks.fill(-1); bPawnRanks.fill(8);
         bPawnMaxRanks.fill(-1); wPawnMinRanks.fill(8);
 
-        this.wQueens = 0;
-        this.bQueens = 0;
-        this.wBishops = 0;
-        this.bBishops = 0;
-        this.wKnights = 0;
-        this.bKnights = 0;
-        this.wRooks = 0;
-        this.bRooks = 0;
+
 
         let rookCount = 0;
         let wKingAttackers = 0, bKingAttackers = 0;
@@ -78,19 +71,8 @@ export const SearchMethods = {
                 }
             }
 
-            if (abs === 5) {
-                if (side === 1) this.wQueens++;
-                else this.bQueens++;
-            } else if (abs === 3) {
-                if (side === 1) this.wBishops++;
-                else this.bBishops++;
-            } else if (abs === 2) {
-                if (side === 1) this.wKnights++;
-                else this.bKnights++;
-            } else if (abs === 4) {
+            if (abs === 4) {
                 if (rookCount < 4) { rookSquares[rookCount] = sq; rookSides[rookCount] = side; rookCount++; }
-                if (side === 1) this.wRooks++;
-                else this.bRooks++;
             }
 
             if (abs === 2) {
@@ -537,33 +519,10 @@ export const SearchMethods = {
                     (this.bQueens * 900 + this.bRooks * 500 + this.bBishops * 330 + this.bKnights * 320);
 
                 if (sideMat > 0) {
-                    this.stateStack.push({
-                        castling: this.castling, epSquare: this.epSquare,
-                        halfmove: this.halfmove, fullmove: this.fullmove,
-                        wKingSq: this.wKingSq, bKingSq: this.bKingSq,
-                        hash: [this.hash[0], this.hash[1]]
-                    });
-
-                    if (this.epSquare >= 0) {
-                        const ef = sqFile(this.epSquare) * 2;
-                        zobXor(this.hash, [ZOBRIST.epKeys[ef], ZOBRIST.epKeys[ef + 1]]);
-                    }
-                    this.epSquare = -1;
-                    this.side = -this.side;
-                    zobXor(this.hash, ZOBRIST.sideKey);
-
+                    this.makeNullMove();
                     const R = depth >= 6 ? 3 : 2;
                     const nullScore = -this.negamax(depth - 1 - R, -beta, -beta + 1, ply + 1, [], ext);
-
-                    this.side = -this.side;
-                    const st = this.stateStack.pop();
-                    this.castling = st.castling;
-                    this.epSquare = st.epSquare;
-                    this.halfmove = st.halfmove;
-                    this.fullmove = st.fullmove;
-                    this.wKingSq = st.wKingSq;
-                    this.bKingSq = st.bKingSq;
-                    this.hash = st.hash;
+                    this.unmakeNullMove();
 
                     if (this.stopped) return 0;
                     if (nullScore >= beta) return beta;

@@ -61,6 +61,69 @@ export class LocalEngine {
         this.egPstMat = 0;
         this.wBishops = 0;
         this.bBishops = 0;
+        this.wKnights = 0;
+        this.bKnights = 0;
+        this.wRooks = 0;
+        this.bRooks = 0;
+        this.wQueens = 0;
+        this.bQueens = 0;
+    }
+
+    _packPieceCounts() {
+        // wQ:4, bQ:4, wR:4, bR:4, wB:4, bB:4, wN:4, bN:4 = 32 bits
+        return (this.wQueens) | (this.bQueens << 4) |
+            (this.wRooks << 8) | (this.bRooks << 12) |
+            (this.wBishops << 16) | (this.bBishops << 20) |
+            (this.wKnights << 24) | (this.bKnights << 28);
+    }
+
+    _unpackPieceCounts(packed) {
+        this.wQueens = packed & 0xF;
+        this.bQueens = (packed >> 4) & 0xF;
+        this.wRooks = (packed >> 8) & 0xF;
+        this.bRooks = (packed >> 12) & 0xF;
+        this.wBishops = (packed >> 16) & 0xF;
+        this.bBishops = (packed >> 20) & 0xF;
+        this.wKnights = (packed >> 24) & 0xF;
+        this.bKnights = (packed >> 28) & 0xF;
+    }
+
+    makeNullMove() {
+        this.stateStack.push({
+            castling: this.castling, epSquare: this.epSquare,
+            halfmove: this.halfmove, fullmove: this.fullmove,
+            wKingSq: this.wKingSq, bKingSq: this.bKingSq,
+            hash: [this.hash[0], this.hash[1]],
+            mgPstMat: this.mgPstMat, egPstMat: this.egPstMat,
+            phase: this.phase,
+            pieceCounts: this._packPieceCounts()
+        });
+
+        if (this.epSquare >= 0) {
+            const ef = sqFile(this.epSquare) * 2;
+            zobXor(this.hash, [ZOBRIST.epKeys[ef], ZOBRIST.epKeys[ef + 1]]);
+        }
+        this.epSquare = -1;
+        this.side = -this.side;
+        zobXor(this.hash, ZOBRIST.sideKey);
+        this.halfmove++;
+        if (this.side === -1) this.fullmove++; // Null move increases fullmove? Technically yes.
+    }
+
+    unmakeNullMove() {
+        this.side = -this.side;
+        const st = this.stateStack.pop();
+        this.castling = st.castling;
+        this.epSquare = st.epSquare;
+        this.halfmove = st.halfmove;
+        this.fullmove = st.fullmove;
+        this.wKingSq = st.wKingSq;
+        this.bKingSq = st.bKingSq;
+        this.hash = st.hash;
+        this.mgPstMat = st.mgPstMat;
+        this.egPstMat = st.egPstMat;
+        this.phase = st.phase;
+        this._unpackPieceCounts(st.pieceCounts);
     }
 
     reset() {
@@ -109,6 +172,12 @@ export class LocalEngine {
         this.phase = 0;
         this.wBishops = 0;
         this.bBishops = 0;
+        this.wKnights = 0;
+        this.bKnights = 0;
+        this.wRooks = 0;
+        this.bRooks = 0;
+        this.wQueens = 0;
+        this.bQueens = 0;
 
         for (let sq = 0; sq < 128; sq++) {
             if (sq & 0x88) { sq += 7; continue; }
@@ -127,10 +196,10 @@ export class LocalEngine {
         this.egPstMat += (MAT_EG[abs] + PST_EG[abs][pstSq]) * side;
 
         if (abs >= 2 && abs <= 5) this.phase += PHASE_VAL[abs];
-        if (abs === 3) {
-            if (side === 1) this.wBishops++;
-            else this.bBishops++;
-        }
+        if (abs === 2) { if (side === 1) this.wKnights++; else this.bKnights++; }
+        if (abs === 3) { if (side === 1) this.wBishops++; else this.bBishops++; }
+        if (abs === 4) { if (side === 1) this.wRooks++; else this.bRooks++; }
+        if (abs === 5) { if (side === 1) this.wQueens++; else this.bQueens++; }
     }
 
     _removePieceScore(p, sq) {
@@ -142,10 +211,10 @@ export class LocalEngine {
         this.egPstMat -= (MAT_EG[abs] + PST_EG[abs][pstSq]) * side;
 
         if (abs >= 2 && abs <= 5) this.phase -= PHASE_VAL[abs];
-        if (abs === 3) {
-            if (side === 1) this.wBishops--;
-            else this.bBishops--;
-        }
+        if (abs === 2) { if (side === 1) this.wKnights--; else this.bKnights--; }
+        if (abs === 3) { if (side === 1) this.wBishops--; else this.bBishops--; }
+        if (abs === 4) { if (side === 1) this.wRooks--; else this.bRooks--; }
+        if (abs === 5) { if (side === 1) this.wQueens--; else this.bQueens--; }
     }
 
 
@@ -210,8 +279,9 @@ export class LocalEngine {
             wKingSq: this.wKingSq, bKingSq: this.bKingSq,
             hash: [this.hash[0], this.hash[1]],
             mgPstMat: this.mgPstMat, egPstMat: this.egPstMat,
+
             phase: this.phase,
-            wBishops: this.wBishops, bBishops: this.bBishops
+            pieceCounts: this._packPieceCounts()
         });
 
         const { from, to, flags, piece, promo } = mv;
@@ -334,8 +404,7 @@ export class LocalEngine {
         this.mgPstMat = st.mgPstMat;
         this.egPstMat = st.egPstMat;
         this.phase = st.phase;
-        this.wBishops = st.wBishops;
-        this.bBishops = st.bBishops;
+        this._unpackPieceCounts(st.pieceCounts);
 
         const { from, to, flags, piece, captured, promo } = mv;
 

@@ -8,11 +8,11 @@ This report evaluates the tactical accuracy and performance of the chess engine 
 
 | Thinking Time | Solved (out of 300) | Accuracy (%) | Avg Nodes/Puzzle | Total NPS | Improvement |
 |---------------|---------------------|--------------|------------------|-----------|-------------|
-| **100ms**     | 77                  | 25.7%        | 9,106            | 76,322    | **0x88 Parity** |
-| **200ms**     | 83                  | 27.7%        | 16,715           | 83,378    | **0x88 Refactor** |
-| **500ms**     | 113                 | 37.7%        | 39,661           | 88,950    | **0x88 Refactor** |
-| **1s (1000ms)** | 130                | 43.3%        | 80,786           | 95,319    | **0x88 Improved** |
-| **2s (2000ms)** | 141                | 47.0%        | 176,096          | 108,429   | **0x88 Improved** |
+| **100ms**     | 78                  | 26.0%        | 7,725            | 75,564    | **Incremental Fix** |
+| **200ms**     | 87                  | 29.0%        | 17,063           | 84,677    | **Incremental Fix** |
+| **500ms**     | 109                 | 36.3%        | 37,632           | 83,663    | **Incremental Fix** |
+| **1s (1000ms)** | 125                | 41.7%        | 76,108           | 89,391    | **Incremental Fix** |
+| **2s (2000ms)** | 146                | 48.7%        | 174,842          | 107,331   | **Incremental Fix** |
 *Note: Results reflect the new 0x88 board representation. Long-range scaling improved notably.*
 
 ## Optimization Summary
