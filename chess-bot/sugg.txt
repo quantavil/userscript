@@ -202,25 +202,6 @@ Cuts ~40 lines from negamax, eliminates bugs from incomplete state restore.
 
 ---
 
-### 9. **Use 0x88 board representation for instant off-board detection**
-
-```js
-// Current: 8×8 array with manual bounds checks everywhere
-// 0x88: use 128-element array. If (sq & 0x88) !== 0, it's off-board.
-this.board = new Int8Array(128);
-
-// Replace all sq < 0 || sq > 63 checks with:
-if (sq & 0x88) continue;
-
-// File-wrap detection (currently ~5 lines per direction):
-// Automatically handled — knight offsets [-17,-15,-10,-6,6,10,15,17]
-// just work with 0x88 check. No file-difference validation needed.
-```
-
-Eliminates **dozens of file-difference checks** in `isAttacked`, `generateMoves`, and `evaluate`. Each sliding piece loop loses 2–3 lines.
-
----
-
 ### 10. **Merge premove safety into the engine — replace `checkHanging` with SEE**
 
 ```js
@@ -256,5 +237,4 @@ More accurate, handles pins/x-rays, and replaces 50+ lines with 3.
 | 7 | Numeric repetition | **~10% node throughput** |
 | 6 | Add SEE | Better ordering + prune losing captures |
 | 8 | Null-move cleanup | Fewer bugs, -40 lines |
-| 9 | 0x88 board | Fewer branches, -60 lines |
 | 10 | SEE in premove | More accurate, -50 lines |

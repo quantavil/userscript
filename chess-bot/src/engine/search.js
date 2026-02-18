@@ -54,16 +54,17 @@ export const SearchMethods = {
         let wKingAttackers = 0, bKingAttackers = 0;
         let wKingAttackWeight = 0, bKingAttackWeight = 0;
         const wKingSq = this.wKingSq, bKingSq = this.bKingSq;
-        const wkf = wKingSq & 7, wkr = wKingSq >> 3;
-        const bkf = bKingSq & 7, bkr = bKingSq >> 3;
+        const wkf = wKingSq & 7, wkr = wKingSq >> 4;
+        const bkf = bKingSq & 7, bkr = bKingSq >> 4;
 
-        for (let sq = 0; sq < 64; sq++) {
+        for (let sq = 0; sq < 128; sq++) {
+            if (sq & 0x88) { sq += 7; continue; }
             const p = bd[sq];
             if (p === EMPTY) continue;
 
             const side = p > 0 ? 1 : -1;
             const abs = p > 0 ? p : -p;
-            const file = sq & 7, rank = sq >> 3;
+            const file = sq & 7, rank = sq >> 4;
 
             if (abs === 1) {
                 if (side === 1) {
@@ -96,7 +97,7 @@ export const SearchMethods = {
                 let mob = 0;
                 for (let i = 0; i < 8; i++) {
                     const t = sq + KNIGHT_OFFSETS[i];
-                    if (t < 0 || t > 63) continue;
+                    if (t & 0x88) continue;
                     const df = (t & 7) - file; if (df > 2 || df < -2) continue;
                     const tp = bd[t];
                     if (tp === EMPTY || (tp > 0 ? 1 : -1) !== side) mob++;
@@ -108,9 +109,7 @@ export const SearchMethods = {
                 for (let di = 0; di < 4; di++) {
                     const dir = DIAG_DIRS[di];
                     let t = sq + dir;
-                    while (t >= 0 && t <= 63) {
-                        const fd = (t & 7) - ((t - dir) & 7);
-                        if (fd !== 1 && fd !== -1) break;
+                    while (!(t & 0x88)) {
                         const tp = bd[t];
                         if (tp !== EMPTY && (tp > 0 ? 1 : -1) === side) break;
                         mob++;
@@ -125,10 +124,14 @@ export const SearchMethods = {
                 for (let di = 0; di < 4; di++) {
                     const dir = STRAIGHT_DIRS[di];
                     let t = sq + dir;
-                    while (t >= 0 && t <= 63) {
-                        if (dir === 1 || dir === -1) {
-                            if ((t >> 3) !== ((t - dir) >> 3)) break;
-                        }
+                    while (!(t & 0x88)) {
+                        /* 0x88 handles off-board, no wrap check needed? 
+                           Wait, for straight moves, 0x88 logic handles file wrapping for +1/-1 automatically 
+                           because file 0->rank-1 and file 7->rank+1 are valid 0x88 indices but behave differently?
+                           No, 0x88 board has gap between files.
+                           e.g. sq 7 (h1) + 1 = 8 (0x08). 0x08 & 0x88 is true. Off board.
+                           So yes, 0x88 handles file wrapping automatically.
+                        */
                         const tp = bd[t];
                         if (tp !== EMPTY && (tp > 0 ? 1 : -1) === side) break;
                         mob++;
@@ -143,9 +146,7 @@ export const SearchMethods = {
                 for (let di = 0; di < 8; di++) {
                     const dir = ALL_DIRS[di];
                     let t = sq + dir;
-                    while (t >= 0 && t <= 63) {
-                        const fd = (t & 7) - ((t - dir) & 7);
-                        if (fd > 1 || fd < -1) break;
+                    while (!(t & 0x88)) {
                         const tp = bd[t];
                         if (tp !== EMPTY && (tp > 0 ? 1 : -1) === side) break;
                         mob++;
@@ -243,14 +244,14 @@ export const SearchMethods = {
             const ksq = side === 1 ? wKingSq : bKingSq;
             if (ksq < 0) continue;
             const kf = ksq & 7;
-            const kr = ksq >> 3;
+            const kr = ksq >> 4;
             const shieldRank = kr + side;
             if (shieldRank >= 0 && shieldRank <= 7) {
                 let shield = 0;
                 for (let df = -1; df <= 1; df++) {
                     const sf = kf + df;
                     if (sf < 0 || sf > 7) continue;
-                    if (bd[shieldRank * 8 + sf] === side) shield++;
+                    if (bd[shieldRank * 16 + sf] === side) shield++;
                 }
                 mgScore += (shield * 15) * side;
             }
@@ -334,8 +335,8 @@ export const SearchMethods = {
                 s = 10000 + PIECE_VAL[Math.abs(mv.captured)] * 10 - PIECE_VAL[Math.abs(mv.piece)];
             }
             if (mv.flags & FLAG_PROMO) s += 8000 + PIECE_VAL[Math.abs(mv.promo)];
-            if (this.killers[ply] && this.killers[ply].includes(mv.from * 64 + mv.to)) s += 5000;
-            s += this.history[mv.from * 64 + mv.to];
+            if (this.killers[ply] && this.killers[ply].includes(mv.from * 128 + mv.to)) s += 5000;
+            s += this.history[mv.from * 128 + mv.to];
             scores[i] = s;
         }
         return scores;
@@ -618,12 +619,12 @@ export const SearchMethods = {
                 // Killer & history
                 if (mv.captured === EMPTY) {
                     if (!this.killers[ply]) this.killers[ply] = [];
-                    const key = mv.from * 64 + mv.to;
+                    const key = mv.from * 128 + mv.to;
                     if (!this.killers[ply].includes(key)) {
                         this.killers[ply].unshift(key);
                         if (this.killers[ply].length > 2) this.killers[ply].pop();
                     }
-                    this.history[mv.from * 64 + mv.to] += depth * depth;
+                    this.history[mv.from * 128 + mv.to] += depth * depth;
                 }
                 this.ttStore(depth, beta, TT_BETA, mv);
                 return beta;
@@ -632,7 +633,7 @@ export const SearchMethods = {
             // History Penalty for quiet moves that fail low
             if (score <= origAlpha) {
                 if (mv.captured === EMPTY && !(mv.flags & FLAG_PROMO)) {
-                    this.history[mv.from * 64 + mv.to] -= depth * depth;
+                    this.history[mv.from * 128 + mv.to] -= depth * depth;
                 }
             }
 

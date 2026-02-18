@@ -195,7 +195,7 @@ export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
                     for (let df = -1; df <= 1; df++) {
                         const sf = kFile + df;
                         if (sf < 0 || sf > 7) continue;
-                        const shieldSq = shieldRank * 8 + sf;
+                        const shieldSq = shieldRank * 16 + sf;
                         if (premoveEngine.board[shieldSq] === EMPTY &&
                             !premoveEngine.isAttacked(shieldSq, oppSide)) {
                             escapable = true;

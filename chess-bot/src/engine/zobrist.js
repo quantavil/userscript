@@ -7,7 +7,7 @@ export const ZOBRIST = (() => {
     // Simple seeded PRNG (xorshift32) for deterministic keys
     let seed = 1070372;
     const rand32 = () => { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return seed >>> 0; };
-    const table = new Uint32Array(13 * 64 * 2); // piece(0-12) * 64 squares * 2 (hi/lo)
+    const table = new Uint32Array(13 * 128 * 2); // piece(0-12) * 128 squares * 2 (hi/lo) (0x88 compatible)
     for (let i = 0; i < table.length; i++) table[i] = rand32();
     const sideKey = [rand32(), rand32()];
     const castlingKeys = new Uint32Array(16 * 2);
@@ -23,7 +23,7 @@ export function zobPieceIdx(piece) {
     return piece > 0 ? (piece - 1) : (-piece + 5);
 }
 export function zobPieceKey(piece, sq) {
-    const base = (zobPieceIdx(piece) * 64 + sq) * 2;
+    const base = (zobPieceIdx(piece) * 128 + sq) * 2;
     return [ZOBRIST.table[base], ZOBRIST.table[base + 1]];
 }
 export function zobXor(hash, key) {

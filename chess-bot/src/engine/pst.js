@@ -5,8 +5,19 @@
 // Piece-square tables (from white's perspective, a1=index 0)
 // Indexed [rank][file] visually but stored flat as [sq] where sq = rank*8+file
 
+// Helper to convert 64-sq PST to 0x88 (128-sq)
+function to0x88(pst64) {
+    const pst128 = new Int16Array(128).fill(0);
+    for (let r = 0; r < 8; r++) {
+        for (let f = 0; f < 8; f++) {
+            pst128[r * 16 + f] = pst64[r * 8 + f];
+        }
+    }
+    return pst128;
+}
+
 // Middlegame tables
-export const PST_PAWN_MG = [
+const RAW_PST_PAWN_MG = [
     0, 0, 0, 0, 0, 0, 0, 0,
     -35, -1, -20, -23, -15, 24, 38, -22,
     -26, -4, -4, -10, 3, 3, 33, -12,
@@ -16,7 +27,7 @@ export const PST_PAWN_MG = [
     98, 134, 61, 95, 68, 126, 34, -11,
     0, 0, 0, 0, 0, 0, 0, 0
 ];
-export const PST_KNIGHT_MG = [
+const RAW_PST_KNIGHT_MG = [
     -105, -21, -58, -33, -17, -28, -19, -23,
     -29, -53, -12, -3, -1, 18, -14, -19,
     -23, -9, 12, 10, 19, 17, 25, -16,
@@ -26,7 +37,7 @@ export const PST_KNIGHT_MG = [
     -73, -41, 72, 36, 23, 62, 7, -17,
     -167, -89, -34, -49, 61, -97, -15, -107
 ];
-export const PST_BISHOP_MG = [
+const RAW_PST_BISHOP_MG = [
     -33, -3, -14, -21, -13, -12, -39, -21,
     4, 15, 16, 0, 7, 21, 33, 1,
     0, 15, 15, 15, 14, 27, 18, 10,
@@ -36,7 +47,7 @@ export const PST_BISHOP_MG = [
     -26, 16, -18, -13, 30, 59, 18, -47,
     -29, 4, -82, -37, -25, -42, 7, -8
 ];
-export const PST_ROOK_MG = [
+const RAW_PST_ROOK_MG = [
     -19, -13, 1, 17, 16, 7, -37, -26,
     -44, -16, -20, -9, -1, 11, -6, -71,
     -45, -25, -16, -17, 3, 0, -5, -33,
@@ -46,7 +57,7 @@ export const PST_ROOK_MG = [
     27, 32, 58, 62, 80, 67, 26, 44,
     32, 42, 32, 51, 63, 9, 31, 43
 ];
-export const PST_QUEEN_MG = [
+const RAW_PST_QUEEN_MG = [
     -1, -18, -9, 10, -15, -25, -31, -50,
     -35, -8, 11, 2, 8, 15, -3, 1,
     -14, 2, -11, -2, -5, 2, 14, 5,
@@ -56,7 +67,7 @@ export const PST_QUEEN_MG = [
     -24, -39, -5, 1, -16, 57, 28, 54,
     -28, 0, 29, 12, 59, 44, 43, 45
 ];
-export const PST_KING_MG = [
+const RAW_PST_KING_MG = [
     -15, 36, 12, -54, 8, -28, 24, 14,
     1, 7, -8, -64, -43, -16, 9, 8,
     -14, -14, -22, -46, -44, -30, -15, -27,
@@ -68,7 +79,7 @@ export const PST_KING_MG = [
 ];
 
 // Endgame tables
-export const PST_PAWN_EG = [
+const RAW_PST_PAWN_EG = [
     0, 0, 0, 0, 0, 0, 0, 0,
     13, 8, 8, 10, 13, 0, 2, -7,
     4, 7, -6, 1, 0, -5, -1, -8,
@@ -78,7 +89,7 @@ export const PST_PAWN_EG = [
     178, 173, 158, 134, 147, 132, 165, 187,
     0, 0, 0, 0, 0, 0, 0, 0
 ];
-export const PST_KNIGHT_EG = [
+const RAW_PST_KNIGHT_EG = [
     -29, -51, -23, -15, -22, -18, -50, -64,
     -42, -20, -10, -5, -2, -20, -23, -44,
     -23, -3, -1, 15, 10, -3, -20, -22,
@@ -88,7 +99,7 @@ export const PST_KNIGHT_EG = [
     -25, -8, -25, -2, -9, -25, -24, -52,
     -58, -38, -13, -28, -31, -27, -63, -99
 ];
-export const PST_BISHOP_EG = [
+const RAW_PST_BISHOP_EG = [
     -23, -9, -23, -5, -9, -16, -5, -17,
     -14, -18, -7, -1, 4, -9, -15, -27,
     -12, -3, 8, 10, 13, 3, -7, -15,
@@ -98,7 +109,7 @@ export const PST_BISHOP_EG = [
     -8, -4, 7, -12, -3, -13, -4, -14,
     -14, -21, -11, -8, -7, -9, -17, -24
 ];
-export const PST_ROOK_EG = [
+const RAW_PST_ROOK_EG = [
     -9, 2, 3, -1, -5, -13, 4, -20,
     -6, -6, 0, 2, -9, -9, -11, -3,
     -4, 0, -5, -1, -7, -12, -8, -16,
@@ -108,7 +119,7 @@ export const PST_ROOK_EG = [
     11, 13, 13, 11, -3, 3, 8, 3,
     13, 10, 18, 15, 12, 12, 8, 5
 ];
-export const PST_QUEEN_EG = [
+const RAW_PST_QUEEN_EG = [
     -33, -28, -22, -43, -5, -32, -20, -41,
     -22, -23, -30, -16, -16, -23, -36, -32,
     -16, -27, 15, 6, 9, 17, 10, 5,
@@ -118,7 +129,7 @@ export const PST_QUEEN_EG = [
     -17, 20, 32, 41, 58, 25, 30, 0,
     -9, 22, 22, 27, 27, 19, 10, 20
 ];
-export const PST_KING_EG = [
+const RAW_PST_KING_EG = [
     -53, -34, -21, -11, -28, -14, -24, -43,
     -27, -11, 4, 13, 14, 4, -5, -17,
     -19, -3, 11, 21, 23, 16, 7, -9,
@@ -128,6 +139,21 @@ export const PST_KING_EG = [
     -12, 17, 14, 17, 17, 38, 23, 11,
     -74, -35, -18, -18, -11, 15, 4, -17
 ];
+
+// Export converted 0x88 tables
+export const PST_PAWN_MG = to0x88(RAW_PST_PAWN_MG);
+export const PST_KNIGHT_MG = to0x88(RAW_PST_KNIGHT_MG);
+export const PST_BISHOP_MG = to0x88(RAW_PST_BISHOP_MG);
+export const PST_ROOK_MG = to0x88(RAW_PST_ROOK_MG);
+export const PST_QUEEN_MG = to0x88(RAW_PST_QUEEN_MG);
+export const PST_KING_MG = to0x88(RAW_PST_KING_MG);
+
+export const PST_PAWN_EG = to0x88(RAW_PST_PAWN_EG);
+export const PST_KNIGHT_EG = to0x88(RAW_PST_KNIGHT_EG);
+export const PST_BISHOP_EG = to0x88(RAW_PST_BISHOP_EG);
+export const PST_ROOK_EG = to0x88(RAW_PST_ROOK_EG);
+export const PST_QUEEN_EG = to0x88(RAW_PST_QUEEN_EG);
+export const PST_KING_EG = to0x88(RAW_PST_KING_EG);
 
 // Lookup arrays indexed by abs piece type (0=unused, 1=P, 2=N, 3=B, 4=R, 5=Q, 6=K)
 export const PST_MG = [null, PST_PAWN_MG, PST_KNIGHT_MG, PST_BISHOP_MG, PST_ROOK_MG, PST_QUEEN_MG, PST_KING_MG];

@@ -26,14 +26,14 @@ import { SearchMethods } from './search.js';
 
 export class LocalEngine {
     constructor() {
-        this.board = new Array(64).fill(EMPTY);
+        this.board = new Int8Array(128).fill(EMPTY);
         this.side = 1;     // 1=white, -1=black
         this.castling = 0; // bits: 1=wK, 2=wQ, 4=bK, 8=bQ
         this.epSquare = -1;
         this.halfmove = 0;
         this.fullmove = 1;
-        this.wKingSq = 4;  // Incremental king tracking
-        this.bKingSq = 60; // Incremental king tracking
+        this.wKingSq = 4;   // e1
+        this.bKingSq = 116; // e8 (0x74)
         this.stateStack = [];
         this.nodes = 0;
         this.timeLimit = 0;
@@ -41,7 +41,7 @@ export class LocalEngine {
         this.stopped = false;
         this.pvTable = [];
         this.killers = [];
-        this.history = new Int32Array(64 * 64);
+        this.history = new Int32Array(16384); // 128 * 128 for 0x88 move indexing
         this.tt = new Array(TT_SIZE); // Fixed size hash table (array of objects)
         // Pre-allocate eval buffers to avoid garbage collection in hot path
         this.evalBufs = {
@@ -82,9 +82,10 @@ export class LocalEngine {
                 if (ch >= '1' && ch <= '8') { f += parseInt(ch); }
                 else {
                     const piece = pieceMap[ch] || EMPTY;
-                    this.board[r * 8 + f] = piece;
-                    if (piece === WK) this.wKingSq = r * 8 + f;
-                    else if (piece === BK) this.bKingSq = r * 8 + f;
+                    const sq = r * 16 + f;
+                    this.board[sq] = piece;
+                    if (piece === WK) this.wKingSq = sq;
+                    else if (piece === BK) this.bKingSq = sq;
                     f++;
                 }
             }
@@ -109,7 +110,8 @@ export class LocalEngine {
         this.wBishops = 0;
         this.bBishops = 0;
 
-        for (let sq = 0; sq < 64; sq++) {
+        for (let sq = 0; sq < 128; sq++) {
+            if (sq & 0x88) { sq += 7; continue; }
             const p = this.board[sq];
             if (p === EMPTY) continue;
             this._addPieceScore(p, sq);
@@ -119,7 +121,7 @@ export class LocalEngine {
     _addPieceScore(p, sq) {
         const side = p > 0 ? 1 : -1;
         const abs = p > 0 ? p : -p;
-        const pstSq = side === 1 ? sq : mirrorSq(sq);
+        const pstSq = side === 1 ? sq : (sq ^ 0x70);
 
         this.mgPstMat += (MAT_MG[abs] + PST_MG[abs][pstSq]) * side;
         this.egPstMat += (MAT_EG[abs] + PST_EG[abs][pstSq]) * side;
@@ -134,7 +136,7 @@ export class LocalEngine {
     _removePieceScore(p, sq) {
         const side = p > 0 ? 1 : -1;
         const abs = p > 0 ? p : -p;
-        const pstSq = side === 1 ? sq : mirrorSq(sq);
+        const pstSq = side === 1 ? sq : (sq ^ 0x70);
 
         this.mgPstMat -= (MAT_MG[abs] + PST_MG[abs][pstSq]) * side;
         this.egPstMat -= (MAT_EG[abs] + PST_EG[abs][pstSq]) * side;
@@ -146,9 +148,11 @@ export class LocalEngine {
         }
     }
 
+
     _computeHash() {
         this.hash = [0, 0];
-        for (let sq = 0; sq < 64; sq++) {
+        for (let sq = 0; sq < 128; sq++) {
+            if (sq & 0x88) { sq += 7; continue; }
             const p = this.board[sq];
             if (p !== EMPTY) zobXor(this.hash, zobPieceKey(p, sq));
         }
@@ -166,7 +170,7 @@ export class LocalEngine {
         for (let r = 7; r >= 0; r--) {
             let empty = 0;
             for (let f = 0; f < 8; f++) {
-                const p = this.board[r * 8 + f];
+                const p = this.board[r * 16 + f];
                 if (p === EMPTY) { empty++; }
                 else {
                     if (empty) { fen += empty; empty = 0; }
@@ -239,7 +243,7 @@ export class LocalEngine {
 
         // En passant capture
         if (flags & FLAG_EP) {
-            const epCapSq = to - this.side * 8;
+            const epCapSq = to - this.side * 16;
             const capPawn = this.board[epCapSq] || (-this.side); // Should be -side * WP
             zobXor(this.hash, zobPieceKey(capPawn, epCapSq));
             this._removePieceScore(capPawn, epCapSq);
@@ -279,7 +283,7 @@ export class LocalEngine {
             const ef = sqFile(this.epSquare) * 2;
             zobXor(this.hash, [ZOBRIST.epKeys[ef], ZOBRIST.epKeys[ef + 1]]);
         }
-        if (abs === 1 && Math.abs(to - from) === 16) {
+        if (abs === 1 && Math.abs(to - from) === 32) {
             this.epSquare = (from + to) >> 1;
         } else {
             this.epSquare = -1;
@@ -297,8 +301,8 @@ export class LocalEngine {
         // Rook moved or captured
         if (from === 0 || to === 0) this.castling &= ~2;
         if (from === 7 || to === 7) this.castling &= ~1;
-        if (from === 56 || to === 56) this.castling &= ~8;
-        if (from === 63 || to === 63) this.castling &= ~4;
+        if (from === 112 || to === 112) this.castling &= ~8;
+        if (from === 119 || to === 119) this.castling &= ~4;
 
         // Hash castling change
         if (oldCastling !== this.castling) {
@@ -339,7 +343,7 @@ export class LocalEngine {
         this.board[to] = (flags & FLAG_EP) ? EMPTY : captured;
 
         if (flags & FLAG_EP) {
-            this.board[to - this.side * 8] = -this.side; // restore captured pawn
+            this.board[to - this.side * 16] = -this.side; // restore captured pawn
         }
 
         if (flags & FLAG_CASTLE) {
@@ -359,46 +363,48 @@ export class LocalEngine {
 
     isAttacked(sq, bySide) {
         // Pawn attacks
+        // Pawn attacks
         const pawnDir = bySide === 1 ? 1 : -1;
-        const pawnRank = (sq >> 3) - pawnDir;
-        if (pawnRank >= 0 && pawnRank <= 7) {
-            const pf = sq & 7;
-            if (pf > 0 && this.board[pawnRank * 8 + pf - 1] === bySide) return true;
-            if (pf < 7 && this.board[pawnRank * 8 + pf + 1] === bySide) return true;
+        const attackSourceRank = (sq >> 4) - pawnDir;
+        if (attackSourceRank >= 0 && attackSourceRank <= 7) {
+            const sourceSqBase = sq - pawnDir * 16;
+            // Check right diagonal capture source
+            const s1 = sourceSqBase - 1;
+            if (!(s1 & 0x88) && this.board[s1] === bySide) return true;
+            // Check left diagonal capture source
+            const s2 = sourceSqBase + 1;
+            if (!(s2 & 0x88) && this.board[s2] === bySide) return true;
         }
 
         // Knight attacks
         const kn = bySide * WN;
-        const sqf = sq & 7;
         for (let i = 0; i < 8; i++) {
-            const t = sq + KNIGHT_OFFSETS[i];
-            if (t < 0 || t > 63) continue;
-            const df = (t & 7) - sqf; if (df > 2 || df < -2) continue;
+            const t = sq - KNIGHT_OFFSETS[i]; // Reverse offset to find attacker? 
+            // Actually constants are symmetric, so + or - is same set.
+            // But usually we check "if knight is at T, does it attack SQ?"
+            // Yes, same offsets.
+            if (t & 0x88) continue;
             if (this.board[t] === kn) return true;
         }
 
         // King attacks
         const kg = bySide * WK;
-        for (let dr = -1; dr <= 1; dr++) {
-            for (let df = -1; df <= 1; df++) {
-                if (!dr && !df) continue;
-                const t = sq + dr * 8 + df;
-                if (t < 0 || t > 63) continue;
-                const fd = (t & 7) - sqf; if (fd > 1 || fd < -1) continue;
-                if (this.board[t] === kg) return true;
-            }
+        // ALL_DIRS includes diagonals and straights (8 directions)
+        for (let i = 0; i < 8; i++) {
+            const t = sq + ALL_DIRS[i]; // King offsets are same as directory steps (adjacent)
+            if (t & 0x88) continue;
+            if (this.board[t] === kg) return true;
         }
 
         // Sliding: rook/queen on ranks and files
         const sideR = bySide * WR, sideQ = bySide * WQ, sideB = bySide * WB;
 
+
+
         for (let i = 0; i < 4; i++) {
             const dir = STRAIGHT_DIRS[i];
             let t = sq + dir;
-            while (t >= 0 && t <= 63) {
-                if (dir === 1 || dir === -1) {
-                    if ((t >> 3) !== ((t - dir) >> 3)) break;
-                }
+            while (!(t & 0x88)) {
                 const p = this.board[t];
                 if (p !== EMPTY) {
                     if (p === sideR || p === sideQ) return true;
@@ -411,9 +417,7 @@ export class LocalEngine {
         for (let i = 0; i < 4; i++) {
             const dir = DIAG_DIRS[i];
             let t = sq + dir;
-            while (t >= 0 && t <= 63) {
-                const fd = (t & 7) - ((t - dir) & 7);
-                if (fd !== 1 && fd !== -1) break;
+            while (!(t & 0x88)) {
                 const p = this.board[t];
                 if (p !== EMPTY) {
                     if (p === sideB || p === sideQ) return true;
@@ -437,39 +441,45 @@ export class LocalEngine {
         const opp = -s;
         const bd = this.board;
 
-        for (let sq = 0; sq < 64; sq++) {
+        for (let sq = 0; sq < 128; sq++) {
+            if (sq & 0x88) { sq += 7; continue; }
+
             const p = bd[sq];
             if (p === EMPTY || (p > 0 ? 1 : -1) !== s) continue;
             const abs = p > 0 ? p : -p;
-            const file = sq & 7;
-            const rank = sq >> 3;
+            // No need for file/rank vars mostly
 
             if (abs === 1) { // Pawn
-                const dir = s;
+                const dir = s; // 1 or -1
+                // White promos at rank 7 (0x70), Black at rank 0 (0x00)
                 const promoRank = s === 1 ? 7 : 0;
                 const startRank = s === 1 ? 1 : 6;
-                const fwd = sq + dir * 8;
+                const fwd = sq + dir * 16;
 
-                if (fwd >= 0 && fwd <= 63 && bd[fwd] === EMPTY) {
-                    if ((fwd >> 3) === promoRank) {
+                if (!(fwd & 0x88) && bd[fwd] === EMPTY) {
+                    if ((fwd >> 4) === promoRank) {
                         for (const pr of [WQ, WR, WB, WN]) moves.push(this.createMove(sq, fwd, FLAG_PROMO, s * pr));
                     } else if (!capturesOnly) {
                         moves.push(this.createMove(sq, fwd));
-                        const fwd2 = fwd + dir * 8;
-                        if (rank === startRank && fwd2 >= 0 && fwd2 <= 63 && bd[fwd2] === EMPTY) {
+                        const fwd2 = fwd + dir * 16;
+                        if ((sq >> 4) === startRank && !(fwd2 & 0x88) && bd[fwd2] === EMPTY) {
                             moves.push(this.createMove(sq, fwd2));
                         }
                     }
                 }
 
-                for (const df of [-1, 1]) {
-                    const cf = file + df;
-                    if (cf < 0 || cf > 7) continue;
-                    const csq = fwd + df;
-                    if (csq < 0 || csq > 63) continue;
+                // Captures: +/- 15, +/- 17
+                // White (up): +16. Diags: +15, +17.
+                // Black (down): -16. Diags: -15, -17.
+                // Logic: sq + dir*16 + 1, sq + dir*16 - 1
+                const captureOffsets = [dir * 16 - 1, dir * 16 + 1];
+                for (const offset of captureOffsets) {
+                    const csq = sq + offset;
+                    if (csq & 0x88) continue;
+
                     const cp = bd[csq];
                     if (cp !== EMPTY && (cp > 0 ? 1 : -1) === opp) {
-                        if ((csq >> 3) === promoRank) {
+                        if ((csq >> 4) === promoRank) {
                             for (const pr of [WQ, WR, WB, WN]) moves.push(this.createMove(sq, csq, FLAG_PROMO, s * pr));
                         } else {
                             moves.push(this.createMove(sq, csq));
@@ -481,44 +491,46 @@ export class LocalEngine {
             } else if (abs === 2) { // Knight
                 for (let i = 0; i < 8; i++) {
                     const t = sq + KNIGHT_OFFSETS[i];
-                    if (t < 0 || t > 63) continue;
-                    const df = (t & 7) - file; if (df > 2 || df < -2) continue;
+                    if (t & 0x88) continue;
                     const tp = bd[t];
                     if (tp !== EMPTY && (tp > 0 ? 1 : -1) === s) continue;
                     if (capturesOnly && tp === EMPTY) continue;
                     moves.push(this.createMove(sq, t));
                 }
             } else if (abs === 6) { // King
-                for (let dr = -1; dr <= 1; dr++) {
-                    for (let df = -1; df <= 1; df++) {
-                        if (!dr && !df) continue;
-                        const t = sq + dr * 8 + df;
-                        if (t < 0 || t > 63) continue;
-                        const fd = (t & 7) - file; if (fd > 1 || fd < -1) continue;
-                        const tp = bd[t];
-                        if (tp !== EMPTY && (tp > 0 ? 1 : -1) === s) continue;
-                        if (capturesOnly && tp === EMPTY) continue;
-                        moves.push(this.createMove(sq, t));
-                    }
+                // King uses ALL_DIRS (neighbors)
+                // Offset checks same as sliding but single step
+                for (let i = 0; i < 8; i++) {
+                    const t = sq + ALL_DIRS[i];
+                    if (t & 0x88) continue;
+                    const tp = bd[t];
+                    if (tp !== EMPTY && (tp > 0 ? 1 : -1) === s) continue;
+                    if (capturesOnly && tp === EMPTY) continue;
+                    moves.push(this.createMove(sq, t));
                 }
+
                 if (!capturesOnly && !this.inCheck(s)) {
-                    if (s === 1) {
+                    if (s === 1) { // White (Rank 0 -> 0x00-0x07)
+                        // K at 4 (e1). Castling targets: g1 (6), c1 (2).
+                        // Squares to check empty: f1(5), g1(6) | b1(1), c1(2), d1(3).
                         if ((this.castling & 1) && sq === 4 && bd[5] === EMPTY && bd[6] === EMPTY
                             && !this.isAttacked(5, -1) && !this.isAttacked(6, -1)) {
-                            moves.push(this.createMove(4, 6, FLAG_CASTLE));
+                            moves.push(this.createMove(4, 6, FLAG_CASTLE)); // e1->g1
                         }
                         if ((this.castling & 2) && sq === 4 && bd[3] === EMPTY && bd[2] === EMPTY && bd[1] === EMPTY
                             && !this.isAttacked(3, -1) && !this.isAttacked(2, -1)) {
-                            moves.push(this.createMove(4, 2, FLAG_CASTLE));
+                            moves.push(this.createMove(4, 2, FLAG_CASTLE)); // e1->c1
                         }
-                    } else {
-                        if ((this.castling & 4) && sq === 60 && bd[61] === EMPTY && bd[62] === EMPTY
-                            && !this.isAttacked(61, 1) && !this.isAttacked(62, 1)) {
-                            moves.push(this.createMove(60, 62, FLAG_CASTLE));
+                    } else { // Black (Rank 7 -> 0x70-0x77)
+                        // K at 116 (e8). Targets: g8 (118), c8 (114).
+                        // Empty: f8(117), g8(118) | b8(113), c8(114), d8(115).
+                        if ((this.castling & 4) && sq === 116 && bd[117] === EMPTY && bd[118] === EMPTY
+                            && !this.isAttacked(117, 1) && !this.isAttacked(118, 1)) {
+                            moves.push(this.createMove(116, 118, FLAG_CASTLE));
                         }
-                        if ((this.castling & 8) && sq === 60 && bd[59] === EMPTY && bd[58] === EMPTY && bd[57] === EMPTY
-                            && !this.isAttacked(59, 1) && !this.isAttacked(58, 1)) {
-                            moves.push(this.createMove(60, 58, FLAG_CASTLE));
+                        if ((this.castling & 8) && sq === 116 && bd[115] === EMPTY && bd[114] === EMPTY && bd[113] === EMPTY
+                            && !this.isAttacked(115, 1) && !this.isAttacked(114, 1)) {
+                            moves.push(this.createMove(116, 114, FLAG_CASTLE));
                         }
                     }
                 }
@@ -528,15 +540,11 @@ export class LocalEngine {
                 for (let di = 0; di < dirs.length; di++) {
                     const dir = dirs[di];
                     let t = sq + dir;
-                    while (t >= 0 && t <= 63) {
-                        const fdiff = (t & 7) - ((t - dir) & 7);
-                        if ((dir === 1 || dir === -1) && (fdiff !== 1 && fdiff !== -1)) break;
-                        const adir = dir > 0 ? dir : -dir;
-                        if ((adir === 7 || adir === 9) && (fdiff !== 1 && fdiff !== -1)) break;
+                    while (!(t & 0x88)) {
                         const tp = bd[t];
-                        if (tp !== EMPTY && (tp > 0 ? 1 : -1) === s) break;
+                        if (tp !== EMPTY && (tp > 0 ? 1 : -1) === s) break; // block by friendly
                         if (!capturesOnly || tp !== EMPTY) moves.push(this.createMove(sq, t));
-                        if (tp !== EMPTY) break;
+                        if (tp !== EMPTY) break; // block by capture
                         t += dir;
                     }
                 }
