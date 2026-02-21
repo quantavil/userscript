@@ -172,7 +172,7 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                     const premoveResult = evaluatePremove(fen, opponentUci, ourUci, ourColor);
 
                     if (premoveResult.blocked) {
-                        BotState.statusInfo = `🛡️ Premove blocked: ${premoveResult.blocked}`;
+                        BotState.statusInfo = `🛡️ Premove blocked: ${premoveResult.blocked} (predicted ${opponentUci})`;
                         if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                         lastFenProcessedPremove = fen;
                         return;
@@ -196,7 +196,7 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                     }
                     await sleep(80);
 
-                    BotState.statusInfo = `✅ Premove: ${ourUci}`;
+                    BotState.statusInfo = `✅ Premove: ${ourUci} (vs ${opponentUci})`;
                     if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                     lastFenProcessedPremove = fen;
                     return;
@@ -231,7 +231,7 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                 const chainInfo = premoveChain.length > 0
                     ? ` (+${premoveChain.length} queued)`
                     : '';
-                BotState.statusInfo = `✅ Premove: ${firstMove.uci}${chainInfo}`;
+                BotState.statusInfo = `✅ Premove: ${firstMove.uci} (vs ${firstMove.oppUci})${chainInfo}`;
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                 lastFenProcessedPremove = fen;
             }

@@ -124,6 +124,10 @@ class BotController {
 
         // 3. New FEN handling (reset state)
         if (fen !== this.lastFenSeen) {
+            // Log opponent's move when position changes to our turn
+            if (this.lastFenSeen && isPlayersTurn(game)) {
+                ui.log('♟ Opponent moved', 'info');
+            }
             this.lastFenSeen = fen;
             cancelPendingMove();
             clearArrows();

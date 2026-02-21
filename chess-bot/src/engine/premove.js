@@ -2,7 +2,8 @@ import { LocalEngine } from './local-engine.js';
 import {
     EMPTY,
     MATE_SCORE,
-    PIECE_VAL
+    PIECE_VAL,
+    FLAG_EP, FLAG_CASTLE, FLAG_PROMO
 } from './constants.js';
 import {
     sqFile, sqRank, nameToSq
@@ -68,16 +69,13 @@ function resetTimer(engine, ms) {
  * 1. If we move to a square that is attacked, use SEE to check if the exchange is favorable.
  * 2. If SEE < 0, it's considered hanging/unsafe.
  */
-function checkHanging(engine, ourMove, ourSide, oppSide) {
+function checkHanging(engine, ourMove) {
     // Expects engine state BEFORE ourMove is made.
 
     // Check SEE
     const seeScore = engine.see(ourMove);
 
     if (seeScore < 0) {
-        // If SEE is negative, we lose material.
-        // It's "hanging" unless the move is a sacrifice leading to mate (which SEE won't see).
-        // For premoves, avoiding negative SEE is a good heuristic.
         return { hanging: true, reason: `Unsafe trade (SEE ${seeScore})` };
     }
 
@@ -144,7 +142,7 @@ export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
         // --- Step 3: Single post-move safety pass ---
 
         // 3a: Hanging piece check (BEFORE moving)
-        const hangResult = checkHanging(premoveEngine, ourMove, ourSide, oppSide);
+        const hangResult = checkHanging(premoveEngine, ourMove);
         if (hangResult.hanging) {
             premoveEngine.unmakeMove(oppMove);
             return { execute: false, confidence: 0, reasons: [], blocked: hangResult.reason };
@@ -194,15 +192,14 @@ export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
         }
 
         // Special move flags
-        // Special move flags
-        if (ourMove.promotedPiece || ourMove.promo) {
+        if (ourMove.flags & FLAG_PROMO) {
             reasons.push('promotion');
         }
-        if (ourMove.castling) {
+        if (ourMove.flags & FLAG_CASTLE) {
             reasons.push('castling');
             confidence += 0.05;
         }
-        if (ourMove.enPassant) {
+        if (ourMove.flags & FLAG_EP) {
             reasons.push('en passant');
             confidence -= 0.05; // EP is highly conditional
         }
@@ -232,6 +229,33 @@ export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
         const centerSquares = [nameToSq('d4'), nameToSq('d5'), nameToSq('e4'), nameToSq('e5')];
         if (centerSquares.includes(ourTo)) {
             reasons.push('center');
+        }
+
+        // --- Step 3e: Main-line quality check ---
+        // After opponent's predicted move, is our premove competitive?
+        // (Catches threats opponent's move creates that our premove ignores,
+        //  e.g. Na4 attacks Qb6 but we premove e6 instead of saving the queen)
+        resetTimer(premoveEngine, PREMOVE_CONFIG.quiesceMsScoring);
+        premoveEngine.makeMove(ourMove);
+        const mainEval = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
+        premoveEngine.unmakeMove(ourMove);
+
+        let mainBestAlt = -Infinity;
+        for (const alt of ourLegalMoves) {
+            if (alt.from === ourFrom && alt.to === ourTo) continue;
+            resetTimer(premoveEngine, PREMOVE_CONFIG.quiesceMsPerMove);
+            premoveEngine.makeMove(alt);
+            const altEval = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
+            premoveEngine.unmakeMove(alt);
+            if (altEval > mainBestAlt) mainBestAlt = altEval;
+        }
+
+        if (mainBestAlt > -Infinity && (mainBestAlt - mainEval) > PREMOVE_CONFIG.stabilityThreshold) {
+            premoveEngine.unmakeMove(oppMove);
+            return {
+                execute: false, confidence: 0, reasons: ['suboptimal'],
+                blocked: 'Move suboptimal against predicted opponent move'
+            };
         }
 
         // --- Step 4: Multi-response stability check ---
@@ -409,18 +433,38 @@ export function evaluatePremoveChain(fen, pv, ourColor, sideToMove) {
                 break;
             }
 
-            // Light safety: hanging check only
-            premoveEngine.makeMove(uMove);
-            appliedMoves.push(uMove);
-
-            const hangResult = checkHanging(premoveEngine, uMove, ourSide, oppSide);
-            if (hangResult.hanging) {
-                // Unwind and stop chain
-                for (let j = appliedMoves.length - 1; j >= 0; j--) {
-                    premoveEngine.unmakeMove(appliedMoves[j]);
-                }
+            // Safety: hanging check + main-line quality check
+            const chainHang = checkHanging(premoveEngine, uMove);
+            if (chainHang.hanging) {
+                premoveEngine.unmakeMove(oMove);
+                appliedMoves.pop();
                 break;
             }
+
+            // Main-line quality: compare our move vs best alternative
+            resetTimer(premoveEngine, PREMOVE_CONFIG.quiesceMsPerMove);
+            premoveEngine.makeMove(uMove);
+            const chainOurEval = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
+            premoveEngine.unmakeMove(uMove);
+
+            let chainBestAlt = -Infinity;
+            for (const cAlt of legalMoves) {
+                if (cAlt.from === uFrom && cAlt.to === uTo) continue;
+                resetTimer(premoveEngine, PREMOVE_CONFIG.quiesceMsPerMove);
+                premoveEngine.makeMove(cAlt);
+                const cAltEval = -premoveEngine.quiesce(-MATE_SCORE, MATE_SCORE, 0);
+                premoveEngine.unmakeMove(cAlt);
+                if (cAltEval > chainBestAlt) chainBestAlt = cAltEval;
+            }
+
+            if (chainBestAlt > -Infinity && (chainBestAlt - chainOurEval) > PREMOVE_CONFIG.stabilityThreshold) {
+                premoveEngine.unmakeMove(oMove);
+                appliedMoves.pop();
+                break;
+            }
+
+            premoveEngine.makeMove(uMove);
+            appliedMoves.push(uMove);
 
             const moveReasons = [];
 
