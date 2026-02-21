@@ -3,7 +3,7 @@ import { BotState, PositionCache, getGame, getFen, isPlayersTurn, pa, invalidate
 import { sleep } from './utils.js';
 import { clearArrows, cancelPendingMove, startDomBoardWatcher, startMoveWatcher, stopMoveWatcher, onBoardMutation } from './board.js';
 import { ui } from './ui.js';
-import { scheduleAnalysis, getLastFenProcessedMain, setLastFenProcessedMain, getLastFenProcessedPremove, setLastFenProcessedPremove } from './engine/scheduler.js';
+import { scheduleAnalysis, getLastFenProcessedMain, getLastFenProcessedPremove, setLastFenProcessedPremove, setLastFenProcessedMain } from './engine/scheduler.js';
 import { resetEngine } from './engine/analysis.js';
 
 class BotController {
@@ -14,8 +14,6 @@ class BotController {
 
         // Loop state
         this.lastFenSeen = '';
-        this.fenFirstSeenTime = 0;
-        this.failsafeAttempts = 0;
 
         // Game end state
         this.gameEndDetected = false;
@@ -90,9 +88,7 @@ class BotController {
 
             this.tick();
 
-            this.tick();
-
-            // Fixed failsafe interval (1000ms) - primarily for redundancy
+            // Redundancy interval — main triggers come from board mutation observer
             this.tickTimer = setTimeout(loop, 1000);
         };
 
@@ -129,24 +125,18 @@ class BotController {
         // 3. New FEN handling (reset state)
         if (fen !== this.lastFenSeen) {
             this.lastFenSeen = fen;
-            this.fenFirstSeenTime = Date.now();
-            this.failsafeAttempts = 0;
             cancelPendingMove();
             clearArrows();
         }
 
         // 4. Analysis Logic
         if (isPlayersTurn(game)) {
-            // Failsafe for stuck state
-            if (getLastFenProcessedMain() === fen) {
-                this.checkFailsafe(fen);
-            }
-
-            // Schedule main analysis if needed
+            // Schedule main analysis if this position hasn't been processed yet
             if (getLastFenProcessedMain() !== fen) {
-                // Pass a callback to re-tick immediately if move fails/completes fast
                 scheduleAnalysis('main', fen, () => this.tick());
             }
+            // If already processed, just wait — the position will change
+            // when it's the opponent's turn or a new game starts.
         } else {
             // Ponder / Premove logic
             // Always ponder during opponent's turn to keep TT hot
@@ -170,40 +160,10 @@ class BotController {
         }
     }
 
-    checkFailsafe(fen) {
-        // Only trigger failsafe if the bot explicitly reports a failure
-        // 'Move failed (gave up)' is set by board.js after all retries are exhausted.
-        // 'Error' is set by analysis/scheduler on critical failures.
-        const hasFailed = BotState.statusInfo.includes('Move failed') || BotState.statusInfo.includes('Error');
-
-        if (hasFailed) {
-            console.log(`GabiBot: 🛡️ Failsafe triggered (Status: ${BotState.statusInfo}). HARD RESET. Attempt #${this.failsafeAttempts + 1}`);
-
-            // 1. Clear State
-            setLastFenProcessedMain('');
-            setLastFenProcessedPremove('');
-            cancelPendingMove();
-            clearArrows();
-
-            // 2. True Reset (Re-hook observers)
-            stopMoveWatcher();
-            startMoveWatcher();
-            startDomBoardWatcher();
-
-            // 3. Reset Engine Memory
-            resetEngine();
-
-            // 4. Reset Timer & Increment Attempt
-            this.fenFirstSeenTime = Date.now();
-            this.failsafeAttempts++;
-
-            BotState.statusInfo = `⚠️ Resetting (${this.failsafeAttempts})`;
-            ui.updateDisplay(pa());
-
-            // 5. Force Tick
-            setTimeout(() => this.tick(), 100);
-        }
-    }
+    // checkFailsafe was removed — it was the root cause of the infinite
+    // fail→reset→fail loop. When a move fails, the bot now simply waits
+    // for the board position to change (opponent move / new game).
+    // See tests/failsafe-loop.test.js for the proof.
 
     setStatus(msg) {
         if (BotState.statusInfo !== msg) {

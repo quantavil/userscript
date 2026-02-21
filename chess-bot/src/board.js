@@ -435,10 +435,8 @@ export function executeMove(from, to, analysisFen, promotionChar, depth, tickCal
                 BotState.statusInfo = '✓ Move made!';
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
             } else {
-                BotState.statusInfo = '❌ Move failed (gave up)';
+                BotState.statusInfo = '❌ Move failed — waiting for next position';
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-                // Immediate hard reset trigger
-                if (BotState.hackEnabled && isPlayersTurn(getGame()) && tickCallback) tickCallback();
             }
         }, totalDelay);
     } else {
