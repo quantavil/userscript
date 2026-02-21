@@ -259,6 +259,9 @@ class BotController {
             // Clear Engine Memory (TT) for fresh game
             resetEngine();
 
+            // Clear terminal for fresh game logs
+            ui.clearConsole();
+
             BotState.statusInfo = 'Ready';
             ui.updateDisplay(pa());
 

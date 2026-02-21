@@ -29,6 +29,17 @@ export const ui = {
     this.consoleEl.scrollTop = this.consoleEl.scrollHeight;
   },
 
+  clearConsole() {
+    if (!this.consoleEl && this.menuWrap) {
+      this.consoleEl = this.menuWrap.querySelector('#consoleWindow');
+    }
+    if (!this.consoleEl) return;
+    this.consoleEl.innerHTML = '';
+    this.lastStatus = '';
+    this.lastBestMove = '';
+    this.log('Terminal cleared', 'status');
+  },
+
   updateDisplay(playingAs) {
     // Only log if status changed
     if (BotState.statusInfo !== this.lastStatus) {
@@ -140,7 +151,14 @@ export function buildUI() {
     <div class="divider"></div>
   </div>
   
-  <!-- Terminal Console (Edge-to-Edge) -->
+  <!-- Terminal Console -->
+  <div id="consoleHeader" class="console-header">
+    <span class="console-title">Terminal</span>
+    <div class="console-actions">
+      <button id="consoleCopyBtn" title="Copy log">⧉</button>
+      <button id="consoleClearBtn" title="Clear log">✕</button>
+    </div>
+  </div>
   <div id="consoleWindow" class="console-window">
      <div class="log-line info"><span class="timestamp">--:--:--</span> GabiBot Terminal Ready</div>
   </div>
@@ -205,21 +223,37 @@ export function buildUI() {
   .itemState { color: #fff; font-size: 12px; min-width: 35px; text-align: right; font-weight: 500; }
   #arrowCanvas { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important; pointer-events: none !important; z-index: 100 !important; }
 
+  /* Console Header */
+  .console-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 10px;
+    background: rgba(0, 0, 0, 0.25);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+  }
+  .console-title { color: rgba(255,255,255,0.4); font-size: 10px; font-family: monospace; letter-spacing: 0.5px; text-transform: uppercase; }
+  .console-actions { display: flex; gap: 4px; }
+  .console-actions button {
+    background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.5); width: 20px; height: 20px; border-radius: 3px;
+    cursor: pointer; font-size: 11px; padding: 0; line-height: 1;
+    transition: background 0.15s, color 0.15s;
+  }
+  .console-actions button:hover { background: rgba(255,255,255,0.15); color: #fff; }
+  #consoleCopyBtn.copied { color: #4CAF50; border-color: #4CAF50; }
   /* Console Window Styles - Edge to Edge */
   .console-window {
     background: rgba(0, 0, 0, 0.3);
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    /* border-radius: 0 0 8px 8px; */ /* Optional: matches bottom corners */
     padding: 12px;
-    /* margin-top: 8px; REMOVED separate margin */
     min-height: 80px;
     max-height: 150px;
     overflow-y: auto;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
-    font-size: 12px; /* Increased font */
+    font-size: 12px;
     display: flex;
     flex-direction: column;
     gap: 3px;
+    border-radius: 0 0 8px 8px;
   }
   .log-line { color: #bbb; line-height: 1.5; word-break: break-all; }
   .log-line.status { color: #4CAF50; font-weight: bold; }
@@ -344,6 +378,24 @@ export function buildUI() {
       e.preventDefault();
       menuWrap.classList.toggle('minimized');
     }
+  });
+
+  // Console: Clear button
+  document.getElementById('consoleClearBtn').addEventListener('click', () => ui.clearConsole());
+
+  // Console: Copy button
+  document.getElementById('consoleCopyBtn').addEventListener('click', () => {
+    const consoleEl = menuWrap.querySelector('#consoleWindow');
+    if (!consoleEl) return;
+    const text = Array.from(consoleEl.querySelectorAll('.log-line'))
+      .map(l => l.textContent.trim())
+      .join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('consoleCopyBtn');
+      btn.classList.add('copied');
+      btn.title = 'Copied!';
+      setTimeout(() => { btn.classList.remove('copied'); btn.title = 'Copy log'; }, 1500);
+    }).catch(() => { });
   });
 }
 
