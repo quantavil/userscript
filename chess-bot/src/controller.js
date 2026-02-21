@@ -194,7 +194,7 @@ class BotController {
             resetEngine();
 
             // 4. Reset Timer & Increment Attempt
-            this.fenFirstSeenTime = now;
+            this.fenFirstSeenTime = Date.now();
             this.failsafeAttempts++;
 
             BotState.statusInfo = `⚠️ Resetting (${this.failsafeAttempts})`;

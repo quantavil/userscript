@@ -41,7 +41,7 @@ export async function getAnalysis(fen, depth, timeLimit, signal) {
     // Minimal async delay to not block UI/event loop completely if sync
     await new Promise(r => setTimeout(r, 0));
 
-    if (res.success) {
+    if (res.success && res.depth >= 1) {
         PositionCache.set(fen, res);
     }
 
@@ -55,7 +55,7 @@ export async function getAnalysis(fen, depth, timeLimit, signal) {
 export function parseBestLine(data) {
     const lines = [];
     const pushLine = (uci, pv, score) => {
-        if (!uci || uci.length < 4) return;
+        if (!uci || uci.length < 4 || uci === '(none)' || !/^[a-h]/.test(uci)) return;
         lines.push({ uci: uci.trim(), pv: (pv || '').trim(), score: score || {} });
     };
     const addFromArray = (arr) => arr.forEach(item => {

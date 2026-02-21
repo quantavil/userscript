@@ -439,7 +439,8 @@ export const SearchMethods = {
 
     quiesce(alpha, beta, ply, qply = 0) {
         this.nodes++;
-        if (this.nodes % 4096 === 0 && performance.now() - this.startTime > this.timeLimit) {
+        if (this.nodes % 4096 === 0 && this.searchCompletedDepth >= 3 &&
+            performance.now() - this.startTime > this.timeLimit) {
             this.stopped = true;
             return 0;
         }
@@ -522,7 +523,8 @@ export const SearchMethods = {
     negamax(depth, alpha, beta, ply, pvLine, ext) {
         this.nodes++;
         if (this.stopped) return 0;
-        if (this.nodes % 4096 === 0 && performance.now() - this.startTime > this.timeLimit) {
+        if (this.nodes % 4096 === 0 && this.searchCompletedDepth >= 3 &&
+            performance.now() - this.startTime > this.timeLimit) {
             this.stopped = true;
             return 0;
         }
@@ -560,7 +562,8 @@ export const SearchMethods = {
         const ttEntry = this.ttProbe(depth, alpha, beta);
         if (ttEntry) {
             ttMove = ttEntry.move;
-            if (ttEntry.score !== null) return ttEntry.score;
+            // Never take TT score cutoffs at root (ply 0) — we need the PV
+            if (ttEntry.score !== null && ply > 0) return ttEntry.score;
         }
 
         // Optimizations: Reverse Futility Pruning (RFP) and Razoring
@@ -711,10 +714,19 @@ export const SearchMethods = {
         this.killers = [];
         this.history.fill(0);
         this.rootSide = this.side; // track who the root player is for contempt
+        this.searchCompletedDepth = 0; // Don't allow time-abort until depth 3 completes
 
-        let bestMove = null;
-        let bestScore = 0;
-        let bestPv = [];
+        // Seed a fallback move BEFORE searching.
+        // This guarantees we always return a legal move if one exists,
+        // even if the search times out before completing depth 1.
+        const legalMoves = this.generateLegalMoves();
+        if (legalMoves.length === 0) {
+            return { move: null, score: 0, pv: [], depth: 0, nodes: 0 };
+        }
+
+        let bestMove = legalMoves[0];
+        let bestScore = -MATE_SCORE;
+        let bestPv = [legalMoves[0]];
         let completedDepth = 0;
 
         for (let d = 1; d <= maxDepth; d++) {
@@ -748,6 +760,7 @@ export const SearchMethods = {
                 bestScore = score;
                 bestPv = pvLine.slice();
                 completedDepth = d;
+                this.searchCompletedDepth = d;
             }
 
             // If we found a mate, no need to search deeper
@@ -763,6 +776,7 @@ export const SearchMethods = {
 
     analyze(fen, depth, timeLimit) {
         this.loadFen(fen);
+        this.clearTT(); // Flush stale TT entries so root search always populates PV
 
         // Use passed depth and time limit directly
         const timeMs = timeLimit || 1000;
@@ -781,7 +795,7 @@ export const SearchMethods = {
         else if (result.score < -100) dirtyPlayTimeScale = 0.8;
 
         if (!result.move) {
-            return { success: false, bestmove: '(none)', evaluation: 0 };
+            return { success: false, bestmove: '(none)', evaluation: 0, depth: result.depth || 0 };
         }
 
         const uci = this.moveToUci(result.move);
