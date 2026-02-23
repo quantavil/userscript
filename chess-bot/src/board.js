@@ -435,8 +435,16 @@ export function executeMove(from, to, analysisFen, promotionChar, depth, tickCal
                 BotState.statusInfo = '✓ Move made!';
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
             } else {
-                BotState.statusInfo = '❌ Move failed — waiting for next position';
+                BotState.statusInfo = '❌ Move failed — retrying...';
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+
+                // Clear the state locks so the controller can re-schedule analysis for this same FEN!
+                import('./engine/scheduler.js').then(module => {
+                    module.setLastFenProcessedMain('');
+                    if (tickCallback) {
+                        setTimeout(() => tickCallback(), 500);
+                    }
+                });
             }
         }, totalDelay);
     } else {

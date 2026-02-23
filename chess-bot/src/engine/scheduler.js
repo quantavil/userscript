@@ -1,8 +1,11 @@
 import { BotState, getGame, getPlayerColor, getSideToMove, pa, invalidateGameCache } from '../state.js';
 import { scoreToDisplay, sleep } from '../utils.js';
 import { drawArrow, clearArrows, executeMove, simulateClickMove, simulateDragMove } from '../board.js';
-import { getAnalysis, parseBestLine } from './analysis.js';
+import { getAnalysis, parseBestLine, resetEngine } from './analysis.js';
 import { evaluatePremove, evaluatePremoveChain, getOurMoveFromPV } from './premove.js';
+
+let consecutiveFailures = 0;
+const MAX_FAILURES = 3;
 
 let currentAnalysisId = 0;
 let currentAbortController = null;
@@ -120,6 +123,12 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
             const best = parseBestLine(data);
 
             if (kind === 'main') {
+                if (!best) {
+                    throw new Error("No valid move found by engine.");
+                }
+
+                consecutiveFailures = 0; // Success resets counter
+
                 // --- Main turn: execute best move ---
                 BotState.bestMove = best?.uci || '-';
                 BotState.currentEvaluation = scoreToDisplay(best?.score);
@@ -142,6 +151,8 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                 lastFenProcessedMain = fen;
 
             } else {
+                consecutiveFailures = 0; // Success resets counter
+
                 // --- Premove analysis (opponent's turn) ---
                 const ourColor = getPlayerColor(game);
                 const stm = getSideToMove(game);
@@ -241,9 +252,29 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                 // Silently skip — superseded
             } else {
                 console.error('GabiBot Error:', error);
-                BotState.statusInfo = '❌ Analysis Error';
-                BotState.currentEvaluation = 'Error';
-                if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+
+                consecutiveFailures++;
+                if (consecutiveFailures <= MAX_FAILURES) {
+                    BotState.statusInfo = `❌ Error - Retrying (${consecutiveFailures}/${MAX_FAILURES})...`;
+                    BotState.currentEvaluation = 'Error';
+                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+
+                    // Allow auto-restart by clearing locks and re-scheduling after a delay
+                    if (kind === 'main' && scheduledMainFen === fen) scheduledMainFen = '';
+                    else if (kind !== 'main' && scheduledPremoveFen === fen) scheduledPremoveFen = '';
+
+                    setTimeout(() => {
+                        resetEngine();
+                        if (kind === 'main' && lastFenProcessedMain === fen) lastFenProcessedMain = '';
+                        else if (kind !== 'main' && lastFenProcessedPremove === fen) lastFenProcessedPremove = '';
+
+                        scheduleAnalysis(kind, fen, tickCallback);
+                    }, 1000); // Wait 1 second before retrying
+                } else {
+                    BotState.statusInfo = '❌ Engine Failed (Max Retries)';
+                    BotState.currentEvaluation = 'Error';
+                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+                }
             }
         } finally {
             if (kind === 'main' && scheduledMainFen === fen) scheduledMainFen = '';
