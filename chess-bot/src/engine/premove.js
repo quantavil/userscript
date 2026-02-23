@@ -315,6 +315,7 @@ export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
             premoveEngine.unmakeMove(altOppMove);
 
             if (bestAlt > -Infinity && (bestAlt - postScore) > PREMOVE_CONFIG.stabilityThreshold) {
+                console.log('Blocked by alt response. From:', altOppMove.from, 'To:', altOppMove.to, 'postScore:', postScore, 'bestAlt:', bestAlt);
                 return {
                     execute: false,
                     confidence: 0,

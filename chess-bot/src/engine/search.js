@@ -189,7 +189,7 @@ export const SearchMethods = {
                 }
                 if (passed) {
                     const advance = wPawnRanks[f];
-                    const bonus = [0, 5, 10, 20, 40, 70, 120][advance] || 0;
+                    const bonus = [0, 10, 30, 80, 160, 300, 800][advance] || 0;
                     mgScore += bonus / 2;
                     egScore += bonus;
                 }
@@ -203,7 +203,7 @@ export const SearchMethods = {
                 }
                 if (passed) {
                     const advance = 7 - bPawnRanks[f];
-                    const bonus = [0, 5, 10, 20, 40, 70, 120][advance] || 0;
+                    const bonus = [0, 10, 30, 80, 160, 300, 800][advance] || 0;
                     mgScore -= bonus / 2;
                     egScore -= bonus;
                 }
@@ -473,7 +473,12 @@ export const SearchMethods = {
             const mv = moves[i];
             const isCapture = mv.captured !== EMPTY;
             const isPromo = (mv.flags & FLAG_PROMO);
-            const isQuiet = !isCapture && !isPromo;
+
+            // Treat pawn pushes to the 7th/2nd rank as forcing (non-quiet)
+            const toRank = mv.to >> 4;
+            const isPawnAdvanceTo7th = (Math.abs(mv.piece) === 1) && ((mv.piece > 0 && toRank === 6) || (mv.piece < 0 && toRank === 1));
+
+            const isQuiet = !isCapture && !isPromo && !isPawnAdvanceTo7th;
 
             if (!inChk) {
                 // Filter Quiet Moves

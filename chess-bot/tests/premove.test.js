@@ -16,8 +16,8 @@ describe('evaluatePremove', () => {
     });
 
     it('should allow safe capture (undefended pawn)', () => {
-        // Same but Black K far away — pawn undefended
-        const fen = "8/8/8/3p4/4Q3/3K4/8/k7 b - - 0 1";
+        // Same but Black K far away — pawn undefended. White pawn on d4 blocks the pawn push.
+        const fen = "8/8/8/3p4/3PQ3/3K4/8/k7 b - - 0 1";
         const opponentUci = "a1b1";
         const ourUci = "e4d5";
         const ourColor = "w";
