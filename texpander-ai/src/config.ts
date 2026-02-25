@@ -16,7 +16,7 @@ export const CONFIG: Config = {
   maxAbbrevLen: 80,
   styleId: 'sae-styles',
   clipboardReadTimeoutMs: 350,
-  searchDebounceMs: 150,
+  searchDebounceMs: 50,
   toast: { defaultMs: 2200, shortMs: 1200 },
   ui: {
     menuWidth: 360,

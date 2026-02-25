@@ -30,6 +30,19 @@ function ensureMenu(): HTMLDivElement {
     if (menuEl?.classList.contains('open') && !menuEl.contains(e.target as Node)) closeAIMenu()
   }
   document.addEventListener('mousedown', clickH, true)
+
+  menuEl.addEventListener('pointermove', (e: PointerEvent) => {
+    if (e.movementX === 0 && e.movementY === 0) return
+    const pill = (e.target as HTMLElement).closest<HTMLButtonElement>('.sae-ai-pill')
+    if (!pill || pill.classList.contains('active')) return
+    const v = pills()
+    const idx = v.indexOf(pill)
+    if (idx >= 0 && state.aiMenuIndex !== idx) {
+      state.aiMenuIndex = idx
+      markActive(false)
+    }
+  })
+
   return menuEl
 }
 
@@ -91,11 +104,15 @@ function render(): void {
   markActive()
 }
 
-function markActive(): void {
+function markActive(scroll = true): void {
   if (!menuEl) return
   const v = pills()
   menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pill').forEach(p => p.classList.remove('active'))
-  v[state.aiMenuIndex]?.classList.add('active')
+  const activePill = v[state.aiMenuIndex]
+  if (activePill) {
+    activePill.classList.add('active')
+    if (scroll) activePill.scrollIntoView({ block: 'nearest' })
+  }
 }
 
 function handleKey(e: KeyboardEvent): void {

@@ -31,9 +31,9 @@ function renderList(filter = ''): void {
     </div>`).join('')
 }
 
-function updateActive(items: HTMLDivElement[]): void {
+function updateActive(items: HTMLDivElement[], scroll = true): void {
   items.forEach((el, i) => el.classList.toggle('active', i === state.paletteIndex))
-  items[state.paletteIndex]?.scrollIntoView({ block: 'nearest' })
+  if (scroll) items[state.paletteIndex]?.scrollIntoView({ block: 'nearest' })
 }
 
 // ── Dict Ops ─────────────────────────────────────────────────
@@ -242,6 +242,19 @@ function ensurePalette(): HTMLDivElement {
   searchEl.addEventListener('input', debounce(() => renderList(searchEl.value), CONFIG.searchDebounceMs))
   paletteEl.addEventListener('keydown', handlePaletteKey)
   listEl.addEventListener('click', handleListClick)
+
+  listEl.addEventListener('pointermove', (e: PointerEvent) => {
+    if (e.movementX === 0 && e.movementY === 0) return
+    const item = (e.target as HTMLElement).closest<HTMLDivElement>('.sae-item:not(.editing)')
+    if (!item || item.classList.contains('active')) return
+    const items = $$<HTMLDivElement>('.sae-item:not(.editing)', listEl)
+    const idx = items.indexOf(item)
+    if (idx >= 0 && state.paletteIndex !== idx) {
+      state.paletteIndex = idx
+      updateActive(items, false)
+    }
+  })
+
   return paletteEl
 }
 
