@@ -19,7 +19,7 @@ export const CONFIG: Config = {
   searchDebounceMs: 150,
   toast: { defaultMs: 2200, shortMs: 1200 },
   ui: {
-    menuWidth: 320,
+    menuWidth: 360,
     menuHeight: 260,
     previewMaxChars: 120,
     spacing: { sm: 8, md: 16 },
@@ -35,12 +35,12 @@ export const CONFIG: Config = {
 }
 
 export const BUILTIN_PROMPTS: readonly AIPrompt[] = [
-  { id: 'grammar', icon: '✨', label: 'Fix Grammar', prompt: 'Fix grammar, spelling, and punctuation. Improve clarity. Preserve meaning and original language. Return only the corrected text, no explanations.' },
-  { id: 'expand', icon: '📝', label: 'Expand', prompt: 'Expand this text with more detail, examples, and depth. Maintain the original tone. Return only the expanded text.' },
-  { id: 'summarize', icon: '📋', label: 'Summarize', prompt: 'Summarize this text concisely in 2-3 sentences. Capture key points. Return only the summary.' },
-  { id: 'formal', icon: '💼', label: 'Formal', prompt: 'Rewrite in a formal, professional tone suitable for business communication. Return only the rewritten text.' },
-  { id: 'friendly', icon: '😊', label: 'Friendly', prompt: 'Rewrite in a warm, friendly, conversational tone. Return only the rewritten text.' },
-  { id: 'concise', icon: '🎯', label: 'Concise', prompt: 'Make this shorter and more direct. Remove unnecessary words. Return only the concise text.' },
+  { id: 'grammar', label: 'Fix Grammar', prompt: 'Fix grammar, spelling, and punctuation. Improve clarity. Preserve meaning and original language. Return only the corrected text, no explanations.' },
+  { id: 'expand', label: 'Expand', prompt: 'Expand this text with more detail, examples, and depth. Maintain the original tone. Return only the expanded text.' },
+  { id: 'summarize', label: 'Summarize', prompt: 'Summarize this text concisely in 2-3 sentences. Capture key points. Return only the summary.' },
+  { id: 'formal', label: 'Formal', prompt: 'Rewrite in a formal, professional tone suitable for business communication. Return only the rewritten text.' },
+  { id: 'friendly', label: 'Friendly', prompt: 'Rewrite in a warm, friendly, conversational tone. Return only the rewritten text.' },
+  { id: 'concise', label: 'Concise', prompt: 'Make this shorter and more direct. Remove unnecessary words. Return only the concise text.' },
 ]
 
 export const DEFAULT_DICT: Record<string, string> = {

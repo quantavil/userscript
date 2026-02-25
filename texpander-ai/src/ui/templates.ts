@@ -50,7 +50,6 @@ export const promptItemHTML = (
   p: AIPrompt, idx: number, builtin: boolean, on: boolean
 ): string => `
   <div class="sae-p-item${builtin ? ' bi' : ''}${on ? '' : ' disabled'}" ${builtin ? `data-id="${escHtml(p.id)}"` : `data-idx="${idx}"`}>
-    <span class="p-icon">${escHtml(p.icon || '⚡')}</span>
     <span class="p-name">${escHtml(p.label)}</span>
     <span class="p-text">${escHtml(p.prompt)}</span>
     <div class="p-acts">
@@ -59,10 +58,9 @@ export const promptItemHTML = (
     </div>
   </div>`
 
-export const promptEditFormHTML = (icon: string, label: string, prompt: string): string => `
+export const promptEditFormHTML = (label: string, prompt: string): string => `
   <div class="sae-p-edit">
     <div class="sae-p-edit-r">
-      <input class="sae-input icon-input" value="${escHtml(icon)}" maxlength="2" id="pi"/>
       <input class="sae-input label-input" placeholder="Name" value="${escHtml(label)}" id="pl"/>
     </div>
     <textarea class="sae-textarea" placeholder="Prompt..." id="pp">${escHtml(prompt)}</textarea>

@@ -33,7 +33,6 @@ export interface Config {
 
 export interface AIPrompt {
   readonly id: string
-  icon: string
   label: string
   prompt: string
   enabled?: boolean

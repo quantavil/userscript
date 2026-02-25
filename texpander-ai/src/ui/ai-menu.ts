@@ -38,8 +38,8 @@ function pills(): HTMLButtonElement[] {
   const p = [...menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pills.primary .sae-ai-pill')]
   if (!menuState.expanded) return p
   return [...p,
-    ...menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pills.secondary .sae-ai-pill'),
-    ...menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pills.custom .sae-ai-pill')]
+  ...menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pills.secondary .sae-ai-pill'),
+  ...menuEl.querySelectorAll<HTMLButtonElement>('.sae-ai-pills.custom .sae-ai-pill')]
 }
 
 function mkPill(p: AIPrompt, i: number): HTMLButtonElement {
@@ -47,7 +47,7 @@ function mkPill(p: AIPrompt, i: number): HTMLButtonElement {
   b.className = 'sae-ai-pill'
   b.dataset.id = p.id
   b.setAttribute('role', 'menuitem')
-  b.innerHTML = `<span class="icon">${p.icon||'⚡'}</span><span>${p.label}</span><span class="key">${i}</span>`
+  b.innerHTML = `<span class="label-text">${p.label}</span><span class="key">${i}</span>`
   b.onclick = () => exec(p.id)
   return b
 }
@@ -102,7 +102,7 @@ function handleKey(e: KeyboardEvent): void {
   if (!menuEl || !menuState) return
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeAIMenu(); return }
   const v = pills(), num = +e.key
-  if (num >= 1 && num <= 9 && v[num - 1]) { e.preventDefault(); e.stopPropagation(); exec(v[num-1].dataset.id!); return }
+  if (num >= 1 && num <= 9 && v[num - 1]) { e.preventDefault(); e.stopPropagation(); exec(v[num - 1].dataset.id!); return }
   if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); state.aiMenuIndex = Math.min(v.length - 1, state.aiMenuIndex + 1); markActive() }
   else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); state.aiMenuIndex = Math.max(0, state.aiMenuIndex - 1); markActive() }
   else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (v[state.aiMenuIndex]) exec(v[state.aiMenuIndex].dataset.id!) }
@@ -133,7 +133,7 @@ async function exec(id: string): Promise<void> {
     if (r) {
       closeAIMenu(); safeFocus(ctx.kind === 'input' ? ctx.el : ctx.root)
       makeEditor(captureContext() || ctx)?.replace(r)
-      notify.toast(`${p.icon} Done`, CONFIG.toast.shortMs)
+      notify.toast(`Done`, CONFIG.toast.shortMs)
     } else { menuEl?.classList.remove('loading'); notify.toast('Set API key in Settings') }
   } catch (err) { console.warn('[texpander] AI err:', err); menuEl?.classList.remove('loading'); notify.toast('AI failed') }
 }

@@ -8,7 +8,7 @@ import { paletteHTML, settingsHTML, promptItemHTML, promptEditFormHTML } from '.
 
 let paletteEl: HTMLDivElement | null = null
 let prevOverflow = ''
-let listEl: HTMLDivElement, settingsEl: HTMLDivElement, searchEl: HTMLInputElement, panelEl: HTMLDivElement, backBtn: HTMLButtonElement
+let listEl: HTMLDivElement, settingsEl: HTMLDivElement, searchEl: HTMLInputElement, panelEl: HTMLDivElement, backBtn: HTMLButtonElement, settingsBtn: HTMLButtonElement
 
 // ── List ─────────────────────────────────────────────────────
 
@@ -78,6 +78,7 @@ async function insertAbbrev(key: string): Promise<void> {
 function showSettings(show: boolean): void {
   panelEl.classList.toggle('settings-open', show)
   backBtn.style.display = show ? 'flex' : 'none'
+  settingsBtn.style.display = show ? 'none' : 'flex'
   show ? renderSettings() : searchEl.focus()
 }
 
@@ -162,10 +163,10 @@ function addPrompt(): void {
   const c = $<HTMLDivElement>('#sae-customs', settingsEl)!
   c.querySelector('.sae-empty')?.remove()
   const el = document.createElement('div'); el.className = 'sae-p-item editing'
-  el.innerHTML = promptEditFormHTML('⚡', '', '')
+  el.innerHTML = promptEditFormHTML('', '')
   c.insertBefore(el, c.firstChild)
-  setupPromptForm(el, (icon, label, prompt) => {
-    state.customPrompts.push({ id: genId(), icon, label, prompt, enabled: true })
+  setupPromptForm(el, (label, prompt) => {
+    state.customPrompts.push({ id: genId(), label, prompt, enabled: true })
     GMX.set(STORE_KEYS.customPrompts, state.customPrompts); renderCustoms(); notify.toast('Added')
   })
 }
@@ -174,19 +175,19 @@ function editPrompt(idx: number): void {
   const p = state.customPrompts[idx]; if (!p) return
   const el = $<HTMLDivElement>(`[data-idx="${idx}"]`, settingsEl)!
   el.className = 'sae-p-item editing'
-  el.innerHTML = promptEditFormHTML(p.icon || '⚡', p.label, p.prompt)
-  setupPromptForm(el, (icon, label, prompt) => {
-    Object.assign(p, { icon, label, prompt })
+  el.innerHTML = promptEditFormHTML(p.label, p.prompt)
+  setupPromptForm(el, (label, prompt) => {
+    Object.assign(p, { label, prompt })
     GMX.set(STORE_KEYS.customPrompts, state.customPrompts); renderCustoms(); notify.toast('Saved')
   })
 }
 
-function setupPromptForm(el: HTMLDivElement, onSave: (i: string, l: string, p: string) => void): void {
-  const [ic, lb, pr] = [$<HTMLInputElement>('#pi', el)!, $<HTMLInputElement>('#pl', el)!, $<HTMLTextAreaElement>('#pp', el)!]
+function setupPromptForm(el: HTMLDivElement, onSave: (l: string, p: string) => void): void {
+  const [lb, pr] = [$<HTMLInputElement>('#pl', el)!, $<HTMLTextAreaElement>('#pp', el)!]
   $<HTMLButtonElement>('#ps', el)!.onclick = () => {
-    const i = ic.value.trim() || '⚡', l = lb.value.trim(), p = pr.value.trim()
+    const l = lb.value.trim(), p = pr.value.trim()
     if (!l || !p) { notify.toast('Required'); return }
-    onSave(i, l, p)
+    onSave(l, p)
   }
   $<HTMLButtonElement>('#pc', el)!.onclick = () => renderCustoms()
   requestAnimationFrame(() => lb.focus())
@@ -230,10 +231,11 @@ function ensurePalette(): HTMLDivElement {
   listEl = $<HTMLDivElement>('.sae-list', paletteEl)!
   settingsEl = $<HTMLDivElement>('.sae-settings', paletteEl)!
   backBtn = $<HTMLButtonElement>('[data-action="back"]', paletteEl)!
+  settingsBtn = $<HTMLButtonElement>('[data-action="settings"]', paletteEl)!
 
   paletteEl.addEventListener('click', e => { if (e.target === paletteEl) closePalette() })
   $<HTMLButtonElement>('[data-action="close"]', paletteEl)!.onclick = closePalette
-  $<HTMLButtonElement>('[data-action="settings"]', paletteEl)!.onclick = () => showSettings(true)
+  settingsBtn.onclick = () => showSettings(true)
   backBtn.onclick = () => showSettings(false)
   $<HTMLButtonElement>('[data-action="add"]', paletteEl)!.onclick = addNew
 
@@ -272,7 +274,7 @@ function handleListClick(e: MouseEvent): void {
 export function openPalette(): void {
   const p = ensurePalette(); p.classList.add('open')
   prevOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden'
-  panelEl.classList.remove('settings-open'); backBtn.style.display = 'none'
+  showSettings(false)
   searchEl.value = ''; state.paletteIndex = 0; renderList(); searchEl.focus()
 }
 
