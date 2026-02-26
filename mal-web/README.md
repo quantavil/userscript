@@ -1,16 +1,16 @@
-# MAL Rating Hover Provider
+# MAL Rating Provider
 
-A Tampermonkey userscript that displays MyAnimeList (MAL) ratings, members, and links when hovering over anime posters on various streaming sites.
+A Tampermonkey userscript that automatically displays MyAnimeList (MAL) ratings, members, and links on anime posters across various streaming sites.
 
 ## Features
 
-- **Hover Tooltips**: Instantly shows MAL score and member count
+- **Auto-Presenting Ratings**: Automatically shows MAL score and member count when posters enter the viewport.
 - **Color-Coded Badges**: Gold (8+), Green (7-8), Orange (6-7), Red (5-6), Purple (<5)
-- **Smart Caching**: 14-day cache for successful lookups, 12-hour for not-found
-- **Rate Limit Safe**: Queue system with retry logic for Jikan API limits
-- **Fuzzy Matching**: Fetches top 8 results with Levenshtein similarity matching
-- **Mobile Support**: Long-press to show ratings on touch devices
-- **Request Timeout**: 8-second timeout prevents hung requests
+- **Smart Caching**: 4-week cache for successful lookups, 24-hour for not-found/errors
+- **Rate Limit Safe**: Queue system with throttled requests for Jikan API limits
+- **Fuzzy Matching**: Fetches results with Levenshtein-based similarity matching
+- **Intersection Observer**: High performance, zero-latency display that adapts to dynamic scrolling
+- **Request Timeout**: 10-second timeout prevents hung requests
 
 ## Supported Sites
 
@@ -53,12 +53,10 @@ A Tampermonkey userscript that displays MyAnimeList (MAL) ratings, members, and 
 ```javascript
 const CONFIG = {
     CACHE_PREFIX: 'mal_v5_',
-    CACHE_EXPIRY_SUCCESS: 14 * 24 * 60 * 60 * 1000, // 14 days
-    CACHE_EXPIRY_ERROR: 12 * 60 * 60 * 1000,        // 12 hours
-    DEBOUNCE_DELAY: 200,      // Hover delay (ms)
-    LONG_PRESS_DELAY: 500,    // Mobile long-press (ms)
-    API_INTERVAL: 350,        // Rate limit delay (ms)
-    MATCH_THRESHOLD: 0.5      // Fuzzy matching strictness
+    CACHE_EXPIRY_SUCCESS: 28 * 24 * 60 * 60 * 1000, // 4 weeks
+    CACHE_EXPIRY_ERROR: 24 * 60 * 60 * 1000,        // 24 hours
+    API_INTERVAL: 600,        // Rate limit delay (ms)
+    MATCH_THRESHOLD: 0.7      // Fuzzy matching strictness
 };
 ```
 

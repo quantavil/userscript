@@ -1,10 +1,9 @@
 // ==UserScript==
 // @name         Show MyAnimeList Rating
 // @namespace    http://github.com/quantavil
-// @version      3.6.0
+// @version      3.7.1
 // @description  Shows MAL rating on hover (desktop) and touch/tap (mobile). Features: Gold Badge (>8), Smart Caching, Color Grading.
 // @author       Quantavil
-// --- Domain Wildcards ---
 // @match        *://123animes.*/*
 // @match        *://9anime.*/*
 // @match        *://anicore.*/*
@@ -62,12 +61,10 @@
 
     const CONFIG = {
         CACHE_PREFIX: 'mal_v5_',
-        CACHE_EXPIRY_SUCCESS: 14 * 24 * 60 * 60 * 1000,
-        CACHE_EXPIRY_ERROR: 12 * 60 * 60 * 1000,
-        DEBOUNCE_DELAY: 250,
-        API_INTERVAL: 400,
-        MATCH_THRESHOLD: 0.7,
-        TOUCH_MOVE_THRESHOLD: 10,
+        CACHE_EXPIRY_SUCCESS: 28 * 24 * 60 * 60 * 1000, // 4 weeks
+        CACHE_EXPIRY_ERROR: 24 * 60 * 60 * 1000, // 24 hours
+        API_INTERVAL: 600, // Throttled to ~1.6 requests per second
+        MATCH_THRESHOLD: 0.75,
 
         SELECTORS: {
             ITEM_CARD: `
@@ -92,8 +89,6 @@
         }
     };
 
-    let hoverTimeout;
-    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
     const KEY_REGEX = /[^a-z0-9]/g;
     const processedItems = new WeakSet();
 
@@ -118,13 +113,11 @@
             flex-direction: column;
             align-items: flex-end;
             min-width: 40px;
-            opacity: 0;
-            transform: translateY(-4px);
-            animation: malFadeIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
             pointer-events: auto;
+            transition: all 0.2s ease;
         }
         .mal-rating-badge:hover {
-            transform: translateY(0) scale(1.05);
+            transform: scale(1.05);
             background: rgba(25, 28, 45, 1);
             box-shadow: 0 6px 16px rgba(0,0,0,0.7);
             z-index: 10000;
@@ -141,10 +134,10 @@
         .mal-rating-badge.score-red { border-color: rgba(248, 113, 113, 0.4); } .mal-rating-badge.score-red .score { color: #fca5a5; }
         .mal-rating-badge.score-purple { border-color: rgba(192, 132, 252, 0.4); background: rgba(20, 10, 30, 0.95); } .mal-rating-badge.score-purple .score { color: #d8b4fe; }
 
-        .mal-rating-badge.loading { pointer-events: none; padding: 4px 8px; }
+        .mal-rating-badge.loading { pointer-events: none; padding: 4px 8px; color: rgba(255,255,255,0.5); font-size: 14px; font-weight: normal; letter-spacing: 1px;}
+        .mal-rating-badge.loading .score, .mal-rating-badge.loading .members { display: none; }
 
-        @keyframes malFadeIn { to { opacity: 1; transform: translateY(0); } }
-        @keyframes malPulse { from { opacity: 0.5; } to { opacity: 1; } }
+        @keyframes malPulse { from { opacity: 0.7; } to { opacity: 1; } }
     `);
 
     // === Helpers ===
@@ -156,24 +149,13 @@
             .trim();
     }
 
-    function getClosestItem(el) {
-        const card = el.closest(CONFIG.SELECTORS.ITEM_CARD);
-        if (card) return card;
-
-        const link = el.closest(CONFIG.SELECTORS.ITEM_LINK);
-        if (!link) return null;
-
-        // Skip links that live inside a card (the card itself is the canonical container)
-        if (link.closest(CONFIG.SELECTORS.ITEM_CARD)) return null;
-        return link;
-    }
-
     function extractTitleFromItem(item) {
         const titleEl = item.querySelector(CONFIG.SELECTORS.TITLE);
-        let title = item.getAttribute('data-title') || item.getAttribute('aria-label');
+        let title = item.getAttribute('data-title') || item.getAttribute('aria-label') || item.getAttribute('data-jp');
 
         if (!title && titleEl) {
-            title = titleEl.getAttribute('title') ||
+            title = titleEl.getAttribute('data-jp') ||
+                titleEl.getAttribute('title') ||
                 titleEl.textContent ||
                 titleEl.getAttribute('alt');
         }
@@ -426,13 +408,24 @@
             });
         }
 
-        // FIX #2: Ensure container can act as a positioning ancestor
+        // Ensure container can act as a positioning ancestor
         const computed = window.getComputedStyle(container);
         if (computed.position === 'static') {
             container.style.position = 'relative';
         }
         if (computed.display === 'inline') {
             container.style.display = 'inline-block';
+        }
+
+        // Fix for swiper-slide inner container clipping
+        if (container.classList.contains('swiper-slide')) {
+            container.style.overflow = 'visible';
+            const inner = container.querySelector('.inner');
+            if (inner) {
+                inner.style.position = 'relative';
+                inner.appendChild(badge);
+                return;
+            }
         }
 
         container.appendChild(badge);
@@ -467,51 +460,52 @@
         });
     }
 
-    // === Event Triggers ===
+    // === Auto Present (Intersection & Mutation Observers) ===
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const item = entry.target;
+                processItem(item);
+                observer.unobserve(item); // Only process once
+            }
+        });
+    }, { rootMargin: '200px' });
 
-    // Desktop: Hover (mouseover with debounce)
-    if (!isTouch) {
-        document.body.addEventListener('mouseover', (e) => {
-            const item = getClosestItem(e.target);
-            if (!item) return;
+    function observeItems(root) {
+        if (!root.querySelectorAll) return;
+        
+        // Optimization: Query cards first
+        const cards = root.querySelectorAll(CONFIG.SELECTORS.ITEM_CARD);
+        cards.forEach(item => {
+            if (!processedItems.has(item)) {
+                observer.observe(item);
+            }
+        });
 
-            clearTimeout(hoverTimeout);
-            hoverTimeout = setTimeout(() => processItem(item), CONFIG.DEBOUNCE_DELAY);
-        }, { passive: true });
+        // Fallback: Query links that are NOT inside cards (standalone links)
+        const links = root.querySelectorAll(CONFIG.SELECTORS.ITEM_LINK);
+        links.forEach(item => {
+            // Check if it's already handled by being inside a card
+            if (item.closest(CONFIG.SELECTORS.ITEM_CARD)) return;
+            if (!processedItems.has(item)) {
+                observer.observe(item);
+            }
+        });
     }
 
-    // Mobile: Touch-tap (touchstart/touchend with scroll rejection)
-    // Mirrors desktop hover — a tap on a card triggers rating fetch.
-    // Scroll/swipe gestures are ignored via movement threshold.
-    if (isTouch) {
-        let touchStartX = 0;
-        let touchStartY = 0;
+    const mutationObserver = new MutationObserver((mutations) => {
+        mutations.forEach(mutation => {
+            mutation.addedNodes.forEach(node => {
+                if (node.nodeType === 1) { // ELEMENT_NODE
+                    observeItems(node);
+                }
+            });
+        });
+    });
 
-        document.body.addEventListener('touchstart', (e) => {
-            if (e.touches.length !== 1) return;
-            touchStartX = e.touches[0].clientX;
-            touchStartY = e.touches[0].clientY;
-        }, { passive: true });
-
-        document.body.addEventListener('touchend', (e) => {
-            const touch = e.changedTouches[0];
-            if (!touch) return;
-
-            const dx = Math.abs(touch.clientX - touchStartX);
-            const dy = Math.abs(touch.clientY - touchStartY);
-
-            // Reject scrolls/swipes
-            if (dx > CONFIG.TOUCH_MOVE_THRESHOLD || dy > CONFIG.TOUCH_MOVE_THRESHOLD) return;
-
-            // Don't trigger if tapping an existing badge (let its own click handler run)
-            if (e.target.closest('.mal-rating-badge')) return;
-
-            const item = getClosestItem(e.target);
-            if (!item) return;
-
-            processItem(item);
-        }, { passive: true });
-    }
+    // Initial run
+    observeItems(document.body);
+    mutationObserver.observe(document.body, { childList: true, subtree: true });
 
     // === Menu Command ===
     GM_registerMenuCommand("🗑️ Clear Cache", () => {
