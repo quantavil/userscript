@@ -65,7 +65,7 @@ dv.pages(`"${FOLDER}"`)
     const roles  = checked.filter(t => ROLE_SET.has(t.text.trim()));
     const stages = checked.filter(t => STAGE_SET.has(t.text.trim()));
 
-    const label = `${p.file.day.month}/${p.file.day.day}`;
+    const label = `${p.file.day.day}/${p.file.day.month}`;
     const issues = [];
     if (orgs.length > 1)   issues.push(`${orgs.length} exams checked`);
     if (roles.length > 1)  issues.push(`${roles.length} roles checked`);
