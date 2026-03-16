@@ -1,12 +1,15 @@
-import { BotState, Settings } from './state.js';
+import { BotState, Settings, getGame, getFen } from './state.js';
 import { debounce } from './utils.js';
 import { updateEvaluationBar } from './board.js';
+import { pvToSan } from './engine/san.js';
 
 export const ui = {
   menuWrap: null,
   consoleEl: null,
   lastStatus: '',
   lastBestMove: '',
+  moveNumber: 0,
+  lastMoveColor: null,
 
   log(msg, type = 'info') {
     if (!this.consoleEl && this.menuWrap) {
@@ -14,10 +17,9 @@ export const ui = {
     }
     if (!this.consoleEl) return;
 
-    const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
     const line = document.createElement('div');
     line.className = `log-line ${type}`;
-    line.innerHTML = `<span class="timestamp">[${time}]</span> ${msg}`;
+    line.textContent = msg;
 
     this.consoleEl.appendChild(line);
 
@@ -29,6 +31,8 @@ export const ui = {
     this.consoleEl.scrollTop = this.consoleEl.scrollHeight;
   },
 
+
+
   clearConsole() {
     if (!this.consoleEl && this.menuWrap) {
       this.consoleEl = this.menuWrap.querySelector('#consoleWindow');
@@ -37,7 +41,8 @@ export const ui = {
     this.consoleEl.innerHTML = '';
     this.lastStatus = '';
     this.lastBestMove = '';
-    this.log('Terminal cleared', 'status');
+    this.moveNumber = 0;
+    this.lastMoveColor = null;
   },
 
   updateDisplay(playingAs) {
@@ -50,7 +55,12 @@ export const ui = {
         'Waiting for opponent',
         'Ready',
         'Analyzing...',
-        'Move canceled'
+        'Analyzing (premove)',
+        'Pondering',
+        'Move canceled',
+        'Manual move',
+        'Premove unavailable',
+        'Premove skipped'
       ];
       const isBlocked = blocked.some(s => BotState.statusInfo.includes(s));
 
@@ -61,20 +71,24 @@ export const ui = {
     }
 
     // Only log if best move changed significantly (e.g. from one move to another)
-    // Let's check overlap. If bestMove is different, we log it.
     if (BotState.bestMove !== '-' && BotState.bestMove !== this.lastBestMove) {
       let msg = `Eval: ${BotState.currentEvaluation}`;
-      if (BotState.principalVariation && BotState.principalVariation !== '-') {
-        msg += ` | PV: ${BotState.principalVariation}`;
+      if (BotState.principalVariation && BotState.principalVariation !== '-' && BotState.principalVariation !== 'Not available') {
+        // Convert PV from UCI to SAN for readability
+        try {
+          const game = getGame();
+          const fen = game ? getFen(game) : null;
+          const sanPv = fen ? pvToSan(fen, BotState.principalVariation) : BotState.principalVariation;
+          msg += ` | PV: ${sanPv}`;
+        } catch {
+          msg += ` | PV: ${BotState.principalVariation}`;
+        }
       } else {
         msg += ` | Best: ${BotState.bestMove}`;
       }
       this.log(msg, 'info');
       this.lastBestMove = BotState.bestMove;
     }
-
-    // We don't log PV updates to avoid spam, or we could add a "verbose" mode later.
-    // For now, simple reports.
 
     updateEvaluationBar(BotState.currentEvaluation, playingAs);
   },
@@ -160,7 +174,7 @@ export function buildUI() {
     </div>
   </div>
   <div id="consoleWindow" class="console-window">
-     <div class="log-line info"><span class="timestamp">--:--:--</span> GabiBot Terminal Ready</div>
+     <div class="log-line info">GabiBot Ready</div>
   </div>
 `;
 
@@ -260,7 +274,8 @@ export function buildUI() {
   .log-line.error { color: #ff5252; }
   .log-line.warn { color: #ffab40; }
   .log-line.info { color: #81d4fa; }
-  .timestamp { color: #555; margin-right: 8px; user-select: none; font-size: 11px; }
+  .log-line.move { color: #64B5F6; }
+  .log-line.opponent { color: #FFB74D; }
 `;
 
   document.body.appendChild(menuWrap);

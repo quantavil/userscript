@@ -1,10 +1,11 @@
 
-import { BotState, PositionCache, getGame, getFen, isPlayersTurn, pa, invalidateGameCache, Settings } from './state.js';
+import { BotState, PositionCache, getGame, getFen, isPlayersTurn, pa, invalidateGameCache, Settings, getPlayerColor } from './state.js';
 import { sleep } from './utils.js';
 import { clearArrows, cancelPendingMove, startDomBoardWatcher, startMoveWatcher, stopMoveWatcher, onBoardMutation } from './board.js';
 import { ui } from './ui.js';
 import { scheduleAnalysis, getLastFenProcessedMain, getLastFenProcessedPremove, setLastFenProcessedPremove, setLastFenProcessedMain } from './engine/scheduler.js';
 import { resetEngine } from './engine/analysis.js';
+import { formatMove } from './engine/san.js';
 
 class BotController {
     constructor() {
@@ -14,6 +15,8 @@ class BotController {
 
         // Loop state
         this.lastFenSeen = '';
+        this.lastOpponentMove = null;
+        this.gameStarted = false;
 
         // Game end state
         this.gameEndDetected = false;
@@ -124,9 +127,22 @@ class BotController {
 
         // 3. New FEN handling (reset state)
         if (fen !== this.lastFenSeen) {
+            // First game detection (no game-over modal has been seen yet)
+            if (!this.gameStarted) {
+                this.gameStarted = true;
+                const playerColor = getPlayerColor(game);
+                const color = playerColor === 'w' ? 'White' : 'Black';
+                ui.log(`Bot is playing ${color}`, 'status');
+            }
+
             // Log opponent's move when position changes to our turn
             if (this.lastFenSeen && isPlayersTurn(game)) {
-                ui.log('♟ Opponent moved', 'info');
+                const oppMove = this.extractLastMove(this.lastFenSeen, fen);
+                if (oppMove) {
+                    ui.log(formatMove(this.lastFenSeen, oppMove), 'opponent');
+                } else {
+                    ui.log('...', 'opponent');
+                }
             }
             this.lastFenSeen = fen;
             cancelPendingMove();
@@ -176,6 +192,36 @@ class BotController {
         }
     }
 
+    /**
+     * Extract the last move from FEN change (opponent's move)
+     * Returns UCI notation
+     */
+    extractLastMove(prevFen, newFen) {
+        try {
+            // Try to get move from chess.com game object
+            const game = getGame();
+            if (game) {
+                // Try getLastMove UCI
+                if (game.getLastMove) {
+                    const lastMove = game.getLastMove();
+                    if (lastMove) return lastMove;
+                }
+                // Try move history
+                if (game.getMoveHistory) {
+                    const history = game.getMoveHistory();
+                    if (history && history.length > 0) {
+                        const last = history[history.length - 1];
+                        if (last?.move) return last.move;
+                    }
+                }
+            }
+
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
     // --- Game Check Loop (Start/End detection) ---
     // Replaces gameStartInterval / gameEndInterval
 
@@ -214,17 +260,24 @@ class BotController {
         if (!gameOverModal && this.gameEndDetected) {
             // console.log('GabiBot: New game started');
             this.gameEndDetected = false;
+            this.gameStarted = false;
 
             // Reset tracking
             setLastFenProcessedMain('');
             setLastFenProcessedPremove('');
             this.lastFenSeen = '';
+            this.lastOpponentMove = null;
 
             // Clear Engine Memory (TT) for fresh game
             resetEngine();
 
             // Clear terminal for fresh game logs
             ui.clearConsole();
+
+            // Log game start with colors
+            const playerColor = getPlayerColor(getGame());
+            const color = playerColor === 'w' ? 'White' : 'Black';
+            ui.log(`Bot is playing ${color}`, 'status');
 
             BotState.statusInfo = 'Ready';
             ui.updateDisplay(pa());

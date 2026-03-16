@@ -250,7 +250,9 @@ export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
             if (altEval > mainBestAlt) mainBestAlt = altEval;
         }
 
-        if (mainBestAlt > -Infinity && (mainBestAlt - mainEval) > PREMOVE_CONFIG.stabilityThreshold) {
+        // Mate scores are absolute - if we have forced mate, always allow
+        const mainIsMate = mainEval > MATE_SCORE - 100;
+        if (!mainIsMate && mainBestAlt > -Infinity && (mainBestAlt - mainEval) > PREMOVE_CONFIG.stabilityThreshold) {
             premoveEngine.unmakeMove(oppMove);
             return {
                 execute: false, confidence: 0, reasons: ['suboptimal'],
@@ -314,8 +316,9 @@ export function evaluatePremove(fen, opponentUci, ourUci, ourColor) {
 
             premoveEngine.unmakeMove(altOppMove);
 
-            if (bestAlt > -Infinity && (bestAlt - postScore) > PREMOVE_CONFIG.stabilityThreshold) {
-                console.log('Blocked by alt response. From:', altOppMove.from, 'To:', altOppMove.to, 'postScore:', postScore, 'bestAlt:', bestAlt);
+            // Mate scores are absolute - if we have forced mate, always allow
+            const postIsMate = postScore > MATE_SCORE - 100;
+            if (!postIsMate && bestAlt > -Infinity && (bestAlt - postScore) > PREMOVE_CONFIG.stabilityThreshold) {
                 return {
                     execute: false,
                     confidence: 0,
@@ -458,7 +461,9 @@ export function evaluatePremoveChain(fen, pv, ourColor, sideToMove) {
                 if (cAltEval > chainBestAlt) chainBestAlt = cAltEval;
             }
 
-            if (chainBestAlt > -Infinity && (chainBestAlt - chainOurEval) > PREMOVE_CONFIG.stabilityThreshold) {
+            // Mate scores are absolute - if we have forced mate, always allow
+            const chainIsMate = chainOurEval > MATE_SCORE - 100;
+            if (!chainIsMate && chainBestAlt > -Infinity && (chainBestAlt - chainOurEval) > PREMOVE_CONFIG.stabilityThreshold) {
                 premoveEngine.unmakeMove(oMove);
                 appliedMoves.pop();
                 break;

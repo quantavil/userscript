@@ -1,8 +1,10 @@
-import { BotState, getGame, getPlayerColor, getSideToMove, pa, invalidateGameCache } from '../state.js';
+import { BotState, getGame, getPlayerColor, getSideToMove, pa, invalidateGameCache, getFen } from '../state.js';
 import { scoreToDisplay, sleep } from '../utils.js';
 import { drawArrow, clearArrows, executeMove, simulateClickMove, simulateDragMove } from '../board.js';
 import { getAnalysis, parseBestLine, resetEngine } from './analysis.js';
 import { evaluatePremove, evaluatePremoveChain, getOurMoveFromPV } from './premove.js';
+import { ui } from '../ui.js';
+import { uciToSan, formatMove } from './san.js';
 
 let consecutiveFailures = 0;
 const MAX_FAILURES = 3;
@@ -136,6 +138,13 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                 BotState.statusInfo = `✓ Ready (D${data.depth || '?'})`;
                 if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
 
+                // Log our move in SAN notation with move number
+                const game = getGame();
+                const currentFen = getFen(game);
+                if (currentFen) {
+                    ui.log(formatMove(currentFen, best.uci), 'move');
+                }
+
                 // Clear any stale chain when it's our turn to move normally
                 clearPremoveChain();
 
@@ -183,14 +192,13 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                     const premoveResult = evaluatePremove(fen, opponentUci, ourUci, ourColor);
 
                     if (premoveResult.blocked) {
-                        BotState.statusInfo = `🛡️ Premove blocked: ${premoveResult.blocked} (predicted ${opponentUci})`;
-                        if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+                        // Log blocked premove with move in SAN
+                        const san = uciToSan(fen, ourUci);
+                        ui.log(`⚠ Premove ${san} blocked: ${premoveResult.blocked}`, 'warn');
                         lastFenProcessedPremove = fen;
                         return;
                     }
                     if (!premoveResult.execute) {
-                        BotState.statusInfo = `Premove skipped`;
-                        if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
                         lastFenProcessedPremove = fen;
                         return;
                     }
@@ -207,8 +215,8 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                     }
                     await sleep(80);
 
-                    BotState.statusInfo = `✅ Premove: ${ourUci} (vs ${opponentUci})`;
-                    if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+                    // Log premove in SAN with move number
+                    ui.log(`⚡ ${formatMove(fen, ourUci)}`, 'move');
                     lastFenProcessedPremove = fen;
                     return;
                 }
@@ -239,11 +247,8 @@ export function scheduleAnalysis(kind, fen, tickCallback) {
                 }
                 await sleep(80);
 
-                const chainInfo = premoveChain.length > 0
-                    ? ` (+${premoveChain.length} queued)`
-                    : '';
-                BotState.statusInfo = `✅ Premove: ${firstMove.uci} (vs ${firstMove.oppUci})${chainInfo}`;
-                if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+                // Log premove in SAN with move number
+                ui.log(`⚡ ${formatMove(fen, firstMove.uci)}`, 'move');
                 lastFenProcessedPremove = fen;
             }
         } catch (error) {
