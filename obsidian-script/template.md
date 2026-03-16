@@ -24,11 +24,22 @@ date: "{{date:YYYY-MM-DD}}"
 
 
 ### 📊 Score Log
-- **Mock-Test**:: 
-- **Score**:: /200
+Exam:
+- [ ] SBI
+- [ ] IBPS
+- [ ] RRB
+
+Role:
+- [ ] PO
+- [ ] Clerk
+
+Stage:
+- [ ] Pre
+- [ ] Mains
+
+- **Score**:: 
 - **Accuracy**:: %
 - **Weak-Area**:: 
-- **Time-Taken**:: 
 
 ### 🪞 End-of-Day Reflection
 - **What went well →** 

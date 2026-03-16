@@ -32,7 +32,7 @@ const z       = n => String(n).padStart(2, "0");
 const isoOf   = d => `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
 
 // ── Fetch Notes ──────────────────────────────────────────────
-const msInYear = 365 * 24 * 60 * 60 * 1000;
+const msInYear = 366 * 24 * 60 * 60 * 1000;
 const cutoffDate = new Date(now.getTime() - msInYear);
 
 const pages = dv.pages(`"${FOLDER}"`).where(p => {
@@ -42,10 +42,12 @@ const pages = dv.pages(`"${FOLDER}"`).where(p => {
 
 const yearMap = {};
 const moMap   = {};
+const SELECTION_TEXTS = new Set(["SBI","IBPS","RRB","PO","Clerk","Pre","Mains"]);
 
 pages.forEach(p => {
-  const done  = p.file.tasks.where(t => t.completed).length;
-  const total = p.file.tasks.length;
+  const tasks = p.file.tasks.where(t => !SELECTION_TEXTS.has(t.text.trim()));
+  const done  = tasks.where(t => t.completed).length;
+  const total = tasks.length;
   const key   = `${p.file.day.year}-${z(p.file.day.month)}-${z(p.file.day.day)}`;
   yearMap[key] = done;
   if (p.file.day.month === MO + 1 && p.file.day.year === YR) {
@@ -77,7 +79,9 @@ const pick = (done, total) => {
 };
 
 // ── Day-of-Week Headers ─────────────────────────────────────
-const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const DOW = [...Array(7)].map((_, i) =>
+  new Date(1970, 0, 4 + i).toLocaleString("default", { weekday: "short" })
+);
 const dowHTML = DOW.map(d => `
   <div style="
     text-align:center;
