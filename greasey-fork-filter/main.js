@@ -6,6 +6,7 @@
 // @match        https://greasyfork.org/*/scripts*
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @license      MIT
 // ==/UserScript==
 
 (function () {

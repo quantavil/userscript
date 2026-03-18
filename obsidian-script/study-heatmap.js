@@ -1,186 +1,58 @@
 // ═══════════════════════════════════════════════════════════════
-//  🟩  GITHUB-STYLE STUDY HEATMAP
+//  🟩  GITHUB-STYLE STUDY HEATMAP — Datacore Edition (v2 Fixed)
 // ═══════════════════════════════════════════════════════════════
 
 // ── Config ───────────────────────────────────────────────────
-const FOLDER = "Daily Notes";
-
-// ── GitHub Dark Palette ──────────────────────────────────────
-const G = {
-  bg:      "var(--background-primary)",
-  border:  "var(--background-modifier-border)",
-  text:    "var(--text-normal)",
-  muted:   "var(--text-muted)",
-  L0:      "var(--background-secondary)",
-  L1:      "#0e6429",
-  L2:      "#007d32",
-  L3:      "#26a641",
-  L4:      "#36c353",
-  ring:    "#58a6ff",
-  fire:    "#ffa657",
+const CONFIG = {
+  folder:         "Daily Notes",
+  skipTexts:      new Set(["SBI","IBPS","RRB","PO","Clerk","Pre","Mains"]),
+  streakLookback: 366,       // max days to scan backwards for streak
+  queryDebounce:  400,       // ms — batches rapid index updates
 };
 
-// ── Date Setup ───────────────────────────────────────────────
-const now     = new Date();
-const YR      = now.getFullYear();
-const MO      = now.getMonth();
-const DAY     = now.getDate();
-const moName  = now.toLocaleString("default", { month: "long" });
-const dow1    = new Date(YR, MO, 1).getDay();
-const numDays = new Date(YR, MO + 1, 0).getDate();
-const z       = n => String(n).padStart(2, "0");
-const isoOf   = d => `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
+// ── Theme ────────────────────────────────────────────────────
+const T = {
+  bg:     "var(--background-primary)",
+  border: "var(--background-modifier-border)",
+  text:   "var(--text-normal)",
+  muted:  "var(--text-muted)",
+  L0:     "var(--background-secondary)",
+  L1:     "#0e6429",
+  L2:     "#007d32",
+  L3:     "#26a641",
+  L4:     "#36c353",
+  ring:   "#58a6ff",
+  fire:   "#ffa657",
+};
 
-// ── Fetch Notes ──────────────────────────────────────────────
-const msInYear = 366 * 24 * 60 * 60 * 1000;
-const cutoffDate = new Date(now.getTime() - msInYear);
+const LEVELS = [T.L0, T.L1, T.L2, T.L3, T.L4];
 
-const pages = dv.pages(`"${FOLDER}"`).where(p => {
-  if (!p.file.day) return false;
-  return p.file.day.toJSDate() >= cutoffDate;
-});
+// ── Pure Helpers ─────────────────────────────────────────────
+const z = (n) => String(n).padStart(2, "0");
 
-const yearMap = {};
-const moMap   = {};
-const SELECTION_TEXTS = new Set(["SBI","IBPS","RRB","PO","Clerk","Pre","Mains"]);
+const dateKey = (y, m, d) => `${y}-${z(m)}-${z(d)}`;
 
-pages.forEach(p => {
-  const tasks = p.file.tasks.where(t => !SELECTION_TEXTS.has(t.text.trim()));
-  const done  = tasks.where(t => t.completed).length;
-  const total = tasks.length;
-  const key   = `${p.file.day.year}-${z(p.file.day.month)}-${z(p.file.day.day)}`;
-  yearMap[key] = done;
-  if (p.file.day.month === MO + 1 && p.file.day.year === YR) {
-    moMap[p.file.day.day] = {
-      name: p.file.name, path: p.file.path, done, total
-    };
-  }
-});
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const parseName = (name) => {
+  const m = DATE_RE.exec(name);
+  return m ? { year: +m[1], month: +m[2], day: +m[3] } : null;
+};
 
-// ── Cross-Month Streak ───────────────────────────────────────
-let streak = 0;
-const cur  = new Date(YR, MO, DAY - 1);        // start from yesterday
-for (let i = 0; i < 365; i++) {
-  if (yearMap[isoOf(cur)] > 0) {
-    streak++;
-    cur.setDate(cur.getDate() - 1);
-  } else break;
-}
-if (yearMap[isoOf(new Date(YR, MO, DAY))] > 0) streak++;  // add today if active
-
-// ── Color Picker ─────────────────────────────────────────────
-const pick = (done, total) => {
-  if (!total || done === 0) return G.L0;
+const levelFor = (done, total) => {
+  if (!total || !done) return T.L0;
   const r = done / total;
-  if (r <= 0.25) return G.L1;
-  if (r <= 0.50) return G.L2;
-  if (r < 1)     return G.L3;
-  return G.L4;
+  return r <= 0.25 ? T.L1 : r <= 0.5 ? T.L2 : r < 1 ? T.L3 : T.L4;
 };
 
-// ── Day-of-Week Headers ─────────────────────────────────────
-const DOW = [...Array(7)].map((_, i) =>
+const pctOf = (done, total) =>
+  total ? Math.round((done / total) * 100) : 0;
+
+const DOW_LABELS = [...Array(7)].map((_, i) =>
   new Date(1970, 0, 4 + i).toLocaleString("default", { weekday: "short" })
 );
-const dowHTML = DOW.map(d => `
-  <div style="
-    text-align:center;
-    font-size:12px;
-    color:${G.muted};
-    font-weight:600;
-    padding-bottom:10px;
-    letter-spacing:0.5px;
-  ">${d}</div>
-`).join("");
 
-// ── Build Grid Cells ─────────────────────────────────────────
-let cellsHTML = "";
-
-// Blank offset cells
-for (let i = 0; i < dow1; i++) {
-  cellsHTML += `<div class="gh-cell"></div>`;
-}
-
-// Day cells
-for (let d = 1; d <= numDays; d++) {
-  const info    = moMap[d];
-  const isToday = d === DAY;
-  const bg      = info ? pick(info.done, info.total) : G.L0;
-
-  const shadow = isToday
-    ? `box-shadow:0 0 0 2px ${G.ring}, 0 0 12px ${G.ring}55;`
-    : "";
-
-  const col = isToday          ? G.text
-            : info?.done > 0   ? G.text
-            : G.muted;
-
-  const pctVal = info?.total
-    ? Math.round(info.done / info.total * 100)
-    : 0;
-
-  const tip = info
-    ? `${moName} ${d} — ${info.done}/${info.total} tasks (${pctVal}%)`
-    : `${moName} ${d} — no note`;
-
-  const pctBar = info && info.total > 0 ? `
-    <div style="
-      font-size:12px;
-      color:${G.muted};
-      margin-top:1px;
-      opacity:0.8;
-    ">${pctVal}%</div>
-  ` : "";
-
-  const box = `<div class="gh-cell" title="${tip}" style="
-    background:${bg};
-    ${shadow}
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    font-size:16px;
-    color:${col};
-    font-weight:${isToday ? 700 : 400};
-    cursor:${info ? "pointer" : "default"};
-    user-select:none;
-  ">
-    <span>${d}</span>
-    ${pctBar}
-  </div>`;
-
-  cellsHTML += info
-    ? `<a data-href="${info.name}" href="${info.name}"
-         class="internal-link" style="text-decoration:none">${box}</a>`
-    : box;
-}
-
-// Pad last row
-const tail = (numDays + dow1) % 7;
-if (tail > 0) {
-  for (let i = tail; i < 7; i++) {
-    cellsHTML += `<div class="gh-cell"></div>`;
-  }
-}
-
-// ── Legend ────────────────────────────────────────────────────
-const legendHTML = [G.L0, G.L1, G.L2, G.L3, G.L4].map(c =>
-  `<div style="
-    width:14px;height:14px;border-radius:3px;background:${c};
-  "></div>`
-).join("");
-
-// ── Stats ────────────────────────────────────────────────────
-const act   = Object.keys(moMap).length;
-const sDone = Object.values(moMap).reduce((a, x) => a + x.done, 0);
-const sAll  = Object.values(moMap).reduce((a, x) => a + x.total, 0);
-const pct   = sAll ? Math.round(sDone / sAll * 100) : 0;
-
-// ── Render ───────────────────────────────────────────────────
-const root = dv.el("div", "");
-root.innerHTML = `
-
-<style>
+// ── Static styles (computed once, injected via useEffect) ────
+const CSS = `
   .gh-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
@@ -190,82 +62,292 @@ root.innerHTML = `
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-color: ${G.border};
     flex-wrap: wrap;
     gap: 8px;
   }
   .gh-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    user-select: none;
     height: 44px;
     border-radius: 6px;
-    transition: transform 0.12s ease, box-shadow 0.15s ease;
+    transition: transform .12s ease, box-shadow .15s ease;
     position: relative;
   }
-  .gh-cell:hover {
+  .gh-heatmap .gh-cell:hover {
     transform: scale(1.12);
-    box-shadow: 0 0 10px ${G.L4}73 !important;
+    box-shadow: 0 0 10px ${T.L4}73;
     z-index: 10;
   }
   .gh-heatmap a.internal-link:hover {
-    text-decoration: none !important;
+    text-decoration: none;
   }
-</style>
+`;
 
-<div class="gh-heatmap" style="
-  background: ${G.bg};
-  border: 1px solid ${G.border};
-  border-radius: 12px;
-  padding: 20px 24px;
-  width: 100%;
-  box-sizing: border-box;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
-               Helvetica, Arial, sans-serif;
-">
+// ── Static divider styles ────────────────────────────────────
+const dividerBottom = {
+  marginBottom: 16, paddingBottom: 14,
+  borderBottom: `1px solid ${T.border}`,
+};
+const dividerTop = {
+  marginTop: 16, paddingTop: 14,
+  borderTop: `1px solid ${T.border}`,
+};
 
-  <!-- ── Header ──────────────────────────────── -->
-  <div class="gh-bar" style="
-    margin-bottom: 16px;
-    padding-bottom: 14px;
-    border-bottom: 1px solid ${G.border};
-  ">
-    <span style="font-size:18px; font-weight:700; color:${G.text};">
-      📅 ${moName} ${YR}
+// ── Sub-Components (pure — no hooks, defined outside View) ───
+
+function DowHeaders() {
+  const style = {
+    textAlign: "center", fontSize: 12, color: T.muted,
+    fontWeight: 600, paddingBottom: 10, letterSpacing: "0.5px",
+  };
+  return <>{DOW_LABELS.map((d) => <div key={d} style={style}>{d}</div>)}</>;
+}
+
+function Legend() {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:T.muted }}>
+      Less&nbsp;
+      {LEVELS.map((c, i) => (
+        <div key={i} style={{ width:14, height:14, borderRadius:3, background:c }} />
+      ))}
+      &nbsp;More
+    </div>
+  );
+}
+
+function StreakBadge({ streak }) {
+  return (
+    <span style={{
+      fontSize: 14, fontWeight: 700, color: T.fire,
+      background: `${T.fire}18`, padding: "4px 12px",
+      borderRadius: 20, border: `1px solid ${T.fire}44`,
+    }}>
+      🔥 {streak} day{streak !== 1 ? "s" : ""}
     </span>
-    <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
-      <span style="font-size:13px; color:${G.muted};">
-        📊 ${act} days · ${sDone}/${sAll} tasks · ${pct}%
-      </span>
-      <span style="
-        font-size:14px; font-weight:700; color:${G.fire};
-        background:${G.fire}18;
-        padding:4px 12px;
-        border-radius:20px;
-        border:1px solid ${G.fire}44;
-      ">
-        🔥 ${streak} day${streak !== 1 ? "s" : ""}
-      </span>
+  );
+}
+
+function DayCell({ day, info, isToday, moName }) {
+  const bg  = info ? levelFor(info.done, info.total) : T.L0;
+  const pct = pctOf(info?.done, info?.total);
+  const col = (isToday || info?.done) ? T.text : T.muted;
+
+  const tip = info
+    ? `${moName} ${day} — ${info.done}/${info.total} tasks (${pct}%)`
+    : `${moName} ${day} — no note`;
+
+  const style = {
+    background: bg,
+    color: col,
+    fontWeight: isToday ? 700 : 400,
+    cursor: info ? "pointer" : "default",
+    boxShadow: isToday ? `0 0 0 2px ${T.ring}, 0 0 12px ${T.ring}55` : undefined,
+  };
+
+  const cell = (
+    <div className="gh-cell" title={tip} style={style}>
+      <span>{day}</span>
+      {info?.total > 0 && (
+        <div style={{ fontSize:12, color:T.muted, marginTop:1, opacity:0.8 }}>
+          {pct}%
+        </div>
+      )}
     </div>
-  </div>
+  );
 
-  <!-- ── Day Labels ──────────────────────────── -->
-  <div class="gh-grid">${dowHTML}</div>
+  return info
+    ? <a data-href={info.name} href={info.name}
+         className="internal-link" style={{ textDecoration:"none" }}>{cell}</a>
+    : cell;
+}
 
-  <!-- ── Calendar Grid ───────────────────────── -->
-  <div class="gh-grid">${cellsHTML}</div>
+function EmptyCell() {
+  return <div className="gh-cell" />;
+}
 
-  <!-- ── Footer ──────────────────────────────── -->
-  <div class="gh-bar" style="
-    margin-top: 16px;
-    padding-top: 14px;
-    border-top: 1px solid ${G.border};
-  ">
-    <div style="
-      display:flex; align-items:center; gap:6px;
-      font-size:11px; color:${G.muted};
-    ">Less&nbsp;${legendHTML}&nbsp;More</div>
+// ── Main View ────────────────────────────────────────────────
 
-    <div style="font-size:11px; color:${G.muted}; font-style:italic;">
-      Hover a cell to see details · Click to open note
+return function View() {
+
+  const now     = new Date();
+  const YR      = now.getFullYear();
+  const MO      = now.getMonth();       // 0-based
+  const DAY     = now.getDate();
+  const moName  = now.toLocaleString("default", { month: "long" });
+  const dow1    = new Date(YR, MO, 1).getDay();
+  const numDays = new Date(YR, MO + 1, 0).getDate();
+  const cutoff  = new Date(YR, MO, DAY - CONFIG.streakLookback);
+
+  // ── Inject CSS once ────────────────────────────────────────
+  dc.useEffect(() => {
+    const el = document.createElement("style");
+    el.textContent = CSS;
+    document.head.appendChild(el);
+    return () => el.remove();
+  }, []);
+
+  // ── Queries (debounced) ────────────────────────────────────
+  const pages = dc.useQuery(
+    `@page and path("${CONFIG.folder}")`,
+    CONFIG.queryDebounce
+  );
+  const tasks = dc.useQuery(
+    `@task and childof(@page and path("${CONFIG.folder}"))`,
+    CONFIG.queryDebounce
+  );
+
+  // ── Early exit: empty state ────────────────────────────────
+  if (!pages || pages.length === 0) {
+    return (
+      <div style={{ color: T.muted, padding: 24, textAlign: "center" }}>
+        📭 No daily notes found in "<strong>{CONFIG.folder}</strong>".
+      </div>
+    );
+  }
+
+  // ── Group tasks by parent file (keyed on $file) ────────────
+  const tasksByFile = dc.useMemo(() => {
+    const m = {};
+    for (const t of tasks) {
+      const txt = (t.$cleantext ?? t.$text ?? "").trim();
+      if (CONFIG.skipTexts.has(txt)) continue;
+      const fp = t.$file;
+      if (!fp) continue;
+      if (!m[fp]) m[fp] = { done: 0, total: 0 };
+      m[fp].total++;
+      if (t.$completed) m[fp].done++;
+    }
+    return m;
+  }, [tasks]);
+
+  // ── Year map + month map ───────────────────────────────────
+  //    yearMap: dateKey → done count  (for streak)
+  //    moMap:   day#    → { name, path, done, total }  (for grid)
+  const { yearMap, moMap } = dc.useMemo(() => {
+    const yM = {}, mM = {};
+    for (const p of pages) {
+      const d = parseName(p.$name);
+      if (!d) continue;
+
+      const js = new Date(d.year, d.month - 1, d.day);
+      if (js < cutoff) continue;
+
+      // FIX: use $file consistently — available on all objects
+      const c   = tasksByFile[p.$file] ?? { done: 0, total: 0 };
+      const key = dateKey(d.year, d.month, d.day);
+      yM[key]   = c.done;
+
+      if (d.year === YR && d.month === MO + 1) {
+        mM[d.day] = { name: p.$name, path: p.$file, done: c.done, total: c.total };
+      }
+    }
+    return { yearMap: yM, moMap: mM };
+  }, [pages, tasksByFile]);
+
+  // ── Streak (cross-month, fixed logic) ──────────────────────
+  //    Start from today. If today has no completed tasks, start
+  //    from yesterday instead (so a WIP day doesn't break it).
+  const streak = dc.useMemo(() => {
+    let s = 0;
+    const todayKey = dateKey(YR, MO + 1, DAY);
+    const todayDone = yearMap[todayKey] > 0;
+
+    // Begin scanning from today (inclusive) or yesterday
+    const cursor = new Date(YR, MO, todayDone ? DAY : DAY - 1);
+
+    for (let i = 0; i < CONFIG.streakLookback; i++) {
+      const k = dateKey(
+        cursor.getFullYear(),
+        cursor.getMonth() + 1,
+        cursor.getDate()
+      );
+      if (yearMap[k] > 0) {
+        s++;
+        cursor.setDate(cursor.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+    return s;
+  }, [yearMap]);
+
+  // ── Month stats ────────────────────────────────────────────
+  const { activeDays, monthDone, monthTotal, monthPct } = dc.useMemo(() => {
+    const v  = Object.values(moMap);
+    const sd = v.reduce((a, x) => a + x.done,  0);
+    const sa = v.reduce((a, x) => a + x.total, 0);
+    return {
+      activeDays: v.length,
+      monthDone:  sd,
+      monthTotal: sa,
+      monthPct:   pctOf(sd, sa),
+    };
+  }, [moMap]);
+
+  // ── Grid cells (memoized) ──────────────────────────────────
+  const gridCells = dc.useMemo(() => {
+    const blanks = Array.from({ length: dow1 }, (_, i) =>
+      <EmptyCell key={`b${i}`} />
+    );
+    const days = Array.from({ length: numDays }, (_, i) => {
+      const d = i + 1;
+      return (
+        <DayCell
+          key={d}
+          day={d}
+          info={moMap[d]}
+          isToday={d === DAY}
+          moName={moName}
+        />
+      );
+    });
+    const tail = (numDays + dow1) % 7;
+    const pads = tail
+      ? Array.from({ length: 7 - tail }, (_, i) => <EmptyCell key={`p${i}`} />)
+      : [];
+    return [...blanks, ...days, ...pads];
+  }, [moMap, dow1, numDays, DAY, moName]);
+
+  // ── Render ─────────────────────────────────────────────────
+  return (
+    <div className="gh-heatmap" style={{
+      background: T.bg, border: `1px solid ${T.border}`,
+      borderRadius: 12, padding: "20px 24px",
+      width: "100%", boxSizing: "border-box",
+      fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif",
+    }}>
+
+      {/* Header */}
+      <div className="gh-bar" style={dividerBottom}>
+        <span style={{ fontSize:18, fontWeight:700, color:T.text }}>
+          📅 {moName} {YR}
+        </span>
+        <div style={{ display:"flex", gap:16, alignItems:"center", flexWrap:"wrap" }}>
+          <span style={{ fontSize:13, color:T.muted }}>
+            📊 {activeDays} days · {monthDone}/{monthTotal} tasks · {monthPct}%
+          </span>
+          <StreakBadge streak={streak} />
+        </div>
+      </div>
+
+      {/* Day-of-week row */}
+      <div className="gh-grid"><DowHeaders /></div>
+
+      {/* Calendar grid */}
+      <div className="gh-grid">{gridCells}</div>
+
+      {/* Footer */}
+      <div className="gh-bar" style={dividerTop}>
+        <Legend />
+        <div style={{ fontSize:11, color:T.muted, fontStyle:"italic" }}>
+          Hover a cell to see details · Click to open note
+        </div>
+      </div>
+
     </div>
-  </div>
-
-</div>`;
+  );
+};
