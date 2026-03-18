@@ -1,6 +1,6 @@
-# Obsidian Study Scripts
+# Obsidian Study Scripts (Datacore JSX)
 
-A collection of [Dataview](https://github.com/blackmarketltd/obsidian-dataview) JS scripts for [Obsidian](https://obsidian.md/) that visualize daily study progress.
+A collection of [Datacore](https://github.com/blacksmithgu/datacore) JSX scripts for [Obsidian](https://obsidian.md/) that visualize daily study progress.
 
 ## Scripts
 
@@ -39,42 +39,11 @@ Trend charts and analysis for mock test scores with built-in banking exam suppor
 - **Weak-area frequency bars** — most common weak areas ranked
 - **Recent results table** — last 5 tests with clickable links to daily notes
 
-**Supported Exams & Max Marks:**
-
-| Exam | Pre | Mains |
-|------|-----|-------|
-| SBI PO | 100 | 200 |
-| SBI Clerk | 100 | 200 |
-| IBPS PO | 100 | 200 |
-| IBPS Clerk | 100 | 200 |
-| RRB PO | 80 | 200 |
-| RRB Clerk | 80 | 200 |
-
-**Daily Note format** — check one from each group + fill inline fields:
-
-```markdown
-Exam:
-- [x] SBI
-- [ ] IBPS
-- [ ] RRB
-
-Role:
-- [x] PO
-- [ ] Clerk
-
-Stage:
-- [x] Pre
-- [ ] Mains
-
-- **Score**:: 72
-- **Accuracy**:: 85%
-- **Weak-Area**:: Algebra, DI
-```
 
 ## Requirements
 
-- [Obsidian](https://obsidian.md/) with the [Dataview](https://github.com/blackmarketltd/obsidian-dataview) plugin
-- Dataview JS queries enabled (`Settings → Dataview → Enable JavaScript Queries`)
+- [Obsidian](https://obsidian.md/)
+- [Datacore](https://github.com/blacksmithgu/datacore) plugin (available via [BRAT](https://github.com/TfTHacker/obsidian42-brat))
 - A `Daily Notes` folder
 
 ## Setup
@@ -84,14 +53,14 @@ Stage:
 2. Embed in any note:
 
    ````markdown
-   ```dataviewjs
-   await dv.view("scripts/study-heatmap")
+   ```datacore
+   view("scripts/study-heatmap")
    ```
    ````
 
    ````markdown
-   ```dataviewjs
-   await dv.view("scripts/score-tracker")
+   ```datacore
+   view("scripts/score-tracker")
    ```
    ````
 
@@ -119,15 +88,4 @@ The included `template.md` provides a structured daily note with:
 | Chart entries | `MAX_ENTRIES` in `score-tracker.js` | Default 30 tests |
 | Add new exams | `EXAMS` object in `score-tracker.js` | Add `{ max, org }` entry |
 
-## File Structure
 
-```
-obsidian-script/
-├── study-heatmap.js     # Task completion heatmap
-├── score-tracker.js     # Score trend & weak-area analysis
-├── template.md          # Daily Note template (Templater)
-├── dist/
-│   ├── study-heatmap.min.js
-│   └── score-tracker.min.js
-└── README.md
-```
