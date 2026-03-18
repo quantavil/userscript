@@ -1,3 +1,6 @@
+/** @jsx h */
+/** @jsxFrag Fragment */
+
 // ═══════════════════════════════════════════════════════════════
 //  📊  SCORE TRACKER — Datacore JSX  (v5 · fully revised)
 //  Exam Trends & Weak-Area Analysis

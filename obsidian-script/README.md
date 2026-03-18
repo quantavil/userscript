@@ -88,4 +88,18 @@ The included `template.md` provides a structured daily note with:
 | Chart entries | `MAX_ENTRIES` in `score-tracker.js` | Default 30 tests |
 | Add new exams | `EXAMS` object in `score-tracker.js` | Add `{ max, org }` entry |
 
+## Development & Building
+
+The scripts are written in Datacore JSX. To minify them for production (smaller size and better performance), use `esbuild`:
+
+```bash
+# Build score-tracker
+bunx esbuild score-tracker.js --minify --outfile=dist/score-tracker.js --loader:.js=jsx
+
+# Build study-heatmap
+bunx esbuild study-heatmap.js --minify --outfile=dist/study-heatmap.js --loader:.js=jsx
+```
+
+**Note:** The scripts use JSX pragmas (`@jsx h`) to ensure compatibility with Datacore's internal Preact instance.
+
 
