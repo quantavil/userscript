@@ -17,8 +17,8 @@ const MVC_UI = {
         const svgNS = 'http://www.w3.org/2000/svg';
         const svg  = document.createElementNS(svgNS, 'svg');
         svg.setAttribute('viewBox', '0 0 24 24');
-        svg.setAttribute('width',  '20');
-        svg.setAttribute('height', '20');
+        svg.setAttribute('width',  '16');
+        svg.setAttribute('height', '16');
         svg.setAttribute('fill',   'currentColor');
         const path = document.createElementNS(svgNS, 'path');
         path.setAttribute('d', pathData);
@@ -53,8 +53,7 @@ const MVC_UI = {
             if (content instanceof Element) btn.appendChild(content);
             else btn.textContent = content;
             btn.title = title;
-            ['touchstart', 'touchend'].forEach(ev => btn.addEventListener(ev, e => e.stopPropagation(), { passive: true }));
-            btn.addEventListener('click',       e => e.stopPropagation());
+            btn.addEventListener('click', e => e.stopPropagation());
             btn.addEventListener('pointerdown', () => this.showUI(true));
             return btn;
         };
@@ -62,7 +61,7 @@ const MVC_UI = {
         this.ui.rewindBtn   = makeBtn(this.getIcon('rewind'),   'Rewind',          'mvc-btn-rewind');
         this.ui.speedBtn    = makeBtn('1.0',                    'Playback speed',   'mvc-btn-speed');
         this.ui.forwardBtn  = makeBtn(this.getIcon('forward'),  'Forward',          'mvc-btn-forward');
-        this.ui.settingsBtn = makeBtn(this.getIcon('settings'), 'Settings',         'mvc-btn-settings');
+        this.ui.settingsBtn = makeBtn(this.getIcon('settings'), 'Settings',         '');
 
         this.ui.panel.append(this.ui.rewindBtn, this.ui.speedBtn, this.ui.forwardBtn, this.ui.settingsBtn);
         this.ui.wrap.append(this.ui.panel);
@@ -254,7 +253,7 @@ const MVC_UI = {
         if (!this.activeVideo || !this.ui.speedBtn) return;
         if      (this.activeVideo.ended)  this.ui.speedBtn.textContent = 'Replay';
         else if (this.activeVideo.paused) this.ui.speedBtn.textContent = '▶︎';
-        else this.ui.speedBtn.textContent = `${this.activeVideo.playbackRate.toFixed(2)}`;
+        else this.ui.speedBtn.textContent = `${this.activeVideo.playbackRate.toFixed(1)}x`;
         this.saveSetting('last_rate', String(this.activeVideo.playbackRate));
     },
 

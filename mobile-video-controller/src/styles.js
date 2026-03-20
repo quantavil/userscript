@@ -11,15 +11,15 @@ const MVC_Styles = {
             .mvc-ui-wrap { position:absolute; left:0; top:0; z-index:2147483647; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; display:none; opacity:0; pointer-events:none; transition:opacity .5s ease; will-change:opacity, transform; transform:translate3d(0,0,0); contain:layout paint; }
 
             /* Card panel */
-            .mvc-panel { display:flex; align-items:center; gap:6px; background:rgba(18, 18, 20, 0.85); color:#fff; padding:6px; backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,0.12); border-radius:16px; touch-action:none!important; user-select:none; -webkit-user-select:none; pointer-events:auto; cursor:grab; width:fit-content; transform:translate3d(0,0,0); will-change:transform; box-shadow: 0 8px 32px rgba(0,0,0,0.45); }
+            .mvc-panel { position:relative; display:flex; align-items:center; gap:4px; background:rgba(20, 20, 22, 0.75); color:#fff; padding:4px; backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border:1px solid rgba(255,255,255,0.08); border-radius:14px; touch-action:none!important; user-select:none; -webkit-user-select:none; pointer-events:auto; cursor:grab; width:fit-content; transform:translate3d(0,0,0); will-change:transform; box-shadow: 0 20px 40px -10px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.12); }
+            .mvc-panel::before { content:""; position:absolute; inset:-30px; z-index:-1; }
 
             /* Buttons */
-            .mvc-btn { appearance:none; border:0; border-radius:12px; width:44px; height:36px; padding:0; font-size:16px; font-weight:600; text-align:center; line-height:1; pointer-events:auto; transition:transform .15s ease, background-color .2s, box-shadow .2s; user-select:none; display:flex; align-items:center; justify-content:center; touch-action:none!important; background:rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
-            .mvc-btn:active { transform:scale(0.92); background:rgba(255,255,255,0.18); box-shadow: inset 0 0 10px rgba(0,0,0,0.2); }
+            .mvc-btn { appearance:none; border:0; border-radius:10px; width:38px; height:32px; padding:0; font-size:13px; font-weight:600; text-align:center; line-height:1; pointer-events:auto; transition:transform .2s cubic-bezier(0.32, 0.72, 0, 1), background-color .15s ease, box-shadow .15s ease; user-select:none; display:flex; align-items:center; justify-content:center; touch-action:none!important; background:rgba(255,255,255,0.04); color:rgba(255,255,255,0.85); box-shadow:inset 0 1px 1px rgba(255,255,255,0.05); }
+            .mvc-btn:active { transform:scale(0.96); background:rgba(255,255,255,0.12); box-shadow:inset 0 2px 6px rgba(0,0,0,0.2); }
 
             /* Speed pill */
-            /* Speed pill */
-            .mvc-btn-speed { width:auto; padding:0 12px; border-radius:12px; min-width:48px; color:#40c4ff; font-size:14px; font-weight:700; border:1px solid rgba(64,196,255,0.3); background:rgba(64,196,255,0.12); }
+            .mvc-btn-speed { width:auto; padding:0 8px; border-radius:10px; min-width:40px; color:#40c4ff; font-size:12px; font-weight:700; border:1px solid rgba(64,196,255,0.25); background:rgba(64,196,255,0.1); box-shadow:inset 0 1px 1px rgba(255,255,255,0.1); }
 
             /* Speed menu list */
             .mvc-speed-list { padding:0 !important; overflow:hidden; }
@@ -27,20 +27,19 @@ const MVC_Styles = {
             .mvc-speed-list .mvc-menu-opt:last-child { border-bottom:none; }
 
             /* Colour accents */
-            .mvc-btn-rewind   { color:#ff5252; }
-            .mvc-btn-forward  { color:#69f0ae; }
-            .mvc-btn-settings { color:#e0e0e0; opacity:0.9; }
-            .mvc-btn.snapped  { color:#ffea00!important; text-shadow:0 0 5px rgba(255,234,0,0.5); border-color:#ffea00; }
+            .mvc-btn-rewind   { color:rgba(255,100,100,0.9); }
+            .mvc-btn-forward  { color:rgba(105,240,174,0.9); }
+            .mvc-btn.snapped  { color:#fff!important; border-color:rgba(255,255,255,0.4); background:rgba(255,255,255,0.2); text-shadow:0 0 8px rgba(255,255,255,0.6); box-shadow:inset 0 1px 3px rgba(255,255,255,0.3); }
 
             .mvc-skip-btn { appearance:none; border:0; border-radius:12px; padding:10px 18px; font-size:15px; font-weight:600; color:#fff; background:rgba(255,255,255,0.1); line-height:1.2; user-select:none; transition:background 0.2s; }
             .mvc-skip-btn:active { background:rgba(255,255,255,0.2); }
 
             .mvc-backdrop { display:none; position:fixed; inset:0; z-index:2147483646; background:rgba(0,0,0,.01); touch-action:none; }
-            .mvc-toast { position:fixed; left:50%; bottom:60px; transform:translateX(-50%) translate3d(0,0,0); background:rgba(20,20,20,.85); backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,0.1); color:#fff; padding:10px 20px; border-radius:20px; z-index:2147483647; opacity:0; transition:opacity .35s ease; pointer-events:none; font-size:14px; font-weight:500; }
-            .mvc-speed-toast { position:fixed; transform:translate(-50%,-50%) translate3d(0,0,0); background:rgba(20,20,20,.85); backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,0.1); color:#fff; padding:12px 24px; border-radius:16px; z-index:2147483647; font-size:24px; font-weight:600; opacity:0; transition:opacity .35s ease,color .2s linear; pointer-events:none; will-change:opacity,color; }
-            .mvc-speed-toast.snapped { color:#69f0ae!important; }
+            .mvc-toast { position:fixed; left:50%; bottom:60px; transform:translateX(-50%) translate3d(0,0,0); background:rgba(20,20,22,0.75); backdrop-filter:blur(24px); border:1px solid rgba(255,255,255,0.08); color:#fff; padding:10px 20px; border-radius:20px; z-index:2147483647; opacity:0; transition:opacity .3s cubic-bezier(0.32, 0.72, 0, 1); pointer-events:none; font-size:14px; font-weight:500; box-shadow: 0 10px 30px -5px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.12); }
+            .mvc-speed-toast { position:fixed; transform:translate(-50%,-50%) translate3d(0,0,0); background:rgba(20,20,22,0.75); backdrop-filter:blur(24px); border:1px solid rgba(255,255,255,0.08); color:#fff; padding:12px 24px; border-radius:16px; z-index:2147483647; font-size:24px; font-weight:600; opacity:0; transition:opacity .3s cubic-bezier(0.32, 0.72, 0, 1), color .2s linear; pointer-events:none; will-change:opacity,color; box-shadow: 0 10px 30px -5px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.12); }
+            .mvc-speed-toast.snapped { color:#fff!important; text-shadow:0 0 12px rgba(255,255,255,0.5); }
 
-            .mvc-menu { display:none; flex-direction:column; position:fixed; background:rgba(28,28,30,0.95); border-radius:18px; backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border:1px solid rgba(255,255,255,0.1); box-shadow:0 12px 48px rgba(0,0,0,0.6); z-index:2147483647; min-width:60px; max-height:80vh; overflow-y:auto; pointer-events:auto; touch-action:manipulation; -webkit-tap-highlight-color:transparent; transform:translate3d(0,0,0); padding:4px; }
+            .mvc-menu { display:none; flex-direction:column; position:fixed; background:rgba(24,24,28,0.85); border-radius:16px; backdrop-filter:blur(32px); -webkit-backdrop-filter:blur(32px); border:1px solid rgba(255,255,255,0.08); box-shadow: 0 24px 48px -12px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.1); z-index:2147483647; min-width:60px; max-height:80vh; overflow-y:auto; pointer-events:auto; touch-action:manipulation; -webkit-tap-highlight-color:transparent; transform:translate3d(0,0,0); padding:4px; }
             .mvc-menu-opt { padding:6px 6px; font-size:15px; text-align:center; border-radius:8px; margin:2px 4px; user-select:none; cursor:pointer; transition:background .2s; }
             .mvc-menu-opt:active { background:rgba(255,255,255,0.15); }
 
@@ -67,7 +66,7 @@ const MVC_Styles = {
             .mvc-settings-section-title { font-size:12px; font-weight:700; color:rgba(235,235,245,0.6); text-transform:uppercase; letter-spacing:0.5px; margin-top:8px; margin-bottom:8px; padding:0 4px; text-align:left; border-top:none; cursor:default; }
 
             /* Gesture overlay */
-            .mvc-gesture-overlay { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.75); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); color:#fff; font-size:18px; font-weight:600; padding:10px 22px; border-radius:14px; text-align:center; z-index:2147483647; display:none; line-height:1.5; pointer-events:none; }
+            .mvc-gesture-overlay { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(20,20,22,0.65); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); color:#fff; font-size:18px; font-weight:600; padding:10px 22px; border-radius:14px; text-align:center; z-index:2147483647; display:none; line-height:1.5; pointer-events:none; border:1px solid rgba(255,255,255,0.06); box-shadow: 0 10px 20px -5px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.1); }
         `;
         document.head.appendChild(style);
     }
