@@ -54,7 +54,7 @@ const DOW_LABELS = [...Array(7)].map((_, i) =>
   new Date(1970, 0, 4 + i).toLocaleString("default", { weekday: "short" })
 );
 
-// ── Static styles (computed once, injected via useEffect) ────
+// ── Static styles (computed once, memoised in View) ──────────
 const CSS = `
   .gh-grid {
     display: grid;
@@ -102,37 +102,29 @@ const dividerTop = {
 
 // ── Sub-Components (pure — no hooks, defined outside View) ───
 
-function DowHeaders() {
-  const style = {
-    textAlign: "center", fontSize: 12, color: T.muted,
-    fontWeight: 600, paddingBottom: 10, letterSpacing: "0.5px",
-  };
+const DowHeaders = () => {
+  const style = { textAlign: "center", fontSize: 12, color: T.muted,
+    fontWeight: 600, paddingBottom: 10, letterSpacing: "0.5px" };
   return <>{DOW_LABELS.map((d) => <div key={d} style={style}>{d}</div>)}</>;
-}
+};
 
-function Legend() {
-  return (
-    <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:T.muted }}>
-      Less&nbsp;
-      {LEVELS.map((c, i) => (
-        <div key={i} style={{ width:14, height:14, borderRadius:3, background:c }} />
-      ))}
-      &nbsp;More
-    </div>
-  );
-}
+const Legend = () => (
+  <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:T.muted }}>
+    Less&nbsp;
+    {LEVELS.map((c, i) => <div key={i} style={{ width:14, height:14, borderRadius:3, background:c }} />)}
+    &nbsp;More
+  </div>
+);
 
-function StreakBadge({ streak }) {
-  return (
-    <span style={{
-      fontSize: 14, fontWeight: 700, color: T.fire,
-      background: `${T.fire}18`, padding: "4px 12px",
-      borderRadius: 20, border: `1px solid ${T.fire}44`,
-    }}>
-      🔥 {streak} day{streak !== 1 ? "s" : ""}
-    </span>
-  );
-}
+const StreakBadge = ({ streak }) => (
+  <span style={{
+    fontSize: 14, fontWeight: 700, color: T.fire,
+    background: `${T.fire}18`, padding: "4px 12px",
+    borderRadius: 20, border: `1px solid ${T.fire}44`,
+  }}>
+    🔥 {streak} day{streak !== 1 ? "s" : ""}
+  </span>
+);
 
 function DayCell({ day, info, isToday, moName }) {
   const bg  = info ? levelFor(info.done, info.total) : T.L0;
@@ -168,9 +160,7 @@ function DayCell({ day, info, isToday, moName }) {
     : cell;
 }
 
-function EmptyCell() {
-  return <div className="gh-cell" />;
-}
+const EmptyCell = () => <div className="gh-cell" />;
 
 // ── Main View ────────────────────────────────────────────────
 
@@ -185,22 +175,15 @@ return function View() {
   const numDays = new Date(YR, MO + 1, 0).getDate();
   const cutoff  = new Date(YR, MO, DAY - CONFIG.streakLookback);
 
-  // ── Inject CSS once ────────────────────────────────────────
-  dc.useEffect(() => {
-    const el = document.createElement("style");
-    el.textContent = CSS;
-    document.head.appendChild(el);
-    return () => el.remove();
-  }, []);
+  // ── Inject CSS once (memoised — never re-created) ─────────
+  const injectedStyles = dc.useMemo(() => <style>{CSS}</style>, []);
 
-  // ── Queries (debounced) ────────────────────────────────────
-  const pages = dc.useQuery(
-    `@page and path("${CONFIG.folder}")`,
-    CONFIG.queryDebounce
-  );
+  // ── Queries (debounced) ── second arg must be options object ─
+  const opts = { debounce: CONFIG.queryDebounce };
+  const pages = dc.useQuery(`@page and path("${CONFIG.folder}")`, opts);
   const tasks = dc.useQuery(
     `@task and childof(@page and path("${CONFIG.folder}"))`,
-    CONFIG.queryDebounce
+    opts
   );
 
   // ── Early exit: empty state ────────────────────────────────
@@ -213,19 +196,14 @@ return function View() {
   }
 
   // ── Group tasks by parent file (keyed on $file) ────────────
-  const tasksByFile = dc.useMemo(() => {
-    const m = {};
-    for (const t of tasks) {
-      const txt = (t.$cleantext ?? t.$text ?? "").trim();
-      if (CONFIG.skipTexts.has(txt)) continue;
-      const fp = t.$file;
-      if (!fp) continue;
-      if (!m[fp]) m[fp] = { done: 0, total: 0 };
-      m[fp].total++;
-      if (t.$completed) m[fp].done++;
-    }
+  const tasksByFile = dc.useMemo(() => tasks.reduce((m, t) => {
+    const txt = (t.$cleantext ?? t.$text ?? "").trim();
+    if (CONFIG.skipTexts.has(txt) || !t.$file) return m;
+    const e = m[t.$file] ??= { done: 0, total: 0 };
+    e.total++;
+    if (t.$completed) e.done++;
     return m;
-  }, [tasks]);
+  }, {}), [tasks]);
 
   // ── Year map + month map ───────────────────────────────────
   //    yearMap: dateKey → done count  (for streak)
@@ -251,72 +229,41 @@ return function View() {
     return { yearMap: yM, moMap: mM };
   }, [pages, tasksByFile]);
 
-  // ── Streak (cross-month, fixed logic) ──────────────────────
-  //    Start from today. If today has no completed tasks, start
-  //    from yesterday instead (so a WIP day doesn't break it).
+  // ── Streak (starts from today if active, yesterday otherwise) ────────
   const streak = dc.useMemo(() => {
+    const cursor = new Date(YR, MO, yearMap[dateKey(YR, MO + 1, DAY)] > 0 ? DAY : DAY - 1);
     let s = 0;
-    const todayKey = dateKey(YR, MO + 1, DAY);
-    const todayDone = yearMap[todayKey] > 0;
-
-    // Begin scanning from today (inclusive) or yesterday
-    const cursor = new Date(YR, MO, todayDone ? DAY : DAY - 1);
-
-    for (let i = 0; i < CONFIG.streakLookback; i++) {
-      const k = dateKey(
-        cursor.getFullYear(),
-        cursor.getMonth() + 1,
-        cursor.getDate()
-      );
-      if (yearMap[k] > 0) {
-        s++;
-        cursor.setDate(cursor.getDate() - 1);
-      } else {
-        break;
-      }
+    while (s < CONFIG.streakLookback &&
+      yearMap[dateKey(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate())] > 0) {
+      s++; cursor.setDate(cursor.getDate() - 1);
     }
     return s;
   }, [yearMap]);
 
-  // ── Month stats ────────────────────────────────────────────
+  // ── Month stats (single-pass reduce) ────────────────────────────────
   const { activeDays, monthDone, monthTotal, monthPct } = dc.useMemo(() => {
-    const v  = Object.values(moMap);
-    const sd = v.reduce((a, x) => a + x.done,  0);
-    const sa = v.reduce((a, x) => a + x.total, 0);
-    return {
-      activeDays: v.length,
-      monthDone:  sd,
-      monthTotal: sa,
-      monthPct:   pctOf(sd, sa),
-    };
+    const { done: sd, total: sa } = Object.values(moMap)
+      .reduce((a, x) => ({ done: a.done + x.done, total: a.total + x.total }), { done: 0, total: 0 });
+    return { activeDays: Object.keys(moMap).length, monthDone: sd, monthTotal: sa, monthPct: pctOf(sd, sa) };
   }, [moMap]);
 
-  // ── Grid cells (memoized) ──────────────────────────────────
+  // ── Grid cells (memoized) ────────────────────────────────────
   const gridCells = dc.useMemo(() => {
-    const blanks = Array.from({ length: dow1 }, (_, i) =>
-      <EmptyCell key={`b${i}`} />
-    );
-    const days = Array.from({ length: numDays }, (_, i) => {
-      const d = i + 1;
-      return (
-        <DayCell
-          key={d}
-          day={d}
-          info={moMap[d]}
-          isToday={d === DAY}
-          moName={moName}
-        />
-      );
-    });
+    const mk = (n, pfx) => Array.from({ length: n }, (_, i) => <EmptyCell key={`${pfx}${i}`} />);
     const tail = (numDays + dow1) % 7;
-    const pads = tail
-      ? Array.from({ length: 7 - tail }, (_, i) => <EmptyCell key={`p${i}`} />)
-      : [];
-    return [...blanks, ...days, ...pads];
+    return [
+      ...mk(dow1, "b"),
+      ...Array.from({ length: numDays }, (_, i) => (
+        <DayCell key={i+1} day={i+1} info={moMap[i+1]} isToday={i+1 === DAY} moName={moName} />
+      )),
+      ...(tail ? mk(7 - tail, "p") : []),
+    ];
   }, [moMap, dow1, numDays, DAY, moName]);
 
   // ── Render ─────────────────────────────────────────────────
   return (
+    <div>
+    {injectedStyles}
     <div className="gh-heatmap" style={{
       background: T.bg, border: `1px solid ${T.border}`,
       borderRadius: 12, padding: "20px 24px",
@@ -351,6 +298,7 @@ return function View() {
         </div>
       </div>
 
+    </div>
     </div>
   );
 };

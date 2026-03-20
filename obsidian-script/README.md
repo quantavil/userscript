@@ -84,7 +84,7 @@ The included `template.md` provides a structured daily note with:
 | What | Where | Notes |
 |------|-------|-------|
 | Source folder | `FOLDER` constant | Must match your Daily Notes folder |
-| Heatmap colors | `G` object in `study-heatmap.js` | Swap hex values |
+| Heatmap colors | `T` object / `LEVELS` array in `study-heatmap.js` | Swap hex values |
 | Chart entries | `MAX_ENTRIES` in `score-tracker.js` | Default 30 tests |
 | Add new exams | `EXAMS` object in `score-tracker.js` | Add `{ max, org }` entry |
 

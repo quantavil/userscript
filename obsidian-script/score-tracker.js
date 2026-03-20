@@ -38,41 +38,39 @@ const EXAMS = {
 
 const ORGS = ["SBI", "IBPS", "RRB"];
 
-// ── Alias resolution (single loop, word-boundary safe) ───────
+// ── Alias resolution ──────────────────────────────────────────
 
-const EXAM_ALIASES = {};
-
+/** Stage-word variations: canonical token → accepted synonyms */
 const VARIATIONS = {
-  "Pre":   ["Prelim", "Prelims", "Preliminary"],
-  "Mains": ["Main"],
+  Pre:   ["Prelim", "Prelims", "Preliminary"],
+  Mains: ["Main"],
 };
 
-for (const key of Object.keys(EXAMS)) {
-  // Exact lowercase → canonical
-  EXAM_ALIASES[key.toLowerCase()] = key;
-
-  // Build variation aliases in the same loop
-  for (const [canonical, aliases] of Object.entries(VARIATIONS)) {
-    // Use word-boundary-aware check: key must contain the canonical
-    // word as a separate token (space-delimited)
-    const parts = key.split(" ");
-    const idx = parts.findIndex((p) => p === canonical);
-    if (idx !== -1) {
-      for (const alias of aliases) {
-        const variant = [...parts];
-        variant[idx] = alias;
-        EXAM_ALIASES[variant.join(" ").toLowerCase()] = key;
-      }
+/**
+ * Map of lowercase alias → canonical exam name.
+ * Built once at module load from EXAMS + VARIATIONS.
+ */
+const EXAM_ALIASES = Object.keys(EXAMS).reduce((map, key) => {
+  map[key.toLowerCase()] = key;
+  const parts = key.split(" ");
+  for (const [token, aliases] of Object.entries(VARIATIONS)) {
+    const idx = parts.indexOf(token);
+    if (idx === -1) continue;
+    for (const alias of aliases) {
+      const variant = [...parts];
+      variant[idx] = alias;
+      map[variant.join(" ").toLowerCase()] = key;
     }
   }
-}
+  return map;
+}, {});
 
+/** Resolve a raw frontmatter Exam value to a canonical key, or null. */
 function resolveExam(raw) {
   if (raw == null) return null;
   const trimmed = String(raw).trim();
-  if (!trimmed) return null;          // ← handle empty string from blank YAML
-  if (EXAMS[trimmed]) return trimmed; // exact match
-  return EXAM_ALIASES[trimmed.toLowerCase()] ?? null;
+  if (!trimmed) return null;
+  return EXAMS[trimmed] ? trimmed : (EXAM_ALIASES[trimmed.toLowerCase()] ?? null);
 }
 
 
@@ -84,12 +82,12 @@ const C = {
   border: "var(--background-modifier-border)",
   text:   "var(--text-normal)",
   muted:  "var(--text-muted)",
-  score:  "#58a6ff",
+  score:  "#58a6ff",  // also used for active/grid (same value)
   acc:    "#36c353",
   warn:   "#ffa657",
-  grid:   "var(--background-modifier-border)",
-  active: "#58a6ff",
 };
+// Aliases kept for CSS template literals where they appear by semantic name
+C.grid = C.active = C.score;
 
 // ── Chart Geometry ───────────────────────────────────────────
 
@@ -103,96 +101,84 @@ const yScale  = (v) => PAD.t + CHART_H - (v / 100) * CHART_H;
 
 // ── Helpers ──────────────────────────────────────────────────
 
-function parseNum(s) {
+/** Strip % and parse to float; returns null for non-numeric input. */
+const parseNum = (s) => {
   if (s == null) return null;
   const n = parseFloat(String(s).replace("%", "").trim());
   return isNaN(n) ? null : n;
-}
+};
 
 /**
- * Read a field from a Datacore page object.
+ * Build the canonical date descriptor from a JS Date.
+ * Single source of truth — used by all date parsing paths.
+ */
+const dateObj = (d) => ({
+  day:   d.getDate(),
+  month: d.getMonth() + 1,
+  year:  d.getFullYear(),
+  ts:    d.getTime(),
+});
+
+/**
+ * Read a frontmatter field from a Datacore page.
+ * Tries page.value() first (canonical Datacore API), then
+ * falls back to page.$frontmatter for raw YAML access.
  *
- * Datacore stores frontmatter in page.$frontmatter and provides
- * page.value("field") as the JS accessor (per official quickstart).
- * We try .value() first, then $frontmatter as fallback.
+ * @param {object} page - Datacore page object
+ * @param {...string} keys - Field names to try in order
+ * @returns {*} First non-null value found, or null
  */
 function fm(page, ...keys) {
   for (const k of keys) {
-    // 1) Canonical accessor per Datacore docs
-    if (typeof page.value === "function") {
-      try {
-        const v = page.value(k);
-        if (v != null) return v;
-      } catch (_) { /* field doesn't exist, try next */ }
-    }
-    // 2) Direct $frontmatter lookup (documented as where user YAML lives)
-    const fmVal = page.$frontmatter?.[k];
-    if (fmVal !== undefined && fmVal !== null) return fmVal;
+    try { const v = page.value(k); if (v != null) return v; } catch (_) {}
+    const f = page.$frontmatter?.[k];
+    if (f != null) return f;
   }
   return null;
 }
 
 /**
- * Parse a date string safely into a local Date, avoiding
- * timezone-shift bugs with bare YYYY-MM-DD strings.
+ * Parse a date string into a local Date, avoiding timezone shifts
+ * from bare YYYY-MM-DD strings (which JS interprets as UTC).
+ *
+ * @param {string|number} str - ISO date string or timestamp
+ * @returns {object|null} dateObj descriptor, or null if invalid
  */
-function safeParseDate(str) {
-  const s = String(str);
-  const dStr = s.includes("T") ? s : `${s}T00:00:00`;
-  const d = new Date(dStr);
-  if (isNaN(d.getTime())) return null;
-  return {
-    day:   d.getDate(),
-    month: d.getMonth() + 1,
-    year:  d.getFullYear(),
-    ts:    d.getTime(),
-  };
-}
+const parseStrDate = (str) => {
+  const d = new Date(String(str).replace(/^(\d{4}-\d{2}-\d{2})$/, "$1T00:00:00"));
+  return isNaN(d.getTime()) ? null : dateObj(d);
+};
 
 /**
- * Parse date from a Datacore page.
- * Handles: Luxon DateTime objects → raw strings → filename pattern.
+ * Extract a date from a Datacore page.
+ * Resolution order:
+ *   1. `date`/`Date` frontmatter field (Luxon, JS Date, or string)
+ *   2. Filename pattern `YYYY-MM-DD`
+ *
+ * @param {object} page - Datacore page object
+ * @returns {object|null} dateObj descriptor, or null if unresolvable
  */
 function parseDateFromPage(page) {
   const rawDate = fm(page, "date", "Date");
 
   if (rawDate != null) {
-    // Datacore may parse YAML dates into Luxon DateTime objects
-    if (typeof rawDate === "object" && typeof rawDate.toJSDate === "function") {
+    // Luxon DateTime (Datacore parses YAML dates into these)
+    if (typeof rawDate.toJSDate === "function") {
       const d = rawDate.toJSDate();
-      if (!isNaN(d.getTime())) {
-        return {
-          day:   d.getDate(),
-          month: d.getMonth() + 1,
-          year:  d.getFullYear(),
-          ts:    d.getTime(),
-        };
-      }
+      if (!isNaN(d.getTime())) return dateObj(d);
     }
-    // It might also be a native JS Date already
-    if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
-      return {
-        day:   rawDate.getDate(),
-        month: rawDate.getMonth() + 1,
-        year:  rawDate.getFullYear(),
-        ts:    rawDate.getTime(),
-      };
-    }
-    // String date
+    // Native JS Date
+    if (rawDate instanceof Date && !isNaN(rawDate.getTime())) return dateObj(rawDate);
+    // String / numeric
     if (typeof rawDate === "string" || typeof rawDate === "number") {
-      const parsed = safeParseDate(rawDate);
+      const parsed = parseStrDate(rawDate);
       if (parsed) return parsed;
     }
   }
 
-  // Fallback: extract from filename e.g. "2026-03-18"
-  const name = page.$name ?? "";
-  const match = name.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (match) {
-    return safeParseDate(`${match[1]}-${match[2]}-${match[3]}`);
-  }
-
-  return null;
+  // Fallback: parse from filename, e.g. "2026-03-18"
+  const m = (page.$name ?? "").match(/(\d{4})-(\d{2})-(\d{2})/);
+  return m ? parseStrDate(`${m[1]}-${m[2]}-${m[3]}`) : null;
 }
 
 
@@ -267,51 +253,37 @@ const STYLES = `
 //  Presentation Components
 // ═════════════════════════════════════════════════════════════
 
-function Empty({ text }) {
-  return (
-    <span style={{ fontSize: "13px", color: C.muted, fontStyle: "italic" }}>
-      {text}
-    </span>
-  );
-}
+const Empty = ({ text }) =>
+  <span style={{ fontSize: "13px", color: C.muted, fontStyle: "italic" }}>{text}</span>;
 
-function Section({ icon, title, children }) {
-  return (
-    <div className="st4-section">
-      <div className="st4-label">{icon} {title}</div>
-      {children}
-    </div>
-  );
-}
+const Section = ({ icon, title, children }) => (
+  <div className="st4-section">
+    <div className="st4-label">{icon} {title}</div>
+    {children}
+  </div>
+);
 
+const StatsBar = ({ stats }) => !stats ? <Empty text="No data" /> : (
+  <div style={{ display: "flex", gap: "16px", fontSize: "13px", color: C.muted, flexWrap: "wrap" }}>
+    <span>Avg <b style={{ color: C.score }}>{stats.avgPct}%</b></span>
+    {stats.avgAcc !== null && <span>Accuracy <b style={{ color: C.acc }}>{stats.avgAcc}%</b></span>}
+    <span>Best <b style={{ color: C.acc }}>{stats.best}%</b></span>
+    <span>Worst <b style={{ color: C.warn }}>{stats.worst}%</b></span>
+    <span>{stats.count} test{stats.count !== 1 ? "s" : ""}</span>
+  </div>
+);
 
-function StatsBar({ stats }) {
-  if (!stats) return <Empty text="No data" />;
-
-  return (
-    <div style={{ display: "flex", gap: "16px", fontSize: "13px", color: C.muted, flexWrap: "wrap" }}>
-      <span>Avg <b style={{ color: C.score }}>{stats.avgPct}%</b></span>
-      {stats.avgAcc !== null && <span>Accuracy <b style={{ color: C.acc }}>{stats.avgAcc}%</b></span>}
-      <span>Best <b style={{ color: C.acc }}>{stats.best}%</b></span>
-      <span>Worst <b style={{ color: C.warn }}>{stats.worst}%</b></span>
-      <span>{stats.count} test{stats.count !== 1 ? "s" : ""}</span>
-    </div>
-  );
-}
-
-function FilterBar({ active, onFilter }) {
-  return (
-    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-      {["all", ...ORGS].map((f) => (
-        <button key={f}
-          className={`st4-filter${active === f ? " active" : ""}`}
-          onClick={() => onFilter(f)}>
-          {f === "all" ? "All" : f}
-        </button>
-      ))}
-    </div>
-  );
-}
+const FilterBar = ({ active, onFilter }) => (
+  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+    {["all", ...ORGS].map((f) => (
+      <button key={f}
+        className={`st4-filter${active === f ? " active" : ""}`}
+        onClick={() => onFilter(f)}>
+        {f === "all" ? "All" : f}
+      </button>
+    ))}
+  </div>
+);
 
 function TrendChart({ data }) {
   const recent = data.slice(-MAX_ENTRIES);
@@ -395,11 +367,8 @@ function TrendChart({ data }) {
   );
 }
 
-function WeakAreas({ weakAreas }) {
-  if (!weakAreas.length) {
-    return <Empty text="No weak areas recorded" />;
-  }
-
+const WeakAreas = ({ weakAreas }) => {
+  if (!weakAreas.length) return <Empty text="No weak areas recorded" />;
   const maxFreq = weakAreas[0][1];
   return (
     <div>
@@ -407,44 +376,34 @@ function WeakAreas({ weakAreas }) {
         <div key={area} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
           <span style={{ minWidth: "100px", fontSize: "13px", color: C.text, textAlign: "right" }}>{area}</span>
           <div style={{ flex: 1, height: "16px", background: C.bg2, borderRadius: "4px", overflow: "hidden" }}>
-            <div style={{
-              width: `${Math.round((count / maxFreq) * 100)}%`, height: "100%",
-              background: C.warn, borderRadius: "4px", transition: "width 0.3s ease",
-            }} />
+            <div style={{ width: `${Math.round((count / maxFreq) * 100)}%`, height: "100%",
+              background: C.warn, borderRadius: "4px", transition: "width 0.3s ease" }} />
           </div>
           <span style={{ fontSize: "12px", color: C.muted, minWidth: "20px" }}>{count}×</span>
         </div>
       ))}
     </div>
   );
-}
+};
 
-function RecentResults({ data }) {
-  if (!data.length) {
-    return <Empty text="No results" />;
-  }
-
-  return (
-    <table className="st4-table" aria-label="Recent exam results">
-      <thead>
-        <tr><th>Date</th><th>Exam</th><th>Score</th><th>Accuracy</th><th>Weak Area</th></tr>
-      </thead>
-      <tbody>
-        {data.map((d, i) => (
-          <tr key={i}>
-            <td>
-              <dc.Literal value={d.link} />
-            </td>
-            <td>{d.exam}</td>
-            <td style={{ textAlign: "center" }}>{d.score}/{d.max}</td>
-            <td style={{ textAlign: "center" }}>{d.acc !== null ? `${d.acc}%` : "—"}</td>
-            <td style={{ color: C.warn }}>{d.weak || "—"}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
+const RecentResults = ({ data }) => !data.length ? <Empty text="No results" /> : (
+  <table className="st4-table" aria-label="Recent exam results">
+    <thead>
+      <tr><th>Date</th><th>Exam</th><th>Score</th><th>Accuracy</th><th>Weak Area</th></tr>
+    </thead>
+    <tbody>
+      {data.map((d, i) => (
+        <tr key={i}>
+          <td><dc.Literal value={d.link} /></td>
+          <td>{d.exam}</td>
+          <td style={{ textAlign: "center" }}>{d.score}/{d.max}</td>
+          <td style={{ textAlign: "center" }}>{d.acc !== null ? `${d.acc}%` : "—"}</td>
+          <td style={{ color: C.warn }}>{d.weak || "—"}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+);
 
 
 // ═════════════════════════════════════════════════════════════
@@ -515,45 +474,25 @@ return function View() {
   const stats = dc.useMemo(() => {
     const n = data.length;
     if (!n) return null;
-
-    const totalPct = data.reduce((s, d) => s + d.pct, 0);
-    const withAcc  = data.filter((d) => d.acc !== null);
-
-    let best = -Infinity;
-    let worst = Infinity;
-    for (const d of data) {
-      if (d.pct > best)  best  = d.pct;
-      if (d.pct < worst) worst = d.pct;
-    }
-
+    const withAcc = data.filter((d) => d.acc !== null);
     return {
-      avgPct: Math.round(totalPct / n),
-      avgAcc: withAcc.length
-        ? Math.round(withAcc.reduce((s, d) => s + d.acc, 0) / withAcc.length)
-        : null,
-      best,
-      worst,
+      avgPct: Math.round(data.reduce((s, d) => s + d.pct, 0) / n),
+      avgAcc: withAcc.length ? Math.round(withAcc.reduce((s, d) => s + d.acc, 0) / withAcc.length) : null,
+      best:  Math.max(...data.map((d) => d.pct)),
+      worst: Math.min(...data.map((d) => d.pct)),
       count: n,
     };
   }, [data]);
 
   const weakAreas = dc.useMemo(() => {
     const freq = {};
-    for (const d of data) {
-      if (!d.weak) continue;
-      for (const w of d.weak.split(/[,;&]+/).map((s) => s.trim().toLowerCase()).filter(Boolean)) {
-        freq[w] = (freq[w] || 0) + 1;
-      }
-    }
-    return Object.entries(freq)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, TOP_WEAK_AREAS);
+    data.forEach(({ weak }) => weak &&
+      weak.split(/[,;&]+/).forEach(w => { w = w.trim().toLowerCase(); if (w) freq[w] = (freq[w] || 0) + 1; })
+    );
+    return Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, TOP_WEAK_AREAS);
   }, [data]);
 
-  const recentData = dc.useMemo(
-    () => data.slice(-RECENT_COUNT).reverse(),
-    [data],
-  );
+  const recentData = dc.useMemo(() => data.slice(-RECENT_COUNT).reverse(), [data]);
 
   // ── Render ────────────────────────────────────────────────
   return (
