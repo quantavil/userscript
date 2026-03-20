@@ -1,0 +1,36 @@
+// src/config.js – Static configuration for MobileVideoController
+'use strict';
+
+const MVC_CONFIG = {
+    MIN_VIDEO_AREA: 150 * 150,
+    EDGE: 10,
+    DEFAULT_RIGHT_OFFSET: 50,
+    UI_FADE_TIMEOUT: 3500,
+    UI_FADE_OPACITY: 0.15,
+    LONG_PRESS_DURATION_MS: 300,
+    DRAG_THRESHOLD: 15,
+    SLIDER_SENSITIVITY: 0.003,
+    SLIDER_POWER: 1.2,
+    DEFAULT_SPEEDS: [0, 1, 1.25, 1.5, 1.75, 2],
+    DEFAULT_SKIP_DURATIONS: [5, 10, 15, 30, 60],
+    DEFAULT_SNAP_POINTS: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25],
+    SNAP_THRESHOLD: 0.05,
+    SNAP_STRENGTH: 1,
+    LONG_PRESS_VIBRATE_MS: 15,
+    INITIAL_EVAL_DELAY: 500,
+    BACKDROP_POINTER_EVENTS_DELAY: 150,
+    SPEED_TOAST_FADE_DELAY: 750,
+    // ECO SETTINGS
+    MUTATION_DEBOUNCE_MS: 800,
+    INTERSECTION_THROTTLE_MS: 300,
+    TIMEUPDATE_THROTTLE_MS: 2000,
+    SCROLL_END_TIMEOUT: 150,
+    STORAGE_DEBOUNCE_MS: 2000
+};
+
+const MVC_SITE_CONFIGS = {
+    'm.youtube.com':   { useDefaultPositioning: false, parentSelector: '#player',       observerRootSelector: '#page-manager' },
+    'www.youtube.com': { useDefaultPositioning: false, parentSelector: '#movie_player', observerRootSelector: 'ytd-page-manager' },
+    'bongobd.com':     { attachToParent: true },
+    'www.bongobd.com': { attachToParent: true }
+};
