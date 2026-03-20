@@ -4,7 +4,9 @@ A premium, mobile-friendly userscript that adds a sleek "Media Card" UI to web v
 
 ## ✨ Features
 
-- **Media Card UI**: A sleek, floating control panel that stays in view and can be manually dragged to any position.
+- **Premium Media Card UI**: A sleek, floating control panel with "Liquid Glass" aesthetics, soft color accents, and iOS-style spring physics.
+  - **Zero Visual Clutter**: The UI fades to **100% invisible** when inactive, giving you a totally unobstructed view of your video.
+  - **Massive Invisible Touch Target**: Because the UI disappears completely, it features a massive expanded invisible hit-box (extending 2.5rem in all directions). You only need to tap anywhere in the general vicinity of where the controller was to instantly snap it back onto the screen!
 - **Touch Gestures** *(New in v1.2)*:
   - **Swipe-to-Seek**: Swipe left/right on the video to scrub through the timeline with a visual overlay showing the current position and delta.
   - **Long-Press-to-Speed**: Touch and hold on the video to temporarily boost playback to 2× speed; release to restore.

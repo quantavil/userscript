@@ -8,11 +8,11 @@ const MVC_Styles = {
         const style = document.createElement('style');
         style.id = 'mvc-styles';
         style.textContent = `
-            .mvc-ui-wrap { position:absolute; left:0; top:0; z-index:2147483647; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; display:none; opacity:0; pointer-events:none; transition:opacity .5s ease; will-change:opacity, transform; transform:translate3d(0,0,0); contain:layout paint; }
+            .mvc-ui-wrap { position:absolute; left:0; top:0; z-index:2147483647; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; display:none; opacity:0; pointer-events:none; transition:opacity .5s ease; will-change:opacity, transform; transform:translate3d(0,0,0); }
 
             /* Card panel */
             .mvc-panel { position:relative; display:flex; align-items:center; gap:4px; background:rgba(20, 20, 22, 0.75); color:#fff; padding:4px; backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border:1px solid rgba(255,255,255,0.08); border-radius:14px; touch-action:none!important; user-select:none; -webkit-user-select:none; pointer-events:auto; cursor:grab; width:fit-content; transform:translate3d(0,0,0); will-change:transform; box-shadow: 0 20px 40px -10px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.12); }
-            .mvc-panel::before { content:""; position:absolute; inset:-30px; z-index:-1; }
+            .mvc-panel::before { content:""; position:absolute; inset:-2.5rem; z-index:-1; background:rgba(0, 0, 0, 0); }
 
             /* Buttons */
             .mvc-btn { appearance:none; border:0; border-radius:10px; width:38px; height:32px; padding:0; font-size:13px; font-weight:600; text-align:center; line-height:1; pointer-events:auto; transition:transform .2s cubic-bezier(0.32, 0.72, 0, 1), background-color .15s ease, box-shadow .15s ease; user-select:none; display:flex; align-items:center; justify-content:center; touch-action:none!important; background:rgba(255,255,255,0.04); color:rgba(255,255,255,0.85); box-shadow:inset 0 1px 1px rgba(255,255,255,0.05); }
