@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         Mobile Video Controller (Media Card & Persistent Menu)
-// @namespace    https://your.namespace
-// @version      21.0.0-media-card
+// @namespace    https://github.com/quantavil/userscript/mobile-video-controller
+// @version      1.0.0
 // @description  User-friendly "Card" UI, persistent skip menu, and battery optimized.
 // @match        *://*.youtube.com/*
 // @match        *://*.facebook.com/*
 // @match        *://*.bongobd.com/*
 // @match        *://*/*
 // @grant        none
+// @license      MIT
 // @run-at       document-start
 // ==/UserScript==
 
@@ -22,7 +23,7 @@
             UI_FADE_TIMEOUT: 3500, // Slightly longer for better usability
             UI_FADE_OPACITY: 0.15,
             LONG_PRESS_DURATION_MS: 300,
-            DRAG_THRESHOLD: 10,
+            DRAG_THRESHOLD: 15, // Increased to avoid accidental fat-finger slides
             SLIDER_SENSITIVITY: 0.003,
             SLIDER_POWER: 1.2,
             DEFAULT_SPEEDS: [0, 1, 1.25, 1.5, 1.75, 2],
@@ -162,7 +163,8 @@
             const paths = {
                 rewind: "M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z",
                 forward: "M4 18l8.5-6L4 6v12zm9-12v12l8.5-6-8.5-6z",
-                settings: "M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61-.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12-.64l2 3.46c.12.22.39.3.61.22l2.49 1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59-1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"
+                settings: "M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49.12.61l2.03 1.58c-.04.3-.06.61-.06.94 0 .32.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z",
+                close: "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
             };
             return this.createSvgIcon(paths[name] || "");
         }
@@ -289,20 +291,6 @@ Object.assign(this.ui.skipMenu.style, { flexDirection: 'row', gap: '1px', paddin
             if (this.ui.settingsMenu) return;
 
             this.ui.settingsMenu = this.createEl('div', 'mvc-menu', { style: { minWidth: '280px' } });
-           // [NEW] Close Controller Button
-            const closeRow = this.createEl('div', 'mvc-menu-opt mvc-settings-row', {
-                style: { justifyContent: 'center', borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '8px', paddingTop: '8px' }
-            });
-            const closeBtn = this.createEl('button', 'mvc-settings-btn', {
-                textContent: 'Close Controller',
-                style: { background: 'rgba(255, 59, 48, 0.2)', color: '#ff3b30', width: '100%' }
-            });
-            closeBtn.onclick = () => {
-                this.hideAllMenus();
-                this.ui.wrap.style.display = 'none'; // Instantly hide the controller
-            };
-            closeRow.appendChild(closeBtn);
-            this.ui.settingsMenu.appendChild(closeRow);
             const addSection = (t) => {
                 const el = this.createEl('div', 'mvc-settings-section-title', { textContent: t });
                 this.ui.settingsMenu.appendChild(el);
@@ -459,10 +447,65 @@ Object.assign(this.ui.skipMenu.style, { flexDirection: 'row', gap: '1px', paddin
 
             this.ui.rewindBtn.onclick = () => { this.showUI(true); if (!this.wasDragging) this.doSkip(-1); this.wasDragging = false; };
             this.ui.forwardBtn.onclick = () => { this.showUI(true); if (!this.wasDragging) this.doSkip(1); this.wasDragging = false; };
+
+            let isSettingsCloseMode = false;
+            let settingsJustTurnedToCross = false;
+            let settingsLongPressTimer = null;
+
+            const resetSettingsButton = () => {
+                if (!isSettingsCloseMode) return;
+                isSettingsCloseMode = false;
+                settingsJustTurnedToCross = false;
+                this.ui.settingsBtn.innerHTML = '';
+                this.ui.settingsBtn.appendChild(this.getIcon('settings'));
+                this.ui.settingsBtn.style.color = '';
+                this.ui.settingsBtn.style.background = '';
+            };
+
+            document.addEventListener('pointerdown', (e) => {
+                if (this.ui.settingsBtn && !this.ui.settingsBtn.contains(e.target) && isSettingsCloseMode) {
+                    resetSettingsButton();
+                }
+            }, { passive: true });
+
+            this.ui.settingsBtn.onpointerdown = (e) => {
+                clearTimeout(settingsLongPressTimer);
+                if (isSettingsCloseMode) return;
+                
+                settingsLongPressTimer = setTimeout(() => {
+                    if (this.dragData.isDragging || !this.ui.settingsBtn) return;
+                    isSettingsCloseMode = true;
+                    settingsJustTurnedToCross = true;
+                    this.vibrate(15);
+                    this.ui.settingsBtn.innerHTML = '';
+                    this.ui.settingsBtn.appendChild(this.getIcon('close'));
+                    this.ui.settingsBtn.style.color = '#ff3b30';
+                    this.ui.settingsBtn.style.background = 'rgba(255, 59, 48, 0.2)';
+                }, MobileVideoController.CONFIG.LONG_PRESS_DURATION_MS);
+            };
+
+            const clearSettingsTimer = () => clearTimeout(settingsLongPressTimer);
+            this.ui.settingsBtn.onpointerup = clearSettingsTimer;
+            this.ui.settingsBtn.onpointerleave = clearSettingsTimer;
+            this.ui.settingsBtn.onpointercancel = clearSettingsTimer;
+
             this.ui.settingsBtn.onclick = (e) => {
                 if (this.wasDragging) {
                     e.stopPropagation();
                     this.wasDragging = false;
+                    return;
+                }
+
+                if (settingsJustTurnedToCross) {
+                    settingsJustTurnedToCross = false;
+                    e.stopPropagation();
+                    return;
+                }
+
+                if (isSettingsCloseMode) {
+                    e.stopPropagation();
+                    this.ui.wrap.style.display = 'none';
+                    resetSettingsButton();
                     return;
                 }
 
@@ -474,24 +517,106 @@ Object.assign(this.ui.skipMenu.style, { flexDirection: 'row', gap: '1px', paddin
         }
 
         attachSpeedButtonListeners() {
+            let longPressActioned = false;
             this.ui.speedBtn.addEventListener("touchstart", e => e.stopPropagation(), { passive: true });
 
             this.ui.speedBtn.addEventListener("pointerdown", e => {
-                e.stopPropagation(); 
-                e.preventDefault();
+                e.stopPropagation(); e.preventDefault();
+                let toastPos = { top: '50%', left: '50%' };
+                if (this.activeVideo?.isConnected) {
+                    const vr = this.activeVideo.getBoundingClientRect();
+                    toastPos = { top: `${vr.top + vr.height / 2}px`, left: `${vr.left + vr.width / 2}px` };
+                }
+
+                this.sliderData = {
+                    startY: e.clientY,
+                    currentY: e.clientY,
+                    startRate: this.activeVideo ? this.activeVideo.playbackRate : 1.0,
+                    isSliding: false,
+                    toastPosition: toastPos
+                };
+                longPressActioned = false;
+                try { this.ui.speedBtn.setPointerCapture(e.pointerId); } catch (e) { }
+
+                this.timers.longPress = setTimeout(() => {
+                    if (this.activeVideo) {
+                        this.activeVideo.playbackRate = 1.0;
+                        this.showToast("Speed reset to 1.00x");
+                        this.vibrate(MobileVideoController.CONFIG.LONG_PRESS_VIBRATE_MS);
+                    }
+                    longPressActioned = true;
+                    this.sliderData.isSliding = false;
+                }, MobileVideoController.CONFIG.LONG_PRESS_DURATION_MS);
+            });
+
+            this.ui.speedBtn.addEventListener("pointermove", e => {
+                if (this.sliderData.startY == null || !this.activeVideo || longPressActioned) return;
+                e.stopPropagation(); e.preventDefault();
+
+                if (!this.sliderData.isSliding && Math.abs(e.clientY - this.sliderData.startY) > MobileVideoController.CONFIG.DRAG_THRESHOLD) {
+                    clearTimeout(this.timers.longPress);
+                    this.sliderData.isSliding = true;
+                    this.isSpeedSliding = true;
+                    this.showUI(true);
+                    if (this.activeVideo.paused) this.activeVideo.play();
+                    this.ui.speedBtn.style.transform = 'scale(1.1)';
+                    Object.assign(this.ui.speedToast.style, this.sliderData.toastPosition);
+                    this.vibrate();
+                }
+                if (this.sliderData.isSliding) {
+                    this.sliderData.currentY = e.clientY;
+                    if (!this.isTickingSlider) {
+                        requestAnimationFrame(() => this.updateSpeedSlider());
+                        this.isTickingSlider = true;
+                    }
+                }
             });
 
             this.ui.speedBtn.addEventListener("pointerup", e => {
                 e.stopPropagation();
-                if (this.ui.speedBtn.textContent === '▶︎' || this.ui.speedBtn.textContent === 'Replay') {
-                    this.handlePlayPauseClick();
-                } else {
-                    this.ensureSpeedMenu();
-                    this.toggleMenu(this.ui.speedMenu, this.ui.speedBtn);
+                clearTimeout(this.timers.longPress);
+                if (this.sliderData.isSliding && this.activeVideo) {
+                    this.saveSetting('last_rate', this.activeVideo.playbackRate.toString());
+                    this.updateSpeedDisplay();
+                } else if (!longPressActioned) {
+                    if (this.ui.speedBtn.textContent === '▶︎' || this.ui.speedBtn.textContent === 'Replay') {
+                        this.handlePlayPauseClick();
+                    } else {
+                        this.ensureSpeedMenu();
+                        this.toggleMenu(this.ui.speedMenu, this.ui.speedBtn);
+                    }
                 }
+                this.isSpeedSliding = false;
+                this.isTickingSlider = false;
+                this.sliderData = { isSliding: false };
+                this.ui.speedBtn.style.transform = 'scale(1)';
+                this.ui.speedBtn.classList.remove('snapped');
+                if (this.ui.speedToast) this.ui.speedToast.classList.remove('snapped');
+                this.hideSpeedToast();
                 clearTimeout(this.timers.hide);
                 this.timers.hide = setTimeout(() => this.hideUI(), MobileVideoController.CONFIG.UI_FADE_TIMEOUT);
             });
+        }
+
+        updateSpeedSlider() {
+            if (!this.sliderData.isSliding || !this.activeVideo) { this.isTickingSlider = false; return; }
+            this.showUI(true);
+            const dy = this.sliderData.startY - this.sliderData.currentY;
+            const delta = Math.sign(dy) * Math.pow(Math.abs(dy), MobileVideoController.CONFIG.SLIDER_POWER) * MobileVideoController.CONFIG.SLIDER_SENSITIVITY;
+            let newRate = this.clamp(this.sliderData.startRate + delta, 0.1, 16);
+            let isSnapped = false;
+            for (const point of MobileVideoController.CONFIG.DEFAULT_SNAP_POINTS) {
+                if (Math.abs(newRate - point) < MobileVideoController.CONFIG.SNAP_THRESHOLD) {
+                    newRate = point;
+                    isSnapped = true;
+                    break;
+                }
+            }
+            this.activeVideo.playbackRate = newRate;
+            this.showSpeedToast(`${newRate.toFixed(2)}x`, false);
+            this.ui.speedBtn.classList.toggle('snapped', isSnapped);
+            if (this.ui.speedToast) this.ui.speedToast.classList.toggle('snapped', isSnapped);
+            this.isTickingSlider = false;
         }
 
         attachPanelDragListeners() {
