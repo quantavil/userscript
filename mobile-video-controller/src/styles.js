@@ -11,7 +11,7 @@ const MVC_Styles = {
             .mvc-ui-wrap { position:absolute; left:0; top:0; z-index:2147483647; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; display:none; opacity:0; pointer-events:none; transition:opacity .5s ease; will-change:opacity, transform; transform:translate3d(0,0,0); contain:layout paint; }
 
             /* Card panel */
-            .mvc-panel { display:flex; align-items:center; gap:2px; background:rgba(20, 20, 20, 0.65); color:#fff; padding:1px 2px; backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,0.08); box-shadow:0 8px 24px rgba(0,0,0,0); border-radius:12px; touch-action:none!important; user-select:none; -webkit-user-select:none; pointer-events:auto; cursor:grab; width:fit-content; transform:translate3d(0,0,0); will-change:transform; }
+            .mvc-panel { display:flex; align-items:center; gap:2px; background:rgba(20, 20, 20, 0.65); color:#fff; padding:1px 2px; backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,0.08); border-radius:12px; touch-action:none!important; user-select:none; -webkit-user-select:none; pointer-events:auto; cursor:grab; width:fit-content; transform:translate3d(0,0,0); will-change:transform; }
 
             /* Buttons */
             .mvc-btn { appearance:none; border:0; border-radius:12px; width:40px; height:30px; padding:0; font-size:14px; font-weight:600; text-align:center; line-height:34px; pointer-events:auto; transition:transform .15s ease, background-color .2s; user-select:none; display:flex; align-items:center; justify-content:center; touch-action:none!important; background:rgba(255,255,255,0.08); }
@@ -51,7 +51,6 @@ const MVC_Styles = {
             .mvc-settings-slider { width:100%; flex-grow:1; accent-color:#34c759; height:4px; border-radius:2px; }
             .mvc-settings-btn { font-size:13px; padding:8px 14px; background:rgba(255,255,255,0.12); color:white; border:none; border-radius:8px; cursor:pointer; white-space:nowrap; transition:background .2s; }
             .mvc-settings-btn:active { background:rgba(255,255,255,0.25); }
-            .mvc-mute-btn { padding:6px; background:rgba(255,255,255,0.12); flex-shrink:0; }
             .mvc-settings-section-title { font-size:11px; font-weight:700; color:rgba(235,235,245,0.6); text-transform:uppercase; letter-spacing:0.5px; margin-top:16px; margin-bottom:4px; padding:0 16px; text-align:left; border-top:none; cursor:default; }
         `;
         document.head.appendChild(style);

@@ -145,7 +145,6 @@ const MVC_Controls = {
                 this.sliderData.isSliding = true;
                 this.isSpeedSliding       = true;
                 this.showUI(true);
-                if (this.activeVideo.paused) this.activeVideo.play();
                 this.ui.speedBtn.style.transform = 'scale(1.1)';
                 Object.assign(this.ui.speedToast.style, this.sliderData.toastPosition);
                 this.vibrate();
@@ -163,10 +162,10 @@ const MVC_Controls = {
             e.stopPropagation();
             clearTimeout(this.timers.longPress);
             if (this.sliderData.isSliding && this.activeVideo) {
-                this.saveSetting('last_rate', this.activeVideo.playbackRate.toString());
+                this.saveSetting('lastRate', this.activeVideo.playbackRate.toString());
                 this.updateSpeedDisplay();
             } else if (!longPressActioned) {
-                if (this.ui.speedBtn.textContent === '▶︎' || this.ui.speedBtn.textContent === 'Replay') {
+                if (this.activeVideo && (this.activeVideo.paused || this.activeVideo.ended)) {
                     this.handlePlayPauseClick();
                 } else {
                     this.ensureSpeedMenu();
@@ -242,6 +241,7 @@ const MVC_Controls = {
             const onDragEnd = () => {
                 window.removeEventListener('pointermove', onDragMove);
                 window.removeEventListener('pointerup',   onDragEnd);
+                window.removeEventListener('pointercancel', onDragEnd);
                 this.ui.panel.style.cursor = 'grab';
                 if (this.dragData.isDragging) { this.isManuallyPositioned = true; this.wasDragging = true; }
                 this.dragData.isDragging = false;
@@ -251,6 +251,7 @@ const MVC_Controls = {
 
             window.addEventListener('pointermove', onDragMove);
             window.addEventListener('pointerup',   onDragEnd, { once: true });
+            window.addEventListener('pointercancel', onDragEnd, { once: true });
         };
     },
 
@@ -264,8 +265,8 @@ const MVC_Controls = {
         let newPageY = this.dragData.startPageY + this.dragData.dy;
 
         const v = this.getViewportPageBounds();
-        newPageX = this.clamp(newPageX, v.leftPage + MVC_CONFIG.EDGE, v.leftPage + v.width  - this.ui.width  - MVC_CONFIG.EDGE);
-        newPageY = this.clamp(newPageY, v.topPage  + MVC_CONFIG.EDGE, v.topPage  + v.height - this.ui.height - MVC_CONFIG.EDGE);
+        newPageX = this.clamp(newPageX, v.leftPage + MVC_CONFIG.EDGE, v.leftPage + v.width  - this.ui.wrap.offsetWidth  - MVC_CONFIG.EDGE);
+        newPageY = this.clamp(newPageY, v.topPage  + MVC_CONFIG.EDGE, v.topPage  + v.height - this.ui.wrap.offsetHeight - MVC_CONFIG.EDGE);
 
         this.ui.wrap.style.left = `${Math.round(newPageX - parentLeftPage)}px`;
         this.ui.wrap.style.top  = `${Math.round(newPageY - parentTopPage)}px`;
@@ -292,7 +293,7 @@ const MVC_Controls = {
     showUI(force = false) {
         if (!this.ui.wrap || !this.activeVideo) return;
         if (!this.ui.wrap.isConnected) this.attachUIToVideo(this.activeVideo);
-        if (!force && (Date.now() - this.lastRealUserEvent >= 4500)) return;
+        if (!force && (Date.now() - this.lastRealUserEvent >= MVC_CONFIG.INTERACTION_TIMEOUT)) return;
 
         this.ui.wrap.style.opacity       = '1';
         this.ui.wrap.style.pointerEvents = 'auto';

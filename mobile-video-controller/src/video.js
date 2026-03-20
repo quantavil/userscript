@@ -9,8 +9,9 @@ const MVC_Video = {
             catch (e) { return d; }
         };
         this.settings = {
-            skipSeconds:  getStored('mvc_skip_seconds',    10),
-            defaultSpeed: getStored('mvc_default_speed',   1.0),
+            skipSeconds:  getStored('mvc_skipSeconds',    10),
+            defaultSpeed: getStored('mvc_defaultSpeed',   1.0),
+            lastRate:     parseFloat(getStored('mvc_lastRate', '"1.0"')) || 1.0,
             transform:    getStored('mvc_transform',       { ratio: 'fit', zoom: 1, rotation: 0 }),
             filters:      getStored('mvc_filters',         {})
         };
@@ -91,16 +92,15 @@ const MVC_Video = {
     // ── UI ↔ video attachment ───────────────────────────────────────────────
     attachUIToVideo(video) {
         this.ui.wrap.style.visibility = 'hidden';
+        this.ui.wrap.style.position = 'absolute';
         const fsEl       = document.fullscreenElement || document.webkitFullscreenElement;
 
         let parent = fsEl;
         if (parent && parent.isConnected) {
             if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
             parent.appendChild(this.ui.wrap);
-            this.ui.wrap.style.position = 'absolute';
         } else {
             document.body.appendChild(this.ui.wrap);
-            this.ui.wrap.style.position = 'absolute';
         }
 
         this.ui.wrap.style.display  = 'block';
@@ -116,66 +116,55 @@ const MVC_Video = {
     },
 
     // ── Positioning ─────────────────────────────────────────────────────────
+    _applyPagePosition(pageX, pageY, ignoreYClamp = false) {
+        const v = this.getViewportPageBounds();
+        const uiWidth = this.ui.wrap.offsetWidth;
+        const uiHeight = this.ui.wrap.offsetHeight;
+
+        const minPageX = v.leftPage + MVC_CONFIG.EDGE;
+        const maxPageX = v.leftPage + v.width - uiWidth - MVC_CONFIG.EDGE;
+        const minPageY = v.topPage + MVC_CONFIG.EDGE;
+        const maxPageY = v.topPage + v.height - uiHeight - MVC_CONFIG.EDGE;
+
+        const clampedLeft = this.clamp(pageX, minPageX, maxPageX);
+        const clampedTop = ignoreYClamp ? pageY : this.clamp(pageY, minPageY, maxPageY);
+
+        const parent = this.ui.wrap.parentElement || document.body;
+        const parentRect = parent.getBoundingClientRect();
+        const parentLeftPage = parentRect.left + window.scrollX;
+        const parentTopPage = parentRect.top + window.scrollY;
+
+        this.ui.wrap.style.left = `${Math.round(clampedLeft - parentLeftPage)}px`;
+        this.ui.wrap.style.top = `${Math.round(clampedTop - parentTopPage)}px`;
+        this.ui.wrap.style.right = 'auto';
+        this.ui.wrap.style.bottom = 'auto';
+    },
+
     positionOnVideo() {
         if (!this.activeVideo || !this.ui.wrap || this.isManuallyPositioned || this.dragData?.isDragging) return;
         this.ui.wrap.style.transform = '';
 
-        const vr           = this.activeVideo.getBoundingClientRect();
-        const layoutWidth  = this.activeVideo.clientWidth;
+        const vr = this.activeVideo.getBoundingClientRect();
+        const layoutWidth = this.activeVideo.clientWidth;
         const layoutHeight = this.activeVideo.clientHeight;
-        const zoom         = this.settings.transform.zoom;
-        const offsetX      = (layoutWidth  * (zoom - 1)) / 2;
-        const offsetY      = (layoutHeight * (zoom - 1)) / 2;
+        const zoom = this.settings.transform.zoom;
+        const offsetX = (layoutWidth * (zoom - 1)) / 2;
+        const offsetY = (layoutHeight * (zoom - 1)) / 2;
 
-        const desiredLeftPage = vr.left + offsetX + window.scrollX + layoutWidth  - this.ui.width  - MVC_CONFIG.DEFAULT_RIGHT_OFFSET;
-        let   desiredTopPage  = vr.top  + offsetY + window.scrollY + layoutHeight - this.ui.height - 10;
-        if (layoutHeight > window.innerHeight * 0.7 && vr.bottom > window.innerHeight - 150) desiredTopPage -= 82;
+        const uiWidth = this.ui.wrap.offsetWidth;
+        const uiHeight = this.ui.wrap.offsetHeight;
 
-        const v        = this.getViewportPageBounds();
-        const minPageX = v.leftPage + MVC_CONFIG.EDGE;
-        const maxPageX = v.leftPage + v.width  - this.ui.width  - MVC_CONFIG.EDGE;
-        const minPageY = v.topPage  + MVC_CONFIG.EDGE;
-        const maxPageY = v.topPage  + v.height - this.ui.height - MVC_CONFIG.EDGE;
+        const desiredLeftPage = vr.left + offsetX + window.scrollX + layoutWidth - uiWidth - MVC_CONFIG.DEFAULT_RIGHT_OFFSET;
+        let desiredTopPage = vr.top + offsetY + window.scrollY + layoutHeight - uiHeight - 10;
+        if (layoutHeight > window.innerHeight * 0.7 && vr.bottom > window.innerHeight - 150) desiredTopPage -= MVC_CONFIG.UI_TALL_VIDEO_OFFSET;
 
-        const clampedLeftPage = this.clamp(desiredLeftPage, minPageX, maxPageX);
-        const clampedTopPage  = this.isScrolling
-            ? desiredTopPage
-            : this.clamp(desiredTopPage, minPageY, maxPageY);
-
-        const parent        = this.ui.wrap.parentElement || document.body;
-        const parentRect    = parent.getBoundingClientRect();
-        const parentLeftPage = parentRect.left + window.scrollX;
-        const parentTopPage  = parentRect.top  + window.scrollY;
-
-        this.ui.wrap.style.left   = `${Math.round(clampedLeftPage - parentLeftPage)}px`;
-        this.ui.wrap.style.top    = `${Math.round(clampedTopPage  - parentTopPage)}px`;
-        this.ui.wrap.style.right  = 'auto';
-        this.ui.wrap.style.bottom = 'auto';
+        this._applyPagePosition(desiredLeftPage, desiredTopPage, this.isScrolling);
     },
 
     ensureUIInViewport() {
-        if (!this.ui.wrap || !this.ui.width || !this.ui.height) return;
-        const v      = this.getViewportPageBounds();
+        if (!this.ui.wrap || !this.ui.wrap.offsetWidth || !this.ui.wrap.offsetHeight) return;
         const uiRect = this.ui.wrap.getBoundingClientRect();
-
-        const currentPageLeft = uiRect.left + window.scrollX;
-        const currentPageTop  = uiRect.top  + window.scrollY;
-
-        const minPageX = v.leftPage + MVC_CONFIG.EDGE;
-        const maxPageX = v.leftPage + v.width  - this.ui.width  - MVC_CONFIG.EDGE;
-        const minPageY = v.topPage  + MVC_CONFIG.EDGE;
-        const maxPageY = v.topPage  + v.height - this.ui.height - MVC_CONFIG.EDGE;
-
-        const clampedLeftPage = this.clamp(currentPageLeft, Math.min(minPageX, maxPageX), Math.max(minPageX, maxPageX));
-        const clampedTopPage  = this.clamp(currentPageTop,  Math.min(minPageY, maxPageY), Math.max(minPageY, maxPageY));
-
-        const parent         = this.ui.wrap.parentElement || document.body;
-        const parentRect     = parent.getBoundingClientRect();
-        const parentLeftPage = parentRect.left + window.scrollX;
-        const parentTopPage  = parentRect.top  + window.scrollY;
-
-        this.ui.wrap.style.left = `${Math.round(clampedLeftPage - parentLeftPage)}px`;
-        this.ui.wrap.style.top  = `${Math.round(clampedTopPage  - parentTopPage)}px`;
+        this._applyPagePosition(uiRect.left + window.scrollX, uiRect.top + window.scrollY);
     },
 
     throttledPositionOnVideo() {
@@ -302,21 +291,26 @@ const MVC_Video = {
     },
 
     // ── Playback actions ────────────────────────────────────────────────────
+    setPlaybackRate(rate) {
+        if (!this.activeVideo) return;
+        this.activeVideo.playbackRate = rate;
+        this.saveSetting('lastRate', String(rate));
+        this.updateSpeedDisplay();
+    },
+
     onVideoEnded() {
         if (this.activeVideo) {
-            this.activeVideo.playbackRate = this.settings.defaultSpeed;
-            this.saveSetting('last_rate', String(this.settings.defaultSpeed));
-            this.updateSpeedDisplay();
+            this.setPlaybackRate(this.settings.defaultSpeed);
         }
     },
 
     handlePlayPauseClick() {
         if (!this.activeVideo) return;
         if (this.activeVideo.paused || this.activeVideo.ended) {
-            this.activeVideo.playbackRate = parseFloat(localStorage.getItem('mvc_last_rate')) || this.settings.defaultSpeed;
+            this.activeVideo.playbackRate = this.settings.lastRate || this.settings.defaultSpeed;
             this.activeVideo.play().catch(() => {});
         } else {
-            this.saveSetting('last_rate', this.activeVideo.playbackRate.toString());
+            this.saveSetting('lastRate', String(this.activeVideo.playbackRate));
             this.activeVideo.pause();
         }
     },

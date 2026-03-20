@@ -16,10 +16,6 @@ const MVC_Utils = {
 
     isPlaying(v) { return v && !v.paused && !v.ended && v.readyState > 2; },
 
-    formatTime(sec) {
-        return new Date(sec * 1000).toISOString().slice(14, -5);
-    },
-
     vibrate(ms = 10) {
         if (navigator.vibrate) try { navigator.vibrate(ms); } catch (e) {}
     },

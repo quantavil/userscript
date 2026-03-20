@@ -78,9 +78,14 @@
     }
 
     // Mix all module methods into the prototype
-    [MVC_Styles, MVC_Utils, MVC_UI, MVC_Video, MVC_Controls].forEach(mod =>
-        Object.assign(MobileVideoController.prototype, mod)
-    );
+    const allKeys = new Set();
+    [MVC_Styles, MVC_Utils, MVC_UI, MVC_Video, MVC_Controls].forEach(mod => {
+        Object.keys(mod).forEach(k => {
+            if (allKeys.has(k)) console.warn(`[MVC] Method collision detected: ${k}`);
+            allKeys.add(k);
+        });
+        Object.assign(MobileVideoController.prototype, mod);
+    });
 
     new MobileVideoController();
 

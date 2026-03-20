@@ -6,8 +6,10 @@ const MVC_UI = {
     createEl(tag, className, props = {}) {
         const el = document.createElement(tag);
         if (className) el.className = className;
-        Object.assign(el, props);
-        if (props.style) Object.assign(el.style, props.style);
+        for (const [k, v] of Object.entries(props)) {
+            if (k === 'style') Object.assign(el.style, v);
+            else el[k] = v;
+        }
         return el;
     },
 
@@ -63,16 +65,6 @@ const MVC_UI = {
 
         this.ui.panel.append(this.ui.rewindBtn, this.ui.speedBtn, this.ui.forwardBtn, this.ui.settingsBtn);
         this.ui.wrap.append(this.ui.panel);
-
-        document.body.appendChild(this.ui.wrap);
-        this.ui.wrap.style.visibility = 'hidden';
-        this.ui.wrap.style.display    = 'block';
-        const r = this.ui.wrap.getBoundingClientRect();
-        this.ui.width  = r.width;
-        this.ui.height = r.height;
-        this.ui.wrap.style.visibility = '';
-        this.ui.wrap.style.display    = 'none';
-        document.body.removeChild(this.ui.wrap);
     },
 
     // ── Lazy menu builders ──────────────────────────────────────────────────
@@ -118,11 +110,9 @@ const MVC_UI = {
                 const spv = Number(opt.dataset.sp);
                 if (spv === 0) this.handlePlayPauseClick();
                 else {
-                    this.activeVideo.playbackRate = spv;
-                    this.saveSetting('last_rate', String(spv));
+                    this.setPlaybackRate(spv);
                     if (this.activeVideo.paused) this.activeVideo.play();
                 }
-                this.updateSpeedDisplay();
                 this.hideAllMenus();
             };
             return opt;
@@ -131,22 +121,24 @@ const MVC_UI = {
         MVC_CONFIG.DEFAULT_SPEEDS.forEach(sp => this.ui.speedMenu.appendChild(makeOpt(sp)));
 
         const customOpt = this.createEl('div', 'mvc-menu-opt', {
-            textContent: '✎',
             style: { color: '#c5a5ff', fontWeight: '600' }
         });
-        customOpt.onclick = () => {
+        const input = this.createEl('input', '', {
+            type: 'number', step: 0.05, placeholder: 'Custom',
+            style: { width: '80%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'center', outline: 'none', fontSize: '15px' }
+        });
+        input.onclick   = e => e.stopPropagation();
+        input.onkeydown = e => e.stopPropagation();
+        input.onchange  = () => {
             if (!this.activeVideo) return this.hideAllMenus();
-            const choice = prompt('Enter custom playback speed:', this.activeVideo.playbackRate.toFixed(2));
-            this.hideAllMenus();
-            if (choice === null) return;
-            const newRate = parseFloat(choice);
+            const newRate = parseFloat(input.value);
             if (!isNaN(newRate) && newRate > 0 && newRate <= 16) {
-                this.activeVideo.playbackRate = newRate;
-                this.saveSetting('last_rate', String(newRate));
+                this.setPlaybackRate(newRate);
                 if (this.activeVideo.paused) this.activeVideo.play();
-                this.updateSpeedDisplay();
             } else this.showToast('Invalid speed entered.');
+            this.hideAllMenus();
         };
+        customOpt.appendChild(input);
         this.ui.speedMenu.appendChild(customOpt);
         document.body.appendChild(this.ui.speedMenu);
     },
@@ -300,15 +292,13 @@ const MVC_UI = {
     },
 
     toggleMenu(menuEl, anchorEl) {
-        if (getComputedStyle(menuEl).display !== 'none') {
-            this.hideAllMenus();
-        } else {
-            this.hideAllMenus();
-            this.placeMenu(menuEl, anchorEl);
-            menuEl.style.display = 'flex';
-            this.showBackdrop();
-            clearTimeout(this.timers.hide);
-        }
+        const isOpen = getComputedStyle(menuEl).display !== 'none';
+        this.hideAllMenus();
+        if (isOpen) return;
+        this.placeMenu(menuEl, anchorEl);
+        menuEl.style.display = 'flex';
+        this.showBackdrop();
+        clearTimeout(this.timers.hide);
     },
 
     showBackdrop() {
