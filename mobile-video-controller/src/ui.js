@@ -244,20 +244,6 @@ const MVC_UI = {
 
         // Playback & Audio section
         addSection('Playback & Audio');
-        const settingsRow1  = this.createEl('div', 'mvc-menu-opt mvc-settings-row');
-        const autoplayBtn   = this.createEl('button', 'mvc-settings-btn', {});
-        const autoplayModes = ['off', 'next', 'loop'];
-        const updateAutoplayText = () => {
-            autoplayBtn.textContent = `Autoplay: ${this.settings.autoplayMode.charAt(0).toUpperCase() + this.settings.autoplayMode.slice(1)}`;
-        };
-        autoplayBtn.onclick = () => {
-            const idx = autoplayModes.indexOf(this.settings.autoplayMode);
-            this.saveSetting('autoplayMode', autoplayModes[(idx + 1) % autoplayModes.length]);
-            updateAutoplayText();
-        };
-        updateAutoplayText();
-        settingsRow1.append(autoplayBtn);
-        this.ui.settingsMenu.appendChild(settingsRow1);
 
         const settingsRow2 = this.createEl('div', 'mvc-menu-opt mvc-settings-row');
         const speedLabel   = this.createEl('label', 'mvc-settings-label', { textContent: 'Default Speed:' });

@@ -6,24 +6,21 @@ A powerful, mobile-friendly userscript that adds a persistent "Card" UI to web v
 
 - **Media Card UI**: A sleek, floating control panel that stays in view and can be manually dragged to any position.
 - **Advanced Playback Speed**:
-  - Slide vertically on the speed button for high-precision speed adjustment (0.1x to 16x).
+  - Slide vertically on the speed button for high-precision speed adjustment.
   - Snap points for common speeds (0.25x, 0.5x, 1x, etc.).
   - Long press to quickly reset to 1.0x.
 - **Enhanced Navigation**:
   - Customizable skip durations for Rewind and Forward.
   - Long press skip buttons for a quick-access skip menu.
-- **A-B Looping**: Easily set start (A) and end (B) points to loop specific sections of a video.
-- **Volume Booster**: Built-in audio gain to boost volume up to 200%.
-- **Smart Features**:
-  - **Self-Correction**: Prevents videos from being hijacked or paused by certain sites.
-  - **Autoplay Modes**: Options for 'Off', 'Next' (YouTube focus), or 'Loop' current video.
+- **Video Adjustments**: Access Zoom, Pan, and Filters (Brightness, Contrast, Saturation) via the Settings menu.
+- **Smart UI Controls**: Long press the settings icon to transform it into a close button to quickly hide the controller.
 - **Battery & Performance Optimized**: Uses `IntersectionObserver` and `ResizeObserver` to minimize CPU usage and only active when videos are in view.
 - **Haptic Feedback**: Subtle vibrations for touch interactions (where supported).
 
 ## 🛠 Installation
 
 1. Install a userscript manager like [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/).
-2. Copy the contents of `main.js` and create a new script in your manager, or use the GreasyFork install link.
+2. Copy the contents of `dist/main.js` and create a new script in your manager.
 
 ## 📜 Credits
 

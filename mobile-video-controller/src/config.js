@@ -28,9 +28,3 @@ const MVC_CONFIG = {
     STORAGE_DEBOUNCE_MS: 2000
 };
 
-const MVC_SITE_CONFIGS = {
-    'm.youtube.com':   { useDefaultPositioning: false, parentSelector: '#player',       observerRootSelector: '#page-manager' },
-    'www.youtube.com': { useDefaultPositioning: false, parentSelector: '#movie_player', observerRootSelector: 'ytd-page-manager' },
-    'bongobd.com':     { attachToParent: true },
-    'www.bongobd.com': { attachToParent: true }
-};

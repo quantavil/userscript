@@ -10,7 +10,6 @@ const MVC_Video = {
         };
         this.settings = {
             skipSeconds:  getStored('mvc_skip_seconds',    10),
-            autoplayMode: getStored('mvc_autoplayMode',    'off'),
             defaultSpeed: getStored('mvc_default_speed',   1.0),
             transform:    getStored('mvc_transform',       { ratio: 'fit', zoom: 1, rotation: 0 }),
             filters:      getStored('mvc_filters',         {})
@@ -93,12 +92,8 @@ const MVC_Video = {
     attachUIToVideo(video) {
         this.ui.wrap.style.visibility = 'hidden';
         const fsEl       = document.fullscreenElement || document.webkitFullscreenElement;
-        const hostname   = window.location.hostname.replace(/^www\./, '');
-        const siteConfig = MVC_SITE_CONFIGS[hostname] || MVC_SITE_CONFIGS[window.location.hostname];
 
         let parent = fsEl;
-        if (!parent && siteConfig?.parentSelector) parent = video.closest(siteConfig.parentSelector);
-        if (siteConfig?.attachToParent)            parent = video.parentElement;
         if (parent && parent.isConnected) {
             if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
             parent.appendChild(this.ui.wrap);
@@ -225,12 +220,8 @@ const MVC_Video = {
         );
         document.querySelectorAll('video').forEach(v => this.intersectionObserver.observe(v));
 
-        const config       = MVC_SITE_CONFIGS[window.location.hostname];
-        const observerRoot = config?.observerRootSelector
-            ? document.querySelector(config.observerRootSelector)
-            : document.body;
         this.mutationObserver = new MutationObserver(m => this.handleMutation(m));
-        const root = observerRoot || document.body || document.documentElement;
+        const root = document.body || document.documentElement;
         this.mutationObserver.observe(root, { childList: true, subtree: true });
     },
 
@@ -296,9 +287,6 @@ const MVC_Video = {
     handleEvent(event) {
         switch (event.type) {
             case 'ended':
-                if (this.settings.autoplayMode === 'loop') this.activeVideo?.play();
-                else if (this.settings.autoplayMode === 'next' && window.location.hostname.includes('youtube.com'))
-                    document.querySelector('.ytp-next-button')?.click();
                 this.onVideoEnded();
                 break;
             case 'play':
@@ -371,16 +359,8 @@ const MVC_Video = {
     guardianCheck() {
         if (!this.activeVideo || !this.ui.wrap) return;
         const fsEl         = document.fullscreenElement || document.webkitFullscreenElement;
-        const hostname     = window.location.hostname;
-        const isSimpleSite = MVC_SITE_CONFIGS[hostname] && !MVC_SITE_CONFIGS[hostname].useDefaultPositioning;
-        const expectedParent = fsEl ? fsEl : (isSimpleSite ? this.findParentForVideo(this.activeVideo) : document.body);
+        const expectedParent = fsEl ? fsEl : document.body;
         if (expectedParent && (!this.ui.wrap.isConnected || this.ui.wrap.parentElement !== expectedParent))
             this.attachUIToVideo(this.activeVideo);
-    },
-
-    findParentForVideo(video) {
-        const config = MVC_SITE_CONFIGS[window.location.hostname];
-        if (config?.parentSelector) return video.closest(config.parentSelector) || video.parentElement;
-        return video.parentElement;
     }
 };

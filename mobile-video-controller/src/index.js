@@ -3,9 +3,6 @@
 // @namespace    https://github.com/quantavil/userscript/mobile-video-controller
 // @version      1.1.0
 // @description  User-friendly "Card" UI, persistent skip menu, and battery optimized.
-// @match        *://*.youtube.com/*
-// @match        *://*.facebook.com/*
-// @match        *://*.bongobd.com/*
 // @match        *://*/*
 // @grant        none
 // @license      MIT
@@ -17,7 +14,7 @@
 
     // ── Module sources are concatenated here by the build step. ─────────────
     // In source form each src/*.js file defines its exports on globals:
-    //   MVC_CONFIG, MVC_SITE_CONFIGS  (src/config.js)
+    //   MVC_CONFIG                    (src/config.js)
     //   MVC_Styles                    (src/styles.js)
     //   MVC_Utils                     (src/utils.js)
     //   MVC_UI                        (src/ui.js)
@@ -28,7 +25,6 @@
     class MobileVideoController {
         // Static config comes from src/config.js
         static CONFIG       = MVC_CONFIG;
-        static SITE_CONFIGS = MVC_SITE_CONFIGS;
 
         constructor() {
             this.activeVideo   = null;
