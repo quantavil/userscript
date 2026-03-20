@@ -15,11 +15,12 @@ const MVC_Styles = {
             .mvc-panel::before { content:""; position:absolute; inset:-2.5rem; z-index:-1; background:rgba(0, 0, 0, 0); }
 
             /* Buttons */
-            .mvc-btn { appearance:none; border:0; border-radius:10px; width:38px; height:32px; padding:0; font-size:13px; font-weight:600; text-align:center; line-height:1; pointer-events:auto; transition:transform .2s cubic-bezier(0.32, 0.72, 0, 1), background-color .15s ease, box-shadow .15s ease; user-select:none; display:flex; align-items:center; justify-content:center; touch-action:none!important; background:rgba(255,255,255,0.04); color:rgba(255,255,255,0.85); box-shadow:inset 0 1px 1px rgba(255,255,255,0.05); }
+            .mvc-btn { appearance:none; border:0; border-radius:10px; width:38px; height:32px; padding:0; font-size:13px; font-weight:600; text-align:center; line-height:1; pointer-events:auto; transition:transform .2s cubic-bezier(0.32, 0.72, 0, 1), background-color .15s ease, box-shadow .15s ease; user-select:none; display:flex; align-items:center; justify-content:center; touch-action:none!important; background:rgba(255,255,255,0.04)!important; color:rgba(255,255,255,0.85)!important; box-shadow:inset 0 1px 1px rgba(255,255,255,0.05); }
+            .mvc-btn svg { fill:currentColor!important; }
             .mvc-btn:active { transform:scale(0.96); background:rgba(255,255,255,0.12); box-shadow:inset 0 2px 6px rgba(0,0,0,0.2); }
 
             /* Speed pill */
-            .mvc-btn-speed { width:auto; padding:0 8px; border-radius:10px; min-width:40px; color:#40c4ff; font-size:12px; font-weight:700; border:1px solid rgba(64,196,255,0.25); background:rgba(64,196,255,0.1); box-shadow:inset 0 1px 1px rgba(255,255,255,0.1); }
+            .mvc-btn-speed { width:auto; padding:0 8px; border-radius:10px; min-width:40px; color:#40c4ff!important; font-size:12px; font-weight:700; border:1px solid rgba(64,196,255,0.25)!important; background:rgba(64,196,255,0.1)!important; box-shadow:inset 0 1px 1px rgba(255,255,255,0.1); }
 
             /* Speed menu list */
             .mvc-speed-list { padding:0 !important; overflow:hidden; }
@@ -27,8 +28,8 @@ const MVC_Styles = {
             .mvc-speed-list .mvc-menu-opt:last-child { border-bottom:none; }
 
             /* Colour accents */
-            .mvc-btn-rewind   { color:rgba(255,100,100,0.9); }
-            .mvc-btn-forward  { color:rgba(105,240,174,0.9); }
+            .mvc-btn-rewind   { color:rgba(255,100,100,0.9)!important; }
+            .mvc-btn-forward  { color:rgba(105,240,174,0.9)!important; }
             .mvc-btn.snapped  { color:#fff!important; border-color:rgba(255,255,255,0.4); background:rgba(255,255,255,0.2); text-shadow:0 0 8px rgba(255,255,255,0.6); box-shadow:inset 0 1px 3px rgba(255,255,255,0.3); }
 
             .mvc-skip-btn { appearance:none; border:0; border-radius:12px; padding:10px 18px; font-size:15px; font-weight:600; color:#fff; background:rgba(255,255,255,0.1); line-height:1.2; user-select:none; transition:background 0.2s; }

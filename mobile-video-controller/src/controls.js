@@ -294,7 +294,7 @@ const MVC_Controls = {
 
     // ── UI visibility ────────────────────────────────────────────────────────
     showUI(force = false) {
-        if (!this.ui.wrap || !this.activeVideo) return;
+        if (!this.ui.wrap || !this.activeVideo || this.inLongPressGesture) return;
         if (!this.ui.wrap.isConnected) this.attachUIToVideo(this.activeVideo);
         if (!force && (Date.now() - this.lastRealUserEvent >= MVC_CONFIG.INTERACTION_TIMEOUT)) return;
 

@@ -1,40 +1,56 @@
 // ==UserScript==
 // @name         Greasy Fork Filter
 // @namespace    https://github.com/quantavil/userscript
-// @version      1.1
-// @description  Filter scripts by installs and keywords — with import/export
+// @version      1.4
+// @description  Native Greasy Fork install filter sync + live keyword blocking
 // @match        https://greasyfork.org/*/scripts*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @license      MIT
 // ==/UserScript==
 
-(function () {
+(() => {
   'use strict';
 
-  // ─── State ────────────────────────────────────────────────────────────────
-  const DEFAULTS = { daily: 0, total: 0, keywords: [] };
-
-  const S = {
-    daily:    GM_getValue('daily',    DEFAULTS.daily),
-    total:    GM_getValue('total',    DEFAULTS.total),
-    keywords: GM_getValue('keywords', DEFAULTS.keywords),
-    open:     false,
+  // ─── Config ───────────────────────────────────────────────────────────────
+  const FIELDS = {
+    daily: { label: 'Daily installs', param: 'daily_installs', data: 'scriptDailyInstalls' },
+    total: { label: 'Total installs', param: 'total_installs', data: 'scriptTotalInstalls' },
   };
 
-  const save = (k, v) => { S[k] = v; GM_setValue(k, v); };
-  const resetAll = () => Object.entries(DEFAULTS).forEach(([k, v]) => save(k, v));
+  const DEFAULTS = { keywords: [] };
+  for (const key of Object.keys(FIELDS)) {
+    DEFAULTS[key] = 0;
+    DEFAULTS[`${key}Op`] = 'gt';
+  }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
-  const debounce = (fn, ms) => {
+  const validOp = v => v === 'gt' || v === 'lt';
+  const toNum = v => Math.max(0, parseInt(v, 10) || 0);
+  const cleanKeywords = list => [...new Set(
+    (Array.isArray(list) ? list : [])
+      .map(v => String(v).trim().toLowerCase())
+      .filter(Boolean)
+  )];
+
+  const debounce = (fn, ms = 120) => {
     let t;
-    return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
   };
 
   const el = (tag, attrs = {}, ...kids) => {
-    const n = Object.assign(document.createElement(tag), attrs);
-    kids.forEach(c => n.append(c));
-    return n;
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'dataset' && v) Object.assign(node.dataset, v);
+      else if (k === 'style' && typeof v === 'string') node.style.cssText = v;
+      else if (k in node) node[k] = v;
+      else node.setAttribute(k, v);
+    }
+    kids.flat().forEach(k => k != null && node.append(k));
+    return node;
   };
 
   const toast = msg => {
@@ -42,6 +58,41 @@
     document.body.append(t);
     setTimeout(() => t.remove(), 2000);
   };
+
+  // ─── State ────────────────────────────────────────────────────────────────
+  const S = { open: false };
+  for (const [k, v] of Object.entries(DEFAULTS)) S[k] = GM_getValue(k, v);
+
+  S.keywords = cleanKeywords(S.keywords);
+  for (const key of Object.keys(FIELDS)) {
+    S[key] = toNum(S[key]);
+    S[`${key}Op`] = validOp(S[`${key}Op`]) ? S[`${key}Op`] : 'gt';
+  }
+
+  const save = (k, v) => {
+    S[k] = v;
+    GM_setValue(k, v);
+  };
+
+  const resetAll = () => {
+    for (const [k, v] of Object.entries(DEFAULTS)) {
+      save(k, Array.isArray(v) ? [] : v);
+    }
+  };
+
+  const exportState = () =>
+    Object.fromEntries(Object.keys(DEFAULTS).map(k => [k, S[k]]));
+
+  // If current URL has native GF filter params, reflect them into local state.
+  (() => {
+    const p = new URL(location.href).searchParams;
+    for (const [key, field] of Object.entries(FIELDS)) {
+      const value = p.get(field.param);
+      const op = p.get(`${field.param}_operator`);
+      if (value !== null && value !== '') save(key, toNum(value));
+      if (validOp(op)) save(`${key}Op`, op);
+    }
+  })();
 
   // ─── CSS ──────────────────────────────────────────────────────────────────
   document.head.append(el('style', { textContent: `
@@ -59,7 +110,7 @@
 
     #gf-panel {
       position: fixed; bottom: 78px; right: 28px; z-index: 99999;
-      width: 276px; background: #fff;
+      width: 296px; background: #fff;
       border: 1px solid rgba(0,0,0,0.09); border-radius: 14px;
       box-shadow: 0 12px 40px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.05);
       font: 13px/1.45 -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
@@ -82,21 +133,52 @@
 
     .gf-row {
       display: flex; align-items: center;
-      justify-content: space-between; gap: 10px; margin-bottom: 7px;
+      justify-content: space-between; gap: 10px; margin-bottom: 8px;
     }
     .gf-row:last-child { margin-bottom: 0; }
     .gf-row-text { font-size: 13px; color: #3a3a3a; flex: 1; }
 
+    .gf-control { display: flex; align-items: center; gap: 6px; }
+
+    .gf-op-wrap { position: relative; }
+    .gf-op-wrap::after {
+      content: '▾';
+      position: absolute; right: 9px; top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none; color: #777; font-size: 10px;
+    }
+
+    .gf-op,
     .gf-num {
-      width: 70px; height: 28px; padding: 0 9px;
-      border: 1px solid rgba(0,0,0,0.13); border-radius: 7px;
-      background: #f5f5f7; color: #1a1a1a;
-      font-size: 13px; text-align: right; outline: none;
-      transition: border-color .15s, box-shadow .15s;
+      height: 28px; border: 1px solid rgba(0,0,0,0.13);
+      border-radius: 7px; background: #f5f5f7; color: #1a1a1a;
+      font-size: 13px; outline: none;
+      transition: border-color .15s, box-shadow .15s, background .15s;
+      box-sizing: border-box;
+    }
+
+    .gf-op {
+      width: 58px; padding: 0 25px 0 9px;
+      appearance: none; -webkit-appearance: none; -moz-appearance: none;
+      cursor: pointer;
+    }
+
+    .gf-num {
+      width: 78px; padding: 0 9px; text-align: right;
       -moz-appearance: textfield;
     }
     .gf-num::-webkit-inner-spin-button { -webkit-appearance: none; }
-    .gf-num:focus { border-color: #888; box-shadow: 0 0 0 3px rgba(0,0,0,0.07); }
+
+    .gf-op:focus,
+    .gf-num:focus,
+    .gf-kw-input:focus {
+      border-color: #888; box-shadow: 0 0 0 3px rgba(0,0,0,0.07);
+    }
+
+    .gf-note {
+      margin-top: 10px; font-size: 11.5px; line-height: 1.45;
+      color: #8a8a8a;
+    }
 
     .gf-kw-row { display: flex; gap: 6px; margin-bottom: 9px; }
     .gf-kw-input {
@@ -105,18 +187,28 @@
       background: #f5f5f7; color: #1a1a1a;
       font-size: 13px; outline: none;
       transition: border-color .15s, box-shadow .15s;
+      box-sizing: border-box;
     }
-    .gf-kw-input:focus { border-color: #888; box-shadow: 0 0 0 3px rgba(0,0,0,0.07); }
 
-    .gf-add-btn {
+    .gf-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .gf-btn {
       height: 28px; padding: 0 11px;
-      border: 1px solid rgba(0,0,0,0.15); border-radius: 7px;
-      background: #1a1a1a; color: #f0f0f0;
+      border: 1px solid rgba(0,0,0,0.13); border-radius: 7px;
+      background: #f5f5f7; color: #3a3a3a;
       font-size: 12px; font-weight: 500; cursor: pointer;
-      transition: background .15s; white-space: nowrap;
+      transition: background .15s, border-color .15s, opacity .15s;
+      white-space: nowrap;
     }
-    .gf-add-btn:hover { background: #333; }
-    .gf-add-btn:disabled {
+    .gf-btn:hover { background: #e5e5e7; border-color: rgba(0,0,0,0.2); }
+
+    .gf-btn.primary {
+      background: #1a1a1a; color: #f0f0f0;
+      border-color: rgba(0,0,0,0.15);
+    }
+    .gf-btn.primary:hover { background: #333; }
+
+    .gf-btn:disabled {
       background: #e5e5e7; color: #bbb;
       border-color: transparent; cursor: default;
     }
@@ -143,15 +235,21 @@
     }
     .gf-tag-x:hover { background: #e63946; color: #fff; }
 
-    .gf-io-row { display: flex; gap: 6px; margin-top: 11px; }
-    .gf-io-btn {
-      flex: 1; height: 28px; border-radius: 7px;
-      border: 1px solid rgba(0,0,0,0.13);
-      background: #f5f5f7; color: #3a3a3a;
-      font-size: 12px; font-weight: 500; cursor: pointer;
-      transition: background .15s, border-color .15s;
+    .gf-footer {
+      padding: 9px 15px; display: flex;
+      align-items: center; justify-content: space-between;
+      gap: 12px;
     }
-    .gf-io-btn:hover { background: #e5e5e7; border-color: rgba(0,0,0,0.2); }
+    .gf-stat { font-size: 12px; color: #999; }
+    .gf-stat b { color: #1a1a1a; font-weight: 600; }
+
+    .gf-clear {
+      font-size: 12px; color: #e63946; background: none;
+      border: none; cursor: pointer; padding: 0;
+      opacity: .75; transition: opacity .12s;
+      white-space: nowrap;
+    }
+    .gf-clear:hover { opacity: 1; }
 
     .gf-toast {
       position: fixed; bottom: 78px; right: 28px; z-index: 100000;
@@ -164,223 +262,321 @@
     @keyframes gf-toast-in  { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
     @keyframes gf-toast-out { to   { opacity:0; transform:translateY(4px); } }
 
-    .gf-footer {
-      padding: 9px 15px; display: flex;
-      align-items: center; justify-content: space-between;
-    }
-    .gf-stat { font-size: 12px; color: #999; }
-    .gf-stat b { color: #1a1a1a; font-weight: 600; }
-
-    .gf-clear {
-      font-size: 12px; color: #e63946; background: none;
-      border: none; cursor: pointer; padding: 0;
-      opacity: .75; transition: opacity .12s;
-    }
-    .gf-clear:hover { opacity: 1; }
-
     @media (prefers-color-scheme: dark) {
       #gf-panel {
         background: #1c1c1e; border-color: rgba(255,255,255,0.09);
         color: #f0f0f2; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
       }
-      .gf-section   { border-bottom-color: rgba(255,255,255,0.06); }
-      .gf-label      { color: #555; }
-      .gf-row-text   { color: #bbb; }
+      .gf-section      { border-bottom-color: rgba(255,255,255,0.06); }
+      .gf-label        { color: #555; }
+      .gf-row-text     { color: #bbb; }
+      .gf-op-wrap::after { color: #777; }
+      .gf-op,
       .gf-num,
-      .gf-kw-input   { background: #2c2c2e; border-color: rgba(255,255,255,0.1); color: #f0f0f2; }
+      .gf-kw-input     { background: #2c2c2e; border-color: rgba(255,255,255,0.1); color: #f0f0f2; }
+      .gf-op:focus,
       .gf-num:focus,
       .gf-kw-input:focus { border-color: #666; box-shadow: 0 0 0 3px rgba(255,255,255,0.06); }
-      .gf-add-btn    { background: #3a3a3c; border-color: rgba(255,255,255,0.08); color: #e0e0e0; }
-      .gf-add-btn:hover    { background: #4a4a4c; }
-      .gf-add-btn:disabled { background: #2c2c2e; color: #555; }
-      .gf-tag        { background: #3a3a3c; color: #ddd; }
-      .gf-tag-x      { background: rgba(255,255,255,0.1); }
-      .gf-io-btn     { background: #2c2c2e; border-color: rgba(255,255,255,0.1); color: #bbb; }
-      .gf-io-btn:hover { background: #3a3a3c; }
-      .gf-stat       { color: #555; }
-      .gf-stat b     { color: #ccc; }
+      .gf-note         { color: #757575; }
+      .gf-btn          { background: #2c2c2e; border-color: rgba(255,255,255,0.1); color: #bbb; }
+      .gf-btn:hover    { background: #3a3a3c; }
+      .gf-btn.primary  { background: #3a3a3c; border-color: rgba(255,255,255,0.08); color: #e0e0e0; }
+      .gf-btn.primary:hover { background: #4a4a4c; }
+      .gf-btn:disabled { background: #2c2c2e; color: #555; }
+      .gf-tag          { background: #3a3a3c; color: #ddd; }
+      .gf-tag-x        { background: rgba(255,255,255,0.1); }
+      .gf-stat         { color: #555; }
+      .gf-stat b       { color: #ccc; }
     }
   ` }));
 
-  // ─── Filter ───────────────────────────────────────────────────────────────
+  // ─── URL Sync ─────────────────────────────────────────────────────────────
+  const buildUrl = () => {
+    const url = new URL(location.href);
+    const p = url.searchParams;
+
+    p.delete('page');
+
+    for (const [key, field] of Object.entries(FIELDS)) {
+      const opKey = `${field.param}_operator`;
+      if (S[key] > 0) {
+        p.set(field.param, String(S[key]));
+        p.set(opKey, S[`${key}Op`]);
+      } else {
+        p.delete(field.param);
+        p.delete(opKey);
+      }
+    }
+
+    return url.toString();
+  };
+
+  const isUrlSynced = () => {
+    const p = new URL(location.href).searchParams;
+    return Object.entries(FIELDS).every(([key, field]) => {
+      const active = S[key] > 0;
+      return (p.get(field.param) || '') === (active ? String(S[key]) : '') &&
+             (p.get(`${field.param}_operator`) || '') === (active ? S[`${key}Op`] : '');
+    });
+  };
+
+  const updateSyncBtn = () => {
+    const synced = isUrlSynced();
+    syncBtn.disabled = synced;
+    syncBtn.textContent = synced ? 'URL synced' : 'Sync to URL';
+  };
+
+  // ─── Filtering ────────────────────────────────────────────────────────────
   let shown = 0, hidden = 0;
 
-  const applyFilter = debounce(() => {
-    shown = 0; hidden = 0;
-    const kws = S.keywords.map(k => k.toLowerCase());
-
-    document.querySelectorAll('#browse-script-list > li[data-script-id]').forEach(li => {
-      const daily    = +li.dataset.scriptDailyInstalls || 0;
-      const total    = +li.dataset.scriptTotalInstalls || 0;
-      const name     = (li.dataset.scriptName || '').toLowerCase();
-      const desc     = (li.querySelector('.script-description')?.textContent || '').toLowerCase();
-      const haystack = name + ' ' + desc;
-
-      const filtered = daily < S.daily
-                    || total < S.total
-                    || kws.some(k => haystack.includes(k));
-
-      li.style.display = filtered ? 'none' : '';
-      filtered ? hidden++ : shown++;
-    });
-
-    updateStat();
-  }, 120);
-
-  // ─── Tag‑list builder ────────────────────────────────────────────────────
-  const makeTagSection = (listKey, placeholder) => {
-    const tagsEl = el('div', { className: 'gf-tags' });
-    const input  = el('input', { className: 'gf-kw-input', type: 'text', placeholder });
-    const addBtn = el('button', { className: 'gf-add-btn', textContent: 'Block', disabled: true });
-
-    const render = () => {
-      tagsEl.innerHTML = '';
-      S[listKey].forEach(val => {
-        const x = el('button', { className: 'gf-tag-x', textContent: '×' });
-        x.addEventListener('click', e => {
-          e.stopPropagation();              // prevent panel‑close handler
-          save(listKey, S[listKey].filter(v => v !== val));
-          render();
-          applyFilter();
-        });
-        tagsEl.append(el('span', { className: 'gf-tag' }, val, x));
-      });
-    };
-
-    const add = () => {
-      const phrase = input.value.trim().toLowerCase();
-      if (!phrase || S[listKey].includes(phrase)) {
-        input.value = ''; addBtn.disabled = true; return;
-      }
-      save(listKey, [...S[listKey], phrase]);
-      input.value = ''; addBtn.disabled = true;
-      render();
-      applyFilter();
-    };
-
-    input.addEventListener('input',   () => { addBtn.disabled = !input.value.trim(); });
-    input.addEventListener('keydown', e => e.key === 'Enter' && add());
-    addBtn.addEventListener('click',  add);
-
-    return {
-      tagsEl, input, addBtn, render,
-      row: el('div', { className: 'gf-kw-row' }, input, addBtn),
-    };
-  };
-
-  // ─── Import / Export ──────────────────────────────────────────────────────
-  const exportSettings = () => {
-    const json = JSON.stringify(
-      { daily: S.daily, total: S.total, keywords: S.keywords }, null, 2
-    );
-    const a = el('a', {
-      href:     'data:application/json;charset=utf-8,' + encodeURIComponent(json),
-      download: 'gf-filter-settings.json',
-    });
-    document.body.append(a); a.click(); a.remove();
-    toast('Settings exported');
-  };
-
-  const importSettings = () => {
-    const fi = el('input', { type: 'file', accept: '.json', style: 'display:none' });
-    fi.addEventListener('change', () => {
-      const file = fi.files[0]; fi.remove();
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = e => {
-        try {
-          const d = JSON.parse(e.target.result);
-          if (typeof d !== 'object' || d === null) throw 0;
-          if (typeof d.daily === 'number')  save('daily', d.daily);
-          if (typeof d.total === 'number')  save('total', d.total);
-          if (Array.isArray(d.keywords))    save('keywords', d.keywords.map(k => String(k).toLowerCase()));
-          syncUI();
-          applyFilter();
-          toast('Settings imported');
-        } catch { toast('Invalid JSON file'); }
-      };
-      reader.readAsText(file);
-    });
-    document.body.append(fi); fi.click();
-  };
-
-  // ─── Build UI ─────────────────────────────────────────────────────────────
-  const kwSection = makeTagSection('keywords', 'e.g. "mod menu", cheat…');
-  const statEl    = el('span', { className: 'gf-stat' });
-  const clearBtn  = el('button', { className: 'gf-clear', textContent: 'Reset all' });
+  const passes = (value, key) =>
+    !S[key] || (S[`${key}Op`] === 'gt' ? value > S[key] : value < S[key]);
 
   const updateStat = () => {
     statEl.innerHTML = `<b>${shown}</b> shown &nbsp;·&nbsp; <b>${hidden}</b> hidden`;
   };
 
-  const makeNumRow = (label, key) => {
-    const input = el('input', {
-      className: 'gf-num', type: 'number', min: 0, value: S[key],
+  const applyFilter = debounce(() => {
+    shown = 0;
+    hidden = 0;
+
+    document.querySelectorAll('#browse-script-list > li[data-script-id]').forEach(li => {
+      const text = `${li.dataset.scriptName || ''} ${li.querySelector('.script-description')?.textContent || ''}`.toLowerCase();
+      const blocked = S.keywords.some(k => text.includes(k));
+      const badNums = Object.entries(FIELDS).some(([key, field]) =>
+        !passes(+li.dataset[field.data] || 0, key)
+      );
+
+      li.hidden = blocked || badNums;
+      li.hidden ? hidden++ : shown++;
     });
-    input.dataset.key = key;
-    input.addEventListener('input', () => { save(key, +input.value || 0); applyFilter(); });
+
+    updateStat();
+    updateSyncBtn();
+  }, 120);
+
+  // ─── UI Builders ──────────────────────────────────────────────────────────
+  const makeFieldRow = ([key, field]) => {
+    const op = el('select', { className: 'gf-op', dataset: { key: `${key}Op` } },
+      el('option', { value: 'gt', textContent: '>' }),
+      el('option', { value: 'lt', textContent: '<' }),
+    );
+    op.value = S[`${key}Op`];
+
+    const input = el('input', {
+      className: 'gf-num',
+      type: 'number',
+      min: 0,
+      value: S[key],
+      dataset: { key },
+    });
+
     return el('div', { className: 'gf-row' },
-      el('span', { className: 'gf-row-text', textContent: label }), input
+      el('span', { className: 'gf-row-text', textContent: field.label }),
+      el('div', { className: 'gf-control' },
+        el('div', { className: 'gf-op-wrap' }, op),
+        input,
+      ),
     );
   };
+
+  const renderTags = () => {
+    tagsEl.textContent = '';
+    S.keywords.forEach(kw => {
+      tagsEl.append(
+        el('span', { className: 'gf-tag' },
+          kw,
+          el('button', { className: 'gf-tag-x', textContent: '×', dataset: { kw } }),
+        )
+      );
+    });
+  };
+
+  const syncUI = () => {
+    panel.querySelectorAll('[data-key]').forEach(node => {
+      node.value = S[node.dataset.key];
+    });
+    kwInput.value = '';
+    addBtn.disabled = true;
+    renderTags();
+    updateSyncBtn();
+  };
+
+  // ─── Import / Export ──────────────────────────────────────────────────────
+  const exportSettings = () => {
+    const json = JSON.stringify(exportState(), null, 2);
+    const a = el('a', {
+      href: 'data:application/json;charset=utf-8,' + encodeURIComponent(json),
+      download: 'gf-filter-settings.json',
+    });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    toast('Settings exported');
+  };
+
+  const importSettings = () => {
+    const fi = el('input', { type: 'file', accept: '.json', hidden: true });
+    fi.addEventListener('change', () => {
+      const file = fi.files?.[0];
+      fi.remove();
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(String(reader.result || '{}'));
+
+          for (const key of Object.keys(FIELDS)) {
+            if (key in data) save(key, toNum(data[key]));
+            if (validOp(data[`${key}Op`])) save(`${key}Op`, data[`${key}Op`]);
+          }
+          if ('keywords' in data) save('keywords', cleanKeywords(data.keywords));
+
+          syncUI();
+          applyFilter();
+          toast('Settings imported');
+        } catch {
+          toast('Invalid JSON file');
+        }
+      };
+      reader.readAsText(file);
+    });
+    document.body.append(fi);
+    fi.click();
+  };
+
+  // ─── Build UI ─────────────────────────────────────────────────────────────
+  const statEl = el('span', { className: 'gf-stat' });
+  const syncBtn = el('button', { className: 'gf-btn primary', textContent: 'Sync to URL' });
+  const exportBtn = el('button', { className: 'gf-btn', textContent: 'Export JSON' });
+  const importBtn = el('button', { className: 'gf-btn', textContent: 'Import JSON' });
+  const clearBtn = el('button', { className: 'gf-clear', textContent: 'Reset all' });
+
+  const kwInput = el('input', {
+    className: 'gf-kw-input',
+    type: 'text',
+    placeholder: 'e.g. "mod menu", cheat…',
+  });
+  const addBtn = el('button', {
+    className: 'gf-btn primary',
+    textContent: 'Block',
+    disabled: true,
+  });
+  const tagsEl = el('div', { className: 'gf-tags' });
 
   const panel = el('div', { id: 'gf-panel', className: 'closed' },
     el('div', { className: 'gf-section' },
       el('div', { className: 'gf-label', textContent: 'Install threshold' }),
-      makeNumRow('Daily installs ≥', 'daily'),
-      makeNumRow('Total installs ≥', 'total'),
+      ...Object.entries(FIELDS).map(makeFieldRow),
+      el('div', {
+        className: 'gf-note',
+        textContent: 'Sync to URL reloads the page and uses Greasy Fork’s native install filters. Keyword blocking stays live and local.',
+      }),
     ),
     el('div', { className: 'gf-section' },
       el('div', { className: 'gf-label', textContent: 'Block keywords' }),
-      kwSection.row,
-      kwSection.tagsEl,
+      el('div', { className: 'gf-kw-row' }, kwInput, addBtn),
+      tagsEl,
     ),
     el('div', { className: 'gf-section' },
       el('div', { className: 'gf-label', textContent: 'Settings' }),
-      el('div', { className: 'gf-io-row' },
-        Object.assign(el('button', { className: 'gf-io-btn', textContent: 'Export JSON' }),
-          { onclick: exportSettings }),
-        Object.assign(el('button', { className: 'gf-io-btn', textContent: 'Import JSON' }),
-          { onclick: importSettings }),
-      ),
+      el('div', { className: 'gf-actions' }, syncBtn, exportBtn, importBtn),
     ),
     el('div', { className: 'gf-footer' }, statEl, clearBtn),
   );
 
-  // syncUI — defined after panel so querySelectorAll works at call‑time
-  const syncUI = () => {
-    panel.querySelectorAll('.gf-num').forEach(i => {
-      const k = i.dataset.key;
-      if (k) i.value = S[k];
-    });
-    kwSection.input.value = '';
-    kwSection.addBtn.disabled = true;
-    kwSection.render();
-  };
-
-  clearBtn.addEventListener('click', () => { resetAll(); syncUI(); applyFilter(); });
-
-  const fab = el('button', { id: 'gf-fab', title: 'Filter scripts', innerHTML:
-    `<svg width="16" height="16" viewBox="0 0 16 16" fill="none"
-          stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-       <path d="M2 4h12"/><path d="M4.5 8h7"/><path d="M7 12h2"/>
-     </svg>` });
+  const fab = el('button', {
+    id: 'gf-fab',
+    title: 'Filter scripts',
+    innerHTML: `
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+           stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <path d="M2 4h12"/><path d="M4.5 8h7"/><path d="M7 12h2"/>
+      </svg>
+    `,
+  });
 
   document.body.append(fab, panel);
 
-  // ─── Toggle ───────────────────────────────────────────────────────────────
+  // ─── Events ───────────────────────────────────────────────────────────────
+  const addKeyword = () => {
+    const kw = kwInput.value.trim().toLowerCase();
+    if (!kw) return;
+    if (!S.keywords.includes(kw)) save('keywords', [...S.keywords, kw]);
+    kwInput.value = '';
+    addBtn.disabled = true;
+    renderTags();
+    applyFilter();
+  };
+
+  kwInput.addEventListener('input', () => {
+    addBtn.disabled = !kwInput.value.trim();
+  });
+
+  kwInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') addKeyword();
+  });
+
+  addBtn.addEventListener('click', addKeyword);
+
+  tagsEl.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-kw]');
+    if (!btn) return;
+    save('keywords', S.keywords.filter(k => k !== btn.dataset.kw));
+    renderTags();
+    applyFilter();
+  });
+
+  panel.addEventListener('input', e => {
+    const key = e.target.dataset.key;
+    if (!key) return;
+    save(key, key.endsWith('Op') ? (validOp(e.target.value) ? e.target.value : 'gt') : toNum(e.target.value));
+    applyFilter();
+  });
+
+  panel.addEventListener('change', e => {
+    const key = e.target.dataset.key;
+    if (!key) return;
+    save(key, key.endsWith('Op') ? (validOp(e.target.value) ? e.target.value : 'gt') : toNum(e.target.value));
+    applyFilter();
+  });
+
+  exportBtn.addEventListener('click', exportSettings);
+  importBtn.addEventListener('click', importSettings);
+
+  syncBtn.addEventListener('click', () => {
+    if (isUrlSynced()) return toast('Already synced');
+    location.assign(buildUrl());
+  });
+
+  clearBtn.addEventListener('click', () => {
+    resetAll();
+    syncUI();
+    applyFilter();
+  });
+
   const toggle = force => {
     S.open = force ?? !S.open;
     panel.classList.toggle('closed', !S.open);
     fab.classList.toggle('active', S.open);
   };
 
-  fab.addEventListener('click', e => { e.stopPropagation(); toggle(); });
-  document.addEventListener('click',   e => S.open && !panel.contains(e.target) && toggle(false));
-  document.addEventListener('keydown', e => e.key === 'Escape' && toggle(false));
+  fab.addEventListener('click', e => {
+    e.stopPropagation();
+    toggle();
+  });
+
+  document.addEventListener('click', e => {
+    if (S.open && !panel.contains(e.target) && !fab.contains(e.target)) toggle(false);
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') toggle(false);
+  });
 
   // ─── Init ─────────────────────────────────────────────────────────────────
-  kwSection.render();
+  syncUI();
   applyFilter();
 
   const list = document.getElementById('browse-script-list');

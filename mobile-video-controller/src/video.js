@@ -293,7 +293,7 @@ const MVC_Video = {
                 break;
             case 'ratechange':
                 this.updateSpeedDisplay();
-                if (!this.isSpeedSliding) this.showUI();
+                if (!this.isSpeedSliding && !this.inLongPressGesture) this.showUI();
                 break;
         }
     },

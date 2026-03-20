@@ -124,6 +124,7 @@ const MVC_Gestures = {
             startY = e.clientY;
             longPressTimer = setTimeout(() => {
                 longPressFired = true;
+                this.inLongPressGesture = true;
                 savedRate = this.activeVideo.playbackRate;
                 this.activeVideo.playbackRate = MVC_CONFIG.GESTURE_SPEED_BOOST;
                 this._showGestureOverlay(`${MVC_CONFIG.GESTURE_SPEED_BOOST}× Speed`);
@@ -148,6 +149,7 @@ const MVC_Gestures = {
             longPressTimer = null;
             if (longPressFired && this.activeVideo) {
                 this.activeVideo.playbackRate = savedRate;
+                this.inLongPressGesture = false;
                 this._hideGestureOverlay();
             }
             longPressFired = false;
@@ -159,6 +161,7 @@ const MVC_Gestures = {
             longPressTimer = null;
             if (longPressFired && this.activeVideo) {
                 this.activeVideo.playbackRate = savedRate;
+                this.inLongPressGesture = false;
             }
             this._hideGestureOverlay();
             longPressFired = false;
