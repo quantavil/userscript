@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Advanced Search 
 // @namespace    https://github.com/quantavil/userscript
-// @version      5.1
+// @version      5.2
 // @description  Advanced filter modal for GitHub search with release detection
 // @match        https://github.com/*
 // @license      MIT
@@ -328,11 +328,16 @@
     };
 
     const processSearchResults = () => {
-        if (!window.location.pathname.startsWith('/search') || localStorage.getItem('gh-adv-scan') === 'false') return;
+        if (!window.location.pathname.startsWith('/search')) return;
+        
+        const shouldScan = localStorage.getItem('gh-adv-scan') !== 'false';
         const params = new URLSearchParams(window.location.search);
         const filterOnly = params.get('userscript_has_release') === '1';
         const hideKeys = params.get('userscript_hide_keys') || '';
         const keywords = hideKeys.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+        
+        // Return early if neither action is needed
+        if (!shouldScan && keywords.length === 0) return;
         
         const items = Array.from(document.querySelectorAll(CONFIG.selectors.resultItem)).filter(i => !i.dataset.releaseProcessed);
         items.forEach(i => i.dataset.releaseProcessed = 'true');
@@ -346,7 +351,9 @@
                     return;
                 }
             }
-            toProcessRel.push(item);
+            if (shouldScan) {
+                toProcessRel.push(item);
+            }
         });
 
         if (toProcessRel.length) processQueue(toProcessRel, 3, i => processItem(i, filterOnly));

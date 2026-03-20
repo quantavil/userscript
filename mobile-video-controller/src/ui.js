@@ -92,7 +92,8 @@ const MVC_UI = {
             };
             this.ui.skipMenu.appendChild(opt);
         });
-        document.body.appendChild(this.ui.skipMenu);
+        const container = document.fullscreenElement || document.webkitFullscreenElement || document.body;
+        container.appendChild(this.ui.skipMenu);
     },
 
     ensureSpeedMenu() {
@@ -140,7 +141,8 @@ const MVC_UI = {
         };
         customOpt.appendChild(input);
         this.ui.speedMenu.appendChild(customOpt);
-        document.body.appendChild(this.ui.speedMenu);
+        const container = document.fullscreenElement || document.webkitFullscreenElement || document.body;
+        container.appendChild(this.ui.speedMenu);
     },
 
     ensureSettingsMenu() {
@@ -241,7 +243,8 @@ const MVC_UI = {
 
         playbackCard.append(speedRow, skipRow, gestureRow);
 
-        document.body.appendChild(this.ui.settingsMenu);
+        const container = document.fullscreenElement || document.webkitFullscreenElement || document.body;
+        container.appendChild(this.ui.settingsMenu);
     },
 
     updateSkipButtonText() {

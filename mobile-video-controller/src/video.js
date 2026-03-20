@@ -41,9 +41,18 @@ const MVC_Video = {
         for (const v of this.visibleVideos.keys()) {
             if (!v.isConnected) { this.visibleVideos.delete(v); continue; }
             if (getComputedStyle(v).visibility === 'hidden') continue;
+            
             const r    = v.getBoundingClientRect();
             const area = r.width * r.height;
-            if (area < MVC_CONFIG.MIN_VIDEO_AREA) continue;
+            
+            if (area < MVC_CONFIG.MIN_VIDEO_AREA || r.height < MVC_CONFIG.MIN_VIDEO_HEIGHT) continue;
+            
+            // Skip likely preview/thumbnail videos
+            if (v.closest('a')) continue;
+            // If a video is small and muted, it's almost certainly a hover/scroll preview
+            // A typical UI is > 50px tall; attaching to a <130px video "slices" it in half.
+            if (r.height < 130 && v.muted) continue;
+
             const score = area + (this.isPlaying(v) ? viewArea * 2 : 0);
             if (score > bestScore) { best = v; bestScore = score; }
         }

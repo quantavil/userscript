@@ -43,7 +43,7 @@ const MVC_Styles = {
             .mvc-menu-opt { padding:6px 6px; font-size:15px; text-align:center; border-radius:8px; margin:2px 4px; user-select:none; cursor:pointer; transition:background .2s; }
             .mvc-menu-opt:active { background:rgba(255,255,255,0.15); }
 
-            .mvc-settings-container { min-width: 320px; padding: 12px; display: flex; flex-direction: column; }
+            .mvc-settings-container { min-width: 260px; max-width: 90vw; padding: 12px; display: flex; flex-direction: column; box-sizing: border-box; }
             .mvc-settings-section { display: flex; flex-direction: column; width: 100%; }
             .mvc-settings-card { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 12px; }
             .mvc-settings-row { display:flex; justify-content:space-between; align-items:center; gap:12px; cursor:default; background:transparent; margin:0; width: 100%; }
