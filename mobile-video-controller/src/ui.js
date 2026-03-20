@@ -145,115 +145,95 @@ const MVC_UI = {
 
     ensureSettingsMenu() {
         if (this.ui.settingsMenu) return;
-        this.ui.settingsMenu = this.createEl('div', 'mvc-menu', { style: { minWidth: '280px' } });
+        this.ui.settingsMenu = this.createEl('div', 'mvc-menu mvc-settings-container');
 
-        const addSection = (t) => {
-            this.ui.settingsMenu.appendChild(
-                this.createEl('div', 'mvc-settings-section-title', { textContent: t })
-            );
+        const createSection = (title) => {
+            const section = this.createEl('div', 'mvc-settings-section');
+            const h = this.createEl('div', 'mvc-settings-section-title', { textContent: title });
+            const card = this.createEl('div', 'mvc-settings-card');
+            section.append(h, card);
+            this.ui.settingsMenu.appendChild(section);
+            return card;
         };
 
-        const createSliderRow = (label, props, fmt) => {
-            const row     = this.createEl('div', 'mvc-menu-opt mvc-settings-row');
-            const labelEl = this.createEl('label', 'mvc-settings-label', { textContent: label });
+        const createSliderRow = (labelStr, props, fmt) => {
+            const row     = this.createEl('div', 'mvc-settings-row');
+            const labelEl = this.createEl('label', 'mvc-settings-label', { textContent: labelStr });
+            const sliderWrap = this.createEl('div', 'mvc-settings-slider-wrap');
             const slider  = this.createEl('input', 'mvc-settings-slider', Object.assign({ type: 'range' }, props));
             const valueEl = this.createEl('span',  'mvc-settings-value',  { textContent: fmt(props.value) });
             slider.oninput  = (e) => { valueEl.textContent = fmt(e.target.value); if (props.oninput)  props.oninput(e.target.value); };
             slider.onchange = (e) => { if (props.onchange) props.onchange(e.target.value); };
-            row.append(labelEl, slider, valueEl);
+            sliderWrap.append(slider, valueEl);
+            row.append(labelEl, sliderWrap);
             return { row, slider, valueEl };
         };
 
-        // Transform section
-        addSection('Transform');
-        const transformRow   = this.createEl('div', 'mvc-menu-opt mvc-settings-row');
-        const ratioSelect    = this.createEl('select', 'mvc-settings-select');
+        // --- Video Transform Section ---
+        const transformCard = createSection('Video Transform');
+        
+        const transformRow1 = this.createEl('div', 'mvc-settings-row');
+        const ratioLabel = this.createEl('label', 'mvc-settings-label', { textContent: 'Aspect Ratio:' });
+        const ratioSelect = this.createEl('select', 'mvc-settings-select');
         ['Fit', 'Fill', 'Stretch'].forEach(r => ratioSelect.add(new Option(r, r.toLowerCase())));
-        ratioSelect.value    = this.settings.transform.ratio;
+        ratioSelect.value = this.settings.transform.ratio;
         ratioSelect.onchange = () => {
             this.settings.transform.ratio = ratioSelect.value;
             this.saveSetting('transform', this.settings.transform);
             this.applyVideoTransform();
         };
-        const rotateBtn = this.createEl('button', 'mvc-settings-btn', { textContent: 'Rotate ↻' });
+        transformRow1.append(ratioLabel, ratioSelect);
+
+        const zoomControl = createSliderRow('Zoom Level:', {
+            min: 0.5, max: 3, step: 0.05, value: this.settings.transform.zoom,
+            oninput:  (v) => { this.settings.transform.zoom = parseFloat(v); this.applyVideoTransform(); },
+            onchange: ()  => this.saveSetting('transform', this.settings.transform)
+        }, v => `${Math.round(v * 100)}%`);
+
+        const transformRow2 = this.createEl('div', 'mvc-settings-row');
+        const rotateBtn = this.createEl('button', 'mvc-settings-btn mvc-btn-icon', { textContent: 'Rotate 90° ↻' });
         rotateBtn.onclick = () => {
             this.settings.transform.rotation = (this.settings.transform.rotation + 90) % 360;
             this.saveSetting('transform', this.settings.transform);
             this.applyVideoTransform();
         };
-        const transformResetBtn = this.createEl('button', 'mvc-settings-btn', { textContent: 'Reset' });
-        const zoomControl = createSliderRow('Zoom:', {
-            min: 0.5, max: 3, step: 0.05, value: this.settings.transform.zoom,
-            oninput:  (v) => { this.settings.transform.zoom = parseFloat(v); this.applyVideoTransform(); },
-            onchange: ()  => this.saveSetting('transform', this.settings.transform)
-        }, v => `${Math.round(v * 100)}%`);
+        const transformResetBtn = this.createEl('button', 'mvc-settings-btn mvc-btn-danger', { textContent: 'Reset Transform' });
         transformResetBtn.onclick = () => {
             this.saveSetting('transform', { ratio: 'fit', zoom: 1, rotation: 0 });
             ratioSelect.value = 'fit';
-            zoomControl.slider.value    = 1;
+            zoomControl.slider.value = 1;
             zoomControl.valueEl.textContent = '100%';
             this.applyVideoTransform();
         };
-        transformRow.append(ratioSelect, rotateBtn, transformResetBtn);
-        this.ui.settingsMenu.appendChild(transformRow);
-        this.ui.settingsMenu.appendChild(zoomControl.row);
+        transformRow2.append(rotateBtn, transformResetBtn);
 
-        // Filters section
-        addSection('Filters');
-        const filterRow1   = this.createEl('div', 'mvc-menu-opt mvc-settings-row');
-        const filterSelect = this.createEl('select', 'mvc-settings-select');
-        const filterConfig = {
-            brightness: [0, 2, 1, v => parseFloat(v).toFixed(2)],
-            contrast:   [0, 2, 1, v => parseFloat(v).toFixed(2)],
-            saturate:   [0, 3, 1, v => parseFloat(v).toFixed(2)]
-        };
-        Object.keys(filterConfig).forEach(f =>
-            filterSelect.add(new Option(f.charAt(0).toUpperCase() + f.slice(1), f))
-        );
-        const onFilterInput  = (v) => { this.settings.filters[filterSelect.value] = v; this.applyVideoFilters(); };
-        const onFilterChange = ()  => this.saveSetting('filters', this.settings.filters);
-        const filterControl  = createSliderRow('Value:', { value: 1, oninput: onFilterInput, onchange: onFilterChange }, v => v);
-        const updateFilterSlider = () => {
-            const filter = filterSelect.value;
-            const [min, max, def, formatter] = filterConfig[filter];
-            filterControl.slider.min  = min;
-            filterControl.slider.max  = max;
-            filterControl.slider.step = (max - min) / 100;
-            const currentValue = this.settings.filters[filter] ?? def;
-            filterControl.slider.value = currentValue;
-            const safeValue = isNaN(parseFloat(currentValue)) ? def : currentValue;
-            filterControl.valueEl.textContent = formatter(safeValue);
-            filterControl.row.querySelector('.mvc-settings-label').textContent =
-                `${filter.charAt(0).toUpperCase() + filter.slice(1)}:`;
-        };
-        filterSelect.onchange = updateFilterSlider;
-        const filterResetBtn  = this.createEl('button', 'mvc-settings-btn', { textContent: 'Reset' });
-        filterResetBtn.onclick = () => { this.saveSetting('filters', {}); this.applyVideoFilters(); updateFilterSlider(); };
-        filterRow1.append(filterSelect, filterResetBtn);
-        this.ui.settingsMenu.appendChild(filterRow1);
-        this.ui.settingsMenu.appendChild(filterControl.row);
-        updateFilterSlider();
+        transformCard.append(transformRow1, zoomControl.row, transformRow2);
 
-        // Playback & Audio section
-        addSection('Playback & Audio');
+        // --- Playback Preferences Section ---
+        const playbackCard = createSection('Playback Preferences');
 
-        const settingsRow2 = this.createEl('div', 'mvc-menu-opt mvc-settings-row');
-        const speedLabel   = this.createEl('label', 'mvc-settings-label', { textContent: 'Default Speed:' });
-        const speedInput   = this.createEl('input', 'mvc-settings-input', { type: 'number', step: 0.05, value: this.settings.defaultSpeed });
+        const speedRow = this.createEl('div', 'mvc-settings-row');
+        const speedLabel = this.createEl('label', 'mvc-settings-label', { textContent: 'Default Speed:' });
+        const speedInput = this.createEl('input', 'mvc-settings-input', { type: 'number', step: 0.05, min: 0.1, value: this.settings.defaultSpeed });
         speedInput.onchange = () => {
             const val = parseFloat(speedInput.value);
             if (!isNaN(val) && val > 0 && val <= 16) this.saveSetting('defaultSpeed', val);
             else speedInput.value = this.settings.defaultSpeed;
         };
-        const skipLabel = this.createEl('label', 'mvc-settings-label', { textContent: 'Skip Time:' });
-        const skipInput = this.createEl('input', 'mvc-settings-input', { type: 'number', value: this.settings.skipSeconds });
+        speedRow.append(speedLabel, speedInput);
+
+        const skipRow = this.createEl('div', 'mvc-settings-row');
+        const skipLabel = this.createEl('label', 'mvc-settings-label', { textContent: 'Skip Duration (s):' });
+        const skipInput = this.createEl('input', 'mvc-settings-input', { type: 'number', min: 1, value: this.settings.skipSeconds });
         skipInput.onchange = () => {
             const val = parseInt(skipInput.value, 10);
             if (!isNaN(val) && val > 0) { this.saveSetting('skipSeconds', val); this.updateSkipButtonText(); }
             else skipInput.value = this.settings.skipSeconds;
         };
-        settingsRow2.append(speedLabel, speedInput, skipLabel, skipInput);
-        this.ui.settingsMenu.appendChild(settingsRow2);
+        skipRow.append(skipLabel, skipInput);
+
+        playbackCard.append(speedRow, skipRow);
+
         document.body.appendChild(this.ui.settingsMenu);
     },
 

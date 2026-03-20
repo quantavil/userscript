@@ -8,13 +8,16 @@ A powerful, mobile-friendly userscript that adds a persistent "Card" UI to web v
 - **Advanced Playback Speed**:
   - Slide vertically on the speed button for high-precision speed adjustment.
   - Snap points for common speeds (0.25x, 0.5x, 1x, etc.).
-  - Long press to quickly reset to 1.0x.
+  - Quick-access speed menu with a long press or click.
 - **Enhanced Navigation**:
   - Customizable skip durations for Rewind and Forward.
-  - Long press skip buttons for a quick-access skip menu.
-- **Video Adjustments**: Access Zoom, Pan, and Filters (Brightness, Contrast, Saturation) via the Settings menu.
+  - Dedicated skip buttons with configurable skip intervals in settings.
+- **Modern Settings UI**:
+  - **Card-based Layout**: A structured and intuitive settings menu for better usability.
+  - **Video Transform**: High-precision Zoom and 90-degree Rotation controls.
+  - **Playback Preferences**: Easy configuration of default speed and skip intervals.
 - **Smart UI Controls**: Long press the settings icon to transform it into a close button to quickly hide the controller.
-- **Battery & Performance Optimized**: Uses `IntersectionObserver` and `ResizeObserver` to minimize CPU usage and only active when videos are in view.
+- **Battery & Performance Optimized**: Uses `IntersectionObserver` and `ResizeObserver` to minimize CPU usage, only activating when videos are in view.
 - **Haptic Feedback**: Subtle vibrations for touch interactions (where supported).
 
 ## 🛠 Installation

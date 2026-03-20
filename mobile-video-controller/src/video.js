@@ -12,8 +12,7 @@ const MVC_Video = {
             skipSeconds:  getStored('mvc_skipSeconds',    10),
             defaultSpeed: getStored('mvc_defaultSpeed',   1.0),
             lastRate:     parseFloat(getStored('mvc_lastRate', '"1.0"')) || 1.0,
-            transform:    getStored('mvc_transform',       { ratio: 'fit', zoom: 1, rotation: 0 }),
-            filters:      getStored('mvc_filters',         {})
+            transform:    getStored('mvc_transform',       { ratio: 'fit', zoom: 1, rotation: 0 })
         };
     },
 
@@ -80,7 +79,6 @@ const MVC_Video = {
             this.videoMutationObserver.observe(v.parentElement || v, { attributes: true, subtree: true });
             this.applyDefaultSpeed(v);
             this.applyVideoTransform();
-            this.applyVideoFilters();
         } else {
             const gracePeriod = options.immediateHide ? 0 : 250;
             this.timers.hideGrace = setTimeout(() => {
@@ -330,14 +328,6 @@ const MVC_Video = {
         const { ratio, zoom, rotation } = this.settings.transform;
         this.activeVideo.style.objectFit  = ratio === 'fit' ? 'contain' : ratio === 'fill' ? 'cover' : 'fill';
         this.activeVideo.style.transform  = `scale(${zoom}) rotate(${rotation}deg)`;
-    },
-
-    applyVideoFilters() {
-        if (!this.activeVideo) return;
-        const filterString = Object.entries(this.settings.filters)
-            .map(([k, v]) => k === 'hue-rotate' ? `hue-rotate(${v}deg)` : `${k}(${v})`)
-            .join(' ');
-        this.activeVideo.style.filter = filterString;
     },
 
     // ── Fullscreen / guardian ───────────────────────────────────────────────

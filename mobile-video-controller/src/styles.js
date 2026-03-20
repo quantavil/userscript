@@ -11,14 +11,15 @@ const MVC_Styles = {
             .mvc-ui-wrap { position:absolute; left:0; top:0; z-index:2147483647; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; display:none; opacity:0; pointer-events:none; transition:opacity .5s ease; will-change:opacity, transform; transform:translate3d(0,0,0); contain:layout paint; }
 
             /* Card panel */
-            .mvc-panel { display:flex; align-items:center; gap:2px; background:rgba(20, 20, 20, 0.65); color:#fff; padding:1px 2px; backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,0.08); border-radius:12px; touch-action:none!important; user-select:none; -webkit-user-select:none; pointer-events:auto; cursor:grab; width:fit-content; transform:translate3d(0,0,0); will-change:transform; }
+            .mvc-panel { display:flex; align-items:center; gap:6px; background:rgba(18, 18, 20, 0.85); color:#fff; padding:6px; backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,0.12); border-radius:16px; touch-action:none!important; user-select:none; -webkit-user-select:none; pointer-events:auto; cursor:grab; width:fit-content; transform:translate3d(0,0,0); will-change:transform; box-shadow: 0 8px 32px rgba(0,0,0,0.45); }
 
             /* Buttons */
-            .mvc-btn { appearance:none; border:0; border-radius:12px; width:40px; height:30px; padding:0; font-size:14px; font-weight:600; text-align:center; line-height:34px; pointer-events:auto; transition:transform .15s ease, background-color .2s; user-select:none; display:flex; align-items:center; justify-content:center; touch-action:none!important; background:rgba(255,255,255,0.08); }
-            .mvc-btn:active { transform:scale(0.9); background:rgba(255,255,255,0.2); }
+            .mvc-btn { appearance:none; border:0; border-radius:12px; width:44px; height:36px; padding:0; font-size:16px; font-weight:600; text-align:center; line-height:1; pointer-events:auto; transition:transform .15s ease, background-color .2s, box-shadow .2s; user-select:none; display:flex; align-items:center; justify-content:center; touch-action:none!important; background:rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
+            .mvc-btn:active { transform:scale(0.92); background:rgba(255,255,255,0.18); box-shadow: inset 0 0 10px rgba(0,0,0,0.2); }
 
             /* Speed pill */
-            .mvc-btn-speed { width:auto; padding:0 10px; border-radius:12px; min-width:40px; color:#40c4ff; font-size:12px; font-weight:700; border:1px solid rgba(64,196,255,0.4); background:rgba(64,196,255,0.1); }
+            /* Speed pill */
+            .mvc-btn-speed { width:auto; padding:0 12px; border-radius:12px; min-width:48px; color:#40c4ff; font-size:14px; font-weight:700; border:1px solid rgba(64,196,255,0.3); background:rgba(64,196,255,0.12); }
 
             /* Speed menu list */
             .mvc-speed-list { padding:0 !important; overflow:hidden; }
@@ -43,15 +44,27 @@ const MVC_Styles = {
             .mvc-menu-opt { padding:6px 6px; font-size:15px; text-align:center; border-radius:8px; margin:2px 4px; user-select:none; cursor:pointer; transition:background .2s; }
             .mvc-menu-opt:active { background:rgba(255,255,255,0.15); }
 
-            .mvc-settings-row   { display:flex; justify-content:space-between; align-items:center; gap:12px; cursor:default; background:transparent; padding:8px 16px; margin:0; }
-            .mvc-settings-label { color:rgba(255,255,255,0.9); white-space:nowrap; font-size:14px; }
-            .mvc-settings-value { color:rgba(255,255,255,0.7); font-variant-numeric:tabular-nums; min-width:45px; text-align:right; font-size:14px; }
-            .mvc-settings-input  { width:60px; background:rgba(255,255,255,.12); border:none; color:white; border-radius:8px; text-align:center; font-size:14px; padding:6px; }
-            .mvc-settings-select { background:rgba(255,255,255,.12); border:none; color:white; border-radius:8px; font-size:14px; padding:6px; flex-grow:1; outline:none; }
-            .mvc-settings-slider { width:100%; flex-grow:1; accent-color:#34c759; height:4px; border-radius:2px; }
-            .mvc-settings-btn { font-size:13px; padding:8px 14px; background:rgba(255,255,255,0.12); color:white; border:none; border-radius:8px; cursor:pointer; white-space:nowrap; transition:background .2s; }
+            .mvc-settings-container { min-width: 320px; padding: 12px; display: flex; flex-direction: column; }
+            .mvc-settings-section { display: flex; flex-direction: column; width: 100%; }
+            .mvc-settings-card { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 12px; }
+            .mvc-settings-row { display:flex; justify-content:space-between; align-items:center; gap:12px; cursor:default; background:transparent; margin:0; width: 100%; }
+            .mvc-settings-label { color:rgba(255,255,255,0.9); white-space:nowrap; font-size:14px; font-weight: 500; }
+            .mvc-settings-slider-wrap { display: flex; align-items: center; gap: 8px; flex-grow: 1; }
+            .mvc-settings-value { color:rgba(255,255,255,0.7); font-variant-numeric:tabular-nums; min-width:48px; text-align:right; font-size:13px; font-weight: 500; background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 6px; }
+            .mvc-settings-input  { width:60px; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:8px; text-align:center; font-size:14px; padding:6px; outline: none; transition: border-color 0.2s; }
+            .mvc-settings-input:focus { border-color: #34c759; }
+            .mvc-settings-select { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,0.1); color:white; border-radius:8px; font-size:14px; padding:6px 10px; flex-grow:1; outline:none; transition: border-color 0.2s; cursor: pointer; }
+            .mvc-settings-select:focus { border-color: #34c759; }
+            .mvc-settings-slider { width:100%; flex-grow:1; accent-color:#34c759; height:4px; border-radius:2px; cursor: pointer; }
+            .mvc-settings-btn { font-size:13px; font-weight: 500; padding:8px 14px; background:rgba(255,255,255,0.12); color:white; border:none; border-radius:8px; cursor:pointer; white-space:nowrap; transition:background .2s; outline: none; display: inline-flex; justify-content: center; align-items: center; flex: 1; }
             .mvc-settings-btn:active { background:rgba(255,255,255,0.25); }
-            .mvc-settings-section-title { font-size:11px; font-weight:700; color:rgba(235,235,245,0.6); text-transform:uppercase; letter-spacing:0.5px; margin-top:16px; margin-bottom:4px; padding:0 16px; text-align:left; border-top:none; cursor:default; }
+            .mvc-btn-icon { background: rgba(64,196,255,0.15); color: #40c4ff; }
+            .mvc-btn-icon:hover { background: rgba(64,196,255,0.25); }
+            .mvc-btn-icon:active { background: rgba(64,196,255,0.35); }
+            .mvc-btn-danger { background: rgba(255,82,82,0.15); color: #ff5252; }
+            .mvc-btn-danger:hover { background: rgba(255,82,82,0.25); }
+            .mvc-btn-danger:active { background: rgba(255,82,82,0.35); }
+            .mvc-settings-section-title { font-size:12px; font-weight:700; color:rgba(235,235,245,0.6); text-transform:uppercase; letter-spacing:0.5px; margin-top:8px; margin-bottom:8px; padding:0 4px; text-align:left; border-top:none; cursor:default; }
         `;
         document.head.appendChild(style);
     }
