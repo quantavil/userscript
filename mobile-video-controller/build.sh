@@ -14,6 +14,7 @@ cat \
     src/ui.js \
     src/video.js \
     src/controls.js \
+    src/gestures.js \
     src/index.js \
     > "$OUT"
 

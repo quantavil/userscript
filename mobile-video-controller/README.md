@@ -1,10 +1,14 @@
-# Mobile Video Controller
+# 🎥 GlideVideo: Pro Mobile Touch Controller
 
-A powerful, mobile-friendly userscript that adds a persistent "Card" UI to web videos, providing advanced playback controls and optimizations.
+A premium, mobile-friendly userscript that adds a sleek "Media Card" UI to web videos, providing effortless gesture-based control and advanced features.
 
 ## ✨ Features
 
 - **Media Card UI**: A sleek, floating control panel that stays in view and can be manually dragged to any position.
+- **Touch Gestures** *(New in v1.2)*:
+  - **Swipe-to-Seek**: Swipe left/right on the video to scrub through the timeline with a visual overlay showing the current position and delta.
+  - **Long-Press-to-Speed**: Touch and hold on the video to temporarily boost playback to 2× speed; release to restore.
+  - Can be toggled on/off from Settings.
 - **Advanced Playback Speed**:
   - Slide vertically on the speed button for high-precision speed adjustment.
   - Snap points for common speeds (0.25x, 0.5x, 1x, etc.).
@@ -15,7 +19,7 @@ A powerful, mobile-friendly userscript that adds a persistent "Card" UI to web v
 - **Modern Settings UI**:
   - **Card-based Layout**: A structured and intuitive settings menu for better usability.
   - **Video Transform**: High-precision Zoom and 90-degree Rotation controls.
-  - **Playback Preferences**: Easy configuration of default speed and skip intervals.
+  - **Playback Preferences**: Easy configuration of default speed, skip intervals, and gesture toggle.
 - **Smart UI Controls**: Long press the settings icon to transform it into a close button to quickly hide the controller.
 - **Battery & Performance Optimized**: Uses `IntersectionObserver` and `ResizeObserver` to minimize CPU usage, only activating when videos are in view.
 - **Haptic Feedback**: Subtle vibrations for touch interactions (where supported).

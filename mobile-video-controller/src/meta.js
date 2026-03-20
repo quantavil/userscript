@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Mobile Video Controller (Media Card & Persistent Menu)
+// @name         GlideVideo: Pro Mobile Touch Controller
 // @namespace    https://github.com/quantavil/userscript/mobile-video-controller
-// @version      1.1.0
-// @description  User-friendly "Card" UI, persistent skip menu, and battery optimized.
+// @version      1.2.0
+// @description  A premium, gesture-driven video controller for mobile. Swipe to seek, long-press for 2x speed, and precision zoom—all in a sleek, "Media Card" UI.
 // @match        *://*/*
 // @grant        none
 // @license      MIT

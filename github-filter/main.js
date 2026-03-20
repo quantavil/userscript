@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Advanced Search 
 // @namespace    https://github.com/quantavil/userscript
-// @version      5.0
+// @version      5.1
 // @description  Advanced filter modal for GitHub search with release detection
 // @match        https://github.com/*
 // @license      MIT
@@ -57,6 +57,7 @@
             items: [
                 { id: 'and', label: 'And', placeholder: 'rust async', type: 'text' },
                 { id: 'or', label: 'Or', placeholder: 'react, vue', type: 'text' },
+                { id: 'hide_keys', label: 'Hide words', placeholder: 'spam, bot', type: 'text' },
                 { id: 'releases', label: 'Only with releases', type: 'checkbox' },
                 { id: 'scanrepo', label: 'Scan repositories', type: 'checkbox' }
             ]
@@ -151,7 +152,7 @@
             .gh-release-tag.loading { opacity: 0.7; }
             .gh-release-tag.has-release { color: var(--gs-green) !important; border-color: var(--gs-green); }
             .gh-release-tag.no-release { color: var(--gs-red) !important; border-color: var(--gs-red); }
-            .gh-filtered-item { opacity: 0.4 !important; pointer-events: none !important; }
+            .gh-filtered-item { display: none !important; }
             .gh-filtered-tag { display: inline-block; padding: 2px 6px; margin-top: 4px; font-size: 10px; font-weight: 600; color: var(--gs-red); border: 1px solid var(--gs-red); border-radius: 4px; background: var(--gs-surface); }
             
             .gs-overlay { position: fixed; inset: 0; background: transparent; z-index: 9998; display: none; }
@@ -195,6 +196,7 @@
             let url = `https://github.com/search?q=${encodeURIComponent(parts.join(' '))}&type=${data.type}`;
             if (data.sort) url += `&s=${data.sort}&o=desc`;
             if (data.releasesOnly) url += '&userscript_has_release=1';
+            if (data.hideKeys) url += `&userscript_hide_keys=${encodeURIComponent(data.hideKeys)}`;
             return url;
         }
 
@@ -204,6 +206,7 @@
                 type: (params.get('type') || 'repositories').toLowerCase(),
                 sort: params.get('s') || '',
                 releasesOnly: params.get('userscript_has_release') === '1',
+                hideKeys: params.get('userscript_hide_keys') || '',
                 and: '', or: '', meta: {}
             };
             let q = params.get('q') || '';
@@ -326,11 +329,27 @@
 
     const processSearchResults = () => {
         if (!window.location.pathname.startsWith('/search') || localStorage.getItem('gh-adv-scan') === 'false') return;
-        const filterOnly = new URLSearchParams(window.location.search).get('userscript_has_release') === '1';
+        const params = new URLSearchParams(window.location.search);
+        const filterOnly = params.get('userscript_has_release') === '1';
+        const hideKeys = params.get('userscript_hide_keys') || '';
+        const keywords = hideKeys.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
         
         const items = Array.from(document.querySelectorAll(CONFIG.selectors.resultItem)).filter(i => !i.dataset.releaseProcessed);
         items.forEach(i => i.dataset.releaseProcessed = 'true');
-        if (items.length) processQueue(items, 3, i => processItem(i, filterOnly));
+        
+        const toProcessRel = [];
+        items.forEach(item => {
+            if (keywords.length) {
+                const text = item.textContent.toLowerCase();
+                if (keywords.some(k => text.includes(k))) {
+                    item.classList.add('gh-filtered-item');
+                    return;
+                }
+            }
+            toProcessRel.push(item);
+        });
+
+        if (toProcessRel.length) processQueue(toProcessRel, 3, i => processItem(i, filterOnly));
     };
 
     /* =========================================================================
@@ -420,6 +439,7 @@
 
         setVal('type', state.type); setVal('sort', state.sort);
         setVal('and', state.and); setVal('or', state.or);
+        setVal('hide_keys', state.hideKeys);
         Object.entries(state.meta).forEach(([id, val]) => setVal(id, val));
 
         const relCheck = document.getElementById('gh-field-releases');
@@ -439,6 +459,7 @@
 
         const data = {
             type: getVal('type'), sort: getVal('sort'), and: getVal('and'), or: getVal('or'), meta: [],
+            hideKeys: getVal('hide_keys'),
             releasesOnly: document.getElementById('gh-field-releases')?.checked || false
         };
 

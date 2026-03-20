@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Mobile Video Controller (Media Card & Persistent Menu)
+// @name         GlideVideo: Pro Mobile Touch Controller
 // @namespace    https://github.com/quantavil/userscript/mobile-video-controller
-// @version      1.1.0
-// @description  User-friendly "Card" UI, persistent skip menu, and battery optimized.
+// @version      1.2.0
+// @description  A premium, gesture-driven video controller for mobile. Swipe to seek, long-press for 2x speed, and precision zoom—all in a sleek, "Media Card" UI.
 // @match        *://*/*
 // @grant        none
 // @license      MIT
@@ -20,6 +20,7 @@
     //   MVC_UI                        (src/ui.js)
     //   MVC_Video                     (src/video.js)
     //   MVC_Controls                  (src/controls.js)
+    //   MVC_Gestures                  (src/gestures.js)
     // ────────────────────────────────────────────────────────────────────────
 
     class MobileVideoController {
@@ -42,6 +43,7 @@
 
             this.ui = {
                 wrap: null, panel: null, backdrop: null, toast: null, speedToast: null,
+                gestureOverlay: null,
                 rewindBtn: null, speedBtn: null, forwardBtn: null, settingsBtn: null,
                 speedMenu: null, skipMenu: null, settingsMenu: null
             };
@@ -71,6 +73,8 @@
             this.injectStyles();
             this.createMainUI();
             this.attachEventListeners();
+            this.attachGestureListeners();
+            this.attachLongPressGestureListeners();
             this.setupObservers();
             this.setupVideoPositionObserver();
             setTimeout(() => this.evaluateActive(), MVC_CONFIG.INITIAL_EVAL_DELAY);
@@ -79,7 +83,7 @@
 
     // Mix all module methods into the prototype
     const allKeys = new Set();
-    [MVC_Styles, MVC_Utils, MVC_UI, MVC_Video, MVC_Controls].forEach(mod => {
+    [MVC_Styles, MVC_Utils, MVC_UI, MVC_Video, MVC_Controls, MVC_Gestures].forEach(mod => {
         Object.keys(mod).forEach(k => {
             if (allKeys.has(k)) console.warn(`[MVC] Method collision detected: ${k}`);
             allKeys.add(k);

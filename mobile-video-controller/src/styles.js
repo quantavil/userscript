@@ -65,6 +65,9 @@ const MVC_Styles = {
             .mvc-btn-danger:hover { background: rgba(255,82,82,0.25); }
             .mvc-btn-danger:active { background: rgba(255,82,82,0.35); }
             .mvc-settings-section-title { font-size:12px; font-weight:700; color:rgba(235,235,245,0.6); text-transform:uppercase; letter-spacing:0.5px; margin-top:8px; margin-bottom:8px; padding:0 4px; text-align:left; border-top:none; cursor:default; }
+
+            /* Gesture overlay */
+            .mvc-gesture-overlay { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.75); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); color:#fff; font-size:18px; font-weight:600; padding:10px 22px; border-radius:14px; text-align:center; z-index:2147483647; display:none; line-height:1.5; pointer-events:none; }
         `;
         document.head.appendChild(style);
     }

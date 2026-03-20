@@ -43,9 +43,10 @@ const MVC_UI = {
         this.ui.backdrop   = this.createEl('div', 'mvc-backdrop');
         this.ui.toast      = this.createEl('div', 'mvc-toast');
         this.ui.speedToast = this.createEl('div', 'mvc-speed-toast');
+        this.ui.gestureOverlay = this.createEl('div', 'mvc-gesture-overlay');
 
         this.ui.wrap.style.zIndex = '2147483647';
-        document.body.append(this.ui.backdrop, this.ui.toast, this.ui.speedToast);
+        document.body.append(this.ui.backdrop, this.ui.toast, this.ui.speedToast, this.ui.gestureOverlay);
 
         const makeBtn = (content, title, extraClass) => {
             const btn = this.createEl('button', `mvc-btn ${extraClass}`);
@@ -232,7 +233,14 @@ const MVC_UI = {
         };
         skipRow.append(skipLabel, skipInput);
 
-        playbackCard.append(speedRow, skipRow);
+        const gestureRow = this.createEl('div', 'mvc-settings-row');
+        const gestureLabel = this.createEl('label', 'mvc-settings-label', { textContent: 'Swipe & Hold Gestures:' });
+        const gestureToggle = this.createEl('input', '', { type: 'checkbox', checked: this.settings.gesturesEnabled });
+        Object.assign(gestureToggle.style, { width: '18px', height: '18px', accentColor: '#34c759', cursor: 'pointer' });
+        gestureToggle.onchange = () => this.saveSetting('gesturesEnabled', gestureToggle.checked);
+        gestureRow.append(gestureLabel, gestureToggle);
+
+        playbackCard.append(speedRow, skipRow, gestureRow);
 
         document.body.appendChild(this.ui.settingsMenu);
     },

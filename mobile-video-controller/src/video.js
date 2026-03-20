@@ -12,7 +12,8 @@ const MVC_Video = {
             skipSeconds:  getStored('mvc_skipSeconds',    10),
             defaultSpeed: getStored('mvc_defaultSpeed',   1.0),
             lastRate:     parseFloat(getStored('mvc_lastRate', '"1.0"')) || 1.0,
-            transform:    getStored('mvc_transform',       { ratio: 'fit', zoom: 1, rotation: 0 })
+            transform:    getStored('mvc_transform',       { ratio: 'fit', zoom: 1, rotation: 0 }),
+            gesturesEnabled: getStored('mvc_gesturesEnabled', true)
         };
     },
 
@@ -334,7 +335,7 @@ const MVC_Video = {
     onFullScreenChange() {
         const fsEl      = document.fullscreenElement || document.webkitFullscreenElement;
         const container = fsEl || document.body;
-        [this.ui.backdrop, this.ui.toast, this.ui.speedToast, this.ui.speedMenu, this.ui.skipMenu, this.ui.settingsMenu]
+        [this.ui.backdrop, this.ui.toast, this.ui.speedToast, this.ui.gestureOverlay, this.ui.speedMenu, this.ui.skipMenu, this.ui.settingsMenu]
             .forEach(el => { if (el) container.appendChild(el); });
         if (this.activeVideo) this.attachUIToVideo(this.activeVideo);
         this.guardianCheck();

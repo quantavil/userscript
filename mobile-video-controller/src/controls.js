@@ -31,7 +31,10 @@ const MVC_Controls = {
 
         ['pointerdown', 'keydown', 'touchstart'].forEach(ev =>
             window.addEventListener(ev, e => {
-                if (e.isTrusted) { this.lastRealUserEvent = Date.now(); this.showUI(true); }
+                if (!e.isTrusted) return;
+                this.lastRealUserEvent = Date.now();
+                // Only show UI for keyboard events or touches on the MVC panel itself
+                if (e.type === 'keydown' || this.ui.wrap?.contains(e.target)) this.showUI(true);
             }, { passive: true })
         );
 
