@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Advanced Search 
 // @namespace    https://github.com/quantavil/userscript
-// @version      4.4
+// @version      5.0
 // @description  Advanced filter modal for GitHub search with release detection
 // @match        https://github.com/*
 // @license      MIT
@@ -33,7 +33,7 @@
             section: 'CORE',
             items: [
                 {
-                    id: 'type', label: 'TYPE', type: 'select', options: [
+                    id: 'type', label: 'Type', type: 'select', options: [
                         { v: 'repositories', l: 'Repositories' },
                         { v: 'code', l: 'Code' },
                         { v: 'issues', l: 'Issues' },
@@ -43,7 +43,7 @@
                     ]
                 },
                 {
-                    id: 'sort', label: 'SORT', type: 'select', options: [
+                    id: 'sort', label: 'Sort', type: 'select', options: [
                         { v: '', l: 'Best Match' },
                         { v: 'stars', l: 'Most Stars' },
                         { v: 'forks', l: 'Most Forks' },
@@ -53,20 +53,20 @@
             ]
         },
         {
-            section: 'LOGIC',
+            section: 'LOGIC & OPTIONS',
             items: [
-                { id: 'and', label: 'AND', placeholder: 'rust async', type: 'text' },
-                { id: 'or', label: 'OR', placeholder: 'react, vue', type: 'text' },
+                { id: 'and', label: 'And', placeholder: 'rust async', type: 'text' },
+                { id: 'or', label: 'Or', placeholder: 'react, vue', type: 'text' },
+                { id: 'releases', label: 'Only with releases', type: 'checkbox' },
+                { id: 'scanrepo', label: 'Scan repositories', type: 'checkbox' }
             ]
         },
         {
-            section: 'META',
+            section: 'FILTERS',
             items: [
-                { id: 'user', label: 'Owner', placeholder: 'facebook', meta: 'user' },
-                { id: 'repo', label: 'Repository', placeholder: 'react', meta: 'repo' },
+                { id: 'repo', label: 'Repo', placeholder: 'facebook/react', meta: 'repo' },
                 { id: 'lang', label: 'Language', placeholder: 'python, -html', meta: 'language' },
                 { id: 'ext', label: 'Extension', placeholder: 'md', meta: 'extension' },
-                { id: 'path', label: 'Path', placeholder: 'src/', meta: 'path' },
                 { id: 'stars', label: 'Stars', placeholder: '>500', meta: 'stars' },
                 { id: 'forks', label: 'Forks', placeholder: '>100', meta: 'forks' },
                 { id: 'size', label: 'Size (KB)', placeholder: '>1000', meta: 'size' },
@@ -84,237 +84,78 @@
 
         const css = `
             :root {
-                --brutal-bg: #ffffff;
-                --brutal-fg: #1a1a1a;
-                --brutal-accent: #e11d48;
-                --brutal-border: #1a1a1a;
-                --brutal-muted: #6b7280;
-                --brutal-shadow: 4px 4px 0 #1a1a1a;
-                --brutal-font: system-ui, -apple-system, sans-serif;
+                --gs-bg: var(--color-canvas-overlay, #ffffff);
+                --gs-surface: var(--color-canvas-subtle, #f6f8fa);
+                --gs-border: var(--color-border-default, #d0d7de);
+                --gs-border-focus: var(--color-accent-emphasis, #0969da);
+                --gs-text: var(--color-fg-default, #1F2328);
+                --gs-muted: var(--color-fg-muted, #656d76);
+                --gs-accent: var(--color-accent-fg, #0969da);
+                --gs-accent-hover: var(--color-accent-emphasis, #0969da);
+                --gs-green: var(--color-success-fg, #1a7f37);
+                --gs-red: var(--color-danger-fg, #cf222e);
+                --gs-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+                --gs-radius: 6px;
             }
 
             #${CONFIG.ids.toggleBtn} {
-                position: fixed;
-                top: 50%;
-                right: 0;
-                transform: translateY(-50%);
-                width: 28px;
-                height: 44px;
-                background: var(--brutal-fg);
-                border: none;
-                border-radius: 6px 0 0 6px;
-                cursor: pointer;
-                z-index: 9997;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                opacity: 0.25;
-                transition: opacity 0.15s, width 0.15s;
+                position: fixed; bottom: 20px; right: 20px; width: 36px; height: 36px;
+                background: var(--gs-bg); border: 1px solid var(--gs-border);
+                border-radius: 50%; cursor: pointer; z-index: 9997;
+                display: flex; align-items: center; justify-content: center;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: all 0.2s;
             }
-            #${CONFIG.ids.toggleBtn}:hover, #${CONFIG.ids.toggleBtn}:focus {
-                opacity: 1;
-                width: 36px;
-            }
-            #${CONFIG.ids.toggleBtn} svg {
-                width: 16px;
-                height: 16px;
-                fill: var(--brutal-bg);
-            }
+            #${CONFIG.ids.toggleBtn}:hover { border-color: var(--gs-accent); transform: scale(1.05); }
+            #${CONFIG.ids.toggleBtn} svg { width: 16px; height: 16px; fill: var(--gs-text); }
 
             #${CONFIG.ids.modal} {
-                position: fixed;
-                top: 60px;
-                right: 16px;
-                width: 420px;
-                max-width: calc(100vw - 32px);
-                max-height: calc(100vh - 80px);
-                background: var(--brutal-bg);
-                border: 2px solid var(--brutal-border);
-                box-shadow: var(--brutal-shadow);
-                z-index: 9999;
-                display: none;
-                flex-direction: column;
-                font-family: var(--brutal-font);
-                font-size: 13px;
+                position: fixed; bottom: 64px; right: 20px; width: 320px;
+                max-height: calc(100vh - 80px); background: var(--gs-bg);
+                border: 1px solid var(--gs-border); border-radius: var(--gs-radius);
+                box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 9999;
+                display: none; flex-direction: column; font-family: var(--gs-font);
+                font-size: 12px; color: var(--gs-text);
             }
+            #${CONFIG.ids.modal}[data-visible="true"] { display: flex; }
 
-            #${CONFIG.ids.modal}[data-visible="true"] {
-                display: flex;
-                animation: brutal-slide 0.12s ease-out;
-            }
+            .gs-header { padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--gs-border); }
+            .gs-header-title { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+            .gs-header-title svg { width: 14px; height: 14px; fill: var(--gs-text); }
+            .gs-close { background: none; border: none; color: var(--gs-muted); cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+            .gs-close:hover { background: var(--gs-surface); color: var(--gs-text); }
 
-            @keyframes brutal-slide {
-                from { opacity: 0; transform: translateX(8px); }
-                to { opacity: 1; transform: translateX(0); }
-            }
-
-            .brutal-header {
-                background: var(--brutal-border);
-                color: var(--brutal-bg);
-                padding: 8px 12px;
-                font-weight: 700;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                font-size: 11px;
-            }
-            .brutal-close { cursor: pointer; font-size: 18px; line-height: 1; opacity: 0.7; }
-            .brutal-close:hover { opacity: 1; }
-
-            .brutal-body {
-                padding: 12px;
-                overflow-y: auto;
-                scrollbar-width: none;
-            }
-            .brutal-body::-webkit-scrollbar { display: none; }
-
-            .brutal-section { margin-bottom: 12px; }
-            .brutal-section:last-child { margin-bottom: 0; }
-
-            .brutal-section-title {
-                font-weight: 700;
-                font-size: 9px;
-                text-transform: uppercase;
-                letter-spacing: 1.5px;
-                color: var(--brutal-muted);
-                margin-bottom: 8px;
-                padding-bottom: 4px;
-                border-bottom: 1px solid var(--brutal-border);
-            }
-
-            .brutal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-            .brutal-grid.full { grid-template-columns: 1fr; }
-
-            .brutal-field label {
-                display: block;
-                font-size: 9px;
-                font-weight: 700;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                margin-bottom: 3px;
-                color: var(--brutal-fg);
-            }
-
-            .brutal-input {
-                width: 100%;
-                background: var(--brutal-bg);
-                border: 2px solid var(--brutal-border);
-                padding: 6px 8px;
-                color: var(--brutal-fg);
-                font-family: inherit;
-                font-size: 12px;
-                box-sizing: border-box;
-            }
-            .brutal-input:focus { outline: none; border-color: var(--brutal-accent); }
-            .brutal-input::placeholder { color: var(--brutal-muted); }
-
-            .brutal-footer {
-                padding: 10px 12px;
-                border-top: 2px solid var(--brutal-border);
-                display: flex;
-                gap: 8px;
-            }
-
-            .brutal-btn {
-                flex: 1;
-                padding: 8px;
-                border: 2px solid var(--brutal-border);
-                background: var(--brutal-bg);
-                font-family: inherit;
-                font-weight: 700;
-                font-size: 10px;
-                text-transform: uppercase;
-                cursor: pointer;
-                color: var(--brutal-fg);
-                transition: transform 0.05s, box-shadow 0.05s;
-            }
-            .brutal-btn:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--brutal-border); }
-            .brutal-btn:active { transform: translate(0, 0); box-shadow: none; }
-            .brutal-btn.primary { background: var(--brutal-border); color: var(--brutal-bg); }
-
-            /* --- Release Badge --- */
-            .gh-release-tag {
-                display: inline-flex;
-                align-items: center;
-                padding: 4px 8px;
-                margin-top: 6px;
-                font-size: 11px;
-                font-family: var(--brutal-font);
-                font-weight: 700;
-                border: 2px solid var(--brutal-border);
-                background: var(--brutal-bg);
-                color: var(--brutal-fg) !important;
-                text-decoration: none !important;
-                box-shadow: 2px 2px 0 var(--brutal-border);
-                transition: transform 0.1s;
-            }
-            .gh-release-tag:hover {
-                transform: translate(-1px, -1px);
-                box-shadow: 3px 3px 0 var(--brutal-border);
-                text-decoration: none !important;
-            }
-            .gh-release-tag.loading { opacity: 0.5; cursor: wait; border-style: dashed; }
+            .gs-body { padding: 10px 12px; overflow-y: auto; }
+            .gs-section { margin-bottom: 12px; }
+            .gs-section:last-child { margin-bottom: 0; }
+            .gs-section-title { font-weight: 600; font-size: 10px; text-transform: uppercase; color: var(--gs-muted); margin-bottom: 8px; }
             
-            .gh-release-tag.has-release {
-                color: #15803d !important;
-                border-color: #15803d;
-                box-shadow: 2px 2px 0 #15803d;
-            }
-            .gh-release-tag.has-release:hover {
-                background: #f0fdf4;
-                box-shadow: 3px 3px 0 #15803d;
-            }
+            .gs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+            .gs-grid.full { grid-template-columns: 1fr; }
 
-            .gh-release-tag.no-release {
-                color: #b91c1c !important;
-                border-color: #b91c1c;
-                box-shadow: 2px 2px 0 #b91c1c;
-            }
-            .gh-release-tag.no-release:hover {
-                background: #fef2f2;
-                box-shadow: 3px 3px 0 #b91c1c;
-            }
+            .gs-field label { display: block; font-size: 10px; font-weight: 600; margin-bottom: 4px; color: var(--gs-text); }
+            .gs-check-container { display: flex; align-items: center; gap: 6px; padding-top: 18px; }
+            .gs-check-container input { cursor: pointer; accent-color: var(--gs-accent); margin: 0; }
+            .gs-check-container label { margin-bottom: 0; cursor: pointer; }
 
-            .gh-filtered-item {
-                opacity: 0.35 !important;
-                pointer-events: none !important;
-            }
-            .gh-filtered-tag {
-                display: inline-block;
-                padding: 2px 6px;
-                margin-top: 6px;
-                font-size: 10px;
-                font-weight: 700;
-                color: #b91c1c;
-                border: 1px solid #b91c1c;
-                border-radius: 4px;
-                background: #fef2f2;
-            }
+            .gs-input { width: 100%; background: var(--gs-surface); border: 1px solid var(--gs-border); border-radius: 4px; padding: 6px 8px; color: var(--gs-text); font-size: 12px; box-sizing: border-box; outline: none; }
+            .gs-input:focus { border-color: var(--gs-border-focus); box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.3); }
+            select.gs-input { cursor: pointer; }
 
-            .brutal-check-row { display: flex; align-items: center; gap: 8px; }
-            .brutal-check { width: 16px; height: 16px; accent-color: var(--brutal-accent); cursor: pointer; border: 2px solid var(--brutal-border); }
-            .brutal-check-label { font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
+            .gs-footer { padding: 10px 12px; border-top: 1px solid var(--gs-border); display: flex; gap: 8px; }
+            .gs-btn { flex: 1; padding: 6px 10px; border: 1px solid var(--gs-border); background: var(--gs-surface); border-radius: 4px; font-weight: 600; font-size: 12px; cursor: pointer; color: var(--gs-text); }
+            .gs-btn:hover { background: var(--gs-border); }
+            .gs-btn.primary { background: var(--gs-accent); border: none; color: #fff; }
+            .gs-btn.primary:hover { background: var(--gs-accent-hover); }
 
-            .brutal-overlay {
-                position: fixed;
-                inset: 0;
-                background: rgba(0, 0, 0, 0.4);
-                backdrop-filter: blur(2px);
-                z-index: 9998;
-                display: none;
-            }
-            .brutal-overlay[data-visible="true"] { display: block; }
-
-            @media (max-width: 480px) {
-                #${CONFIG.ids.modal} {
-                    right: 0; left: 0; bottom: 0;
-                    width: 100%; max-width: none; top: auto;
-                    max-height: 85vh;
-                    border-left: none; border-right: none; border-bottom: none;
-                }
-            }
+            .gh-release-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; margin-top: 4px; font-size: 10px; font-weight: 600; background: var(--gs-surface); border-radius: 4px; border: 1px solid var(--gs-border); color: var(--gs-text) !important; text-decoration: none !important; }
+            .gh-release-tag.loading { opacity: 0.7; }
+            .gh-release-tag.has-release { color: var(--gs-green) !important; border-color: var(--gs-green); }
+            .gh-release-tag.no-release { color: var(--gs-red) !important; border-color: var(--gs-red); }
+            .gh-filtered-item { opacity: 0.4 !important; pointer-events: none !important; }
+            .gh-filtered-tag { display: inline-block; padding: 2px 6px; margin-top: 4px; font-size: 10px; font-weight: 600; color: var(--gs-red); border: 1px solid var(--gs-red); border-radius: 4px; background: var(--gs-surface); }
+            
+            .gs-overlay { position: fixed; inset: 0; background: transparent; z-index: 9998; display: none; }
+            .gs-overlay[data-visible="true"] { display: block; }
         `;
 
         const style = document.createElement('style');
@@ -327,79 +168,61 @@
        LOGIC: QUERY BUILDER 
        ========================================================================= */
     class QueryBuilder {
-        static clean(str) {
-            if (!str) return [];
-            const matches = str.match(/("[^"]*"|[^, ]+)/g);
-            return matches ? matches : [];
-        }
+        static clean = str => (str ? (str.match(/(\"[^\"]*\"|[^, ]+)/g) || []) : []);
 
         static buildUrl(data) {
-            const parts = [];
-
-            const andTerms = this.clean(data.and);
-            if (andTerms.length) parts.push(...andTerms);
-
+            const parts = [...this.clean(data.and)];
             const orTerms = this.clean(data.or);
-            if (orTerms.length) {
-                parts.push(orTerms.length === 1 ? orTerms[0] : `(${orTerms.join(' OR ')})`);
-            }
+            if (orTerms.length) parts.push(orTerms.length === 1 ? orTerms[0] : `(${orTerms.join(' OR ')})`);
 
             data.meta.forEach(m => {
-                let val = m.value.trim();
+                const val = m.value.trim();
                 if (!val) return;
 
                 if (m.key === 'language') {
-                    const langTokens = val.match(/("[^"]*"|[^, ]+)/g);
-                    if (langTokens) {
-                        langTokens.forEach(token => {
-                            token = token.trim();
-                            if (!token) return;
-                            let prefix = '';
-                            if (token.startsWith('-')) {
-                                prefix = '-';
-                                token = token.substring(1);
-                            }
-                            if (token.includes(' ')) token = `"${token}"`;
-                            parts.push(`${prefix}${m.key}:${token}`);
-                        });
-                    }
+                    this.clean(val).forEach(t => {
+                        let prefix = t.startsWith('-') ? '-' : '';
+                        t = t.replace(/^-/, '');
+                        parts.push(`${prefix}language:${t.includes(' ') ? `"${t}"` : t}`);
+                    });
                 } else {
-                    if (['stars', 'forks', 'size'].includes(m.key)) {
-                        if (!val.match(/^[<>=]/) && !val.includes('..')) val = `>=${val}`;
-                    }
-                    if (val.includes(' ')) val = `"${val}"`;
-                    parts.push(`${m.key}:${val}`);
+                    let v = val;
+                    if (['stars', 'forks', 'size'].includes(m.key) && !/^[<>=]|\.\./.test(v)) v = `>=${v}`;
+                    parts.push(`${m.key}:${v.includes(' ') ? `"${v}"` : v}`);
                 }
             });
 
-            const query = encodeURIComponent(parts.join(' '));
-            let url = `https://github.com/search?q=${query}&type=${data.type}`;
+            let url = `https://github.com/search?q=${encodeURIComponent(parts.join(' '))}&type=${data.type}`;
             if (data.sort) url += `&s=${data.sort}&o=desc`;
             if (data.releasesOnly) url += '&userscript_has_release=1';
-
             return url;
         }
 
         static parseCurrent() {
             const params = new URLSearchParams(window.location.search);
-            const rawQ = params.get('q') || '';
-            const type = (params.get('type') || 'repositories').toLowerCase();
-            const sort = params.get('s') || '';
-            const releasesOnly = params.get('userscript_has_release') === '1';
+            const state = {
+                type: (params.get('type') || 'repositories').toLowerCase(),
+                sort: params.get('s') || '',
+                releasesOnly: params.get('userscript_has_release') === '1',
+                and: '', or: '', meta: {}
+            };
+            let q = params.get('q') || '';
 
-            const state = { type, sort, releasesOnly, and: '', or: '', meta: {} };
-            let q = rawQ;
-
-            FIELDS.find(s => s.section === 'META').items.forEach(item => {
-                const regex = new RegExp(`(?<!-)(?:^|\\s)${item.meta}:("[^"]*"|\\S+)`, 'gi');
-                q = q.replace(regex, (match, val) => {
-                    if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
-                    if (['stars', 'forks', 'size'].includes(item.meta) && val.startsWith('>=')) {
-                        val = val.substring(2);
-                    }
-                    state.meta[item.id] = val;
+            FIELDS.find(s => s.section === 'FILTERS').items.forEach(i => {
+                q = q.replace(new RegExp(`(?<!-)(?:^|\\s)${i.meta}:("[^"]*"|\\S+)`, 'gi'), (_, v) => {
+                    if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+                    if (['stars', 'forks', 'size'].includes(i.meta) && v.startsWith('>=')) v = v.substring(2);
+                    state.meta[i.id] = state.meta[i.id] ? `${state.meta[i.id]}, ${v}` : v;
                     return '';
                 });
+
+                if (i.meta === 'language') {
+                    q = q.replace(new RegExp(`(?:^|\\s)-language:("[^"]*"|\\S+)`, 'gi'), (_, v) => {
+                        if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+                        state.meta[i.id] = state.meta[i.id] ? `${state.meta[i.id]}, -${v}` : `-${v}`;
+                        return '';
+                    });
+                }
             });
 
             const orMatch = q.match(/\(([^)]+)\)/);
@@ -407,7 +230,6 @@
                 state.or = orMatch[1].split(' OR ').join(', ');
                 q = q.replace(orMatch[0], '');
             }
-
             state.and = q.replace(/\s+/g, ' ').trim();
             return state;
         }
@@ -416,216 +238,100 @@
     /* =========================================================================
        LOGIC: RELEASE DETECTION
        ========================================================================= */
-    const CACHE_PREFIX = 'gh-release-cache-';
-    const CACHE_TTL = 24 * 60 * 60 * 1000; 
-
-    function getReleaseCache(owner, repo) {
+    const formatRelDate = d => {
         try {
-            const key = `${CACHE_PREFIX}${owner}-${repo}`;
-            const cached = localStorage.getItem(key);
-            if (!cached) return null;
+            const diff = Math.floor((new Date() - new Date(d)) / 86400000);
+            return diff < 1 ? 'today' : diff === 1 ? 'yesterday' : diff < 7 ? `${diff}d ago` : diff < 30 ? `${Math.floor(diff/7)}w ago` : diff < 365 ? `${Math.floor(diff/30)}mo ago` : `${Math.floor(diff/365)}y ago`;
+        } catch { return ''; }
+    };
 
-            const data = JSON.parse(cached);
-            if (Date.now() - data.timestamp > CACHE_TTL) {
-                localStorage.removeItem(key);
-                return null;
-            }
-            return data;
-        } catch (e) {
-            return null;
-        }
-    }
-
-    function setReleaseCache(owner, repo, info) {
-        try {
-            const key = `${CACHE_PREFIX}${owner}-${repo}`;
-            const data = { timestamp: Date.now(), info: info };
-            localStorage.setItem(key, JSON.stringify(data));
-        } catch (e) { }
-    }
-
-    function formatRelativeDate(dateStr) {
-        try {
-            const date = new Date(dateStr);
-            const now = new Date();
-            const diffMs = now - date;
-            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-            if (diffDays === 0) return 'today';
-            if (diffDays === 1) return 'yesterday';
-            if (diffDays < 7) return `${diffDays}d ago`;
-            if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-            if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
-            return `${Math.floor(diffDays / 365)}y ago`;
-        } catch (e) {
-            return '';
-        }
-    }
-
-    function createReleaseBadge(status, data = null) {
-        const badge = document.createElement('a');
-        badge.className = `gh-release-tag`;
-
+    const createBadge = (status, data = null) => {
+        const b = document.createElement('a');
+        b.className = `gh-release-tag ${status === 'checking' ? 'loading' : status}`;
         if (status === 'checking') {
-            badge.textContent = 'Checking...';
-            badge.classList.add('loading');
-            badge.href = '#';
-            badge.onclick = (e) => e.preventDefault();
+            b.textContent = 'Checking…'; b.href = '#'; b.onclick = e => e.preventDefault();
         } else if (status === 'has-release' && data) {
-            const dateText = data.date ? ` (${formatRelativeDate(data.date)})` : '';
-            badge.textContent = `${data.tag}${dateText}`;
-            badge.href = data.url;
-            badge.target = '_blank';
-            badge.title = data.date ? `Released: ${new Date(data.date).toLocaleDateString()}` : data.tag;
-            badge.classList.add('has-release');
+            b.textContent = `${data.tag}${data.date ? ` · ${formatRelDate(data.date)}` : ''}`;
+            b.href = data.url; b.target = '_blank';
+            b.title = data.date ? `Released: ${new Date(data.date).toLocaleDateString()}` : data.tag;
         } else {
-            badge.textContent = 'NO RELEASE';
-            badge.classList.add('no-release');
-            badge.href = '#';
-            badge.onclick = (e) => e.preventDefault();
+            b.textContent = 'No Release'; b.href = '#'; b.onclick = e => e.preventDefault();
         }
+        return b;
+    };
 
-        return badge;
-    }
-
-    async function fetchReleaseInfo(owner, repo) {
-        const cachedData = getReleaseCache(owner, repo);
-        if (cachedData) return cachedData.info;
+    const fetchReleaseInfo = async (owner, repo) => {
+        const key = `gh-rel-${owner}-${repo}`;
+        try {
+            const cached = JSON.parse(localStorage.getItem(key));
+            if (cached && Date.now() - cached.ts < 86400000) return cached.info;
+        } catch {}
 
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), 10000);
+            const res = await fetch(`/${owner}/${repo}/releases/latest`, { signal: ctrl.signal });
+            clearTimeout(tid);
 
-            const res = await fetch(`https://github.com/${owner}/${repo}/releases/latest`, {
-                method: 'GET',
-                redirect: 'follow',
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (res.status === 404 || !res.ok) {
-                setReleaseCache(owner, repo, null);
+            if (!res.ok) {
+                localStorage.setItem(key, JSON.stringify({ ts: Date.now(), info: null }));
                 return null;
             }
 
-            // Reverted to DOMParser for reliability
-            const htmlText = await res.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(htmlText, 'text/html');
+            const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+            let tag = decodeURIComponent(res.url.match(/\/releases\/tag\/([^/?#]+)/)?.[1] || '');
+            if (!tag) tag = doc.title.match(/Release (.+?) ·/)?.[1] || doc.querySelector('h1.d-inline')?.textContent.trim();
+            if (!tag) throw new Error();
 
-            let tag = null;
-            const finalUrl = res.url;
-            const tagMatch = finalUrl.match(/\/releases\/tag\/([^/?#]+)/);
-            
-            if (tagMatch) {
-                tag = decodeURIComponent(tagMatch[1]);
-            } else {
-                const title = doc.title;
-                const titleMatch = title.match(/Release (.+?) ·/);
-                if (titleMatch) tag = titleMatch[1];
-            }
-
-            if (!tag) {
-                const header = doc.querySelector('h1.d-inline');
-                if (header) tag = header.textContent.trim();
-            }
-
-            if (!tag) return null;
-
-            let date = null;
-            const timeEl = doc.querySelector('relative-time');
-            if (timeEl) {
-                date = timeEl.getAttribute('datetime');
-            } else {
-                const anyTime = doc.querySelector('time[datetime]');
-                if (anyTime) date = anyTime.getAttribute('datetime');
-            }
-
-            const info = {
-                tag,
-                date,
-                url: `https://github.com/${owner}/${repo}/releases/tag/${encodeURIComponent(tag)}`
-            };
-
-            setReleaseCache(owner, repo, info);
+            const date = doc.querySelector('relative-time, time[datetime]')?.getAttribute('datetime');
+            const info = { tag, date, url: `/${owner}/${repo}/releases/tag/${encodeURIComponent(tag)}` };
+            localStorage.setItem(key, JSON.stringify({ ts: Date.now(), info }));
             return info;
+        } catch { return null; }
+    };
 
-        } catch (e) {
-            return null;
-        }
-    }
+    const processQueue = async (items, concurrency, task) => {
+        const q = [...items];
+        await Promise.all(Array.from({ length: concurrency }, async () => {
+            while (q.length) try { await task(q.shift()); } catch {}
+        }));
+    };
 
-    async function processQueue(items, concurrency, task) {
-        const queue = [...items];
-        const workers = [];
-
-        const worker = async () => {
-            while (queue.length > 0) {
-                const item = queue.shift();
-                try {
-                    await task(item);
-                } catch (e) { }
-            }
-        };
-
-        for (let i = 0; i < concurrency; i++) {
-            workers.push(worker());
-        }
-
-        await Promise.all(workers);
-    }
-
-    async function processItem(item, filterOnly) {
+    const processItem = async (item, filterOnly) => {
         const link = item.querySelector(CONFIG.selectors.resultLink);
-        if (!link) return;
+        const parts = link?.getAttribute('href')?.split('/').filter(Boolean);
+        if (!parts || parts.length < 2) return;
+        
+        const insertTarget = item.querySelector('ul') || item;
+        const container = document.createElement('div');
+        container.appendChild(createBadge('checking'));
+        insertTarget.parentNode.insertBefore(container, insertTarget.nextSibling);
 
-        const path = link.getAttribute('href');
-        const parts = path.split('/').filter(Boolean);
-        if (parts.length < 2) return;
-        const [owner, repo] = parts;
+        const info = await fetchReleaseInfo(parts[0], parts[1]);
+        container.innerHTML = '';
 
-        const metaList = item.querySelector('ul');
-        const insertTarget = metaList || item;
-
-        const badgeContainer = document.createElement('div');
-        const checkingBadge = createReleaseBadge('checking');
-        badgeContainer.appendChild(checkingBadge);
-
-        insertTarget.parentNode.insertBefore(badgeContainer, insertTarget.nextSibling);
-
-        const releaseInfo = await fetchReleaseInfo(owner, repo);
-
-        badgeContainer.innerHTML = '';
-        if (releaseInfo) {
-            const releaseBadge = createReleaseBadge('has-release', releaseInfo);
-            badgeContainer.appendChild(releaseBadge);
+        if (info) {
+            container.appendChild(createBadge('has-release', info));
         } else {
             if (filterOnly) {
                 item.classList.add('gh-filtered-item');
-                const filteredTag = document.createElement('span');
-                filteredTag.className = 'gh-filtered-tag';
-                filteredTag.textContent = 'Filtered (No Release)';
-                badgeContainer.appendChild(filteredTag);
+                const t = document.createElement('span');
+                t.className = 'gh-filtered-tag'; t.textContent = 'Filtered (No Release)';
+                container.appendChild(t);
             } else {
-                const noReleaseBadge = createReleaseBadge('no-release');
-                badgeContainer.appendChild(noReleaseBadge);
+                container.appendChild(createBadge('no-release'));
             }
         }
-    }
+    };
 
-    async function processSearchResults() {
-        if (!window.location.pathname.startsWith('/search')) return;
-
-        const params = new URLSearchParams(window.location.search);
-        const filterOnly = params.get('userscript_has_release') === '1';
-
-        const allItems = Array.from(document.querySelectorAll(CONFIG.selectors.resultItem));
-        const itemsToProcess = allItems.filter(item => !item.dataset.releaseProcessed);
-
-        itemsToProcess.forEach(item => item.dataset.releaseProcessed = 'true');
-
-        await processQueue(itemsToProcess, 3, item => processItem(item, filterOnly));
-    }
+    const processSearchResults = () => {
+        if (!window.location.pathname.startsWith('/search') || localStorage.getItem('gh-adv-scan') === 'false') return;
+        const filterOnly = new URLSearchParams(window.location.search).get('userscript_has_release') === '1';
+        
+        const items = Array.from(document.querySelectorAll(CONFIG.selectors.resultItem)).filter(i => !i.dataset.releaseProcessed);
+        items.forEach(i => i.dataset.releaseProcessed = 'true');
+        if (items.length) processQueue(items, 3, i => processItem(i, filterOnly));
+    };
 
     /* =========================================================================
        UI: MODAL 
@@ -635,159 +341,132 @@
 
     function toggleModal(show) {
         if (!modalEl) createUI();
-        const visible = (show === undefined) ? (modalEl.dataset.visible !== 'true') : show;
-
-        modalEl.dataset.visible = visible;
-        overlayEl.dataset.visible = visible;
-
-        if (visible) {
+        const v = show === undefined ? modalEl.dataset.visible !== 'true' : show;
+        modalEl.dataset.visible = overlayEl.dataset.visible = v;
+        if (v) {
             loadStateToUI();
-            const firstInput = modalEl.querySelector('input, select');
-            if (firstInput) firstInput.focus();
+            modalEl.querySelector('input, select')?.focus();
         }
     }
 
-    function createUI() {
+    const createUI = () => {
         if (document.getElementById(CONFIG.ids.modal)) return;
 
-        overlayEl = document.createElement('div');
-        overlayEl.className = 'brutal-overlay';
-        overlayEl.onclick = () => toggleModal(false);
+        overlayEl = Object.assign(document.createElement('div'), { className: 'gs-overlay', onclick: () => toggleModal(false) });
         document.body.appendChild(overlayEl);
 
-        modalEl = document.createElement('div');
-        modalEl.id = CONFIG.ids.modal;
+        modalEl = Object.assign(document.createElement('div'), { id: CONFIG.ids.modal });
 
         let html = `
-            <div class="brutal-header">
-                <span>FILTER</span>
-                <span class="brutal-close" data-close>×</span>
+            <div class="gs-header">
+                <span class="gs-header-title"><svg viewBox="0 0 16 16"><path d="M10.68 11.74a6 6 0 1 1 1.06-1.06l3.04 3.04a.75.75 0 1 1-1.06 1.06l-3.04-3.04ZM11 6.5a4.5 4.5 0 1 0-9 0 4.5 4.5 0 0 0 9 0Z"/></svg> Search Filter</span>
+                <button class="gs-close" data-close><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
             </div>
-            <div class="brutal-body">
+            <div class="gs-body">
         `;
 
-        FIELDS.forEach(section => {
-            html += `<div class="brutal-section">
-                <div class="brutal-section-title">${section.section}</div>
-                <div class="brutal-grid ${section.items.length === 1 ? 'full' : ''}">`;
-
-            section.items.forEach(field => {
-                html += `<div class="brutal-field">
-                    <label>${field.label}</label>
-                    ${field.type === 'select'
-                        ? `<select id="gh-field-${field.id}" class="brutal-input">${field.options.map(o => `<option value="${o.v}">${o.l}</option>`).join('')}</select>`
-                        : `<input id="gh-field-${field.id}" type="text" class="brutal-input" placeholder="${field.placeholder || ''}">`}
-                </div>`;
+        FIELDS.forEach(s => {
+            html += `<div class="gs-section"><div class="gs-section-title">${s.section}</div><div class="gs-grid ${s.items.length === 1 ? 'full' : ''}">`;
+            s.items.forEach(f => {
+                if (f.type === 'checkbox') {
+                    html += `<div class="gs-field gs-check-container"><input type="checkbox" id="gh-field-${f.id}"><label for="gh-field-${f.id}">${f.label}</label></div>`;
+                } else {
+                    html += `<div class="gs-field"><label>${f.label}</label>${f.type === 'select'
+                        ? `<select id="gh-field-${f.id}" class="gs-input">${f.options.map(o => `<option value="${o.v}">${o.l}</option>`).join('')}</select>`
+                        : `<input id="gh-field-${f.id}" type="text" class="gs-input" placeholder="${f.placeholder || ''}">`}</div>`;
+                }
             });
             html += `</div></div>`;
         });
 
-        html += `
-            <div class="brutal-section">
-                <div class="brutal-check-row">
-                    <input type="checkbox" id="gh-field-releases" class="brutal-check">
-                    <label for="gh-field-releases" class="brutal-check-label">Only with releases</label>
-                </div>
-            </div>
-        </div>
-        <div class="brutal-footer">
-            <button data-clear class="brutal-btn">Clear</button>
-            <button data-search class="brutal-btn primary">Search</button>
-        </div>`;
-
+        html += `</div><div class="gs-footer"><button data-clear class="gs-btn">Clear</button><button data-search class="gs-btn primary">Search</button></div>`;
+        
         modalEl.innerHTML = html;
         document.body.appendChild(modalEl);
 
         if (!document.getElementById(CONFIG.ids.toggleBtn)) {
-            const toggleBtn = document.createElement('button');
-            toggleBtn.id = CONFIG.ids.toggleBtn;
-            toggleBtn.type = 'button';
-            toggleBtn.title = 'Search Filter';
-            toggleBtn.innerHTML = `<svg viewBox="0 0 16 16"><path d="M10.68 11.74a6 6 0 1 1 1.06-1.06l3.04 3.04a.75.75 0 1 1-1.06 1.06l-3.04-3.04ZM11 6.5a4.5 4.5 0 1 0-9 0 4.5 4.5 0 0 0 9 0Z"/></svg>`;
-            toggleBtn.onclick = () => toggleModal();
-            document.body.appendChild(toggleBtn);
+            const btn = Object.assign(document.createElement('button'), {
+                id: CONFIG.ids.toggleBtn, type: 'button', title: 'Search Filter',
+                innerHTML: `<svg viewBox="0 0 16 16"><path d="M10.68 11.74a6 6 0 1 1 1.06-1.06l3.04 3.04a.75.75 0 1 1-1.06 1.06l-3.04-3.04ZM11 6.5a4.5 4.5 0 1 0-9 0 4.5 4.5 0 0 0 9 0Z"/></svg>`,
+                onclick: () => toggleModal()
+            });
+            document.body.appendChild(btn);
         }
 
         modalEl.querySelector('[data-close]').onclick = () => toggleModal(false);
         modalEl.querySelector('[data-clear]').onclick = () => {
-            modalEl.querySelectorAll('input, select').forEach(el => {
-                el.type === 'checkbox' ? el.checked = false : el.value = '';
-            });
+            modalEl.querySelectorAll('input, select').forEach(el => el.type === 'checkbox' ? el.checked = false : el.value = '');
+            modalEl.querySelector('#gh-field-scanrepo')?.dispatchEvent(new Event('change'));
         };
         modalEl.querySelector('[data-search]').onclick = executeSearch;
 
-        modalEl.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') executeSearch();
-        });
-        document.addEventListener('keydown', e => {
-            if (e.key === 'Escape' && modalEl.dataset.visible === 'true') toggleModal(false);
-        });
-    }
+        const scanCheck = modalEl.querySelector('#gh-field-scanrepo');
+        const relCheck = modalEl.querySelector('#gh-field-releases');
+        if (scanCheck && relCheck) {
+            scanCheck.addEventListener('change', () => {
+                relCheck.disabled = !scanCheck.checked;
+                relCheck.parentElement.style.opacity = scanCheck.checked ? '1' : '0.5';
+                if (!scanCheck.checked) relCheck.checked = false;
+            });
+        }
 
-    function loadStateToUI() {
+        modalEl.addEventListener('keydown', e => e.key === 'Enter' && executeSearch());
+        document.addEventListener('keydown', e => e.key === 'Escape' && modalEl.dataset.visible === 'true' && toggleModal(false));
+    };
+
+    const loadStateToUI = () => {
         const state = QueryBuilder.parseCurrent();
-        const setVal = (id, val) => {
-            const el = document.getElementById(`gh-field-${id}`);
-            if (el) el.value = val || '';
-        };
+        const setVal = (id, val) => { const el = document.getElementById(`gh-field-${id}`); if (el) el.value = val || ''; };
 
-        setVal('type', state.type);
-        setVal('sort', state.sort);
-        setVal('and', state.and);
-        setVal('or', state.or);
+        setVal('type', state.type); setVal('sort', state.sort);
+        setVal('and', state.and); setVal('or', state.or);
         Object.entries(state.meta).forEach(([id, val]) => setVal(id, val));
 
         const relCheck = document.getElementById('gh-field-releases');
         if (relCheck) relCheck.checked = state.releasesOnly;
-    }
 
-    function executeSearch() {
-        const getVal = id => document.getElementById(`gh-field-${id}`).value;
+        const scanCheck = document.getElementById('gh-field-scanrepo');
+        if (scanCheck) {
+            scanCheck.checked = localStorage.getItem('gh-adv-scan') !== 'false';
+            scanCheck.dispatchEvent(new Event('change'));
+        }
+    };
+
+    const executeSearch = () => {
+        const getVal = id => document.getElementById(`gh-field-${id}`)?.value || '';
+        const scanCheck = document.getElementById('gh-field-scanrepo');
+        if (scanCheck) localStorage.setItem('gh-adv-scan', scanCheck.checked);
+
         const data = {
-            type: getVal('type'),
-            sort: getVal('sort'),
-            and: getVal('and'),
-            or: getVal('or'),
-            meta: [],
-            releasesOnly: document.getElementById('gh-field-releases').checked
+            type: getVal('type'), sort: getVal('sort'), and: getVal('and'), or: getVal('or'), meta: [],
+            releasesOnly: document.getElementById('gh-field-releases')?.checked || false
         };
 
-        FIELDS.find(s => s.section === 'META').items.forEach(item => {
-            const val = getVal(item.id);
-            if (val) data.meta.push({ key: item.meta, value: val });
+        FIELDS.find(s => s.section === 'FILTERS').items.forEach(i => {
+            const val = getVal(i.id);
+            if (val) data.meta.push({ key: i.meta, value: val });
         });
 
         window.location.href = QueryBuilder.buildUrl(data);
-    }
+    };
 
     /* =========================================================================
        INIT
        ========================================================================= */
-    function init() {
+    const init = () => {
         injectStyles();
         createUI();
-
-        if (typeof GM_registerMenuCommand === 'function') {
-            GM_registerMenuCommand("Search Filter", () => toggleModal());
-        }
+        if (typeof GM_registerMenuCommand === 'function') GM_registerMenuCommand("Search Filter", () => toggleModal());
 
         processSearchResults();
+        let dt;
+        new MutationObserver(() => {
+            clearTimeout(dt);
+            dt = setTimeout(processSearchResults, 200);
+        }).observe(document.body, { childList: true, subtree: true });
 
-        // RESTORED: MutationObserver is required because GitHub search results 
-        // are loaded asynchronously.
-        let debounceTimer;
-        const observer = new MutationObserver(() => {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
-                processSearchResults();
-            }, 200);
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-
-        document.addEventListener('turbo:render', () => {
-            processSearchResults();
-        });
-    }
+        document.addEventListener('turbo:render', processSearchResults);
+    };
 
     init();
 
