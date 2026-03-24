@@ -1,110 +1,8 @@
-// ==UserScript==
-// @name         Auto F2 CleanCookie — AI FREE! Claude Opus 4.6 | Beginner Friendly | 2-Min Setup
-// @name:zh-cn   自动 F2 CleanCookie — AI 免费！Claude Opus 4.6 初心者必用！两分钟上手
-// @name:zh-tw   自動 F2 CleanCookie — AI 免費！Claude Opus 4.6 初心者必用！兩分鐘上手
-// @name:ja      自動 F2 CleanCookie — AI 無料！Claude Opus 4.6 初心者OK！2分で開始
-// @name:ko      자동 F2 CleanCookie — AI 무료! Claude Opus 4.6 초보자용! 2분 설정
-// @name:fr      Auto F2 CleanCookie — AI GRATUIT! Claude Opus 4.6 | Pour débutants | Installé en 2min
-// @name:de      Auto F2 CleanCookie — AI KOSTENLOS! Claude Opus 4.6 | Für Anfänger | 2-Min-Einrichtung
-// @name:es      Auto F2 CleanCookie — ¡AI GRATIS! Claude Opus 4.6 | Para principiantes | Configuración en 2 min
-// @name:pt-br   Auto F2 CleanCookie — AI GRÁTIS! Claude Opus 4.6 | Para iniciantes | Configuração em 2 min
-// @name:ru      Авто F2 CleanCookie — AI БЕСПЛАТНО! Claude Opus 4.6 | Для новичков | Настройка за 2 мин
-// @name:uk      Авто F2 CleanCookie — AI БЕЗКОШТОВНО! Claude Opus 4.6 | Для початківців | Налаштування 2 хв
-// @name:pl      Auto F2 CleanCookie — AI ZA DARMO! Claude Opus 4.6 | Dla początkujących | Konfiguracja w 2 min
-// @name:it      Auto F2 CleanCookie — AI GRATUITO! Claude Opus 4.6 | Per principianti | Setup in 2 min
-// @name:nl      Auto F2 CleanCookie — AI GRATIS! Claude Opus 4.6 | Voor beginners | 2-minuten setup
-// @name:tr      Auto F2 CleanCookie — AI ÜCRETSİZ! Claude Opus 4.6 | Yeni Başlayanlar İçin | 2 Dakikada Hazır
-// @name:vi      Auto F2 CleanCookie — AI MIỄN PHÍ! Claude Opus 4.6 | Dành cho người mới | Thiết lập 2 phút
-// @name:th      Auto F2 CleanCookie — AI ฟรี! Claude Opus 4.6 | มือใหม่ก็ใช้ได้ | ติดตั้ง 2 นาที
-// @name:id      Auto F2 CleanCookie — AI GRATIS! Claude Opus 4.6 | Ramah Pemula | Siap dalam 2 Menit
-// @name:ms      Auto F2 CleanCookie — AI PERCUMA! Claude Opus 4.6 | Mesra Pemula | Siap 2 Minit
-// @name:tl      Auto F2 CleanCookie — AI LIBRE! Claude Opus 4.6 | Para sa Baguhan | 2-Minuto Setup
-// @name:ar      F2 CleanCookie تلقائي — AI مجاني! Claude Opus 4.6 | للمبتدئين | إعداد في دقيقتين
-// @name:he      Auto F2 CleanCookie — AI חינם! Claude Opus 4.6 | למתחילים | הגדרה ב-2 דקות
-// @name:fa      Auto F2 CleanCookie — AI رایگان! Claude Opus 4.6 | برای مبتدیان | راه اندازی 2 دقیقه ای
-// @name:hi      Auto F2 CleanCookie — AI मुफ़्त! Claude Opus 4.6 | शुरुआती लोगों के लिए | 2 मिनट में सेटअप
-// @name:bn      Auto F2 CleanCookie — AI বিনামূল্যে! Claude Opus 4.6 | নতুনদের জন্য | ২ মিনিটের সেটআপ
-// @name:ta      Auto F2 CleanCookie — AI இலவசம்! Claude Opus 4.6 | ஆரம்பநிலையாளர்களுக்கு | 2 நிமிட அமைப்பு
-// @name:te      Auto F2 CleanCookie — AI ఉచితం! Claude Opus 4.6 | ప్రారంభకులకు | 2 నిమిషాల సెటప్
-// @name:mr      Auto F2 CleanCookie — AI मोफत! Claude Opus 4.6 | नवशिक्यांसाठी | 2 मिनिटांत सेटअप
-// @name:ur      Auto F2 CleanCookie — AI مفت! Claude Opus 4.6 | مبتدیوں کے لیے | 2 منٹ کا سیٹ اپ
-// @name:sv      Auto F2 CleanCookie — AI GRATIS! Claude Opus 4.6 | För nybörjare | 2-minuters installation
-// @name:da      Auto F2 CleanCookie — AI GRATIS! Claude Opus 4.6 | For begyndere | 2-minutters opsætning
-// @name:nb      Auto F2 CleanCookie — AI GRATIS! Claude Opus 4.6 | For nybegynnere | 2-minutters oppsett
-// @name:fi      Auto F2 CleanCookie — AI ILMAINEN! Claude Opus 4.6 | Aloittelijoille | 2 minuutin asennus
-// @name:cs      Auto F2 CleanCookie — AI ZDARMA! Claude Opus 4.6 | Pro začátečníky | Nastavení za 2 min
-// @name:sk      Auto F2 CleanCookie — AI ZADARMO! Claude Opus 4.6 | Pre začiatočníkov | Nastavenie za 2 min
-// @name:hu      Auto F2 CleanCookie — AI INGYENES! Claude Opus 4.6 | Kezdőknek | 2 perces beállítás
-// @name:ro      Auto F2 CleanCookie — AI GRATUIT! Claude Opus 4.6 | Pentru începători | Configurare în 2 min
-// @name:bg      Авто F2 CleanCookie — AI БЕЗПЛАТНО! Claude Opus 4.6 | За начинаещи | Настройка за 2 мин
-// @name:hr      Auto F2 CleanCookie — AI BESPLATNO! Claude Opus 4.6 | Za početnike | Postavljanje u 2 min
-// @name:sr      Ауто F2 CleanCookie — AI БЕСПЛАТНО! Claude Opus 4.6 | За почетнике | Подешавање за 2 мин
-// @name:sl      Auto F2 CleanCookie — AI BREZPLAČNO! Claude Opus 4.6 | Za začetnike | Nastavitev v 2 min
-// @name:et      Auto F2 CleanCookie — AI TASUTA! Claude Opus 4.6 | Algajatele | 2-minutiline seadistus
-// @name:lv      Auto F2 CleanCookie — AI BEZMAKSAS! Claude Opus 4.6 | Iesācējiem | 2 minūšu iestatīšana
-// @name:lt      Auto F2 CleanCookie — AI NEMOKAMA! Claude Opus 4.6 | Pradedantiesiems | 2 minučių sąranka
-// @name:el      Auto F2 CleanCookie — AI ΔΩΡΕΑΝ! Claude Opus 4.6 | Για αρχάριους | Ρύθμιση 2 λεπτών
-// @name:ka      Auto F2 CleanCookie — AI უფასო! Claude Opus 4.6 | დამწყებთათვის | 2 წუთიანი პარამეტრები
-// @name:hy      Auto F2 CleanCookie — AI ԱՆՎՃԱՐ! Claude Opus 4.6 | Սկսնակների համար | 2 րոպեանոց կարգավորում
-// @name:sw      Auto F2 CleanCookie — AI BURE! Claude Opus 4.6 | Kwa wanaoanza | Usanidi wa dakika 2
-// @name:af      Auto F2 CleanCookie — AI GRATIS! Claude Opus 4.6 | Vir beginners | 2-minuut opstelling
-// @name:ca      Auto F2 CleanCookie — AI GRATUÏT! Claude Opus 4.6 | Per a principiants | Configuració en 2 min
-// @name:eu      Auto F2 CleanCookie — AI DOAKO! Claude Opus 4.6 | Hasiberrientzat | 2 minutuko konfigurazioa
-// @name:gl      Auto F2 CleanCookie — AI GRATIS! Claude Opus 4.6 | Para principiantes | Configuración en 2 min
+    // ==UserScript==
+    // @name         Auto F2 CleanCookie — AI FREE! Claude Opus 4.6 | Beginner Friendly | 2-Min Setup
     // @namespace    https://greasyfork.org/
     // @version      7.7.8
-// @description  Add super convenient F2 one-click reset to Arena.ai (LMArena), auto-accept cookies. Designed for beginners! Get started with top-tier AI in just 2 minutes. Super easy, loved by beginners globally! Supports: Claude Opus 4.6, Gemini, Grok, GPT, etc.
-// @description:zh-CN 为 Arena.ai（LMArena）添加超方便的 F2 一键重置，自动接受 Cookie 弹窗，支持 Claude Opus 4.6、Gemini、Grok、GPT 等众多模型。 专为新手设计！安装后 2 分钟内就能上手使用顶级 AI，超级简单，全世界新手都爱用！
-// @description:zh-TW 為 Arena.ai（LMArena）添加超方便的 F2 一鍵重置，自動接受 Cookie 彈窗，支持 Claude Opus 4.6、Gemini、Grok、GPT 等眾多模型。 專為新手設計！安裝後 2 分鐘內就能上手使用頂級 AI，超級簡單，全世界新手都愛用！
-// @description:ja Arena.ai (LMArena) に超便利なF2ワンクリック・リセットを追加し、Cookieを自動承認。初心者専用設計！インストール後2分でトップクラスのAIが使えます。超簡単、世界中の初心者が愛用中！対応：Claude Opus 4.6, Gemini, Grok, GPTなど。
-// @description:ko Arena.ai (LMArena)에 완전 편리한 F2 원클릭 리셋 추가, 쿠키 자동 수락. 초보자 전용 설계! 설치 후 2분이면 최고급 AI 사용 가능. 정말 쉽고 전 세계 초보자들이 애용합니다! 지원: Claude Opus 4.6, Gemini, Grok, GPT 등.
-// @description:fr Ajoute une réinitialisation F2 ultra-pratique et un clic pour Arena.ai, accepte auto les cookies. Spécial débutants ! Commencez avec les meilleures IA en 2 minutes. Super simple, aimé par les débutants du monde entier ! Supporte : Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:de Fügt superpraktischen F2-Reset für Arena.ai hinzu, akzeptiert Cookies automatisch. Speziell für Anfänger! Starten Sie mit Top-KI in 2 Minuten. Super einfach, weltweit von Anfängern geliebt! Unterstützt: Claude Opus 4.6, Gemini, Grok, GPT etc.
-// @description:es Añade reinicio F2 ultra conveniente para Arena.ai, acepta cookies automáticamente. ¡Diseñado para principiantes! Empieza a usar las mejores IA en 2 minutos. ¡Súper fácil, amado por principiantes de todo el mundo! Soporta: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:pt-BR Adiciona reset F2 super conveniente para Arena.ai, aceita cookies automaticamente. Projetado para iniciantes! Comece a usar IAs de ponta em 2 minutos. Super fácil, amado por iniciantes no mundo todo! Suporta: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:ru Добавляет супер удобный сброс F2 для Arena.ai, авто-принятие куки. Специально для новичков! Начните использовать топовый AI через 2 минуты. Супер просто, любим новичками по всему миру! Поддержка: Claude Opus 4.6, Gemini, Grok, GPT и др.
-// @description:uk Додає супер зручне скидання F2 для Arena.ai, авто-прийняття кукі. Спеціально для початківців! Почніть використовувати топовий AI через 2 хвилини. Супер просто, люблять новачки в усьому світі! Підтримка: Claude Opus 4.6, Gemini, Grok, GPT та ін.
-// @description:pl Dodaje super wygodny reset F2 dla Arena.ai, auto-akceptacja plików cookie. Zaprojektowane dla początkujących! Zacznij korzystać z topowego AI w 2 minuty. Super proste, uwielbiane przez początkujących na całym świecie! Obsługa: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:it Aggiunge un reset F2 super comodo per Arena.ai, accetta i cookie in automatico. Progettato per principianti! Inizia a usare le migliori IA in 2 minuti. Super facile, amato dai principianti di tutto il mondo! Supporta: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:nl Voegt superhandige F2-reset toe voor Arena.ai, accepteert cookies automatisch. Ontworpen voor beginners! Start met top-AI in 2 minuten. Supergemakkelijk, geliefd bij beginners wereldwijd! Ondersteunt: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:tr Arena.ai için süper kullanışlı F2 sıfırlama ekler, çerezleri otomatik kabul eder. Yeni başlayanlar için tasarlandı! 2 dakikada en iyi yapay zekayı kullanmaya başlayın. Süper kolay, dünya çapında yeni başlayanlar tarafından seviliyor! Destekler: Claude Opus 4.6, Gemini, Grok...
-// @description:vi Thêm reset F2 siêu tiện lợi cho Arena.ai, tự động chấp nhận cookie. Thiết kế cho người mới! Bắt đầu sử dụng AI hàng đầu chỉ trong 2 phút. Siêu dễ, được người mới trên toàn thế giới yêu thích! Hỗ trợ: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:th เพิ่มการรีเซ็ต F2 แสนสะดวกสำหรับ Arena.ai ยอมรับคุกกี้อัตโนมัติ ออกแบบมาสำหรับมือใหม่! เริ่มใช้ AI ระดับท็อปได้ใน 2 นาที ง่ายสุดๆ มือใหม่ทั่วโลกชอบใช้! รองรับ: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:id Tambahkan reset F2 super nyaman untuk Arena.ai, terima cookie otomatis. Dirancang untuk pemula! Mulai gunakan AI tingkat atas dalam 2 menit. Super mudah, disukai pemula di seluruh dunia! Mendukung: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:ms Tambah reset F2 super mudah untuk Arena.ai, terima kuki secara automatik. Direka untuk pemula! Mula guna AI teratas dalam 2 minit. Super senang, disukai oleh pemula di seluruh dunia! Sokong: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:tl Magdagdag ng super convenient na F2 reset para sa Arena.ai, auto-accept cookies. Dinisenyo para sa mga baguhan! Magsimula sa top-tier AI sa loob ng 2 minuto. Super dali, mahal ng mga baguhan sa buong mundo! Suporta: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:ar إضافة إعادة تعيين F2 مريحة للغاية لـ Arena.ai، قبول ملفات تعريف الارتباط تلقائيًا. مصمم للمبتدئين! ابدأ باستخدام أفضل ذكاء اصطناعي في دقيقتين. سهل للغاية، محبوب من قبل المبتدئين حول العالم! يدعم: Claude Opus 4.6, Gemini, Grok...
-// @description:he הוסף איפוס F2 נוח במיוחד עבור Arena.ai, קבלת עוגיות אוטומטית. תוכנן למתחילים! התחל להשתמש ב-AI ברמה העליונה תוך 2 דקות. סופר קל, אהוב על מתחילים ברחבי העולם! תומך: Claude Opus 4.6, Gemini, Grok...
-// @description:fa افزودن بازنشانی فوق‌العاده راحت F2 برای Arena.ai، پذیرش خودکار کوکی‌ها. طراحی شده برای مبتدیان! استفاده از هوش مصنوعی سطح بالا را در 2 دقیقه شروع کنید. فوق‌العاده آسان، محبوب مبتدیان در سراسر جهان! پشتیبانی: Claude Opus 4.6, Gemini, Grok...
-// @description:hi Arena.ai के लिए सुपर सुविधाजनक F2 रीसेट जोड़ें, कुकीज़ को स्वचालित रूप से स्वीकार करें। शुरुआती लोगों के लिए डिज़ाइन किया गया! केवल 2 मिनट में शीर्ष स्तरीय AI का उपयोग शुरू करें। सुपर आसान, दुनिया भर में शुरुआती लोगों द्वारा पसंद किया गया! समर्थन: Claude Opus 4.6, Gemini, Grok...
-// @description:bn Arena.ai এর জন্য সুপার সুবিধাজনক F2 রিসেট যোগ করুন, স্বয়ংক্রিয়ভাবে কুকিজ গ্রহণ করুন। নতুনদের জন্য ডিজাইন করা হয়েছে! মাত্র ২ মিনিটে শীর্ষস্থানীয় AI ব্যবহার শুরু করুন। সুপার সহজ, বিশ্বজুড়ে নতুনদের পছন্দ! সমর্থন: Claude Opus 4.6, Gemini, Grok...
-// @description:ta Arena.ai க்கான மிக வசதியான F2 மீட்டமைப்பைச் சேர்க்கவும், குக்கீகளை தானாக ஏற்கவும். ஆரம்பநிலையாளர்களுக்காக வடிவமைக்கப்பட்டது! 2 நிமிடங்களில் சிறந்த AI ஐப் பயன்படுத்தத் தொடங்குங்கள். மிக எளிதானது, உலகெங்கிலும் உள்ள ஆரம்பநிலையாளர்களால் விரும்பப்படுகிறது! ஆதரவு: Claude Opus 4.6...
-// @description:te Arena.ai కోసం సూపర్ అనుకూలమైన F2 రీసెట్‌ను జోడించండి, కుక్కీలను స్వయంచాలకంగా అంగీకరించండి. ప్రారంభకులకు రూపొందించబడింది! కేవలం 2 నిమిషాల్లో అగ్రశ్రేణి AI ని ఉపయోగించడం ప్రారంభించండి. సూపర్ ఈజీ, ప్రపంచవ్యాప్తంగా ప్రారంభకులకు ఇష్టం! మద్దతు: Claude Opus 4.6...
-// @description:mr Arena.ai साठी सुपर सोयीस्कर F2 रीसेट जोडा, कुकीज स्वयंचलित स्वीकारा. नवशिक्यांसाठी डिझाइन केलेले! फक्त 2 मिनिटांत टॉप-टियर AI वापरणे सुरू करा. सुपर सोपे, जगभरातील नवशिक्यांनी पसंत केले! समर्थन: Claude Opus 4.6, Gemini, Grok...
-// @description:ur Arena.ai کے لیے انتہائی آسان F2 ری سیٹ شامل کریں، خودکار طور پر کوکیز قبول کریں۔ مبتدیوں کے لیے ڈیزائن کیا گیا! صرف 2 منٹ میں اعلیٰ ترین AI کا استعمال شروع کریں۔ انتہائی آسان، دنیا بھر میں مبتدیوں کا پسندیدہ! سپورٹ: Claude Opus 4.6, Gemini, Grok...
-// @description:sv Lägg till superbekväm F2-reset för Arena.ai, acceptera cookies automatiskt. Designad för nybörjare! Börja använda topp-AI på 2 minuter. Superenkelt, älskad av nybörjare över hela världen! Stöder: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:da Tilføj super praktisk F2-reset til Arena.ai, accepter cookies automatisk. Designet til begyndere! Start med at bruge top-AI på 2 minutter. Super nemt, elsket af begyndere over hele verden! Understøtter: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:nb Legg til superpraktisk F2-reset for Arena.ai, godta informasjonskapsler automatisk. Designet for nybegynnere! Start med topp-AI på 2 minutter. Superenkelt, elsket av nybegynnere over hele verden! Støtter: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:fi Lisää erittäin kätevä F2-nollaus Arena.ai:lle, hyväksy evästeet automaattisesti. Suunniteltu aloittelijoille! Aloita huippu-AI:n käyttö 2 minuutissa. Erittäin helppo, aloittelijoiden rakastama ympäri maailmaa! Tukee: Claude Opus 4.6, Gemini, Grok...
-// @description:cs Přidává super pohodlný reset F2 pro Arena.ai, automaticky přijímá cookies. Navrženo pro začátečníky! Začněte používat špičkovou AI za 2 minuty. Super snadné, oblíbené začátečníky po celém světě! Podporuje: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:sk Pridáva super pohodlný reset F2 pre Arena.ai, automaticky prijíma cookies. Navrhnuté pre začiatočníkov! Začnite používať špičkovú AI za 2 minúty. Super jednoduché, obľúbené začiatočníkmi po celom svete! Podporuje: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:hu Szuper kényelmes F2 reset hozzáadása az Arena.ai-hoz, cookie-k automatikus elfogadása. Kezdőknek tervezve! Kezdje el használni a csúcs AI-t 2 perc alatt. Szuper egyszerű, kezdők imádják világszerte! Támogatja: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:ro Adaugă resetare F2 super convenabilă pentru Arena.ai, acceptă automat cookie-urile. Conceput pentru începători! Începeți să utilizați AI de top în 2 minute. Super simplu, iubit de începătorii din întreaga lume! Suportă: Claude Opus 4.6, Gemini, Grok...
-// @description:bg Добавя супер удобен F2 ресет за Arena.ai, автоматично приемане на бисквитки. Проектиран за начинаещи! Започнете да използвате топ AI за 2 минути. Супер лесно, обичано от начинаещи по целия свят! Поддържа: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:hr Dodaje super praktičan F2 reset za Arena.ai, automatski prihvaća kolačiće. Dizajnirano za početnike! Počnite koristiti vrhunski AI za 2 minute. Super jednostavno, vole ga početnici diljem svijeta! Podržava: Claude Opus 4.6, Gemini, Grok, GPT...
-// @description:sr Додаје супер практичан F2 ресет за Arena.ai, аутоматски прихвата колачиће. Дизајнирано за почетнике! Почните да користите врхунски AI за 2 минута. Супер једноставно, воле га почетници широм света! Подржава: Claude Opus 4.6, Gemini, Grok...
-// @description:sl Doda super priročno F2 ponastavitev za Arena.ai, samodejno sprejme piškotke. Zasnovano za začetnike! Začnite uporabljati vrhunsko umetno inteligenco v 2 minutah. Super enostavno, priljubljeno pri začetnikih po vsem svetu! Podpira: Claude Opus 4.6...
-// @description:et Lisa Arena.ai jaoks ülimugav F2 lähtestamine, aktsepteeri küpsised automaatselt. Mõeldud algajatele! Alustage tipptasemel AI kasutamist 2 minutiga. Super lihtne, algajate poolt armastatud kogu maailmas! Toetab: Claude Opus 4.6, Gemini, Grok...
-// @description:lv Pievieno super ērtu F2 atiestatīšanu Arena.ai, automātiski pieņem sīkfailus. Paredzēts iesācējiem! Sāciet izmantot augstākās klases AI 2 minūtēs. Super vienkārši, iecienījuši iesācēji visā pasaulē! Atbalsta: Claude Opus 4.6, Gemini, Grok...
-// @description:lt Prideda ypač patogų F2 atstatymą Arena.ai, automatiškai priima slapukus. Sukurta pradedantiesiems! Pradėkite naudoti aukščiausios klasės AI per 2 minutes. Labai paprasta, mėgstama pradedančiųjų visame pasaulyje! Palaiko: Claude Opus 4.6, Gemini...
-// @description:el Προσθέτει σούπερ βολική επαναφορά F2 για το Arena.ai, αποδέχεται αυτόματα τα cookies. Σχεδιασμένο για αρχάριους! Ξεκινήστε να χρησιμοποιείτε κορυφαία AI σε 2 λεπτά. Σούπερ εύκολο, αγαπητό από αρχάριους παγκοσμίως! Υποστηρίζει: Claude Opus 4.6...
-// @description:ka დაამატეთ სუპერ მოსახერხებელი F2 გადატვირთვა Arena.ai-სთვის, ავტომატურად მიიღეთ ქუქიები. შექმნილია დამწყებთათვის! დაიწყეთ უმაღლესი დონის AI-ს გამოყენება 2 წუთში. სუპერ მარტივი, უყვართ დამწყებთათვის მთელ მსოფლიოში! მხარდაჭერა: Claude Opus 4.6...
-// @description:hy Ավելացրեք սուպեր հարմար F2 վերականգնում Arena.ai-ի համար, ավտոմատ ընդունեք cookie-ները: Նախատեսված է սկսնակների համար: Սկսեք օգտագործել բարձրակարգ AI 2 րոպեում: Սուպեր հեշտ, սիրված է սկսնակների կողմից ամբողջ աշխարհում: Աջակցում է՝ Claude Opus 4.6...
-// @description:sw Ongeza uwekaji upya wa F2 rahisi sana kwa Arena.ai, kubali vidakuzi kiotomatiki. Imeundwa kwa wanaoanza! Anza kutumia AI ya kiwango cha juu baada ya dakika 2. Rahisi sana, inapendwa na wanaoanza duniani kote! Inasaidia: Claude Opus 4.6, Gemini...
-// @description:af Voeg super gerieflike F2 herstel by vir Arena.ai, aanvaar koekies outomaties. Ontwerp vir beginners! Begin om top-vlak AI in 2 minute te gebruik. Super maklik, geliefd deur beginners wêreldwyd! Ondersteun: Claude Opus 4.6, Gemini, Grok...
-// @description:ca Afegeix un restabliment F2 súper convenient per a Arena.ai, accepta galetes automàticament. Dissenyat per a principiants! Comença a utilitzar IA de primer nivell en 2 minuts. Súper fàcil, estimat per principiants de tot el món! Suporta: Claude Opus 4.6...
-// @description:eu Gehitu F2 berrezarpen oso erosoa Arena.ai-rako, onartu cookieak automatikoki. Hasiberrientzako diseinatua! Hasi goi-mailako AI erabiltzen 2 minututan. Oso erraza, mundu osoko hasiberriek maite dute! Onartzen du: Claude Opus 4.6, Gemini, Grok...
-// @description:gl Engade un restablecemento F2 super conveniente para Arena.ai, acepta cookies automaticamente. Deseñado para principiantes! Comeza a usar IA de primeiro nivel en 2 minutos. Super fácil, amado por principiantes de todo o mundo! Soporta: Claude Opus 4.6...    // @author       Your Name
+    // @description  Add super convenient F2 one-click reset to Arena.ai (LMArena), auto-accept cookies. Designed for beginners! Get started with top-tier AI in just 2 minutes. Super easy, loved by beginners globally! Supports: Claude Opus 4.6, Gemini, Grok, GPT, etc.
     // @match        https://lmarena.ai/*
     // @match        https://arena.ai/*
     // @match        https://www.lmarena.ai/*
@@ -537,8 +435,6 @@
 // @grant        GM_deleteValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_addStyle
-// @downloadURL https://update.greasyfork.org/scripts/564724/Auto%20F2%20CleanCookie%20%E2%80%94%20AI%20FREE%21%20Claude%20Opus%2046%20%7C%20Beginner%20Friendly%20%7C%202-Min%20Setup.user.js
-// @updateURL https://update.greasyfork.org/scripts/564724/Auto%20F2%20CleanCookie%20%E2%80%94%20AI%20FREE%21%20Claude%20Opus%2046%20%7C%20Beginner%20Friendly%20%7C%202-Min%20Setup.meta.js
 // ==/UserScript==
 
 
@@ -546,7 +442,7 @@
   'use strict';
 
   // ═══════════════════════════════════════════════════════════════
-  //  §0  模組開關系統
+  //  §0  Module Toggle System
   // ═══════════════════════════════════════════════════════════════
   const MODULE_KEYS = {
     reset:   'module_session_reset',
@@ -555,8 +451,8 @@
   };
 
   const MODULE_LABELS = {
-    reset:   '🗑️ Session Reset (F2清理)',
-    splitter:'✂️ 自動分段器 Lite',
+    reset:   '🗑️ Session Reset (F2)',
+    splitter:'✂️ Auto Splitter Lite',
     preset:  '⚡ Model Preset Pro',
   };
 
@@ -567,13 +463,13 @@
   function toggleModule(key) {
     const current = isModuleEnabled(key);
     GM_setValue(MODULE_KEYS[key], !current);
-    const state = !current ? '✅ 已開啟' : '❌ 已關閉';
+    const state = !current ? '✅ Enabled' : '❌ Disabled';
     if (typeof alert !== 'undefined') {
-      alert(`${MODULE_LABELS[key]}\n${state}\n\n請重新整理頁面以套用變更。`);
+      alert(`${MODULE_LABELS[key]}\n${state}\n\nPlease refresh the page to apply changes.`);
     }
   }
 
-  // 在 Tampermonkey / Greasemonkey 選單中註冊開關
+  // Register toggle in Tampermonkey / Greasemonkey menu
   for (const key of Object.keys(MODULE_KEYS)) {
     const enabled = isModuleEnabled(key);
     const prefix = enabled ? '✅' : '❌';
@@ -585,7 +481,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════════
-  //  §1  Session Reset 模組
+  //  §1  Session Reset Module
   // ═══════════════════════════════════════════════════════════════
   if (isModuleEnabled('reset')) {
     (function initSessionReset() {
@@ -640,24 +536,24 @@
 
       const S = Object.freeze({
         IDLE:      { t: '🗑️ (F2) <<<<<<<🐥💙',  d: false, c: '#E48900' },
-        SCANNING:  { t: '🔍 掃描防護…',      d: true,  c: '#2196F3' },
-        WORKING:   { t: '⏳ 清除中…',         d: true,  c: '#FF9800' },
-        BYPASSING: { t: '🛡️ 處理驗證…',      d: true,  c: '#9C27B0' },
-        SUCCESS:   { t: '✅ 已清除！跳轉中…', d: true,  c: '#4CAF50' },
-        FAILURE:   { t: '❌ 失敗，F2重試',    d: false, c: '#F44336' },
+        SCANNING:  { t: '🔍 Scanning...',      d: true,  c: '#2196F3' },
+        WORKING:   { t: '⏳ Clearing...',         d: true,  c: '#FF9800' },
+        BYPASSING: { t: '🛡️ Bypassing...',      d: true,  c: '#9C27B0' },
+        SUCCESS:   { t: '✅ Cleared! Redirecting...', d: true,  c: '#4CAF50' },
+        FAILURE:   { t: '❌ Failed. Press F2 to retry.',    d: false, c: '#F44336' },
       });
 
-      // 反指紋
+      // Anti-fingerprinting
       try {
         Object.defineProperty(navigator, 'webdriver', {
           get: () => false, configurable: true,
         });
-        log.info('navigator.webdriver 已覆蓋為 false');
+        log.info('navigator.webdriver set to false');
       } catch (e) {
-        log.warn('無法覆蓋 navigator.webdriver:', e.message);
+        log.warn('Failed to override navigator.webdriver:', e.message);
       }
 
-      // 網路請求監控
+      // Network Request Monitoring
       const securityRequestLog = [];
       const originalFetch = window.fetch;
       window.fetch = async function (...args) {
@@ -675,7 +571,7 @@
             method: args[1]?.method || 'GET',
           };
           securityRequestLog.push(entry);
-          log.security('攔截 FETCH:', entry.method, url.substring(0, 120));
+          log.security('Intercepted FETCH:', entry.method, url.substring(0, 120));
         }
 
         try {
@@ -684,17 +580,17 @@
             const clone = response.clone();
             try {
               const text = await clone.text();
-              log.security('FETCH 響應:', response.status, text.substring(0, 200));
+              log.security('FETCH Response:', response.status, text.substring(0, 200));
             } catch (_) {}
           }
           return response;
         } catch (err) {
-          if (isSecurityReq) log.error('FETCH 失敗:', url.substring(0, 80), err.message);
+          if (isSecurityReq) log.error('FETCH Failed:', url.substring(0, 80), err.message);
           throw err;
         }
       };
 
-      // 樣式
+      // Styles
       function injectResetStyles() {
         const sheet = new CSSStyleSheet();
         sheet.replaceSync(`
@@ -762,7 +658,7 @@
         }, delay);
       }
 
-      // Cookie 清理
+      // Cookie Cleanup
       function clearAllCookies() {
         const hostname = location.hostname;
         const expiry = '=;expires=Thu, 01 Jan 1970 00:00:00 GMT';
@@ -811,22 +707,22 @@
           }
         }
 
-        log.info(`已嘗試清除 ${cleared} 個 Cookie + ${securityCookies.length} 個已知安全 Cookie`);
-        addStatus(`清除 ${cleared} 個 Cookie + ${securityCookies.length} 個安全 Cookie`, 'ok');
+        log.info(`Attempted to clear ${cleared}  cookies + ${securityCookies.length}  known security cookies`);
+        addStatus(`Cleared ${cleared}  cookies + ${securityCookies.length}  security cookies`, 'ok');
         return cleared;
       }
 
       function clearStorage() {
         let lsCount = 0, ssCount = 0;
-        try { lsCount = localStorage.length; localStorage.clear(); } catch (e) { log.warn('localStorage 清除失敗:', e.message); }
-        try { ssCount = sessionStorage.length; sessionStorage.clear(); } catch (e) { log.warn('sessionStorage 清除失敗:', e.message); }
-        addStatus(`清除 localStorage(${lsCount}) + sessionStorage(${ssCount})`, 'ok');
+        try { lsCount = localStorage.length; localStorage.clear(); } catch (e) { log.warn('localStorage Cleared失敗:', e.message); }
+        try { ssCount = sessionStorage.length; sessionStorage.clear(); } catch (e) { log.warn('sessionStorage Cleared失敗:', e.message); }
+        addStatus(`Cleared localStorage(${lsCount}) + sessionStorage(${ssCount})`, 'ok');
         return lsCount + ssCount;
       }
 
       async function clearIDB() {
         if (typeof indexedDB?.databases !== 'function') {
-          addStatus('IndexedDB.databases() 不可用', 'warn');
+          addStatus('IndexedDB.databases() is unavailable', 'warn');
           return 0;
         }
         try {
@@ -837,37 +733,37 @@
             req.onerror = () => reject(req.error);
             req.onblocked = resolve;
           })));
-          addStatus(`清除 ${dbs.length} 個 IndexedDB`, 'ok');
+          addStatus(`Cleared ${dbs.length}  IndexedDBs`, 'ok');
           return dbs.length;
         } catch (e) {
-          log.error('IndexedDB 清除異常:', e);
-          addStatus('IndexedDB 清除失敗', 'err');
+          log.error('IndexedDB Cleared異常:', e);
+          addStatus('IndexedDB Cleared失敗', 'err');
           return 0;
         }
       }
 
       async function clearCaches() {
-        if (!('caches' in self)) { addStatus('Cache API 不可用', 'warn'); return 0; }
+        if (!('caches' in self)) { addStatus('Cache API is unavailable', 'warn'); return 0; }
         try {
           const keys = await caches.keys();
           await Promise.all(keys.map(k => caches.delete(k)));
-          addStatus(`清除 ${keys.length} 個 Cache Storage`, 'ok');
+          addStatus(`Cleared ${keys.length}  Cache Storages`, 'ok');
           return keys.length;
         } catch (e) {
-          addStatus('Cache Storage 清除失敗', 'err');
+          addStatus('Cache Storage Cleared失敗', 'err');
           return 0;
         }
       }
 
       async function unregisterServiceWorkers() {
-        if (!('serviceWorker' in navigator)) { addStatus('Service Worker API 不可用', 'warn'); return 0; }
+        if (!('serviceWorker' in navigator)) { addStatus('Service Worker API is unavailable', 'warn'); return 0; }
         try {
           const registrations = await navigator.serviceWorker.getRegistrations();
           await Promise.all(registrations.map(r => r.unregister()));
-          addStatus(`註銷 ${registrations.length} 個 Service Worker`, 'ok');
+          addStatus(`Unregistered ${registrations.length}  Service Workers`, 'ok');
           return registrations.length;
         } catch (e) {
-          addStatus('Service Worker 註銷失敗', 'warn');
+          addStatus('Service Worker Unregistered失敗', 'warn');
           return 0;
         }
       }
@@ -878,11 +774,11 @@
             document.querySelectorAll('[class*="turnstile"], [id*="turnstile"], [data-sitekey*="0x"]')
               .forEach(el => { try { window.turnstile.remove(el); } catch (_) {} });
             try { window.turnstile.reset(); } catch (_) {}
-            addStatus('Turnstile 狀態已重置', 'sec');
+            addStatus('Turnstile state reset', 'sec');
             return true;
           }
-        } catch (e) { log.warn('Turnstile 重置異常:', e.message); }
-        addStatus('Turnstile 未載入或重置失敗', 'warn');
+        } catch (e) { log.warn('Turnstile reset error:', e.message); }
+        addStatus('Turnstile not loaded or reset failed', 'warn');
         return false;
       }
 
@@ -898,11 +794,11 @@
                 window.___grecaptcha_cfg.count = 0;
               }
             } catch (_) {}
-            addStatus('reCAPTCHA Enterprise 已重置', 'sec');
+            addStatus('reCAPTCHA Enterprise reset', 'sec');
             return true;
           }
-        } catch (e) { log.warn('reCAPTCHA 重置異常:', e.message); }
-        addStatus('reCAPTCHA 未載入或重置失敗', 'warn');
+        } catch (e) { log.warn('reCAPTCHA reset error:', e.message); }
+        addStatus('reCAPTCHA not loaded or reset failed', 'warn');
         return false;
       }
 
@@ -916,7 +812,7 @@
             removed++;
           }
         });
-        if (removed > 0) addStatus(`移除 ${removed} 個安全 iframe`, 'sec');
+        if (removed > 0) addStatus(`Removed ${removed}  security iframes`, 'sec');
         return removed;
       }
 
@@ -932,7 +828,7 @@
             try { delete window[key]; } catch (_) {}
           }
         });
-        addStatus('CF Beacon 追蹤資料已清除', 'sec');
+        addStatus('CF Beacon 追蹤資料已Cleared', 'sec');
       }
 
       function clearPostHog() {
@@ -946,7 +842,7 @@
             if (key && (key.includes('posthog') || key.includes('ph_'))) keysToRemove.push(key);
           }
           keysToRemove.forEach(k => localStorage.removeItem(k));
-          if (keysToRemove.length > 0) addStatus(`清除 ${keysToRemove.length} 個 PostHog 資料`, 'ok');
+          if (keysToRemove.length > 0) addStatus(`Cleared ${keysToRemove.length}  PostHog entries`, 'ok');
         } catch (_) {}
       }
 
@@ -971,14 +867,14 @@
           document.querySelectorAll('[role="dialog"], [class*="modal"], [class*="overlay"], [class*="popup"]').forEach(dialog => {
             const text = dialog.textContent || '';
             if (text.includes('Security Verification') || text.includes('security check') || text.includes('Protected by reCAPTCHA')) {
-              log.security('檢測到安全驗證彈窗');
-              addStatus('檢測到安全驗證彈窗', 'sec');
+              log.security('Security popup detected');
+              addStatus('Security popup detected', 'sec');
               const recapInDialog = dialog.querySelector('.grecaptcha-badge, [data-sitekey]');
               if (recapInDialog && window.grecaptcha?.enterprise?.execute) {
                 try {
                   window.grecaptcha.enterprise.execute(CONFIG.RECAPTCHA_SITEKEY, { action: 'submit' })
-                    .then(token => { addStatus('reCAPTCHA token 已獲取', 'sec'); })
-                    .catch(() => { addStatus('reCAPTCHA execute 失敗', 'err'); });
+                    .then(token => { addStatus('reCAPTCHA token acquired', 'sec'); })
+                    .catch(() => { addStatus('reCAPTCHA execute failed', 'err'); });
                 } catch (e) {}
               }
               const turnstileInDialog = dialog.querySelector('[class*="turnstile"]');
@@ -1024,8 +920,8 @@
       function interceptTurnstileCallback() {
         const originalCallback = window.onloadTurnstileCallback;
         window.onloadTurnstileCallback = function (...args) {
-          log.security('Turnstile onload 回調被觸發!');
-          addStatus('Turnstile API 已載入', 'sec');
+          log.security('Turnstile onload callback triggered!');
+          addStatus('Turnstile API loaded', 'sec');
           if (typeof originalCallback === 'function') return originalCallback.apply(this, args);
         };
       }
@@ -1065,17 +961,17 @@
         if (resetting) return;
         resetting = true;
         if (statusPanel) statusPanel.innerHTML = '';
-        log.info('═══ 開始會話重置 ═══');
-        addStatus('開始會話重置...', 'ok');
+        log.info('═══ Session Reset Started ═══');
+        addStatus('Starting session reset...', 'ok');
 
         applyState(S.SCANNING);
         const protectionStatus = scanProtectionStatus();
-        addStatus(`發現: Turnstile=${protectionStatus.turnstile.loaded}, reCAPTCHA=${protectionStatus.recaptcha.loaded}`, 'sec');
+        addStatus(`Found: Turnstile=${protectionStatus.turnstile.loaded}, reCAPTCHA=${protectionStatus.recaptcha.loaded}`, 'sec');
         await sleepReset(300);
 
         applyState(S.WORKING);
         try {
-          addStatus('── 清除安全驗證狀態 ──', 'sec');
+          addStatus('── Cleared安全驗證狀態 ──', 'sec');
           resetTurnstile();
           resetRecaptcha();
           cleanSecurityIframes();
@@ -1083,45 +979,45 @@
           clearPostHog();
           await sleepReset(200);
 
-          addStatus('── 清除儲存資料 ──', 'ok');
+          addStatus('── Cleared儲存資料 ──', 'ok');
           clearStorage();
-          addStatus('── 清除 Cookies ──', 'ok');
+          addStatus('── Cleared Cookies ──', 'ok');
           clearAllCookies();
 
-          addStatus('── 清除 IndexedDB 和 Cache ──', 'ok');
+          addStatus('── Cleared IndexedDB 和 Cache ──', 'ok');
           await Promise.allSettled([clearIDB(), clearCaches(), unregisterServiceWorkers()]);
           await sleepReset(200);
 
           applyState(S.BYPASSING);
           const remainingCookies = document.cookie.split(';').filter(c => c.trim()).length;
-          addStatus(`清除後剩餘 ${remainingCookies} 個 Cookie`, remainingCookies > 0 ? 'warn' : 'ok');
+          addStatus(`Cleared後剩餘 ${remainingCookies} cookies`, remainingCookies > 0 ? 'warn' : 'ok');
           if (remainingCookies > 0) {
             clearAllCookies();
             const finalCookies = document.cookie.split(';').filter(c => c.trim()).length;
-            addStatus(`二次清除後剩餘 ${finalCookies} 個 Cookie`, finalCookies > 0 ? 'warn' : 'ok');
+            addStatus(`二次Cleared後剩餘 ${finalCookies} cookies`, finalCookies > 0 ? 'warn' : 'ok');
           }
 
           applyState(S.SUCCESS);
-          addStatus('會話重置完成！', 'ok');
-          log.success('═══ 會話重置完成 ═══');
+          addStatus('Session reset total success!', 'ok');
+          log.success('═══ Session Reset Complete ═══');
 
           if (isHome) {
-            addStatus(`即將跳轉: ${CONFIG.REDIRECT_URL}`, 'ok');
+            addStatus(`Redirecting to: ${CONFIG.REDIRECT_URL}`, 'ok');
             setTimeout(() => { location.href = CONFIG.REDIRECT_URL; }, 800);
           } else {
-            addStatus('即將重新整理頁面...', 'ok');
+            addStatus('Refreshing page soon...', 'ok');
             setTimeout(() => { location.reload(); }, 1000);
           }
           hideStatusPanel(5000);
         } catch (e) {
-          log.error('會話重置異常:', e);
+          log.error('Session reset exception:', e);
           applyState(S.FAILURE);
-          addStatus(`錯誤: ${e.message}`, 'err');
+          addStatus(`Error: ${e.message}`, 'err');
           resetting = false;
         }
       }
 
-      // 快捷鍵
+      // Shortcuts
       document.addEventListener('keydown', (e) => {
         if ((e.key === 'F2' || e.keyCode === 113) && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
           e.preventDefault(); e.stopPropagation(); resetSession();
@@ -1132,7 +1028,7 @@
         }
         if ((e.key === 'F6' || e.keyCode === 117) && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
           e.preventDefault();
-          console.log('%c📊 當前防護狀態', 'color: #673AB7; font-size: 14px; font-weight: bold;');
+          console.log('%c📊 Current Protection Status', 'color: #673AB7; font-size: 14px; font-weight: bold;');
           console.log(JSON.stringify(scanProtectionStatus(), null, 2));
         }
       }, { capture: true });
@@ -1148,7 +1044,7 @@
         createStatusPanel();
         autoHandleSecurityPopups();
         scanProtectionStatus();
-        log.success('Arena Reset 已初始化');
+        log.success('Arena Reset Initialized');
       }
 
       if (document.body) initReset();
@@ -1173,11 +1069,11 @@
 
 
   // ═══════════════════════════════════════════════════════════════
-  //  §2  自動分段器 Lite 模組
+  //  §2  Auto Splitter Lite 模組
   // ═══════════════════════════════════════════════════════════════
   if (isModuleEnabled('splitter')) {
 
-    // 需要在 document-idle 等效時機執行
+    // Needs to execute at document-idle equivalent timing
     const initSplitter = () => {
 
       const CHUNK_SIZE = 120000;
@@ -1186,7 +1082,7 @@
       const FINAL_OK_TEXT = 'OK';
 
       const WAIT_PREFIX =
-`以下是我要提供給你的資料內容（第 {{CURRENT}} 段，共 {{TOTAL}} 段），請你先完整閱讀並記住，不要做任何回覆或分析。等我說「OK」之後，你再根據我的指示輸出所有內容。
+`Here is the data I want to provide (Part {{CURRENT}} of {{TOTAL}}), please read and remember it fully, do not reply or analyze yet. Once I say "OK", output the content according to my instructions.
 
 ---
 
@@ -1197,7 +1093,7 @@
 
 ---
 
-以上是第 {{CURRENT}} 段資料（共 {{TOTAL}} 段），請先記住這些內容，不要輸出任何東西。等我說「OK」後再開始回覆。`;
+This is part {{CURRENT}} of {{TOTAL}} data, please remember this first, do not output anything. Start replying once I say "OK".`;
 
       const state = {
         chunks: [],
@@ -1290,33 +1186,33 @@
       `);
 
       document.body.insertAdjacentHTML('beforeend', `
-        <button id="aa-lite-toggle" title="開關分段器">✂️</button>
+        <button id="aa-lite-toggle" title="Toggle Splitter">✂️</button>
         <div id="aa-lite-panel" class="hide">
           <div id="aa-lite-head">
-            <span>📋 分段器 Lite</span>
+            <span>📋 Splitter Lite</span>
             <button id="aa-lite-close">✕</button>
           </div>
           <div id="aa-lite-body">
-            <textarea id="aa-lite-text" placeholder="貼上大量文字後會自動分段"></textarea>
+            <textarea id="aa-lite-text" placeholder="Auto splits large text upon paste"></textarea>
             <div class="aa-row">
-              <label><input type="checkbox" id="aa-wait" checked> 插入「等我說OK」話術</label>
+              <label><input type="checkbox" id="aa-wait" checked> Insert "Wait for OK" prompt</label>
               <select id="aa-mode">
-                <option value="first-only">僅第一段</option>
-                <option value="all">所有段</option>
+                <option value="first-only">First Part Only</option>
+                <option value="all">All Parts</option>
               </select>
             </div>
             <div class="aa-row">
-              <label><input type="checkbox" id="aa-final-ok"> 全部送完後自動送出「OK」</label>
+              <label><input type="checkbox" id="aa-final-ok"> Auto-send "OK" after all parts</label>
             </div>
             <div class="aa-row">
-              <label>發送間隔 <input type="number" id="aa-gap" value="3" min="1" max="60" style="width:64px"> 秒</label>
+              <label>Send Gap <input type="number" id="aa-gap" value="3" min="1" max="60" style="width:64px"> secs</label>
             </div>
             <div class="aa-btns">
-              <button id="aa-send" class="aa-warn">🚀 自動發送</button>
-              <button id="aa-copy" class="aa-good">📋 合併複製</button>
-              <button id="aa-clear" class="aa-bad">🗑️ 清空</button>
+              <button id="aa-send" class="aa-warn">🚀 Auto Send</button>
+              <button id="aa-copy" class="aa-good">📋 Copy All</button>
+              <button id="aa-clear" class="aa-bad">🗑️ Clear</button>
             </div>
-            <div id="aa-lite-status">待命中</div>
+            <div id="aa-lite-status">Standby</div>
             <div id="aa-lite-stats"></div>
             <div id="aa-lite-list"></div>
           </div>
@@ -1405,9 +1301,9 @@
       function autoSplitNow(showStatus = true) {
         clearTimeout(autoSplitTimer);
         if (state.sending) return;
-        if (!ui.text.value.trim()) { resetSegments(); render(); if (showStatus) setStatus('待命中'); return; }
+        if (!ui.text.value.trim()) { resetSegments(); render(); if (showStatus) setStatus('Standby'); return; }
         splitText(ui.text.value);
-        if (showStatus) setStatus(`✂️ 已自動分成 ${state.finals.length} 段`);
+        if (showStatus) setStatus(`✂️ Automatically split into ${state.finals.length} parts`);
       }
 
       function scheduleAutoSplit() {
@@ -1419,9 +1315,9 @@
         const rawText = normalizeText(ui.text.value);
         const maxLen = state.finals.reduce((m, s) => Math.max(m, s.length), 0);
         ui.stats.textContent = state.finals.length
-          ? `原文 ${rawText.length.toLocaleString()} 字 ｜ ${state.finals.length} 段 ｜ 最大段 ${maxLen.toLocaleString()} / ${CHUNK_SIZE.toLocaleString()}`
+          ? `Original ${rawText.length.toLocaleString()} chars | ${state.finals.length} parts | Max Part ${maxLen.toLocaleString()} / ${CHUNK_SIZE.toLocaleString()}`
           : '';
-        if (!state.finals.length) { ui.list.innerHTML = `<div class="aa-empty">尚未分段</div>`; return; }
+        if (!state.finals.length) { ui.list.innerHTML = `<div class="aa-empty">Not split yet</div>`; return; }
         ui.list.innerHTML = state.finals.map((chunk, i) => {
           const raw = state.chunks[i];
           const wrapLen = chunk.length - raw.length;
@@ -1430,15 +1326,15 @@
             <div class="aa-item ${state.sent[i] ? 'sent' : ''}" data-i="${i}">
               <div class="aa-item-head">
                 <div>
-                  <div>📦 第 ${i + 1} 段 ${needWrap(i) ? '⏳' : ''} ${state.sent[i] ? '✅' : ''}</div>
+                  <div>📦 Part ${i + 1} parts ${needWrap(i) ? '⏳' : ''} ${state.sent[i] ? '✅' : ''}</div>
                   <div class="aa-item-meta">
                     ${chunk.length.toLocaleString()} 字
-                    ${needWrap(i) ? `｜內容 ${raw.length.toLocaleString()} + 話術 ${wrapLen.toLocaleString()}` : ''}
+                    ${needWrap(i) ? `｜Content ${raw.length.toLocaleString()} + Prompt ${wrapLen.toLocaleString()}` : ''}
                   </div>
                 </div>
                 <div class="aa-item-actions">
-                  <button data-act="copy">複製</button>
-                  <button data-act="paste">貼入</button>
+                  <button data-act="copy">Copy</button>
+                  <button data-act="paste">Paste</button>
                 </div>
               </div>
               <pre>${escapeHtml(preview)}</pre>
@@ -1553,7 +1449,7 @@
       async function waitUntilReady(index, total) {
         while (!state.abort) {
           if (canSendNow()) return true;
-          setStatus(`⏳ 第 ${index + 1}/${total} 段等待中：上一輪回答尚未完成`);
+          setStatus(`⏳ Part ${index + 1}/${total} parts waiting: previous response incomplete`);
           await sleepS(POLL_MS);
         }
         return false;
@@ -1588,9 +1484,9 @@
       async function sendOne(text, index, total) {
         while (!state.abort) {
           if (!(await waitUntilReady(index, total))) return false;
-          setStatus(`🚀 正在發送第 ${index + 1}/${total} 段...`);
+          setStatus(`🚀 正在發送Part ${index + 1}/${total} parts...`);
           if (await trySend(text)) return true;
-          setStatus(`⚠️ 第 ${index + 1} 段未確認成功送出，等待重試...`);
+          setStatus(`⚠️ Part ${index + 1} parts not verified as sent, waiting to retry...`);
           await sleepS(1000);
         }
         return false;
@@ -1611,50 +1507,50 @@
             const end = Date.now() + gap;
             while (!state.abort && Date.now() < end) {
               const left = Math.ceil((end - Date.now()) / 1000);
-              setStatus(`✅ 第 ${i + 1} 段已送出，等待 ${left} 秒`);
+              setStatus(`✅ Part ${i + 1} parts sent, waiting ${left} secs`);
               await sleepS(200);
             }
           }
         }
 
         if (completedAll && !state.abort && ui.finalOk.checked) {
-          setStatus('🟦 全部分段已送出，等待送出「OK」...');
+          setStatus('🟦 All parts sent, waiting to send "OK"...');
           if (!(await sendOne(FINAL_OK_TEXT, state.finals.length, state.finals.length + 1))) completedAll = false;
         }
 
-        if (state.abort) setStatus('⏹️ 已停止自動發送');
-        else if (!completedAll) setStatus('⚠️ 自動發送未完成');
-        else setStatus(ui.finalOk.checked ? '✅ 全部發送完成，已送出「OK」' : '✅ 全部發送完成');
+        if (state.abort) setStatus('⏹️ Auto-send stopped');
+        else if (!completedAll) setStatus('⚠️ Auto-send incomplete');
+        else setStatus(ui.finalOk.checked ? '✅ All sent, "OK" sent' : '✅ All sent');
 
         state.sending = false; ui.send.disabled = false; setBusyControls(false);
       }
 
       function pasteToChat(text) {
         const input = findInput();
-        if (!input) { copyText(text); setStatus('⚠️ 找不到聊天輸入框，已複製到剪貼板'); return; }
-        setInputVal(input, text); input.focus(); setStatus('📤 已貼入聊天輸入框');
+        if (!input) { copyText(text); setStatus('⚠️ 找不到聊天輸入框，已Copy到剪貼板'); return; }
+        setInputVal(input, text); input.focus(); setStatus('📤 已Paste聊天輸入框');
       }
 
-      // 事件綁定
+      // Event Bindings
       ui.toggle.addEventListener('click', () => ui.panel.classList.toggle('hide'));
       ui.close.addEventListener('click', () => ui.panel.classList.add('hide'));
       ui.text.addEventListener('input', scheduleAutoSplit);
 
       ui.copy.addEventListener('click', () => {
         if (!state.chunks.length && ui.text.value.trim()) autoSplitNow(false);
-        if (!state.chunks.length) { setStatus('⚠️ 沒有可複製內容'); return; }
-        copyText(state.chunks.join('')); setStatus('📋 已合併複製原文（不含話術）');
+        if (!state.chunks.length) { setStatus('⚠️ 沒有可CopyContent'); return; }
+        copyText(state.chunks.join('')); setStatus('📋 已合併CopyOriginal（不含Prompt）');
       });
 
       ui.clear.addEventListener('click', () => {
         if (state.sending) state.abort = true;
         clearTimeout(autoSplitTimer);
-        ui.text.value = ''; resetSegments(); render(); setStatus('🗑️ 已清空');
+        ui.text.value = ''; resetSegments(); render(); setStatus('🗑️ Cleared');
       });
 
       ui.send.addEventListener('click', async () => {
         if (!state.finals.length && ui.text.value.trim()) autoSplitNow(false);
-        if (!state.finals.length) { setStatus('⚠️ 請先貼上文字'); return; }
+        if (!state.finals.length) { setStatus('⚠️ Please paste text first'); return; }
         if (state.sending) return;
         await autoSendAll();
       });
@@ -1668,7 +1564,7 @@
         const item = btn.closest('.aa-item');
         const i = Number(item?.dataset.i);
         if (Number.isNaN(i)) return;
-        if (btn.dataset.act === 'copy') { copyText(state.finals[i]); setStatus(`📋 第 ${i + 1} 段已複製`); }
+        if (btn.dataset.act === 'copy') { copyText(state.finals[i]); setStatus(`📋 Part ${i + 1} parts已Copy`); }
         if (btn.dataset.act === 'paste') pasteToChat(state.finals[i]);
       });
 
@@ -1678,18 +1574,18 @@
           if (!ui.panel.classList.contains('hide')) ui.text.focus();
         }
         if (state.sending && e.key === 'Escape') {
-          state.abort = true; setStatus('⏹️ 收到停止指令，正在中止...');
+          state.abort = true; setStatus('⏹️ Stop command received, aborting...');
         }
       });
 
       render();
-      console.log('✂️ Arena.ai 分段器 Lite 已載入');
+      console.log('✂️ Arena.ai Splitter Lite loaded');
     };
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initSplitter);
     } else {
-      // 延遲一小段確保 DOM 就緒
+      // Small delay to ensure DOM is ready
       setTimeout(initSplitter, 0);
     }
 
@@ -1697,7 +1593,7 @@
 
 
   // ═══════════════════════════════════════════════════════════════
-  //  §3  Model Preset Pro 模組
+  //  §3  Model Preset Pro Module
   // ═══════════════════════════════════════════════════════════════
   if (isModuleEnabled('preset')) {
     (function initModelPreset() {
@@ -1751,7 +1647,7 @@
       function saveModelCache(models) { Vault.set(GM_MDL_KEY, { models, ts: Date.now() }); }
       function loadModelCache() {
         const d = Vault.get(GM_MDL_KEY, null);
-        if (d?.models?.length) { modelRegistry = d.models; registryReady = true; logP(`📦 從 Vault 恢復 ${modelRegistry.length} 個模型`); return true; }
+        if (d?.models?.length) { modelRegistry = d.models; registryReady = true; logP(`📦 Restored from Vault ${modelRegistry.length} models`); return true; }
         return false;
       }
 
@@ -1840,7 +1736,7 @@
           s.textContent = code;
           (document.documentElement || document.head).appendChild(s);
           s.remove();
-        } catch (e) { warnP('Bridge 注入失敗:', e); }
+        } catch (e) { warnP('Bridge inject failed:', e); }
       }
 
       function parseModelsFromPayload(str) {
@@ -1879,9 +1775,9 @@
           modelRegistry = [...map.values()].sort((a, b) => (a._bestRank ?? Infinity) - (b._bestRank ?? Infinity));
           registryReady = true;
           saveModelCache(modelRegistry);
-          logP(`📋 抓到 ${modelRegistry.length} 個模型 → 已寫入 Vault`);
+          logP(`📋 Captured ${modelRegistry.length} models → 已寫入 Vault`);
           refreshCountEl();
-        } catch (e) { warnP('buildRegistry 異常:', e); }
+        } catch (e) { warnP('buildRegistry anomaly:', e); }
       }
 
       function fallbackExtractFromDOM() {
@@ -2182,7 +2078,7 @@
         });
       }
 
-      // DOM 操作
+      // DOM Operations
       const sleepP = ms => new Promise(r => setTimeout(r, ms));
 
       function isVisibleP(el) {
@@ -2329,7 +2225,7 @@
           const leftModel  = leftWant  ? resolveModel(leftWant)  : null;
           const rightModel = rightWant ? resolveModel(rightWant) : null;
 
-          if (!leftModel && !rightModel) { warnP('無法匹配任何模型'); unlockUI(); return; }
+          if (!leftModel && !rightModel) { warnP('Failed to match any model'); unlockUI(); return; }
 
           await waitForDOM(() => getModelButtons().length >= 2, 8000);
           if (getModelButtons().length < 2 || seq !== navSeq) { unlockUI(); return; }
@@ -2351,19 +2247,19 @@
 
           await sleepP(500);
           if (seq === navSeq) unlockUI();
-          logP('✅ 完成',
-            leftModel  ? `左:${leftModel.displayName}`  : '左:跳過',
-            rightModel ? `右:${rightModel.displayName}` : '右:跳過'
+          logP('✅ Done',
+            leftModel  ? `Left:${leftModel.displayName}`  : 'Left:Skipped',
+            rightModel ? `Right:${rightModel.displayName}` : 'Right:Skipped'
           );
         } catch (e) {
-          warnP('apply() 異常:', e);
+          warnP('apply() anomaly:', e);
           unlockUI();
         } finally {
           running = false;
         }
       }
 
-      // SPA 路由監控
+      // SPA Route Monitoring
       function onRouteChange() {
         navSeq++; running = false;
         if (location.pathname.startsWith(ROUTE)) {
