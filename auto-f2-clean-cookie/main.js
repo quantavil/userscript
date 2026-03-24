@@ -256,67 +256,113 @@
       function injectResetStyles() {
         const sheet = new CSSStyleSheet();
         sheet.replaceSync(`
+          :root {
+            --ui-font: 'Geist', 'Outfit', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            --cb-fluid: cubic-bezier(0.32, 0.72, 0, 1);
+            --cb-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+          }
           #${CONFIG.BTN_ID} {
-            position: fixed; top: 10px; right: 10px; z-index: 2147483647;
-            padding: 10px 18px;
-            background: linear-gradient(135deg, #E48900, #ff6b00);
-            color: #fff; border: none; border-radius: 10px;
+            position: fixed; bottom: 24px; left: 24px; z-index: 2147483647;
+            padding: 8px 16px;
+            background: rgba(10, 10, 10, 0.6);
+            color: #ffffff;
+            border: none;
+            border-radius: 9999px;
             cursor: pointer;
-            font: bold 13px/1.2 system-ui, -apple-system, sans-serif;
-            box-shadow: 0 4px 15px rgba(228,137,0,.4);
-            transition: all .2s ease;
+            font: 600 13px/1.5 var(--ui-font);
+            letter-spacing: -0.01em;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 8px 32px rgba(0, 0, 0, 0.4);
+            transition: all 300ms var(--cb-fluid);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
             user-select: none;
-            backdrop-filter: blur(10px);
+            transform-origin: center;
           }
           #${CONFIG.BTN_ID}:hover:not(:disabled) {
-            transform: scale(1.05) translateY(-1px);
-            box-shadow: 0 6px 25px rgba(228,137,0,.6);
+            background: rgba(15, 15, 15, 0.8);
+            transform: scale(0.98);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.1), 0 12px 48px rgba(0, 0, 0, 0.5);
           }
-          #${CONFIG.BTN_ID}:active:not(:disabled) { transform: scale(.97); }
-          #${CONFIG.BTN_ID}:disabled { opacity: .55; cursor: wait; }
-          .lm-rst-status {
-            position: fixed; top: 50px; right: 10px; z-index: 2147483646;
-            padding: 8px 14px;
-            background: rgba(0,0,0,.85);
-            color: #fff; border-radius: 8px;
-            font: 11px/1.4 monospace;
-            max-width: 350px; max-height: 300px;
-            overflow-y: auto; pointer-events: none;
-            opacity: 0; transition: opacity .3s;
-            backdrop-filter: blur(10px);
+          #${CONFIG.BTN_ID}:active:not(:disabled) { transform: scale(0.95); }
+          #${CONFIG.BTN_ID}:disabled { opacity: 0.5; cursor: wait; transform: scale(0.98); }
+          
+          .lm-rst-status-outer {
+            position: fixed; bottom: 80px; left: 24px; z-index: 2147483646;
+            padding: 6px;
+            background: rgba(10, 10, 10, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 2rem;
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(16px) scale(0.98);
+            transition: opacity 300ms var(--cb-fluid), transform 300ms var(--cb-fluid);
+            will-change: transform, opacity;
           }
-          .lm-rst-status.visible { opacity: 1; pointer-events: auto; }
-          .lm-rst-status .entry { margin: 2px 0; }
-          .lm-rst-status .entry.ok { color: #4CAF50; }
-          .lm-rst-status .entry.warn { color: #FF9800; }
-          .lm-rst-status .entry.err { color: #F44336; }
-          .lm-rst-status .entry.sec { color: #E91E63; }
+          .lm-rst-status-outer.visible { 
+
+            opacity: 1; 
+            pointer-events: auto; 
+            transform: translateY(0) scale(1); 
+          }
+          .lm-rst-status-inner {
+            background: rgba(15, 15, 15, 0.8);
+            border-radius: calc(2rem - 6px);
+            padding: 16px 20px;
+            max-width: 340px; 
+            max-height: 320px;
+            overflow-y: auto;
+            color: #e5e7eb;
+            font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
+          }
+          .lm-rst-status-inner::-webkit-scrollbar { width: 4px; }
+          .lm-rst-status-inner::-webkit-scrollbar-track { background: transparent; }
+          .lm-rst-status-inner::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+          .lm-rst-status-inner .entry { margin: 6px 0; opacity: 0; animation: fadeUpEntry 600ms var(--cb-bounce) forwards; }
+          @keyframes fadeUpEntry {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          .lm-rst-status-inner .entry.ok { color: #34d399; }
+          .lm-rst-status-inner .entry.warn { color: #fbbf24; }
+          .lm-rst-status-inner .entry.err { color: #f87171; }
+          .lm-rst-status-inner .entry.sec { color: #a78bfa; }
         `);
         document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
       }
 
+      let statusOuter = null;
       let statusPanel = null;
 
       function createStatusPanel() {
+        statusOuter = document.createElement('div');
+        statusOuter.className = 'lm-rst-status-outer';
         statusPanel = document.createElement('div');
-        statusPanel.className = 'lm-rst-status';
-        document.body.appendChild(statusPanel);
-        return statusPanel;
+        statusPanel.className = 'lm-rst-status-inner';
+        statusOuter.appendChild(statusPanel);
+        document.body.appendChild(statusOuter);
+        return statusOuter;
       }
 
       function addStatus(text, type = 'ok') {
-        if (!statusPanel) createStatusPanel();
+        if (!statusOuter) createStatusPanel();
         const div = document.createElement('div');
         div.className = `entry ${type}`;
         div.textContent = `${new Date().toLocaleTimeString()} ${text}`;
         statusPanel.appendChild(div);
-        statusPanel.scrollTop = statusPanel.scrollHeight;
-        statusPanel.classList.add('visible');
+        
+        requestAnimationFrame(() => {
+          statusPanel.scrollTop = statusPanel.scrollHeight;
+        });
+        statusOuter.classList.add('visible');
       }
 
       function hideStatusPanel(delay = 3000) {
         setTimeout(() => {
-          if (statusPanel) statusPanel.classList.remove('visible');
+          if (statusOuter) statusOuter.classList.remove('visible');
         }, delay);
       }
 
@@ -686,7 +732,7 @@
         }
         if ((e.key === 'F4' || e.keyCode === 115) && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
           e.preventDefault();
-          if (statusPanel) statusPanel.classList.toggle('visible');
+          if (statusOuter) statusOuter.classList.toggle('visible');
         }
         if ((e.key === 'F6' || e.keyCode === 117) && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
           e.preventDefault();
@@ -787,7 +833,7 @@ This is part {{CURRENT}} of {{TOTAL}} data, please remember this first, do not o
         return st.display !== 'none' && st.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
       };
 
-      const insidePanel = el => !!el?.closest('#aa-lite-panel');
+      const insidePanel = el => !!el?.closest('#aa-lite-panel-outer');
 
       const textOf = el =>
         [el?.textContent || '', el?.getAttribute?.('aria-label') || '',
@@ -799,91 +845,166 @@ This is part {{CURRENT}} of {{TOTAL}} data, please remember this first, do not o
       const STOP_WORDS = ['stop', '停止', '中止', 'stop generating'];
 
       GM_addStyle(`
-        #aa-lite-toggle{
-          position:fixed;right:20px;bottom:20px;z-index:999999;
-          width:52px;height:52px;border:none;border-radius:50%;
-          background:#5b6cff;color:#fff;font-size:22px;cursor:pointer;
-          box-shadow:0 6px 18px rgba(0,0,0,.25);
+        :root {
+            --ui-font: 'Geist', 'Outfit', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            --cb-fluid: cubic-bezier(0.32, 0.72, 0, 1);
+            --cb-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
         }
-        #aa-lite-panel{
-          position:fixed;right:20px;bottom:84px;z-index:999998;
-          width:420px;max-height:80vh;display:flex;flex-direction:column;
-          background:#111827;color:#e5e7eb;border:1px solid #374151;border-radius:14px;
-          overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,.35);
-          font:13px/1.5 system-ui,-apple-system,Segoe UI,Microsoft JhengHei,sans-serif;
+        #aa-lite-toggle {
+          position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 999999;
+          width: 40px; height: 48px; border: none;
+          border-radius: 12px 0 0 12px; background: rgba(10,10,10,0.6); color: #fff;
+          font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 8px 32px rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+          transition: all 300ms var(--cb-fluid);
         }
-        #aa-lite-panel.hide{display:none}
-        #aa-lite-head{
-          display:flex;align-items:center;justify-content:space-between;
-          padding:12px 14px;background:#1f2937;font-weight:700;
+        #aa-lite-toggle:hover {
+          transform: translateY(-50%) translateX(-4px);
+          background: rgba(15,15,15,0.8);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.1), 0 12px 48px rgba(0, 0, 0, 0.5);
         }
-        #aa-lite-head button{background:none;border:none;color:#9ca3af;cursor:pointer;font-size:18px}
-        #aa-lite-body{padding:12px;display:flex;flex-direction:column;gap:10px;overflow:auto}
-        #aa-lite-text{
-          width:100%;min-height:120px;max-height:260px;resize:vertical;
-          background:#0b1220;color:#e5e7eb;border:1px solid #374151;border-radius:10px;
-          padding:10px;box-sizing:border-box;outline:none;
+        #aa-lite-panel-outer {
+          position: fixed; right: 56px; top: 50%; z-index: 999998;
+          width: 420px; max-height: 85vh; display: flex; flex-direction: column;
+          padding: 8px;
+          background: rgba(10, 10, 10, 0.4);
+          border: 1px solid rgba(255,255,255,0.05); border-radius: 2.5rem;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 30px 60px -15px rgba(0,0,0,0.6);
+          backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+          transition: opacity 300ms var(--cb-fluid), transform 300ms var(--cb-fluid);
+          transform-origin: right center;
+          pointer-events: none; opacity: 0; transform: translateY(-50%) scale(0.95);
         }
-        .aa-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-        .aa-row input[type="number"],.aa-row select{
-          background:#0b1220;color:#e5e7eb;border:1px solid #374151;border-radius:8px;padding:6px 8px;
+        #aa-lite-panel-outer:not(.hide) { opacity: 1; pointer-events: auto; transform: translateY(-50%) scale(1); }
+        #aa-lite-panel-inner {
+          display: flex; flex-direction: column;
+          background: rgba(15, 15, 15, 0.85);
+          border-radius: calc(2.5rem - 8px);
+          box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
+          overflow: hidden;
+          font: 14px/1.6 var(--ui-font);
+          color: #e5e7eb;
         }
-        .aa-row label{display:flex;align-items:center;gap:6px;color:#d1d5db}
-        .aa-btns{display:flex;gap:8px;flex-wrap:wrap}
-        .aa-btns button{flex:1;padding:8px 10px;border:none;border-radius:8px;cursor:pointer;font-weight:600}
-        .aa-warn{background:#f59e0b;color:#111827}
-        .aa-good{background:#10b981;color:#fff}
-        .aa-bad{background:#ef4444;color:#fff}
-        #aa-lite-status{padding:8px 10px;border-radius:8px;background:#0b1220;color:#93c5fd;white-space:pre-wrap}
-        #aa-lite-stats{font-size:12px;color:#9ca3af}
-        #aa-lite-list{display:flex;flex-direction:column;gap:8px}
-        .aa-item{border:1px solid #374151;border-radius:10px;background:#0b1220;overflow:hidden}
-        .aa-item.sent{border-color:#10b981}
-        .aa-item-head{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;background:#111827;align-items:center}
-        .aa-item-meta{font-size:12px;color:#9ca3af}
-        .aa-item-actions{display:flex;gap:6px}
-        .aa-item-actions button{border:1px solid #374151;background:#1f2937;color:#e5e7eb;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px}
-        .aa-item pre{margin:0;padding:10px;max-height:140px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:#d1d5db;font-size:12px}
-        .aa-empty{text-align:center;color:#6b7280;padding:18px 8px;border:1px dashed #374151;border-radius:10px}
+        #aa-lite-head {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 18px 24px; background: rgba(255,255,255,0.02);
+          border-bottom: 1px solid rgba(255,255,255,0.03); 
+          font-weight: 600; font-size: 15px; letter-spacing: -0.01em;
+        }
+        #aa-lite-head button {
+          background: rgba(255,255,255,0.05); border: none; color: #9ca3af; cursor: pointer;
+          width: 28px; height: 28px; border-radius: 9999px; display: flex; align-items: center; justify-content: center;
+          transition: all 250ms var(--cb-fluid);
+        }
+        #aa-lite-head button:hover { color: #f3f4f6; background: rgba(255,255,255,0.1); transform: scale(0.9); }
+        #aa-lite-body { padding: 24px; display: flex; flex-direction: column; gap: 16px; overflow: auto; }
+        #aa-lite-text {
+          width: 100%; min-height: 120px; max-height: 260px; resize: vertical;
+          background: rgba(5,5,5,0.5); color: #f3f4f6;
+          border: 1px solid rgba(255,255,255,0.06); border-radius: 1rem;
+          padding: 16px; box-sizing: border-box; outline: none;
+          box-shadow: inset 0 2px 8px rgba(0,0,0,0.2);
+          transition: all 250ms var(--cb-fluid); font-family: ui-monospace, monospace; font-size: 13px;
+        }
+        #aa-lite-text:focus { border-color: rgba(255, 255, 255, 0.2); background: rgba(10,10,10,0.8); }
+        .aa-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .aa-row input[type="number"], .aa-row select {
+          background: rgba(5,5,5,0.5); color: #e5e7eb; border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 8px; padding: 8px 12px; outline: none; font-family: inherit; transition: all 200ms;
+        }
+        .aa-row input[type="number"]:focus, .aa-row select:focus { border-color: rgba(255,255,255,0.2); }
+        .aa-row input[type="checkbox"] { accent-color: #ffffff; width: 16px; height: 16px; border-radius: 4px; }
+        .aa-row label { display: flex; align-items: center; gap: 8px; color: #a1a1aa; font-size: 13px; cursor: pointer; }
+        .aa-btns { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+        .aa-btns button {
+          flex: 1; padding: 12px 16px; border: 1px solid rgba(255,255,255,0.05); border-radius: 9999px;
+          cursor: pointer; font-weight: 600; font-size: 14px; transition: all 300ms var(--cb-fluid);
+          display: flex; justify-content: center; align-items: center; gap: 8px;
+          background: rgba(20,20,20,0.8); color: #eee;
+        }
+        .aa-btns button:hover { transform: scale(0.97); background: rgba(40,40,40,0.8); }
+        .aa-btns button.aa-primary { background: #fafafa; color: #0a0a0a; border-color: transparent; }
+        .aa-btns button.aa-primary:hover { background: #e5e5e5; }
+        
+        #aa-lite-status {
+          padding: 12px 16px; border-radius: 12px; background: rgba(0,0,0,0.3); color: #a1a1aa;
+          font-size: 13px; white-space: pre-wrap; margin-top: 8px; border: 1px solid rgba(255,255,255,0.03);
+          box-shadow: inset 0 1px 4px rgba(0,0,0,0.2);
+        }
+        #aa-lite-stats { font-size: 12px; color: #71717a; text-align: center; }
+        #aa-lite-list { display: flex; flex-direction: column; gap: 16px; margin-top: 12px; }
+        .aa-item {
+          border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem;
+          background: rgba(5,5,5,0.4); overflow: hidden; transition: all 300ms var(--cb-fluid);
+          animation: fadeUpEntry 300ms var(--cb-bounce) forwards; opacity: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .aa-item.sent { border-color: rgba(255,255,255,0.15); background: rgba(20,20,20,0.6); }
+        .aa-item-head {
+          display: flex; justify-content: space-between; gap: 12px; padding: 14px 20px;
+          background: rgba(255,255,255,0.02); align-items: center; border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        .aa-item-meta { font-size: 11px; color: #a1a1aa; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .aa-item-actions { display: flex; gap: 8px; }
+        .aa-item-actions button {
+          border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05);
+          color: #d1d5db; border-radius: 9999px; padding: 6px 14px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 200ms var(--cb-fluid);
+        }
+        .aa-item-actions button:hover { background: #fafafa; color: #000; transform: scale(0.95); }
+        .aa-item pre {
+          margin: 0; padding: 16px 20px; max-height: 160px; overflow: auto; white-space: pre-wrap;
+          word-break: break-all; color: #d1d5db; font-size: 13px; font-family: ui-monospace, Menlo, monospace;
+        }
+        .aa-empty { text-align: center; color: #71717a; padding: 40px 20px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 1rem; font-size: 14px; }
+        
+        #aa-lite-body::-webkit-scrollbar { width: 4px; }
+        #aa-lite-body::-webkit-scrollbar-track { background: transparent; }
+        #aa-lite-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .aa-item pre::-webkit-scrollbar { width: 4px; }
+        .aa-item pre::-webkit-scrollbar-track { background: transparent; }
+        .aa-item pre::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
       `);
 
       document.body.insertAdjacentHTML('beforeend', `
         <button id="aa-lite-toggle" title="Toggle Splitter">✂️</button>
-        <div id="aa-lite-panel" class="hide">
-          <div id="aa-lite-head">
-            <span>📋 Splitter Lite</span>
-            <button id="aa-lite-close">✕</button>
-          </div>
-          <div id="aa-lite-body">
-            <textarea id="aa-lite-text" placeholder="Auto splits large text upon paste"></textarea>
-            <div class="aa-row">
-              <label><input type="checkbox" id="aa-wait" checked> Insert "Wait for OK" prompt</label>
-              <select id="aa-mode">
-                <option value="first-only">First Part Only</option>
-                <option value="all">All Parts</option>
-              </select>
+        <div id="aa-lite-panel-outer" class="hide">
+          <div id="aa-lite-panel-inner">
+            <div id="aa-lite-head">
+              <span>📋 Splitter Lite</span>
+              <button id="aa-lite-close">✕</button>
             </div>
-            <div class="aa-row">
-              <label><input type="checkbox" id="aa-final-ok"> Auto-send "OK" after all parts</label>
+            <div id="aa-lite-body">
+              <textarea id="aa-lite-text" placeholder="Auto splits large text upon paste"></textarea>
+              <div class="aa-row">
+                <label><input type="checkbox" id="aa-wait" checked> Insert "Wait for OK" prompt</label>
+                <select id="aa-mode">
+                  <option value="first-only">First Part Only</option>
+                  <option value="all">All Parts</option>
+                </select>
+              </div>
+              <div class="aa-row">
+                <label><input type="checkbox" id="aa-final-ok"> Auto-send "OK" after all parts</label>
+              </div>
+              <div class="aa-row">
+                <label>Send Gap <input type="number" id="aa-gap" value="3" min="1" max="60" style="width:64px"> secs</label>
+              </div>
+              <div class="aa-btns">
+                <button id="aa-send" class="aa-primary">🚀 Auto Send</button>
+                <button id="aa-copy">📋 Copy All</button>
+                <button id="aa-clear">🗑️ Clear</button>
+              </div>
+              <div id="aa-lite-status">Standby</div>
+              <div id="aa-lite-stats"></div>
+              <div id="aa-lite-list"></div>
             </div>
-            <div class="aa-row">
-              <label>Send Gap <input type="number" id="aa-gap" value="3" min="1" max="60" style="width:64px"> secs</label>
-            </div>
-            <div class="aa-btns">
-              <button id="aa-send" class="aa-warn">🚀 Auto Send</button>
-              <button id="aa-copy" class="aa-good">📋 Copy All</button>
-              <button id="aa-clear" class="aa-bad">🗑️ Clear</button>
-            </div>
-            <div id="aa-lite-status">Standby</div>
-            <div id="aa-lite-stats"></div>
-            <div id="aa-lite-list"></div>
           </div>
         </div>
       `);
 
       const ui = {
         toggle: $s('#aa-lite-toggle'),
-        panel:  $s('#aa-lite-panel'),
+        panelOuter: $s('#aa-lite-panel-outer'),
+        panelInner: $s('#aa-lite-panel-inner'),
         close:  $s('#aa-lite-close'),
         text:   $s('#aa-lite-text'),
         wait:   $s('#aa-wait'),
@@ -1047,7 +1168,6 @@ This is part {{CURRENT}} of {{TOTAL}} data, please remember this first, do not o
       function findSendButton() {
         const direct = pick([
           'button[aria-label*="Send"]', 'button[aria-label*="send"]',
-          'button[aria-label*="發送"]', 'button[aria-label*="发送"]',
           'button[data-testid*="send"]', 'button[type="submit"]'
         ], btn => !btn.disabled);
         if (direct) return direct;
@@ -1194,8 +1314,8 @@ This is part {{CURRENT}} of {{TOTAL}} data, please remember this first, do not o
       }
 
       // Event Bindings
-      ui.toggle.addEventListener('click', () => ui.panel.classList.toggle('hide'));
-      ui.close.addEventListener('click', () => ui.panel.classList.add('hide'));
+      ui.toggle.addEventListener('click', () => ui.panelOuter.classList.toggle('hide'));
+      ui.close.addEventListener('click', () => ui.panelOuter.classList.add('hide'));
       ui.text.addEventListener('input', scheduleAutoSplit);
 
       ui.copy.addEventListener('click', () => {
@@ -1232,8 +1352,8 @@ This is part {{CURRENT}} of {{TOTAL}} data, please remember this first, do not o
 
       document.addEventListener('keydown', e => {
         if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
-          e.preventDefault(); ui.panel.classList.toggle('hide');
-          if (!ui.panel.classList.contains('hide')) ui.text.focus();
+          e.preventDefault(); ui.panelOuter.classList.toggle('hide');
+          if (!ui.panelOuter.classList.contains('hide')) ui.text.focus();
         }
         if (state.sending && e.key === 'Escape') {
           state.abort = true; setStatus('⏹️ Stop command received, aborting...');

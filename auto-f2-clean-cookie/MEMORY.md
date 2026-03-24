@@ -10,6 +10,7 @@ A userscript meant to automate F2 or clean cookies across various sites.
 
 ## Conventions
 Standard userscript conventions.
+UI components strictly use "Ethereal Glass" archetype (backdrop-blur, CSS variables for fluid cubic-bezier) and "Double-bezel" nested DOM elements (`outer` and `inner` wrappers).
 
 ## Dependencies & Setup
 Tampermonkey or equivalent userscript manager.
