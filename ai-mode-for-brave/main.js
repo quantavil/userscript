@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Mode for Brave Sidebar
 // @namespace    quantavil
-// @version      2.0.0
+// @version      2.1.0
 // @description  Extracts Google AI Mode results and displays them in the Brave Search sidebar
 // @match        https://search.brave.com/search*
 // @match        https://www.google.com/search*
@@ -109,12 +109,24 @@
         `[GAI] Sending ${html.length} chars for "${q}" (${elapsed}s)` +
           (error ? ` [error: ${error}]` : "")
       );
-      GM_setValue("gai_response", {
+      
+      const ts = Date.now();
+      let cache = GM_getValue("gai_cache", null);
+      if (!cache || typeof cache !== "object") cache = {};
+      cache[q] = {
         html,
-        query: q,
-        ts: Date.now(),
+        ts,
         error: error || null,
-      });
+      };
+      
+      // Limit cache size to 10 queries to prevent memory bloating
+      const keys = Object.keys(cache);
+      if (keys.length > 10) {
+        const oldestEntry = keys.sort((a, b) => cache[a].ts - cache[b].ts)[0];
+        delete cache[oldestEntry];
+      }
+      
+      GM_setValue("gai_cache", cache);
     }
 
     const timer = setInterval(() => {
@@ -409,6 +421,7 @@
     // ── Start fetch ──
     function startFetch(q) {
       const gen = ++fetchGen;
+      const fetchStartTime = Date.now();
       currentQuery = q;
       const bodyEl = $(`#${ID}-body`);
       if (!bodyEl) return;
@@ -417,12 +430,13 @@
       cleanupFetch();
 
       listenerId = GM_addValueChangeListener(
-        "gai_response",
+        "gai_cache",
         (_key, _oldVal, newVal, _remote) => {
-          if (!newVal || !newVal.ts) return;
-          if (Date.now() - newVal.ts > 120000) return;
+          if (!newVal || !newVal[currentQuery]) return;
+          const entry = newVal[currentQuery];
+          if (!entry.ts) return;
+          if (entry.ts < fetchStartTime) return;
           if (gen !== fetchGen) return;
-          if (newVal.query && newVal.query !== currentQuery) return;
 
           // Done — remove listener
           if (listenerId !== null) {
@@ -433,17 +447,17 @@
           }
 
           // Handle error responses
-          if (newVal.error) {
+          if (entry.error) {
             const msg =
-              newVal.error === "error_page"
+              entry.error === "error_page"
                 ? "⚠️ Google blocked the request (CAPTCHA / sign-in)."
-                : `⚠️ Error: ${newVal.error}`;
+                : `⚠️ Error: ${entry.error}`;
             renderError(msg, currentQuery);
-          } else if (newVal.html) {
+          } else if (entry.html) {
             console.log(
-              `[GAI-Brave] Received ${newVal.html.length} chars`
+              `[GAI-Brave] Received ${entry.html.length} chars`
             );
-            renderContent(newVal.html);
+            renderContent(entry.html);
           } else {
             renderError("⚠️ Empty response received.", currentQuery);
           }
@@ -501,10 +515,10 @@
 
       // Check GM_getValue cache before opening a tab
       try {
-        const cached = GM_getValue("gai_response");
+        const cache = GM_getValue("gai_cache", null);
+        const cached = cache && typeof cache === "object" ? cache[q] : null;
         if (
           cached &&
-          cached.query === q &&
           !cached.error &&
           cached.html &&
           Date.now() - cached.ts < CACHE_TTL

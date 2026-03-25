@@ -1,10 +1,8 @@
-
-
 # Google AI Mode for Brave Sidebar
 
 > Injects Google's AI-generated search results directly into the Brave Search sidebar — seamlessly, instantly, and without leaving Brave.
 
-![Version](https://img.shields.io/badge/version-2.0.0-6366f1)
+![Version](https://img.shields.io/badge/version-2.1.0-6366f1)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -33,7 +31,7 @@ This userscript runs silently in the background. When you search on Brave, it:
 | **Native Rendering** | AI content is extracted, sanitized, and injected as clean HTML — no iframes |
 | **Smart Completion Detection** | Watches for Google's own Copy/Thumbs Up/Thumbs Down buttons to confirm the response is fully generated before extracting |
 | **5-Second Streaming Fallback** | If buttons don't appear, waits for 5 seconds of stable text before capturing — handles edge cases without cutoff |
-| **Cross-Page-Load Cache** | Results are cached for 5 minutes via `GM_getValue`. Reloading Brave Search with the same query renders instantly |
+| **Multi-Query Cache** | Results are cached for 5 minutes via `GM_getValue`. Stores up to 10 recent unique queries, allowing instant switching between searches |
 | **SPA-Aware Navigation** | Intercepts `pushState`/`replaceState` and `popstate` to detect query changes in Brave's single-page app architecture |
 | **Panel Persistence** | If Brave's SPA destroys the sidebar DOM (e.g., switching between Web/Images/News filters), the panel is automatically re-inserted with cached content |
 | **Float-to-Sidebar Migration** | If the panel renders before the sidebar DOM exists, it floats temporarily and migrates into the sidebar once available |
@@ -68,8 +66,8 @@ This userscript runs silently in the background. When you search on Brave, it:
 
 ```
 ┌─────────────────────┐         GM_setValue          ┌──────────────────────┐
-│   BRAVE SEARCH TAB  │ ◄──── "gai_response" ─────  │   GOOGLE AI TAB      │
-│                     │                              │   (background)       │
+│   BRAVE SEARCH TAB  │ ◄──── "gai_cache" ───────  │   GOOGLE AI TAB      │
+│                     │       (Multi-Query)          │   (background)       │
 │  ┌───────────────┐  │    ┌──────────────────────┐  │                      │
 │  │ Sidebar Panel │  │    │  Completion Signal:   │  │  1. Page loads       │
 │  │               │  │    │  • Copy button exists  │  │  2. AI streams text  │
@@ -110,6 +108,7 @@ Raw Google DOM
 | Constant | Default | Description |
 |----------|---------|-------------|
 | `CACHE_TTL` | `300000` (5 min) | How long cached results are valid |
+| Max Cache Size | 10 queries | Limit to prevent memory bloat |
 | `stableCount >= 1` (with buttons) | 500ms | Wait after buttons appear |
 | `stableCount >= 10` (without buttons) | 5000ms | Fallback stability threshold |
 | Hard cap timeout | `60000` (60s) | Maximum wait on Google side |
@@ -144,6 +143,11 @@ Raw Google DOM
 ---
 
 ## Changelog
+
+### v2.1.0
+- **Added**: Multi-Query Cache — stores up to 10 unique queries via `gai_cache` for instant back-and-forth navigation.
+- **Fixed**: Cache eviction logic (oldest first) to prevent memory bloat.
+- **Fixed**: `GM_getValue` cross-manager compatibility fixes.
 
 ### v2.0.0
 - **Fixed**: Content cutoff — replaced phantom `[data-complete]` with real Google UI signals (Copy/Thumbs buttons)

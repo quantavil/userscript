@@ -24,4 +24,4 @@ A high-end collection of userscripts designed for browser customization, automat
 - **Google AI Stream**: Google AI Mode doesn't render statically; it streams. The script must wait for content settling (mutation silence) before extraction.
 
 - **Fast Path Extraction**: In v1.4.0, we replaced static waits with polling. If Google's `[data-complete]` exists, we capture immediately. This significantly improves UX by reducing idle time.
-
+- **Multi-Query Cache**: The script now uses `gai_cache` to store up to 10 queries simultaneously, allowing users to switch between recent searches without re-fetching content.
