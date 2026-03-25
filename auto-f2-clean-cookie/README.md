@@ -1,55 +1,42 @@
-# Auto F2 CleanCookie
+# Auto CleanCookie - for AI
 
-A powerful, beginner-friendly userscript designed to enhance your experience with top-tier AI platforms like Arena.ai (LMArena), ChatGPT, Claude, Gemini, Meta AI, and more. 
+A premium, high-end userscript toolkit designed for professional-grade interaction with 60+ AI platforms. Optimized for Arena.ai (LMArena) but fully compatible with ChatGPT, Claude, Gemini, and more.
 
-It provides an all-in-one toolkit to manage cookies, reset sessions, bypass character limits, and streamline model comparisons.
+## ✨ Premium Features
 
-## ✨ Features
+Built with a "Ethereal Glass" aesthetic, this script provides a high-performance utility suite with fluid motion choreography and sophisticated UI components.
 
-The script is divided into three core modules, all accessible directly from your browser:
+### 1. Unified Reset Module (F2)
+- **Session Purge**: Press `F2` to trigger a "best-effort" reset of Cookies, LocalStorage, IndexedDB, and Cache. 
+- **Privacy First**: Automatically clears tracking beacons (PostHog, Cloudflare Ray ID, etc.) and resets captcha providers.
+- **Visual Feedback**: A frosted status float displays real-time progress for all clearing operations.
 
-### 1. Auto F2 CleanCookie (Session Reset)
-Easily reset your session and clear tracking data with a single keypress.
-- **One-Click Reset**: Press `F2` to instantly clear Cookies, LocalStorage, IndexedDB, and Cache.
-- **Automated Security Bypass**: Automatically handles and resets Cloudflare Turnstile and Google reCAPTCHA Enterprise challenges.
-- **Tracking Removal**: Clears analytics and tracking beacons (e.g., PostHog, CF Beacons).
-- **Status Panel**: Press `F4` to toggle the visibility of the visual status panel.
-- **Protection Scanner**: Press `F6` to log the current page's protection status to the browser console.
+### 2. Auto Splitter Lite (Ctrl+Shift+S)
+- **Massive Ingest**: Split large texts into chunks (default 120,000 chars) to bypass model context limits.
+- **Smart Sequencing**: Automatic "Wait for OK" prompting ensures the AI doesn't start analyzing until the entire dataset is received.
+- **Secure Auto-Send**: Only triggers on a verified whitelist of major AI hosts (ChatGPT, Claude, Gemini, Perplexity, etc.) to ensure submission stability.
+- **Aesthetic Panel**: Toggle the sophisticated splitter panel via FAB dock or shortcut (`Ctrl+Shift+S`).
 
-### 2. Auto Splitter Lite
-Bypass character limits on AI prompts by sending massive texts in smaller, manageable chunks.
-- **Smart Splitting**: Automatically splits large pasted text into chunks (default 120,000 characters).
-- **Auto-Send**: Sends chunks sequentially with a configurable delay.
-- **Context Preservation**: Injects customizable "Wait for OK" prompts so the AI processes all parts before responding.
-- **Floating UI**: Access the Splitter panel via a floating button in the bottom right corner.
+## 🚀 Setup
 
-## 🚀 Installation
-
-1. Install a userscript manager extension for your browser (e.g., [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/)).
-2. Create a new script in your manager and paste the contents of `main.js`.
-3. Save the script and navigate to any of the supported AI platforms.
+1. Install a userscript manager (e.g., [Tampermonkey](https://www.tampermonkey.net/)).
+2. Import `main.js`.
+3. Open any supported AI platform — the FAB dock will initialize in the bottom right.
 
 ## ⚙️ Configuration
 
-The script adds a configuration menu to your userscript manager, allowing you to toggle individual modules on or off:
-- **Toggle Reset Module** (Default: ON)
-- **Toggle Splitter Module** (Default: ON)
+Toggle features via the Userscript Manager menu:
+- **✅ Session Reset**: Toggle core clearing logic.
+- **✅ Auto Splitter Lite**: Toggle the splitter interface.
 
-## 🌐 Supported Platforms
+## 🌐 Elite Compatibility
 
-The script is optimized for **Arena.ai (LMArena)** but includes `@match` rules for 88+ major AI platforms, including:
-- ChatGPT (`chatgpt.com`, `openai.com`)
-- Claude (`claude.ai`, `anthropic.com`)
-- Google Gemini (`gemini.google.com`, `aistudio.google.com`)
-- Perplexity (`perplexity.ai`)
-- Meta AI (`meta.ai`)
-- Mistral (`mistral.ai`)
-- DeepSeek (`deepseek.com`)
-- Grok (`grok.com`, `x.ai`)
-...and many more globally recognized and regional AI leaders.
+Optimized for **Arena.ai**, with robust support across 80+ domains:
+- **Global Leaders**: ChatGPT, Claude, Gemini, meta.ai, Mistral, Grok (x.ai).
+- **Regionals**: DeepSeek, Kimi, Baidu ERNIE, Tongyi Qwen, Doubao.
 
-## 🛠️ Development & Structure
+## 🛠️ Infrastructure
 
-- `main.js`: Contains the entirety of the userscript logic.
-  - **Dependencies**: No external dependencies required. Relies on standard Userscript APIs (`GM_getValue`, `GM_setValue`, `GM_registerMenuCommand`).
-  - **Styling**: All CSS is grouped and injected dynamically via `GM_addStyle`.
+- `main.js`: Consolidated, standardized logic.
+- **Design System**: Vanilla CSS with Geist/Outfit typography and cubic-bezier transitions.
+- **Security**: Strict host whitelisting for automated interactions.

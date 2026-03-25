@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Auto F2 CleanCookie — AI FREE! | Beginner Friendly | 2-Min Setup
-// @namespace    https://greasyfork.org/
-// @version      1.0.0
-// @description  F2 one-click reset for Arena.ai + Auto Text Splitter for 60+ AI sites.
+// @name         Auto CleanCookie - for AI
+// @namespace    https://github.com/quantavil/userscript
+// @version      1.0.1
+// @description  Best-effort one-click reset for Arena.ai + Auto Text Splitter for AI sites.
 // @match        http://x.ai/*
 // @match        https://ai.01.ai/*
 // @match        https://ai.baidu.com/
@@ -73,6 +73,7 @@
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_addStyle
+// @license      MIT
 // ==/UserScript==
 
 (function () {
@@ -82,7 +83,7 @@
      §0  Module Toggles
      ═══════════════════════════════════════════════════════════ */
   const MODS = {
-    reset: { key: 'mod_reset', label: '🗑️ Session Reset (F2)' },
+    reset: { key: 'mod_reset', label: '🗑️ Session Reset' },
     splitter: { key: 'mod_splitter', label: '✂️ Auto Splitter Lite' },
   };
   const modOn = id => GM_getValue(MODS[id].key, true);
@@ -90,7 +91,11 @@
   for (const [id, { key, label }] of Object.entries(MODS)) {
     GM_registerMenuCommand(
       `${modOn(id) ? '✅' : '❌'} ${label}`,
-      () => { const v = !modOn(id); GM_setValue(key, v); alert(`${label}: ${v ? 'ON' : 'OFF'}\nRefresh to apply.`); },
+      () => {
+        const v = !modOn(id);
+        GM_setValue(key, v);
+        alert(`${label}: ${v ? 'ON' : 'OFF'}\nRefresh to apply.`);
+      },
       id[0]
     );
   }
@@ -109,11 +114,15 @@
   const clip = text => navigator.clipboard.writeText(text).catch(() => {
     const t = Object.assign(document.createElement('textarea'), { value: text });
     t.style.cssText = 'position:fixed;opacity:0';
-    document.body.append(t); t.select(); document.execCommand('copy'); t.remove();
+    document.body.append(t);
+    t.select();
+    document.execCommand('copy');
+    t.remove();
   });
   const isVis = el => {
     if (!el?.isConnected) return false;
-    const s = getComputedStyle(el), r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
     return s.display !== 'none' && s.visibility !== 'hidden' && r.width > 0 && r.height > 0;
   };
   const onReady = fn => document.body ? fn() : document.addEventListener('DOMContentLoaded', fn, { once: true });
@@ -125,20 +134,39 @@
      §1b  Cookie helper (shared)
      ═══════════════════════════════════════════════════════════ */
   function getDomains() {
-    const h = location.hostname, ds = ['', h, '.' + h];
-    const parts = h.split('.');
-    for (let i = 1; i < parts.length; i++) { const p = parts.slice(i).join('.'); ds.push(p, '.' + p); }
-    return ds;
+    const h = location.hostname;
+    const parts = h.split('.').filter(Boolean);
+    const ds = new Set(['', h, '.' + h]);
+    for (let i = 1; i < parts.length - 1; i++) {
+      const p = parts.slice(i).join('.');
+      if (p.split('.').length < 2) continue;
+      ds.add(p);
+      ds.add('.' + p);
+    }
+    return [...ds];
   }
-  const PATHS = ['/', '/text', '/search', '/image', '/video', '/code'];
+
+  function getPaths() {
+    const parts = location.pathname.split('/').filter(Boolean);
+    const ps = new Set(['/']);
+    let cur = '';
+    for (const part of parts) {
+      cur += '/' + part;
+      ps.add(cur);
+    }
+    return [...ps];
+  }
+
+  const PATHS = getPaths();
   const DOMAINS = getDomains();
 
   function nukeCookie(name) {
     const exp = '=;expires=Thu,01 Jan 1970 00:00:00 GMT';
     for (const p of PATHS) for (const d of DOMAINS) {
       const base = `${name}${exp};path=${p}${d ? ';domain=' + d : ''}`;
-      for (const extra of ['', ';Secure', ';SameSite=None;Secure', ';SameSite=Lax', ';SameSite=Strict'])
+      for (const extra of ['', ';Secure', ';SameSite=None;Secure', ';SameSite=Lax', ';SameSite=Strict']) {
         document.cookie = base + extra;
+      }
     }
   }
 
@@ -146,9 +174,11 @@
      §2  Arena-only: fetch intercept & webdriver spoof
      ═══════════════════════════════════════════════════════════ */
   if (IS_ARENA && RESET_ON) {
-    try { Object.defineProperty(navigator, 'webdriver', { get: () => false, configurable: true }); } catch (_) { }
+    try {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false, configurable: true });
+    } catch (_) {}
 
-    const secLog = [];               // capped at 50
+    const secLog = [];
     const SEC_PATTERNS = ['challenges.cloudflare.com', 'turnstile', 'recaptcha', 'siteverify', 'cdn-cgi/challenge'];
     const origFetch = window.fetch;
     window.fetch = async function (...a) {
@@ -315,10 +345,11 @@
   /* ═══════════════════════════════════════════════════════════
      §4  Reset Module
      ═══════════════════════════════════════════════════════════ */
-  let resetSession = null;   // exposed for keyboard handler
+  let resetSession = null;
+  let initResetDOM = null;
 
   if (RESET_ON) {
-    const REDIRECT = 'https://arena.ai/text/side-by-side';
+    const REDIRECT = `${location.origin}/text/side-by-side`;
     const KNOWN_COOKIES = [
       'cf_clearance', '__cf_bm', '_cfuvid', '__cflb',
       'arena-auth-prod-v1',
@@ -327,26 +358,38 @@
       'user_country_code', 'sidebar_state',
     ];
 
-    let rsFloat = null, rsInner = null, resetBtn = null, resetting = false;
+    let rsFloat = null;
+    let rsInner = null;
+    let resetBtn = null;
+    let resetting = false;
+
+    initResetDOM = ({ button, float, inner }) => {
+      resetBtn = button;
+      rsFloat = float;
+      rsInner = inner;
+    };
 
     function addLog(text, cls = 'ok') {
-      const inner = rsInner || window.__rs_inner;
-      const outer = rsFloat || window.__rs_float;
+      const inner = rsInner;
+      const outer = rsFloat;
       if (!inner || !outer) return;
       const d = document.createElement('div');
       d.className = 'e ' + cls;
       d.textContent = `${new Date().toLocaleTimeString()} ${text}`;
       inner.append(d);
-      requestAnimationFrame(() => { inner.scrollTop = inner.scrollHeight; });
+      requestAnimationFrame(() => {
+        inner.scrollTop = inner.scrollHeight;
+      });
       outer.classList.add('vis');
     }
+
     function hideLog(ms = 3500) {
-      const outer = rsFloat || window.__rs_float;
+      const outer = rsFloat;
       setTimeout(() => outer?.classList.remove('vis'), ms);
     }
 
     function setBtnState(label, disabled, bg) {
-      const btn = resetBtn || window.__rs_btn;
+      const btn = resetBtn;
       if (!btn) return;
       btn.textContent = label;
       btn.disabled = disabled;
@@ -354,29 +397,57 @@
     }
 
     function clearAllCookies() {
-      const names = document.cookie.split(';').map(c => c.split('=')[0].trim()).filter(Boolean);
-      const all = [...new Set([...names, ...KNOWN_COOKIES])];
+      const visible = document.cookie.split(';').map(c => c.split('=')[0].trim()).filter(Boolean);
+      const all = [...new Set([...visible, ...KNOWN_COOKIES])];
       all.forEach(nukeCookie);
-      addLog(`Nuked ${names.length} cookies + ${KNOWN_COOKIES.length} known keys`, 'ok');
-      return names.length;
+      addLog(`Attempted cookie clear for ${all.length} keys (${visible.length} visible; HttpOnly cookies cannot be cleared by JS)`, 'ok');
+      return visible.length;
     }
 
     function clearStorage() {
       let n = 0;
-      try { n += localStorage.length; localStorage.clear(); } catch (_) { }
-      try { n += sessionStorage.length; sessionStorage.clear(); } catch (_) { }
+      try {
+        n += localStorage.length;
+        localStorage.clear();
+      } catch (_) {}
+      try {
+        n += sessionStorage.length;
+        sessionStorage.clear();
+      } catch (_) {}
       addLog(`Cleared storage (${n} entries)`, 'ok');
     }
 
     async function clearIDB() {
       if (typeof indexedDB?.databases !== 'function') return;
       try {
-        const dbs = await indexedDB.databases();
-        await Promise.allSettled(dbs.map(d => new Promise((ok, no) => {
-          const r = indexedDB.deleteDatabase(d.name); r.onsuccess = ok; r.onerror = () => no(r.error); r.onblocked = ok;
+        const names = (await indexedDB.databases()).map(d => d?.name).filter(Boolean);
+        let deleted = 0;
+        let blocked = 0;
+        let failed = 0;
+
+        await Promise.all(names.map(name => new Promise(ok => {
+          const r = indexedDB.deleteDatabase(name);
+          r.onsuccess = () => {
+            deleted++;
+            ok();
+          };
+          r.onblocked = () => {
+            blocked++;
+            ok();
+          };
+          r.onerror = () => {
+            failed++;
+            ok();
+          };
         })));
-        addLog(`Deleted ${dbs.length} IndexedDBs`, 'ok');
-      } catch (_) { addLog('IndexedDB clear failed', 'er'); }
+
+        addLog(
+          `IndexedDB: deleted ${deleted}${blocked ? `, blocked ${blocked}` : ''}${failed ? `, failed ${failed}` : ''}`,
+          blocked || failed ? 'w' : 'ok'
+        );
+      } catch (_) {
+        addLog('IndexedDB clear failed', 'er');
+      }
     }
 
     async function clearCaches() {
@@ -385,7 +456,9 @@
         const k = await caches.keys();
         await Promise.all(k.map(c => caches.delete(c)));
         addLog(`Deleted ${k.length} caches`, 'ok');
-      } catch (_) { addLog('Cache clear failed', 'er'); }
+      } catch (_) {
+        addLog('Cache clear failed', 'er');
+      }
     }
 
     async function unregSW() {
@@ -394,12 +467,16 @@
         const regs = await navigator.serviceWorker.getRegistrations();
         await Promise.all(regs.map(r => r.unregister()));
         if (regs.length) addLog(`Unregistered ${regs.length} SWs`, 'ok');
-      } catch (_) { }
+      } catch (_) {}
     }
 
     function resetCaptchas() {
-      try { window.turnstile?.reset?.(); } catch (_) { }
-      try { window.grecaptcha?.enterprise?.reset?.(); } catch (_) { }
+      try {
+        window.turnstile?.reset?.();
+      } catch (_) {}
+      try {
+        window.grecaptcha?.enterprise?.reset?.();
+      } catch (_) {}
       $$('iframe').forEach(f => {
         if (/cloudflare|turnstile|recaptcha|cdn-cgi/.test(f.src || '')) f.remove();
       });
@@ -407,22 +484,20 @@
     }
 
     function clearTrackers() {
-      // Deep CF tracking removal
-      ['__cfBeacon', '__cfRay', '__cf_', '_cf_'].forEach(key => {
-        if (window[key] !== undefined) { try { delete window[key]; } catch (_) { try { window[key] = undefined; } catch (__) { } } }
-      });
-      Object.keys(window).forEach(key => {
-        const lk = key.toLowerCase();
-        if ((lk.startsWith('cf') || lk.startsWith('__cf') || lk.startsWith('_cf')) &&
-          !['chrome', 'confirm', 'close', 'cleartimeout', 'clearinterval', 'constructor', 'console', 'customelements'].some(safe => lk.startsWith(safe))) {
-          try { delete window[key]; } catch (_) { }
+      ['__cfBeacon', '__cfRay', 'posthog'].forEach(key => {
+        if (window[key] === undefined) return;
+        try {
+          window[key]?.reset?.();
+        } catch (_) {}
+        try {
+          delete window[key];
+        } catch (_) {
+          try {
+            window[key] = undefined;
+          } catch (__) {}
         }
       });
 
-      // PostHog
-      Object.keys(window).filter(k => /posthog|ph_/i.test(k)).forEach(k => {
-        try { window[k]?.reset?.(); delete window[k]; } catch (_) { }
-      });
       try {
         const rm = [];
         for (let i = 0; i < localStorage.length; i++) {
@@ -430,14 +505,15 @@
           if (k && /posthog|ph_/i.test(k)) rm.push(k);
         }
         rm.forEach(k => localStorage.removeItem(k));
-      } catch (_) { }
+      } catch (_) {}
     }
 
     resetSession = async function () {
       if (resetting) return;
       resetting = true;
+
       if (rsInner) rsInner.innerHTML = '';
-      addLog('Starting session reset…', 'ok');
+      addLog('Starting best-effort session reset…', 'ok');
 
       setBtnState('🔍 Scanning…', true, 'rgba(33,150,243,.7)');
       await sleep(200);
@@ -449,25 +525,28 @@
       clearAllCookies();
       await Promise.allSettled([clearIDB(), clearCaches(), unregSW()]);
 
-      // second pass
       const left = document.cookie.split(';').filter(c => c.trim()).length;
-      if (left > 0) { clearAllCookies(); addLog(`Second pass (${left} remaining)`, 'w'); }
+      if (left > 0) {
+        clearAllCookies();
+        addLog(`Second pass (${left} remaining)`, 'w');
+      }
 
       setBtnState('✅ Done!', true, 'rgba(76,175,80,.7)');
-      addLog('Session reset complete!', 'ok');
+      addLog('Best-effort session reset complete!', 'ok');
 
       if (IS_ARENA) {
         addLog(`Redirecting → ${REDIRECT}`, 'ok');
-        setTimeout(() => { location.href = REDIRECT; }, 700);
+        setTimeout(() => {
+          location.href = REDIRECT;
+        }, 700);
       } else {
         addLog('Reloading…', 'ok');
         setTimeout(() => location.reload(), 800);
       }
+
       hideLog(4000);
-      // resetting stays true since we're navigating away
     };
 
-    // Arena-only: auto-accept cookie / security popups
     if (IS_ARENA) {
       onReady(() => {
         const tryAccept = () => {
@@ -478,12 +557,16 @@
           ]) {
             try {
               const n = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-              if (n?.offsetParent !== null) { n.click(); return; }
-            } catch (_) { }
+              if (n?.offsetParent !== null) {
+                n.click();
+                return;
+              }
+            } catch (_) {}
           }
           const d = $('button[aria-label="Dismiss banner"]');
           if (d?.offsetParent !== null) d.click();
         };
+
         tryAccept();
         const iv = setInterval(tryAccept, 600);
         setTimeout(() => clearInterval(iv), 25000);
@@ -500,6 +583,21 @@
     const CHUNK = 120000;
     const POLL = 500;
     const DEBOUNCE = 350;
+    const WAIT_READY_TIMEOUT = 45000;
+    const AUTO_SEND_HOSTS = new Set([
+      'chat.openai.com',
+      'chatgpt.com',
+      'claude.ai',
+      'gemini.google.com',
+      'chat.deepseek.com',
+      'chat.kimi.ai',
+      'kimi.ai',
+      'chat.mistral.ai',
+      'copilot.microsoft.com',
+      'grok.com',
+      'perplexity.ai',
+    ]);
+    const AUTO_SEND_SAFE = AUTO_SEND_HOSTS.has(HOST);
 
     const WAIT_PRE = `Here is the data I want to provide (Part {{C}} of {{T}}), please read and remember it fully, do not reply or analyze yet. Once I say "OK", output the content according to my instructions.\n\n---\n\n`;
     const WAIT_SUF = `\n\n---\n\nThis is part {{C}} of {{T}} data, please remember this first, do not output anything. Start replying once I say "OK".`;
@@ -507,7 +605,7 @@
 
     const st = { chunks: [], finals: [], sent: [], sending: false, abort: false };
     let autoTimer = 0;
-    const ui = {};  // populated in initSplitterDOM
+    const ui = {};
 
     const SEND_W = ['send', 'submit', '發送', '发送', '送出'];
     const STOP_W = ['stop', '停止', 'stop generating'];
@@ -515,74 +613,159 @@
     const textOf = el => [el?.textContent, el?.getAttribute?.('aria-label'), el?.getAttribute?.('title'), el?.id, el?.className].join(' ').toLowerCase();
 
     function pick(sels, test = () => true) {
-      for (const s of sels) for (const el of $$(s)) { if (!inFab(el) && isVis(el) && test(el)) return el; }
+      for (const s of sels) {
+        for (const el of $$(s)) {
+          if (!inFab(el) && isVis(el) && test(el)) return el;
+        }
+      }
       return null;
     }
+
     function findInput() {
-      return pick(['textarea', '[contenteditable="true"]', 'div[role="textbox"]', 'input[type="text"]'],
-        el => el.id !== 'sp-text');
+      return pick(
+        ['textarea', '[contenteditable="true"]', 'div[role="textbox"]', 'input[type="text"]'],
+        el => el.id !== 'sp-text'
+      );
     }
+
     function findStop() {
       return pick(['button[aria-label*="Stop"]', 'button[aria-label*="stop"]', 'button[data-testid*="stop"]']) ||
-        $$('button').find(b => !inFab(b) && isVis(b) && hasW(textOf(b), STOP_W)) || null;
+        $$('button').find(b => !inFab(b) && isVis(b) && hasW(textOf(b), STOP_W)) ||
+        null;
     }
+
     function findSend() {
-      const d = pick(['button[aria-label*="Send"]', 'button[aria-label*="send"]', 'button[data-testid*="send"]', 'button[type="submit"]'], b => !b.disabled);
+      const d = pick(
+        ['button[aria-label*="Send"]', 'button[aria-label*="send"]', 'button[data-testid*="send"]', 'button[type="submit"]'],
+        b => !b.disabled
+      );
       if (d) return d;
+
       const inp = findInput();
-      const cs = $$('button').filter(b => !inFab(b) && isVis(b) && !b.disabled && (hasW(textOf(b), SEND_W) || b.type === 'submit'));
+      const cs = $$('button').filter(
+        b => !inFab(b) && isVis(b) && !b.disabled && (hasW(textOf(b), SEND_W) || b.type === 'submit')
+      );
       if (!cs.length) return null;
       if (!inp) return cs[0];
-      const dist = b => { const br = b.getBoundingClientRect(), ir = inp.getBoundingClientRect(); return Math.abs(br.left - ir.right) + Math.abs(br.top - ir.top); };
+
+      const dist = b => {
+        const br = b.getBoundingClientRect();
+        const ir = inp.getBoundingClientRect();
+        return Math.abs(br.left - ir.right) + Math.abs(br.top - ir.top);
+      };
       return cs.sort((a, b) => dist(a) - dist(b))[0];
     }
-    function readInp(el) { return el ? ('value' in el ? el.value : el.textContent || '') : ''; }
-    function fireInput(el) { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
+
+    function readInp(el) {
+      return el ? ('value' in el ? el.value : el.textContent || '') : '';
+    }
+
+    function fireInput(el) {
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
     function setInp(el, text) {
       if (!el) return false;
       el.focus();
+
       if ('value' in el) {
         const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
         const set = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
         set ? set.call(el, text) : (el.value = text);
       } else {
-        try { document.execCommand('selectAll'); document.execCommand('insertText', false, text) || (el.textContent = text); }
-        catch (_) { el.textContent = text; }
+        try {
+          document.execCommand('selectAll');
+          document.execCommand('insertText', false, text) || (el.textContent = text);
+        } catch (_) {
+          el.textContent = text;
+        }
       }
+
       fireInput(el);
       return true;
     }
+
     function pressEnter(el) {
       if (!el) return;
-      for (const t of ['keydown', 'keypress', 'keyup'])
-        el.dispatchEvent(new KeyboardEvent(t, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      for (const t of ['keydown', 'keypress', 'keyup']) {
+        el.dispatchEvent(new KeyboardEvent(t, {
+          key: 'Enter',
+          code: 'Enter',
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+        }));
+      }
     }
 
-    function needWrap(i) { return ui.wait?.checked && (ui.mode?.value === 'all' || i === 0); }
-    function pre(i, t) { return tpl(WAIT_PRE, i + 1, t); }
-    function suf(i, t) { return tpl(WAIT_SUF, i + 1, t); }
-    function maxContent(i, t) { return needWrap(i) ? Math.max(1000, CHUNK - pre(i, t).length - suf(i, t).length) : CHUNK; }
+    function needWrap(i) {
+      return ui.wait?.checked && (ui.mode?.value === 'all' || i === 0);
+    }
+
+    function pre(i, t) {
+      return tpl(WAIT_PRE, i + 1, t);
+    }
+
+    function suf(i, t) {
+      return tpl(WAIT_SUF, i + 1, t);
+    }
+
+    function maxContent(i, t) {
+      return needWrap(i) ? Math.max(1000, CHUNK - pre(i, t).length - suf(i, t).length) : CHUNK;
+    }
 
     function buildChunks(text, total) {
       const lines = text.split('\n').map((l, i) => i ? '\n' + l : l);
-      const chunks = []; let cur = '';
+      const chunks = [];
+      let cur = '';
+
       for (const piece of lines) {
         let p = piece;
         while (p.length) {
           const lim = maxContent(chunks.length, total);
-          if (!cur) { if (p.length <= lim) { cur = p; p = ''; } else { chunks.push(p.slice(0, lim)); p = p.slice(lim); } continue; }
-          if (cur.length + p.length <= lim) { cur += p; p = ''; } else { chunks.push(cur); cur = ''; }
+          if (!cur) {
+            if (p.length <= lim) {
+              cur = p;
+              p = '';
+            } else {
+              chunks.push(p.slice(0, lim));
+              p = p.slice(lim);
+            }
+            continue;
+          }
+          if (cur.length + p.length <= lim) {
+            cur += p;
+            p = '';
+          } else {
+            chunks.push(cur);
+            cur = '';
+          }
         }
       }
+
       if (cur) chunks.push(cur);
       return chunks;
     }
 
     function doSplit(raw) {
       const text = (raw || '').replace(/\r\n?/g, '\n').trim();
-      if (!text) { st.chunks = []; st.finals = []; st.sent = []; render(); return; }
-      let t = 1, c;
-      while (true) { c = buildChunks(text, t); if (c.length === t) break; t = c.length; }
+      if (!text) {
+        st.chunks = [];
+        st.finals = [];
+        st.sent = [];
+        render();
+        return;
+      }
+
+      let t = 1;
+      let c;
+      while (true) {
+        c = buildChunks(text, t);
+        if (c.length === t) break;
+        t = c.length;
+      }
+
       st.chunks = c;
       st.finals = c.map((ch, i) => needWrap(i) ? pre(i, t) + ch + suf(i, t) : ch);
       st.sent = Array(st.finals.length).fill(false);
@@ -592,22 +775,43 @@
     function autoSplit(showStatus = true) {
       clearTimeout(autoTimer);
       if (st.sending) return;
-      if (!ui.text?.value.trim()) { st.chunks = []; st.finals = []; st.sent = []; render(); if (showStatus) setStatus('Standby'); return; }
+
+      if (!ui.text?.value.trim()) {
+        st.chunks = [];
+        st.finals = [];
+        st.sent = [];
+        render();
+        if (showStatus) setStatus('Standby');
+        return;
+      }
+
       doSplit(ui.text.value);
       if (showStatus) setStatus(`✂️ Split into ${st.finals.length} parts`);
     }
-    function schedSplit() { clearTimeout(autoTimer); autoTimer = setTimeout(() => autoSplit(true), DEBOUNCE); }
+
+    function schedSplit() {
+      clearTimeout(autoTimer);
+      autoTimer = setTimeout(() => autoSplit(true), DEBOUNCE);
+    }
 
     function render() {
       if (!ui.list) return;
+
       const raw = (ui.text?.value || '').replace(/\r\n?/g, '\n').trim();
       const mx = st.finals.reduce((m, s) => Math.max(m, s.length), 0);
+
       ui.stats.textContent = st.finals.length
         ? `${raw.length.toLocaleString()} chars → ${st.finals.length} parts (max ${mx.toLocaleString()}/${CHUNK.toLocaleString()})`
         : '';
-      if (!st.finals.length) { ui.list.innerHTML = '<div class="sp-empty">Paste text to split</div>'; return; }
+
+      if (!st.finals.length) {
+        ui.list.innerHTML = '<div class="sp-empty">Paste text to split</div>';
+        return;
+      }
+
       ui.list.innerHTML = st.finals.map((ch, i) => {
-        const r = st.chunks[i], wrap = ch.length - r.length;
+        const r = st.chunks[i];
+        const wrap = ch.length - r.length;
         const prev = ch.slice(0, 280) + (ch.length > 280 ? '\n…' : '');
         return `<div class="sp-item${st.sent[i] ? ' sent' : ''}" data-i="${i}">
           <div class="sp-item-hd"><div>
@@ -620,8 +824,15 @@
       }).join('');
     }
 
-    function setStatus(msg) { if (ui.status) ui.status.textContent = msg; }
-    function setBusy(b) { [ui.text, ui.wait, ui.mode, ui.finalOk, ui.gap].forEach(e => { if (e) e.disabled = b; }); }
+    function setStatus(msg) {
+      if (ui.status) ui.status.textContent = msg;
+    }
+
+    function setBusy(b) {
+      [ui.text, ui.wait, ui.mode, ui.finalOk, ui.gap].forEach(e => {
+        if (e) e.disabled = b;
+      });
+    }
 
     function canSendNow() {
       const inp = findInput();
@@ -631,8 +842,14 @@
       return sb ? !sb.disabled : true;
     }
 
-    async function waitReady(i, total) {
-      while (!st.abort) { if (canSendNow()) return true; setStatus(`⏳ Part ${i + 1}/${total}: waiting…`); await sleep(POLL); }
+    async function waitReady(i, total, timeout = WAIT_READY_TIMEOUT) {
+      const t0 = Date.now();
+      while (!st.abort && Date.now() - t0 < timeout) {
+        if (canSendNow()) return true;
+        setStatus(`⏳ Part ${i + 1}/${total}: waiting…`);
+        await sleep(POLL);
+      }
+      if (!st.abort) setStatus(`⚠️ Part ${i + 1}/${total}: timed out waiting for input`);
       return false;
     }
 
@@ -651,39 +868,64 @@
     async function trySend(text) {
       const inp = findInput();
       if (!inp) return false;
+
       setInp(inp, text);
       await sleep(250);
+
       const btn = findSend();
-      if (btn && !btn.disabled) { btn.click(); if (await confirmSent(text)) return true; }
+      if (btn && !btn.disabled) {
+        btn.click();
+        return confirmSent(text, 10000);
+      }
+
       pressEnter(inp);
-      return confirmSent(text);
+      return confirmSent(text, 10000);
     }
 
     async function sendOne(text, i, total) {
-      while (!st.abort) {
+      for (let attempt = 1; attempt <= 2 && !st.abort; attempt++) {
         if (!(await waitReady(i, total))) return false;
         setStatus(`🚀 Sending part ${i + 1}/${total}…`);
         if (await trySend(text)) return true;
-        setStatus(`⚠️ Part ${i + 1} unconfirmed, retrying…`);
-        await sleep(1000);
+        if (attempt < 2) {
+          setStatus(`⚠️ Part ${i + 1} unconfirmed, retrying once…`);
+          await sleep(1000);
+        }
       }
       return false;
     }
 
     async function autoSendAll() {
       if (!st.finals.length || st.sending) return;
-      st.sending = true; st.abort = false;
-      ui.send.disabled = true; setBusy(true);
+
+      st.sending = true;
+      st.abort = false;
+      ui.send.disabled = true;
+      setBusy(true);
+
       const gap = Math.max(1, parseInt(ui.gap.value, 10) || 3) * 1000;
       let ok = true;
 
       for (let i = 0; i < st.finals.length; i++) {
-        if (st.abort) { ok = false; break; }
-        if (!(await sendOne(st.finals[i], i, st.finals.length))) { ok = false; break; }
-        st.sent[i] = true; render();
+        if (st.abort) {
+          ok = false;
+          break;
+        }
+
+        if (!(await sendOne(st.finals[i], i, st.finals.length))) {
+          ok = false;
+          break;
+        }
+
+        st.sent[i] = true;
+        render();
+
         if (i < st.finals.length - 1 && !st.abort) {
           const end = Date.now() + gap;
-          while (!st.abort && Date.now() < end) { setStatus(`✅ Part ${i + 1} sent, wait ${Math.ceil((end - Date.now()) / 1000)}s…`); await sleep(200); }
+          while (!st.abort && Date.now() < end) {
+            setStatus(`✅ Part ${i + 1} sent, wait ${Math.ceil((end - Date.now()) / 1000)}s…`);
+            await sleep(200);
+          }
         }
       }
 
@@ -693,10 +935,11 @@
       }
 
       setStatus(st.abort ? '⏹ Stopped' : ok ? '✅ All sent!' : '⚠️ Incomplete');
-      st.sending = false; ui.send.disabled = false; setBusy(false);
+      st.sending = false;
+      ui.send.disabled = false;
+      setBusy(false);
     }
 
-    // Build DOM
     initSplitterDOM = function () {
       document.body.insertAdjacentHTML('beforeend', `
         <div id="sp-panel-outer">
@@ -735,45 +978,80 @@
       ui.stats = $('#sp-stats');
       ui.list = $('#sp-list');
 
+      if (!AUTO_SEND_SAFE) {
+        ui.send.disabled = true;
+        ui.send.title = `Auto-send disabled on ${HOST}`;
+        setStatus(`Manual mode only on ${HOST}`);
+      }
+
       $('#sp-close').addEventListener('click', () => ui.panel.classList.remove('open'));
       ui.text.addEventListener('input', schedSplit);
-      ui.wait.addEventListener('change', () => { if (!st.sending) autoSplit(); });
-      ui.mode.addEventListener('change', () => { if (!st.sending) autoSplit(); });
+      ui.wait.addEventListener('change', () => {
+        if (!st.sending) autoSplit();
+      });
+      ui.mode.addEventListener('change', () => {
+        if (!st.sending) autoSplit();
+      });
 
       ui.copy.addEventListener('click', () => {
-        if (!st.chunks.length && ui.text.value.trim()) autoSplit(false);
-        if (!st.chunks.length) { setStatus('Nothing to copy'); return; }
-        clip(st.chunks.join('')); setStatus('📋 Copied original text');
+        if (!ui.text.value) {
+          setStatus('Nothing to copy');
+          return;
+        }
+        clip(ui.text.value);
+        setStatus('📋 Copied textarea content');
       });
 
       ui.clear.addEventListener('click', () => {
         if (st.sending) st.abort = true;
         clearTimeout(autoTimer);
-        ui.text.value = ''; st.chunks = []; st.finals = []; st.sent = []; render(); setStatus('Cleared');
+        ui.text.value = '';
+        st.chunks = [];
+        st.finals = [];
+        st.sent = [];
+        render();
+        setStatus('Cleared');
       });
 
       ui.send.addEventListener('click', async () => {
+        if (!AUTO_SEND_SAFE) {
+          setStatus(`Manual mode only on ${HOST}`);
+          return;
+        }
         if (!st.finals.length && ui.text.value.trim()) autoSplit(false);
-        if (!st.finals.length) { setStatus('Paste text first'); return; }
+        if (!st.finals.length) {
+          setStatus('Paste text first');
+          return;
+        }
         if (!st.sending) await autoSendAll();
       });
 
       ui.list.addEventListener('click', e => {
         const btn = e.target.closest('button[data-act]');
         if (!btn) return;
+
         const i = Number(btn.closest('.sp-item')?.dataset.i);
         if (Number.isNaN(i)) return;
-        if (btn.dataset.act === 'copy') { clip(st.finals[i]); setStatus(`Copied part ${i + 1}`); }
+
+        if (btn.dataset.act === 'copy') {
+          clip(st.finals[i]);
+          setStatus(`Copied part ${i + 1}`);
+        }
         if (btn.dataset.act === 'paste') {
           const inp = findInput();
-          if (inp) { setInp(inp, st.finals[i]); inp.focus(); setStatus(`Pasted part ${i + 1}`); }
-          else { clip(st.finals[i]); setStatus('No input found — copied instead'); }
+          if (inp) {
+            setInp(inp, st.finals[i]);
+            inp.focus();
+            setStatus(`Pasted part ${i + 1}`);
+          } else {
+            clip(st.finals[i]);
+            setStatus('No input found — copied instead');
+          }
         }
       });
 
       render();
 
-      // Register escape abort bound safely to splitter enclosure
       document.addEventListener('keydown', e => {
         if (e.key === 'Escape' && st.sending) {
           st.abort = true;
@@ -787,50 +1065,40 @@
      §6  Keyboard Shortcuts
      ═══════════════════════════════════════════════════════════ */
   document.addEventListener('keydown', e => {
-    const plain = !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey;
-    if (e.key === 'F2' && plain && resetSession) { e.preventDefault(); e.stopPropagation(); resetSession(); }
     if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's' && SPLITTER_ON) {
       e.preventDefault();
       $('#sp-panel-outer')?.classList.toggle('open');
     }
-    // Escape handled securely within splitter module init to retain scope bindings
   }, { capture: true });
 
   /* ═══════════════════════════════════════════════════════════
      §7  Boot — build FAB dock & panels
      ═══════════════════════════════════════════════════════════ */
   onReady(() => {
-    // FAB dock
     const dock = document.createElement('div');
     dock.id = 'uc-fab-dock';
     document.body.append(dock);
 
-    // Reset button
     if (RESET_ON) {
       const rb = document.createElement('button');
       rb.className = 'uc-fab';
-      rb.textContent = '🗑️ Reset (F2)';
-      rb.title = 'Clear session & cookies (F2)';
+      rb.textContent = '🗑️ Reset';
+      rb.title = 'Clear session & cookies';
       rb.addEventListener('click', () => resetSession?.());
       dock.append(rb);
 
-      // Status float
       const fl = document.createElement('div');
       fl.id = 'rs-float';
       fl.innerHTML = '<div id="rs-float-inner"></div>';
       document.body.append(fl);
 
-      // Wire up module refs (they were declared as let in §4)
-      // We use a small trick: query them from DOM
-      if (typeof resetSession === 'function') {
-        // Patch the module's refs
-        window.__rs_btn = rb;
-        window.__rs_float = fl;
-        window.__rs_inner = fl.querySelector('#rs-float-inner');
-      }
+      initResetDOM?.({
+        button: rb,
+        float: fl,
+        inner: fl.querySelector('#rs-float-inner'),
+      });
     }
 
-    // Splitter toggle + panel
     if (SPLITTER_ON) {
       const sb = document.createElement('button');
       sb.className = 'uc-fab';
@@ -842,5 +1110,4 @@
       initSplitterDOM?.();
     }
   });
-
 })();
