@@ -530,7 +530,7 @@
     );
 
     if (!copyButtons.length) {
-      LOG("AI marker not found");
+      LOG("AI marker not found (Copy button missing)");
       return null;
     }
 
@@ -542,17 +542,19 @@
       let p = btn.parentElement;
       let depth = 0;
 
-      while (p && depth < 12) {
+      while (p && depth < 14) {
         const clone = p.cloneNode(true);
         pruneNode(clone);
 
-        const blocks = dedupeBlocks(extractBlocksFromNode(clone)).slice(0, 12);
+        const blocks = extractBlocksFromNode(clone).slice(0, 15);
         const text = blocks.join("\n\n").trim();
-        const sources = collectSources(clone, 10);
+        const sources = collectSources(p, 12); // Search sources in the parent's subtree
 
-        let score = Math.min(text.length, 2500) + blocks.length * 80 + sources.length * 120;
-        if (text.length > 5500) score -= 900;
-        if (blocks.length < 2) score -= 250;
+        let score = Math.min(text.length, 3000) + blocks.length * 90 + sources.length * 150;
+        if (text.length > 6100) score -= 1200;
+        if (blocks.length < 2) score -= 400;
+        if (text.toLowerCase().includes("copy text")) score -= 600;
+        if (text.toLowerCase().includes("search labs")) score -= 400;
 
         if (!best || score > best.score) {
           best = {
@@ -568,19 +570,8 @@
       }
     }
 
-    if (best) {
-      LOG(
-        "AI candidate:",
-        best.blocks.length,
-        "blocks,",
-        best.text.length,
-        "chars,",
-        best.sources.length,
-        "sources"
-      );
-    }
-
-    if (best && best.text.length >= 35) {
+    if (best && best.text.length >= 40) {
+      LOG("✓ AI Candidate picked (score:", best.score, ")");
       return {
         from: "ai",
         blocks: best.blocks,
@@ -594,17 +585,12 @@
 
   function extractRegular(html) {
     const doc = new DOMParser().parseFromString(html, "text/html");
-    LOG("page title:", doc.title || "(no title)");
+    LOG("fallback extraction...");
 
     const root =
       doc.querySelector("#search") ||
       doc.querySelector("#center_col") ||
       doc.body;
-
-    LOG(
-      "fallback container:",
-      root.id || root.className || root.tagName.toLowerCase()
-    );
 
     let blocks = pickBlocksBySelectors(
       root,
@@ -621,28 +607,23 @@
         ".X5LH0c"
       ],
       25,
-      4
+      6
     );
 
     if (!blocks.length) {
       const clone = root.cloneNode(true);
       pruneNode(clone);
-      blocks = dedupeBlocks(extractBlocksFromNode(clone)).slice(0, 4);
+      blocks = extractBlocksFromNode(clone).slice(0, 5);
     }
 
-    const text = dedupeBlocks(blocks).join("\n\n").trim();
+    const text = blocks.join("\n\n").trim();
     const sources = collectSources(root, 10);
 
-    if (text.length < 25) {
-      LOG("container text too short");
-      return null;
-    }
-
-    LOG("extracted", blocks.length, "blocks (" + text.length + " chars),", sources.length, "sources");
+    if (text.length < 30) return null;
 
     return {
       from: "search",
-      blocks: dedupeBlocks(blocks),
+      blocks,
       text,
       sources,
     };
@@ -661,8 +642,6 @@
         const key = t.toLowerCase();
         if (seen.has(key)) continue;
         seen.add(key);
-
-        LOG("hit selector", sel, "→", t.length, "chars");
         out.push(t);
 
         if (out.length >= maxBlocks) return out;
@@ -692,32 +671,25 @@
       "[role='dialog']",
       "[hidden]",
       "[aria-hidden='true']",
+      "[style*='display:none']",
       "[style*='display: none']",
+      "[style*='visibility:hidden']",
       "[style*='visibility: hidden']",
-      "#searchform",
-      "#top_nav",
-      "#appbar",
-      "#botstuff",
-      "#footcnt",
-      "#tophf",
-      "#sfooter",
-      "#rhs",
-      "#rhsads"
+      ".tHaXU", ".eksFZe", ".qacuz", // UI overlays
+      ".VlQBpc", ".DbD2Wb", // Result feedback/meta
+      ".FYF80",".Fsg96" // AI ornaments
     ].join(",");
 
     root.querySelectorAll(removeSelector).forEach((el) => el.remove());
 
-    root
-      .querySelectorAll(".tHaXU,.eksFZe,.qacuz,[id^='shrproxy'],[id^='fbproxy']")
-      .forEach((el) => el.remove());
-
+    // Deep clean text markers
     root.querySelectorAll("*").forEach((el) => {
       const t = cleanText(el.textContent || "");
-      if (!t || t.length > 30) return;
+      if (!t) return;
+      const lower = t.toLowerCase();
       if (
-        /^(copy|share|good response|bad response|feedback|close|thank you|creating a public link…|create a public link…)$/.test(
-          t.toLowerCase()
-        )
+        /^(copy|share|good response|bad response|feedback|close|thank you|search labs|creating a public link|view related links)$/.test(lower) ||
+        lower.startsWith("your feedback helps google improve")
       ) {
         el.remove();
       }
@@ -738,18 +710,27 @@
       out.push(t);
     }
 
-    root.querySelectorAll("p,li,h1,h2,h3,h4,h5,h6,blockquote,pre").forEach((el) => {
+    // Try semantic tags first
+    const semantic = root.querySelectorAll("p,li,h1,h2,h3,h4,h5,h6,blockquote,pre,[role='heading']");
+    semantic.forEach((el) => {
       add(el.textContent || "", el.tagName.toLowerCase() === "li");
     });
 
-    if (!out.length) {
-      root.querySelectorAll("div,section,article").forEach((el) => {
-        if (el.querySelector("p,li,h1,h2,h3,h4,h5,h6,blockquote,pre")) return;
-        if (el.children.length > 6) return;
-        add(el.textContent || "", false);
+    // If result is zero or very short (common in Google AI mode "div soup")
+    if (out.length < 2 || out.join("").length < 150) {
+      // Find text-heavy divs that don't have many children but have significant text
+      const potential = root.querySelectorAll("div,span,section,article");
+      potential.forEach((el) => {
+        if (el.children.length > 3) return; // Skip containers
+        if (el.querySelector("p,li,h1,h2,h3,h4,h5,h6,blockquote,pre")) return; // Skip if handled
+        const t = cleanText(el.textContent || "");
+        if (t.length > 40 && t.length < 1200) {
+          add(t);
+        }
       });
     }
 
+    // fallback for a single massive block
     if (!out.length) {
       add(root.textContent || "", false);
     }
@@ -761,10 +742,8 @@
     const out = [];
     const seen = new Set();
 
-    root.querySelectorAll("a[href]").forEach((a) => {
-      if (out.length >= max) return;
-
-      let href = a.getAttribute("href") || "";
+    function addSource(href, anchorText) {
+      if (out.length >= max || !href) return;
       href = unwrapGoogleUrl(href);
 
       if (!/^https?:\/\//i.test(href)) return;
@@ -783,16 +762,37 @@
       if (seen.has(finalURL)) return;
       seen.add(finalURL);
 
-      let text = cleanText(a.textContent || "");
-      if (!text) text = host;
-      if (text.length > 120) text = text.slice(0, 117) + "…";
+      let text = cleanText(anchorText || "");
+      if (!text || text.length < 5) text = host;
+      if (text.length > 150) text = text.slice(0, 147) + "...";
 
       out.push({
         url: finalURL,
         text,
         domain: host,
       });
+    }
+
+    // 1. Regular anchors
+    root.querySelectorAll("a[href]").forEach((a) => {
+      addSource(a.getAttribute("href"), a.textContent);
     });
+
+    // 2. If no sources found, look for hidden URLs in text (citations in JSON/encoded strings)
+    if (out.length < 2) {
+        const rawContent = root.innerHTML || "";
+        const matches = rawContent.match(/https?:\/\/[^\s"';<>\\)]+/g);
+        if (matches) {
+            matches.forEach(url => {
+                // Ignore obvious tracking or icon URLs
+                if (!/favicon|gstatic|google\.|adservice/i.test(url)) {
+                    // Clean up common HTML entities if they were caught in the match
+                    const cleanUrl = url.replace(/(&quot;|&amp;|&#39;).*$/, "");
+                    addSource(cleanUrl, null);
+                }
+            });
+        }
+    }
 
     return out;
   }
@@ -801,20 +801,22 @@
     if (!href) return "";
 
     try {
-      let full = href;
-      if (href.startsWith("/")) full = "https://www.google.com" + href;
-
-      const url = new URL(full);
-
-      if (/google\./i.test(url.hostname)) {
-        const q =
-          url.searchParams.get("q") ||
-          url.searchParams.get("url") ||
-          url.searchParams.get("imgurl");
-        if (q && /^https?:\/\//i.test(q)) return q;
+      if (href.startsWith("/")) {
+        const u = new URL(href, "https://www.google.com");
+        if (u.pathname === "/url" || u.pathname === "/search") {
+          const target = u.searchParams.get("url") || u.searchParams.get("q");
+          if (target && /^https?:\/\//i.test(target)) return target;
+        }
+        return u.href;
       }
 
-      return url.href;
+      if (href.includes("google.com/url?")) {
+        const u = new URL(href);
+        const target = u.searchParams.get("url") || u.searchParams.get("q");
+        if (target && /^https?:\/\//i.test(target)) return target;
+      }
+
+      return href;
     } catch {
       return href;
     }
