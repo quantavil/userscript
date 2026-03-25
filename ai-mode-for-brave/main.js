@@ -1,886 +1,463 @@
 // ==UserScript==
-// @name         Google AI Mode for Brave Search (fixed)
-// @namespace    brave-google-ai-mode
-// @version      1.5
-// @description  Fetch Google AI Mode / Google Search answers and show them in the Brave Search sidebar
-// @author       You
+// @name         Google AI Mode for Brave Sidebar
+// @namespace    http://github.com/quantavil/userscripts
+// @version      1.3.0
+// @description  Extracts Google AI Mode results and displays them in the Brave Search sidebar
 // @match        https://search.brave.com/search*
+// @match        https://www.google.com/search*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
-// @connect      google.com
-// @connect      www.google.com
-// @connect      consent.google.com
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_addValueChangeListener
+// @grant        GM_removeValueChangeListener
+// @grant        GM_openInTab
+// @connect      *
 // @run-at       document-idle
 // ==/UserScript==
 
 (function () {
   "use strict";
 
-  const query = new URLSearchParams(location.search).get("q");
-  if (!query) return;
-
-  const GOOGLE_AI_URL =
-    "https://www.google.com/search?udm=50&hl=en&q=" + encodeURIComponent(query);
-
-  const GOOGLE_SEARCH_URL =
-    "https://www.google.com/search?hl=en&q=" + encodeURIComponent(query);
-
-  const LOG = (...args) => console.log("[GAI]", ...args);
-  const WARN = (...args) => console.warn("[GAI]", ...args);
-
-  // Remove previous widget if Brave/Svelte rehydrates strangely
-  const prev = document.getElementById("gai-widget");
-  if (prev) prev.remove();
-
-  GM_addStyle(`
-    #gai-widget{
-      display:block !important;
-      width:100%;
-      box-sizing:border-box;
-      background:var(--color-card-bg,#fff);
-      border:1px solid var(--color-divider-subtle,#dadce0);
-      border-radius:16px;
-      padding:16px;
-      margin:0 0 16px 0;
-      font-family:inherit;
-      color:var(--color-text-main,#202124);
-      overflow:hidden;
-    }
-
-    [data-theme="dark"] #gai-widget,
-    .dark #gai-widget{
-      background:var(--color-card-bg,#303134);
-      border-color:var(--color-divider-subtle,#5f6368);
-    }
-
-    .gai-hdr{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      margin-bottom:12px;
-    }
-
-    .gai-hdr-left{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      min-width:0;
-    }
-
-    .gai-hdr-title{
-      font-size:15px;
-      font-weight:700;
-      color:var(--color-text-main,#202124);
-      white-space:nowrap;
-    }
-
-    .gai-badge{
-      font-size:11px;
-      font-weight:600;
-      white-space:nowrap;
-      padding:4px 8px;
-      border-radius:999px;
-      background:rgba(66,133,244,.12);
-      color:#1a73e8;
-    }
-
-    .gai-status{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      font-size:13px;
-      color:var(--color-text-secondary,#70757a);
-    }
-
-    .gai-spinner{
-      width:18px;
-      height:18px;
-      border:2.5px solid var(--color-divider-subtle,#dadce0);
-      border-top-color:#4285f4;
-      border-radius:50%;
-      animation:gaispin .7s linear infinite;
-      flex:0 0 auto;
-    }
-
-    @keyframes gaispin{
-      to{transform:rotate(360deg)}
-    }
-
-    .gai-main[hidden],
-    .gai-status[hidden]{
-      display:none !important;
-    }
-
-    .gai-note{
-      font-size:12px;
-      color:var(--color-text-secondary,#70757a);
-      margin-bottom:10px;
-    }
-
-    .gai-body{
-      font-size:14px;
-      line-height:1.7;
-      color:var(--color-text-main,#3c4043);
-      overflow-wrap:anywhere;
-    }
-
-    .gai-body p{
-      margin:0 0 10px 0;
-    }
-
-    .gai-body.gai-collapsed{
-      max-height:300px;
-      overflow:hidden;
-      -webkit-mask-image:linear-gradient(180deg,#000 65%,transparent);
-      mask-image:linear-gradient(180deg,#000 65%,transparent);
-    }
-
-    .gai-toggle{
-      appearance:none;
-      border:0;
-      background:none;
-      padding:0;
-      margin-top:6px;
-      cursor:pointer;
-      color:var(--color-link,#1a0dab);
-      font-size:13px;
-    }
-
-    .gai-toggle:hover{
-      text-decoration:underline;
-    }
-
-    .gai-sources{
-      margin-top:14px;
-      padding-top:10px;
-      border-top:1px solid var(--color-divider-subtle,#dadce0);
-    }
-
-    .gai-src-title{
-      font-size:11px;
-      font-weight:700;
-      text-transform:uppercase;
-      letter-spacing:.5px;
-      color:var(--color-text-secondary,#70757a);
-      margin-bottom:8px;
-    }
-
-    .gai-src{
-      display:block;
-      text-decoration:none;
-      padding:6px 0;
-      color:var(--color-link,#1a0dab);
-    }
-
-    .gai-src:hover .gai-src-name{
-      text-decoration:underline;
-    }
-
-    .gai-src-name{
-      display:block;
-      font-size:13px;
-      line-height:1.35;
-    }
-
-    .gai-src-domain{
-      display:block;
-      font-size:11px;
-      margin-top:2px;
-      color:var(--color-text-secondary,#70757a);
-    }
-
-    .gai-actions{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      margin-top:12px;
-    }
-
-    .gai-btn,
-    .gai-open{
-      appearance:none;
-      border:1px solid var(--color-divider-subtle,#dadce0);
-      background:transparent;
-      color:var(--color-text-main,#202124);
-      border-radius:999px;
-      padding:7px 12px;
-      font-size:12px;
-      line-height:1;
-      cursor:pointer;
-      text-decoration:none;
-    }
-
-    .gai-btn:hover,
-    .gai-open:hover{
-      background:rgba(0,0,0,.04);
-      text-decoration:none;
-    }
-
-    .gai-error{
-      font-size:13px;
-      color:var(--color-text-secondary,#70757a);
-      line-height:1.6;
-    }
-  `);
-
-  const W = buildWidget();
-  ensureMounted();
-
-  const mountObserver = new MutationObserver(() => {
-    ensureMounted();
-  });
-
-  mountObserver.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-  });
-
-  const keepAlive = setInterval(() => {
-    if (!W.isConnected) ensureMounted();
-  }, 1500);
-
-  window.addEventListener("beforeunload", () => {
-    mountObserver.disconnect();
-    clearInterval(keepAlive);
-  });
-
-  run().catch((err) => {
-    console.error("[GAI] fatal", err);
-    showError("Unexpected error.");
-  });
-
-  async function run() {
-    LOG("query =", query);
-
-    showLoading("Fetching Google AI Mode…");
-
-    let aiData = null;
-    try {
-      const aiHTML = await fetchHTML(GOOGLE_AI_URL);
-      aiData = extractAI(aiHTML);
-      if (aiData) {
-        LOG("✓ AI Mode content found");
-        render(aiData);
-        return;
-      }
-    } catch (e) {
-      WARN("AI Mode fetch failed:", e && e.message ? e.message : e);
-    }
-
-    LOG("AI Mode empty, trying regular search…");
-    showLoading("AI Mode unavailable, trying Google Search…");
-
-    let regularData = null;
-    try {
-      const regHTML = await fetchHTML(GOOGLE_SEARCH_URL);
-      regularData = extractRegular(regHTML);
-      if (regularData) {
-        LOG("✓ Regular search content found");
-        render(regularData);
-        return;
-      }
-    } catch (e) {
-      WARN("Regular search fetch failed:", e && e.message ? e.message : e);
-    }
-
-    showError("No extractable answer found for this query.");
-  }
-
-  function buildWidget() {
-    const el = document.createElement("section");
-    el.id = "gai-widget";
-    el.setAttribute("aria-live", "polite");
-    el.innerHTML = `
-      <div class="gai-hdr">
-        <div class="gai-hdr-left">
-          <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"></path>
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"></path>
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"></path>
-          </svg>
-          <div class="gai-hdr-title">Google AI Mode</div>
-        </div>
-        <div class="gai-badge">loading</div>
-      </div>
-
-      <div class="gai-status">
-        <span class="gai-spinner" aria-hidden="true"></span>
-        <span class="gai-status-text">Fetching Google AI Mode…</span>
-      </div>
-
-      <div class="gai-main" hidden></div>
-    `;
-    return el;
-  }
-
-  function ensureMounted() {
-    const sidebarContent =
-      document.querySelector("aside.sidebar .sidebar-content") ||
-      document.querySelector(".sidebar-content");
-
-    if (sidebarContent) {
-      if (W.parentElement !== sidebarContent) {
-        sidebarContent.prepend(W);
-        LOG("mounted in sidebar-content");
-      }
-      return true;
-    }
-
-    const fallback =
-      document.querySelector("#results") || document.querySelector("main");
-
-    if (fallback) {
-      if (W.parentElement !== fallback) {
-        fallback.prepend(W);
-        LOG("mounted in fallback results/main");
-      }
-      return true;
-    }
-
-    return false;
-  }
-
-  function showLoading(text) {
-    const badge = W.querySelector(".gai-badge");
-    const status = W.querySelector(".gai-status");
-    const statusText = W.querySelector(".gai-status-text");
-    const main = W.querySelector(".gai-main");
-
-    badge.textContent = "loading";
-    status.hidden = false;
-    statusText.textContent = text;
-    main.hidden = true;
-    main.textContent = "";
-  }
-
-  function showError(text) {
-    const badge = W.querySelector(".gai-badge");
-    const status = W.querySelector(".gai-status");
-    const main = W.querySelector(".gai-main");
-
-    badge.textContent = "error";
-    status.hidden = true;
-    main.hidden = false;
-    main.textContent = "";
-
-    const err = document.createElement("div");
-    err.className = "gai-error";
-    err.textContent = text;
-
-    const actions = document.createElement("div");
-    actions.className = "gai-actions";
-
-    const openAI = makeLinkButton("Open AI Mode", GOOGLE_AI_URL);
-    const openSearch = makeLinkButton("Open Google Search", GOOGLE_SEARCH_URL);
-
-    actions.appendChild(openAI);
-    actions.appendChild(openSearch);
-
-    main.appendChild(err);
-    main.appendChild(actions);
-  }
-
-  function render(data) {
-    const badge = W.querySelector(".gai-badge");
-    const status = W.querySelector(".gai-status");
-    const main = W.querySelector(".gai-main");
-
-    badge.textContent = data.from === "ai" ? "AI mode" : "search fallback";
-    status.hidden = true;
-    main.hidden = false;
-    main.textContent = "";
-
-    const note = document.createElement("div");
-    note.className = "gai-note";
-    note.textContent =
-      data.from === "ai"
-        ? "Extracted from Google AI Mode."
-        : "Google AI Mode was unavailable, so this was extracted from normal Google results.";
-
-    const body = document.createElement("div");
-    body.className = "gai-body";
-
-    const blocks = Array.isArray(data.blocks) ? data.blocks : [data.text];
-    blocks.forEach((block) => {
-      const p = document.createElement("p");
-      p.textContent = block;
-      body.appendChild(p);
-    });
-
-    main.appendChild(note);
-    main.appendChild(body);
-
-    requestAnimationFrame(() => {
-      if (body.scrollHeight > 300) {
-        body.classList.add("gai-collapsed");
-        const toggle = document.createElement("button");
-        toggle.type = "button";
-        toggle.className = "gai-toggle";
-        toggle.textContent = "▼ Show more";
-        toggle.addEventListener("click", () => {
-          const collapsed = body.classList.toggle("gai-collapsed");
-          toggle.textContent = collapsed ? "▼ Show more" : "▲ Show less";
+  const IS_BRAVE = location.hostname === "search.brave.com";
+  const IS_GOOGLE = location.hostname === "www.google.com";
+
+  if (IS_BRAVE) braveSide();
+  else if (IS_GOOGLE) googleSide();
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  GOOGLE SIDE — extracts rendered AI content and sends to Brave tab
+  // ═══════════════════════════════════════════════════════════════════════
+  function googleSide() {
+    const params = new URLSearchParams(location.search);
+    if (params.get("udm") !== "50") return;
+    if (!location.hash.includes("gai")) return;
+
+    history.replaceState(null, "", location.href.replace(/#gai.*/, ""));
+    console.log("[GAI] Google-side activated. Waiting for AI content…");
+
+    const onReady = () => {
+      console.log("[GAI] Page loaded. Starting content watch…");
+
+      const minWait = new Promise((r) => setTimeout(r, 8000));
+
+      const settled = new Promise((resolve) => {
+        let timer;
+        const done = () => {
+          obs.disconnect();
+          resolve();
+        };
+        const bump = () => {
+          clearTimeout(timer);
+          timer = setTimeout(done, 4000);
+        };
+        const obs = new MutationObserver(bump);
+        obs.observe(document.body, {
+          childList: true,
+          subtree: true,
+          characterData: true,
         });
-        body.after(toggle);
-      }
-    });
-
-    if (data.sources && data.sources.length) {
-      const srcWrap = document.createElement("div");
-      srcWrap.className = "gai-sources";
-
-      const srcTitle = document.createElement("div");
-      srcTitle.className = "gai-src-title";
-      srcTitle.textContent = "Sources";
-      srcWrap.appendChild(srcTitle);
-
-      data.sources.forEach((s) => {
-        const a = document.createElement("a");
-        a.className = "gai-src";
-        a.href = s.url;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-
-        const name = document.createElement("span");
-        name.className = "gai-src-name";
-        name.textContent = s.text || s.domain || s.url;
-
-        const domain = document.createElement("span");
-        domain.className = "gai-src-domain";
-        domain.textContent = s.domain || safeDomain(s.url);
-
-        a.appendChild(name);
-        a.appendChild(domain);
-        srcWrap.appendChild(a);
+        setTimeout(done, 45000);
+        bump();
       });
 
-      main.appendChild(srcWrap);
+      Promise.all([minWait, settled]).then(() => {
+        console.log("[GAI] Content settled. Extracting…");
+
+        const html = extractContent();
+        const q = params.get("q") || "";
+
+        console.log(`[GAI] Extracted ${html.length} chars for "${q}"`);
+
+        GM_setValue("gai_response", {
+          html,
+          query: q,
+          ts: Date.now(),
+        });
+
+        console.log("[GAI] Response sent. This tab can be closed.");
+      });
+    };
+
+    if (document.readyState === "complete") {
+      onReady();
+    } else {
+      window.addEventListener("load", onReady, { once: true });
+    }
+  }
+
+  function extractContent() {
+    const container =
+      document.querySelector('[data-container-id="main-col"]') ||
+      document.querySelector(".pWvJNd") ||
+      document.body;
+    if (!container) return "";
+
+    const clone = container.cloneNode(true);
+
+    const stripSel = [
+      "script","noscript","style","link","iframe","header","footer",
+      "#gb","#fbar","#searchform","#top_nav",'[role="navigation"]',
+      ".uJ19be",".txxDge",".VlQBpc",".zkL70c","a.rBl3me","button","svg","img",
+    ];
+    for (const sel of stripSel) {
+      for (const el of clone.querySelectorAll(sel)) el.remove();
     }
 
-    const actions = document.createElement("div");
-    actions.className = "gai-actions";
+    for (const el of clone.querySelectorAll("*")) {
+      if ((el.getAttribute("style") || "").replace(/\s/g, "").includes("display:none")) {
+        el.remove();
+      }
+    }
 
-    const copyBtn = document.createElement("button");
-    copyBtn.type = "button";
-    copyBtn.className = "gai-btn";
-    copyBtn.textContent = "Copy";
+    for (const el of clone.querySelectorAll('[role="heading"]')) {
+      const level = el.getAttribute("aria-level") || "3";
+      const h = document.createElement(`h${level}`);
+      h.innerHTML = el.innerHTML;
+      el.replaceWith(h);
+    }
 
-    copyBtn.addEventListener("click", async () => {
-      const ok = await copyText(data.text || blocks.join("\n\n"));
-      const old = copyBtn.textContent;
-      copyBtn.textContent = ok ? "Copied!" : "Copy failed";
-      setTimeout(() => {
-        copyBtn.textContent = old;
-      }, 1200);
-    });
+    for (const el of [clone, ...clone.querySelectorAll("*")]) {
+      const attrs = [...el.attributes];
+      for (const attr of attrs) {
+        const n = attr.name.toLowerCase();
+        if (n !== "colspan" && n !== "rowspan" && n !== "href") {
+          el.removeAttribute(n);
+        }
+      }
+    }
 
-    actions.appendChild(copyBtn);
-    actions.appendChild(makeLinkButton("Open AI Mode", GOOGLE_AI_URL));
-    actions.appendChild(makeLinkButton("Open Google Search", GOOGLE_SEARCH_URL));
+    let changed;
+    do {
+      changed = false;
+      for (const el of clone.querySelectorAll("*")) {
+        if (!el.textContent.trim() && el.children.length === 0) {
+          el.remove();
+          changed = true;
+        }
+      }
+    } while (changed);
 
-    main.appendChild(actions);
+    return clone.innerHTML.trim() || clone.textContent.trim();
   }
 
-  function makeLinkButton(label, url) {
-    const a = document.createElement("a");
-    a.className = "gai-open";
-    a.href = url;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.textContent = label;
-    return a;
-  }
+  // ═══════════════════════════════════════════════════════════════════════
+  //  BRAVE SIDE — sidebar panel + background tab orchestration
+  // ═══════════════════════════════════════════════════════════════════════
+  function braveSide() {
+    const ID = "gai";
+    const ICON = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.97 10.97 0 0 0 1 12c0 1.77.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>`;
+    const SIDEBAR_SEL = [
+      "aside.sidebar > .sidebar-content",
+      "aside.side > .sidebar-content",
+      "aside.sidebar",
+      "aside.side",
+      "aside",
+    ];
 
-  function fetchHTML(url) {
-    return new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
-        method: "GET",
-        url,
-        headers: {
-          Accept: "text/html,application/xhtml+xml",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-        timeout: 20000,
-        onload(r) {
-          LOG("Fetch", url, "→", r.status, "|", (r.responseText || "").length, "bytes");
-          if (r.status >= 200 && r.status < 300) {
-            resolve(r.responseText || "");
-          } else {
-            reject(new Error("HTTP " + r.status));
-          }
-        },
-        onerror() {
-          reject(new Error("Network error"));
-        },
-        ontimeout() {
-          reject(new Error("Timed out"));
-        },
+    const $ = (s) => document.querySelector(s);
+    const getQ = () => new URLSearchParams(location.search).get("q") || "";
+    const aiUrl = (q) =>
+      `https://www.google.com/search?q=${encodeURIComponent(q)}&udm=50#gai`;
+
+    GM_addStyle(`
+      #${ID}{margin:12px 0;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.07);background:#161618;font-family:system-ui,-apple-system,sans-serif}
+      #${ID}.float{position:fixed;right:16px;top:68px;width:400px;max-height:calc(100vh - 84px);overflow-y:auto;z-index:9999;box-shadow:0 8px 40px rgba(0,0,0,.55)}
+      .${ID}-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:linear-gradient(135deg,rgba(66,133,244,.06),rgba(99,102,241,.04));border-bottom:1px solid rgba(255,255,255,.05)}
+      .${ID}-tag{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;color:#8e8e96;text-transform:uppercase;letter-spacing:.05em}
+      .${ID}-acts{display:flex;gap:4px}
+      .${ID}-btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 6px;border-radius:6px;font-size:13px;color:#707078;border:1px solid rgba(255,255,255,.07);transition:all .12s;text-decoration:none}
+      .${ID}-btn:hover{color:#e0e0e4;border-color:rgba(255,255,255,.14)}
+      .${ID}-content{padding:16px;font-size:14px;line-height:1.6;color:#e0e0e4}
+      .${ID}-content p,.${ID}-content div{margin-bottom:8px}
+      .${ID}-content ul{margin:0 0 12px 20px;padding:0}
+      .${ID}-content li{margin-bottom:6px}
+      .${ID}-content strong,.${ID}-content b{color:#fff;font-weight:600}
+      .${ID}-content mark{background:rgba(99,102,241,0.15);color:#a5a8ff;padding:0 3px;border-radius:4px;box-shadow:0 0 0 1px rgba(99,102,241,0.3)}
+      .${ID}-content h3{font-size:15px;color:#fff;margin:16px 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em}
+      .${ID}-content table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;border-radius:6px;overflow:hidden}
+      .${ID}-content th,.${ID}-content td{border:1px solid rgba(255,255,255,0.06);padding:10px;text-align:left}
+      .${ID}-content th{background:rgba(255,255,255,0.03);font-weight:600;color:#fff}
+      .${ID}-content tr:nth-child(even){background:rgba(255,255,255,0.015)}
+      .${ID}-load{display:flex;flex-direction:column;align-items:center;gap:10px;padding:28px 16px;text-align:center}
+      .${ID}-spin{width:22px;height:22px;border:2.5px solid rgba(255,255,255,.06);border-top-color:#6366f1;border-radius:50%;animation:${ID}s .65s linear infinite}
+      @keyframes ${ID}s{to{transform:rotate(360deg)}}
+      .${ID}-msg{font-size:12px;color:#707078;line-height:1.5}
+      .${ID}-msg b{color:#a5a8ff}
+      .${ID}-step{font-size:11px;color:#505058;margin-top:2px}
+      .${ID}-err{padding:20px 14px;text-align:center;font-size:12px;color:#808088;line-height:1.5}
+      .${ID}-cta{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;margin-top:10px;border-radius:7px;background:#6366f1;color:#fff;font-size:13px;font-weight:600;text-decoration:none}
+      .${ID}-cta:hover{opacity:.85}
+    `);
+
+    // ── State ──
+    let googleTab = null;
+    let listenerId = null;
+    let currentQuery = "";
+    let injected = false;
+    let fetchGen = 0;
+    let lastQuery = getQ();
+    let lastHTML = null;        // NEW: cached rendered content
+    let activePollTimer = null;
+    let activePollTimeout = null;
+
+    // ── Helpers ──
+    function loadingHTML(step = "Opening background tab…") {
+      return `
+        <div class="${ID}-load">
+          <div class="${ID}-spin"></div>
+          <div class="${ID}-msg">Fetching <b>Google AI Mode</b> response…</div>
+          <div class="${ID}-step" id="${ID}-step">${step}</div>
+        </div>`;
+    }
+
+    function setStep(text) {
+      const el = $(`#${ID}-step`);
+      if (el) el.textContent = text;
+    }
+
+    function cleanupFetch() {
+      if (googleTab && !googleTab.closed) {
+        try { googleTab.close(); } catch (_) {}
+      }
+      googleTab = null;
+      if (listenerId !== null) {
+        try { GM_removeValueChangeListener(listenerId); } catch (_) {}
+        listenerId = null;
+      }
+    }
+
+    // ── Render (always caches) ──
+    function renderContent(html) {
+      lastHTML = html;
+      const bodyEl = $(`#${ID}-body`);
+      if (!bodyEl) return;
+      bodyEl.innerHTML = `<div class="${ID}-content">${html}</div>`;
+    }
+
+    // ── Build panel ──
+    function buildPanel(q) {
+      const panel = document.createElement("div");
+      panel.id = ID;
+      panel.innerHTML = `
+        <div class="${ID}-bar">
+          <span class="${ID}-tag">${ICON} Google AI Mode</span>
+          <span class="${ID}-acts">
+            <button class="${ID}-btn" data-act="copy" title="Copy text"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
+            <button class="${ID}-btn" data-act="reload" title="Reload"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 1 0 2.81-6.57L21 8"></path></svg></button>
+            <a class="${ID}-btn" href="${aiUrl(q).replace("#gai","")}" target="_blank" title="Open in tab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></a>
+          </span>
+        </div>
+        <div id="${ID}-body">${loadingHTML()}</div>`;
+
+      panel.querySelector('[data-act="reload"]').addEventListener("click", () => {
+        lastHTML = null;
+        startFetch(getQ());
       });
-    });
-  }
+      panel.querySelector('[data-act="copy"]').addEventListener("click", (e) => {
+        const content = panel.querySelector(`.${ID}-content`);
+        if (content) {
+          navigator.clipboard.writeText(content.innerText).then(() => {
+            const btn = e.currentTarget;
+            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34A853" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+            setTimeout(() => {
+              btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+            }, 1500);
+          });
+        }
+      });
 
-  function extractAI(html) {
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    LOG("page title:", doc.title || "(no title)");
+      return panel;
+    }
 
-    const copyButtons = Array.from(
-      doc.querySelectorAll('button[aria-label="Copy text"]')
-    );
-
-    if (!copyButtons.length) {
-      LOG("AI marker not found (Copy button missing)");
+    // ── Sidebar detection ──
+    function findSidebar() {
+      for (const s of SIDEBAR_SEL) {
+        const el = $(s);
+        if (el) return el;
+      }
       return null;
     }
 
-    LOG("AI copy buttons found:", copyButtons.length);
+    // ── Insert panel into page (does NOT start fetch) ──
+    function insertPanel(q) {
+      const panel = buildPanel(q);
+      const sidebar = findSidebar();
+      if (sidebar) {
+        sidebar.prepend(panel);
+      } else {
+        panel.classList.add("float");
+        document.body.appendChild(panel);
+      }
+      return panel;
+    }
 
-    let best = null;
+    // ── Start the fetch-via-tab process ──
+    function startFetch(q) {
+      const gen = ++fetchGen;
+      currentQuery = q;
+      const bodyEl = $(`#${ID}-body`);
+      if (!bodyEl) return;
 
-    for (const btn of copyButtons) {
-      let p = btn.parentElement;
-      let depth = 0;
+      bodyEl.innerHTML = loadingHTML("Opening background tab…");
 
-      while (p && depth < 14) {
-        const clone = p.cloneNode(true);
-        pruneNode(clone);
+      cleanupFetch();
 
-        const blocks = extractBlocksFromNode(clone).slice(0, 15);
-        const text = blocks.join("\n\n").trim();
-        const sources = collectSources(p, 12); // Search sources in the parent's subtree
+      listenerId = GM_addValueChangeListener(
+        "gai_response",
+        (_key, _oldVal, newVal, _remote) => {
+          if (!newVal || !newVal.html || !newVal.ts) return;
+          if (Date.now() - newVal.ts > 120000) return;
+          if (gen !== fetchGen) return;
+          if (newVal.query && newVal.query !== currentQuery) return;
 
-        let score = Math.min(text.length, 3000) + blocks.length * 90 + sources.length * 150;
-        if (text.length > 6100) score -= 1200;
-        if (blocks.length < 2) score -= 400;
-        if (text.toLowerCase().includes("copy text")) score -= 600;
-        if (text.toLowerCase().includes("search labs")) score -= 400;
+          console.log(`[GAI-Brave] Received ${newVal.html.length} chars`);
 
-        if (!best || score > best.score) {
-          best = {
-            score,
-            blocks,
-            text,
-            sources,
+          // Cache IMMEDIATELY so panel re-inserts during the 300ms delay get content
+          lastHTML = newVal.html;
+
+          // Remove listener — we got what we needed
+          if (listenerId !== null) {
+            try { GM_removeValueChangeListener(listenerId); } catch (_) {}
+            listenerId = null;
+          }
+
+          setStep("Content received! Rendering…");
+
+          setTimeout(() => {
+            if (gen !== fetchGen) return;
+            renderContent(newVal.html);
+            if (googleTab && !googleTab.closed) {
+              try { googleTab.close(); } catch (_) {}
+            }
+            googleTab = null;
+          }, 300);
+        }
+      );
+
+      const url = aiUrl(q);
+      try {
+        googleTab = GM_openInTab(url, { active: false, insert: true, setParent: true });
+        console.log("[GAI-Brave] Background tab opened");
+        setStep("Background tab opened. Waiting for AI response…");
+
+        if (googleTab && googleTab.onclose !== undefined) {
+          googleTab.onclose = () => {
+            if (gen === fetchGen) {
+              console.log("[GAI-Brave] Google tab closed");
+              setStep("Google tab closed. Waiting for data…");
+            }
           };
         }
-
-        p = p.parentElement;
-        depth++;
-      }
-    }
-
-    if (best && best.text.length >= 40) {
-      LOG("✓ AI Candidate picked (score:", best.score, ")");
-      return {
-        from: "ai",
-        blocks: best.blocks,
-        text: best.text,
-        sources: best.sources,
-      };
-    }
-
-    return null;
-  }
-
-  function extractRegular(html) {
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    LOG("fallback extraction...");
-
-    const root =
-      doc.querySelector("#search") ||
-      doc.querySelector("#center_col") ||
-      doc.body;
-
-    let blocks = pickBlocksBySelectors(
-      root,
-      [
-        ".M8OgIe",
-        ".hgKElc",
-        ".IZ6rdc",
-        ".kno-rdesc span",
-        '[data-attrid="description"] span',
-        ".yDYNvb",
-        ".VwiC3b",
-        ".s3v9rd",
-        ".wDYxhc",
-        ".X5LH0c"
-      ],
-      25,
-      6
-    );
-
-    if (!blocks.length) {
-      const clone = root.cloneNode(true);
-      pruneNode(clone);
-      blocks = extractBlocksFromNode(clone).slice(0, 5);
-    }
-
-    const text = blocks.join("\n\n").trim();
-    const sources = collectSources(root, 10);
-
-    if (text.length < 30) return null;
-
-    return {
-      from: "search",
-      blocks,
-      text,
-      sources,
-    };
-  }
-
-  function pickBlocksBySelectors(root, selectors, minLen, maxBlocks) {
-    const out = [];
-    const seen = new Set();
-
-    for (const sel of selectors) {
-      const nodes = root.querySelectorAll(sel);
-      for (const el of nodes) {
-        const t = cleanText(el.textContent || "");
-        if (t.length < minLen) continue;
-
-        const key = t.toLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push(t);
-
-        if (out.length >= maxBlocks) return out;
-      }
-    }
-
-    return out;
-  }
-
-  function pruneNode(root) {
-    const removeSelector = [
-      "script",
-      "style",
-      "noscript",
-      "iframe",
-      "img",
-      "svg",
-      "video",
-      "audio",
-      "canvas",
-      "form",
-      "button",
-      "input",
-      "textarea",
-      "select",
-      "label",
-      "[role='dialog']",
-      "[hidden]",
-      "[aria-hidden='true']",
-      "[style*='display:none']",
-      "[style*='display: none']",
-      "[style*='visibility:hidden']",
-      "[style*='visibility: hidden']",
-      ".tHaXU", ".eksFZe", ".qacuz", // UI overlays
-      ".VlQBpc", ".DbD2Wb", // Result feedback/meta
-      ".FYF80",".Fsg96" // AI ornaments
-    ].join(",");
-
-    root.querySelectorAll(removeSelector).forEach((el) => el.remove());
-
-    // Deep clean text markers
-    root.querySelectorAll("*").forEach((el) => {
-      const t = cleanText(el.textContent || "");
-      if (!t) return;
-      const lower = t.toLowerCase();
-      if (
-        /^(copy|share|good response|bad response|feedback|close|thank you|search labs|creating a public link|view related links)$/.test(lower) ||
-        lower.startsWith("your feedback helps google improve")
-      ) {
-        el.remove();
-      }
-    });
-  }
-
-  function extractBlocksFromNode(root) {
-    const out = [];
-    const seen = new Set();
-
-    function add(t, bullet) {
-      t = cleanText(t);
-      if (!t || t.length < 25) return;
-      if (bullet && !t.startsWith("• ")) t = "• " + t;
-      const key = t.toLowerCase();
-      if (seen.has(key)) return;
-      seen.add(key);
-      out.push(t);
-    }
-
-    // Try semantic tags first
-    const semantic = root.querySelectorAll("p,li,h1,h2,h3,h4,h5,h6,blockquote,pre,[role='heading']");
-    semantic.forEach((el) => {
-      add(el.textContent || "", el.tagName.toLowerCase() === "li");
-    });
-
-    // If result is zero or very short (common in Google AI mode "div soup")
-    if (out.length < 2 || out.join("").length < 150) {
-      // Find text-heavy divs that don't have many children but have significant text
-      const potential = root.querySelectorAll("div,span,section,article");
-      potential.forEach((el) => {
-        if (el.children.length > 3) return; // Skip containers
-        if (el.querySelector("p,li,h1,h2,h3,h4,h5,h6,blockquote,pre")) return; // Skip if handled
-        const t = cleanText(el.textContent || "");
-        if (t.length > 40 && t.length < 1200) {
-          add(t);
-        }
-      });
-    }
-
-    // fallback for a single massive block
-    if (!out.length) {
-      add(root.textContent || "", false);
-    }
-
-    return out;
-  }
-
-  function collectSources(root, max) {
-    const out = [];
-    const seen = new Set();
-
-    function addSource(href, anchorText) {
-      if (out.length >= max || !href) return;
-      href = unwrapGoogleUrl(href);
-
-      if (!/^https?:\/\//i.test(href)) return;
-
-      let u;
-      try {
-        u = new URL(href);
-      } catch {
+      } catch (e) {
+        console.error("[GAI-Brave] Failed to open tab:", e);
+        bodyEl.innerHTML = `
+          <div class="${ID}-err">
+            ⚠️ Could not open background tab. Allow popups for search.brave.com.<br>
+            <a class="${ID}-cta" href="${url.replace("#gai","")}" target="_blank">✨ Open Manually →</a>
+          </div>`;
         return;
       }
 
-      const host = u.hostname.replace(/^www\./i, "");
-      if (/google\./i.test(host)) return;
-
-      const finalURL = u.href;
-      if (seen.has(finalURL)) return;
-      seen.add(finalURL);
-
-      let text = cleanText(anchorText || "");
-      if (!text || text.length < 5) text = host;
-      if (text.length > 150) text = text.slice(0, 147) + "...";
-
-      out.push({
-        url: finalURL,
-        text,
-        domain: host,
-      });
-    }
-
-    // 1. Regular anchors
-    root.querySelectorAll("a[href]").forEach((a) => {
-      addSource(a.getAttribute("href"), a.textContent);
-    });
-
-    // 2. If no sources found, look for hidden URLs in text (citations in JSON/encoded strings)
-    if (out.length < 2) {
-        const rawContent = root.innerHTML || "";
-        const matches = rawContent.match(/https?:\/\/[^\s"';<>\\)]+/g);
-        if (matches) {
-            matches.forEach(url => {
-                // Ignore obvious tracking or icon URLs
-                if (!/favicon|gstatic|google\.|adservice/i.test(url)) {
-                    // Clean up common HTML entities if they were caught in the match
-                    const cleanUrl = url.replace(/(&quot;|&amp;|&#39;).*$/, "");
-                    addSource(cleanUrl, null);
-                }
-            });
+      // Timeout — 50s
+      setTimeout(() => {
+        if (gen !== fetchGen) return;
+        if (lastHTML) return; // content arrived, all good
+        cleanupFetch();
+        const body = $(`#${ID}-body`);
+        if (body && body.querySelector(`.${ID}-load`)) {
+          body.innerHTML = `
+            <div class="${ID}-err">
+              ⚠️ Timed out waiting for Google AI response.<br>
+              <a class="${ID}-cta" href="${url.replace("#gai","")}" target="_blank">✨ Open Manually →</a>
+            </div>`;
         }
+      }, 50000);
     }
 
-    return out;
-  }
+    // ── Inject: build panel + start fetch (first time only) ──
+    function inject() {
+      const q = getQ();
+      if (!q || injected) return;
 
-  function unwrapGoogleUrl(href) {
-    if (!href) return "";
+      injected = true;
+      lastQuery = q;
 
-    try {
-      if (href.startsWith("/")) {
-        const u = new URL(href, "https://www.google.com");
-        if (u.pathname === "/url" || u.pathname === "/search") {
-          const target = u.searchParams.get("url") || u.searchParams.get("q");
-          if (target && /^https?:\/\//i.test(target)) return target;
-        }
-        return u.href;
+      insertPanel(q);
+      startFetch(q);
+    }
+
+    // ── Re-inject: panel was removed by SPA, put it back WITHOUT re-fetching ──
+    function reinject() {
+      const q = getQ();
+      if (!q) return;
+
+      console.log("[GAI-Brave] Panel removed by SPA, re-inserting…");
+      injected = true;
+
+      insertPanel(q);
+
+      // Show cached content if we already have it, otherwise keep loading spinner
+      if (lastHTML) {
+        renderContent(lastHTML);
+      }
+      // If fetch is still in progress, the loading spinner from buildPanel is correct.
+      // When the listener fires, it will find #gai-body and render into it.
+    }
+
+    // ── Centralized sidebar poll ──
+    function startSidebarPoll(delay) {
+      if (activePollTimeout) { clearTimeout(activePollTimeout); activePollTimeout = null; }
+      if (activePollTimer) { clearInterval(activePollTimer); activePollTimer = null; }
+
+      const run = () => {
+        activePollTimeout = null;
+        let n = 0;
+        activePollTimer = setInterval(() => {
+          if (++n >= 16 || findSidebar()) {
+            clearInterval(activePollTimer);
+            activePollTimer = null;
+            inject();
+          }
+        }, 250);
+      };
+
+      if (delay > 0) {
+        activePollTimeout = setTimeout(run, delay);
+      } else {
+        run();
+      }
+    }
+
+    // ── SPA navigation + panel-removal watcher ──
+    function checkNavigation() {
+      const currentQ = getQ();
+      if (!currentQ) return;
+
+      // ① Query actually changed → full reset + re-fetch
+      if (currentQ !== lastQuery) {
+        console.log("[GAI-Brave] Query changed:", currentQ);
+        lastQuery = currentQ;
+        injected = false;
+        lastHTML = null;
+        const old = $(`#${ID}`);
+        if (old) old.remove();
+        cleanupFetch();
+        startSidebarPoll(500);
+        return;
       }
 
-      if (href.includes("google.com/url?")) {
-        const u = new URL(href);
-        const target = u.searchParams.get("url") || u.searchParams.get("q");
-        if (target && /^https?:\/\//i.test(target)) return target;
+      // ② Same query but panel disappeared (Brave SPA re-rendered sidebar)
+      //    → re-insert panel WITHOUT opening a new Google tab
+      if (injected && !$(`#${ID}`)) {
+        reinject();
       }
-
-      return href;
-    } catch {
-      return href;
-    }
-  }
-
-  function dedupeBlocks(arr) {
-    const out = [];
-    const seen = [];
-
-    for (let t of arr || []) {
-      t = cleanText(t);
-      if (!t) continue;
-
-      const key = t.toLowerCase();
-
-      if (
-        seen.some((s) => s === key || s.includes(key) || key.includes(s))
-      ) {
-        continue;
-      }
-
-      seen.push(key);
-      out.push(t);
     }
 
-    return out;
-  }
+    window.addEventListener("popstate", checkNavigation);
+    setInterval(checkNavigation, 500);
 
-  function cleanText(s) {
-    return String(s || "")
-      .replace(/\u00a0/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  function safeDomain(u) {
-    try {
-      return new URL(u).hostname.replace(/^www\./i, "");
-    } catch {
-      return "";
-    }
-  }
-
-  async function copyText(text) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch (_) {}
-
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      ta.style.pointerEvents = "none";
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      const ok = document.execCommand("copy");
-      ta.remove();
-      return !!ok;
-    } catch (_) {
-      return false;
-    }
+    // ── Initial boot ──
+    startSidebarPoll(0);
   }
 })();
