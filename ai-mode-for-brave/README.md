@@ -1,32 +1,174 @@
-# Google AI Mode for Brave Sidebar (v1.4.0)
 
-A high-performance userscript that injects Google's AI-generated search results directly into the Brave Search sidebar.
 
-## ✨ Key Features
-- **Native Rendering**: No more clumsy iframes. AI content is extracted, sanitized, and injected as native HTML into the Brave UI for a seamless look.
-- **SPA & Filter Support**: Built for Brave Search's Single-Page Application (SPA) architecture. Remembers and re-caches results when switching between web, image, and news filters instantly.
-- **Sleek UX**: Includes a custom "Copy to Clipboard" button with micro-animations and Google-style highlights.
-- **Premium Aesthetics**: Ethereal glass-style sidepanel matching Brave's modern search UI with carefully tuned HSL color tokens.
-- **Efficient Extraction**: Uses a background tab to bypass `X-Frame-Options` without triggering bot detection or CAPTCHAs.
+# Google AI Mode for Brave Sidebar
 
-## 🚀 Installation
-1. Install a userscript manager like [Tampermonkey](https://www.tampermonkey.net/).
-2. Create a new script and paste the contents of `main.js`.
-3. Save and refresh your search results on [Brave Search](https://search.brave.com).
+> Injects Google's AI-generated search results directly into the Brave Search sidebar — seamlessly, instantly, and without leaving Brave.
 
-## 🛠 How it Works (v5.3.0 Architecture)
-1. **Detection**: The script identifies when you are on a Brave Search page.
-3. **Extraction**: Instead of waiting a fixed 8 seconds, the script now uses **Fast Stability Detection**:
-   - It polls the Google tab every 500ms.
-   - If Google's `[data-complete]` attribute appears, it extracts immediately.
-   - Otherwise, it waits for 1.5 seconds of text-length stability before capturing.
-   - Strips all Google-side tracking, scripts, and layout styles.
-4. **Injection**: Clean HTML is passed back via `GM_setValue` and injected natively into the Brave sidebar (`aside.side`).
-5. **Caching**: If you switch tabs in Brave, the script instantly restores the panel from its query-specific cache, avoiding redundant network calls.
-
-## 🔧 Troubleshooting
-- **Pop-up Blocking**: Ensure `search.brave.com` is allowed to open the background Google tab.
-- **Loading Hangs**: If Google AI takes too long to respond, the script will timeout after 40 seconds and offer a manual link.
+![Version](https://img.shields.io/badge/version-2.0.0-6366f1)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
-*Created with focus on performance, aesthetics, and privacy.*
+
+## The Problem
+
+Google's AI Mode (`udm=50`) produces excellent synthesized answers, but you can't access them from Brave Search without manually opening Google in another tab, waiting for the response, and context-switching back and forth.
+
+## The Solution
+
+This userscript runs silently in the background. When you search on Brave, it:
+1. Opens a hidden Google AI Mode tab
+2. Waits for the AI to finish generating its response
+3. Extracts the clean HTML content
+4. Injects it into Brave's sidebar as a native-looking panel
+5. Closes the background tab automatically
+
+**You never leave Brave Search.**
+
+---
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Native Rendering** | AI content is extracted, sanitized, and injected as clean HTML — no iframes |
+| **Smart Completion Detection** | Watches for Google's own Copy/Thumbs Up/Thumbs Down buttons to confirm the response is fully generated before extracting |
+| **5-Second Streaming Fallback** | If buttons don't appear, waits for 5 seconds of stable text before capturing — handles edge cases without cutoff |
+| **Cross-Page-Load Cache** | Results are cached for 5 minutes via `GM_getValue`. Reloading Brave Search with the same query renders instantly |
+| **SPA-Aware Navigation** | Intercepts `pushState`/`replaceState` and `popstate` to detect query changes in Brave's single-page app architecture |
+| **Panel Persistence** | If Brave's SPA destroys the sidebar DOM (e.g., switching between Web/Images/News filters), the panel is automatically re-inserted with cached content |
+| **Float-to-Sidebar Migration** | If the panel renders before the sidebar DOM exists, it floats temporarily and migrates into the sidebar once available |
+| **Error Detection** | Detects CAPTCHAs, sign-in walls, and rate-limit pages — shows an actionable error instead of garbage HTML |
+| **Copy to Clipboard** | One-click copy with checkmark micro-animation |
+| **Open in Tab** | Direct link to view the full Google AI Mode page |
+| **Manual Reload** | Re-fetch button to force a fresh response |
+| **60-Second Hard Cap** | Never hangs indefinitely — times out gracefully with a manual fallback link |
+
+---
+
+## Installation
+
+### Prerequisites
+- [Tampermonkey](https://www.tampermonkey.net/) (recommended) or any userscript manager that supports `GM_openInTab`
+- Brave Browser (or any Chromium browser using Brave Search)
+
+### Steps
+1. Install Tampermonkey from the [Chrome Web Store](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
+2. Click **Create a new script** in the Tampermonkey dashboard
+3. Delete the template and paste the contents of `main.js`
+4. Press **Ctrl+S** to save
+5. Search anything on [Brave Search](https://search.brave.com) — the AI panel appears in the sidebar
+
+### Important
+- **Allow pop-ups** for `search.brave.com` in your browser settings — the script needs to open a background Google tab
+- The background tab opens **inactive** and closes automatically after extraction
+
+---
+
+## Architecture
+
+```
+┌─────────────────────┐         GM_setValue          ┌──────────────────────┐
+│   BRAVE SEARCH TAB  │ ◄──── "gai_response" ─────  │   GOOGLE AI TAB      │
+│                     │                              │   (background)       │
+│  ┌───────────────┐  │    ┌──────────────────────┐  │                      │
+│  │ Sidebar Panel │  │    │  Completion Signal:   │  │  1. Page loads       │
+│  │               │  │    │  • Copy button exists  │  │  2. AI streams text  │
+│  │  • Loading    │  │    │  • Thumbs up exists    │  │  3. Buttons appear   │
+│  │  • Content    │  │    │  • Thumbs down exists  │  │  4. Extract + send   │
+│  │  • Error      │  │    │  • 5s text stability   │  │  5. Tab auto-closes  │
+│  └───────────────┘  │    │  • 60s hard cap        │  │                      │
+│                     │    └──────────────────────┘  │                      │
+└─────────────────────┘                              └──────────────────────┘
+```
+
+### Completion Detection (Priority Order)
+
+| Priority | Signal | Wait Time | Confidence |
+|----------|--------|-----------|------------|
+| 1 | Google's action buttons appear (`Copy text`, `Good response`, `Bad response`) + 1 stable poll | ~500ms after buttons | ★★★ High |
+| 2 | Text content length unchanged for 10 consecutive polls | 5 seconds | ★★ Medium |
+| 3 | Hard timeout | 60 seconds | ★ Fallback |
+| 4 | Error page detected (CAPTCHA/sign-in) | Immediate | Error |
+
+### Content Extraction Pipeline
+
+```
+Raw Google DOM
+  ↓ Clone container node
+  ↓ Strip: scripts, styles, iframes, navigation, toolbars, buttons, SVGs, images
+  ↓ Strip: display:none elements
+  ↓ Convert: role="heading" → semantic <h1>-<h6>
+  ↓ Strip: all attributes except href, colspan, rowspan
+  ↓ Prune: empty nodes (recursive)
+  ↓ Clean HTML string
+```
+
+---
+
+## Configuration
+
+| Constant | Default | Description |
+|----------|---------|-------------|
+| `CACHE_TTL` | `300000` (5 min) | How long cached results are valid |
+| `stableCount >= 1` (with buttons) | 500ms | Wait after buttons appear |
+| `stableCount >= 10` (without buttons) | 5000ms | Fallback stability threshold |
+| Hard cap timeout | `60000` (60s) | Maximum wait on Google side |
+| Brave-side timeout | `60000` (60s) | Maximum wait on Brave side |
+| Poll interval | `500` ms | How often Google-side checks for completion |
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Panel shows "Could not open background tab" | Pop-ups blocked for `search.brave.com` | Allow pop-ups in browser settings |
+| Panel shows "Timed out waiting for response" | Google AI Mode took >60s or failed silently | Click "Open Manually" or the reload button |
+| Panel shows "Google blocked the request" | CAPTCHA or sign-in wall triggered | Open Google manually, solve CAPTCHA, then reload |
+| Panel appears floating instead of in sidebar | Sidebar DOM hasn't loaded yet | Wait — it auto-migrates when the sidebar appears |
+| Content appears cut off | Rare: text paused for >5s mid-stream | Click reload to re-fetch |
+| Panel disappears when switching filters | Brave SPA rebuilds the DOM | Automatic — panel re-inserts from cache |
+
+---
+
+## Browser Permissions Required
+
+| Permission | Why |
+|------------|-----|
+| `GM_openInTab` | Open background Google tab |
+| `GM_setValue` / `GM_getValue` | Cross-tab communication + caching |
+| `GM_addValueChangeListener` | Real-time response delivery from Google → Brave |
+| `GM_addStyle` | Inject panel CSS |
+| `@connect *` | Allow cross-origin tab operations |
+
+---
+
+## Changelog
+
+### v2.0.0
+- **Fixed**: Content cutoff — replaced phantom `[data-complete]` with real Google UI signals (Copy/Thumbs buttons)
+- **Fixed**: Streaming pause false-positive — raised stability threshold from 1.5s to 5s
+- **Added**: Error page detection (CAPTCHA, sign-in, rate-limit)
+- **Added**: `GM_getValue` boot cache (5-minute TTL)
+- **Added**: Float-to-sidebar migration
+- **Added**: `pushState`/`replaceState` interception for instant SPA navigation detection
+- **Fixed**: Background tab orphaning on rapid reloads
+- **Fixed**: Interval stacking race condition in sidebar polling
+- **Improved**: Hard cap raised from 30s to 60s
+- **Refactored**: Deduplicated icons, selectors, and URL helpers
+
+### v1.4.0
+- Initial public release
+- Background tab extraction
+- SPA panel persistence
+- Basic text-stability detection
+
+---
+
+## License
+
+MIT — use it, fork it, improve it.
+
+---
+
+*Built for speed, reliability, and privacy. No data leaves your browser — everything runs locally between two tabs.*
