@@ -1,4 +1,4 @@
-# Google AI Mode for Brave Sidebar (v5.3.0)
+# Google AI Mode for Brave Sidebar (v1.4.0)
 
 A high-performance userscript that injects Google's AI-generated search results directly into the Brave Search sidebar.
 
@@ -16,17 +16,17 @@ A high-performance userscript that injects Google's AI-generated search results 
 
 ## 🛠 How it Works (v5.3.0 Architecture)
 1. **Detection**: The script identifies when you are on a Brave Search page.
-2. **Background Tab**: It opens a hidden Google tab with the `udm=50` parameter (Google's AI-only mode).
-3. **Extraction**: Once Google settles and renders the AI response, our extraction logic:
-   - Targets the specific AI component (`[data-subtree="aimfl"]` or `.pWvJNd`).
+3. **Extraction**: Instead of waiting a fixed 8 seconds, the script now uses **Fast Stability Detection**:
+   - It polls the Google tab every 500ms.
+   - If Google's `[data-complete]` attribute appears, it extracts immediately.
+   - Otherwise, it waits for 1.5 seconds of text-length stability before capturing.
    - Strips all Google-side tracking, scripts, and layout styles.
-   - Cleans the DOM into pure HTML tags.
 4. **Injection**: Clean HTML is passed back via `GM_setValue` and injected natively into the Brave sidebar (`aside.side`).
 5. **Caching**: If you switch tabs in Brave, the script instantly restores the panel from its query-specific cache, avoiding redundant network calls.
 
 ## 🔧 Troubleshooting
 - **Pop-up Blocking**: Ensure `search.brave.com` is allowed to open the background Google tab.
-- **Loading Hangs**: If Google AI takes too long to respond, the script will timeout after 50 seconds and offer a manual link.
+- **Loading Hangs**: If Google AI takes too long to respond, the script will timeout after 40 seconds and offer a manual link.
 
 ---
 *Created with focus on performance, aesthetics, and privacy.*

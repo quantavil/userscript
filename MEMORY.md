@@ -23,9 +23,5 @@ A high-end collection of userscripts designed for browser customization, automat
 - **Brave Search SPA**: Brave Search is a Single-Page Application; simple `load` events aren't enough. Use `popstate` and URL polling to ensure sidebar panels persist across filtering/navigation.
 - **Google AI Stream**: Google AI Mode doesn't render statically; it streams. The script must wait for content settling (mutation silence) before extraction.
 
-## Insights
-- **SPA Re-injection**: In Brave Search, re-rendering happens frequently. Caching the last successful AI response (`lastHTML`) allows for instant panel restoration without redundant Google tab cycles.
+- **Fast Path Extraction**: In v1.4.0, we replaced static waits with polling. If Google's `[data-complete]` exists, we capture immediately. This significantly improves UX by reducing idle time.
 
-## Blunders
-- [2026-03-25] Tried using `srcdoc` iframes for AI content → CSP and styling mismatches broke the UX → Switched to Native DOM Extraction for a seamless look.
-- [2026-03-25] Initial extraction was too broad (cloned `body`) → Triggered performance lags → Refined to target exact AI response containers (`[data-subtree="aimfl"]`).
