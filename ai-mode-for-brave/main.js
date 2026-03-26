@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Mode for Brave Sidebar
 // @namespace    quantavil
-// @version      2.1.0
+// @version      2.2.1
 // @description  Extracts Google AI Mode results and displays them in the Brave Search sidebar
 // @match        https://search.brave.com/search*
 // @match        https://www.google.com/search*
@@ -23,20 +23,23 @@
   const IS_GOOGLE = location.hostname === "www.google.com";
 
   // ═══════════════════════════════════════════════════════════════════════
-  //  SHARED
+  //  SHARED UTILITIES
   // ═══════════════════════════════════════════════════════════════════════
+
+  /** Normalize query for consistent cache keys */
+  const normalizeQ = (q) => (q || "").trim().toLowerCase().replace(/\s+/g, " ");
+
   const CONTENT_SELS = [
     '[data-container-id="main-col"]',
     ".pWvJNd",
   ];
 
-  // Real completion signals from Google AI Mode UI
   const COMPLETE_SELS = [
     'button[aria-label="Copy text"]',
     'button[aria-label="Good response"]',
     'button[aria-label="Bad response"]',
-    ".bKxaof",   // copy button class
-    ".ya9Iof",   // thumbs button class
+    ".bKxaof",
+    ".ya9Iof",
   ];
 
   const ERROR_SELS = [
@@ -50,6 +53,22 @@
   const googleUrl = (q) =>
     `https://www.google.com/search?q=${encodeURIComponent(q)}&udm=50`;
   const aiUrl = (q) => `${googleUrl(q)}#gai`;
+
+  /** How long a "fetching" lock is considered valid (ms) */
+  const FETCH_LOCK_TTL = 70_000; // 70s (longer than 60s hard cap)
+  const CACHE_KEY = "gai_cache";
+
+  function getCache() {
+    try {
+      const c = GM_getValue(CACHE_KEY, null);
+      if (c && typeof c === "object") return c;
+    } catch (_) {}
+    return {};
+  }
+
+  function setCache(obj) {
+    try { GM_setValue(CACHE_KEY, obj); } catch (_) {}
+  }
 
   function findBySelectors(sels) {
     for (const sel of sels) {
@@ -77,6 +96,8 @@
     let lastLen = -1;
     let stableCount = 0;
     const startTime = Date.now();
+    const rawQ = params.get("q") || "";
+    const normQ = normalizeQ(rawQ);
 
     function findContent() {
       for (const sel of CONTENT_SELS) {
@@ -103,36 +124,40 @@
       clearInterval(timer);
 
       const html = error ? "" : extractContent();
-      const q = params.get("q") || "";
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       console.log(
-        `[GAI] Sending ${html.length} chars for "${q}" (${elapsed}s)` +
+        `[GAI] Sending ${html.length} chars for "${normQ}" (${elapsed}s)` +
           (error ? ` [error: ${error}]` : "")
       );
-      
+
+      // Capture the final URL (includes mstk= token for instant revisit)
+      const resultUrl = error ? null : location.href;
+
       const ts = Date.now();
-      let cache = GM_getValue("gai_cache", null);
-      if (!cache || typeof cache !== "object") cache = {};
-      cache[q] = {
+      const cache = getCache();
+      cache[normQ] = {
         html,
         ts,
         error: error || null,
+        status: error ? "error" : "done",
+        resultUrl: resultUrl || null,
       };
-      
-      // Limit cache size to 10 queries to prevent memory bloating
+
+      // Limit cache size to 10 queries
       const keys = Object.keys(cache);
       if (keys.length > 10) {
-        const oldestEntry = keys.sort((a, b) => cache[a].ts - cache[b].ts)[0];
-        delete cache[oldestEntry];
+        const oldest = keys
+          .filter((k) => cache[k].ts)
+          .sort((a, b) => (cache[a].ts || 0) - (cache[b].ts || 0))[0];
+        if (oldest) delete cache[oldest];
       }
-      
-      GM_setValue("gai_cache", cache);
+
+      setCache(cache);
     }
 
     const timer = setInterval(() => {
       if (sent) return;
 
-      // Error page detection (CAPTCHA / sign-in / rate-limit)
       if (isErrorPage()) {
         console.log("[GAI] Error page detected");
         send("error_page");
@@ -152,14 +177,12 @@
       if (len > 0 && len === lastLen) {
         stableCount++;
 
-        // HIGH confidence: Google's own action buttons appeared + 1 stable tick
         if (complete && stableCount >= 1) {
           console.log("[GAI] ✓ Buttons present + stable → sending");
           send();
           return;
         }
 
-        // MEDIUM confidence: 5s of no text changes without buttons (10 × 500ms)
         if (stableCount >= 10) {
           console.log("[GAI] ✓ Fallback: text stable 5s → sending");
           send();
@@ -181,27 +204,25 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  //  CONTENT EXTRACTION (shared helper, runs on Google page)
+  //  CONTENT EXTRACTION
   // ═══════════════════════════════════════════════════════════════════════
   function extractContent() {
     const container = findBySelectors(CONTENT_SELS) || document.body;
     const clone = container.cloneNode(true);
 
-    // Strip non-content elements
     const STRIP = [
-      "script","noscript","style","link","iframe",
-      "header","footer",
-      "#gb","#fbar","#searchform","#top_nav",
+      "script", "noscript", "style", "link", "iframe",
+      "header", "footer",
+      "#gb", "#fbar", "#searchform", "#top_nav",
       '[role="navigation"]',
-      ".uJ19be",".txxDge",".VlQBpc",".zkL70c",
-      ".DwkS",                         // copy/share/feedback toolbar
-      "a.rBl3me","button","svg","img",
+      ".uJ19be", ".txxDge", ".VlQBpc", ".zkL70c",
+      ".DwkS",
+      "a.rBl3me", "button", "svg", "img",
     ];
     for (const sel of STRIP) {
       clone.querySelectorAll(sel).forEach((el) => el.remove());
     }
 
-    // Remove display:none
     clone.querySelectorAll("*").forEach((el) => {
       if (
         (el.getAttribute("style") || "")
@@ -212,7 +233,6 @@
       }
     });
 
-    // Convert role="heading" → real headings
     clone.querySelectorAll('[role="heading"]').forEach((el) => {
       const level = el.getAttribute("aria-level") || "3";
       const h = document.createElement(`h${level}`);
@@ -220,7 +240,6 @@
       el.replaceWith(h);
     });
 
-    // Strip all attributes except structural ones
     const KEEP = new Set(["colspan", "rowspan", "href"]);
     [clone, ...clone.querySelectorAll("*")].forEach((el) => {
       [...el.attributes].forEach((a) => {
@@ -228,7 +247,6 @@
       });
     });
 
-    // Prune empty nodes
     let changed;
     do {
       changed = false;
@@ -248,9 +266,8 @@
   // ═══════════════════════════════════════════════════════════════════════
   function braveSide() {
     const ID = "gai";
-    const CACHE_TTL = 300_000; // 5 min
+    const CACHE_TTL = 900_000; // 15 min
 
-    // ── Deduplicated icons ──
     const ICONS = {
       google: `<svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.97 10.97 0 0 0 1 12c0 1.77.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>`,
       copy: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
@@ -268,8 +285,7 @@
     ];
 
     const $ = (s) => document.querySelector(s);
-    const getQ = () =>
-      new URLSearchParams(location.search).get("q") || "";
+    const getQ = () => normalizeQ(new URLSearchParams(location.search).get("q"));
 
     GM_addStyle(`
       #${ID}{margin:12px 0;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.07);background:#161618;font-family:system-ui,-apple-system,sans-serif}
@@ -309,10 +325,59 @@
     let fetchGen = 0;
     let lastQuery = getQ();
     let lastHTML = null;
+    let lastResultUrl = null;
     let activePollTimer = null;
     let activePollTimeout = null;
 
     // ── Helpers ──
+    function htmlToMarkdown(element) {
+      let md = "";
+      for (const node of element.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          md += node.textContent;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = node.tagName.toLowerCase();
+          const inner = htmlToMarkdown(node);
+          switch (tag) {
+            case "h1": md += `\n\n# ${inner}\n\n`; break;
+            case "h2": md += `\n\n## ${inner}\n\n`; break;
+            case "h3": md += `\n\n### ${inner}\n\n`; break;
+            case "h4": md += `\n\n#### ${inner}\n\n`; break;
+            case "h5": md += `\n\n##### ${inner}\n\n`; break;
+            case "h6": md += `\n\n###### ${inner}\n\n`; break;
+            case "p":
+            case "div": md += `\n${inner}\n`; break;
+            case "strong":
+            case "b": md += `**${inner}**`; break;
+            case "em":
+            case "i": md += `*${inner}*`; break;
+            case "mark": md += `==${inner}==`; break;
+            case "a": md += `[${inner}](${node.getAttribute("href") || ""})`; break;
+            case "ul":
+            case "ol": md += `\n${inner}\n`; break;
+            case "li": md += `\n- ${inner.trim()}`; break;
+            case "code": md += `\`${inner}\``; break;
+            case "pre": md += `\n\n\`\`\`\n${node.textContent}\n\`\`\`\n\n`; break;
+            case "table": md += `\n\n${inner}\n\n`; break;
+            case "tbody":
+            case "thead": md += inner; break;
+            case "tr": {
+              md += `\n| ${inner}`;
+              if (node.querySelector("th")) {
+                md += `\n|${"---|".repeat(node.querySelectorAll("th,td").length)}`;
+              }
+              break;
+            }
+            case "th":
+            case "td": md += `${inner.replace(/\n/g, " ").trim()} | `; break;
+            case "br": md += `\n`; break;
+            default: md += inner;
+          }
+        }
+      }
+      return md.replace(/\n{3,}/g, "\n\n").trim();
+    }
+
     function loadingHTML(step = "Opening background tab…") {
       return `<div class="${ID}-load">
         <div class="${ID}-spin"></div>
@@ -326,30 +391,59 @@
       if (el) el.textContent = text;
     }
 
-    function cleanupFetch() {
-      if (googleTab && !googleTab.closed) {
-        try {
-          googleTab.close();
-        } catch (_) {}
-      }
-      googleTab = null;
+    function clearListener() {
       if (listenerId !== null) {
-        try {
-          GM_removeValueChangeListener(listenerId);
-        } catch (_) {}
+        try { GM_removeValueChangeListener(listenerId); } catch (_) {}
         listenerId = null;
       }
     }
 
-    function renderContent(html) {
+    function closeTab() {
+      if (googleTab && !googleTab.closed) {
+        try { googleTab.close(); } catch (_) {}
+      }
+      googleTab = null;
+    }
+
+    function cleanupFetch() {
+      closeTab();
+      clearListener();
+    }
+
+    function clearFetchLock(q) {
+      const cache = getCache();
+      if (cache[q] && cache[q].status === "fetching") {
+        delete cache[q];
+        setCache(cache);
+      }
+    }
+
+    /** Get the best URL for "Open in tab" — cached result URL or fallback */
+    function getOpenUrl(q) {
+      if (lastResultUrl) return lastResultUrl;
+      const entry = getCache()[q];
+      if (entry && entry.resultUrl) return entry.resultUrl;
+      return googleUrl(q);
+    }
+
+    /** Update the "Open in tab" link href dynamically */
+    function updateOpenLink(q) {
+      const link = document.querySelector(`#${ID} a.${ID}-btn[title="Open in tab"]`);
+      if (link) link.href = getOpenUrl(q);
+    }
+
+    function renderContent(html, resultUrl) {
       lastHTML = html;
+      if (resultUrl) lastResultUrl = resultUrl;
       const bodyEl = $(`#${ID}-body`);
       if (!bodyEl) return;
       bodyEl.innerHTML = `<div class="${ID}-content">${html}</div>`;
+      updateOpenLink(currentQuery || lastQuery);
     }
 
     function renderError(msg, q) {
       lastHTML = null;
+      lastResultUrl = null;
       const bodyEl = $(`#${ID}-body`);
       if (!bodyEl) return;
       bodyEl.innerHTML = `<div class="${ID}-err">
@@ -376,7 +470,7 @@
           <span class="${ID}-acts">
             <button class="${ID}-btn" data-act="copy" title="Copy text">${ICONS.copy}</button>
             <button class="${ID}-btn" data-act="reload" title="Reload">${ICONS.reload}</button>
-            <a class="${ID}-btn" href="${googleUrl(q)}" target="_blank" title="Open in tab">${ICONS.open}</a>
+            <a class="${ID}-btn" href="${getOpenUrl(q)}" target="_blank" title="Open in tab">${ICONS.open}</a>
           </span>
         </div>
         <div id="${ID}-body">${loadingHTML()}</div>`;
@@ -385,7 +479,15 @@
         .querySelector('[data-act="reload"]')
         .addEventListener("click", () => {
           lastHTML = null;
-          startFetch(getQ());
+          lastResultUrl = null;
+          // Force clear any fetching lock for this query
+          const q = getQ();
+          const cache = getCache();
+          if (cache[q]) {
+            delete cache[q];
+            setCache(cache);
+          }
+          startFetch(q, true);
         });
 
       panel
@@ -393,12 +495,10 @@
         .addEventListener("click", (e) => {
           const content = panel.querySelector(`.${ID}-content`);
           if (!content) return;
-          navigator.clipboard.writeText(content.innerText).then(() => {
+          navigator.clipboard.writeText(htmlToMarkdown(content)).then(() => {
             const btn = e.currentTarget;
             btn.innerHTML = ICONS.check;
-            setTimeout(() => {
-              btn.innerHTML = ICONS.copy;
-            }, 1500);
+            setTimeout(() => { btn.innerHTML = ICONS.copy; }, 1500);
           });
         });
 
@@ -418,13 +518,84 @@
       return panel;
     }
 
-    // ── Start fetch ──
-    function startFetch(q) {
+    // ── Start fetch with global lock ──
+    function startFetch(q, forceBypass = false) {
       const gen = ++fetchGen;
       const fetchStartTime = Date.now();
       currentQuery = q;
       const bodyEl = $(`#${ID}-body`);
       if (!bodyEl) return;
+
+      // ── Issue 2: Check global fetch lock ──
+      if (!forceBypass) {
+        const entry = getCache()[q];
+        if (entry) {
+          // Another tab is already fetching this query
+          if (
+            entry.status === "fetching" &&
+            entry.ts &&
+            Date.now() - entry.ts < FETCH_LOCK_TTL
+          ) {
+            console.log("[GAI-Brave] Another tab is fetching, waiting…");
+            bodyEl.innerHTML = loadingHTML("Another tab is fetching this query…");
+
+            // Just listen for the result — don't open a new tab
+            listenerId = GM_addValueChangeListener(
+              CACHE_KEY,
+              (_key, _oldVal, newVal, _remote) => {
+                if (gen !== fetchGen) return;
+                if (!newVal || !newVal[q]) return;
+                const updated = newVal[q];
+                if (updated.status === "fetching") {
+                  setStep("Still waiting for other tab…");
+                  return;
+                }
+                // Got final result
+                clearListener();
+                if (updated.error) {
+                  renderError(
+                    updated.error === "error_page"
+                      ? "⚠️ Google blocked the request (CAPTCHA / sign-in)."
+                      : `⚠️ Error: ${updated.error}`,
+                    q
+                  );
+                } else if (updated.html) {
+                  renderContent(updated.html, updated.resultUrl);
+                } else {
+                  renderError("⚠️ Empty response received.", q);
+                }
+              }
+            );
+
+            // Timeout for waiting on other tab
+            setTimeout(() => {
+              if (gen !== fetchGen) return;
+              if (lastHTML) return;
+              // Check if we're still waiting
+              const body = $(`#${ID}-body`);
+              if (body && body.querySelector(`.${ID}-load`)) {
+                // The other tab might have died — retry with force
+                console.log("[GAI-Brave] Other tab timed out, retrying…");
+                clearListener();
+                startFetch(q, true);
+              }
+            }, FETCH_LOCK_TTL);
+
+            return;
+          }
+        }
+      }
+
+      // ── Set fetch lock in cache ──
+      const cache = getCache();
+      cache[q] = {
+        status: "fetching",
+        ts: fetchStartTime,
+        html: "",
+        error: null,
+        resultUrl: null,
+      };
+      setCache(cache);
 
       bodyEl.innerHTML = loadingHTML("Opening background tab…");
       cleanupFetch();
@@ -434,19 +605,14 @@
         (_key, _oldVal, newVal, _remote) => {
           if (!newVal || !newVal[currentQuery]) return;
           const entry = newVal[currentQuery];
+          // Ignore our own "fetching" lock writes
+          if (entry.status === "fetching") return;
           if (!entry.ts) return;
           if (entry.ts < fetchStartTime) return;
           if (gen !== fetchGen) return;
 
-          // Done — remove listener
-          if (listenerId !== null) {
-            try {
-              GM_removeValueChangeListener(listenerId);
-            } catch (_) {}
-            listenerId = null;
-          }
+          clearListener();
 
-          // Handle error responses
           if (entry.error) {
             const msg =
               entry.error === "error_page"
@@ -454,21 +620,13 @@
                 : `⚠️ Error: ${entry.error}`;
             renderError(msg, currentQuery);
           } else if (entry.html) {
-            console.log(
-              `[GAI-Brave] Received ${entry.html.length} chars`
-            );
-            renderContent(entry.html);
+            console.log(`[GAI-Brave] Received ${entry.html.length} chars`);
+            renderContent(entry.html, entry.resultUrl);
           } else {
             renderError("⚠️ Empty response received.", currentQuery);
           }
 
-          // Close background tab
-          if (googleTab && !googleTab.closed) {
-            try {
-              googleTab.close();
-            } catch (_) {}
-          }
-          googleTab = null;
+          closeTab();
         }
       );
 
@@ -489,6 +647,8 @@
         }
       } catch (e) {
         console.error("[GAI-Brave] Failed to open tab:", e);
+        // Clear the fetch lock since we failed
+        clearFetchLock(q);
         renderError("⚠️ Could not open background tab.", q);
         return;
       }
@@ -498,6 +658,8 @@
         if (gen !== fetchGen) return;
         if (lastHTML) return;
         cleanupFetch();
+        // Clear stale fetch lock
+        clearFetchLock(q);
         const body = $(`#${ID}-body`);
         if (body && body.querySelector(`.${ID}-load`)) {
           renderError("⚠️ Timed out waiting for response.", q);
@@ -511,23 +673,22 @@
       if (!q || injected) return;
       injected = true;
       lastQuery = q;
+      currentQuery = q;
       insertPanel(q);
 
-      // Check GM_getValue cache before opening a tab
-      try {
-        const cache = GM_getValue("gai_cache", null);
-        const cached = cache && typeof cache === "object" ? cache[q] : null;
-        if (
-          cached &&
-          !cached.error &&
-          cached.html &&
-          Date.now() - cached.ts < CACHE_TTL
-        ) {
-          console.log("[GAI-Brave] Using cached result");
-          renderContent(cached.html);
-          return;
-        }
-      } catch (_) {}
+      // Check cache before opening a tab
+      const cached = getCache()[q];
+      if (
+        cached &&
+        cached.status === "done" &&
+        !cached.error &&
+        cached.html &&
+        Date.now() - cached.ts < CACHE_TTL
+      ) {
+        console.log("[GAI-Brave] Using cached result");
+        renderContent(cached.html, cached.resultUrl);
+        return;
+      }
 
       startFetch(q);
     }
@@ -538,10 +699,12 @@
       if (!q) return;
       console.log("[GAI-Brave] Panel removed by SPA, re-inserting");
       insertPanel(q);
-      if (lastHTML) renderContent(lastHTML);
+      if (lastHTML) {
+        renderContent(lastHTML, lastResultUrl);
+      }
     }
 
-    // ── Sidebar poll (race-safe) ──
+    // ── Sidebar poll ──
     function startSidebarPoll(delay) {
       if (activePollTimeout) {
         clearTimeout(activePollTimeout);
@@ -576,12 +739,12 @@
       const currentQ = getQ();
       if (!currentQ) return;
 
-      // Query changed → full reset
       if (currentQ !== lastQuery) {
         console.log("[GAI-Brave] Query changed:", currentQ);
         lastQuery = currentQ;
         injected = false;
         lastHTML = null;
+        lastResultUrl = null;
         const old = $(`#${ID}`);
         if (old) old.remove();
         cleanupFetch();
@@ -589,7 +752,6 @@
         return;
       }
 
-      // Float → migrate into sidebar when it appears
       const floatPanel = $(`#${ID}.float`);
       if (floatPanel) {
         const sidebar = findSidebar();
@@ -600,13 +762,11 @@
         return;
       }
 
-      // Panel disappeared → re-insert (no re-fetch)
       if (injected && !$(`#${ID}`)) {
         reinject();
       }
     }
 
-    // ── Intercept pushState / replaceState for SPA nav ──
     function hookHistory(method) {
       const orig = history[method].bind(history);
       history[method] = function (...args) {
@@ -620,7 +780,6 @@
     window.addEventListener("popstate", checkNavigation);
     setInterval(checkNavigation, 500);
 
-    // ── Boot ──
     startSidebarPoll(0);
   }
 })();

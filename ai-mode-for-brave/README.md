@@ -2,7 +2,7 @@
 
 > Injects Google's AI-generated search results directly into the Brave Search sidebar — seamlessly, instantly, and without leaving Brave.
 
-![Version](https://img.shields.io/badge/version-2.1.0-6366f1)
+![Version](https://img.shields.io/badge/version-2.2.1-6366f1)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -31,12 +31,12 @@ This userscript runs silently in the background. When you search on Brave, it:
 | **Native Rendering** | AI content is extracted, sanitized, and injected as clean HTML — no iframes |
 | **Smart Completion Detection** | Watches for Google's own Copy/Thumbs Up/Thumbs Down buttons to confirm the response is fully generated before extracting |
 | **5-Second Streaming Fallback** | If buttons don't appear, waits for 5 seconds of stable text before capturing — handles edge cases without cutoff |
-| **Multi-Query Cache** | Results are cached for 5 minutes via `GM_getValue`. Stores up to 10 recent unique queries, allowing instant switching between searches |
+| **Multi-Query Cache** | Results are cached for 15 minutes via `GM_getValue`. Stores up to 10 recent unique queries, allowing instant switching between searches |
 | **SPA-Aware Navigation** | Intercepts `pushState`/`replaceState` and `popstate` to detect query changes in Brave's single-page app architecture |
 | **Panel Persistence** | If Brave's SPA destroys the sidebar DOM (e.g., switching between Web/Images/News filters), the panel is automatically re-inserted with cached content |
 | **Float-to-Sidebar Migration** | If the panel renders before the sidebar DOM exists, it floats temporarily and migrates into the sidebar once available |
 | **Error Detection** | Detects CAPTCHAs, sign-in walls, and rate-limit pages — shows an actionable error instead of garbage HTML |
-| **Copy to Clipboard** | One-click copy with checkmark micro-animation |
+| **Copy to Clipboard** | One-click copy with checkmark micro-animation (copies as Markdown) |
 | **Open in Tab** | Direct link to view the full Google AI Mode page |
 | **Manual Reload** | Re-fetch button to force a fresh response |
 | **60-Second Hard Cap** | Never hangs indefinitely — times out gracefully with a manual fallback link |
@@ -107,7 +107,7 @@ Raw Google DOM
 
 | Constant | Default | Description |
 |----------|---------|-------------|
-| `CACHE_TTL` | `300000` (5 min) | How long cached results are valid |
+| `CACHE_TTL` | `900000` (15 min) | How long cached results are valid |
 | Max Cache Size | 10 queries | Limit to prevent memory bloat |
 | `stableCount >= 1` (with buttons) | 500ms | Wait after buttons appear |
 | `stableCount >= 10` (without buttons) | 5000ms | Fallback stability threshold |
@@ -143,6 +143,13 @@ Raw Google DOM
 ---
 
 ## Changelog
+
+### v2.2.1
+- **Updated**: Cache TTL increased from 5 minutes to 15 minutes.
+
+### v2.2.0
+- **Refactored**: Massive DRY improvements for cache access (`getCache`/`setCache`), background tab management (`closeTab`), and GM listeners clearing (`clearListener`).
+- **Fixed**: Potential memory leaks and bugs with repeated/stale `GM_getValue` parsing and `gai_cache` fetching lock overrides.
 
 ### v2.1.0
 - **Added**: Multi-Query Cache — stores up to 10 unique queries via `gai_cache` for instant back-and-forth navigation.
