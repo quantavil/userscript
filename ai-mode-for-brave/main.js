@@ -200,6 +200,23 @@
     const container = findBySelectors(CONTENT_SELS) || document.body;
     const clone = container.cloneNode(true);
 
+    // 0. Extract LaTeX before standard stripping
+    clone.querySelectorAll('[data-xpm-latex]').forEach(el => {
+      const latexStr = el.getAttribute('data-xpm-latex');
+      if (!latexStr) return;
+      
+      const isInline = (el.getAttribute('style') || '').includes('inline');
+      const wrap = isInline ? '$' : '$$';
+
+      if (el.hasAttribute('data-xpm-copy-root')) {
+         // Root math element: replace entire subtree
+         el.textContent = `${wrap}${latexStr}${wrap}`;
+      } else if (!el.closest('[data-xpm-copy-root]')) {
+         // Loose math element
+         el.textContent = `${wrap}${latexStr}${wrap}`;
+      }
+    });
+
     // 1. Strip unwanted elements
     for (const sel of STRIP_SELS) {
       clone.querySelectorAll(sel).forEach((el) => el.remove());
