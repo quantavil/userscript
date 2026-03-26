@@ -2,7 +2,7 @@
 
 > Injects Google's AI-generated search results directly into the Brave Search sidebar — seamlessly, instantly, and without leaving Brave.
 
-![Version](https://img.shields.io/badge/version-2.5.0-6366f1)
+![Version](https://img.shields.io/badge/version-3.0.0-6366f1)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -51,11 +51,25 @@ This userscript runs silently in the background. When you search on Brave, it:
 - Brave Browser (or any Chromium browser using Brave Search)
 
 ### Steps
-1. Install Tampermonkey from the [Chrome Web Store](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
-2. Click **Create a new script** in the Tampermonkey dashboard
-3. Delete the template and paste the contents of `main.js`
-4. Press **Ctrl+S** to save
-5. Search anything on [Brave Search](https://search.brave.com) — the AI panel appears in the sidebar
+1. Clone this repository
+2. Install dependencies:
+   ```bash
+   bun install
+   ```
+3. Build the userscript:
+   ```bash
+   bun run build
+   ```
+4. In Tampermonkey, click **Create a new script**
+5. Delete the template and paste the contents of `dist/google-ai-brave.user.js`
+6. Press **Ctrl+S** to save
+7. Search anything on [Brave Search](https://search.brave.com)
+
+### Development
+Run the build in watch mode for real-time updates:
+```bash
+bun run dev
+```
 
 ### Important
 - **Allow pop-ups** for `search.brave.com` in your browser settings — the script needs to open a background Google tab
@@ -144,6 +158,13 @@ Raw Google DOM
 ---
 
 ## Changelog
+
+### v3.0.0
+- **TypeScript Migration**: Full project rewrite in TypeScript for better maintainability and type safety.
+- **Modular Architecture**: Split monolithic script into specialized modules (`google.ts`, `brave.ts`, `markdown.ts`, etc.).
+- **Build Pipeline**: Integrated `esbuild` for bundling and `bun` for package management.
+- **Improved Markdown**: Switched to Turndown + GFM plugin for robust Markdown conversion.
+- **KaTeX Support**: Integrated math rendering for complex AI responses.
 
 ### v2.5.0
 - **Added**: `-noai` and `--noai` query flags to bypass AI extraction on demand.

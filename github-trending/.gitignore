@@ -1,0 +1,9 @@
+# .gitignore
+node_modules
+.svelte-kit
+build
+dist
+.vite
+bun.lockb
+.env
+.DS_Store

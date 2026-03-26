@@ -5,6 +5,7 @@ A high-end collection of userscripts designed for browser customization, automat
 
 ## Structure
 - `ai-mode-for-brave/`      # Google AI integration for Brave Search sidebar
+- `google-ai-brave/`       # Comprehensive Google AI & Brave Search integration (Modular)
 - `auto-f2-clean-cookie/`   # Advanced cookie and session manager
 - `texpander-ai/`          # AI-powered text expansion utilities
 - `main.js`                # Universal entry point convention in each folder
@@ -25,3 +26,10 @@ A high-end collection of userscripts designed for browser customization, automat
 
 - **Fast Path Extraction**: In v1.4.0, we replaced static waits with polling. If Google's `[data-complete]` exists, we capture immediately. This significantly improves UX by reducing idle time.
 - **Multi-Query Cache**: The script now uses `gai_cache` to store up to 10 queries simultaneously, allowing users to switch between recent searches without re-fetching content.
+
+## Build System (google-ai-brave)
+- **Runtime**: `bun` for dependency management and scripts.
+- **Bundler**: `esbuild` with `iife` format.
+- **Entry**: `src/index.ts`.
+- **Output**: `dist/google-ai-brave-sidebar.user.js`.
+- **Workflow**: `bun run build` prepends `meta.txt` as a userscript banner.
