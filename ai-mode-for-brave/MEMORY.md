@@ -1,6 +1,6 @@
 # MEMORY.md Template
 
-# Project: Google AI Mode for Brave Sidebar
+# Project: Google AI Mode for Brave Sidebar (v2.5.0)
 
 ## Overview
 A Tampermonkey userscript that injects Google's AI-generated search results (`udm=50`) directly into the Brave Search sidebar. It does this by opening a background tab, polling for completion signals, parsing out the HTML content, and rendering it natively in the Brave sidebar via cross-tab communication (`GM_getValue`/`GM_setValue`). Results are cached for 15 minutes.
@@ -32,3 +32,4 @@ ai-mode-for-brave/
 - [2026-03-26] STALE LISTENERS AND TABS → Missing strict unbind checks during fetch timeouts → Fixed in v2.2.0 by adding `clearListener()`, `closeTab()`, and `cleanupFetch()` helpers to handle teardown safely.
 - [2026-03-26] HIGH-FREQUENCY POLLING OVERHEAD → Permanent `setInterval` for sidebar detection caused unnecessary CPU cycles → Fixed in v2.3.0 by replacing with a debounced `MutationObserver`.
 - [2026-03-26] SPA NAVIGATION FRAGMENTATION → Separate hooks for `pushState` and `popstate` created race conditions → Fixed in v2.4.0 by unifying under a single `handleDOMChange` orchestrator.
+- [2026-03-26] CACHE WRITE-RACES AND LISTENER LEAKS → Double reading of `getCache()` during fetch locking led to racing overwrites, and listeners weren't explicitly cleared on early returns. Fixed by front-loading `clearListener()` and reusing single `cache` reference instead of re-reading.

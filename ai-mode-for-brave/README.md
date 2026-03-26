@@ -2,7 +2,7 @@
 
 > Injects Google's AI-generated search results directly into the Brave Search sidebar — seamlessly, instantly, and without leaving Brave.
 
-![Version](https://img.shields.io/badge/version-2.4.0-6366f1)
+![Version](https://img.shields.io/badge/version-2.5.0-6366f1)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -40,6 +40,7 @@ This userscript runs silently in the background. When you search on Brave, it:
 | **Open in Tab** | Direct link to view the full Google AI Mode page |
 | **Manual Reload** | Re-fetch button to force a fresh response |
 | **60-Second Hard Cap** | Never hangs indefinitely — times out gracefully with a manual fallback link |
+| **Bypass Flags** | Append `-noai` or `--noai` to your query to skip AI mode for that search |
 
 ---
 
@@ -143,6 +144,14 @@ Raw Google DOM
 ---
 
 ## Changelog
+
+### v2.5.0
+- **Added**: `-noai` and `--noai` query flags to bypass AI extraction on demand.
+- **Improved**: Zero-leak listener management (strict `clearListener` on all entry points).
+- **Refactored**: Unified `currentQuery` and `lastQuery` into `activeQuery` state.
+- **Fixed**: Spurious Markdown table separator rows for row-header `<th>` cells in `<tbody>`.
+- **Fixed**: Write-race condition on high-frequency `getCache()` reads during fetch locking.
+- **Fixed**: Decoupled CSS keyframe names from dynamic `ID` constants.
 
 ### v2.4.0
 - **Stable Navigation**: Unified `handleDOMChange` orchestration with improved `popstate` and history hook reliability.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Mode for Brave Sidebar
 // @namespace    quantavil
-// @version      2.4.0
+// @version      2.5.0
 // @description  Extracts Google AI Mode results and displays them in the Brave Search sidebar
 // @match        https://search.brave.com/search*
 // @match        https://www.google.com/search*
@@ -97,19 +97,10 @@
     try { GM_setValue(CACHE_KEY, obj); } catch (_) {}
   }
 
-  function findBySelectors(sels) {
+  function findBySelectors(sels, requireText = false) {
     for (const sel of sels) {
       const el = document.querySelector(sel);
-      if (el) return el;
-    }
-    return null;
-  }
-
-  /** Find content element that has actual text */
-  function findContentEl() {
-    for (const sel of CONTENT_SELS) {
-      const el = document.querySelector(sel);
-      if (el && el.textContent.trim()) return el;
+      if (el && (!requireText || el.textContent.trim())) return el;
     }
     return null;
   }
@@ -125,6 +116,10 @@
     if (params.get("udm") !== "50") return;
     if (!location.hash.includes("gai")) return;
 
+    const rawQ = params.get("q") || "";
+    const normQ = normalizeQ(rawQ);
+    if (/(?:^|\s)--?noai(?:\s|$)/.test(normQ)) return;
+
     history.replaceState(null, "", location.href.replace(/#gai.*/, ""));
     console.log("[GAI] Google-side activated");
 
@@ -132,8 +127,6 @@
     let lastLen = -1;
     let stableCount = 0;
     const startTime = Date.now();
-    const rawQ = params.get("q") || "";
-    const normQ = normalizeQ(rawQ);
 
     function isResponseComplete() {
       return COMPLETE_SELS.some((s) => document.querySelector(s));
@@ -183,7 +176,7 @@
       if (sent) return;
       if (isErrorPage()) { send("error_page"); return; }
 
-      const el = findContentEl();
+      const el = findBySelectors(CONTENT_SELS, true);
       if (!el) { lastLen = -1; stableCount = 0; return; }
 
       const len = el.textContent.length;
@@ -248,6 +241,8 @@
     });
 
     // 7. Convert relative URLs → absolute google.com URLs
+    // Note: This must run before Step 8 (strip attributes) because Step 8
+    // removes attributes not in KEEP_ATTRS, but retains href which logic relies on.
     clone.querySelectorAll("a[href]").forEach((a) => {
       const href = a.getAttribute("href");
       if (href && href.startsWith("/")) {
@@ -338,8 +333,8 @@
       .${ID}-content th{background:rgba(255,255,255,0.03);font-weight:600;color:#fff}
       .${ID}-content tr:nth-child(even){background:rgba(255,255,255,0.015)}
       .${ID}-load{display:flex;flex-direction:column;align-items:center;gap:10px;padding:28px 16px;text-align:center}
-      .${ID}-spin{width:22px;height:22px;border:2.5px solid rgba(255,255,255,.06);border-top-color:#6366f1;border-radius:50%;animation:${ID}s .65s linear infinite}
-      @keyframes ${ID}s{to{transform:rotate(360deg)}}
+      .${ID}-spin{width:22px;height:22px;border:2.5px solid rgba(255,255,255,.06);border-top-color:#6366f1;border-radius:50%;animation:gai-spin-anim .65s linear infinite}
+      @keyframes gai-spin-anim{to{transform:rotate(360deg)}}
       .${ID}-msg{font-size:12px;color:#707078;line-height:1.5}
       .${ID}-msg b{color:#a5a8ff}
       .${ID}-step{font-size:11px;color:#505058;margin-top:2px}
@@ -351,10 +346,9 @@
     // ── State ──
     let googleTab = null;
     let listenerId = null;
-    let currentQuery = "";
+    let activeQuery = getQ();
     let injected = false;
     let fetchGen = 0;
-    let lastQuery = getQ();
     let lastHTML = null;
     let lastResultUrl = null;
     let activePollTimer = null;
@@ -451,7 +445,7 @@
             break;
           case "tr": {
             md += `\n| ${inner}`;
-            if (node.querySelector("th")) {
+            if (node.querySelector("th") && node.closest("thead")) {
               const cols = node.querySelectorAll("th, td").length;
               md += `\n| ${"--- | ".repeat(cols)}`;
             }
@@ -617,7 +611,7 @@
       const bodyEl = $(`#${ID}-body`);
       if (!bodyEl) return;
       bodyEl.innerHTML = `<div class="${ID}-content">${html}</div>`;
-      updateOpenLink(currentQuery || lastQuery);
+      updateOpenLink(activeQuery);
     }
 
     function renderError(msg, q) {
@@ -693,15 +687,18 @@
 
     // ── Start fetch with global lock ──
     function startFetch(q, forceBypass = false) {
+      clearListener();
       const gen = ++fetchGen;
       const fetchStartTime = Date.now();
-      currentQuery = q;
+      activeQuery = q;
       const bodyEl = $(`#${ID}-body`);
       if (!bodyEl) return;
 
+      const cache = getCache();
+
       // Check if another tab is already fetching
       if (!forceBypass) {
-        const entry = getCache()[q];
+        const entry = cache[q];
         if (
           entry &&
           entry.status === "fetching" &&
@@ -739,7 +736,6 @@
       }
 
       // Set fetch lock
-      const cache = getCache();
       cache[q] = {
         status: "fetching",
         ts: fetchStartTime,
@@ -756,14 +752,14 @@
       listenerId = GM_addValueChangeListener(
         CACHE_KEY,
         (_k, _o, newVal, _r) => {
-          if (!newVal?.[currentQuery]) return;
-          const entry = newVal[currentQuery];
+          if (!newVal?.[activeQuery]) return;
+          const entry = newVal[activeQuery];
           if (entry.status === "fetching") return;
           if (!entry.ts || entry.ts < fetchStartTime) return;
           if (gen !== fetchGen) return;
 
           clearListener();
-          handleCacheEntry(entry, currentQuery);
+          handleCacheEntry(entry, activeQuery);
           closeTab();
         }
       );
@@ -786,13 +782,13 @@
             setStep("Processing…");
             setTimeout(() => {
               if (gen !== fetchGen || lastHTML) return;
-              const entry = getCache()[currentQuery];
+              const entry = getCache()[activeQuery];
               if (!entry || entry.status === "fetching") {
                 clearListener();
-                clearFetchLock(currentQuery);
+                clearFetchLock(activeQuery);
                 renderError(
                   "⚠️ Background tab closed before completing.",
-                  currentQuery
+                  activeQuery
                 );
               }
             }, 2000);
@@ -819,10 +815,10 @@
     // ── Inject (first time) ──
     function inject() {
       const q = getQ();
-      if (!q || injected) return;
+      if (!q || injected || /(?:^|\s)--?noai(?:\s|$)/.test(q)) return;
+      
       injected = true;
-      lastQuery = q;
-      currentQuery = q;
+      activeQuery = q;
       insertPanel(q);
 
       const cached = getCache()[q];
@@ -844,7 +840,8 @@
     // ── Reinject (SPA destroyed panel) ──
     function reinject() {
       const q = getQ();
-      if (!q) return;
+      if (!q || /(?:^|\s)--?noai(?:\s|$)/.test(q)) return;
+      
       console.log("[GAI-Brave] Panel removed by SPA, re-inserting");
       insertPanel(q);
       if (lastHTML) renderContent(lastHTML, lastResultUrl);
@@ -893,9 +890,9 @@
       if (!currentQ) return;
 
       // Query changed → full reinit
-      if (currentQ !== lastQuery) {
+      if (currentQ !== activeQuery) {
         console.log("[GAI-Brave] Query changed:", currentQ);
-        lastQuery = currentQ;
+        activeQuery = currentQ;
         injected = false;
         lastHTML = null;
         lastResultUrl = null;
