@@ -30,3 +30,5 @@ ai-mode-for-brave/
 ## Blunders
 - [2026-03-26] EXCESSIVE REPETITION OF CACHE LOGIC → Overuse of `try { const cache = GM_getValue("gai_cache", null); ... } catch (_) {}` created redundant inline code → Fixed in v2.2.0 by introducing global `getCache()` and `setCache()` helpers.
 - [2026-03-26] STALE LISTENERS AND TABS → Missing strict unbind checks during fetch timeouts → Fixed in v2.2.0 by adding `clearListener()`, `closeTab()`, and `cleanupFetch()` helpers to handle teardown safely.
+- [2026-03-26] HIGH-FREQUENCY POLLING OVERHEAD → Permanent `setInterval` for sidebar detection caused unnecessary CPU cycles → Fixed in v2.3.0 by replacing with a debounced `MutationObserver`.
+- [2026-03-26] SPA NAVIGATION FRAGMENTATION → Separate hooks for `pushState` and `popstate` created race conditions → Fixed in v2.4.0 by unifying under a single `handleDOMChange` orchestrator.

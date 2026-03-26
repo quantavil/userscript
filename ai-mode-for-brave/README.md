@@ -2,7 +2,7 @@
 
 > Injects Google's AI-generated search results directly into the Brave Search sidebar — seamlessly, instantly, and without leaving Brave.
 
-![Version](https://img.shields.io/badge/version-2.2.1-6366f1)
+![Version](https://img.shields.io/badge/version-2.4.0-6366f1)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -32,9 +32,9 @@ This userscript runs silently in the background. When you search on Brave, it:
 | **Smart Completion Detection** | Watches for Google's own Copy/Thumbs Up/Thumbs Down buttons to confirm the response is fully generated before extracting |
 | **5-Second Streaming Fallback** | If buttons don't appear, waits for 5 seconds of stable text before capturing — handles edge cases without cutoff |
 | **Multi-Query Cache** | Results are cached for 15 minutes via `GM_getValue`. Stores up to 10 recent unique queries, allowing instant switching between searches |
-| **SPA-Aware Navigation** | Intercepts `pushState`/`replaceState` and `popstate` to detect query changes in Brave's single-page app architecture |
-| **Panel Persistence** | If Brave's SPA destroys the sidebar DOM (e.g., switching between Web/Images/News filters), the panel is automatically re-inserted with cached content |
-| **Float-to-Sidebar Migration** | If the panel renders before the sidebar DOM exists, it floats temporarily and migrates into the sidebar once available |
+| **SPA-Aware Navigation** | Intercepts `pushState`/`replaceState`, `popstate`, and uses `MutationObserver` for instant, reliable detection of query changes and sidebar state |
+| **Panel Persistence** | If Brave's SPA destroys the sidebar DOM, the panel is automatically re-inserted. Handled by a debounced observer for zero-latency response |
+| **Real-time Migration** | If the panel renders before the sidebar exists, it floats temporarily and migrates into the sidebar the moment it becomes available |
 | **Error Detection** | Detects CAPTCHAs, sign-in walls, and rate-limit pages — shows an actionable error instead of garbage HTML |
 | **Copy to Clipboard** | One-click copy with checkmark micro-animation (copies as Markdown) |
 | **Open in Tab** | Direct link to view the full Google AI Mode page |
@@ -143,6 +143,14 @@ Raw Google DOM
 ---
 
 ## Changelog
+
+### v2.4.0
+- **Stable Navigation**: Unified `handleDOMChange` orchestration with improved `popstate` and history hook reliability.
+- **Improved Teardown**: Added `cleanupFetch` and `clearFetchLock` to prevent background tab orphaning on rapid navigation.
+
+### v2.3.0
+- **Added**: `MutationObserver` implementation for sidebar detection and panel persistence, replacing high-frequency polling with event-driven reactivity.
+- **Refactored**: Shared utility helpers (`getCache`, `setCache`, `clearListener`, `closeTab`) to improve memory safety and codebase DRYness.
 
 ### v2.2.1
 - **Updated**: Cache TTL increased from 5 minutes to 15 minutes.
