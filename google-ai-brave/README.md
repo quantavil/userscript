@@ -2,7 +2,7 @@
 
 > Injects Google's AI-generated search results directly into the Brave Search sidebar — seamlessly, instantly, and without leaving Brave.
 
-![Version](https://img.shields.io/badge/version-3.3.1-6366f1)
+![Version](https://img.shields.io/badge/version-3.3.2-6366f1)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -79,6 +79,27 @@ bun run dev
 
 ---
 
+## How to Use
+
+### Triggering the AI
+By default, the AI sidebar only triggers when you opt-in. This behavior can be toggled.
+
+| Mode | Trigger |
+|------|---------|
+| **AI OFF by Default** | Append `--ai` to your query (e.g., `best mechanical keyboards --ai`) |
+| **AI ON by Default** | Append `--noai` to bypass (e.g., `weather today --noai`) |
+
+> [!TIP]
+> You can search for just `--ai` or `--noai` alone to trigger/bypass without a query.
+
+### Customization
+Click the userscript manager icon while on Brave Search to access the menu commands:
+- **Toggle AI by Default**: Switches the activation logic.
+- **Set AI Flag**: Choose your own activation keyword (default: `--ai`).
+- **Set No-AI Flag**: Choose your own bypass keyword (default: `--noai`).
+
+---
+
 ## Architecture
 
 ```
@@ -132,7 +153,7 @@ Raw Google DOM
 | `stableCount >= 1` (with buttons) | 500ms | Wait after buttons appear |
 | `stableCount >= 10` (without buttons) | 5000ms | Fallback stability threshold |
 | Hard cap timeout | `60000` (60s) | Maximum wait on Google side |
-| Brave-side timeout | `60000` (60s) | Maximum wait on Brave side |
+| Brave-side timeout | `62000` (62s) | Maximum wait on Brave side (Fetch Lock) |
 | Poll interval | `500` ms | How often Google-side checks for completion |
 
 ---
@@ -164,9 +185,12 @@ Raw Google DOM
 
 ## Changelog
 
-### v3.3.1
-- **Optimization**: Removed dead imports (`AI_RE`, `NOAI_RE`) and encapsulated internal URL helpers.
-- **Cache Reliability**: Implemented strict `MAX_CACHE_ENTRIES` enforcement (FIFO) within `setCache` for centralized persistence management.
+### v3.3.2
+- **Optimization**: Removed dead exports (`AI_RE`, `NOAI_RE`) from `constants.ts` and encapsulated internal URL helpers.
+- **Cache Reliability**: Implemented strict `MAX_CACHE_ENTRIES` enforcement (FIFO) and TTL-based eviction within `setCache` for centralized persistence management.
+- **DRY Refactor**: Added unified `parseQuery()` to avoid redundant `getSettings()` calls when both `isAIEnabled` and `stripFlags` are needed.
+- **Bug Fix**: Preserved `<source>` elements during empty-node removal to prevent responsive image breakage.
+- **KaTeX**: Improved inline LaTeX regex to handle escaped dollar signs.
 - **Improved Scoping**: Verified and refined export visibility across modules.
 
 ### v3.3.0
@@ -218,23 +242,6 @@ Raw Google DOM
 - **Fixed**: Cache eviction logic (oldest first) to prevent memory bloat.
 - **Fixed**: `GM_getValue` cross-manager compatibility fixes.
 
-### v2.0.0
-- **Fixed**: Content cutoff — replaced phantom `[data-complete]` with real Google UI signals (Copy/Thumbs buttons)
-- **Fixed**: Streaming pause false-positive — raised stability threshold from 1.5s to 5s
-- **Added**: Error page detection (CAPTCHA, sign-in, rate-limit)
-- **Added**: `GM_getValue` boot cache (5-minute TTL)
-- **Added**: Float-to-sidebar migration
-- **Added**: `pushState`/`replaceState` interception for instant SPA navigation detection
-- **Fixed**: Background tab orphaning on rapid reloads
-- **Fixed**: Interval stacking race condition in sidebar polling
-- **Improved**: Hard cap raised from 30s to 60s
-- **Refactored**: Deduplicated icons, selectors, and URL helpers
-
-### v1.4.0
-- Initial public release
-- Background tab extraction
-- SPA panel persistence
-- Basic text-stability detection
 
 ---
 

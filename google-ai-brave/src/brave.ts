@@ -19,7 +19,7 @@ import {
 import type { Cache, CacheEntry } from "./types";
 import {
   normalizeQ,
-  stripFlags,
+  parseQuery,
   isAIEnabled,
   getSettings,
   getCache,
@@ -455,9 +455,10 @@ export function braveSide(): void {
 
   function inject(): void {
     const raw = getQ();
-    if (!raw || injected || !isAIEnabled(raw)) return;
-    const q = stripFlags(raw);
-    if (!q) return;
+    if (!raw || injected) return;
+
+    const { enabled, clean: q } = parseQuery(raw);
+    if (!enabled || !q) return;
 
     injected = true;
     activeQuery = q;
@@ -527,10 +528,10 @@ export function braveSide(): void {
     const raw = getQ();
     if (!raw) return;
 
-    const hasAI = isAIEnabled(raw);
+    const { enabled, clean: cleanQ } = parseQuery(raw);
 
     // No AI trigger → tear down if active
-    if (!hasAI) {
+    if (!enabled) {
       stopSidebarPoll();
       if (injected) {
         $(`#${ID}`)?.remove();
@@ -543,7 +544,6 @@ export function braveSide(): void {
       return;
     }
 
-    const cleanQ = stripFlags(raw);
     if (!cleanQ) return;
 
     // Query changed OR flag just added → (re)inject
@@ -555,7 +555,7 @@ export function braveSide(): void {
       lastResultUrl = null;
       $(`#${ID}`)?.remove();
       cleanupFetch();
-      startSidebarPoll(300);
+      startSidebarPoll(100);
       return;
     }
 
@@ -575,15 +575,23 @@ export function braveSide(): void {
 
   function startDOMObserver(): void {
     if (domObserver) return;
-    // Prefer the narrowest layout ancestor to reduce mutation noise.
-    // `main` covers Brave Search's content column; `#root` is the SPA mount.
-    // Only fall back to `document.body` if neither is present.
     const observeTarget =
       document.querySelector("main") ??
       document.querySelector("#root") ??
       document.body;
     let debounce: number | null = null;
-    domObserver = new MutationObserver(() => {
+    domObserver = new MutationObserver((mutations) => {
+      // Skip mutations caused by our own panel insertion/removal
+      const selfOnly = mutations.every((m) => {
+        for (const n of [...m.addedNodes, ...m.removedNodes]) {
+          if (n instanceof HTMLElement && (n.id === ID || n.closest?.(`#${ID}`)))
+            continue;
+          return false;
+        }
+        return true;
+      });
+      if (selfOnly && mutations.length > 0) return;
+
       if (debounce !== null) clearTimeout(debounce);
       debounce = window.setTimeout(handleDOMChange, 300);
     });

@@ -6,7 +6,7 @@ export const CACHE_KEY = "gai_cache";
 // ── Tuning ──────────────────────────────────────────────────────────────
 
 /** How long a "fetching" lock is considered valid (ms). */
-export const FETCH_LOCK_TTL = 70_000;
+export const FETCH_LOCK_TTL = 62_000;
 
 /** How long a cached result is considered fresh (ms). */
 export const CACHE_TTL = 900_000;
@@ -28,12 +28,6 @@ export const googleUrl = (q: string): string =>
 export const aiUrl = (q: string): string => `${googleUrl(q)}#gai`;
 
 // ── Regex ───────────────────────────────────────────────────────────────
-
-/** Matches the --ai opt-in flag anywhere in a query string. */
-export const AI_RE = /(?:^|\s)--ai(?:\s|$)/;
-
-/** Matches the --noai opt-out flag anywhere in a query string. */
-export const NOAI_RE = /(?:^|\s)--noai(?:\s|$)/;
 
 export const SETTINGS_KEY = "gai_settings";
 

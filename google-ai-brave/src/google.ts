@@ -311,7 +311,7 @@ function extractContent(): string {
     clone.querySelectorAll("*").forEach((el) => {
       // Exclude void/content-bearing elements from recursive stripping
       const tag = el.tagName.toLowerCase();
-      if (tag === "img" || tag === "br" || tag === "hr") return;
+      if (tag === "img" || tag === "br" || tag === "hr" || tag === "source") return;
 
       if (!el.textContent?.trim() && el.children.length === 0) {
         el.remove();

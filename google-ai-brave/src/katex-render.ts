@@ -14,9 +14,9 @@ const KATEX_CDN = "https://cdn.jsdelivr.net/npm/katex@0.16.43/dist";
 
 /**
  * Matches $$…$$ (display, group 1) first, then $…$ (inline, group 2).
- * Inline forbids `$` and newline inside to minimise false positives.
+ * Inline allows escaped dollars (\$) but forbids unescaped $ and newlines.
  */
-const LATEX_RE = /\$\$(.+?)\$\$|\$(?!\$)([^$\n]+?)\$/g;
+const LATEX_RE = /\$\$(.+?)\$\$|\$(?!\$)((?:\\.|[^$\n])+?)\$/g;
 
 let cssInjected = false;
 
