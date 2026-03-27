@@ -68,6 +68,7 @@
 // @match        https://www.lingyiwanwu.com/*
 // @match        https://yiyan.baidu.com/*
 // @match        https://yuanbao.tencent.com/*
+// @match        https://chat.z.ai/*
 // @run-at       document-start
 // @grant        GM_getValue
 // @grant        GM_setValue
