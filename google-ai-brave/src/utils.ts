@@ -1,4 +1,4 @@
-import { CACHE_KEY } from "./constants";
+import { CACHE_KEY, AI_RE } from "./constants";
 import type { Cache } from "./types";
 
 // ── Query normalisation ─────────────────────────────────────────────────
@@ -6,6 +6,10 @@ import type { Cache } from "./types";
 /** Lowercase, collapse whitespace, trim. */
 export const normalizeQ = (q: string): string =>
   q.trim().toLowerCase().replace(/\s+/g, " ");
+
+/** Strip the --ai opt-in flag and re-normalise. Assumes input is already normalised. */
+export const stripAIFlag = (q: string): string =>
+  q.replace(AI_RE, " ").trim().replace(/\s+/g, " ");
 
 // ── GM cache helpers ────────────────────────────────────────────────────
 
@@ -58,9 +62,9 @@ export function writeClipboard(text: string): Promise<void> {
       document.body.appendChild(ta);
       ta.select();
       try {
-        document.execCommand("copy");
+        const ok = document.execCommand("copy");
         ta.remove();
-        resolve();
+        ok ? resolve() : reject(new Error("execCommand returned false"));
       } catch (e) {
         ta.remove();
         reject(e);

@@ -12,13 +12,14 @@ import {
   CACHE_TTL,
   FETCH_LOCK_TTL,
   SIDEBAR_SELS,
-  NOAI_RE,
+  AI_RE,
   googleUrl,
   aiUrl,
 } from "./constants";
 import type { Cache, CacheEntry } from "./types";
 import {
   normalizeQ,
+  stripAIFlag,
   getCache,
   setCache,
   findBySelectors,
@@ -238,13 +239,12 @@ export function braveSide(): void {
       .addEventListener("click", () => {
         lastHTML = null;
         lastResultUrl = null;
-        const currentQ = getQ();
         const cache = getCache();
-        if (cache[currentQ]) {
-          delete cache[currentQ];
+        if (cache[activeQuery]) {
+          delete cache[activeQuery];
           setCache(cache);
         }
-        startFetch(currentQ, true);
+        startFetch(activeQuery, true);
       });
 
     // Copy as Markdown
@@ -414,8 +414,10 @@ export function braveSide(): void {
   // ═════════════════════════════════════════════════════════════════════
 
   function inject(): void {
-    const q = getQ();
-    if (!q || injected || NOAI_RE.test(q)) return;
+    const raw = getQ();
+    if (!raw || injected || !AI_RE.test(raw)) return;
+    const q = stripAIFlag(raw);
+    if (!q) return;
 
     injected = true;
     activeQuery = q;
@@ -438,11 +440,11 @@ export function braveSide(): void {
   }
 
   function reinject(): void {
-    const q = getQ();
-    if (!q || NOAI_RE.test(q)) return;
+    const raw = getQ();
+    if (!raw || !AI_RE.test(raw)) return;
 
     console.log("[GAI-Brave] Panel removed by SPA, re-inserting");
-    insertPanel(q);
+    insertPanel(activeQuery);
     if (lastHTML) renderContent(lastHTML, lastResultUrl);
   }
 
@@ -478,12 +480,31 @@ export function braveSide(): void {
   // ═════════════════════════════════════════════════════════════════════
 
   function handleDOMChange(): void {
-    const currentQ = getQ();
-    if (!currentQ) return;
+    const raw = getQ();
+    if (!raw) return;
 
-    if (currentQ !== activeQuery) {
-      console.log("[GAI-Brave] Query changed:", currentQ);
-      activeQuery = currentQ;
+    const hasAI = AI_RE.test(raw);
+
+    // No --ai flag → tear down if active
+    if (!hasAI) {
+      if (injected) {
+        $(`#${ID}`)?.remove();
+        injected = false;
+        cleanupFetch();
+        lastHTML = null;
+        lastResultUrl = null;
+      }
+      activeQuery = normalizeQ(raw);
+      return;
+    }
+
+    const cleanQ = stripAIFlag(raw);
+    if (!cleanQ) return;
+
+    // Query changed OR flag just added → (re)inject
+    if (cleanQ !== activeQuery || !injected) {
+      console.log("[GAI-Brave] Query changed:", cleanQ);
+      activeQuery = cleanQ;
       injected = false;
       lastHTML = null;
       lastResultUrl = null;
@@ -493,6 +514,7 @@ export function braveSide(): void {
       return;
     }
 
+    // Float → sidebar migration
     const floatPanel = $(`#${ID}.float`);
     if (floatPanel) {
       const sidebar = findSidebar();
@@ -508,12 +530,19 @@ export function braveSide(): void {
 
   function startDOMObserver(): void {
     if (domObserver) return;
+    // Prefer the narrowest layout ancestor to reduce mutation noise.
+    // `main` covers Brave Search's content column; `#root` is the SPA mount.
+    // Only fall back to `document.body` if neither is present.
+    const observeTarget =
+      document.querySelector("main") ??
+      document.querySelector("#root") ??
+      document.body;
     let debounce: number | null = null;
     domObserver = new MutationObserver(() => {
       if (debounce !== null) clearTimeout(debounce);
       debounce = window.setTimeout(handleDOMChange, 300);
     });
-    domObserver.observe(document.body, { childList: true, subtree: true });
+    domObserver.observe(observeTarget, { childList: true, subtree: true });
   }
 
   function hookHistory(method: "pushState" | "replaceState"): void {
@@ -538,5 +567,5 @@ export function braveSide(): void {
   //  KICK OFF
   // ═════════════════════════════════════════════════════════════════════
 
-  startSidebarPoll(0);
+  if (AI_RE.test(getQ())) startSidebarPoll(0);
 }

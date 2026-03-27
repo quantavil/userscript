@@ -20,6 +20,7 @@ A userscript that extracts Google AI Mode search results and injects them into t
 - `meta.txt`           # Userscript metadata banner
 - `tsconfig.json`      # TypeScript configuration
 - `context.md`         # Migration notes & architecture details
+- `combine.sh`         # File aggregation utility for this project
 
 ## Conventions
 - Modular TypeScript architecture.

@@ -40,7 +40,7 @@ This userscript runs silently in the background. When you search on Brave, it:
 | **Open in Tab** | Direct link to view the full Google AI Mode page |
 | **Manual Reload** | Re-fetch button to force a fresh response |
 | **60-Second Hard Cap** | Never hangs indefinitely — times out gracefully with a manual fallback link |
-| **Bypass Flags** | Append `-noai` or `--noai` to your query to skip AI mode for that search |
+| **Opt-in Flag** | Append `--ai` to your query to enable Google AI Mode for that search — off by default, no background requests unless you opt in |
 
 ---
 
@@ -220,4 +220,4 @@ MIT — use it, fork it, improve it.
 
 ---
 
-*Built for speed, reliability, and privacy. No data leaves your browser — everything runs locally between two tabs.*
+*Built for speed and reliability. Your query is sent to Google AI Mode in a background tab only when you opt in with `--ai`. No other data leaves your browser.*

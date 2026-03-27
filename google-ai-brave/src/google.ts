@@ -15,7 +15,6 @@ import {
   KEEP_ATTRS,
   INLINE_TAGS,
   MAX_CACHE_ENTRIES,
-  NOAI_RE,
 } from "./constants";
 import { normalizeQ, getCache, setCache, findBySelectors } from "./utils";
 
@@ -42,7 +41,6 @@ export function googleSide(): void {
 
   const rawQ = params.get("q") ?? "";
   const normQ = normalizeQ(rawQ);
-  if (NOAI_RE.test(normQ)) return;
 
   // Strip the #gai fragment so the page looks normal
   history.replaceState(null, "", location.href.replace(/#gai.*/, ""));
@@ -161,6 +159,27 @@ function extractContent(): string {
     }
   });
 
+  // 1b. Process citation badges (button.rBl3me)
+  clone.querySelectorAll("button.rBl3me").forEach((btn) => {
+    const label = btn.getAttribute("aria-label");
+    if (label) {
+      // e.g. "Reddit (+8) – View related links" -> "[Reddit (+8)]"
+      const text = label.replace(/ – View related links.*$/, "").trim();
+      if (text && text !== "View related links") {
+        const span = document.createElement("span");
+        span.className = "gai-citation";
+        // Inline style to match citation look (will be converted to markdown if needed, 
+        // but sidebar uses HTML)
+        span.style.cssText =
+          "font-size: 0.85em; vertical-align: super; margin-left: 2px; color: #a5a8ff; font-weight: bold;";
+        span.textContent = `[${text}]`;
+        btn.replaceWith(span);
+        return;
+      }
+    }
+    btn.remove();
+  });
+
   // 1.  Strip unwanted elements
   for (const sel of STRIP_SELS) {
     clone.querySelectorAll(sel).forEach((el) => el.remove());
@@ -171,6 +190,9 @@ function extractContent(): string {
     const style = (el.getAttribute("style") ?? "").replace(/\s/g, "");
     if (style.includes("display:none")) el.remove();
   });
+
+  // 2b. Strip any remaining buttons (already handled 1b, but just in case)
+  clone.querySelectorAll("button").forEach((btn) => btn.remove());
 
   // 3.  role="heading" → semantic <hN>
   clone.querySelectorAll('[role="heading"]').forEach((el) => {
@@ -197,7 +219,13 @@ function extractContent(): string {
 
   // 6.  Remove empty <a> tags (left over from citation stripping)
   clone.querySelectorAll("a").forEach((a) => {
-    if (!a.textContent?.trim()) a.remove();
+    if (!a.textContent?.trim() && !a.querySelector("img")) a.remove();
+  });
+
+  // 6b. Remove duplicate a.NoAaxc anchors that carry no image
+  //     (Google repeats these 3× per entity; only the img-wrapper is useful)
+  clone.querySelectorAll("a.NoAaxc").forEach((a) => {
+    if (!a.querySelector("img")) a.remove();
   });
 
   // 7.  Relative → absolute URLs  (must run before attr stripping)
@@ -232,6 +260,10 @@ function extractContent(): string {
   do {
     changed = false;
     clone.querySelectorAll("*").forEach((el) => {
+      // Exclude void/content-bearing elements from recursive stripping
+      const tag = el.tagName.toLowerCase();
+      if (tag === "img" || tag === "br" || tag === "hr") return;
+
       if (!el.textContent?.trim() && el.children.length === 0) {
         el.remove();
         changed = true;

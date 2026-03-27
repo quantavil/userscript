@@ -27,6 +27,12 @@ A high-end collection of userscripts designed for browser customization, automat
 - **Fast Path Extraction**: In v1.4.0, we replaced static waits with polling. If Google's `[data-complete]` exists, we capture immediately. This significantly improves UX by reducing idle time.
 - **Multi-Query Cache**: The script now uses `gai_cache` to store up to 10 queries simultaneously, allowing users to switch between recent searches without re-fetching content.
 
+- **Opt-in Flag**: Users must append `--ai` (exact match) to their query to trigger the sidebar. Previously supported `-ai`, but this was removed to avoid collision with standard search operators.
+
+- **Image & Source Link Extraction**: `STRIP_SELS` previously stripped `img`, `a.NoAaxc`, `.uJ19be`, `.txxDge` — this deleted actress thumbnails (base64 data URIs) and source hyperlinks. Fixed by removing those from STRIP_SELS and adding `src`/`alt`/`aria-label` to `KEEP_ATTRS`. Duplicate empty `a.NoAaxc` anchors are cleaned in `extractContent` step 6b. Recursive cleanup loop updated to ignore `<img>` tags.
+
+- **Citation Badges**: Extracted from `button.rBl3me` `aria-label` before stripping. Converts `Facebook +1 – View related links` to `[Facebook +1]`.
+
 ## Build System (google-ai-brave)
 - **Runtime**: `bun` for dependency management and scripts.
 - **Bundler**: `esbuild` with `iife` format.

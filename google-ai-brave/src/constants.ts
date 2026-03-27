@@ -26,8 +26,8 @@ export const aiUrl = (q: string): string => `${googleUrl(q)}#gai`;
 
 // ── Regex ───────────────────────────────────────────────────────────────
 
-/** Matches the --noai / -noai flag anywhere in a query string. */
-export const NOAI_RE = /(?:^|\s)--?noai(?:\s|$)/;
+/** Matches the --ai opt-in flag anywhere in a query string. */
+export const AI_RE = /(?:^|\s)--ai(?:\s|$)/;
 
 // ── Selector lists ─────────────────────────────────────────────────────
 
@@ -61,9 +61,7 @@ export const STRIP_SELS: readonly string[] = [
   "script", "noscript", "style", "link", "iframe", "header", "footer",
   "#gb", "#fbar", "#searchform", "#top_nav", '[role="navigation"]',
   // Media & interactive
-  "button", "svg", "img",
-  // AI Mode: inline citation / source badges
-  "a.rBl3me", "a.NoAaxc", ".uJ19be", ".txxDge",
+  "svg",
   // AI Mode: feedback / tracking
   ".JuoeAb", "[data-crb-el]",
   // AI Mode: UI chrome
@@ -85,6 +83,9 @@ export const KEEP_ATTRS: ReadonlySet<string> = new Set([
   "colspan",
   "rowspan",
   "href",
+  "src",
+  "alt",
+  "aria-label",
 ]);
 
 /** Tags considered inline (used to detect mis-nested block-in-inline). */
@@ -98,5 +99,4 @@ export const SIDEBAR_SELS: readonly string[] = [
   "aside.side > .sidebar-content",
   "aside.sidebar",
   "aside.side",
-  "aside",
 ];

@@ -10,7 +10,7 @@
  * Gracefully no-ops when KaTeX fails to load from the CDN.
  */
 
-const KATEX_CDN = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist";
+const KATEX_CDN = "https://cdn.jsdelivr.net/npm/katex@0.16.43/dist";
 
 /**
  * Matches $$…$$ (display, group 1) first, then $…$ (inline, group 2).
