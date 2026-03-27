@@ -14,7 +14,6 @@ import {
   STRIP_SELS,
   KEEP_ATTRS,
   INLINE_TAGS,
-  MAX_CACHE_ENTRIES,
   googleSearchUrl,
 } from "./constants";
 import { normalizeQ, getCache, setCache, findBySelectors } from "./utils";
@@ -85,15 +84,6 @@ export function googleSide(): void {
       status: finalError ? "error" : "done",
       resultUrl: finalError ? null : location.href,
     };
-
-    // Evict oldest entry when over the limit
-    const keys = Object.keys(cache);
-    if (keys.length > MAX_CACHE_ENTRIES) {
-      const oldest = keys
-        .filter((k) => cache[k].ts)
-        .sort((a, b) => cache[a].ts - cache[b].ts)[0];
-      if (oldest) delete cache[oldest];
-    }
 
     setCache(cache);
   }

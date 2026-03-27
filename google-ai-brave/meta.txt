@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Mode for Brave
 // @namespace    quantavil
-// @version      3.2.0
+// @version      3.3.1
 // @description  Extracts Google AI Mode results and displays them in the Brave Search sidebar
 // @match        https://search.brave.com/search*
 // @match        https://www.google.com/search*
@@ -13,6 +13,7 @@
 // @grant        GM_removeValueChangeListener
 // @grant        GM_openInTab
 // @grant        GM_getResourceText
+// @grant        GM_registerMenuCommand
 // @require      https://cdn.jsdelivr.net/npm/katex@0.16.43/dist/katex.min.js
 // @resource     katexCSS https://cdn.jsdelivr.net/npm/katex@0.16.43/dist/katex.min.css
 // @connect      *

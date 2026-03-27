@@ -1,4 +1,4 @@
-import { CACHE_KEY, AI_RE } from "./constants";
+import { CACHE_KEY, SETTINGS_KEY, MAX_CACHE_ENTRIES } from "./constants";
 import type { Cache } from "./types";
 
 // ── Query normalisation ─────────────────────────────────────────────────
@@ -7,9 +7,46 @@ import type { Cache } from "./types";
 export const normalizeQ = (q: string): string =>
   q.trim().toLowerCase().replace(/\s+/g, " ");
 
-/** Strip the --ai opt-in flag and re-normalise. Assumes input is already normalised. */
-export const stripAIFlag = (q: string): string =>
-  normalizeQ(q.replace(/(?:^|\s)--ai(?=\s|$)/g, " "));
+/** Strip both --ai and --noai flags and re-normalise. Assumes input is already normalised. */
+export const stripFlags = (q: string): string => {
+  const settings = getSettings();
+  const ai = escapeRegex(settings.aiFlag);
+  const noai = escapeRegex(settings.noaiFlag);
+  const re = new RegExp(`(?:^|\\s)(?:${ai}|${noai})(?=\\s|$)`, "g");
+  return normalizeQ(q.replace(re, " "));
+};
+
+/** Determine if AI should be triggered based on settings and query flags. */
+export function isAIEnabled(q: string): boolean {
+  const settings = getSettings();
+  const aiRE = new RegExp(`(?:^|\\s)${escapeRegex(settings.aiFlag)}(?=\\s|$)`);
+  const noaiRE = new RegExp(
+    `(?:^|\\s)${escapeRegex(settings.noaiFlag)}(?=\\s|$)`,
+  );
+
+  const hasAI = aiRE.test(q);
+  const hasNoAI = noaiRE.test(q);
+
+  return settings.aiByDefault ? !hasNoAI : hasAI;
+}
+
+export interface Settings {
+  aiByDefault: boolean;
+  aiFlag: string;
+  noaiFlag: string;
+}
+
+export function getSettings(): Settings {
+  return GM_getValue(SETTINGS_KEY, {
+    aiByDefault: false,
+    aiFlag: "--ai",
+    noaiFlag: "--noai",
+  });
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 // ── GM cache helpers ────────────────────────────────────────────────────
 
@@ -25,6 +62,13 @@ export function getCache(): Cache {
 
 export function setCache(obj: Cache): void {
   try {
+    const keys = Object.keys(obj);
+    if (keys.length > MAX_CACHE_ENTRIES) {
+      // Sort by timestamp (oldest first) and delete until within limit
+      const sorted = keys.sort((a, b) => (obj[a].ts ?? 0) - (obj[b].ts ?? 0));
+      const toRemove = sorted.slice(0, keys.length - MAX_CACHE_ENTRIES);
+      for (const k of toRemove) delete obj[k];
+    }
     GM_setValue(CACHE_KEY, obj);
   } catch { /* best-effort */ }
 }

@@ -12,14 +12,16 @@ import {
   CACHE_TTL,
   FETCH_LOCK_TTL,
   SIDEBAR_SELS,
-  AI_RE,
+  SETTINGS_KEY,
   googleUrl,
   aiUrl,
 } from "./constants";
 import type { Cache, CacheEntry } from "./types";
 import {
   normalizeQ,
-  stripAIFlag,
+  stripFlags,
+  isAIEnabled,
+  getSettings,
   getCache,
   setCache,
   findBySelectors,
@@ -31,6 +33,42 @@ import { htmlToMarkdown, cleanMarkdown } from "./markdown";
 import { renderLatex } from "./katex-render";
 
 export function braveSide(): void {
+  // ── Menu commands ─────────────────────────────────────────────────────
+
+  const registerToggle = (): void => {
+    const settings = getSettings();
+    const label = `Toggle AI by Default (Currently: ${
+      settings.aiByDefault ? "ON" : "OFF"
+    })`;
+    GM_registerMenuCommand(label, () => {
+      settings.aiByDefault = !settings.aiByDefault;
+      GM_setValue(SETTINGS_KEY, settings);
+      location.reload();
+    });
+
+    GM_registerMenuCommand(`Set AI Flag (Current: ${settings.aiFlag})`, () => {
+      const val = prompt("Enter new AI activation flag:", settings.aiFlag);
+      if (val && val.trim()) {
+        settings.aiFlag = val.trim();
+        GM_setValue(SETTINGS_KEY, settings);
+        location.reload();
+      }
+    });
+
+    GM_registerMenuCommand(
+      `Set No-AI Flag (Current: ${settings.noaiFlag})`,
+      () => {
+        const val = prompt("Enter new No-AI bypass flag:", settings.noaiFlag);
+        if (val && val.trim()) {
+          settings.noaiFlag = val.trim();
+          GM_setValue(SETTINGS_KEY, settings);
+          location.reload();
+        }
+      },
+    );
+  };
+  registerToggle();
+
   // ── Shortcuts ─────────────────────────────────────────────────────────
 
   const $ = (sel: string) => document.querySelector(sel);
@@ -417,8 +455,8 @@ export function braveSide(): void {
 
   function inject(): void {
     const raw = getQ();
-    if (!raw || injected || !AI_RE.test(raw)) return;
-    const q = stripAIFlag(raw);
+    if (!raw || injected || !isAIEnabled(raw)) return;
+    const q = stripFlags(raw);
     if (!q) return;
 
     injected = true;
@@ -443,7 +481,7 @@ export function braveSide(): void {
 
   function reinject(): void {
     const raw = getQ();
-    if (!raw || !AI_RE.test(raw)) return;
+    if (!raw || !isAIEnabled(raw)) return;
 
     console.log("[GAI-Brave] Panel removed by SPA, re-inserting");
     insertPanel(activeQuery);
@@ -489,9 +527,9 @@ export function braveSide(): void {
     const raw = getQ();
     if (!raw) return;
 
-    const hasAI = AI_RE.test(raw);
+    const hasAI = isAIEnabled(raw);
 
-    // No --ai flag → tear down if active
+    // No AI trigger → tear down if active
     if (!hasAI) {
       stopSidebarPoll();
       if (injected) {
@@ -505,7 +543,7 @@ export function braveSide(): void {
       return;
     }
 
-    const cleanQ = stripAIFlag(raw);
+    const cleanQ = stripFlags(raw);
     if (!cleanQ) return;
 
     // Query changed OR flag just added → (re)inject
@@ -574,5 +612,5 @@ export function braveSide(): void {
   //  KICK OFF
   // ═════════════════════════════════════════════════════════════════════
 
-  if (AI_RE.test(getQ())) startSidebarPoll(0);
+  if (isAIEnabled(getQ())) startSidebarPoll(0);
 }

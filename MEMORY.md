@@ -27,7 +27,8 @@ A high-end collection of userscripts designed for browser customization, automat
 - **Fast Path Extraction**: In v1.4.0, we replaced static waits with polling. If Google's `[data-complete]` exists, we capture immediately. This significantly improves UX by reducing idle time.
 - **Multi-Query Cache**: The script now uses `gai_cache` to store up to 10 queries simultaneously, allowing users to switch between recent searches without re-fetching content.
 
-- **Opt-in Flag**: Users must append `--ai` (exact match) to their query to trigger the sidebar. Previously supported `-ai`, but this was removed to avoid collision with standard search operators.
+- **AI Toggle & Flags**: AI search can be toggled to be "on by default" via the userscript manager menu (`GM_registerMenuCommand`). If on by default, use `--noai` to disable. If off by default (standard), use `--ai` to enable. Flags are customizable via menu commands using `prompt()`. High-efficiency regex stripping ensures flags don't leak into the final query. In v3.3.1, removed dead imports (`AI_RE`, `NOAI_RE`) and encapsulated internal URL helpers.
+- **Centralized Pruning**: Cache eviction logic moved from `google.ts` into a robust `setCache` helper in `utils.ts` that enforces `MAX_CACHE_ENTRIES` (FIFO).
 
 - **Image & Source Link Extraction**: `STRIP_SELS` previously stripped `img`, `a.NoAaxc`, `.uJ19be`, `.txxDge` — this deleted actress thumbnails (base64 data URIs) and source hyperlinks. Fixed by removing those from STRIP_SELS and adding `src`/`alt`/`aria-label` to `KEEP_ATTRS`. Duplicate empty `a.NoAaxc` anchors are cleaned in `extractContent` step 6b. Recursive cleanup loop updated to ignore `<img>` tags.
 

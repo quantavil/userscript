@@ -32,6 +32,11 @@ export const aiUrl = (q: string): string => `${googleUrl(q)}#gai`;
 /** Matches the --ai opt-in flag anywhere in a query string. */
 export const AI_RE = /(?:^|\s)--ai(?:\s|$)/;
 
+/** Matches the --noai opt-out flag anywhere in a query string. */
+export const NOAI_RE = /(?:^|\s)--noai(?:\s|$)/;
+
+export const SETTINGS_KEY = "gai_settings";
+
 // ── Selector lists ─────────────────────────────────────────────────────
 
 /** AI Mode content containers (tried in order). */

@@ -2,7 +2,7 @@
 
 > Injects Google's AI-generated search results directly into the Brave Search sidebar — seamlessly, instantly, and without leaving Brave.
 
-![Version](https://img.shields.io/badge/version-3.2.0-6366f1)
+![Version](https://img.shields.io/badge/version-3.3.1-6366f1)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -31,7 +31,7 @@ This userscript runs silently in the background. When you search on Brave, it:
 | **Native Rendering** | AI content is extracted, sanitized, and injected as clean HTML — no iframes |
 | **Smart Completion Detection** | Watches for Google's own Copy/Thumbs Up/Thumbs Down buttons to confirm the response is fully generated before extracting |
 | **5-Second Streaming Fallback** | If buttons don't appear, waits for 5 seconds of stable text before capturing — handles edge cases without cutoff |
-| **Multi-Query Cache** | Results are cached for 15 minutes via `GM_getValue`. Stores up to 10 recent unique queries, allowing instant switching between searches |
+| **Centralized Cache** | Results are cached for 15 minutes via `GM_getValue`. Uses a robust FIFO pruning strategy (max 10 entries) enforced at the persistence layer to prevent memory bloat |
 | **SPA-Aware Navigation** | Intercepts `pushState`/`replaceState`, `popstate`, and uses `MutationObserver` for instant, reliable detection of query changes and sidebar state |
 | **Panel Persistence** | If Brave's SPA destroys the sidebar DOM, the panel is automatically re-inserted. Handled by a debounced observer for zero-latency response |
 | **Real-time Migration** | If the panel renders before the sidebar exists, it floats temporarily and migrates into the sidebar the moment it becomes available |
@@ -40,7 +40,9 @@ This userscript runs silently in the background. When you search on Brave, it:
 | **Open in Tab** | Direct link to view the full Google AI Mode page |
 | **Manual Reload** | Re-fetch button to force a fresh response |
 | **60-Second Hard Cap** | Never hangs indefinitely — times out gracefully with a manual fallback link |
-| **Opt-in Flag** | Append `--ai` to your query to enable Google AI Mode for that search — off by default, no background requests unless you opt in |
+| **Smart Toggle** | Enable/Disable AI by default via userscript menu command (`Toggle AI by Default`) |
+| **Customizable Flags** | Define your own activation (`--ai`) and bypass (`--noai`) flags via menu commands. Uses dynamic regex generation for safe, accurate query scrubbing |
+| **Smart Inversion** | Logic automatically inverts based on the default state (force AI when OFF, bypass AI when ON) — no complex manual configuration needed |
 
 ---
 
@@ -161,6 +163,17 @@ Raw Google DOM
 ---
 
 ## Changelog
+
+### v3.3.1
+- **Optimization**: Removed dead imports (`AI_RE`, `NOAI_RE`) and encapsulated internal URL helpers.
+- **Cache Reliability**: Implemented strict `MAX_CACHE_ENTRIES` enforcement (FIFO) within `setCache` for centralized persistence management.
+- **Improved Scoping**: Verified and refined export visibility across modules.
+
+### v3.3.0
+- **AI Toggle System**: Added a "Toggle AI by Default" command to the userscript manager menu.
+- **Customizable Flags**: Users can now change the AI activation (`--ai`) and bypass (`--noai`) flags via menu commands.
+- **Inversion Logic**: Implemented dynamic flag inversion based on the default state.
+- **Smart Flag Stripping**: Automatically cleans custom flags from the search query using dynamic regex generation.
 
 ### v3.2.0
 - **Enhanced Image Reliability**: Implemented robust absolute URL resolution for `src` and `srcset` (including responsive descriptors) to ensure images load correctly from Google's origin.
