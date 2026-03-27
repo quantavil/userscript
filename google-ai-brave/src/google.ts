@@ -15,6 +15,7 @@ import {
   KEEP_ATTRS,
   INLINE_TAGS,
   MAX_CACHE_ENTRIES,
+  googleSearchUrl,
 } from "./constants";
 import { normalizeQ, getCache, setCache, findBySelectors } from "./utils";
 
@@ -68,19 +69,21 @@ export function googleSide(): void {
     clearInterval(pollTimer);
 
     const html = error ? "" : extractContent();
+    const finalError = error || (html ? null : "no_content");
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
     console.log(
       `[GAI] Sending ${html.length} chars for "${normQ}" (${elapsed}s)` +
-        (error ? ` [error: ${error}]` : ""),
+        (finalError ? ` [error: ${finalError}]` : ""),
     );
 
     const cache = getCache();
     cache[normQ] = {
       html,
       ts: Date.now(),
-      error,
-      status: error ? "error" : "done",
-      resultUrl: error ? null : location.href,
+      error: finalError,
+      status: finalError ? "error" : "done",
+      resultUrl: finalError ? null : location.href,
     };
 
     // Evict oldest entry when over the limit
@@ -138,7 +141,9 @@ export function googleSide(): void {
 // ── Content extraction ──────────────────────────────────────────────────
 
 function extractContent(): string {
-  const container = findBySelectors(CONTENT_SELS) ?? document.body;
+  const params = new URLSearchParams(location.search);
+  const container = findBySelectors(CONTENT_SELS);
+  if (!container) return "";
   const clone = container.cloneNode(true) as HTMLElement;
 
   // 0.  LaTeX: convert data-xpm-latex attrs to $…$ / $$…$$ text nodes
@@ -159,25 +164,33 @@ function extractContent(): string {
     }
   });
 
-  // 1b. Process citation badges (button.rBl3me)
+  // 1b. Replace citation badges with clickable Google Search links
   clone.querySelectorAll("button.rBl3me").forEach((btn) => {
-    const label = btn.getAttribute("aria-label");
-    if (label) {
-      // e.g. "Reddit (+8) – View related links" -> "[Reddit (+8)]"
-      const text = label.replace(/ – View related links.*$/, "").trim();
-      if (text && text !== "View related links") {
-        const span = document.createElement("span");
-        span.className = "gai-citation";
-        // Inline style to match citation look (will be converted to markdown if needed, 
-        // but sidebar uses HTML)
-        span.style.cssText =
-          "font-size: 0.85em; vertical-align: super; margin-left: 2px; color: #a5a8ff; font-weight: bold;";
-        span.textContent = `[${text}]`;
-        btn.replaceWith(span);
-        return;
-      }
+    const label = btn.getAttribute("aria-label") ?? "";
+    const text = label
+      .replace(/\s+[–—-]\s+View related links.*$/i, "")
+      .trim();
+
+    if (!text || /^view related links$/i.test(text)) {
+      btn.remove();
+      return;
     }
-    btn.remove();
+
+    // Build a contextual Google Search query like:
+    // "<original query> Reddit"
+    const source = text
+      .replace(/\s*(?:\(\+\d+\)|\+\d+)\s*$/i, "")
+      .trim();
+
+    const query = [params.get("q") ?? "", source].filter(Boolean).join(" ");
+
+    const a = document.createElement("a");
+    a.textContent = `[${text}]`;
+    a.setAttribute("href", googleSearchUrl(query));
+    a.setAttribute("target", "_blank");
+    a.setAttribute("rel", "noopener noreferrer");
+
+    btn.replaceWith(a);
   });
 
   // 1.  Strip unwanted elements
@@ -187,7 +200,9 @@ function extractContent(): string {
 
   // 2.  Remove display:none elements
   clone.querySelectorAll("*").forEach((el) => {
-    const style = (el.getAttribute("style") ?? "").replace(/\s/g, "");
+    const style = (el.getAttribute("style") ?? "")
+      .replace(/\s/g, "")
+      .toLowerCase();
     if (style.includes("display:none")) el.remove();
   });
 
@@ -196,7 +211,10 @@ function extractContent(): string {
 
   // 3.  role="heading" → semantic <hN>
   clone.querySelectorAll('[role="heading"]').forEach((el) => {
-    const level = el.getAttribute("aria-level") ?? "3";
+    const rawLevel = Number.parseInt(el.getAttribute("aria-level") ?? "3", 10);
+    const level = Number.isFinite(rawLevel)
+      ? Math.min(6, Math.max(1, rawLevel))
+      : 3;
     const h = document.createElement(`h${level}`);
     h.innerHTML = el.innerHTML;
     el.replaceWith(h);
@@ -228,12 +246,53 @@ function extractContent(): string {
     if (!a.querySelector("img")) a.remove();
   });
 
-  // 7.  Relative → absolute URLs  (must run before attr stripping)
+  // 7. Relative → absolute URLs (must run before attr stripping)
   clone.querySelectorAll("a[href]").forEach((a) => {
     const href = a.getAttribute("href");
-    if (href?.startsWith("/")) {
-      a.setAttribute("href", GOOGLE_ORIGIN + href);
+    if (!href) return;
+    try {
+      a.setAttribute("href", new URL(href, GOOGLE_ORIGIN).toString());
+    } catch {
+      a.removeAttribute("href");
     }
+  });
+
+  clone.querySelectorAll("img[src]").forEach((img) => {
+    const src = img.getAttribute("src");
+    if (!src) return;
+    try {
+      img.setAttribute("src", new URL(src, GOOGLE_ORIGIN).toString());
+    } catch {
+      img.remove();
+    }
+  });
+
+  clone.querySelectorAll("img[srcset], source[srcset]").forEach((el) => {
+    const srcset = el.getAttribute("srcset");
+    if (!srcset) return;
+
+    const normalized = srcset
+      .split(",")
+      .map((part) => {
+        const trimmed = part.trim();
+        if (!trimmed) return "";
+
+        const m = trimmed.match(/^(\S+)(?:\s+(.+))?$/);
+        if (!m) return "";
+
+        const [, url, descriptor] = m;
+        try {
+          const abs = new URL(url, GOOGLE_ORIGIN).toString();
+          return descriptor ? `${abs} ${descriptor}` : abs;
+        } catch {
+          return "";
+        }
+      })
+      .filter(Boolean)
+      .join(", ");
+
+    if (normalized) el.setAttribute("srcset", normalized);
+    else el.removeAttribute("srcset");
   });
 
   // 8.  Strip all attributes except the ones in KEEP_ATTRS

@@ -2,7 +2,7 @@
 
 > Injects Google's AI-generated search results directly into the Brave Search sidebar — seamlessly, instantly, and without leaving Brave.
 
-![Version](https://img.shields.io/badge/version-3.0.0-6366f1)
+![Version](https://img.shields.io/badge/version-3.2.0-6366f1)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -108,11 +108,14 @@ bun run dev
 ```
 Raw Google DOM
   ↓ Clone container node
-  ↓ Strip: scripts, styles, iframes, navigation, toolbars, buttons, SVGs, images
-  ↓ Strip: display:none elements
-  ↓ Convert: role="heading" → semantic <h1>-<h6>
-  ↓ Strip: all attributes except href, colspan, rowspan
-  ↓ Prune: empty nodes (recursive)
+  ↓ Fail-fast if AI container not found (prevents full-page capture)
+  ↓ Strip: scripts, styles, iframes, navigation, toolbars, buttons, SVGs
+  ↓ Replace: citation badges with contextual Google Search links
+  ↓ Strip: display:none elements (case-insensitive)
+  ↓ Convert: role="heading" → semantic <h1>-<h6> (clamped 1-6)
+  ↓ Absolute URLs: resolve href, src, and srcset (responsive) using GOOGLE_ORIGIN
+  ↓ Strip: all attributes except href, src, srcset, alt, aria-label, target, rel, width, height, colspan, rowspan
+  ↓ Prune: empty nodes (recursive, ignores <img>, <br>, <hr>)
   ↓ Clean HTML string
 ```
 
@@ -158,6 +161,14 @@ Raw Google DOM
 ---
 
 ## Changelog
+
+### v3.2.0
+- **Enhanced Image Reliability**: Implemented robust absolute URL resolution for `src` and `srcset` (including responsive descriptors) to ensure images load correctly from Google's origin.
+- **Robustness Overhaul**: Added fail-fast container detection to prevent accidental full-page capture and implemented explicit "AI content not detected" feedback.
+- **Improved Citations**: Replaced citation badges with smart, contextual Google Search links that preserve `target="_blank"` and `rel` attributes.
+- **Precise UI Controls**: Added heading level clamping (1-6) and case-insensitive/whitespace-resilient style checks for hidden elements.
+- **Brave Polling Management**: Added `stopSidebarPoll()` to cleanly clear background timers when the sidebar is removed or queries change.
+- **Refined AI Flag**: Updated `--ai` flag stripping logic for better query precision.
 
 ### v3.0.0
 - **TypeScript Migration**: Full project rewrite in TypeScript for better maintainability and type safety.

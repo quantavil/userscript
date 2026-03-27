@@ -9,7 +9,7 @@ export const normalizeQ = (q: string): string =>
 
 /** Strip the --ai opt-in flag and re-normalise. Assumes input is already normalised. */
 export const stripAIFlag = (q: string): string =>
-  q.replace(AI_RE, " ").trim().replace(/\s+/g, " ");
+  normalizeQ(q.replace(/(?:^|\s)--ai(?=\s|$)/g, " "));
 
 // ── GM cache helpers ────────────────────────────────────────────────────
 

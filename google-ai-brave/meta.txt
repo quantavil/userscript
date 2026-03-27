@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Google AI Mode for Brave Sidebar
+// @name         Google AI Mode for Brave
 // @namespace    quantavil
-// @version      3.0.0
+// @version      3.2.0
 // @description  Extracts Google AI Mode results and displays them in the Brave Search sidebar
 // @match        https://search.brave.com/search*
 // @match        https://www.google.com/search*

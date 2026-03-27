@@ -19,8 +19,11 @@ export const PANEL_ID = "gai";
 
 // ── URL builders ────────────────────────────────────────────────────────
 
+export const googleSearchUrl = (q: string): string =>
+  `${GOOGLE_ORIGIN}/search?q=${encodeURIComponent(q)}`;
+
 export const googleUrl = (q: string): string =>
-  `${GOOGLE_ORIGIN}/search?q=${encodeURIComponent(q)}&udm=50`;
+  `${googleSearchUrl(q)}&udm=50`;
 
 export const aiUrl = (q: string): string => `${googleUrl(q)}#gai`;
 
@@ -84,8 +87,13 @@ export const KEEP_ATTRS: ReadonlySet<string> = new Set([
   "rowspan",
   "href",
   "src",
+  "srcset",
   "alt",
   "aria-label",
+  "target",
+  "rel",
+  "width",
+  "height",
 ]);
 
 /** Tags considered inline (used to detect mis-nested block-in-inline). */

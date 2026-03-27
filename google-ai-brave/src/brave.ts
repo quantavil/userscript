@@ -205,7 +205,9 @@ export function braveSide(): void {
       renderError(
         entry.error === "error_page"
           ? "⚠️ Google blocked the request (CAPTCHA / sign-in)."
-          : `⚠️ Error: ${entry.error}`,
+          : entry.error === "no_content"
+            ? "⚠️ Google AI content was not detected."
+            : `⚠️ Error: ${entry.error}`,
         q,
       );
     } else if (entry.html) {
@@ -452,11 +454,15 @@ export function braveSide(): void {
   //  SIDEBAR POLL (initial detection)
   // ═════════════════════════════════════════════════════════════════════
 
-  function startSidebarPoll(delay: number): void {
+  function stopSidebarPoll(): void {
     if (activePollTimeout !== null) clearTimeout(activePollTimeout);
     if (activePollTimer !== null) clearInterval(activePollTimer);
     activePollTimeout = null;
     activePollTimer = null;
+  }
+
+  function startSidebarPoll(delay: number): void {
+    stopSidebarPoll();
 
     const run = (): void => {
       activePollTimeout = null;
@@ -487,6 +493,7 @@ export function braveSide(): void {
 
     // No --ai flag → tear down if active
     if (!hasAI) {
+      stopSidebarPoll();
       if (injected) {
         $(`#${ID}`)?.remove();
         injected = false;
