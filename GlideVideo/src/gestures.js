@@ -72,6 +72,8 @@ const MVC_Gestures = {
             const initialTime = video.currentTime;
             let seeking = false;
 
+            let newTime = initialTime;
+
             const onTouchMove = ev => {
                 const dx = ev.touches[0].clientX - startX;
                 if (!seeking) {
@@ -79,14 +81,16 @@ const MVC_Gestures = {
                     else return;
                 }
                 const timeChange = dx * MVC_CONFIG.GESTURE_SEEK_SENSITIVITY;
-                const newTime = this.clamp(initialTime + timeChange, 0, video.duration || 0);
-                video.currentTime = newTime;
+                newTime = this.clamp(initialTime + timeChange, 0, video.duration || 0);
                 this._showGestureOverlay(
                     `${this._formatGestureTime(newTime)}<br><span style="font-size:14px;opacity:0.8">${this._formatGestureDelta(timeChange)}</span>`
                 );
             };
 
             const onTouchEnd = () => {
+                if (seeking) {
+                    video.currentTime = newTime;
+                }
                 seeking = false;
                 this._hideGestureOverlay();
                 e.target.removeEventListener('touchmove', onTouchMove);

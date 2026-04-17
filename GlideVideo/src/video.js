@@ -159,12 +159,8 @@ const MVC_Video = {
         const offsetX = (layoutWidth * (zoom - 1)) / 2;
         const offsetY = (layoutHeight * (zoom - 1)) / 2;
 
-        const uiWidth = this.ui.wrap.offsetWidth;
-        const uiHeight = this.ui.wrap.offsetHeight;
-
-        const desiredLeftPage = vr.left + offsetX + window.scrollX + layoutWidth - uiWidth - MVC_CONFIG.DEFAULT_RIGHT_OFFSET;
-        let desiredTopPage = vr.top + offsetY + window.scrollY + layoutHeight - uiHeight - 10;
-        if (layoutHeight > window.innerHeight * 0.7 && vr.bottom > window.innerHeight - 150) desiredTopPage -= MVC_CONFIG.UI_TALL_VIDEO_OFFSET;
+        const desiredLeftPage = vr.left + offsetX + window.scrollX + MVC_CONFIG.EDGE;
+        let desiredTopPage = vr.top + offsetY + window.scrollY + MVC_CONFIG.EDGE;
 
         this._applyPagePosition(desiredLeftPage, desiredTopPage, this.isScrolling);
     },
