@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'Testbook Markdown Downloader',
         namespace: 'tb-md-dl',
-        version: '1.0.2',
+        version: '1.0.7',
         description: 'Auto-crawls and downloads Testbook question papers as Markdown.',
         author: 'quantavil',
         match: ['https://testbook.com/*'],
