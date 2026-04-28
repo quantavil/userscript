@@ -20,6 +20,10 @@ export function htmlToMarkdown(root: Element | null): string {
   const uselessImages = clone.querySelectorAll('img[src*="lms_creative_elements"], img[src*="tb-avatar"], img.avatar, img.icon');
   uselessImages.forEach(img => img.remove());
 
+  // Clean up useless Testbook UI elements that clutter the markdown
+  const uselessUI = clone.querySelectorAll('button, bookmarks, report-cta, .tp-pos-neg-marks, .tb-report-component, .dropdown-menu, .help-note, .action-text, .tb-text-grey, .tb-more-dot');
+  uselessUI.forEach(el => el.remove());
+
   // Fix MathJax
   const mathScripts = clone.querySelectorAll('script[type^="math/tex"]');
   mathScripts.forEach(script => {

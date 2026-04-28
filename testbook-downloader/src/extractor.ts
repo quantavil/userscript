@@ -1,4 +1,5 @@
 import { htmlToMarkdown } from './parser';
+import { beautifyMarkdown } from './beautifier';
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'; // R1: single constant
 
@@ -7,10 +8,22 @@ export function extractBox(qaBox: Element, fallbackQNum: number, lastCompHtml: s
   const parts: string[] = [];
 
   // 1. Get Real Question Number from DOM
-  const qNumEl = qaBox.querySelector('.tp-ques-number');
+  let qNumEl = qaBox.querySelector('.tp-ques-number');
+  if (!qNumEl) {
+      // Fallback: search globally for visible question number
+      const allQNums = Array.from(document.querySelectorAll('.tp-ques-number'));
+      qNumEl = allQNums.find(el => {
+          const cs = getComputedStyle(el);
+          return cs.display !== 'none' && cs.visibility !== 'hidden' && !el.closest('.ng-hide');
+      }) || null;
+  }
+
   let qNumStr = fallbackQNum.toString();
   if (qNumEl) {
-      qNumStr = qNumEl.textContent?.replace(/Question No\./i, '').trim() || qNumStr;
+      const text = qNumEl.textContent || '';
+      // Matches "Question No. 1", "Question No.1", "Q.1", etc. and extracts only digits
+      const match = text.match(/\d+/);
+      qNumStr = match ? match[0] : (text.replace(/Question No\./i, '').trim() || qNumStr);
   }
   
   parts.push(`## Q${qNumStr}.`);
@@ -89,8 +102,9 @@ export function extractBox(qaBox: Element, fallbackQNum: number, lastCompHtml: s
     parts.push('### Solution\n\n' + htmlToMarkdown(solEl));
   }
 
+  const rawMd = parts.filter(Boolean).join('\n\n');
   return { 
-      md: parts.filter(Boolean).join('\n\n') + '\n\n---\n\n', 
+      md: beautifyMarkdown(rawMd) + '\n\n---\n\n', 
       compHtml: currentCompHtml, 
       qNum: qNumStr,
   };

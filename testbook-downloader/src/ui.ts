@@ -37,10 +37,15 @@ export class DownloaderUI {
     if (!document.getElementById('tb-css')) document.head.insertAdjacentHTML('beforeend', `<style id="tb-css">${STYLES}</style>`);
     this.el.id = 'tb-fab';
     this.el.onclick = () => {
-      if (this.state === 'idle' || this.state === 'error') return this.setState('loading'), this.onStart();
-      if (this.state === 'loading') return this.onCancel();
-    };
-    this.setState('idle');
+      if (this.state === 'idle' || this.state === 'error') {
+          this.setState('loading');
+          return this.onStart();
+      }
+      if (this.state === 'loading') {
+          this.setState('idle');
+          return this.onCancel();
+      }
+    };    this.setState('idle');
   }
 
   private setState(s: UIState) {

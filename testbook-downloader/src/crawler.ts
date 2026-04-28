@@ -23,12 +23,54 @@ export class Crawler {
 
     // B4: scoped to Testbook-specific containers
     private getSections(): HTMLElement[] {
+        const selectors = [
+            '.tp-test-sections .nav-tabs > li', 
+            '.sections-tabs > li', 
+            '.section-list > li',
+            '#sectionNavTabs > li',
+            '.sections-list > li'
+        ];
         return Array.from(
-            document.querySelectorAll('.tp-test-sections .nav-tabs li, .sections-tabs li, .section-list li')
+            document.querySelectorAll(selectors.join(', '))
         ).filter(el => {
+            if (el.classList.contains('dropdown-menu') || el.closest('.dropdown-menu')) return false;
             const t = el.textContent?.trim().toLowerCase() || '';
             return t.length > 0 && !t.includes('instruction');
         }) as HTMLElement[];
+    }
+
+    private getSectionName(sec: HTMLElement, index: number): string {
+        // Try to find hidden-xs span to avoid duplicated text from mobile labels
+        const hiddenXs = sec.querySelector('.hidden-xs');
+        if (hiddenXs && hiddenXs.textContent?.trim()) {
+            return hiddenXs.textContent.trim();
+        }
+        
+        // Fallback to text content but try to be smart about visible-xs
+        const visibleXs = sec.querySelector('.visible-xs');
+        if (visibleXs) {
+            // Clone to avoid modifying original DOM
+            const clone = sec.cloneNode(true) as HTMLElement;
+            clone.querySelectorAll('.visible-xs').forEach(el => el.remove());
+            return clone.textContent?.trim() || `Section ${index + 1}`;
+        }
+
+        return sec.textContent?.trim() || `Section ${index + 1}`;
+    }
+
+    private getActiveSectionName(): string | null {
+        const sections = this.getSections();
+        const activeSec = sections.find(sec => 
+            sec.classList.contains('active') || 
+            sec.classList.contains('selected') || 
+            sec.getAttribute('aria-selected') === 'true' ||
+            sec.querySelector('.active') !== null
+        );
+        
+        if (activeSec) {
+            return this.getSectionName(activeSec, sections.indexOf(activeSec));
+        }
+        return null;
     }
 
     public async start() {
@@ -42,13 +84,25 @@ export class Crawler {
             let currentSectionName = '';
 
             if (sections.length > 0) {
-                this.onProgress('Starting crawler (Section mode)...');
+                this.onProgress(`Starting crawler (${sections.length} Sections)...`);
                 for (let i = 0; i < sections.length; i++) {
+                    if (!this.isRunning) break;
+
                     const sec = sections[i];
-                    sec.click();
-                    await this.wait(1000);
+                    const secName = this.getSectionName(sec, i);
                     
-                    const secName = sec.textContent?.trim() || `Section ${i + 1}`;
+                    this.onProgress(`Switching to ${secName}...`);
+                    
+                    // Prefer clicking the anchor inside if it exists
+                    const link = sec.querySelector('a');
+                    if (link) {
+                        link.click();
+                    } else {
+                        sec.click();
+                    }
+                    
+                    await this.wait(1200);
+                    
                     if (secName !== currentSectionName) {
                         this.markdown += `# ${secName}\n\n`;
                         currentSectionName = secName;
@@ -61,7 +115,9 @@ export class Crawler {
                 await this.crawlCurrentSectionQuestions('Paper', lastCompHtml);
             }
 
-            this.onFinish(this.markdown);
+            if (this.isRunning) {
+                this.onFinish(this.markdown);
+            }
         } catch (e) {
             console.error('[TB-MD] Crawl error:', e);
             // B1: call onError so UI transitions to error state
@@ -91,14 +147,14 @@ export class Crawler {
             this.onProgress(`Extracting ${sectionName}: Q${qNum}`);
 
             // Check for end of test popup
-            const popup = Array.from(document.querySelectorAll('.modal, .popup, .alert, .bootbox')).find(el => {
+            const popup = Array.from(document.querySelectorAll('.modal, .modal-dialog, .popup, .alert, .bootbox')).find(el => {
                 const txt = (el.textContent || '').toLowerCase();
                 const isVisible = (el as HTMLElement).style.display !== 'none' && !el.classList.contains('ng-hide');
                 return isVisible && (txt.includes('last question') || txt.includes('first question') || txt.includes('end of'));
             });
             
             if (popup) {
-                const closeBtn = popup.querySelector('button[data-dismiss="modal"], .close, .btn-primary, button') as HTMLElement;
+                const closeBtn = popup.querySelector('button[data-bb-handler="cancel"], button[data-dismiss="modal"], .close') as HTMLElement;
                 if (closeBtn) closeBtn.click();
                 return currentComp;
             }
@@ -110,6 +166,13 @@ export class Crawler {
 
             nextBtn.click();
             await this.wait(800);
+
+            // B7: Check if we jumped to a different section
+            const activeSecName = this.getActiveSectionName();
+            if (activeSecName && activeSecName !== sectionName) {
+                // The UI automatically transitioned to the next section
+                return currentComp;
+            }
 
             // B3: extract once, reuse at loop top
             const nextCheck = extractCurrentQuestion(qIdxInSec + 1, currentComp);

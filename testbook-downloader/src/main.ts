@@ -1,5 +1,6 @@
 import { DownloaderUI } from './ui';
 import { Crawler } from './crawler';
+import { beautifyMarkdown } from './beautifier';
 
 function downloadFile(content: string, filename: string) {
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
@@ -21,7 +22,8 @@ function init() {
           (msg) => ui.updateStatus(msg),
           (md) => {
               ui.finish();
-              downloadFile(md, 'Testbook_Paper.md');
+              const beautifulMd = beautifyMarkdown(md);
+              downloadFile(beautifulMd, 'Testbook_Paper.md');
           },
           (errMsg) => ui.error(errMsg),
       );
