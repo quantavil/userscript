@@ -17,9 +17,10 @@ const STYLES = `
 #tb-fab[data-s="error"] { background:#fff; color:#000; border-color:#000; animation:sh .4s; }
 #tb-fab::after { content:attr(data-t); position:absolute; right:56px; background:#000; color:#fff; padding:6px 12px; border-radius:6px; font:500 12px/1.2 -apple-system,sans-serif; opacity:0; pointer-events:none; transition:opacity .2s; white-space:nowrap; box-shadow:0 2px 8px rgba(0,0,0,.2); }
 #tb-fab:hover::after, #tb-fab[data-s="loading"]::after, #tb-fab[data-s="error"]::after { opacity:1; }
-#tb-fab[data-s="idle"]:not(:hover):::after { opacity:0; }
+#tb-fab[data-s="idle"]:not(:hover)::after { opacity:0; }
 @keyframes sp { to { transform:rotate(360deg); } }
-.sp { animation:sp 1s linear infinite; transform-origin:50% 50%; }
+#tb-fab[data-s="loading"] svg { animation:sp 1s linear infinite; transform-origin:center; }
+#tb-fab[data-s="loading"]:hover svg { animation:none; }
 .x { opacity:0; transition:opacity .2s; }
 #tb-fab[data-s="loading"]:hover .sp { opacity:0; }
 #tb-fab[data-s="loading"]:hover .x { opacity:1; }

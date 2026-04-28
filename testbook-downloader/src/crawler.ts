@@ -101,7 +101,13 @@ export class Crawler {
                         sec.click();
                     }
                     
-                    await this.wait(1200);
+                    // Wait for section to become active dynamically (up to 5s)
+                    for (let w = 0; w < 20; w++) {
+                        await this.wait(250);
+                        if (this.getActiveSectionName() === secName) break;
+                    }
+                    // Additional small wait for question content to render
+                    await this.wait(500);
                     
                     if (secName !== currentSectionName) {
                         this.markdown += `# ${secName}\n\n`;
@@ -165,19 +171,28 @@ export class Crawler {
             }
 
             nextBtn.click();
-            await this.wait(800);
 
-            // B7: Check if we jumped to a different section
-            const activeSecName = this.getActiveSectionName();
-            if (activeSecName && activeSecName !== sectionName) {
-                // The UI automatically transitioned to the next section
-                return currentComp;
+            // Wait dynamically for the question or section to change
+            let nextCheck = current;
+            let changed = false;
+            for (let i = 0; i < 20; i++) { // Max 5 seconds
+                await this.wait(250);
+                if (!this.isRunning) return currentComp;
+                
+                const activeSecName = this.getActiveSectionName();
+                if (activeSecName && activeSecName !== sectionName) {
+                    return currentComp; // The UI automatically transitioned to the next section
+                }
+                
+                nextCheck = extractCurrentQuestion(qIdxInSec + 1, currentComp);
+                if (nextCheck.md !== md) {
+                    changed = true;
+                    break;
+                }
             }
 
-            // B3: extract once, reuse at loop top
-            const nextCheck = extractCurrentQuestion(qIdxInSec + 1, currentComp);
-            if (nextCheck.md === md || !this.isRunning) {
-                return currentComp; // Stuck, reached end, or cancelled
+            if (!changed) {
+                return currentComp; // Stuck or reached end
             }
             
             qIdxInSec++;

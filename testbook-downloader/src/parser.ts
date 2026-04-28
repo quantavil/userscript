@@ -20,6 +20,25 @@ export function htmlToMarkdown(root: Element | null): string {
   const uselessImages = clone.querySelectorAll('img[src*="lms_creative_elements"], img[src*="tb-avatar"], img.avatar, img.icon');
   uselessImages.forEach(img => img.remove());
 
+  // Replace specific placeholder images with semantic text
+  const allImages = clone.querySelectorAll('img');
+  allImages.forEach(img => {
+      const src = img.getAttribute('src') || '';
+      if (src.includes('quesImage37.png')) {
+          const b = document.createElement('b');
+          b.textContent = 'ALTERNATE METHOD';
+          img.parentNode?.replaceChild(b, img);
+      } else if (src.includes('60c6e105dc004150078ccd08_16298247021121.png')) {
+          const b = document.createElement('b');
+          b.textContent = '💡IMPORTANT POINT';
+          img.parentNode?.replaceChild(b, img);
+      } else if (src.includes('z65abjZdgDuGx4tuXXlusQDIeyCCmOiNCJWG3XiTuSsddAprFHSwW4HR2TdTYnMe73n5kgaTcUZYR9G38EcnxmPnK0SZgvEsGj6zGluwSjH8O1Xs0F-Un9IoZifdXgHRAmTPhFpV')) {
+          const span = document.createElement('span');
+          span.textContent = '✅';
+          img.parentNode?.replaceChild(span, img);
+      }
+  });
+
   // Clean up useless Testbook UI elements that clutter the markdown
   const uselessUI = clone.querySelectorAll('button, bookmarks, report-cta, .tp-pos-neg-marks, .tb-report-component, .dropdown-menu, .help-note, .action-text, .tb-text-grey, .tb-more-dot');
   uselessUI.forEach(el => el.remove());

@@ -1,6 +1,6 @@
 {
   "name": "testbook-downloader",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -8,8 +8,8 @@
     "dev": "bunx vite"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "quantavil",
+  "license": "MIT",
   "type": "module",
   "devDependencies": {
     "@types/turndown": "^5.0.6",
