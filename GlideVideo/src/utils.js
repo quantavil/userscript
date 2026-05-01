@@ -14,7 +14,10 @@ const MVC_Utils = {
 
     clampTime(t) { return this.clamp(t, 0, this.activeVideo?.duration ?? Infinity); },
 
-    isPlaying(v) { return v && !v.paused && !v.ended && v.readyState > 2; },
+    isPlaying(v) { 
+        if (v === this.activeVideo) return v && !v.paused && !v.ended;
+        return v && !v.paused && !v.ended && v.readyState > 2; 
+    },
 
     vibrate(ms = 10) {
         if (navigator.vibrate) try { navigator.vibrate(ms); } catch (e) {}

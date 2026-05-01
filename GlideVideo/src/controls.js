@@ -161,13 +161,13 @@ const MVC_Controls = {
             }
         });
 
-        this.ui.speedBtn.addEventListener('pointerup', e => {
+        const onSpeedPointerEnd = e => {
             e.stopPropagation();
             clearTimeout(this.timers.longPress);
             if (this.sliderData.isSliding && this.activeVideo) {
-                this.saveSetting('lastRate', this.activeVideo.playbackRate.toString());
+                this.saveSetting('lastRate', this.activeVideo.playbackRate);
                 this.updateSpeedDisplay();
-            } else if (!longPressActioned) {
+            } else if (!longPressActioned && e.type === 'pointerup') {
                 if (this.activeVideo && (this.activeVideo.paused || this.activeVideo.ended)) {
                     this.handlePlayPauseClick();
                 } else {
@@ -184,7 +184,9 @@ const MVC_Controls = {
             this.hideSpeedToast();
             clearTimeout(this.timers.hide);
             this.timers.hide = setTimeout(() => this.hideUI(), MVC_CONFIG.UI_FADE_TIMEOUT);
-        });
+        };
+        this.ui.speedBtn.addEventListener('pointerup', onSpeedPointerEnd);
+        this.ui.speedBtn.addEventListener('pointercancel', onSpeedPointerEnd);
     },
 
     updateSpeedSlider() {

@@ -11,7 +11,7 @@ const MVC_Video = {
         this.settings = {
             skipSeconds:  getStored('mvc_skipSeconds',    10),
             defaultSpeed: getStored('mvc_defaultSpeed',   1.0),
-            lastRate:     parseFloat(getStored('mvc_lastRate', '"1.0"')) || 1.0,
+            lastRate:     getStored('mvc_lastRate', 1.0),
             transform:    getStored('mvc_transform',       { ratio: 'fit', zoom: 1, rotation: 0 }),
             gesturesEnabled: getStored('mvc_gesturesEnabled', true)
         };
@@ -104,6 +104,10 @@ const MVC_Video = {
         const fsEl       = document.fullscreenElement || document.webkitFullscreenElement;
 
         let parent = fsEl;
+        if (parent && parent.tagName === 'VIDEO') {
+            parent = parent.parentElement;
+        }
+        
         if (parent && parent.isConnected) {
             if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
             parent.appendChild(this.ui.wrap);
@@ -159,7 +163,8 @@ const MVC_Video = {
         const offsetX = (layoutWidth * (zoom - 1)) / 2;
         const offsetY = (layoutHeight * (zoom - 1)) / 2;
 
-        const desiredLeftPage = vr.left + offsetX + window.scrollX + MVC_CONFIG.EDGE;
+        const uiWidth = this.ui.wrap.offsetWidth || 100;
+        const desiredLeftPage = vr.right - offsetX + window.scrollX - MVC_CONFIG.EDGE - uiWidth;
         let desiredTopPage = vr.top + offsetY + window.scrollY + MVC_CONFIG.EDGE;
 
         this._applyPagePosition(desiredLeftPage, desiredTopPage, this.isScrolling);
@@ -298,7 +303,7 @@ const MVC_Video = {
     setPlaybackRate(rate) {
         if (!this.activeVideo) return;
         this.activeVideo.playbackRate = rate;
-        this.saveSetting('lastRate', String(rate));
+        this.saveSetting('lastRate', rate);
         this.updateSpeedDisplay();
     },
 
@@ -314,7 +319,7 @@ const MVC_Video = {
             this.activeVideo.playbackRate = this.settings.lastRate || this.settings.defaultSpeed;
             this.activeVideo.play().catch(() => {});
         } else {
-            this.saveSetting('lastRate', String(this.activeVideo.playbackRate));
+            this.saveSetting('lastRate', this.activeVideo.playbackRate);
             this.activeVideo.pause();
         }
     },
@@ -338,7 +343,8 @@ const MVC_Video = {
 
     // ── Fullscreen / guardian ───────────────────────────────────────────────
     onFullScreenChange() {
-        const fsEl      = document.fullscreenElement || document.webkitFullscreenElement;
+        let fsEl      = document.fullscreenElement || document.webkitFullscreenElement;
+        if (fsEl && fsEl.tagName === 'VIDEO') fsEl = fsEl.parentElement;
         const container = fsEl || document.body;
         [this.ui.backdrop, this.ui.toast, this.ui.speedToast, this.ui.gestureOverlay, this.ui.speedMenu, this.ui.skipMenu, this.ui.settingsMenu]
             .forEach(el => { if (el) container.appendChild(el); });
@@ -348,7 +354,8 @@ const MVC_Video = {
 
     guardianCheck() {
         if (!this.activeVideo || !this.ui.wrap) return;
-        const fsEl         = document.fullscreenElement || document.webkitFullscreenElement;
+        let fsEl         = document.fullscreenElement || document.webkitFullscreenElement;
+        if (fsEl && fsEl.tagName === 'VIDEO') fsEl = fsEl.parentElement;
         const expectedParent = fsEl ? fsEl : document.body;
         if (expectedParent && (!this.ui.wrap.isConnected || this.ui.wrap.parentElement !== expectedParent))
             this.attachUIToVideo(this.activeVideo);

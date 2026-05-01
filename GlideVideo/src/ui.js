@@ -243,7 +243,9 @@ const MVC_UI = {
 
         playbackCard.append(speedRow, skipRow, gestureRow);
 
-        const container = document.fullscreenElement || document.webkitFullscreenElement || document.body;
+        let fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+        if (fsEl && fsEl.tagName === 'VIDEO') fsEl = fsEl.parentElement;
+        const container = fsEl || document.body;
         container.appendChild(this.ui.settingsMenu);
     },
 
@@ -257,7 +259,7 @@ const MVC_UI = {
         if      (this.activeVideo.ended)  this.ui.speedBtn.textContent = 'Replay';
         else if (this.activeVideo.paused) this.ui.speedBtn.textContent = '▶︎';
         else this.ui.speedBtn.textContent = `${this.activeVideo.playbackRate.toFixed(1)}x`;
-        this.saveSetting('last_rate', String(this.activeVideo.playbackRate));
+        this.saveSetting('lastRate', this.activeVideo.playbackRate);
     },
 
     // ── Menu placement ──────────────────────────────────────────────────────
