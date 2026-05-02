@@ -1,5 +1,4 @@
-import TurndownService from 'turndown';
-import { gfm } from 'turndown-plugin-gfm';
+import { getTurndownService } from './converter';
 
 interface QuestionData {
   index: number;
@@ -13,23 +12,15 @@ interface QuestionData {
 }
 
 export class Crawler {
-  private turndownService: TurndownService;
   private isCancelled: boolean = false;
-  private questionsData: Map<string, QuestionData> = new Map(); // Use Map to prevent duplicates
+  private questionsData: Map<string, QuestionData> = new Map();
   private currentIndex: number = 1;
 
   constructor(
     private onUpdate: (msg: string) => void,
     private onComplete: (markdown: string) => void,
     private onError: (msg: string) => void
-  ) {
-    this.turndownService = new TurndownService({
-      headingStyle: 'atx',
-      bulletListMarker: '-',
-      codeBlockStyle: 'fenced'
-    });
-    this.turndownService.use(gfm);
-  }
+  ) {}
 
   private sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -39,15 +30,25 @@ export class Crawler {
     this.isCancelled = true;
   }
 
+  /** Simple djb2 hash for robust deduplication instead of 50-char substring */
+  private hashString(str: string): string {
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+    }
+    return hash.toString(36);
+  }
+
   private extractCurrentQuestion(): QuestionData | null {
-    // Find the currently visible question block
-    // It's usually the one with 'display: flex' or similar, but we can also just find all that don't have 'display: none'
     let activeBlock: Element | null = null;
     const blocks = Array.from(document.querySelectorAll('.singleqid'));
-    for (const block of blocks) {
-      const style = window.getComputedStyle(block);
+    let domIndex = 0;
+
+    for (let i = 0; i < blocks.length; i++) {
+      const style = window.getComputedStyle(blocks[i]);
       if (style.display !== 'none') {
-        activeBlock = block;
+        activeBlock = blocks[i];
+        domIndex = i + 1;
         break;
       }
     }
@@ -81,7 +82,7 @@ export class Crawler {
       const solutionHtml = solblock ? solblock.innerHTML.trim() : '';
 
       return {
-        index: this.currentIndex,
+        index: domIndex || this.currentIndex,
         questionHtml,
         options,
         solutionHtml
@@ -98,36 +99,54 @@ export class Crawler {
     this.currentIndex = 1;
     
     let sameQuestionCount = 0;
-    let lastQuestionId = '';
+    let consecutiveNulls = 0;
+    let lastSignature = '';
 
     while (!this.isCancelled) {
       this.onUpdate(`Extracting Q${this.currentIndex}...`);
-      await this.sleep(300); // Wait for potential UI updates
+      await this.sleep(300);
 
       const qData = this.extractCurrentQuestion();
       
-      if (qData) {
-        // Create a signature to detect if we're stuck or looped
-        const signature = qData.questionHtml.substring(0, 50);
-        
-        if (signature === lastQuestionId) {
-          sameQuestionCount++;
-          if (sameQuestionCount > 3) {
-            this.onUpdate(`Reached the end or stuck.`);
-            break;
-          }
+      if (!qData) {
+        consecutiveNulls++;
+        if (consecutiveNulls > 3) {
+          this.onUpdate('No questions found on page.');
+          break;
+        }
+        // Try clicking Next in case we're on a transitional state
+        const nextBtn = Array.from(document.querySelectorAll<HTMLButtonElement>('button.btn-prenext')).find(btn => btn.textContent?.includes('Next'));
+        if (nextBtn && !nextBtn.disabled && nextBtn.style.display !== 'none') {
+          nextBtn.click();
+          await this.sleep(500);
         } else {
-          sameQuestionCount = 0;
-          lastQuestionId = signature;
-          
-          // Save the question
-          if (!this.questionsData.has(signature)) {
-            this.questionsData.set(signature, qData);
-            this.currentIndex++;
-          } else {
-            // We've looped back to a question we already processed
-            break;
-          }
+          break;
+        }
+        continue;
+      }
+
+      consecutiveNulls = 0;
+
+      // Hash full text content for robust deduplication
+      const textContent = qData.questionHtml.replace(/<[^>]*>/g, '').trim();
+      const signature = this.hashString(textContent);
+        
+      if (signature === lastSignature) {
+        sameQuestionCount++;
+        if (sameQuestionCount > 3) {
+          this.onUpdate(`Reached the end or stuck.`);
+          break;
+        }
+      } else {
+        sameQuestionCount = 0;
+        lastSignature = signature;
+        
+        if (!this.questionsData.has(signature)) {
+          this.questionsData.set(signature, qData);
+          this.currentIndex++;
+        } else {
+          // We've looped back to a question we already processed
+          break;
         }
       }
 
@@ -136,9 +155,8 @@ export class Crawler {
       
       if (nextBtn && !nextBtn.disabled && nextBtn.style.display !== 'none') {
         nextBtn.click();
-        await this.sleep(500); // Wait for the next question to load/render
+        await this.sleep(500);
       } else {
-        // No next button or it's disabled, we're done
         break;
       }
     }
@@ -159,16 +177,17 @@ export class Crawler {
   }
 
   private generateMarkdown(): string {
+    const td = getTurndownService();
     let markdown = `# Oliveboard Exam\n\n`;
 
     let displayIndex = 1;
     for (const q of this.questionsData.values()) {
       markdown += `### Q${displayIndex}\n\n`;
-      markdown += `${this.turndownService.turndown(q.questionHtml)}\n\n`;
+      markdown += `${td.turndown(q.questionHtml)}\n\n`;
 
       q.options.forEach((opt) => {
         const optionMark = opt.isCorrect ? `**[Correct]** ` : ``;
-        const optionMarkdown = this.turndownService.turndown(opt.html).replace(/\n/g, ' '); 
+        const optionMarkdown = td.turndown(opt.html).replace(/\n/g, ' '); 
         markdown += `- **${opt.label}**: ${optionMark}${optionMarkdown}\n`;
       });
 
@@ -176,7 +195,7 @@ export class Crawler {
 
       if (q.solutionHtml) {
         markdown += `**Solution:**\n\n`;
-        markdown += `${this.turndownService.turndown(q.solutionHtml)}\n\n`;
+        markdown += `${td.turndown(q.solutionHtml)}\n\n`;
       }
 
       markdown += `---\n\n`;
@@ -190,12 +209,13 @@ export class Crawler {
     const q = this.extractCurrentQuestion();
     if (!q) return null;
     
+    const td = getTurndownService();
     let markdown = `### Q${q.index}\n\n`;
-    markdown += `${this.turndownService.turndown(q.questionHtml)}\n\n`;
+    markdown += `${td.turndown(q.questionHtml)}\n\n`;
     
     q.options.forEach((opt) => {
       const optionMark = opt.isCorrect ? `**[Correct]** ` : ``;
-      const optionMarkdown = this.turndownService.turndown(opt.html).replace(/\n/g, ' '); 
+      const optionMarkdown = td.turndown(opt.html).replace(/\n/g, ' '); 
       markdown += `- **${opt.label}**: ${optionMark}${optionMarkdown}\n`;
     });
     
@@ -203,7 +223,7 @@ export class Crawler {
     
     if (q.solutionHtml) {
       markdown += `**Solution:**\n\n`;
-      markdown += `${this.turndownService.turndown(q.solutionHtml)}\n\n`;
+      markdown += `${td.turndown(q.solutionHtml)}\n\n`;
     }
     
     return markdown;

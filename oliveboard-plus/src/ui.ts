@@ -34,7 +34,6 @@ export class DownloaderUI {
   private timer: number | null = null;
 
   constructor(private onStart: () => void, private onCancel: () => void) {
-    if (!document.getElementById('tb-css')) document.head.insertAdjacentHTML('beforeend', `<style id="tb-css">${STYLES}</style>`);
     this.el.id = 'tb-fab';
     this.el.onclick = () => {
       if (this.state === 'idle' || this.state === 'error') {
@@ -83,7 +82,12 @@ export class DownloaderUI {
     if (s === 'loading') this.startSpin();
   }
 
-  mount() { document.body.appendChild(this.el); }
+  mount() {
+    if (!document.getElementById('tb-css')) {
+      document.head.insertAdjacentHTML('beforeend', `<style id="tb-css">${STYLES}</style>`);
+    }
+    document.body.appendChild(this.el);
+  }
   updateStatus(m: string) { if (this.state === 'loading') this.el.dataset.t = m; }
   error(m?: string) { 
     this.setState('error'); 

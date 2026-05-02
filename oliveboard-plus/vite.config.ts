@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'Oliveboard Plus',
         namespace: 'ob-enhancer',
-        version: '1.0.0',
+        version: '1.1.0',
         description: 'Enhance Oliveboard UI and functionality.',
         author: 'quantavil',
         match: ['*://*.oliveboard.in/*'],

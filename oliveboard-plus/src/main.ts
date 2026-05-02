@@ -1,7 +1,7 @@
 import { DownloaderUI } from './ui';
 import { Crawler } from './crawler';
-import { downloadFile, enableCopyAndRightClick } from './utils';
-import { cleanUI, interceptViewSolutions } from './uiCleaner';
+import { downloadFile, enableCopyAndRightClick, onReady } from './utils';
+import { hideElements, modifyLinks, interceptViewSolutions } from './uiCleaner';
 import { ensureCopyButton } from './copyMarkdown';
 
 function initDownloader() {
@@ -21,29 +21,28 @@ function initDownloader() {
         () => activeCrawler?.cancel()
     );
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => ui.mount());
-    } else {
-        ui.mount();
-    }
+    onReady(() => ui.mount());
+}
+
+/** All DOM-reactive handlers in one place */
+function runMutationHandlers() {
+    hideElements();
+    modifyLinks();
+    ensureCopyButton();
 }
 
 function init() {
-    enableCopyAndRightClick();
-    cleanUI();
-    interceptViewSolutions();
-    initDownloader();
-    
-    // Ensure the copy markdown button is placed even if DOM changes
-    const observer = new MutationObserver(() => ensureCopyButton());
+    // Error boundaries: each feature is independent
+    try { enableCopyAndRightClick(); } catch (e) { console.error('[OB+]', e); }
+    try { interceptViewSolutions(); } catch (e) { console.error('[OB+]', e); }
+    try { initDownloader(); } catch (e) { console.error('[OB+]', e); }
+
+    // Initial run after DOM is ready
+    onReady(runMutationHandlers);
+
+    // Single consolidated MutationObserver for all DOM-reactive features
+    const observer = new MutationObserver(runMutationHandlers);
     observer.observe(document.documentElement, { childList: true, subtree: true });
-    
-    // Also try doing it immediately
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', ensureCopyButton);
-    } else {
-        ensureCopyButton();
-    }
 }
 
 init();
