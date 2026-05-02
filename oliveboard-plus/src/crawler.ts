@@ -185,4 +185,27 @@ export class Crawler {
 
     return markdown;
   }
+
+  public extractSingleQuestionMarkdown(): string | null {
+    const q = this.extractCurrentQuestion();
+    if (!q) return null;
+    
+    let markdown = `### Q${q.index}\n\n`;
+    markdown += `${this.turndownService.turndown(q.questionHtml)}\n\n`;
+    
+    q.options.forEach((opt) => {
+      const optionMark = opt.isCorrect ? `**[Correct]** ` : ``;
+      const optionMarkdown = this.turndownService.turndown(opt.html).replace(/\n/g, ' '); 
+      markdown += `- **${opt.label}**: ${optionMark}${optionMarkdown}\n`;
+    });
+    
+    markdown += `\n`;
+    
+    if (q.solutionHtml) {
+      markdown += `**Solution:**\n\n`;
+      markdown += `${this.turndownService.turndown(q.solutionHtml)}\n\n`;
+    }
+    
+    return markdown;
+  }
 }
