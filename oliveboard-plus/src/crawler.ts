@@ -80,9 +80,13 @@ export class Crawler {
   }
 
 
+  private fixImageUrls(html: string): string {
+    return html.replace(/src=["'](?:\/)?(oliveimg\/[^"']+)["']/gi, 'src="https://u1.oliveboard.in/exams/solution/$1"');
+  }
+
   private extractCurrentQuestion(): QuestionData | null {
     let activeBlock: Element | null = null;
-    const blocks = Array.from(document.querySelectorAll('.singleqid'));
+    const blocks = Array.from(document.querySelectorAll('.singleqid, .paneqid'));
     let domIndex = 0;
 
     for (let i = 0; i < blocks.length; i++) {
@@ -101,9 +105,13 @@ export class Crawler {
     const sectionName = sectionEl?.textContent?.trim() || 'Unknown Section';
 
     try {
+      // Directions / Passage (only present in .paneqid)
+      const paneTxt = activeBlock.querySelector('.panetxt .eqt') || activeBlock.querySelector('.panetxt');
+      const directionsHtml = paneTxt ? this.fixImageUrls(paneTxt.innerHTML.trim()) + '<br><br>' : '';
+
       // Question
       const qblock = activeBlock.querySelector('.qblock .eqt') || activeBlock.querySelector('.qblock');
-      const questionHtml = qblock ? qblock.innerHTML.trim() : '';
+      const questionHtml = directionsHtml + (qblock ? this.fixImageUrls(qblock.innerHTML.trim()) : '');
 
       // Options
       const options: QuestionData['options'] = [];
@@ -114,7 +122,7 @@ export class Crawler {
         const textEl = optBlock.querySelector('.rightopt .eqt') || optBlock.querySelector('.rightopt');
         
         const label = labelEl ? labelEl.textContent?.trim() || '' : '';
-        const html = textEl ? textEl.innerHTML.trim() : '';
+        const html = textEl ? this.fixImageUrls(textEl.innerHTML.trim()) : '';
         const isCorrect = optBlock.classList.contains('correct');
 
         if (label || html) {
@@ -124,7 +132,7 @@ export class Crawler {
 
       // Solution
       const solblock = activeBlock.querySelector('.solutiontxt .eqt') || activeBlock.querySelector('.solutiontxt');
-      const solutionHtml = solblock ? solblock.innerHTML.trim() : '';
+      const solutionHtml = solblock ? this.fixImageUrls(solblock.innerHTML.trim()) : '';
 
       return {
         index: domIndex || this.currentIndex,
