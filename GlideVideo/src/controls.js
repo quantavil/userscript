@@ -262,7 +262,7 @@ const MVC_Controls = {
 
     updateDragPosition() {
         if (!this.dragData.isDragging) { this.isTickingDrag = false; return; }
-        const parent         = this.ui.wrap.parentElement || document.body;
+        const parent         = this.ui.wrap.offsetParent || document.body;
         const parentRect     = parent.getBoundingClientRect();
         const parentLeftPage = parentRect.left + window.scrollX;
         const parentTopPage  = parentRect.top  + window.scrollY;

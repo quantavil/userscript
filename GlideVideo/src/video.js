@@ -141,7 +141,7 @@ const MVC_Video = {
         const clampedLeft = this.clamp(pageX, minPageX, maxPageX);
         const clampedTop = ignoreYClamp ? pageY : this.clamp(pageY, minPageY, maxPageY);
 
-        const parent = this.ui.wrap.parentElement || document.body;
+        const parent = this.ui.wrap.offsetParent || document.body;
         const parentRect = parent.getBoundingClientRect();
         const parentLeftPage = parentRect.left + window.scrollX;
         const parentTopPage = parentRect.top + window.scrollY;
@@ -338,7 +338,8 @@ const MVC_Video = {
         if (!this.activeVideo) return;
         const { ratio, zoom, rotation } = this.settings.transform;
         this.activeVideo.style.objectFit  = ratio === 'fit' ? 'contain' : ratio === 'fill' ? 'cover' : 'fill';
-        this.activeVideo.style.transform  = `scale(${zoom}) rotate(${rotation}deg)`;
+        const orig = this.activeVideo.dataset.mvcOriginalTransform || '';
+        this.activeVideo.style.transform  = `${orig} scale(${zoom}) rotate(${rotation}deg)`.trim();
     },
 
     // ── Fullscreen / guardian ───────────────────────────────────────────────
