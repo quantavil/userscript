@@ -1,0 +1,24 @@
+{
+  "name": "oliveboard-enhancer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "bunx vite build",
+    "dev": "bunx vite"
+  },
+  "keywords": [],
+  "author": "quantavil",
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "@types/turndown": "^5.0.6",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0",
+    "vite-plugin-monkey": "^4.0.0"
+  },
+  "dependencies": {
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2"
+  }
+}

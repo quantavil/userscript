@@ -1,5 +1,10 @@
 export function beautifyMarkdown(markdown: string): string {
-    let result = markdown;
+    // 0. Protect fenced code blocks from global transformations
+    const blocks: string[] = [];
+    let result = markdown.replace(/```[\s\S]*?```/g, (m) => {
+        blocks.push(m);
+        return `\x00TB_CODE_${blocks.length - 1}\x00`;
+    });
 
     // 1. Deduplicate placeholder text if the original text already existed right below/above the image
     result = result.replace(/(\*\*ALTERNATE METHOD\*\*)\s*\n\s*\1/g, '$1');
@@ -32,6 +37,9 @@ export function beautifyMarkdown(markdown: string): string {
 
     // 7. Remove redundant multiple blank lines
     result = result.replace(/\n{3,}/g, '\n\n');
+
+    // Restore protected blocks
+    result = result.replace(/\x00TB_CODE_(\d+)\x00/g, (_, i) => blocks[parseInt(i)]);
 
     return result.trim();
 }

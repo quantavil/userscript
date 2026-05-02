@@ -5,12 +5,15 @@ A powerful and robust userscript designed to seamlessly crawl, extract, and conv
 ## Features
 
 *   **Comprehensive Extraction**: Automatically navigates through sections and pagination to extract every question, its options, and the detailed solution.
-*   **MathJax Support**: Safely extracts MathJax formulas and converts them into standard LaTeX `$...$` and `$$...$$` syntax for proper rendering in any Markdown viewer.
+*   **MathJax Support**: Safely extracts MathJax formulas and converts them into standard LaTeX `$...$` and `$$...$$` syntax, utilizing a custom element bypass to guarantee that complex commands and subscripts are never escaped by Turndown.
+*   **Code Formatting Preservation**: Fenced code blocks (` ``` `) maintain their exact semantic whitespace and indentation during the markdown beautification process.
 *   **Table Normalization**: Handles complex, ragged HTML tables, converting `colspan` correctly to satisfy GitHub-Flavored Markdown (GFM) requirements.
 *   **Surgical Clean-up**: Automatically removes UI clutter (e.g., report buttons, avatars, tracking pixels) before conversion, ensuring the output is strictly educational content.
+*   **Advanced Network Blocking & CSP Resilience**: Efficiently intercepts and blocks known tracking and analytics endpoints to speed up extraction. It includes a fallback mode that operates directly from the userscript context if the host site enforces strict Content Security Policies (CSP).
 *   **Dynamic Polling Engine**: Reliably handles slow connections and lazy-loading pages by dynamically observing DOM changes instead of using fragile, fixed timeouts.
+*   **Intelligent Crawler Validation**: Accurately scopes interaction targets (like the "Next" button) to the test interface, preventing accidental clicks on navigation palettes, and eliminates stale DOM reads during page transitions.
 *   **Caching Optimizer**: Prevents heavy, redundant Markdown re-parsing on unchanged DOM elements, keeping the script lightweight and performant even for massive tests with over 300 questions.
-*   **Floating UI**: Provides a sleek, unobtrusive Floating Action Button (FAB) that shows real-time progress of the extraction process.
+*   **Floating UI**: Provides a sleek, unobtrusive Floating Action Button (FAB) that shows real-time progress of the extraction process, equipped with robust race-condition handling for rapid interactions.
 
 ## Installation
 

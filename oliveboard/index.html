@@ -1,0 +1,2233 @@
+<html data-darkreader-mode="dynamic" data-darkreader-scheme="dark" data-darkreader-proxy-injected="true" style="user-select: none;"><head><style class="darkreader darkreader--fallback" media="screen"></style><style class="darkreader darkreader--user-agent" media="screen">@layer {
+html {
+    background-color: var(--darkreader-background-ffffff, #0c0e0f) !important;
+}
+html {
+    color-scheme: dark !important;
+}
+iframe {
+    color-scheme: dark !important;
+}
+html, body {
+    background-color: var(--darkreader-background-ffffff, #0c0e0f);
+}
+html, body {
+    border-color: var(--darkreader-border-4c4c4c, #6b6355);
+    color: var(--darkreader-text-000000, #e6e4e0);
+}
+a {
+    color: var(--darkreader-text-0040ff, #298bfe);
+}
+table {
+    border-color: var(--darkreader-border-808080, #4b5255);
+}
+mark {
+    color: var(--darkreader-text-000000, #e6e4e0);
+}
+::placeholder {
+    color: var(--darkreader-text-a9a9a9, #ada69b);
+}
+input:-webkit-autofill,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+    background-color: var(--darkreader-background-faffbd, #363a00) !important;
+    color: var(--darkreader-text-000000, #e6e4e0) !important;
+}
+* {
+    scrollbar-color: var(--darkreader-background-b0b0b0, #3b4144) var(--darkreader-background-f1f1f1, #151819);
+}
+::selection {
+    background-color: var(--darkreader-background-0060d4, #0044a5) !important;
+    color: var(--darkreader-text-ffffff, #e6e4e0) !important;
+}
+::-moz-selection {
+    background-color: var(--darkreader-background-0060d4, #0044a5) !important;
+    color: var(--darkreader-text-ffffff, #e6e4e0) !important;
+}
+}</style><style class="darkreader darkreader--text" media="screen"></style><style class="darkreader darkreader--invert" media="screen">.jfk-bubble.gtx-bubble, .captcheck_answer_label > input + img, span#closed_text > img[src^="https://www.gstatic.com/images/branding/googlelogo"], span[data-href^="https://www.hcaptcha.com/"] > #icon, img.Wirisformula, a[data-testid="headerMediumLogo"]>svg, .d2l-navigation-link-image-container, .d2l-iframe-loading-container, div.mc-ip-hide[style*="background: rgb(255, 255, 255) !important"], [style*="color: rgb(0, 0, 1) !important;"] {
+    filter: invert(100%) hue-rotate(180deg) brightness(95%) !important;
+}</style><style class="darkreader darkreader--inline" media="screen">[data-darkreader-inline-bgcolor] {
+  background-color: var(--darkreader-inline-bgcolor) !important;
+}
+[data-darkreader-inline-bgimage] {
+  background-image: var(--darkreader-inline-bgimage) !important;
+}
+[data-darkreader-inline-border] {
+  border-color: var(--darkreader-inline-border) !important;
+}
+[data-darkreader-inline-border-bottom] {
+  border-bottom-color: var(--darkreader-inline-border-bottom) !important;
+}
+[data-darkreader-inline-border-left] {
+  border-left-color: var(--darkreader-inline-border-left) !important;
+}
+[data-darkreader-inline-border-right] {
+  border-right-color: var(--darkreader-inline-border-right) !important;
+}
+[data-darkreader-inline-border-top] {
+  border-top-color: var(--darkreader-inline-border-top) !important;
+}
+[data-darkreader-inline-boxshadow] {
+  box-shadow: var(--darkreader-inline-boxshadow) !important;
+}
+[data-darkreader-inline-color] {
+  color: var(--darkreader-inline-color) !important;
+}
+[data-darkreader-inline-fill] {
+  fill: var(--darkreader-inline-fill) !important;
+}
+[data-darkreader-inline-stroke] {
+  stroke: var(--darkreader-inline-stroke) !important;
+}
+[data-darkreader-inline-outline] {
+  outline-color: var(--darkreader-inline-outline) !important;
+}
+[data-darkreader-inline-stopcolor] {
+  stop-color: var(--darkreader-inline-stopcolor) !important;
+}
+[data-darkreader-inline-bg] {
+  background: var(--darkreader-inline-bg) !important;
+}
+[data-darkreader-inline-border-short] {
+  border: var(--darkreader-inline-border-short) !important;
+}
+[data-darkreader-inline-border-bottom-short] {
+  border-bottom: var(--darkreader-inline-border-bottom-short) !important;
+}
+[data-darkreader-inline-border-left-short] {
+  border-left: var(--darkreader-inline-border-left-short) !important;
+}
+[data-darkreader-inline-border-right-short] {
+  border-right: var(--darkreader-inline-border-right-short) !important;
+}
+[data-darkreader-inline-border-top-short] {
+  border-top: var(--darkreader-inline-border-top-short) !important;
+}
+[data-darkreader-inline-invert] {
+    filter: invert(100%) hue-rotate(180deg);
+}</style><style class="darkreader darkreader--variables" media="screen">:root {
+   --darkreader-neutral-background: var(--darkreader-background-ffffff, #0c0e0f);
+   --darkreader-neutral-text: var(--darkreader-text-000000, #e6e4e0);
+   --darkreader-selection-background: var(--darkreader-background-0060d4, #0044a5);
+   --darkreader-selection-text: var(--darkreader-text-ffffff, #e6e4e0);
+}</style><style class="darkreader darkreader--root-vars" media="screen"></style>
+
+		<meta charset="UTF-8">
+		<title>Oliveboard | Solution App</title>
+        <meta name="viewport" content="initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css" integrity="sha512-xh6O/CkQoPOWDdYTDqeRdPCVd1SpvCA9XXcUnZS2FmJNp1coAFzvtCN9BmamE+4aHK8yyUHUSCcJHgXloTyT2A==" crossorigin="anonymous" referrerpolicy="no-referrer"><style class="darkreader darkreader--sync" media="screen"></style>
+		<link rel="stylesheet" href="css/style4.css?version=5"><style class="darkreader darkreader--sync" media="screen"></style>
+		<link rel="shortcut icon" type="image/x-icon" href="img/iefav.ico">
+		<link href="https://fonts.googleapis.com/css?family=Lato:400,700" rel="stylesheet">
+
+        
+<style>
+.btn-save-qn{
+    padding: 0;
+    background: no-repeat;
+    width: 25px;
+    margin-left: 5px;
+}
+.btn-save-qn img{
+    width:100%;
+}
+
+</style><style class="darkreader darkreader--sync" media="screen"></style>
+	<meta name="darkreader" content="ac411fa904ab498c850d33be837bad2c"><style class="darkreader darkreader--override" media="screen">.vimvixen-hint {
+    background-color: var(--darkreader-background-ffd76e, #604200) !important;
+    border-color: var(--darkreader-background-c59d00, #987700) !important;
+    color: var(--darkreader-text-302505, #d4d1cc) !important;
+}
+#vimvixen-console-frame {
+    color-scheme: light !important;
+}
+::placeholder {
+    opacity: 0.5 !important;
+}
+#edge-translate-panel-body,
+.MuiTypography-body1,
+.nfe-quote-text {
+    color: var(--darkreader-neutral-text) !important;
+}
+gr-main-header {
+    background-color: var(--darkreader-background-add8e6, #0f404f) !important;
+}
+.tou-z65h9k,
+.tou-mignzq,
+.tou-1b6i2ox,
+.tou-lnqlqk {
+    background-color: var(--darkreader-neutral-background) !important;
+}
+.tou-75mvi {
+    background-color: var(--darkreader-background-cfecf5, #03303d) !important;
+}
+.tou-ta9e87,
+.tou-1w3fhi0,
+.tou-1b8t2us,
+.tou-py7lfi,
+.tou-1lpmd9d,
+.tou-1frrtv8,
+.tou-17ezmgn {
+    background-color: var(--darkreader-background-f5f5f5, #131516) !important;
+}
+.tou-uknfeu {
+    background-color: var(--darkreader-background-faedda, #392100) !important;
+}
+.tou-6i3zyv {
+    background-color: var(--darkreader-background-85c3d8, #195468) !important;
+}
+div.mermaid-viewer-control-panel .btn {
+    background-color: var(--darkreader-neutral-background);
+    fill: var(--darkreader-neutral-text);
+}
+svg g rect.er {
+    fill: var(--darkreader-neutral-background) !important;
+}
+svg g rect.er.entityBox {
+    fill: var(--darkreader-neutral-background) !important;
+}
+svg g rect.er.attributeBoxOdd {
+    fill: var(--darkreader-neutral-background) !important;
+}
+svg g rect.er.attributeBoxEven {
+    fill: var(--darkreader-selection-background);
+    fill-opacity: 0.8 !important;
+}
+svg rect.er.relationshipLabelBox {
+    fill: var(--darkreader-neutral-background) !important;
+}
+svg g g.nodes rect,
+svg g g.nodes polygon {
+    fill: var(--darkreader-neutral-background) !important;
+}
+svg g rect.task {
+    fill: var(--darkreader-selection-background) !important;
+}
+svg line.messageLine0,
+svg line.messageLine1 {
+    stroke: var(--darkreader-neutral-text) !important;
+}
+div.mermaid .actor {
+    fill: var(--darkreader-neutral-background) !important;
+}
+mitid-authenticators-code-app > .code-app-container {
+    background-color: white !important;
+    padding-top: 1rem;
+}
+iframe#unpaywall[src$="unpaywall.html"] {
+    color-scheme: light !important;
+}
+select {
+    --darkreader-bg--form-control-background-color: rgba(22, 22, 22, 0) !important;
+}
+body#tumblr {
+    --darkreader-bg--secondary-accent: 31, 32, 34 !important;
+    --darkreader-bg--white: 23, 23, 23 !important;
+    --darkreader-text--black: 228, 224, 218 !important;
+}
+:host {
+    --d2l-border-color: var(--darkreader-bg--d2l-color-gypsum) !important;
+    --d2l-button-icon-background-color-hover: var(--darkreader-bg--d2l-color-gypsum) !important;
+    --d2l-color-ferrite: var(--darkreader-neutral-text) !important;
+    --d2l-color-sylvite: var(--darkreader-bg--d2l-color-sylvite) !important;
+    --d2l-dropdown-background-color: var(--darkreader-neutral-background) !important;
+    --d2l-dropdown-border-color: var(--darkreader-border--d2l-color-mica) !important;
+    --d2l-input-backgroud-color: var(--darkreader-neutral-background) !important;
+    --d2l-menu-border-color: var(--darkreader-bg--d2l-color-gypsum) !important;
+    --d2l-tooltip-background-color: var(--darkreader-neutral-background) !important;
+    --d2l-tooltip-border-color: var(--darkreader-bg--d2l-color-gypsum) !important;
+}
+:host([_floating]) .d2l-floating-buttons-container {
+    background-color: var(--darkreader-neutral-background) !important;
+    border-top-color: var(--darkreader-border--d2l-color-mica) !important;
+    opacity: 0.88 !important;
+}
+d2l-card {
+    background: var(--darkreader-neutral-background) !important;
+    border-color: var(--darkreader-border--d2l-color-gypsum) !important;
+}
+d2l-dropdown-content > div,
+d2l-menu-item {
+    background-color: var(--darkreader-neutral-background) !important;
+    border-radius: 10px !important;
+}
+d2l-empty-state-simple {
+    border-color: var(--darkreader-bg--d2l-color-gypsum) !important;
+}
+.d2l-button-filter > ul > li > a.vui-button {
+    border-color: var(--darkreader-border--d2l-color-mica) !important;
+}
+.d2l-label-text:has(.d2l-button-subtle-content):hover,
+.d2l-label-text:has(.d2l-button-subtle-content):focus,
+.d2l-label-text:has(.d2l-button-subtle-content):active {
+    background-color: var(--darkreader-bg--d2l-color-gypsum) !important;
+}
+.d2l-navigation-centerer {
+    color: inherit !important;
+}
+.d2l-tabs-layout {
+    border-color: var(--darkreader-border--d2l-color-gypsum) !important;
+}
+.d2l-input,
+.d2l-calendar-date,
+.d2l-htmleditor-container {
+    background-color: var(--darkreader-neutral-background) !important;
+}
+.d2l-collapsible-panel {
+    border: 1px solid var(--darkreader-border--d2l-color-mica) !important;
+    border-radius: 0.4rem !important;
+}
+.d2l-collapsible-panel-divider {
+    border-bottom: 1px solid var(--darkreader-border--d2l-color-mica) !important;
+}
+.d2l-w2d-flex {
+    border-bottom: 2px solid var(--darkreader-border--d2l-color-mica) !important;
+}
+.d2l-collapsible-panel scrolled,
+.d2l-collapsible-panel-header,
+.d2l-w2d-collection-fixed {
+    background-color: var(--darkreader-neutral-background) !important;
+}
+.d2l-loading-spinner-bg {
+    fill: var(--darkreader-bg--d2l-color-gypsum) !important;
+}
+.d2l-loading-spinner-bg-stroke {
+    stroke: var(--darkreader-border--d2l-color-mica) !important;
+}
+.d2l-loading-spinner-wrapper svg path,
+.d2l-loading-spinner-wrapper svg circle {
+    fill: var(--darkreader-neutral-background) !important;
+}
+.d2l-twopanelselector-side.d2l-twopanelselector-side-sep {
+    background: var(--darkreader-bg--d2l-color-mica) !important;
+}
+.d2l-le-TreeAccordionItem-anchor::before {
+    background: var(--darkreader-bg--d2l-color-corundum) !important;
+}
+table[class|="moz-header"] {
+    background: none;
+}
+*[style*="color: rgba(0,0,0,"],
+*[style*="color: rgba(0, 0, 0,"],
+*[style*="color:#000"],
+*[style*="color:black"],
+*[style*="color:#282828"],
+*[style*="color:#444"] {
+    color: var(--darkreader-neutral-text) !important;
+}
+*[style*="background:#fff"],
+*[style*="background-color:#fff"] {
+    background: var(--darkreader-neutral-background) !important;
+}
+*[bgcolor="#F5F5F5"],
+*[style*="background-color: #F5F5F5"] {
+    background: var(--darkreader-background-f5f5f5, #131516) !important;
+}
+body[style*="background: rgb(255, 255, 255) !important"] *:not(a),
+.body[style*="background-color: rgb(254, 254, 254) !important"] *:not(a) {
+    background-color: var(--darkreader-neutral-background) !important;
+}
+div[style*="www.gstatic.com/android/"] {
+    background: none !important;
+}
+*[style*="background:#f9f9f9"] {
+    background: var(--darkreader-background-f9f9f9, #0f1314) !important;
+}
+body.mediawiki.skin-vector #mw-page-base {
+    background-image: none !important;
+}</style></head>
+	
+	<body id="home" style="user-select: none;">
+		<div id="wrapper">
+			<section id="sec-topheader">
+				<div class="topheader padd15">
+					<div class="container header-row">
+						<div class="header-col">
+							<img class="hidden-xs" src="img/dlogo.svg" alt="O" width="199">
+							<img class="visible-xs" src="img/mlogo.svg" alt="O" width="28">
+						</div>
+						<div class="header-col text-center">
+							<h3>Quantitative Ability: Number Systems -  [Clerk]</h3>
+						</div>
+						<div class="header-col text-right hidden-xs">
+							<p></p>
+						</div>
+					</div>
+				</div>
+			</section>
+            <div id="side-panel-overlay" class="side-panel-overlay" style="display: none;"></div>
+            <a id="slider-trigger" class="slider-trigger open" style="display: flex; right: 320px;"><i class="fa fa-chevron-right"></i></a>
+            <span id="m-slider" class="m-slider"><img src="img/ic_menu.png" alt=""></span> 
+            <div class="right-col" id="right-col" style="display: block;"><!--right-col-->
+                
+				                <div class="right-header"><!--header-->
+                    <div class="row"><!--row-->
+                        <div class="head-card"><!--card-->
+                                <div class="left">
+                                    <img src="img/timetaken.svg" alt="Time Taken">
+                                    <h3 class"ttaken"="">00:00:10</h3>
+                                </div>
+                                <div class="right">
+                                    <p>Time Taken</p>
+                                </div>
+                        </div> <!--card-->
+                        <div class="head-card"><!--card-->
+                                <div class="left">
+                                    <img src="img/accuracy.svg" alt="Accuracy">
+                                    <h3 class="acc">0%</h3>
+                                </div>
+                                <div class="right">
+                                    <p>Accuracy</p>
+                                </div>
+                        </div> <!--card-->
+                        <div class="head-card"><!--card-->
+                                <div class="left">
+                                    <img src="img/totalscore.svg" alt="Total Score">
+                                    <h3>0.00</h3>
+                                </div>
+                                <div class="right">
+                                    <p class="tscr">Total Score</p>
+                                </div>
+                        </div> <!--card-->
+                    </div><!--row-->
+                    <div class="ans-map">
+                        <span><span id="stic-answered" class="ans-mock answered">0</span>Right</span>
+                        <span><span id="stic-notanswered" class="ans-mock not-answered">0</span>Wrong</span>
+                        <span><span id="stic-notvisited" class="ans-mock">15</span>Unattempted</span>
+                    </div>
+                </div><!--header-->
+                <div class="question-map">
+                                                           <div class="sec-0 box">
+                        <p><b>Topic Test</b></p>
+                                                <div class="box-inner">
+                                                <span class="map-qno q-0 unattempted activeq" onclick="goToQuestion(0)">1</span> 
+                                                                            <span class="map-qno q-1 unattempted" onclick="goToQuestion(1)">2</span> 
+                                                                            <span class="map-qno q-2 unattempted" onclick="goToQuestion(2)">3</span> 
+                                                                            <span class="map-qno q-3 unattempted" onclick="goToQuestion(3)">4</span> 
+                                                                            <span class="map-qno q-4 unattempted" onclick="goToQuestion(4)">5</span> 
+                                                                            <span class="map-qno q-5 unattempted" onclick="goToQuestion(5)">6</span> 
+                                                                            <span class="map-qno q-6 unattempted" onclick="goToQuestion(6)">7</span> 
+                                                                            <span class="map-qno q-7 unattempted" onclick="goToQuestion(7)">8</span> 
+                                                                            <span class="map-qno q-8 unattempted" onclick="goToQuestion(8)">9</span> 
+                                                                            <span class="map-qno q-9 unattempted" onclick="goToQuestion(9)">10</span> 
+                                                                            <span class="map-qno q-10 unattempted" onclick="goToQuestion(10)">11</span> 
+                                                                            <span class="map-qno q-11 unattempted" onclick="goToQuestion(11)">12</span> 
+                                                                            <span class="map-qno q-12 unattempted" onclick="goToQuestion(12)">13</span> 
+                                                                            <span class="map-qno q-13 unattempted" onclick="goToQuestion(13)">14</span> 
+                                                                            <span class="map-qno q-14 unattempted" onclick="goToQuestion(14)">15</span> 
+                                                                            </div>
+                    </div>
+                                    </div>
+            </div><!--right-col-->   
+
+			<div id="sec-sollanding" style="display: none;">
+								<section id="sec-summary">
+					<div class="oliveblk summary padd15">
+						<div class="container">
+							<div class="summary-row">
+								<div class="sumcard">
+									<div class="sumcard-inner">
+										<div class="left">
+											<img src="img/totalquestion.svg" alt="Total Question">
+										</div>
+										<div class="right">
+											<h3>15</h3>
+											<p>Total Questions</p>
+										</div>
+									</div>
+								</div>
+								<div class="sumcard">
+									<div class="sumcard-inner">
+										<div class="left">
+											<img src="img/timetaken.svg" alt="Time Taken">
+										</div>
+										<div class="right">
+											<h3>00:00:10</h3>
+											<p>Time Taken</p>
+										</div>
+									</div>
+								</div>
+								<div class="sumcard">
+									<div class="sumcard-inner">
+										<div class="left">
+											<img src="img/accuracy.svg" alt="Accuracy">
+										</div>
+										<div class="right">
+											<h3>0%</h3>
+											<p>Accuracy</p>
+										</div>
+									</div>
+								</div>
+								<div class="sumcard">
+									<div class="sumcard-inner">
+										<div class="left">
+											<img src="img/right.svg" alt="Right">
+										</div>
+										<div class="right">
+											<h3>0</h3>
+											<p>Right</p>
+										</div>
+									</div>
+								</div>
+								<div class="sumcard">
+									<div class="sumcard-inner">
+										<div class="left">
+											<img src="img/wrong.svg" alt="Wrong">
+										</div>
+										<div class="right">
+											<h3>0</h3>
+											<p>Wrong</p>
+										</div>
+									</div>
+								</div>
+								<div class="sumcard">
+									<div class="sumcard-inner">
+										<div class="left">
+											<img src="img/unattempted.svg" alt="Unattempted">
+										</div>
+										<div class="right">
+											<h3>15</h3>
+											<p>Unattempted</p>
+										</div>
+									</div>
+								</div>
+								<div class="sumcard">
+									<div class="sumcard-inner">
+										<div class="left">
+											<img src="img/totalscore.svg" alt="Total Score">
+										</div>
+										<div class="right">
+											<h3>0.00</h3>
+											<p>Total Score</p>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</section>
+				<div class="oliveblk oliveblk-moveupd padd5">
+					<img id="shsummary" class="visible-xs" src="img/ic-moveup.svg" alt="">
+				</div>
+				<section id="sec-status">
+					<div class="oliveblk oliveblk-middle padd5">
+						<div class="container">
+							<div class="ddncol">
+								<span id="chkwrong" class="cuc-review" style="display: none;"><img src="img/ic-uncheck.svg" alt="">Review Wrong</span>
+								<span id="chkunat" class="cuc-review"><img src="img/ic-uncheck.svg" alt=""> Review Unattempted</span>
+							</div>
+
+                            <div class="ddncol">
+                               <div class="switch-block">
+                                 <label class="switch">
+                                 <input type="checkbox" class="togreattempt" id="togreattempt-0">
+                                 <div class="switch-slider round">
+                                 </div>
+                                </label>
+                                <h3 class="txt-reattempt">Retry Mode</h3>
+                               </div>
+                            </div>
+
+
+						</div>
+					</div>
+				</section>
+                <div class="paper-layout"><!--parent-->
+                    <div class="left-col"><!--left-col--> 
+				<section id="sec-reviewtable">
+					<div class="oliveblk reviewtable padd5">
+						<div class="container">
+							<div class="reviewtable-inner">
+								<div class="review-row hidden-xs cursordef reviewheader">
+									<div class="reviewcol-group">
+									<div class="review-col"><p class="mobcard headingtxt">No</p></div>
+									<div class="review-col"><p class="mobcard headingtxt">Question</p></div>
+									</div>
+									<div class="reviewcol-group">
+									<div class="review-col"><p class="mobcard headingtxt">Status</p></div>
+									<div class="review-col"><p class="mobcard headingtxt">Time (sec)</p></div>
+									</div>
+									<div class="reviewcol-group">
+									<div class="review-col"><p class="mobcard headingtxt">Difficulty</p></div>
+									<div class="review-col"><p class="mobcard headingtxt">Correct</p></div>
+									</div>
+								</div>
+								<div class="review-scroll">
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(0)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">1</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> A has 10 chocolates and B has 8 choco...</span><span class="hqt" style="display:none"> A के पास 10 चॉक...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">2&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Easy</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">74%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(1)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">2</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> There are 20 questions in a test. Eac...</span><span class="hqt" style="display:none"> एक टेस्ट मे...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">1&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Moderate</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">68%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(2)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">3</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> By how much is 3/5th of 845 greater t...</span><span class="hqt" style="display:none"> 845का 3/5वां , 333 क...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">--&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Easy</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">82%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(3)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">4</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> In an organization of N employees, wh...</span><span class="hqt" style="display:none"> एक संस्था ज...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">--&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Moderate</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">63%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(4)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">5</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> Find a positive number which when inc...</span><span class="hqt" style="display:none"> एक धनात्मक ...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">--&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Moderate</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">74%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(5)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">6</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> Few books were distributed equally am...</span><span class="hqt" style="display:none"> एक कक्षा के ...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">--&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Easy</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">25%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(6)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">7</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> Mohan brought some toffees which are ...</span><span class="hqt" style="display:none"> मोहन ने कुछ ...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">1&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Moderate</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">26%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(7)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">8</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> Sum of two different positive natural...</span><span class="hqt" style="display:none"> दो अलग-अलग ध...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">--&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Moderate</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">78%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(8)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">9</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> Digits of a 3-digit number are in the...</span><span class="hqt" style="display:none"> 3 अंकों वाली ...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">1&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Easy</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">59%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(9)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">10</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> When 28% of a number is added to 82% ...</span><span class="hqt" style="display:none"> जब किसी संख...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">--&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Easy</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">73%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(10)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">11</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> There are 3 person A, B and C with sa...</span><span class="hqt" style="display:none"> एक साथ तीन व...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">--&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Easy</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">79%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(11)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">12</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> Ramya started a business investing Rs...</span><span class="hqt" style="display:none"> रम्या ने 32,000 र...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">4&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Moderate</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">58%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(12)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">13</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> A company proposed an idea for some c...</span><span class="hqt" style="display:none"> एक कंपनी ने ...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">--&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Easy</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">73%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(13)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">14</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> The ratio of the ages of Dev and his ...</span><span class="hqt" style="display:none"> देव और उसके ...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">1&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Moderate</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">53%</p>
+										</div>
+										</div>
+									</div>
+									
+									<div class="review-row reviewq-unat" onclick="goToQuestion(14)">
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">No.</p>
+											<p class="mobcard subtxt">15</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading borbot">Question</p>
+											<p class="mobcard subtxt"><span class="eqt"> The number of adults who come only to...</span><span class="hqt" style="display:none"> प्रत्येक द...</span></p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col unat">
+											<p class="mobcard headingtxt hide-heading">Status</p>
+											<p class="mobcard subtxt "><span class="cround"></span>Unattempted</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Time (sec)</p>
+											<p class="mobcard subtxt">--&nbsp; </p>
+										</div>
+										</div>
+										<div class="reviewcol-group">
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Difficulty</p>
+											<p class="mobcard subtxt">Easy</p>
+										</div>
+										<div class="review-col">
+											<p class="mobcard headingtxt hide-heading">Correct</p>
+											<p class="mobcard subtxt">64%</p>
+										</div>
+										</div>
+									</div>
+																</div>
+							</div>
+						</div>
+					</div>
+				</section>
+                    </div><!--left-col-->
+
+                </div><!--parent-->
+			</div>
+			<div id="sec-solview" style="display: block; height: 741px;">
+				<section id="sec-solheader">
+					<div class="oliveblk solheader padd15">
+						<div class="container">
+							<div class="solheader-col">
+								<div class="showqno">
+									<span class="hidden-xs cblue">Question: </span><span class="visible-xs cblue">Q: </span>&nbsp; <span class="updateqno cblue">1</span><span class="qnodivder">/</span><span>15</span>
+								</div>
+                                <div style="display:flex;flex-direction:row;gap:10px;margin-left:10px;">
+<span style="display:flex;"><img width="15px" style="margin-right:5px;" src="img/timetaken.svg" alt="Time Taken">
+<span id="qttaken"> 2s </span></span>
+<span style="display:flex;"><img width="15px" style="margin-right:5px;" src="img/accuracy.svg" alt="Accuracy">
+<span id="qacc">74%</span></span>
+                                </div>
+                                <div class="save-qs" title="Save Question">
+                                    <button type="button" class="button btn-save-qn" onclick="addQid('0')"><img id="qs-save" src="img/save-qs-line.png" alt=""></button>
+                                </div>
+								<div class="error-report" title="Report Error">
+									<button type="button" class="button btn-reporterror">Report</button>
+								</div>
+                        
+							</div>
+							<div class="solheader-col">
+								<div class="solheadercol-inner">
+									<div class="ddncol-inner">
+										<div class="btn-dropdown">
+											<img class="ic-ddn" src="img/ic-dropdown.svg" alt="Dropdown">
+											<span class="txt-group"><span class="ddn-select">Topic Test</span>
+											<img class="ic-darr" src="img/downarrow.svg" alt="downarrow"></span>
+										</div>
+										<ul class="ddn-collapse" style=""> 
+																						<li id="ssk-0"><span class="desksecname hidden-xs">Topic Test</span><span class="mobsecname visible-xs">S1</span></li>
+																					</ul>
+									</div>
+								</div>
+								<div class="solheadercol-inner" title="Change Language">
+									<img class="change-lang" src="img/lang-english.svg" alt="" style="visibility: visible;">
+								</div>
+							</div>
+						</div>
+					</div>
+				</section>
+				<section id="questionssols-block" style="height: auto;">
+					<div class="oliveblk questionssols">
+				                            <div id="q-0-58001-1" class="qosblock singleqid" style="display: flex;"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-0" class="qos-col" style="display: none;">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-0" id="vsbt-0" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(0, 0);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-0" class="qblock qos-col"><span class="eqt"><p>A has 10 chocolates and B has 8 chocolates. C requested them to give him some chocolates in return for money. The three of them shared the chocolates equally and C paid the other two a total of ₹54. Find the difference between the amounts received by A and B.</p></span><span class="hqt" style="display:none"><p>A के पास 10 चॉकलेट हैं और B के पास 8 चॉकलेट हैं। C ने उनसे पैसे के बदले में कुछ चॉकलेट देने का अनुरोध किया। उन तीनों ने चॉकलेट समान रूप बाँट ली और C ने दोनों को कुल 54 रुपये का भुगतान किया। A और B द्वारा प्राप्त राशि के बीच का अंतर कितना होगा?</p></span></div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-0-0" class="opt correct">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt"><span class="eqt">₹18</span><span class="hqt" style="display:none">₹18</span></div></div>
+												</div>
+																								
+																							<div id="opt-0-1" class="opt">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt"><span class="eqt">₹16</span><span class="hqt" style="display:none">₹16</span></div></div>
+												</div>
+																								
+																							<div id="opt-0-2" class="opt">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt"><span class="eqt">₹17</span><span class="hqt" style="display:none">₹17</span></div></div>
+												</div>
+																								
+																							<div id="opt-0-3" class="opt">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt"><span class="eqt">₹20</span><span class="hqt" style="display:none">₹20</span></div></div>
+												</div>
+																								
+																							<div id="opt-0-4" class="opt">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt"><span class="eqt">None of these</span><span class="hqt" style="display:none">इनमें से कोई नहीं</span></div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-0" class="sblock qos-col hide-class" style="display: block;">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-0" class="solutiontxt"><p>As A and B had a total of 18 chocolates, so A and B must have given 4 and 2 chocolates respectively to C.</p><p>Hence, the ratio of their share must be 2:1. Now Raj paid ₹54 for 6 chocolates. So cost of one chocolate is ₹9.</p><p>Hence A and B got ₹36 and ₹18 respectively.</p> <p>Therefore, A gets ₹18 more than B. Hence option 1</p></div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-1-58002-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-1" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-1" id="vsbt-1" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(1, 1);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-1" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+VGhlcmUgYXJlIDIwIHF1ZXN0aW9ucyBpbiBhIHRlc3QuIEVhY2ggcXVlc3Rpb24gaGFzIGVpdGhlciAzIG1hcmtzIGZvciBhIGNvcnJlY3QgYW5zd2VyIG9yIDUgbWFya3MgZm9yIGEgY29ycmVjdCBhbnN3ZXIuIElmIHRoZSB0b3RhbCBtYXJrcyBmb3IgdGhlIHF1ZXN0aW9uIHBhcGVyIGlzIDcwLCBob3cgbWFueSA1IG1hcmsgcXVlc3Rpb25zIGFyZSBwcmVzZW50PzwvcD48L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+PHA+JiMyMzE5OyYjMjMyNTsgJiMyMzM1OyYjMjM3NTsmIzIzNjA7JiMyMzgxOyYjMjMzNTsgJiMyMzUwOyYjMjM3NTsmIzIzMDY7IDIwICYjMjM0NjsmIzIzODE7JiMyMzUyOyYjMjM1ODsmIzIzODE7JiMyMzQ0OyAmIzIzNjE7JiMyMzc2OyYjMjMwNjsgfCAmIzIzNDY7JiMyMzgxOyYjMjM1MjsmIzIzNDA7JiMyMzgxOyYjMjM1MTsmIzIzNzU7JiMyMzI1OyAmIzIzNDY7JiMyMzgxOyYjMjM1MjsmIzIzNTg7JiMyMzgxOyYjMjM0NDsgJiMyMzI1OyYjMjM3NTsgJiMyMzYwOyYjMjM2MTsmIzIzNjg7ICYjMjMxMzsmIzIzNDA7JiMyMzgxOyYjMjM0MDsmIzIzNTI7ICYjMjMyNTsmIzIzNzU7ICYjMjM1NDsmIzIzNjc7JiMyMzE5OyAmIzIzNTE7JiMyMzY2OyAmIzIzNDA7JiMyMzc5OyAzJiMyMzA5OyYjMjMwNjsmIzIzMjU7ICYjMjM2MTsmIzIzNzY7JiMyMzA2OyAmIzIzNTE7JiMyMzY2OyA1ICYjMjMwOTsmIzIzMDY7JiMyMzI1OyAmIzIzNjE7JiMyMzc2OyYjMjMwNjsgfCAmIzIzNTE7JiMyMzQyOyYjMjM2NzsgJiMyMzQ2OyYjMjM4MTsmIzIzNTI7JiMyMzU4OyYjMjM4MTsmIzIzNDQ7JiMyMzQ2OyYjMjM0MDsmIzIzODE7JiMyMzUyOyAmIzIzMjU7JiMyMzc1OyAmIzIzMjU7JiMyMzY5OyYjMjM1NDsgJiMyMzA5OyYjMjMwNjsmIzIzMjU7IDcwICYjMjM2MTsmIzIzNzY7LCAmIzIzNDA7JiMyMzc5OyAmIzIzNTc7JiMyMzYxOyYjMjM2NjsmIzIzMDY7IDUgJiMyMzA5OyYjMjMwNjsmIzIzMjU7ICYjMjMyNTsmIzIzNzU7ICYjMjMyNTsmIzIzNjc7JiMyMzQwOyYjMjM0NDsmIzIzNzU7ICYjMjM0NjsmIzIzODE7JiMyMzUyOyYjMjM1ODsmIzIzODE7JiMyMzQ0OyAmIzIzNjE7JiMyMzc2OyYjMjMwNjsgPzwvcD48L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-1-0" class="opt cursorst" onclick="attemptAgain(1, 0, 1)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NDwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj40PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-1-1" class="opt cursorst" onclick="attemptAgain(1, 1, 1)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NTwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj41PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-1-2" class="opt cursorst" onclick="attemptAgain(1, 2, 1)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+ODwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj44PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-1-3" class="opt cursorst" onclick="attemptAgain(1, 3, 1)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+OTwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj45PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-1-4" class="opt cursorst" onclick="attemptAgain(1, 4, 1)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+Tm9uZSBvZiB0aGVzZTwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj4mIzIzMTE7JiMyMzQ0OyYjMjM1MDsmIzIzNzU7ICYjMjM2MDsmIzIzNzU7ICYjMjMyNTsmIzIzNzk7JiMyMzEyOyAmIzIzNDQ7JiMyMzYxOyYjMjM2ODsmIzIzMDY7PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-1" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-1" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSPHA+VG90YWwgcXVlc3Rpb25zID0gMjA8L3A+PHA+TGV0IG51bWJlciBvZiA1IG1hcmsgcXVlc3Rpb25zID0gYTwvcD48cD41YSArIDMoMjAtYSkgPSA3MDwvcD48cD4yYSArIDYwID0gNzA8L3A+PHA+b3IgYSA9IDU8L3A+DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-2-58003-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-2" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-2" id="vsbt-2" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(2, 1);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-2" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+QnkgaG93IG11Y2ggaXMgMy81dGggb2YgODQ1IGdyZWF0ZXIgdGhhbiAyLzMgb2YgMzMzPzwvcD48L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+PHA+ODQ1JiMyMzI1OyYjMjM2NjsgMy81JiMyMzU3OyYjMjM2NjsmIzIzMDY7ICwgMzMzICYjMjMyNTsmIzIzNzU7IDIvMyAmIzIzNjA7JiMyMzc1OyAmIzIzNjA7JiMyMzc1OyAmIzIzMjU7JiMyMzY3OyYjMjM0MDsmIzIzNDQ7JiMyMzY2OyAmIzIzMDk7JiMyMzQzOyYjMjM2NzsmIzIzMjU7ICYjMjM2MTsmIzIzNzY7ID88L3A+PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-2-0" class="opt cursorst" onclick="attemptAgain(1, 0, 2)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTc1PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjE3NTwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-2-1" class="opt cursorst" onclick="attemptAgain(1, 1, 2)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+Mjg1PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjI4NTwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-2-2" class="opt cursorst" onclick="attemptAgain(1, 2, 2)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MjM4PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjIzODwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-2-3" class="opt cursorst" onclick="attemptAgain(1, 3, 2)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MjA5PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjIwOTwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-2-4" class="opt cursorst" onclick="attemptAgain(1, 4, 2)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+Tm9uZSBvZiB0aGVzZTwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj4mIzIzMTE7JiMyMzQ0OyYjMjM1MDsmIzIzNzU7ICYjMjM2MDsmIzIzNzU7ICYjMjMyNTsmIzIzNzk7JiMyMzEyOyAmIzIzNDQ7JiMyMzYxOyYjMjM2ODsmIzIzMDY7PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-2" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-2" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSPHA+My81IFggODQ1LTIvMyBYIDMzMz0yODU8L3A+DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-3-58004-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-3" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-3" id="vsbt-3" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(3, 1);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-3" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+SW4gYW4gb3JnYW5pemF0aW9uIG9mIE4gZW1wbG95ZWVzLCB3aGVuIG9ubHkgSGFyc2hpbCB3YXMgYWJzZW50LCB0aGUgbnVtYmVyIG9mIGVtcGxveWVlcyBjb3VsZCBiZSBkaXZpZGVkIGludG8gZ3JvdXBzIG9mIDYgZWFjaC4gQnV0IHdoZW4gYm90aCBIYXJzaGlsICZhbXA7IFNpbW9uIHdlcmUgYWJzZW50LCB0aGUgcmVzdCBjb3VsZCBiZSBkaXZpZGUgaW50byBncm91cHMgb2YgNyBlYWNoLiBXaGF0IGlzIHRoZSBtaW5pbXVtIHBvc3NpYmxlIHZhbHVlIG9mIE4/PC9wPjwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj48cD4mIzIzMTk7JiMyMzI1OyAmIzIzNjA7JiMyMzA2OyYjMjM2MDsmIzIzODE7JiMyMzQxOyYjMjM2NjsgJiMyMzMyOyYjMjM2NzsmIzIzNjA7JiMyMzUwOyYjMjM3NTsmIzIzMDY7ICYjMjMyNTsmIzIzNTI7JiMyMzgxOyYjMjM1MDsmIzIzMzA7JiMyMzY2OyYjMjM1MjsmIzIzNjc7JiMyMzUxOyYjMjM3OTsmIzIzMDY7ICYjMjMyNTsmIzIzNjg7ICYjMjM2MDsmIzIzMDY7JiMyMzI2OyYjMjM4MTsmIzIzNTE7JiMyMzY2OyBOICYjMjM2MTsmIzIzNzY7LCAmIzIzMTM7JiMyMzYwOyYjMjM1MDsmIzIzNzU7JiMyMzA2OyAmIzIzMzI7JiMyMzQ4OyAmIzIzMjU7JiMyMzc1OyYjMjM1NzsmIzIzNTQ7ICYjMjM2MTsmIzIzNTI7JiMyMzgxOyYjMjM1OTsmIzIzNjc7JiMyMzU0OyAmIzIzMDk7JiMyMzQ0OyYjMjM2OTsmIzIzNDY7JiMyMzYwOyYjMjM4MTsmIzIzNDE7JiMyMzY3OyYjMjM0MDsgJiMyMzUyOyYjMjM2MTsmIzIzNDA7JiMyMzY2OyAmIzIzNDE7JiMyMzY2OyAsICYjMjM0MDsmIzIzNzk7ICYjMjMxMDsmIzIzNDQ7JiMyMzc1OyAmIzIzNTc7JiMyMzY2OyYjMjM1NDsmIzIzNzU7ICYjMjMyNTsmIzIzNTI7JiMyMzgxOyYjMjM1MDsmIzIzMzA7JiMyMzY2OyYjMjM1MjsmIzIzNjc7JiMyMzUxOyYjMjM3OTsmIzIzMDY7ICYjMjMyNTsmIzIzNjg7ICYjMjM2MDsmIzIzMDY7JiMyMzI2OyYjMjM4MTsmIzIzNTE7JiMyMzY2OyAmIzIzMjU7JiMyMzc5OyAmIzIzNDY7JiMyMzgxOyYjMjM1MjsmIzIzNDA7JiMyMzgxOyYjMjM1MTsmIzIzNzU7JiMyMzI1OyA2ICYjMjMyNTsmIzIzNzU7ICYjMjM2MDsmIzIzNTA7JiMyMzcwOyYjMjM2MTsgJiMyMzUwOyYjMjM3NTsmIzIzMDY7ICYjMjM0ODsmIzIzNjY7JiMyMzA2OyYjMjMzNTsmIzIzNjY7ICYjMjMzMjsmIzIzNjY7ICYjMjM2MDsmIzIzMjU7JiMyMzQwOyYjMjM2NjsgJiMyMzQxOyYjMjM2NjsgLCAmIzIzNTQ7JiMyMzc1OyYjMjMyNTsmIzIzNjc7JiMyMzQ0OyAmIzIzMzI7JiMyMzQ4OyAmIzIzNjE7JiMyMzUyOyYjMjM4MTsmIzIzNTk7JiMyMzY3OyYjMjM1NDsgJiMyMzI0OyYjMjM1MjsgJiMyMzYwOyYjMjM2NjsmIzIzMTE7JiMyMzUwOyYjMjM0NDsgJiMyMzQyOyYjMjM3OTsmIzIzNDQ7JiMyMzc5OyYjMjMwNjsgJiMyMzA5OyYjMjM0NDsmIzIzNjk7JiMyMzQ2OyYjMjM0MTsmIzIzNjc7JiMyMzQwOyAmIzIzNDE7JiMyMzc1OywgJiMyMzQwOyYjMjM3OTsgJiMyMzQ2OyYjMjM4MTsmIzIzNTI7JiMyMzQwOyYjMjM4MTsmIzIzNTE7JiMyMzc1OyYjMjMyNTsgJiMyMzI1OyYjMjM3OTsgNyAmIzIzMjU7JiMyMzc1OyAmIzIzNjA7JiMyMzUwOyYjMjM3MDsmIzIzNjE7ICYjMjM1MDsmIzIzNzU7JiMyMzA2OyAmIzIzNDg7JiMyMzY2OyYjMjMwNjsmIzIzMzU7JiMyMzY2OyAmIzIzMzI7JiMyMzY2OyAmIzIzNjA7JiMyMzI1OyYjMjM0MDsmIzIzNjY7ICYjMjM0MTsmIzIzNjY7ICwgTiAmIzIzMjU7JiMyMzY2OyAmIzIzNDQ7JiMyMzgxOyYjMjM1MTsmIzIzNzA7JiMyMzQ0OyYjMjM0MDsmIzIzNTA7ICYjMjM2MDsmIzIzNTA7JiMyMzgxOyYjMjM0OTsmIzIzNjY7JiMyMzU3OyYjMjM2NzsmIzIzNDA7ICYjMjM1MDsmIzIzNjY7JiMyMzQ0OyAmIzIzMjU7JiMyMzY3OyYjMjM0MDsmIzIzNDQ7JiMyMzY2OyAmIzIzNjE7JiMyMzc2Oz88L3A+PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-3-0" class="opt cursorst" onclick="attemptAgain(1, 0, 3)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NjU8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+NjU8L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-3-1" class="opt cursorst" onclick="attemptAgain(1, 1, 3)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+Mzc8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+Mzc8L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-3-2" class="opt cursorst" onclick="attemptAgain(1, 2, 3)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+Nzk8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+Nzk8L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-3-3" class="opt cursorst" onclick="attemptAgain(1, 3, 3)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+Mjk8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+Mjk8L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-3-4" class="opt cursorst" onclick="attemptAgain(1, 4, 3)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+ODQ8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+ODQ8L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-3" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-3" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSIDxwPklmIG9uZSBlbXBsb3llZSBpcyBhYnNlbnQsIHRoZSBudW1iZXIgb2YgZW1wbG95ZWVzIHR1cm5zIG91dCB0byBiZSBvZiB0aGUgZm9ybSBvZiA2aysxLjwvcD4gPHA+U28gdGhlIG51bWJlciBjb3VsZCBiZSA3LCAxMywgMTksIDI1LCAzMSwgMzcsIDQzLi4uPC9wPiA8cD5XaGVuIHR3byBlbXBsb3llZXMgYXJlIGFic2VudCwgdGhlIG51bWJlciBvZiBlbXBsb3llZXMgdHVybnMgb3V0IHRvIGJlIDdtKzIuPC9wPiA8cD5TbyB0aGUgbnVtYmVyIGNvdWxkIGJlIDksIDE2LCAyMywgMzAsIDM3LCA0NC4uLjwvcD4gPHA+V2Ugc2VlIHRoYXQgMzcgaXMgY29tbW9uIHRvIGJvdGggdGhlIGNhc2VzLiBIZW5jZSB0aGUgbWluaW11bSB2YWx1ZSBvZiBOIGlzIDM3LjwvcD4=DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-4-58005-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-4" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-4" id="vsbt-4" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(4, 4);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-4" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+RmluZCBhIHBvc2l0aXZlIG51bWJlciB3aGljaCB3aGVuIGluY3JlYXNlZCBieSAyMCBpcyBlcXVhbCB0byAxMjUgdGltZXMgdGhlIHJlY2lwcm9jYWwgb2YgdGhlIG51bWJlcj88L3A+PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjxwPiYjMjMxOTsmIzIzMjU7ICYjMjM0MzsmIzIzNDQ7JiMyMzY2OyYjMjM0MDsmIzIzODE7JiMyMzUwOyYjMjMyNTsgJiMyMzYwOyYjMjMwNjsmIzIzMjY7JiMyMzgxOyYjMjM1MTsmIzIzNjY7ICYjMjMzMjsmIzIzODE7JiMyMzM0OyYjMjM2NjsmIzIzNDA7ICYjMjMyNTsmIzIzNjg7JiMyMzMyOyYjMjM2NzsmIzIzMTk7ICYjMjMzMjsmIzIzNjc7JiMyMzYwOyYjMjM3NTsgMjAgJiMyMzYwOyYjMjM3NTsgJiMyMzQ4OyYjMjMzODsmIzIzNjQ7JiMyMzY2OyYjMjM0NDsmIzIzNzU7ICYjMjM0NjsmIzIzNTI7ICYjMjM1NzsmIzIzNjE7ICYjMjM2MDsmIzIzMDY7JiMyMzI2OyYjMjM4MTsmIzIzNTE7JiMyMzY2OyAmIzIzMjU7JiMyMzc1OyAmIzIzNTc7JiMyMzgxOyYjMjM1MTsmIzIzNjk7JiMyMzQwOyYjMjM4MTsmIzIzMjU7JiMyMzgxOyYjMjM1MjsmIzIzNTA7ICYjMjMyNTsmIzIzNzU7IDEyNSAmIzIzMjc7JiMyMzY5OyYjMjM0NDsmIzIzNjY7ICYjMjMyNTsmIzIzNzU7ICYjMjM0ODsmIzIzNTI7JiMyMzY2OyYjMjM0ODsmIzIzNTI7ICYjMjM2MTsmIzIzNzk7ICYjMjMzMjsmIzIzNjY7JiMyMzE5OyYjMjMyNzsmIzIzNjY7PzwvcD48L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-4-0" class="opt cursorst" onclick="attemptAgain(4, 0, 4)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTI1PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjEyNTwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-4-1" class="opt cursorst" onclick="attemptAgain(4, 1, 4)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+Mjwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj4yPC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-4-2" class="opt cursorst" onclick="attemptAgain(4, 2, 4)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj4xPC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-4-3" class="opt cursorst" onclick="attemptAgain(4, 3, 4)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MjA8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+MjA8L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-4-4" class="opt cursorst" onclick="attemptAgain(4, 4, 4)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NTwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj41PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-4" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-4" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSPHA+TGV0IHRoZSBudW1iZXI9WDwvcD4gPHA+VGhlbiBpdCdzIHJlY2lwcm9jYWw9MS9YPC9wPiA8cD5TbyBYKzIwPTEyNSgxL1gpPC9wPiA8cD5YPHN1cD4yPC9zdXA+KzIwWC0xMjU9MDwvcD4gPHA+Qnkgc29sdmluZyB0aGUgZXF1YXRpb24gd2UgZ2V0IHRoZSB2YWx1ZSBvZiBYPSAtMjUsIDU8L3A+IDxwPlNvIHRoZSBwb3NpdGl2ZSB2YWx1ZSBvZiBYIGlzIDUuPC9wPg==DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-5-58006-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-5" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-5" id="vsbt-5" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(5, 3);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-5" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+RmV3IGJvb2tzIHdlcmUgZGlzdHJpYnV0ZWQgZXF1YWxseSBhbW9uZyBhIGZldyBjaGlsZHJlbiBvZiBhIGNsYXNzLiBUaGUgbnVtYmVyIG9mIGJvb2tzIGVhY2ggY2hpbGQgZ290IHdhcyBvbmUtZmlmdGggb2YgdGhlIG51bWJlciBvZiBjaGlsZHJlbi4gSWYgdGhlIG51bWJlciBvZiBjaGlsZHJlbiB3ZXJlIGhhbGYgdGhlbiBlYWNoIGNoaWxkIHdvdWxkIGhhdmUgZ290IDEwIGJvb2tzLiBIb3cgbWFueSBib29rcyB3ZXJlIGRpc3RyaWJ1dGVkIGluIGFsbD88L3A+PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjxwPiYjMjMxOTsmIzIzMjU7ICYjMjMyNTsmIzIzMjU7JiMyMzgxOyYjMjM1OTsmIzIzNjY7ICYjMjMyNTsmIzIzNzU7ICYjMjMyNTsmIzIzNjk7JiMyMzMxOyAmIzIzNDg7JiMyMzMwOyYjMjM4MTsmIzIzMzA7JiMyMzc5OyYjMjMwNjsgJiMyMzI1OyYjMjM3NTsgJiMyMzQ4OyYjMjM2ODsmIzIzMzA7ICYjMjMyNTsmIzIzNjk7JiMyMzMxOyAmIzIzMjU7JiMyMzY3OyYjMjM0MDsmIzIzNjY7JiMyMzQ4OyYjMjM3OTsmIzIzMDY7ICYjMjMyNTsmIzIzNzk7ICYjMjM2MDsmIzIzNTA7JiMyMzY2OyYjMjM0NDsgJiMyMzUyOyYjMjM3MDsmIzIzNDY7ICYjMjM2MDsmIzIzNzU7ICYjMjM1NzsmIzIzNjc7JiMyMzQwOyYjMjM1MjsmIzIzNjc7JiMyMzQwOyAmIzIzMjU7JiMyMzY3OyYjMjM1MTsmIzIzNjY7ICYjMjMyNzsmIzIzNTE7JiMyMzY2OyAmIzIzNDE7JiMyMzY2O3wgJiMyMzQ2OyYjMjM4MTsmIzIzNTI7JiMyMzQwOyYjMjM4MTsmIzIzNTE7JiMyMzc1OyYjMjMyNTsgJiMyMzQ4OyYjMjMzMDsmIzIzODE7JiMyMzMwOyYjMjM3NTsgJiMyMzI1OyYjMjM3OTsgJiMyMzUwOyYjMjM2NzsmIzIzNTQ7JiMyMzY4OyAmIzIzMjU7JiMyMzY3OyYjMjM0MDsmIzIzNjY7JiMyMzQ4OyYjMjM3OTsmIzIzMDY7ICYjMjMyNTsmIzIzNjg7ICYjMjM2MDsmIzIzMDY7JiMyMzI2OyYjMjM4MTsmIzIzNTE7JiMyMzY2OyAmIzIzNDg7JiMyMzMwOyYjMjM4MTsmIzIzMzA7JiMyMzc5OyYjMjMwNjsgJiMyMzI1OyYjMjM2ODsgJiMyMzYwOyYjMjMwNjsmIzIzMjY7JiMyMzgxOyYjMjM1MTsmIzIzNjY7ICYjMjMyNTsmIzIzNjY7IDEvNSAmIzIzNjE7JiMyMzY3OyYjMjM2MDsmIzIzODE7JiMyMzYwOyYjMjM2NjsgJiMyMzQxOyYjMjM2Njt8ICYjMjM1MTsmIzIzNDI7JiMyMzY3OyAmIzIzNDg7JiMyMzMwOyYjMjM4MTsmIzIzMzA7JiMyMzc5OyYjMjMwNjsgJiMyMzI1OyYjMjM2ODsgJiMyMzYwOyYjMjMwNjsmIzIzMjY7JiMyMzgxOyYjMjM1MTsmIzIzNjY7ICYjMjMxMDsmIzIzNDM7JiMyMzY4OyAmIzIzNjE7JiMyMzc5OyYjMjM0MDsmIzIzNjg7LCAmIzIzNDA7JiMyMzc5OyAmIzIzNDY7JiMyMzgxOyYjMjM1MjsmIzIzNDA7JiMyMzgxOyYjMjM1MTsmIzIzNzU7JiMyMzI1OyAmIzIzNDg7JiMyMzMwOyYjMjM4MTsmIzIzMzA7JiMyMzc1OyAmIzIzMjU7JiMyMzc5OyAxMCAmIzIzMjU7JiMyMzY3OyYjMjM0MDsmIzIzNjY7JiMyMzQ4OyYjMjM3NTsmIzIzMDY7ICYjMjM1MDsmIzIzNjc7JiMyMzU0OyYjMjM2ODsgJiMyMzYxOyYjMjM3OTsmIzIzNDA7JiMyMzY4OywgJiMyMzQwOyYjMjM3OTsgJiMyMzYwOyYjMjM0OTsmIzIzNjg7ICYjMjM0ODsmIzIzMzA7JiMyMzgxOyYjMjMzMDsmIzIzNzk7JiMyMzA2OyAmIzIzNTA7JiMyMzc1OyYjMjMwNjsgJiMyMzU3OyYjMjM2NzsmIzIzNDA7JiMyMzUyOyYjMjM2NzsmIzIzNDA7ICYjMjMyNTsmIzIzNjg7ICYjMjMyNzsmIzIzNTE7JiMyMzY4OyAmIzIzMjU7JiMyMzY3OyYjMjM0MDsmIzIzNjY7JiMyMzQ4OyYjMjM3OTsmIzIzMDY7ICYjMjMyNTsmIzIzNjg7ICYjMjM2MDsmIzIzMDY7JiMyMzI2OyYjMjM4MTsmIzIzNTE7JiMyMzY2OyAmIzIzMjU7JiMyMzY3OyYjMjM0MDsmIzIzNDQ7JiMyMzY4OyAmIzIzNDE7JiMyMzY4Oz88L3A+PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-5-0" class="opt cursorst" onclick="attemptAgain(3, 0, 5)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTU2PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjE1Njwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-5-1" class="opt cursorst" onclick="attemptAgain(3, 1, 5)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTUwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjE1MDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-5-2" class="opt cursorst" onclick="attemptAgain(3, 2, 5)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MjAwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjIwMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-5-3" class="opt cursorst" onclick="attemptAgain(3, 3, 5)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTI1PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjEyNTwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-5-4" class="opt cursorst" onclick="attemptAgain(3, 4, 5)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+Tm9uZSBvZiB0aGVzZTwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj4mIzIzMTE7JiMyMzQ0OyYjMjM1MDsmIzIzNzU7JiMyMzA2OyAmIzIzNjA7JiMyMzc1OyAmIzIzMjU7JiMyMzc5OyYjMjMxMjsgJiMyMzQ0OyYjMjM2MTsmIzIzNjg7JiMyMzA2Ozwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-5" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-5" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSPHA+TGV0IHRoZSBuby4gb2YgY2hpbGRyZW4gPSB4PC9wPjxwPlRvdGFsIG51bWJlciBvZiBub3RlYm9va3MgZGlzdHJpYnV0ZWQgPSBOdW1iZXIgb2YgY2hpbGRyZW4gIFggIG51bWJlciBvZiBub3RlYm9vayBlYWNoIGNoaWxkIGdvdDwvcD48cD5IZW5jZSwgdG90YWwgbm8uIG9mIG5vdGVib29rcyBkaXN0cmlidXRlZCBhcyBwZXIgdGhlIGdpdmVuIDE8c3VwPnN0PC9zdXA+IGNvbmRpdGlvbj0geC81ICBYICB4PXg8c3VwPjI8L3N1cD4vNSAuLi4uIChpKTwvcD48cD5BY2NvcmRpbmcgdG8gdGhlIDI8c3VwPm5kPC9zdXA+IGNvbmRpdGlvbjsgdG90YWwgbnVtYmVyIG9mIG5vdGVib29rcz0xMCAgWCAgeC8yID0gNXggLi4uLiAoaWkpPC9wPjxwPkNvbXBhcmluZyAoaSkgJmFtcDsgKGlpKSwgd2UgZ2V0PC9wPjxwPng8c3VwPjI8L3N1cD4vNT01eDwvcD48cD49Jmd0OyB4ID0gMjU8L3A+PHA+SGVuY2UsIHRvdGFsIG5vLiBvZiBub3RlYm9va3MgPXg8c3VwPjI8L3N1cD4vNT0gKDI1ICBYIDI1KS81PTEyNTwvcD4=DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-6-58007-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-6" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-6" id="vsbt-6" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(6, 3);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-6" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+TW9oYW4gYnJvdWdodCBzb21lIHRvZmZlZXMgd2hpY2ggYXJlIHByaWNlZCBhdCB0aGUgcmF0ZSBvZiBScyAyMCBmb3IgNTAgdG9mZmVlcy4gSGUgYWxzbyBib3VnaHQgdHdpY2UgdGhvc2UgbWFueSB0b2ZmZWVzIGF0IFJzIDEuNTAgZWFjaC4gSGUgc29sZCBhbGwgdGhvc2UgdG9mZmVlcyBhdCB0aGUgcmF0ZSBvZiBScyAxMiBmb3IgMjAgdG9mZmVlcyBhbmQgbWFkZSBhbiBvdmVyYWxsIGxvc3Mgb2YgUnMgMjAwLiBIb3cgbWFueSB0b2ZmZWVzIGhhZCBoZSBwdXJjaGFzZWQ/PC9wPjwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj48cD4mIzIzNTA7JiMyMzc5OyYjMjM2MTsmIzIzNDQ7ICYjMjM0NDsmIzIzNzU7ICYjMjMyNTsmIzIzNjk7JiMyMzMxOyAmIzIzMzU7JiMyMzc3OyYjMjM0NzsmIzIzNjc7JiMyMzUxOyYjMjM2NjsmIzIzMDY7ICYjMjMyNjsmIzIzNTI7JiMyMzY4OyYjMjM0MjsmIzIzNjg7LCAmIzIzMzI7JiMyMzY3OyYjMjM0NDsmIzIzMjU7JiMyMzY4OyAmIzIzMjU7JiMyMzY4OyYjMjM1MDsmIzIzNDA7IDUwICYjMjMzNTsmIzIzNzc7JiMyMzQ3OyYjMjM2ODsgJiMyMzI1OyYjMjM3NTsgJiMyMzU0OyYjMjM2NzsmIzIzMTk7IDIwICYjMjM1MjsmIzIzNjk7JiMyMzQ2OyYjMjM1MTsmIzIzNzU7ICYjMjM2MTsmIzIzNzY7JiMyNDA0OyAmIzIzMTM7JiMyMzYwOyYjMjM0NDsmIzIzNzU7ICYjMjMxMzsmIzIzNDQ7ICYjMjMzNTsmIzIzNzc7JiMyMzQ3OyYjMjM2NzsmIzIzNTE7JiMyMzc5OyYjMjMwNjsgJiMyMzI1OyYjMjM3OTsgMS41MCAmIzIzNTI7JiMyMzY5OyYjMjM0NjsmIzIzNTE7JiMyMzc1OyAmIzIzNTA7JiMyMzc1OyYjMjMwNjsgJiMyMzQyOyYjMjM3OTsgJiMyMzQ4OyYjMjM2NjsmIzIzNTI7ICYjMjMyNjsmIzIzNTI7JiMyMzY4OyYjMjM0MjsmIzIzNjY7JiMyNDA0OyAmIzIzMTM7JiMyMzYwOyYjMjM0NDsmIzIzNzU7IDIwICYjMjMzNTsmIzIzNzc7JiMyMzQ3OyYjMjM2NzsmIzIzNTE7JiMyMzc5OyYjMjMwNjsgJiMyMzI1OyYjMjM3OTsgMTIgJiMyMzUyOyYjMjM2OTsmIzIzNDY7JiMyMzUxOyYjMjM3NTsgJiMyMzI1OyYjMjM2ODsgJiMyMzQyOyYjMjM1MjsgJiMyMzYwOyYjMjM3NTsgJiMyMzYwOyYjMjM0OTsmIzIzNjg7ICYjMjMzNTsmIzIzNzk7JiMyMzQ3OyYjMjM2NzsmIzIzNTE7JiMyMzc5OyYjMjMwNjsgJiMyMzI1OyYjMjM3OTsgJiMyMzQ4OyYjMjM3NTsmIzIzMzA7JiMyMzY2OyAmIzIzMjQ7JiMyMzUyOyAmIzIzMjQ7JiMyMzUyOyAmIzIzMjU7JiMyMzY5OyYjMjM1NDsgJiMyMzUwOyYjMjM2NzsmIzIzNTQ7JiMyMzY2OyYjMjMyNTsmIzIzNTI7IDIwMCAmIzIzNTI7JiMyMzY5OyYjMjM0NjsmIzIzNTE7JiMyMzc1OyAmIzIzMjU7JiMyMzY2OyAmIzIzNDQ7JiMyMzY5OyYjMjMyNTsmIzIzNjA7JiMyMzY2OyYjMjM0NDsgJiMyMzYxOyYjMjM2OTsmIzIzMTA7JiMyNDA0OyAmIzIzMTM7JiMyMzYwOyYjMjM0NDsmIzIzNzU7ICYjMjMyNTsmIzIzNjc7JiMyMzQwOyYjMjM0NDsmIzIzNjg7ICYjMjMzNTsmIzIzNzk7JiMyMzQ3OyYjMjM2NzsmIzIzNTE7JiMyMzY2OyYjMjMwNTsgJiMyMzkzOyYjMjM1MjsmIzIzNjg7JiMyMzQyOyYjMjM2ODsgJiMyMzQxOyYjMjM2ODs/PC9wPjwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-6-0" class="opt cursorst" onclick="attemptAgain(3, 0, 6)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NDI1PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjQyNTwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-6-1" class="opt cursorst" onclick="attemptAgain(3, 1, 6)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NTc1PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjU3NTwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-6-2" class="opt cursorst" onclick="attemptAgain(3, 2, 6)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MjUwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjI1MDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-6-3" class="opt cursorst" onclick="attemptAgain(3, 3, 6)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+Mzc1PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjM3NTwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-6-4" class="opt cursorst" onclick="attemptAgain(3, 4, 6)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MzI1PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjMyNTwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-6" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-6" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSPHA+TGV0IHRoZSBudW1iZXIgb2YgdG9mZmVlcyBib3VnaHQgYXQgdGhlIHJhdGUgb2YgUnMgMjAgZm9yIDUwIGJlICJhIjwvcD48cD5UaGVuIHRvdGFsIG1vbmV5IGludmVzdGVkIGluIHRoZXNlIHRvZmZlZXMgPSAyMC81MCB4IGEgPSAyYS81PC9wPjxwPk51bWJlciBvZiB0b2ZmZWVzIGJyb3VnaHQgYXQgdGhlIHJhdGUgb2YgUnMxLjUwIGVhY2ggPSAyYTwvcD48cD5Ub3RhbCBtb25leSBpbnZlc3RlZCBpbiB0aGVzZSB0b2ZmZWVzID0gMS41MCB4IDJhID0gM2E8L3A+PHA+VG90YWwgY29zdCBvZiB0b2ZmZWVzIHRvIE1vaGFuID0gMmEvNSArIDNhID0gMTdhLzU8L3A+PHA+VG90YWwgcmV2ZW51ZSByZWFsaXplZCBieSBzZWxsaW5nIHRoZW0gYXQgMjAgZm9yIFJzIDEyID0gMTIvMjAgeCAoYSsyYSkgPSA5YS81PC9wPjxwPk92ZXJhbGwgbG9zcyBpcyAyMDA8L3A+PHA+U28sPC9wPjxwPjE3YS81ICAtICA5YS81ID0gMjAwPC9wPjxwPjhhLzUgPSAyMDA8L3A+PHA+YSA9IDEyNTwvcD48cD50b3RhbCBudW1iZXIgb2YgdG9mZmVlcyBwdXJjaGFzZWQgPSAzYSA9IDM3NTwvcD4=DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-7-58008-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-7" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-7" id="vsbt-7" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(7, 3);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-7" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+U3VtIG9mIHR3byBkaWZmZXJlbnQgcG9zaXRpdmUgbmF0dXJhbCBudW1iZXJzIGlzIDI0NiBhbmQgZGlmZmVyZW5jZSBiZXR3ZWVuIHRoZW0gaXMgMzQuIEZpbmQgdGhlIDEwJSBvZiB0aGUgcHJvZHVjdCBvZiB0aGUgdHdvIG51bWJlcnMuPC9wPjwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj48cD4mIzIzNDI7JiMyMzc5OyAmIzIzMDk7JiMyMzU0OyYjMjMyNzstJiMyMzA5OyYjMjM1NDsmIzIzMjc7ICYjMjM0MzsmIzIzNDQ7JiMyMzY2OyYjMjM0MDsmIzIzODE7JiMyMzUwOyYjMjMyNTsgJiMyMzQ2OyYjMjM4MTsmIzIzNTI7JiMyMzY2OyYjMjMyNTsmIzIzNzE7JiMyMzQwOyAmIzIzNjA7JiMyMzA2OyYjMjMyNjsmIzIzODE7JiMyMzUxOyYjMjM2NjsmIzIzMjM7JiMyMzA2OyAmIzIzMjU7JiMyMzY2OyAmIzIzNTE7JiMyMzc5OyYjMjMyNzsmIzIzNDc7JiMyMzU0OyAyNDYgJiMyMzYxOyYjMjM3NjsgJiMyMzI0OyYjMjM1MjsgJiMyMzEzOyYjMjM0NDsmIzIzMjU7JiMyMzc1OyAmIzIzNDg7JiMyMzY4OyYjMjMzMDsgJiMyMzI1OyYjMjM2NjsgJiMyMzA5OyYjMjMwNjsmIzIzNDA7JiMyMzUyOyAzNCAmIzIzNjE7JiMyMzc2OyYjMjQwNDsgJiMyMzQyOyYjMjM3OTsgJiMyMzYwOyYjMjMwNjsmIzIzMjY7JiMyMzgxOyYjMjM1MTsmIzIzNjY7JiMyMzIzOyYjMjMwNjsgJiMyMzI1OyYjMjM3NTsgJiMyMzI3OyYjMjM2OTsmIzIzMzk7JiMyMzQ0OyYjMjM0NzsmIzIzNTQ7ICYjMjMyNTsmIzIzNjY7IDEwJSAmIzIzMzI7JiMyMzgxOyYjMjMzNDsmIzIzNjY7JiMyMzQwOyAmIzIzMjU7JiMyMzY4OyYjMjMzMjsmIzIzNjc7JiMyMzE5OyYjMjQwNDs8L3A+PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-7-0" class="opt cursorst" onclick="attemptAgain(3, 0, 7)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTU2NDwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj4xNTY0PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-7-1" class="opt cursorst" onclick="attemptAgain(3, 1, 7)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTM0Mjwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj4xMzQyPC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-7-2" class="opt cursorst" onclick="attemptAgain(3, 2, 7)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTQ0MTwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj4xNDQxPC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-7-3" class="opt cursorst" onclick="attemptAgain(3, 3, 7)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTQ4NDwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj4xNDg0PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-7-4" class="opt cursorst" onclick="attemptAgain(3, 4, 7)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTU4NDwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj4xNTg0PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-7" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-7" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSPHA+TGV0IExhcmdlciBudW1iZXIgYmUgeCBhbmQgc21hbGxlciBudW1iZXIgYmUgeCAgLSAgMzQ8L3A+PHA+QWNjb3JkaW5nIHRvIFF1ZXN0aW9uLDwvcD48cD54ICsgeCAgLSAgMzQgPSAyNDY8L3A+PHA+MnggPSAyODA8L3A+PHA+eCA9IDE0MDwvcD48cD5MYXJnZXIgbnVtYmVyID0gMTQwIGFuZCBzbWFsbGVyIG51bWJlciA9IDEwNjwvcD48cD5SZXF1aXJlZCBhbnN3ZXIgPSAxMCUgKDE0MCAqIDEwNik8L3A+PHA+PSAxNCAqIDEwNjwvcD48cD49IDE0ODQgPC9wPg==DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-8-58009-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-8" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-8" id="vsbt-8" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(8, 4);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-8" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+RGlnaXRzIG9mIGEgMy1kaWdpdCBudW1iZXIgYXJlIGluIHRoZSByYXRpbyAzOiAyOiA1LiBJZiAxMTEgaXMgYWRkZWQgdG8gdGhlIG51bWJlciwgdGhlbiBmaW5kIHRoZSBzdW0gb2YgZGlnaXRzIG9mIHRoZSByZXN1bHRhbnQgbnVtYmVyLjwvcD48L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+PHA+MyAmIzIzMDk7JiMyMzA2OyYjMjMyNTsmIzIzNzk7JiMyMzA2OyAmIzIzNTc7JiMyMzY2OyYjMjM1NDsmIzIzNjg7ICYjMjMxOTsmIzIzMjU7ICYjMjM2MDsmIzIzMDY7JiMyMzI2OyYjMjM4MTsmIzIzNTE7JiMyMzY2OyAmIzIzMjU7JiMyMzc1OyAmIzIzMDk7JiMyMzA2OyYjMjMyNTsgMzogMjogNSAmIzIzMjU7JiMyMzc1OyAmIzIzMDk7JiMyMzQ0OyYjMjM2OTsmIzIzNDY7JiMyMzY2OyYjMjM0MDsgJiMyMzUwOyYjMjM3NTsmIzIzMDY7ICYjMjM2MTsmIzIzNzY7JiMyMzA2OyYjMjQwNDsgJiMyMzUxOyYjMjM0MjsmIzIzNjc7ICYjMjM2MDsmIzIzMDY7JiMyMzI2OyYjMjM4MTsmIzIzNTE7JiMyMzY2OyAmIzIzNTA7JiMyMzc1OyYjMjMwNjsgMTExICYjMjMzMjsmIzIzNzk7JiMyMzM3OyYjMjM2NDsmIzIzNjY7ICYjMjMzMjsmIzIzNjY7JiMyMzE5OywgJiMyMzQwOyYjMjM3OTsgJiMyMzQ2OyYjMjM1MjsmIzIzNjc7JiMyMzM5OyYjMjM2NjsmIzIzNTA7JiMyMzY4OyAmIzIzNjA7JiMyMzA2OyYjMjMyNjsmIzIzODE7JiMyMzUxOyYjMjM2NjsgJiMyMzI1OyYjMjM3NTsgJiMyMzA5OyYjMjMwNjsmIzIzMjU7JiMyMzc5OyYjMjMwNjsgJiMyMzI1OyYjMjM2NjsgJiMyMzUxOyYjMjM3OTsmIzIzMjc7JiMyMzQ3OyYjMjM1NDsgJiMyMzMyOyYjMjM4MTsmIzIzMzQ7JiMyMzY2OyYjMjM0MDsgJiMyMzI1OyYjMjM2ODsmIzIzMzI7JiMyMzY3OyYjMjMxOTsmIzI0MDQ7PC9wPjwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-8-0" class="opt cursorst" onclick="attemptAgain(4, 0, 8)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTA8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+MTA8L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-8-1" class="opt cursorst" onclick="attemptAgain(4, 1, 8)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTY8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+MTY8L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-8-2" class="opt cursorst" onclick="attemptAgain(4, 2, 8)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTU8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+MTU8L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-8-3" class="opt cursorst" onclick="attemptAgain(4, 3, 8)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTE8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+MTE8L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-8-4" class="opt cursorst" onclick="attemptAgain(4, 4, 8)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTM8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+MTM8L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-8" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-8" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSPHA+TGV0IHRoZSBkaWdpdHMgb2YgdGhlIDMtZGlnaXQgbnVtYmVyIGFyZSBhLCBiIGFuZCBjIHJlc3BlY3RpdmVseS4gU28sPC9wPjxwPmE6IGI6IGMgPSAzOiAyOiA1PC9wPjxwPlNvLCAzLWRpZ2l0IG51bWJlciBjYW4gYmU6IDIzNSwgMjUzLCAzMjUsIDM1MiwgNTIzLCA1MzI8L3A+PHA+Tm93LCB3aGVuIDExMSB3aWxsIGJlIGFkZGVkIHRvIHRoZSBudW1iZXIsIHRoZW4gZWFjaCBvZiBpdHMgZGlnaXQgd2lsbCBiZSBpbmNyZWFzZWQgYnkgMS4gU28sIG5ldyBkaWdpdHMgd2lsbCBiZSAoMiArIDEgPSAzKSwgKDMgKyAxID0gNCkgYW5kICg1ICsgMSA9IDYpPC9wPjxwPlRoZXJlZm9yZSwgc3VtIG9mIGRpZ2l0cyBvZiB0aGUgcmVzdWx0YW50IG51bWJlciA9IDMgKyA0ICsgNiA9IDxiPjEzPC9iPjwvcD4=DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-9-58010-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-9" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-9" id="vsbt-9" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(9, 2);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-9" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+V2hlbiAyOCUgb2YgYSBudW1iZXIgaXMgYWRkZWQgdG8gODIlIG9mIGl0c2VsZiwgdGhlbiBpdCBiZWNvbWVzIDEyNSUgb2YgNDg0LiBJZiAxNTAgaXMgc3VidHJhY3RlZCBmcm9tIHRoZSBudW1iZXIsIHRoZW4gMzUlIG9mIHRoZSByZXN1bHRhbnQgaXMgIC0gIDwvcD48L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+PHA+JiMyMzMyOyYjMjM0ODsgJiMyMzI1OyYjMjM2NzsmIzIzNjA7JiMyMzY4OyAmIzIzNjA7JiMyMzA2OyYjMjMyNjsmIzIzODE7JiMyMzUxOyYjMjM2NjsgJiMyMzI1OyYjMjM3NTsgMjglICYjMjMyNTsmIzIzNzk7ICYjMjMxMzsmIzIzNjA7JiMyMzI1OyYjMjM3NTsgODIlICYjMjM1MDsmIzIzNzU7JiMyMzA2OyAmIzIzMzI7JiMyMzc5OyYjMjMzNzsmIzIzNjQ7JiMyMzY2OyAmIzIzMzI7JiMyMzY2OyYjMjM0MDsmIzIzNjY7ICYjMjM2MTsmIzIzNzY7LCAmIzIzNDA7JiMyMzc5OyAmIzIzNDY7JiMyMzUyOyYjMjM2NzsmIzIzMzk7JiMyMzY2OyYjMjM1MDsgNDg0ICYjMjMyNTsmIzIzNjY7IDEyNSUgJiMyMzYxOyYjMjM3OTsgJiMyMzMyOyYjMjM2NjsmIzIzNDA7JiMyMzY2OyAmIzIzNjE7JiMyMzc2OyYjMjQwNDsgJiMyMzUxOyYjMjM0MjsmIzIzNjc7ICYjMjM2MDsmIzIzMDY7JiMyMzI2OyYjMjM4MTsmIzIzNTE7JiMyMzY2OyAmIzIzNTA7JiMyMzc1OyYjMjMwNjsgJiMyMzYwOyYjMjM3NTsgMTUwICYjMjMyODsmIzIzMzU7JiMyMzY2OyAmIzIzNDI7JiMyMzY3OyYjMjM1MTsmIzIzNjY7ICYjMjMzMjsmIzIzNjY7JiMyMzQwOyYjMjM2NjsgJiMyMzYxOyYjMjM3NjssICYjMjM0MDsmIzIzNzk7ICYjMjM0NjsmIzIzNTI7JiMyMzY3OyYjMjMzOTsmIzIzNjY7JiMyMzUwOyAmIzIzMjU7JiMyMzY2OyAzNSUgJiMyMzYxOyYjMjM3OTsmIzIzMjc7JiMyMzY2OyAtPC9wPjwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-9-0" class="opt cursorst" onclick="attemptAgain(2, 0, 9)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MjEwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjIxMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-9-1" class="opt cursorst" onclick="attemptAgain(2, 1, 9)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MjgwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjI4MDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-9-2" class="opt cursorst" onclick="attemptAgain(2, 2, 9)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MTQwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjE0MDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-9-3" class="opt cursorst" onclick="attemptAgain(2, 3, 9)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NzA8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+NzA8L3NwYW4+NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-9-4" class="opt cursorst" onclick="attemptAgain(2, 4, 9)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MzUwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjM1MDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-9" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-9" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSPHA+TGV0IHRoZSBudW1iZXIgPSBuPC9wPjxwPlRoZW4sIDI4JSBvZiBuICsgODIlIG9mIG4gPSAxMjUlIG9mIDQ4NDwvcD48cD4xMTAlIG9mIG4gPSA1LzQgKiA0ODQ8L3A+PHA+MTFuLzEwID0gNjA1PC9wPjxwPm4gPSA1NTA8L3A+PHA+V2hlbiAxNTAgaXMgc3VidHJhY3RlZCBmcm9tIHRoZSBudW1iZXIsIHRoZW4gcmVzdWx0YW50ID0gNTUwICAtICAxNTAgPSA0MDA8L3A+PHA+VGhlcmVmb3JlLCAzNSUgb2YgNDAwID0gPGI+MTQwPC9iPjwvcD4=DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-10-58011-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-10" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-10" id="vsbt-10" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(10, 2);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-10" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+VGhlcmUgYXJlIDMgcGVyc29uIEEsIEIgYW5kIEMgd2l0aCBzYWxhcnkgb2YgUnMuIDgwLDAwMCBhbHRvZ2V0aGVyLiBTYWxhcnkgb2YgQSBhbmQgQiBhcmUgaW4gdGhlIHJhdGlvIG9mIDI6IDMgYW5kIGRpZmZlcmVuY2UgYmV0d2VlbiB0aGVpciBzYWxhcnkgaXMgUnMuIDc1MDAuIEZpbmQgc2FsYXJ5IG9mIEM8L3A+PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjxwPiYjMjMxOTsmIzIzMjU7ICYjMjM2MDsmIzIzNjY7JiMyMzQxOyAmIzIzNDA7JiMyMzY4OyYjMjM0NDsgJiMyMzU3OyYjMjM4MTsmIzIzNTE7JiMyMzI1OyYjMjM4MTsmIzIzNDA7JiMyMzY3OyYjMjM1MTsmIzIzNzk7JiMyMzA2Oy0gQSwgQiAmIzIzMjQ7JiMyMzUyOyBDICYjMjMyNTsmIzIzNjY7ICYjMjMyNTsmIzIzNjk7JiMyMzU0OyAmIzIzNTc7JiMyMzc1OyYjMjM0MDsmIzIzNDQ7ICYjMjM1MjsmIzIzNjk7LjgwLDAwMCAmIzIzNjE7JiMyMzc2OyYjMjQwNDsgQSAmIzIzMjQ7JiMyMzUyOyBCICYjMjMyNTsmIzIzNjY7ICYjMjM1NzsmIzIzNzU7JiMyMzQwOyYjMjM0NDsgMjogMyAmIzIzMjU7JiMyMzc1OyAmIzIzMDk7JiMyMzQ0OyYjMjM2OTsmIzIzNDY7JiMyMzY2OyYjMjM0MDsgJiMyMzUwOyYjMjM3NTsmIzIzMDY7ICYjMjM2MTsmIzIzNzY7ICYjMjM0MDsmIzIzNDE7JiMyMzY2OyAmIzIzMTM7JiMyMzQ0OyYjMjMyNTsmIzIzNzU7ICYjMjM1NzsmIzIzNzU7JiMyMzQwOyYjMjM0NDsgJiMyMzI1OyYjMjM3NTsgJiMyMzQ4OyYjMjM2ODsmIzIzMzA7ICYjMjMyNTsmIzIzNjY7ICYjMjMwOTsmIzIzMDY7JiMyMzQwOyYjMjM1MjsgJiMyMzUyOyYjMjM2OTsuNzUwMCAmIzIzNjE7JiMyMzc2OywgJiMyMzQwOyYjMjM3OTsgQyAmIzIzMjU7JiMyMzY2OyAmIzIzNTc7JiMyMzc1OyYjMjM0MDsmIzIzNDQ7ICYjMjMzMjsmIzIzODE7JiMyMzM0OyYjMjM2NjsmIzIzNDA7ICYjMjMyNTsmIzIzNjg7JiMyMzMyOyYjMjM2NzsmIzIzNTE7JiMyMzc1OyYjMjQwNDs8L3A+PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-10-0" class="opt cursorst" onclick="attemptAgain(2, 0, 10)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+UnMuIDM1MDAwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPiYjMjM1MjsmIzIzNjk7LiAzNTAwMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-10-1" class="opt cursorst" onclick="attemptAgain(2, 1, 10)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+UnMuIDMwMDAwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPiYjMjM1MjsmIzIzNjk7LiAzMDAwMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-10-2" class="opt cursorst" onclick="attemptAgain(2, 2, 10)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+UnMuIDQyNTAwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPiYjMjM1MjsmIzIzNjk7LiA0MjUwMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-10-3" class="opt cursorst" onclick="attemptAgain(2, 3, 10)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+UnMuIDQzMDAwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPiYjMjM1MjsmIzIzNjk7LiA0MzAwMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-10-4" class="opt cursorst" onclick="attemptAgain(2, 4, 10)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+UnMuIDQzNTAwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPiYjMjM1MjsmIzIzNjk7LiA0MzUwMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-10" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-10" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSPHA+TGV0IHNhbGFyeSBvZiBBIGFuZCBCIGJlIDJ4IGFuZCAzeCByZXNwZWN0aXZlbHk8L3A+PHA+QWNjb3JkaW5nIHRvIHF1ZXN0aW9uLCA8L3A+PHA+M3ggIC0gIDJ4ID0gNzUwMDwvcD48cD54ID0gNzUwMDwvcD48cD5TYWxhcnkgb2YgQSA9IFJzLiAxNTAwMDwvcD48cD5TYWxhcnkgb2YgQiA9IFJzLiAyMjUwMDwvcD48cD5TYWxhcnkgb2YgQyA9IDgwMDAwICAtICAoMTUwMDAgKyAyMjUwMCkgPSBScy40MjUwMDwvcD4=DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-11-58012-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-11" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-11" id="vsbt-11" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(11, 1);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-11" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+UmFteWEgc3RhcnRlZCBhIGJ1c2luZXNzIGludmVzdGluZyBScyAzMiwwMDAuIEFmdGVyIDUgbW9udGhzIFJhbWFuIGpvaW5lZCBoZXIgd2l0aCBhIGNhcGl0YWwgb2YgUnMgMjIsMDAwLiBBdCB0aGUgZW5kIG9mIHRoZSB5ZWFyIHRoZSB0b3RhbCBwcm9maXQgd2FzIFJzIDE2LDQwOS4gV2hhdCBpcyBSYW15YSdzIHNoYXJlIG9mIHRoZSBwcm9maXQ/PC9wPjwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj48cD4mIzIzNTI7JiMyMzUwOyYjMjM4MTsmIzIzNTE7JiMyMzY2OyAmIzIzNDQ7JiMyMzc1OyAzMiwwMDAgJiMyMzUyOyYjMjM2OTsgJiMyMzI1OyYjMjM2NjsgJiMyMzQ0OyYjMjM2NzsmIzIzNTc7JiMyMzc1OyYjMjM1ODsgJiMyMzYwOyYjMjM3NTsgJiMyMzE5OyYjMjMyNTsgJiMyMzU3OyYjMjM4MTsmIzIzNTE7JiMyMzU3OyYjMjM2MDsmIzIzNjY7JiMyMzUxOyAmIzIzNTg7JiMyMzY5OyYjMjM1MjsmIzIzNzA7ICYjMjMyNTsmIzIzNjc7JiMyMzUxOyYjMjM2Njt8IDUgJiMyMzUwOyYjMjM2MTsmIzIzNjg7JiMyMzQ0OyYjMjM3OTsmIzIzMDY7ICYjMjM0ODsmIzIzNjY7JiMyMzQyOyAmIzIzNTI7JiMyMzUwOyYjMjM0NDsgMjIsMDAwICYjMjM1MjsmIzIzNjk7ICYjMjMyNTsmIzIzNjg7ICYjMjM0NjsmIzIzNzA7JiMyMzA1OyYjMjMzMjsmIzIzNjg7ICYjMjM2MDsmIzIzNzU7ICYjMjMxMzsmIzIzNjA7JiMyMzYwOyYjMjM3NTsgJiMyMzMyOyYjMjM2OTsmIzIzOTY7ICYjMjMyNzsmIzIzNTE7JiMyMzY2O3wgJiMyMzU3OyYjMjM1MjsmIzIzODE7JiMyMzU5OyAmIzIzMjU7JiMyMzc1OyAmIzIzMDk7JiMyMzA2OyYjMjM0MDsgJiMyMzUwOyYjMjM3NTsmIzIzMDY7ICYjMjMyNTsmIzIzNjk7JiMyMzU0OyAmIzIzNTQ7JiMyMzY2OyYjMjM0OTsgMTYsNDA5ICYjMjM1MjsmIzIzNjk7ICYjMjM0MTsmIzIzNjY7fCAmIzIzNTI7JiMyMzUwOyYjMjM4MTsmIzIzNTE7JiMyMzY2OyAmIzIzMjU7JiMyMzY2OyAmIzIzNTQ7JiMyMzY2OyYjMjM0OTsmIzIzNjY7JiMyMzA2OyYjMjM1ODsgJiMyMzI1OyYjMjM2NzsmIzIzNDA7JiMyMzQ0OyYjMjM2NjsgJiMyMzYxOyYjMjM3Njs/PC9wPjwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-11-0" class="opt cursorst" onclick="attemptAgain(1, 0, 11)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+UnMgMTIsMjg0PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjEyLDI4NCAmIzIzNTI7JiMyMzY5Ozwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-11-1" class="opt cursorst" onclick="attemptAgain(1, 1, 11)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+UnMgMTEsNzEyPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjExLDcxMiAmIzIzNTI7JiMyMzY5Ozwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-11-2" class="opt cursorst" onclick="attemptAgain(1, 2, 11)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+UnMgMTAsMTgyPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjEwLDE4MiAmIzIzNTI7JiMyMzY5Ozwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-11-3" class="opt cursorst" onclick="attemptAgain(1, 3, 11)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+UnMgMTIsNjk3PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjEyLDY5NyAmIzIzNTI7JiMyMzY5Ozwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-11-4" class="opt cursorst" onclick="attemptAgain(1, 4, 11)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+Tm9uZSBvZiB0aGVzZTwvc3Bhbj48c3BhbiBjbGFzcz0iaHF0IiBzdHlsZT0iZGlzcGxheTpub25lIj4mIzIzMTE7JiMyMzQ0OyYjMjM1MDsmIzIzNzU7JiMyMzA2OyAmIzIzNjA7JiMyMzc1OyAmIzIzMjU7JiMyMzc5OyYjMjMxMjsgJiMyMzQ0OyYjMjM2MTsmIzIzNjg7JiMyMzA2Ozwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-11" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-11" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSIDxwPlJhbXlhJ3MgaW52ZXN0bWVudCA9IDMyMDAweDEyID0gMzg0MDAwPC9wPiA8cD5SYW1hbidzIGludmVzdG1lbnQgPSAyMjAwMHg3ID0gMTU0MDAwPC9wPiA8cD5SYXRpbyBvZiB0aGVpciBpbnZlc3RtZW50cyA9IDM4NDoxNTQgPSAxOTI6Nzc8L3A+IDxwPlJhbXlhJ3Mgc2hhcmUgaW4gdGhlIHByb2ZpdCA9IDE5Mi8yNjkgeCAxNjQwOSA9IDExNzEyPC9wPg==DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-12-58013-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-12" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-12" id="vsbt-12" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(12, 2);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-12" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+QSBjb21wYW55IHByb3Bvc2VkIGFuIGlkZWEgZm9yIHNvbWUgY2hhbmdlcyBpbiBpdHMgd29ya2luZyBlbnZpcm9ubWVudCwgNTUlIG9mIHRvdGFsIGVtcGxveWVlcyBpbiB0aGUgY29tcGFueSBzdXBwb3J0ZWQgdGhhdCBpZGVhIGFuZCByZW1haW5pbmcgZGlkbid0IHN1cHBvcnQuIElmIHRoZSBkaWZmZXJlbmNlIGJldHdlZW4gdGhlIG51bWJlciBvZiBlbXBsb3llZXMgd2hvIHN1cHBvcnRlZCB0aGUgaWRlYSBhbmQgdGhhdCB3aG8gZGlkbid0IHN1cHBvcnQgdGhlIGlkZWEgaXMgNDAsIHRoZW4gaG93IG1hbnkgZW1wbG95ZWVzIGFyZSB0aGVyZSBpbiB0aGUgY29tcGFueT88L3A+PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjxwPiYjMjMxOTsmIzIzMjU7ICYjMjMyNTsmIzIzMDY7JiMyMzQ2OyYjMjM0NDsmIzIzNjg7ICYjMjM0NDsmIzIzNzU7ICYjMjMwOTsmIzIzNDY7JiMyMzQ0OyYjMjM3NTsgJiMyMzI1OyYjMjM2NjsmIzIzNTA7ICYjMjMyNTsmIzIzNzU7ICYjMjM1MDsmIzIzNjY7JiMyMzYxOyYjMjM4MDsmIzIzNTQ7ICYjMjM1MDsmIzIzNzU7JiMyMzA2OyAmIzIzMjU7JiMyMzY5OyYjMjMzMTsgJiMyMzQ4OyYjMjM0MjsmIzIzNTQ7JiMyMzY2OyYjMjM1NzsmIzIzNzk7JiMyMzA2OyAmIzIzMjU7JiMyMzc1OyAmIzIzNTQ7JiMyMzY3OyYjMjMxOTsgJiMyMzE5OyYjMjMyNTsgJiMyMzU3OyYjMjM2NzsmIzIzMzA7JiMyMzY2OyYjMjM1MjsgJiMyMzI1OyYjMjM2NjsgJiMyMzQ2OyYjMjM4MTsmIzIzNTI7JiMyMzYwOyYjMjM4MTsmIzIzNDA7JiMyMzY2OyYjMjM1NzsgJiMyMzUyOyYjMjMyNjsmIzIzNjY7LCAmIzIzMjU7JiMyMzA2OyYjMjM0NjsmIzIzNDQ7JiMyMzY4OyAmIzIzMjU7JiMyMzc1OyAmIzIzMjU7JiMyMzY5OyYjMjM1NDsgJiMyMzI1OyYjMjM1MjsmIzIzODE7JiMyMzUwOyYjMjMzMDsmIzIzNjY7JiMyMzUyOyYjMjM2NzsmIzIzNTE7JiMyMzc5OyYjMjMwNjsgJiMyMzUwOyYjMjM3NTsmIzIzMDY7ICYjMjM2MDsmIzIzNzU7IDU1JSAmIzIzNDQ7JiMyMzc1OyAmIzIzMTM7JiMyMzYwOyAmIzIzNTc7JiMyMzY3OyYjMjMzMDsmIzIzNjY7JiMyMzUyOyAmIzIzMjU7JiMyMzY2OyAmIzIzNjA7JiMyMzUwOyYjMjM1MjsmIzIzODE7JiMyMzQxOyYjMjM0NDsgJiMyMzI1OyYjMjM2NzsmIzIzNTE7JiMyMzY2OyAmIzIzMjQ7JiMyMzUyOyAmIzIzNTg7JiMyMzc1OyYjMjM1OTsgJiMyMzQ0OyYjMjM3NTsgJiMyMzYwOyYjMjM1MDsmIzIzNTI7JiMyMzgxOyYjMjM0MTsmIzIzNDQ7ICYjMjM0NDsmIzIzNjE7JiMyMzY4OyYjMjMwNjsgJiMyMzI1OyYjMjM2NzsmIzIzNTE7JiMyMzY2OyYjMjQwNDsgJiMyMzUxOyYjMjM0MjsmIzIzNjc7ICYjMjM1NzsmIzIzNjc7JiMyMzMwOyYjMjM2NjsmIzIzNTI7ICYjMjMyNTsmIzIzNjY7ICYjMjM2MDsmIzIzNTA7JiMyMzUyOyYjMjM4MTsmIzIzNDE7JiMyMzQ0OyAmIzIzMjU7JiMyMzUyOyYjMjM0NDsmIzIzNzU7ICYjMjM1NzsmIzIzNjY7JiMyMzU0OyYjMjM3NTsgJiMyMzI1OyYjMjM1MjsmIzIzODE7JiMyMzUwOyYjMjMzMDsmIzIzNjY7JiMyMzUyOyYjMjM2NzsmIzIzNTE7JiMyMzc5OyYjMjMwNjsgJiMyMzI0OyYjMjM1MjsgJiMyMzU3OyYjMjM2NzsmIzIzMzA7JiMyMzY2OyYjMjM1MjsgJiMyMzI1OyYjMjM2NjsgJiMyMzYwOyYjMjM1MDsmIzIzNTI7JiMyMzgxOyYjMjM0MTsmIzIzNDQ7ICYjMjM0NDsmIzIzNjE7JiMyMzY4OyYjMjMwNjsgJiMyMzI1OyYjMjM1MjsmIzIzNDQ7JiMyMzc1OyAmIzIzNTc7JiMyMzY2OyYjMjM1NDsmIzIzNzU7ICYjMjMyNTsmIzIzNTI7JiMyMzgxOyYjMjM1MDsmIzIzMzA7JiMyMzY2OyYjMjM1MjsmIzIzNjc7JiMyMzUxOyYjMjM3OTsmIzIzMDY7ICYjMjMyNTsmIzIzNjg7ICYjMjM2MDsmIzIzMDY7JiMyMzI2OyYjMjM4MTsmIzIzNTE7JiMyMzY2OyAmIzIzMjU7JiMyMzc1OyAmIzIzNDg7JiMyMzY4OyYjMjMzMDsgJiMyMzI1OyYjMjM2NjsgJiMyMzA5OyYjMjMwNjsmIzIzNDA7JiMyMzUyOyA0MCAmIzIzNjE7JiMyMzc2OywgJiMyMzQwOyYjMjM3OTsgJiMyMzI1OyYjMjMwNjsmIzIzNDY7JiMyMzQ0OyYjMjM2ODsgJiMyMzUwOyYjMjM3NTsmIzIzMDY7ICYjMjMyNTsmIzIzNjc7JiMyMzQwOyYjMjM0NDsmIzIzNzU7ICYjMjMyNTsmIzIzNTI7JiMyMzgxOyYjMjM1MDsmIzIzMzA7JiMyMzY2OyYjMjM1MjsmIzIzNjg7ICYjMjM2MTsmIzIzNzY7JiMyMzA2Oz88L3A+PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-12-0" class="opt cursorst" onclick="attemptAgain(2, 0, 12)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NjAwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjYwMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-12-1" class="opt cursorst" onclick="attemptAgain(2, 1, 12)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MzIwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjMyMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-12-2" class="opt cursorst" onclick="attemptAgain(2, 2, 12)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NDAwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjQwMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-12-3" class="opt cursorst" onclick="attemptAgain(2, 3, 12)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NDgwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjQ4MDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-12-4" class="opt cursorst" onclick="attemptAgain(2, 4, 12)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MzYwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjM2MDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-12" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-12" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSPHA+TGV0IHRvdGFsIGVtcGxveWVlcyBpbiB0aGUgY29tcGFueSA9IDEwMHg8L3A+PHA+VG90YWwgbnVtYmVyIG9mIGVtcGxveWVlcyB3aG8gc3VwcG9ydGVkIHRoZSBpZGVhID0gNTUlIG9mIDEwMHggPSA1NXg8L3A+PHA+VG90YWwgbnVtYmVyIG9mIGVtcGxveWVlcyB3aG8gZGlkbid0IHN1cHBvcnQgdGhlIGlkZWEgPSAxMDB4ICAtICA1NXggPSA0NXg8L3A+PHA+QWNjb3JkaW5nIHRvIHRoZSBxdWVzdGlvbjo8L3A+PHA+NTV4ICAtICA0NXggPSA0MDwvcD48cD54ID0gNDwvcD48cD5Ub3RhbCBudW1iZXIgb2YgZW1wbG95ZWVzIGluIHRoZSBjb21wYW55ID0gMTAweCA9IDQwMDwvcD4=DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-13-58014-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-13" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-13" id="vsbt-13" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(13, 1);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-13" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+VGhlIHJhdGlvIG9mIHRoZSBhZ2VzIG9mIERldiBhbmQgaGlzIHNvbiBpcyA0OjEgcmVzcGVjdGl2ZWx5LiBBZnRlciAxMSB5ZWFycywgdGhlaXIgYWdlcyB3aWxsIGJlIGluIHRoZSByYXRpbyAxMzo2IHJlc3BlY3RpdmVseS4gV2hhdCB3YXMgRGV2J3MgYWdlIHdoZW4gaGlzIHNvbiB3YXMgYm9ybj88L3A+PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjxwPiYjMjM0MjsmIzIzNzU7JiMyMzU3OyAmIzIzMjQ7JiMyMzUyOyAmIzIzMTM7JiMyMzYwOyYjMjMyNTsmIzIzNzU7ICYjMjM0NjsmIzIzNjk7JiMyMzQwOyYjMjM4MTsmIzIzNTI7ICYjMjMyNTsmIzIzNjg7ICYjMjMxMDsmIzIzNTE7JiMyMzY5OyAmIzIzMjU7JiMyMzY2OyAmIzIzMDk7JiMyMzQ0OyYjMjM2OTsmIzIzNDY7JiMyMzY2OyYjMjM0MDsgJiMyMzI1OyYjMjM4MTsmIzIzNTI7JiMyMzUwOyYjMjM1ODsmIzIzMDc7IDQ6IDEgJiMyMzYxOyYjMjM3NjsmIzI0MDQ7IDExICYjMjM1NzsmIzIzNTI7JiMyMzgxOyYjMjM1OTsmIzIzNzk7JiMyMzA2OyAmIzIzMjU7JiMyMzc1OyAmIzIzNDg7JiMyMzY2OyYjMjM0MjssICYjMjMxMzsmIzIzNDQ7JiMyMzI1OyYjMjM2ODsgJiMyMzEwOyYjMjM1MTsmIzIzNjk7ICYjMjMyNTsmIzIzODE7JiMyMzUyOyYjMjM1MDsmIzIzNTg7JiMyMzA3OyAxMzogNiAmIzIzMjU7JiMyMzc1OyAmIzIzMDk7JiMyMzQ0OyYjMjM2OTsmIzIzNDY7JiMyMzY2OyYjMjM0MDsgJiMyMzUwOyYjMjM3NTsmIzIzMDY7ICYjMjM2MTsmIzIzNzk7JiMyMzI3OyYjMjM2ODsmIzI0MDQ7ICYjMjMzMjsmIzIzNDg7ICYjMjMxMzsmIzIzNDQ7JiMyMzI1OyYjMjM3NTsgJiMyMzQ4OyYjMjM3NTsmIzIzMzU7JiMyMzc1OyAmIzIzMjU7JiMyMzY2OyAmIzIzMzI7JiMyMzQ0OyYjMjM4MTsmIzIzNTA7ICYjMjM2MTsmIzIzNjk7JiMyMzEwOyAmIzIzNDE7JiMyMzY2OywgJiMyMzQwOyYjMjM3OTsgJiMyMzQyOyYjMjM3NTsmIzIzNTc7ICYjMjMyNTsmIzIzNjg7ICYjMjMxMDsmIzIzNTE7JiMyMzY5OyAmIzIzMjU7JiMyMzY3OyYjMjM0MDsmIzIzNDQ7JiMyMzY4OyAmIzIzNDE7JiMyMzY4Oz88L3A+PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-13-0" class="opt cursorst" onclick="attemptAgain(1, 0, 13)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MjUgeWVhcnM8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+MjUgJiMyMzU3OyYjMjM1MjsmIzIzODE7JiMyMzU5Ozwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-13-1" class="opt cursorst" onclick="attemptAgain(1, 1, 13)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MjEgeWVhcnM8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+MjEgJiMyMzU3OyYjMjM1MjsmIzIzODE7JiMyMzU5Ozwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-13-2" class="opt cursorst" onclick="attemptAgain(1, 2, 13)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MjQgeWVhcnM8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+MjQgJiMyMzU3OyYjMjM1MjsmIzIzODE7JiMyMzU5Ozwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-13-3" class="opt cursorst" onclick="attemptAgain(1, 3, 13)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MjMgeWVhcnM8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+MjMgJiMyMzU3OyYjMjM1MjsmIzIzODE7JiMyMzU5Ozwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-13-4" class="opt cursorst" onclick="attemptAgain(1, 4, 13)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+MjggeWVhcnM8L3NwYW4+PHNwYW4gY2xhc3M9ImhxdCIgc3R5bGU9ImRpc3BsYXk6bm9uZSI+MjggJiMyMzU3OyYjMjM1MjsmIzIzODE7JiMyMzU5Ozwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-13" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-13" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSPHA+TGV0IERldidzIGN1cnJlbnQgYWdlIGJlIDRhIHllYXJzIGFuZCBoaXMgc29uJ3MgY3VycmVudCBhZ2UgYmUgYSB5ZWFycy48L3A+PHA+U28sICg0YSArIDExKTooYSArIDExKSA9IDEzOjY8L3A+PHA+MjRhICsgNjYgPSAxM2EgKyAxNDM8L3A+PHA+YSA9IDc8L3A+PHA+U28sIHNvbidzIGN1cnJlbnQgYWdlIGlzIDcgeWVhcnMgYW5kIERldidzIGN1cnJlbnQgYWdlIGlzIDcgKiA0ID0gMjggeWVhcnMuPC9wPjxwPkRldidzIGFnZSB3aGVuIGhpcyBzb24gd2FzIGJvcm4gPSAoMjggIC0gIDcpIHllYXJzID0gMjEgeWVhcnM8L3A+DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+						                            <div id="q-14-58015-1" class="qosblock singleqid"><!-- single question -->
+								<div class="singlequestion" style="height: 617px;">
+																			<div id="alert-14" class="qos-col">
+											<div class="attemptalert">
+												Attempt again or <a href="#soltxt-14" id="vsbt-14" type="button" class="btn-primary btn-viewsol" onclick="viewsolution(14, 1);">View Solution</a>
+											</div>
+										</div>
+																				
+										<div id="qblock-14" class="qblock qos-col">
+											NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+PHA+VGhlIG51bWJlciBvZiBhZHVsdHMgd2hvIGNvbWUgb25seSB0byB3YWxrIGluIGEgcGFyayBldmVyeSBkYXkgaXMgMTQwLiAxOCUgb2YgdGhlIGFkdWx0cyBjb21lIG9ubHkgdG8gYWNjb21wYW55IHRoZWlyIGNoaWxkcmVuIGluIHRoZSBwYXJrLiA1NCUgb2YgdGhlIGFkdWx0cyBjb21lIG9ubHkgdG8gcnVuIGluIHRoZSBwYXJrLiBXaGF0IGlzIHRoZSB0b3RhbCBudW1iZXIgb2YgYWR1bHRzIHdobyBjb21lIHRvIHRoZSBwYXJrIGV2ZXJ5IGRheSAoaWYgdGhlIGFkdWx0cyBjb21lIGZvciBubyBvdGhlciBhY3Rpdml0eSBvdGhlciB0aGFuIHRoZSBnaXZlbiBvbmVzKT88L3A+PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjxwPiYjMjM0NjsmIzIzODE7JiMyMzUyOyYjMjM0MDsmIzIzODE7JiMyMzUxOyYjMjM3NTsmIzIzMjU7ICYjMjM0MjsmIzIzNjc7JiMyMzQ0OyAmIzIzMTk7JiMyMzI1OyAmIzIzNDY7JiMyMzY2OyYjMjM1MjsmIzIzODE7JiMyMzI1OyAmIzIzNTA7JiMyMzc1OyYjMjMwNjsgJiMyMzI1OyYjMjM3NTsmIzIzNTc7JiMyMzU0OyAmIzIzMjg7JiMyMzcwOyYjMjM1MDsmIzIzNDQ7JiMyMzc1OyAmIzIzMjU7JiMyMzc1OyAmIzIzNTQ7JiMyMzY3OyYjMjMxOTsgJiMyMzEwOyYjMjM0NDsmIzIzNzU7ICYjMjM1NzsmIzIzNjY7JiMyMzU0OyYjMjM3NTsgJiMyMzU3OyYjMjM1MTsmIzIzNjA7JiMyMzgxOyYjMjMyNTsmIzIzNzk7JiMyMzA2OyAmIzIzMjU7JiMyMzY4OyAmIzIzNjA7JiMyMzA2OyYjMjMyNjsmIzIzODE7JiMyMzUxOyYjMjM2NjsgMTQwICYjMjM2MTsmIzIzNzY7JiMyNDA0OyAxOCUgJiMyMzU3OyYjMjM1MTsmIzIzNjA7JiMyMzgxOyYjMjMyNTsgJiMyMzI1OyYjMjM3NTsmIzIzNTc7JiMyMzU0OyAmIzIzMDk7JiMyMzQ2OyYjMjM0NDsmIzIzNzU7ICYjMjM0ODsmIzIzMzA7JiMyMzgxOyYjMjMzMDsmIzIzNzk7JiMyMzA2OyAmIzIzMjU7JiMyMzc1OyAmIzIzNjA7JiMyMzY2OyYjMjM0MTsgJiMyMzQ2OyYjMjM2NjsmIzIzNTI7JiMyMzgxOyYjMjMyNTsgJiMyMzUwOyYjMjM3NTsmIzIzMDY7ICYjMjMxMDsmIzIzNDA7JiMyMzc1OyAmIzIzNjE7JiMyMzc2OyYjMjMwNjsmIzI0MDQ7IDU0JSAmIzIzNTc7JiMyMzUxOyYjMjM2MDsmIzIzODE7JiMyMzI1OyAmIzIzMjU7JiMyMzc1OyYjMjM1NzsmIzIzNTQ7ICYjMjM0NjsmIzIzNjY7JiMyMzUyOyYjMjM4MTsmIzIzMjU7ICYjMjM1MDsmIzIzNzU7JiMyMzA2OyAmIzIzNDI7JiMyMzgwOyYjMjMzNzsmIzIzNjQ7JiMyMzQ0OyYjMjM3NTsgJiMyMzI1OyYjMjM3NTsgJiMyMzU0OyYjMjM2NzsmIzIzMTk7ICYjMjMxMDsmIzIzNDA7JiMyMzc1OyAmIzIzNjE7JiMyMzc2OyYjMjMwNjsmIzI0MDQ7ICYjMjM0NjsmIzIzODE7JiMyMzUyOyYjMjM0MDsmIzIzODE7JiMyMzUxOyYjMjM3NTsmIzIzMjU7ICYjMjM0MjsmIzIzNjc7JiMyMzQ0OyAmIzIzNDY7JiMyMzY2OyYjMjM1MjsmIzIzODE7JiMyMzI1OyAmIzIzNTA7JiMyMzc1OyYjMjMwNjsgJiMyMzEwOyYjMjM0NDsmIzIzNzU7ICYjMjM1NzsmIzIzNjY7JiMyMzU0OyYjMjM3NTsgJiMyMzU3OyYjMjM1MTsmIzIzNjA7JiMyMzgxOyYjMjMyNTsmIzIzNzk7JiMyMzA2OyAmIzIzMjU7JiMyMzY4OyAmIzIzMjU7JiMyMzY5OyYjMjM1NDsgJiMyMzYwOyYjMjMwNjsmIzIzMjY7JiMyMzgxOyYjMjM1MTsmIzIzNjY7ICYjMjMyNTsmIzIzNjc7JiMyMzQwOyYjMjM0NDsmIzIzNjg7ICYjMjM2MTsmIzIzNzY7JiMyMzA2OyAoJiMyMzUxOyYjMjM0MjsmIzIzNjc7ICYjMjM1NzsmIzIzNTE7JiMyMzYwOyYjMjM4MTsmIzIzMjU7ICYjMjM0MjsmIzIzNjc7JiMyMzE5OyAmIzIzMjc7JiMyMzE5OyAmIzIzNTQ7JiMyMzc5OyYjMjMyNzsmIzIzNzk7JiMyMzA2OyAmIzIzMjU7JiMyMzc1OyAmIzIzMDk7JiMyMzU0OyYjMjM2NjsmIzIzNTc7JiMyMzY2OyAmIzIzMjU7JiMyMzY3OyYjMjM2MDsmIzIzNjg7ICYjMjMwOTsmIzIzNDQ7JiMyMzgxOyYjMjM1MTsgJiMyMzI3OyYjMjM0MDsmIzIzNjc7JiMyMzU3OyYjMjM2NzsmIzIzNDM7JiMyMzY3OyAmIzIzMjU7JiMyMzc1OyAmIzIzNTQ7JiMyMzY3OyYjMjMxOTsgJiMyMzQ0OyYjMjM2MTsmIzIzNjg7JiMyMzA2OyAmIzIzMTA7JiMyMzQwOyYjMjM3NTsgJiMyMzYxOyYjMjM3NjsmIzIzMDY7KT88L3A+PC9zcGFuPg==NR276EWY4F92RNG8WJW5S36VRUHGFZFY										</div>
+										<div class="oblock qos-col">
+											<div class="qoptions">
+																								<div id="opt-14-0" class="opt cursorst" onclick="attemptAgain(1, 0, 14)">
+													<div class="left">A</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NTYwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjU2MDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-14-1" class="opt cursorst" onclick="attemptAgain(1, 1, 14)">
+													<div class="left">B</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NTAwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjUwMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-14-2" class="opt cursorst" onclick="attemptAgain(1, 2, 14)">
+													<div class="left">C</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NzAwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjcwMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-14-3" class="opt cursorst" onclick="attemptAgain(1, 3, 14)">
+													<div class="left">D</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NDAwPC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjQwMDwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+																							<div id="opt-14-4" class="opt cursorst" onclick="attemptAgain(1, 4, 14)">
+													<div class="left">E</div>
+													<div class="right"><div class="rightopt">NR276EWY4F92RNG8WJW5S36VRUHGFZFYPHNwYW4gY2xhc3M9ImVxdCI+NTk1PC9zcGFuPjxzcGFuIGNsYXNzPSJocXQiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPjU5NTwvc3Bhbj4=NR276EWY4F92RNG8WJW5S36VRUHGFZFY</div></div>
+												</div>
+																								
+												
+											</div>
+                                        </div>
+                                        										<div id="sol-14" class="sblock qos-col hide-class">
+											<div class="sblock-inner">
+												<h3>Solution</h3>
+												<div id="soltxt-14" class="solutiontxt">
+													DHI4GMD0PUGORD21K8I0MM5JVNJGJFCSPHA+UGVyY2VudGFnZSBvZiBhZHVsdHMgd2hvIGNvbWUgb25seSB0byB3YWxrIGluIGEgcGFyayA9IDEwMCAgLSAgMTggIC0gIDU0ID0gMjg8L3A+PHA+U28sIDE0MCA9IDI4JSBvZiB0aGUgdG90YWwgbm8uIG9mIGFkdWx0czwvcD48cD5Ub3RhbCBudW1iZXIgb2YgYWR1bHRzIHdobyBjb21lIHRvIHBhcmsgZXZlcnkgZGF5ID0gNTAwPC9wPg==DHI4GMD0PUGORD21K8I0MM5JVNJGJFCS												</div>
+											</div>
+										</div>
+								</div>
+							</div><!-- \.single question -->
+											</div>
+				</section>
+				<section id="sec-footer">
+					<div class="oliveblk oliveblk-footer padd15">
+                        <div class="container footer-row">
+                            <div class="footer-col">
+                                <button type="button" class="btn-primary btn-prenext" onclick="previousQuestion();">Previous</button>
+                            </div>
+                            <div class="footer-col">
+							    <button class="btn-primary btn-review" type="button" onclick="gotoreview();">Review</button>
+                            </div>
+                            <div class="footer-col">
+							    <button type="button" class="btn-primary btn-prenext" onclick="nextQuestion();">Next</button>
+                            </div>
+						</div>
+					</div>
+				</section>
+			</div>
+			<div id="overlay-slide"></div>
+			<img id="mv-dislide" class="mv-dislide" src="img/ic-discuss.svg" alt="DISCUSS" style="display:none;">
+			<div id="discuss-slide" class="discuss-slider">
+				<div class="slide">
+					<div id="group-home" class="group-home">
+						<div class="discuss-header">
+							<span class="left">Discuss</span>
+							<span class="right">
+								<img id="btn-yourqueries" class="img-yourq" src="img/ic-yourquries.svg" alt="Your Quries">
+								<img id="btn-qqlist" src="img/ic-list.svg" alt="List">
+							</span>
+						</div>
+						<div class="dis-content">
+							<div class="discuss-scroll">
+							<div class="discuss-scrollin">
+
+								<div class="box-question">
+									<h3>Question <span class="discurqno">1</span> <span class="soldis-refresh"><img src="img/refresh.svg" alt="refresh"></span></h3>
+									<div class="discquestion"><span class="eqt"><p>A has 10 chocolates and B has 8 chocolates. C requested them to give him some chocolates in return for money. The three of them shared the chocolates equally and C paid the other two a total of ₹54. Find the difference between the amounts received by A and B.</p></span><span class="hqt" style="display:none"><p>A के पास 10 चॉकलेट हैं और B के पास 8 चॉकलेट हैं। C ने उनसे पैसे के बदले में कुछ चॉकलेट देने का अनुरोध किया। उन तीनों ने चॉकलेट समान रूप बाँट ली और C ने दोनों को कुल 54 रुपये का भुगतान किया। A और B द्वारा प्राप्त राशि के बीच का अंतर कितना होगा?</p></span></div>
+                                </div>
+                            <div class="loadergif">
+                                <img width="100" height="56" src="img/spinner.gif">
+                            </div>
+                                <div id="startdiscussion" onclick="focuspostinput();" style="display:none" class="loadmore-outer">
+                                    <span>Start discussion on this question...</span>
+                                </div>
+								<div id="loadmoreposts" style="display:none" class="loadmore-outer">
+									<span>Load more posts (<span id="nmposts">&nbsp;&nbsp;</span>)...</span>
+								</div>
+								<div class="selfquery">
+									<ul class="selfq-group">
+									</ul>
+								</div>
+
+							</div>
+							</div>
+							<div class="input-query">
+								<input maxlength="300" id="postinput" class="form-control" type="textbox" placeholder="Ask your query..">
+							</div>
+						</div>
+					</div>
+					<div id="myqueries" class="myqueries">
+						<div class="discuss-header">
+                            
+							<img class="btn-qback" src="img/ic-back.svg"><span>My Queries</span>
+						</div>
+						<div class="discuss-scroll1">
+						<div class="discuss-scrollin">
+                                <div id="startmydiscussion" onclick="focuspostinput2();" style="display:none" class="loadmore-outer">
+                                    <span>You can find all your queries here. Ask a query on this question now.</span>
+                                </div>
+						</div>	
+						</div>
+					</div>
+					<div id="question-list" class="question-list">
+						<div class="discuss-header">
+							<img class="btn-qback" src="img/ic-back.svg"><span>Question List</span>
+                            
+						</div>
+						<div class="discuss-scroll1">
+						<div class="discuss-scrollin">
+										
+							<div id="listboxq-0" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>1</span></h3>
+									<p><span class="eqt"> A has 10 chocolates and B has 8 choco...</span><span class="hqt" style="display:none"> A के पास 10 चॉक...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-1" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>2</span></h3>
+									<p><span class="eqt"> There are 20 questions in a test. Eac...</span><span class="hqt" style="display:none"> एक टेस्ट मे...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-2" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>3</span></h3>
+									<p><span class="eqt"> By how much is 3/5th of 845 greater t...</span><span class="hqt" style="display:none"> 845का 3/5वां , 333 क...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-3" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>4</span></h3>
+									<p><span class="eqt"> In an organization of N employees, wh...</span><span class="hqt" style="display:none"> एक संस्था ज...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-4" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>5</span></h3>
+									<p><span class="eqt"> Find a positive number which when inc...</span><span class="hqt" style="display:none"> एक धनात्मक ...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-5" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>6</span></h3>
+									<p><span class="eqt"> Few books were distributed equally am...</span><span class="hqt" style="display:none"> एक कक्षा के ...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-6" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>7</span></h3>
+									<p><span class="eqt"> Mohan brought some toffees which are ...</span><span class="hqt" style="display:none"> मोहन ने कुछ ...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-7" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>8</span></h3>
+									<p><span class="eqt"> Sum of two different positive natural...</span><span class="hqt" style="display:none"> दो अलग-अलग ध...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-8" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>9</span></h3>
+									<p><span class="eqt"> Digits of a 3-digit number are in the...</span><span class="hqt" style="display:none"> 3 अंकों वाली ...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-9" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>10</span></h3>
+									<p><span class="eqt"> When 28% of a number is added to 82% ...</span><span class="hqt" style="display:none"> जब किसी संख...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-10" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>11</span></h3>
+									<p><span class="eqt"> There are 3 person A, B and C with sa...</span><span class="hqt" style="display:none"> एक साथ तीन व...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-11" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>12</span></h3>
+									<p><span class="eqt"> Ramya started a business investing Rs...</span><span class="hqt" style="display:none"> रम्या ने 32,000 र...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-12" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>13</span></h3>
+									<p><span class="eqt"> A company proposed an idea for some c...</span><span class="hqt" style="display:none"> एक कंपनी ने ...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-13" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>14</span></h3>
+									<p><span class="eqt"> The ratio of the ages of Dev and his ...</span><span class="hqt" style="display:none"> देव और उसके ...</span></p>
+								</div>
+							</div>
+										
+							<div id="listboxq-14" class="box-query listboxq">
+								<div class="query-question">
+									<h3>Question<span>15</span></h3>
+									<p><span class="eqt"> The number of adults who come only to...</span><span class="hqt" style="display:none"> प्रत्येक द...</span></p>
+								</div>
+							</div>
+												</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+        <!-- modalbox -->
+		<div class="modal" id="modal-reporterror">
+		  <div id="ermodalbg" class="modal-background"></div>
+		  <div class="modal-card">
+		    <header class="modal-card-head">
+		      <p class="modal-card-title">Report Error</p>
+		      <button class="delete delete-remodal" aria-label="close"></button>
+		    </header>
+		    <section class="modal-card-body modalpostclick">
+		      <p>Sorry that you found an error. Please describe it below.</p><p>
+		      <textarea maxlength="800" class="textarea" placeholder="Description..." id="edesc"></textarea>
+		    </p></section>
+		    <footer class="modal-card-foot">
+		      <button class="button is-success modalpostclick" onclick="reportError();">Submit</button>
+		      <button class="button delete-remodal modalpostclick">Cancel</button>
+		      <p class="success-re">Submitted successfully</p>
+		    </footer>
+		  </div>
+		</div>
+		<!-- modalbox -->
+         <!-- Video sol modalbox -->
+		<div class="modal" id="modal-videosol">
+		  <div class="modal-background close-videosol"></div>
+		  <div class="modal-card">
+		    <header class="modal-card-head">
+		      <p class="modal-card-title">Video Solution</p>
+		      <button class="delete close-videosol" aria-label="close"></button>
+		    </header>
+            <section class="modal-card-body modalpostclick" style="padding:0;">
+                <iframe id="videoframe" style="width: 100%; height: 56.25px;" src="" frameborder="0" allowfullscreen=""></iframe>
+		    </section>
+		    <footer class="modal-card-foot">
+		      <button class="button close-videosol modalpostclick">Cancel</button>
+		      <p class="success-re">Submitted successfully</p>
+		    </footer>
+		  </div>
+		</div>
+		<!-- Video sol modalbox -->
+
+
+		<img class="totop" src="img/ic-moveup.svg" style="display: none;">
+		<script src="https://s3-ap-southeast-1.amazonaws.com/sg2.oliveboard.in/static/js/jquery.js"></script>
+		<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.3/jquery-ui.min.js"></script>
+        <script src="js/n.js?v=3"></script>
+        <script src="js/rclickdisabler.js?v=3"></script>
+        <script type="text/javascript">
+        var reatturl = "index3-reatt.php?" + "c=practice&testid=58";
+        var ssnames = ["S1"];
+var dsnames = ["Topic Test"];
+
+        var solArray = {};
+        var timeacc = {};
+                    solArray[1] = '%3Cspan+class%3D%22eqt%22%3E+A+has+10+chocolates+and+B+has+8+choco...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+A+%26%232325%3B%26%232375%3B+%26%232346%3B%26%232366%3B%26%232360%3B+10+%26%232330%3B%26%232377%3B%26%232325%3B...%3C%2Fspan%3E';
+            timeacc[1] = ['2', '74%'];
+                    solArray[2] = '%3Cspan+class%3D%22eqt%22%3E+There+are+20+questions+in+a+test.+Eac...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+%26%232319%3B%26%232325%3B+%26%232335%3B%26%232375%3B%26%232360%3B%26%232381%3B%26%232335%3B+%26%232350%3B%26%232375%3B...%3C%2Fspan%3E';
+            timeacc[2] = ['1', '68%'];
+                    solArray[3] = '%3Cspan+class%3D%22eqt%22%3E+By+how+much+is+3%2F5th+of+845+greater+t...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+845%26%232325%3B%26%232366%3B+3%2F5%26%232357%3B%26%232366%3B%26%232306%3B+%2C+333+%26%232325%3B...%3C%2Fspan%3E';
+            timeacc[3] = ['--', '82%'];
+                    solArray[4] = '%3Cspan+class%3D%22eqt%22%3E+In+an+organization+of+N+employees%2C+wh...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+%26%232319%3B%26%232325%3B+%26%232360%3B%26%232306%3B%26%232360%3B%26%232381%3B%26%232341%3B%26%232366%3B+%26%232332%3B...%3C%2Fspan%3E';
+            timeacc[4] = ['--', '63%'];
+                    solArray[5] = '%3Cspan+class%3D%22eqt%22%3E+Find+a+positive+number+which+when+inc...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+%26%232319%3B%26%232325%3B+%26%232343%3B%26%232344%3B%26%232366%3B%26%232340%3B%26%232381%3B%26%232350%3B%26%232325%3B+...%3C%2Fspan%3E';
+            timeacc[5] = ['--', '74%'];
+                    solArray[6] = '%3Cspan+class%3D%22eqt%22%3E+Few+books+were+distributed+equally+am...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+%26%232319%3B%26%232325%3B+%26%232325%3B%26%232325%3B%26%232381%3B%26%232359%3B%26%232366%3B+%26%232325%3B%26%232375%3B+...%3C%2Fspan%3E';
+            timeacc[6] = ['--', '25%'];
+                    solArray[7] = '%3Cspan+class%3D%22eqt%22%3E+Mohan+brought+some+toffees+which+are+...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+%26%232350%3B%26%232379%3B%26%232361%3B%26%232344%3B+%26%232344%3B%26%232375%3B+%26%232325%3B%26%232369%3B%26%232331%3B+...%3C%2Fspan%3E';
+            timeacc[7] = ['1', '26%'];
+                    solArray[8] = '%3Cspan+class%3D%22eqt%22%3E+Sum+of+two+different+positive+natural...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+%26%232342%3B%26%232379%3B+%26%232309%3B%26%232354%3B%26%232327%3B-%26%232309%3B%26%232354%3B%26%232327%3B+%26%232343%3B...%3C%2Fspan%3E';
+            timeacc[8] = ['--', '78%'];
+                    solArray[9] = '%3Cspan+class%3D%22eqt%22%3E+Digits+of+a+3-digit+number+are+in+the...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+3+%26%232309%3B%26%232306%3B%26%232325%3B%26%232379%3B%26%232306%3B+%26%232357%3B%26%232366%3B%26%232354%3B%26%232368%3B+...%3C%2Fspan%3E';
+            timeacc[9] = ['1', '59%'];
+                    solArray[10] = '%3Cspan+class%3D%22eqt%22%3E+When+28%25+of+a+number+is+added+to+82%25+...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+%26%232332%3B%26%232348%3B+%26%232325%3B%26%232367%3B%26%232360%3B%26%232368%3B+%26%232360%3B%26%232306%3B%26%232326%3B...%3C%2Fspan%3E';
+            timeacc[10] = ['--', '73%'];
+                    solArray[11] = '%3Cspan+class%3D%22eqt%22%3E+There+are+3+person+A%2C+B+and+C+with+sa...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+%26%232319%3B%26%232325%3B+%26%232360%3B%26%232366%3B%26%232341%3B+%26%232340%3B%26%232368%3B%26%232344%3B+%26%232357%3B...%3C%2Fspan%3E';
+            timeacc[11] = ['--', '79%'];
+                    solArray[12] = '%3Cspan+class%3D%22eqt%22%3E+Ramya+started+a+business+investing+Rs...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+%26%232352%3B%26%232350%3B%26%232381%3B%26%232351%3B%26%232366%3B+%26%232344%3B%26%232375%3B+32%2C000+%26%232352%3B...%3C%2Fspan%3E';
+            timeacc[12] = ['4', '58%'];
+                    solArray[13] = '%3Cspan+class%3D%22eqt%22%3E+A+company+proposed+an+idea+for+some+c...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+%26%232319%3B%26%232325%3B+%26%232325%3B%26%232306%3B%26%232346%3B%26%232344%3B%26%232368%3B+%26%232344%3B%26%232375%3B+...%3C%2Fspan%3E';
+            timeacc[13] = ['--', '73%'];
+                    solArray[14] = '%3Cspan+class%3D%22eqt%22%3E+The+ratio+of+the+ages+of+Dev+and+his+...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+%26%232342%3B%26%232375%3B%26%232357%3B+%26%232324%3B%26%232352%3B+%26%232313%3B%26%232360%3B%26%232325%3B%26%232375%3B+...%3C%2Fspan%3E';
+            timeacc[14] = ['1', '53%'];
+                    solArray[15] = '%3Cspan+class%3D%22eqt%22%3E+The+number+of+adults+who+come+only+to...%3C%2Fspan%3E%3Cspan+class%3D%22hqt%22+style%3D%22display%3Anone%22%3E+%26%232346%3B%26%232381%3B%26%232352%3B%26%232340%3B%26%232381%3B%26%232351%3B%26%232375%3B%26%232325%3B+%26%232342%3B...%3C%2Fspan%3E';
+            timeacc[15] = ['--', '64%'];
+                var examid = "Quantitative Ability: Number Systems -  [Clerk]";
+        var username = '';
+        var totalnq = 15;
+        var wrongContainer = [];
+        var unatContainer = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14];
+        var secount = [15];
+
+        var reportedErrorQuestions = [];
+        function checkReportErrorStatus(){
+            var currentquestion = parseInt(cqno);
+            if($.inArray(currentquestion, reportedErrorQuestions) !== -1) {
+                $('.error-report').hide();
+            }else{
+                $('.error-report').show();
+            }
+        }
+
+        function reportError(){
+            var params = {};
+            var shortqid = parseInt(cqno);
+            var fullqid = $("[id^=q-"+shortqid+"-]").attr('id');
+            fullqid = parseInt(fullqid.split('-')[2]);
+            params['qid'] = fullqid;
+            var errorDesc = $('#edesc').val();
+            $('#edesc').val('');
+            params['edesc'] = errorDesc;
+            if(errorDesc == ''){
+                return false;
+            }
+            params['qt'] = 'Mock';
+            params['exam'] = 'practice';
+            var url = '/exams/solution/p/reporterror.cgi';
+            $.post(url,params,function(data) {
+                 if(data == 1 ){
+                     reportedErrorQuestions.push(parseInt(cqno));
+                     $('.success-re').html('Your report has been submitted');
+                }else{
+                     $('.success-re').html('Something went wrong.Please try again later');
+                }
+                $('.success-re').show();
+                $('.modalpostclick').hide();
+                setTimeout(closebox, 1000);
+                checkReportErrorStatus();
+            });
+        }
+        function closebox(){
+                $('#modal-reporterror').removeClass("is-active");
+                $('.success-re').hide();
+                $('.modalpostclick').show();
+        }
+
+        </script>
+
+<script type="text/javascript">
+var qids = [];
+
+function addQid(cqno) {
+    var shortqid = parseInt(cqno);
+    var fullqid = $("[id^=q-" + shortqid + "-]").attr('id');
+    fullqid = parseInt(fullqid.split('-')[2]);
+
+    if ($.inArray(fullqid, qids) === -1) {
+        var params = {};
+        params['qid'] = fullqid;
+        params['exam'] = 'practice';
+        var url = '/exams/solution/p/addbm.cgi';
+        $.post(url,params,function(data) {
+            if(data == 1 ){
+                qids.push(fullqid);
+                updateSaveImage(cqno);
+            }else{
+                console.log("Something went wrong...");
+            }
+        })
+    } else {
+        console.log("Already exists:", fullqid);
+    }
+}
+
+function removeQid(cqno) {
+    var shortqid = parseInt(cqno);
+    var fullqid = $("[id^=q-" + shortqid + "-]").attr('id');
+    fullqid = parseInt(fullqid.split('-')[2]);
+
+    var index = $.inArray(fullqid, qids);
+    if (index !== -1) {
+        var params = {};
+        params['qid'] = fullqid;
+        params['exam'] = 'practice';
+        var url = '/exams/solution/p/removebm.cgi';
+        $.post(url,params,function(data) {
+            if(data == 1 ){
+                qids.splice(index, 1);
+                updateSaveImage(cqno);
+            }else{
+                console.log("Something went wrong...");
+            }
+        })
+
+    } else {
+        console.log("Not found:", fullqid);
+    }
+}
+
+function updateSaveImage(cqno) {
+    var shortqid = parseInt(cqno);
+    var fullqid = $("[id^=q-" + shortqid + "-]").attr('id');
+    qid = parseInt(fullqid.split('-')[2]);
+    if ($.inArray(qid, qids) !== -1) {
+        $("#qs-save").attr("src", "img/save-qs-solid.png");
+        $(".btn-save-qn").attr("onclick", "removeQid('" + cqno + "')");
+    } else {
+        $("#qs-save").attr("src", "img/save-qs-line.png");
+        $(".btn-save-qn").attr("onclick", "addQid('" + cqno + "')");
+    }
+}
+</script>
+<script src="js/soladis-bm.js?version=7"></script>
+
+        <!-- Google Tag Manager -->
+<!-- <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','GTM-WBBTFF6');</script> -->
+<!-- End Google Tag Manager -->
+        	
+
+</body></html>

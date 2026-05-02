@@ -6,12 +6,12 @@ export default defineConfig({
     monkey({
       entry: 'src/main.ts',
       userscript: {
-        name: 'Testbook Markdown Downloader',
-        namespace: 'tb-md-dl',
-        version: '1.0.7',
-        description: 'Auto-crawls and downloads Testbook question papers as Markdown.',
+        name: 'Oliveboard Enhancer',
+        namespace: 'ob-enhancer',
+        version: '1.0.0',
+        description: 'Enhance Oliveboard UI and functionality.',
         author: 'quantavil',
-        match: ['https://testbook.com/*', 'https://*.testbook.com/*'],
+        match: ['*://*.oliveboard.in/*'],
         'run-at': 'document-start',
         grant: [],
       },

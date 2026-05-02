@@ -9,6 +9,12 @@ const turndownService = new TurndownService({
 
 turndownService.use(gfm);
 
+// Rule to handle our custom math element to prevent Turndown from escaping LaTeX
+turndownService.addRule('mathBlock', {
+  filter: 'math-tb',
+  replacement: (_content, node) => (node as Element).getAttribute('data-math') || _content
+});
+
 /** Convert a DOM element's HTML to clean Markdown (R5: plain function, B8: no global shadow) */
 export function htmlToMarkdown(root: Element | null): string {
   if (!root) return '';
@@ -49,8 +55,12 @@ export function htmlToMarkdown(root: Element | null): string {
     const isBlock = script.getAttribute('type')?.includes('mode=display');
     const math = script.textContent || '';
     const mathStr = isBlock ? `\n$$\n${math}\n$$\n` : `$${math}$`;
-    const textNode = document.createTextNode(mathStr);
-    script.parentNode?.replaceChild(textNode, script);
+    
+    // R1: use custom element to bypass turndown escaping
+    const wrapper = document.createElement('math-tb');
+    wrapper.setAttribute('data-math', mathStr);
+    wrapper.textContent = mathStr;
+    script.parentNode?.replaceChild(wrapper, script);
   });
 
   // Remove MathJax rendered spans to avoid duplication

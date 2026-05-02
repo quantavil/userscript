@@ -119,7 +119,9 @@ export function extractCurrentQuestion(fallbackQNum: number, lastCompHtml: strin
       if (b.closest('.ng-hide')) return false;
       const cs = getComputedStyle(b);
       return cs.display !== 'none' && cs.visibility !== 'hidden';
-  }) || boxes[0];
+  });
+
+  if (!qaBox) return { md: '', compHtml: '', qNum: '' };
 
   return extractBox(qaBox, fallbackQNum, lastCompHtml);
 }

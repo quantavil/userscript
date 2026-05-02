@@ -31,6 +31,7 @@ export class DownloaderUI {
   private el = document.createElement('div');
   private state: UIState = 'idle';
   private spinRAF: number | null = null;
+  private timer: number | null = null;
 
   constructor(private onStart: () => void, private onCancel: () => void) {
     if (!document.getElementById('tb-css')) document.head.insertAdjacentHTML('beforeend', `<style id="tb-css">${STYLES}</style>`);
@@ -71,6 +72,10 @@ export class DownloaderUI {
 
   private setState(s: UIState) {
     this.stopSpin();
+    if (this.timer) {
+        clearTimeout(this.timer);
+        this.timer = null;
+    }
     this.state = s;
     this.el.dataset.s = s;
     this.el.innerHTML = ICONS[s];
@@ -80,6 +85,19 @@ export class DownloaderUI {
 
   mount() { document.body.appendChild(this.el); }
   updateStatus(m: string) { if (this.state === 'loading') this.el.dataset.t = m; }
-  error(m?: string) { this.setState('error'); if (m) this.el.dataset.t = `Error: ${m}`; setTimeout(() => this.state === 'error' && this.setState('idle'), 5000); }
-  finish() { this.setState('success'); setTimeout(() => this.setState('idle'), 2500); }
+  error(m?: string) { 
+    this.setState('error'); 
+    if (m) this.el.dataset.t = `Error: ${m}`; 
+    this.timer = window.setTimeout(() => {
+        if (this.state === 'error') this.setState('idle');
+        this.timer = null;
+    }, 5000); 
+  }
+  finish() { 
+    this.setState('success'); 
+    this.timer = window.setTimeout(() => {
+        if (this.state === 'success') this.setState('idle');
+        this.timer = null;
+    }, 2500); 
+  }
 }

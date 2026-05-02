@@ -203,10 +203,13 @@ export class Crawler {
     }
 
     private findNextButton(): HTMLElement | null {
-        const els = Array.from(document.querySelectorAll('button, a, div[role="button"]'));
+        // R5: scope search to test interface to avoid clicking palette/pagination/chat "Next"
+        const base = document.querySelector('.tp-test-area, .test-interface, .que-ans-box');
+        const container = base?.closest('.tp-left-box, #questions, #mainBox, .test-interface') as HTMLElement || document;
+        const els = Array.from(container.querySelectorAll('button, a, div[role="button"]'));
         for (const el of els) {
             const txt = (el.textContent || '').trim().toLowerCase();
-            if (txt === 'next' || txt === 'save & next') {
+            if (txt === 'next' || txt === 'save & next' || txt.includes('next question') || txt === 'nextquestion') {
                 return el as HTMLElement;
             }
             if (el.querySelector('.fa-chevron-right') || el.querySelector('.fa-angle-right')) {
@@ -216,6 +219,6 @@ export class Crawler {
             }
         }
         // B5: tightened fallback — only match nextQuestion, not generic "next"
-        return document.querySelector('.next-btn, .btn-next, [ng-click*="nextQuestion"]') as HTMLElement;
+        return container.querySelector('.next-btn, .btn-next, [ng-click*="nextQuestion"]') as HTMLElement;
     }
 }
