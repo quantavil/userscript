@@ -1,6 +1,6 @@
-# Testbook Downloader
+# Testbook Plus
 
-A powerful and robust userscript designed to seamlessly crawl, extract, and convert full Testbook.com question papers into clean, beautifully formatted Markdown files.
+A powerful and robust userscript designed to enhance the Testbook.com UI, aggressively block tracking scripts, and seamlessly crawl, extract, and convert full question papers into clean, beautifully formatted Markdown files.
 
 ## Features
 
@@ -39,4 +39,4 @@ This project is built with TypeScript and Vite.
 
 ## License
 
-ISC License.
+MIT License.

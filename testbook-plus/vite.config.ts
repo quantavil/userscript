@@ -6,10 +6,10 @@ export default defineConfig({
     monkey({
       entry: 'src/main.ts',
       userscript: {
-        name: 'Testbook Markdown Downloader',
-        namespace: 'tb-md-dl',
-        version: '1.0.7',
-        description: 'Auto-crawls and downloads Testbook question papers as Markdown.',
+        name: 'Testbook Plus',
+        namespace: 'tb-plus',
+        version: '2.0.0',
+        description: 'Enhances Testbook UI, blocks tracking, and auto-crawls & downloads question papers as clean Markdown.',
         author: 'quantavil',
         match: ['https://testbook.com/*', 'https://*.testbook.com/*'],
         'run-at': 'document-start',

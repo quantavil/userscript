@@ -1,3 +1,6 @@
+import { Crawler } from './crawler';
+import { DownloaderUI } from './ui';
+
 function injectCSS(css: string) {
     const style = document.createElement('style');
     style.textContent = css;
@@ -48,7 +51,7 @@ function cleanUI() {
 }
 
 function interceptViewSolutions() {
-    // Method 1: Inject a script to override the global `openwin` function
+    // Method 1: Inject a script to override the global \`openwin\` function
     const script = document.createElement('script');
     script.textContent = `
         const originalOpenWin = window.openwin;
@@ -88,9 +91,46 @@ function interceptViewSolutions() {
     });
 }
 
+function downloadFile(content: string, filename: string) {
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function initDownloader() {
+    let activeCrawler: Crawler | null = null;
+    const ui = new DownloaderUI(
+        () => {
+            activeCrawler = new Crawler(
+                (msg) => ui.updateStatus(msg),
+                (md) => {
+                    ui.finish();
+                    downloadFile(md, 'Oliveboard_Questions.md');
+                },
+                (errMsg) => ui.error(errMsg)
+            );
+            activeCrawler.start();
+        },
+        () => activeCrawler?.cancel()
+    );
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => ui.mount());
+    } else {
+        ui.mount();
+    }
+}
+
 function init() {
     cleanUI();
     interceptViewSolutions();
+    initDownloader();
 }
 
 init();

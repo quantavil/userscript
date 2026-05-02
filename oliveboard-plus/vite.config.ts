@@ -6,7 +6,7 @@ export default defineConfig({
     monkey({
       entry: 'src/main.ts',
       userscript: {
-        name: 'Oliveboard Enhancer',
+        name: 'Oliveboard Plus',
         namespace: 'ob-enhancer',
         version: '1.0.0',
         description: 'Enhance Oliveboard UI and functionality.',
