@@ -23,8 +23,8 @@ export function notify(message: string, options: NotifyOptions = {}): void {
 /**
  * Notify download complete
  */
-export function notifyDownloadComplete(filename: string): void {
-    notify(`Download complete: ${filename}`);
+export function notifyDownloadComplete(_filename: string): void {
+    // Browser shows its own download notification; no need to duplicate
 }
 
 // ============================================

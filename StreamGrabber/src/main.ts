@@ -173,25 +173,23 @@ function setupTopHandlers(): void {
   });
 }
 
+function handleNavigationChange(source: string): void {
+  console.log(`[SG] Navigation detected (${source}), clearing state...`);
+  state.clear();
+}
+
 function setupNavigationHandlers(): void {
   // Clear state on history navigation (back/forward)
-  window.addEventListener('popstate', () => {
-    console.log('[SG] Navigation detected (popstate), clearing state...');
-    state.clear();
-  });
+  window.addEventListener('popstate', () => handleNavigationChange('popstate'));
 
   // Clear state on hash change
-  window.addEventListener('hashchange', () => {
-    console.log('[SG] Hash change detected, clearing state...');
-    state.clear();
-  });
+  window.addEventListener('hashchange', () => handleNavigationChange('hashchange'));
 
   // Monkey-patch history.pushState
   const originalPush = history.pushState;
   history.pushState = function (...args) {
     const result = originalPush.apply(this, args);
-    console.log('[SG] Navigation detected (pushState), clearing state...');
-    state.clear();
+    handleNavigationChange('pushState');
     return result;
   };
 
@@ -199,8 +197,7 @@ function setupNavigationHandlers(): void {
   const originalReplace = history.replaceState;
   history.replaceState = function (...args) {
     const result = originalReplace.apply(this, args);
-    console.log('[SG] Navigation detected (replaceState), clearing state...');
-    state.clear();
+    handleNavigationChange('replaceState');
     return result;
   };
 }

@@ -11,6 +11,7 @@ import {
   extractResFromUrl,
   guessHlsType,
   guessExt,
+  generateFilename,
   lruGet,
   lruSet,
 } from '../src/utils';
@@ -128,6 +129,24 @@ describe('guessExt', () => {
 
   it('defaults to mp4', () => {
     expect(guessExt('https://cdn.com/stream')).toBe('mp4');
+  });
+});
+
+describe('generateFilename', () => {
+  it('uses title if no urlPath', () => {
+    expect(generateFilename({ title: 'My Video' })).toBe('My Video.mp4');
+  });
+
+  it('extracts from urlPath', () => {
+    expect(generateFilename({ title: 'My Page', urlPath: 'https://cdn.com/actual_file_name.mp4' })).toBe('actual_file_name.mp4');
+  });
+
+  it('appends quality', () => {
+    expect(generateFilename({ title: 'Video', quality: '1080p' })).toBe('Video_1080p.mp4');
+  });
+
+  it('uses custom extension', () => {
+    expect(generateFilename({ title: 'Video', ext: 'ts' })).toBe('Video.ts');
   });
 });
 

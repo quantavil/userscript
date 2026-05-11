@@ -6,10 +6,12 @@ export default defineConfig({
     monkey({
       entry: 'src/main.ts',
       userscript: {
-        name: 'StreamGrabber',
+        name: 'StreamGrabber Fork',
         namespace: 'https://github.com/streamgrabber-lite',
-        version: '2.4.0',
-        description: 'Lightweight HLS/Video downloader. Pause/Resume. AES-128. fMP4. Mobile + Desktop.',
+        version: '2.4.6',
+        downloadURL: 'https://update.greasyfork.org/scripts/577440/StreamGrabber%20Fork.user.js',
+        updateURL: 'https://update.greasyfork.org/scripts/577440/StreamGrabber%20Fork.meta.js',
+        description: 'High-performance HLS/Video downloader. Detect and download HLS streams (.m3u8), video blobs, and direct video files with a premium UI. Features pause/resume, AES-128 support, fMP4 segments, and adaptive quality selection. Optimized for mobile and desktop.',
         author: 'StreamGrabber',
         license: 'MIT',
         match: ['*://*/*'],

@@ -94,6 +94,12 @@ Access these via your userscript manager menu:
 
 ---
 
+## 🤝 Credits
+
+Special thanks to **[Blaze FTL](https://greasyfork.org/en/users/1089173-blazeftl)** for  contributions to the codebase and logic improvements.
+
+---
+
 ## 📄 License
 
 MIT © [quantavil](https://github.com/quantavil)

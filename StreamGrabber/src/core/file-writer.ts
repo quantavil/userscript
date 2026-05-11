@@ -1,4 +1,5 @@
 import { notifyDownloadComplete } from '../utils';
+import { createInternalBlobUrl } from '../utils/blob-utils';
 
 interface GMDownloadOptions {
   url: string;
@@ -116,17 +117,16 @@ function mapGMDownloadError(error?: string, details?: string): string {
 function downloadViaAnchor(url: string, filename: string): Promise<void> {
   return new Promise((resolve) => {
     const a = document.createElement('a');
-    // Note: Anchor downloads can't reliably detect success/failure
     a.href = url;
     a.download = filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
+    a.rel = 'noopener';
+    a.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none';
+    (document.body || document.documentElement).appendChild(a);
     a.click();
-    document.body.removeChild(a);
-    // Short delay to ensure click registers before revoking
     setTimeout(() => {
+      a.remove();
       resolve();
-    }, 500);
+    }, 1000);
   });
 }
 
@@ -165,23 +165,23 @@ async function triggerDownload(
   fallbackOnFail: boolean = true
 ): Promise<void> {
   try {
-    if (typeof GM_download === 'function') {
+    const isBlobUrl = url.startsWith('blob:');
+    if (!isBlobUrl && typeof GM_download === 'function') {
       try {
-        await downloadWithGM(url, filename, onSuccess);
+        await downloadWithGM(url, filename, onSuccess, false);
+        return;
       } catch (e) {
-        if (fallbackOnFail) {
-          log.warn('GM_download failed, attempting fallback to anchor tag:', (e as Error).message);
-          await downloadViaAnchor(url, filename);
-          onSuccess?.();
-        } else {
-          throw e;
-        }
+        if (!fallbackOnFail) throw e;
+        log.warn('GM_download failed, attempting fallback to anchor tag:', (e as Error).message);
       }
-    } else {
-      log.info('GM_download unavailable, using anchor fallback');
-      await downloadViaAnchor(url, filename);
-      onSuccess?.();
     }
+
+    if (isBlobUrl && typeof GM_download !== 'function') {
+      log.info('GM_download unavailable, using anchor fallback');
+    }
+
+    await downloadViaAnchor(url, filename);
+    onSuccess?.();
   } finally {
     revokeUrlLater(url);
   }
@@ -410,7 +410,7 @@ function createBlobWriter(suggestedName: string, mimeType: string): FileWriter {
     currentBufferSize = 0;
     currentPartSize = 0;
 
-    const url = URL.createObjectURL(blob);
+    const url = createInternalBlobUrl(blob);
 
     // Trigger download - we await it to ensure we don't start next part too fast 
     // or if we want to handle errors, though strictly we could fire-and-forget for speed.
@@ -502,6 +502,6 @@ export async function createFileWriter(
 
 // Legacy export if needed, or for direct blob downloads
 export function downloadBlob(blob: Blob, filename: string): Promise<void> {
-  const url = URL.createObjectURL(blob);
+  const url = createInternalBlobUrl(blob);
   return triggerDownload(url, filename);
 }

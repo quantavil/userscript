@@ -3,6 +3,24 @@ import { isBlob } from './url-utils';
 import { parseRange } from './misc-utils';
 
 // ============================================
+// Internal Blob Tracking
+// ============================================
+
+export const skipDetectionBlobs = /* @__PURE__ */ new WeakSet<Blob>();
+export const internalBlobUrls = /* @__PURE__ */ new Set<string>();
+
+/**
+ * Creates an object URL for a blob that will be ignored by the detection engine.
+ * Useful for internally generated blobs (e.g., finalized downloads) to prevent recursion.
+ */
+export function createInternalBlobUrl(blob: Blob): string {
+    skipDetectionBlobs.add(blob);
+    const url = URL.createObjectURL(blob);
+    internalBlobUrls.add(url);
+    return url;
+}
+
+// ============================================
 // Blob Utilities
 // ============================================
 

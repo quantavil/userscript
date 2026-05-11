@@ -8,6 +8,7 @@ import {
 } from './parser';
 import { downloadSegments } from './download-engine';
 import { enrichNow, analyzeMediaPlaylist } from './enrichment';
+import { createInternalBlobUrl } from '../utils/blob-utils';
 import {
   cleanFilename,
   guessExt,

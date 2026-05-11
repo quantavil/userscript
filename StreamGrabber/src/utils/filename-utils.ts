@@ -47,12 +47,19 @@ export function guessExt(url: string | null | undefined, type?: string | null): 
 
 export interface FilenameOptions {
     title?: string;
+    urlPath?: string;
     ext?: string;
     quality?: string | null;
 }
 
 export function generateFilename(options: FilenameOptions): string {
-    const base = cleanFilename(options.title || document.title);
+    let base;
+    if (options.urlPath) {
+      const m = /([^/?#]+)\.[a-z0-9]+(?:[?#]|$)/i.exec(options.urlPath);
+      if (m) base = cleanFilename(m[1]);
+    }
+    if (!base) base = cleanFilename(options.title || document.title);
+
     const qualSuffix = options.quality ? `_${options.quality}` : '';
     const ext = options.ext || 'mp4';
 

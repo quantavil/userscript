@@ -2,6 +2,7 @@ import type { BlobInfo } from '../types';
 import { blobRegistry } from '../core/blob-store';
 import { CACHE } from '../config';
 import { looksM3U8Type, looksVideoType } from '../utils';
+import { skipDetectionBlobs, internalBlobUrls } from '../utils/blob-utils';
 
 type DetectionCallback = (url: string, metadata?: { size?: number; type?: string; pageTitle?: string }) => void;
 
@@ -106,6 +107,12 @@ function hookCreateObjectURL(): void {
     const href = original.call(this, obj);
 
     try {
+      if (obj instanceof Blob && skipDetectionBlobs.has(obj)) {
+        skipDetectionBlobs.delete(obj);
+        return href;
+      }
+      if (internalBlobUrls.has(href)) return href;
+
       const now = Date.now();
 
       if (obj instanceof Blob) {
