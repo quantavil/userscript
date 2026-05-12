@@ -1,9 +1,6 @@
 import { startCrawler } from './crawler';
 
-export function injectUI() {
-  const btn = document.createElement('button');
-  btn.textContent = 'Export to MD';
-  btn.style.cssText = `
+const BUTTON_STYLES = `
     position: fixed;
     bottom: 20px;
     right: 20px;
@@ -17,6 +14,11 @@ export function injectUI() {
     font-family: Arial, sans-serif;
     box-shadow: 0 4px 6px rgba(0,0,0,0.3);
   `;
+
+export function injectUI() {
+  const btn = document.createElement('button');
+  btn.textContent = 'Export to MD';
+  btn.style.cssText = BUTTON_STYLES;
   
   btn.addEventListener('click', () => {
     btn.textContent = 'Crawling...';
@@ -27,6 +29,7 @@ export function injectUI() {
     }).catch(e => {
       console.error(e);
       btn.textContent = 'Error!';
+      btn.disabled = false;
     });
   });
 
