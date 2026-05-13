@@ -1,12 +1,14 @@
 {
   "name": "guidely-plus",
   "version": "1.0.0",
-  "description": "Guidely Plus userscript",
-  "main": "index.js",
+  "description": "Markdown crawler for Guidely tests",
   "scripts": {
     "build": "bunx vite build",
     "dev": "bunx vite"
   },
+  "keywords": [],
+  "author": "quantavil",
+  "license": "MIT",
   "type": "module",
   "devDependencies": {
     "@types/turndown": "^5.0.6",
