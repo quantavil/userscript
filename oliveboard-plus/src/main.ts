@@ -40,8 +40,15 @@ function init() {
     // Initial run after DOM is ready
     onReady(runMutationHandlers);
 
-    // Single consolidated MutationObserver for all DOM-reactive features
-    const observer = new MutationObserver(runMutationHandlers);
+    let pending = false;
+    const observer = new MutationObserver(() => {
+        if (pending) return;
+        pending = true;
+        requestAnimationFrame(() => {
+            runMutationHandlers();
+            pending = false;
+        });
+    });
     observer.observe(document.documentElement, { childList: true, subtree: true });
 }
 

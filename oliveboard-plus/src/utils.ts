@@ -20,7 +20,7 @@ export function enableCopyAndRightClick() {
             user-select: text !important;
         }
     `;
-    document.documentElement.appendChild(style);
+    (document.head || document.documentElement).appendChild(style);
 
     const events = ['contextmenu', 'copy', 'cut', 'paste', 'selectstart'];
     events.forEach(evt => {

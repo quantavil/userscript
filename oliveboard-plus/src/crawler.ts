@@ -1,20 +1,7 @@
-import { getTurndownService } from './converter';
-
-interface QuestionData {
-  index: number;
-  sectionName: string;
-  questionHtml: string;
-  options: {
-    label: string;
-    html: string;
-    isCorrect: boolean;
-  }[];
-  solutionHtml: string;
-}
+import { extractCurrentQuestion, formatQuestion, QuestionData } from './parser';
 
 interface SectionInfo {
   name: string;
-  /** Global 0-based indices of questions in this section */
   questionIndices: number[];
 }
 
@@ -37,7 +24,6 @@ export class Crawler {
     this.isCancelled = true;
   }
 
-  /** Simple djb2 hash for robust deduplication instead of 50-char substring */
   private hashString(str: string): string {
     let hash = 5381;
     for (let i = 0; i < str.length; i++) {
@@ -46,20 +32,14 @@ export class Crawler {
     return hash.toString(36);
   }
 
-  /**
-   * Parse the question-map sidebar to discover section names
-   * and which global question indices belong to each section.
-   */
   private parseSectionMap(): SectionInfo[] {
     const sections: SectionInfo[] = [];
     const sectionBoxes = document.querySelectorAll('.question-map .box');
 
     sectionBoxes.forEach((box) => {
-      // Section name from <p><b>Name</b></p>
       const nameEl = box.querySelector('p b') || box.querySelector('p');
       const name = nameEl?.textContent?.trim() || 'Unknown Section';
 
-      // Each question span has class `q-{globalIndex}` and onclick="goToQuestion(globalIndex)"
       const qSpans = box.querySelectorAll('.map-qno');
       const questionIndices: number[] = [];
 
@@ -79,78 +59,6 @@ export class Crawler {
     return sections;
   }
 
-
-  private fixImageUrls(html: string): string {
-    return html.replace(/src=["'](?:\/)?(oliveimg\/[^"']+)["']/gi, 'src="https://u1.oliveboard.in/exams/solution/$1"');
-  }
-
-  private extractCurrentQuestion(): QuestionData | null {
-    let activeBlock: Element | null = null;
-    const blocks = Array.from(document.querySelectorAll('.singleqid, .paneqid'));
-    let domIndex = 0;
-
-    for (let i = 0; i < blocks.length; i++) {
-      const style = window.getComputedStyle(blocks[i]);
-      if (style.display !== 'none') {
-        activeBlock = blocks[i];
-        domIndex = i + 1;
-        break;
-      }
-    }
-
-    if (!activeBlock) return null;
-
-    // Get the current section name from the dropdown
-    const sectionEl = document.querySelector('.ddn-select');
-    const sectionName = sectionEl?.textContent?.trim() || 'Unknown Section';
-
-    try {
-      // Directions / Passage (only present in .paneqid)
-      const paneTxt = activeBlock.querySelector('.panetxt .eqt') || activeBlock.querySelector('.panetxt');
-      const directionsHtml = paneTxt ? this.fixImageUrls(paneTxt.innerHTML.trim()) + '<br><br>' : '';
-
-      // Question
-      const qblock = activeBlock.querySelector('.qblock .eqt') || activeBlock.querySelector('.qblock');
-      const questionHtml = directionsHtml + (qblock ? this.fixImageUrls(qblock.innerHTML.trim()) : '');
-
-      // Options
-      const options: QuestionData['options'] = [];
-      const optionBlocks = activeBlock.querySelectorAll('.opt');
-      
-      optionBlocks.forEach((optBlock) => {
-        const labelEl = optBlock.querySelector('.left');
-        const textEl = optBlock.querySelector('.rightopt .eqt') || optBlock.querySelector('.rightopt');
-        
-        const label = labelEl ? labelEl.textContent?.trim() || '' : '';
-        const html = textEl ? this.fixImageUrls(textEl.innerHTML.trim()) : '';
-        const isCorrect = optBlock.classList.contains('correct');
-
-        if (label || html) {
-          options.push({ label, html, isCorrect });
-        }
-      });
-
-      // Solution
-      const solblock = activeBlock.querySelector('.solutiontxt .eqt') || activeBlock.querySelector('.solutiontxt');
-      const solutionHtml = solblock ? this.fixImageUrls(solblock.innerHTML.trim()) : '';
-
-      return {
-        index: domIndex || this.currentIndex,
-        sectionName,
-        questionHtml,
-        options,
-        solutionHtml
-      };
-    } catch (err) {
-      console.error(`Error parsing question block`, err);
-      return null;
-    }
-  }
-
-  /**
-   * Navigate to a specific question by its global 0-based index.
-   * Uses the goToQuestion() function exposed on the page.
-   */
   private navigateToQuestion(globalIndex: number) {
     const span = document.querySelector(`.map-qno.q-${globalIndex}`) as HTMLElement | null;
     if (span) {
@@ -163,16 +71,13 @@ export class Crawler {
     this.questionsData.clear();
     this.currentIndex = 1;
 
-    // Parse section map to know all sections and their question indices
     const sections = this.parseSectionMap();
 
     if (sections.length === 0) {
-      // Fallback: no section map found, use linear crawl
       await this.linearCrawl();
       return;
     }
 
-    // Section-aware crawl: iterate through each section and its questions
     const totalQuestions = sections.reduce((sum, s) => sum + s.questionIndices.length, 0);
     let processedCount = 0;
 
@@ -180,7 +85,8 @@ export class Crawler {
       if (this.isCancelled) break;
 
       this.onUpdate(`Section: ${section.name}`);
-      await this.sleep(200);
+      await this.sleep(50);
+      if (this.isCancelled) break;
 
       for (const globalIdx of section.questionIndices) {
         if (this.isCancelled) break;
@@ -188,15 +94,15 @@ export class Crawler {
         processedCount++;
         this.onUpdate(`${section.name} — Q${processedCount}/${totalQuestions}`);
 
-        // Navigate to this specific question
         this.navigateToQuestion(globalIdx);
-        await this.sleep(400);
+        await this.sleep(10);
+        if (this.isCancelled) break;
 
-        const qData = this.extractCurrentQuestion();
+        const qData = extractCurrentQuestion(this.currentIndex);
         if (!qData) {
-          // Try once more with a longer wait
-          await this.sleep(600);
-          const retry = this.extractCurrentQuestion();
+          await this.sleep(50);
+          if (this.isCancelled) break;
+          const retry = extractCurrentQuestion(this.currentIndex);
           if (!retry) continue;
           this.addQuestion(retry, section.name);
         } else {
@@ -230,7 +136,6 @@ export class Crawler {
     }
   }
 
-  /** Fallback: linear crawl when no section map is available */
   private async linearCrawl() {
     let sameQuestionCount = 0;
     let consecutiveNulls = 0;
@@ -238,9 +143,10 @@ export class Crawler {
 
     while (!this.isCancelled) {
       this.onUpdate(`Extracting Q${this.currentIndex}...`);
-      await this.sleep(300);
+      await this.sleep(10);
+      if (this.isCancelled) break;
 
-      const qData = this.extractCurrentQuestion();
+      const qData = extractCurrentQuestion(this.currentIndex);
       
       if (!qData) {
         consecutiveNulls++;
@@ -251,7 +157,7 @@ export class Crawler {
         const nextBtn = Array.from(document.querySelectorAll<HTMLButtonElement>('button.btn-prenext')).find(btn => btn.textContent?.includes('Next'));
         if (nextBtn && !nextBtn.disabled && nextBtn.style.display !== 'none') {
           nextBtn.click();
-          await this.sleep(500);
+          await this.sleep(50);
         } else {
           break;
         }
@@ -285,7 +191,7 @@ export class Crawler {
       
       if (nextBtn && !nextBtn.disabled && nextBtn.style.display !== 'none') {
         nextBtn.click();
-        await this.sleep(500);
+        await this.sleep(50);
       } else {
         break;
       }
@@ -306,32 +212,10 @@ export class Crawler {
     this.onComplete(md);
   }
 
-  private formatQuestion(q: QuestionData, displayIndex: number): string {
-    const td = getTurndownService();
-    let markdown = `### Q${displayIndex}\n\n`;
-    markdown += `${td.turndown(q.questionHtml)}\n\n`;
-
-    q.options.forEach((opt) => {
-      const optionMark = opt.isCorrect ? `**[Correct]** ` : ``;
-      const optionMarkdown = td.turndown(opt.html).replace(/\n/g, ' '); 
-      markdown += `- **${opt.label}**: ${optionMark}${optionMarkdown}\n`;
-    });
-
-    markdown += `\n`;
-
-    if (q.solutionHtml) {
-      markdown += `**Solution:**\n\n`;
-      markdown += `${td.turndown(q.solutionHtml)}\n\n`;
-    }
-
-    return markdown;
-  }
-
   private generateMarkdown(sections: SectionInfo[]): string {
     let markdown = `# Oliveboard Exam\n\n`;
 
     if (sections.length > 0) {
-      // Group questions by section name (preserve insertion order)
       const grouped = new Map<string, QuestionData[]>();
       for (const section of sections) {
         if (!grouped.has(section.name)) {
@@ -354,26 +238,18 @@ export class Crawler {
 
         let sectionQNo = 1;
         for (const q of questions) {
-          markdown += this.formatQuestion(q, sectionQNo) + `---\n\n`;
+          markdown += formatQuestion(q, sectionQNo) + `---\n\n`;
           sectionQNo++;
         }
       }
     } else {
-      // Flat output (linear crawl fallback)
       let displayIndex = 1;
       for (const q of this.questionsData.values()) {
-        markdown += this.formatQuestion(q, displayIndex) + `---\n\n`;
+        markdown += formatQuestion(q, displayIndex) + `---\n\n`;
         displayIndex++;
       }
     }
 
     return markdown;
-  }
-
-  public extractSingleQuestionMarkdown(): string | null {
-    const q = this.extractCurrentQuestion();
-    if (!q) return null;
-    
-    return this.formatQuestion(q, q.index);
   }
 }
