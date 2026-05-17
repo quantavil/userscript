@@ -3,7 +3,7 @@ import { cleanNumber } from '../utils/formatters';
 import { extractWeights, computeRate, parseMultiPackText, parseTitleToRate } from '../core/parser';
 import { injectRateUI } from '../core/ui';
 import { cleanProductUrl } from '../utils/urlCleaner';
-import type { ProductMeta } from '../core/types';
+import type { WishlistItem } from '../core/types';
 
 export class FlipkartAdapter extends BaseAdapter {
   processCards() {
@@ -31,73 +31,60 @@ export class FlipkartAdapter extends BaseAdapter {
     });
   }
 
-  private processFlipkartCard(card: HTMLElement, price: number, qtyText: string, titleText: string, meta: ProductMeta) {
+  private processFlipkartCard(card: HTMLElement, price: number, qtyText: string, titleText: string, meta: WishlistItem) {
+    let finalRate: { text: string; isItemRate: boolean } | null = null;
+
     if (qtyText) {
       const multiPack = parseMultiPackText(qtyText);
       if (multiPack && multiPack.totalValue > 0 && multiPack.unit) {
-        const rate = computeRate(price, multiPack.totalValue, multiPack.unit);
-        if (rate) {
-          meta.rateText = rate.text;
-          this.injectUI(card, rate.text, rate.isItemRate, meta);
-          return;
+        finalRate = computeRate(price, multiPack.totalValue, multiPack.unit);
+      }
+
+      if (!finalRate) {
+        const weights = extractWeights(qtyText);
+        if (weights.length === 1) {
+          const w = weights[0]!;
+          finalRate = computeRate(price, w.val, w.unit);
         }
       }
 
-      const weights = extractWeights(qtyText);
-      if (weights.length === 1) {
-        const w = weights[0]!;
-        const rate = computeRate(price, w.val, w.unit);
-        if (rate) {
-          meta.rateText = rate.text;
-          this.injectUI(card, rate.text, rate.isItemRate, meta);
-          return;
-        }
-      }
+      if (!finalRate) {
+        const setMatch = qtyText.match(/(\d+)\s*Items?\s*in\s*the\s*set/i);
+        if (setMatch) {
+          const itemCount = parseInt(setMatch[1]!);
+          const titleWeights = extractWeights(titleText);
 
-      const setMatch = qtyText.match(/(\d+)\s*Items?\s*in\s*the\s*set/i);
-      if (setMatch) {
-        const itemCount = parseInt(setMatch[1]!);
-        const titleWeights = extractWeights(titleText);
-
-        if (titleWeights.length === 1 && /\b(?:each|per\s*piece)\b/i.test(titleText)) {
-          const tw = titleWeights[0]!;
-          const totalValue = tw.val * itemCount;
-          const rate = computeRate(price, totalValue, tw.unit);
-          if (rate) {
-            meta.rateText = rate.text;
-            this.injectUI(card, rate.text, rate.isItemRate, meta);
-            return;
-          }
-        } else if (titleWeights.length === itemCount && titleWeights.length > 0) {
-          const firstUnit = titleWeights[0]!.unit;
-          if (titleWeights.every(w => w.unit === firstUnit)) {
-            const totalValue = titleWeights.reduce((s, w) => s + w.val, 0);
-            const rate = computeRate(price, totalValue, firstUnit);
-            if (rate) {
-              meta.rateText = rate.text;
-              this.injectUI(card, rate.text, rate.isItemRate, meta);
-              return;
+          if (titleWeights.length === 1 && /\b(?:each|per\s*piece)\b/i.test(titleText)) {
+            const tw = titleWeights[0]!;
+            const totalValue = tw.val * itemCount;
+            finalRate = computeRate(price, totalValue, tw.unit);
+          } else if (titleWeights.length === itemCount && titleWeights.length > 0) {
+            const firstUnit = titleWeights[0]!.unit;
+            if (titleWeights.every(w => w.unit === firstUnit)) {
+              const totalValue = titleWeights.reduce((s, w) => s + w.val, 0);
+              finalRate = computeRate(price, totalValue, firstUnit);
             }
           }
-        }
 
-        const perItemRate = computeRate(price, itemCount, 'item');
-        if (perItemRate) {
-          meta.rateText = perItemRate.text;
-          this.injectUI(card, perItemRate.text, perItemRate.isItemRate, meta);
-          return;
+          if (!finalRate) {
+            finalRate = computeRate(price, itemCount, 'item');
+          }
         }
       }
     }
 
-    const rate = parseTitleToRate(price, titleText);
-    if (rate) {
-      meta.rateText = rate.text;
-      this.injectUI(card, rate.text, rate.isItemRate, meta);
+    if (!finalRate) {
+      finalRate = parseTitleToRate(price, titleText);
     }
+
+    const rateText = finalRate?.text || 'NA';
+    const isItemRate = finalRate?.isItemRate ?? true;
+    
+    meta.rateText = rateText;
+    this.injectUI(card, rateText, isItemRate, meta);
   }
 
-  private getMeta(card: HTMLElement, titleEl: HTMLAnchorElement | null, title: string, price: number, rateText: string): ProductMeta {
+  private getMeta(card: HTMLElement, titleEl: HTMLAnchorElement | null, title: string, price: number, rateText: string): WishlistItem {
     const fId = card.dataset.id || '';
     const imgEl = card.querySelector('img');
     const rawUrl = titleEl?.getAttribute('href') || '';
@@ -133,7 +120,7 @@ export class FlipkartAdapter extends BaseAdapter {
     };
   }
 
-  private injectUI(card: HTMLElement, text: string, isItemRate: boolean, meta: ProductMeta) {
+  private injectUI(card: HTMLElement, text: string, isItemRate: boolean, meta: WishlistItem) {
     const container = card.querySelector('div.QiMO5r')
       ?? card.querySelector('.Nx9bqj')?.parentElement
       ?? card;

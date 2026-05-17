@@ -1,7 +1,8 @@
-import type { ProductMeta } from './types';
+import type { WishlistItem } from './types';
 import { isInWishlist, addItem, removeItem } from './wishlist';
+import { HEART_PATH_D } from './icons';
 
-export function injectRateUI(container: HTMLElement, text: string, isItemRate: boolean, meta?: ProductMeta) {
+export function injectRateUI(container: HTMLElement, text: string, isItemRate: boolean, meta?: WishlistItem) {
   const el = document.createElement('div');
   
   const bg = isItemRate ? '#f3f4f6' : '#eff6ff';
@@ -44,7 +45,7 @@ export function injectRateUI(container: HTMLElement, text: string, isItemRate: b
     heartSvg.style.transition = 'transform 0.2s ease';
 
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', 'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z');
+    path.setAttribute('d', HEART_PATH_D);
     
     heartSvg.appendChild(path);
     updateHeartState(heartSvg, isInWishlist(meta.id));
@@ -52,11 +53,15 @@ export function injectRateUI(container: HTMLElement, text: string, isItemRate: b
     heartSvg.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
-      if (isInWishlist(meta.id)) {
+      const active = isInWishlist(meta.id);
+      if (active) {
         removeItem(meta.id);
       } else {
         addItem(meta);
       }
+      // Micro-animation: pop effect on toggle
+      heartSvg.style.transform = 'scale(1.3)';
+      setTimeout(() => { heartSvg.style.transform = 'scale(1)'; }, 200);
     });
 
     el.appendChild(heartSvg);

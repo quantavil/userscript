@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'Amazon & Flipkart Price Standardizer + Wishlist',
         namespace: 'http://github.com/quantavil',
-        version: '5.2',
+        version: '5.5',
         description: 'Standardizes unit prices (₹/100g, ₹/100ml) and adds a unified wishlist for Amazon and Flipkart. Export saved items as Markdown tables.',
         author: 'quantavil',
         match: [

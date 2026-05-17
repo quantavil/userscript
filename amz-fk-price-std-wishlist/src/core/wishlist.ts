@@ -1,4 +1,4 @@
-import type { WishlistItem, ProductMeta } from './types';
+import type { WishlistItem } from './types';
 
 const WISHLIST_KEY = 'priceStdz_wishlist';
 
@@ -11,10 +11,10 @@ export function saveWishlist(items: WishlistItem[]): void {
   window.dispatchEvent(new CustomEvent('wishlist-updated'));
 }
 
-export function addItem(meta: ProductMeta): void {
+export function addItem(meta: WishlistItem): void {
   const items = getWishlist();
   if (!items.some(i => i.id === meta.id)) {
-    items.push(meta);
+    items.push({ ...meta, dateAdded: Date.now() });
     saveWishlist(items);
   }
 }

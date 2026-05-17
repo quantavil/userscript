@@ -15,8 +15,19 @@ Stop doing mental math. Instantly compare combos, single packs, and multi‑buys
   - **Same-Unit Summing**: `200g + 50g` becomes `250g`.
   - **Mixed Units**: Falls back to a clean **₹/item** rate for mixed-volume combos.
 
-- **Unified Wishlist (Amazon + Flipkart)**  
-  Click the **Heart Icon** on any price badge to save the item. Items are stored securely using `GM_setValue`, making your wishlist **persistent and shared** across Amazon and Flipkart. Access it anytime via the floating action button (FAB) in the bottom-right corner.
+- **Interactive Floating Dashboard (v5.3 Overhaul)**  
+  Access your saved items via a beautiful, interactive floating panel in the bottom-right corner, loaded with premium tools:
+  - **Debounced Search**: Instantly filter your wishlist items by title with a debounced (150ms) search bar.
+  - **Flexible Sorting**: Sort items by **Date Added**, **Price: Low → High**, **Price: High → Low**, or **Name: A → Z**.
+  - **Platform Filters**: Quickly toggle filters using **All**, **Amazon**, or **Flipkart** pill tags.
+  - **Inline Confirmation**: The jarring, blocking native browser `confirm()` popup is replaced with a sleek inline slide-down confirmation bar.
+  - **Toast Notifications**: Interactive actions (such as copying, removing, or clearing items) trigger non-intrusive toast notifications.
+
+- **Hydration & Security Proofed**  
+  - **Append-Only DOM Mutations**: Injected elements are append-only into static nodes to prevent conflicts with Amazon's/Flipkart's React hydration cycles.
+  - **Strict Event Isolation**: Click handlers utilize `e.stopPropagation()` and `e.preventDefault()`, allowing you to toggle hearts or open the panel without accidentally triggering product page navigation.
+  - **CSP Image Fallbacks**: Cross-Origin images blocked by Flipkart's strict CSP (Content Security Policy) automatically fallback to elegant, platform-initial letter badges (an orange **A** or a blue **F**).
+  - **Maximum Z-Index Layering**: FAB (`z-index: 2147483647`) and Panel (`z-index: 2147483646`) sit securely above sticky headers, popups, and stubborn modal overlays.
 
 - **Clean URL Formatting**  
   Amazon and Flipkart URLs are littered with tracking garbage (`ref=`, `otracker=`, `qid=`). The wishlist extracts the **canonical product link** (e.g., `https://www.amazon.in/dp/ASIN`) so you only save and share clean, permanent links.
@@ -24,19 +35,13 @@ Stop doing mental math. Instantly compare combos, single packs, and multi‑buys
 - **Markdown Export**  
   One-click export of your entire wishlist into a perfectly formatted **Markdown table**. Ideal for pasting into Notion, Obsidian, GitHub, or ChatGPT.
 
-- **Full Management Controls**  
-  Individually remove items or use the **Clear All** button to reset your list instantly.
-
-- **Hydration-Safe Architecture**  
-  Designed to survive the aggressive React/React Native DOM hydration cycles used by Amazon and Flipkart. Injected elements are append-only and event-isolated, ensuring they never vanish or crash the host page.
-
 ---
 
 ## 🛡️ Technical Edge
 
 - **False-Positive Immunity**: Built-in logic ignores nutritional marketing (e.g., `25g protein`) and irrelevant dimensions (e.g., `L-shaped desk`) to ensure pricing accuracy.
 - **Performance Optimized**: Uses a debounced `MutationObserver` to batch process infinite-scroll pages with zero UI lag.
-- **Z-Index Priority**: UI elements are guaranteed to render above all host site modals and headers using max 32-bit integer layers.
+- **Centralized Dry Architecture**: SVG icon factories are fully extracted to `src/core/icons.ts` to reduce script footprint and improve readability.
 
 ---
 
@@ -45,7 +50,7 @@ Stop doing mental math. Instantly compare combos, single packs, and multi‑buys
 This project uses a modular **Adapter Pattern** built with `Bun`, `Vite`, and `TypeScript`.
 
 - `src/adapters/`: Isolates site-specific DOM logic (`Amazon.ts`, `Flipkart.ts`).
-- `src/core/`: Centralized parsing engine, regex definitions, and wishlist storage logic.
+- `src/core/`: Centralized parsing engine, `icons.ts` SVG factory, and wishlist storage/UI logic.
 - `src/utils/`: Sanitizers and formatters, including the `urlCleaner`.
 - `tests/`: A robust test suite powered by real-world fixtures.
 

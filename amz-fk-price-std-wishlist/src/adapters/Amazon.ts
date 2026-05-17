@@ -2,7 +2,7 @@ import { BaseAdapter } from './BaseAdapter';
 import { cleanNumber } from '../utils/formatters';
 import { parseTitleToRate } from '../core/parser';
 import { injectRateUI } from '../core/ui';
-import type { ProductMeta } from '../core/types';
+import type { WishlistItem } from '../core/types';
 
 export class AmazonAdapter extends BaseAdapter {
   processCards() {
@@ -24,9 +24,11 @@ export class AmazonAdapter extends BaseAdapter {
           if (!title) return;
 
           const rate = parseTitleToRate(price, title);
-          const meta = this.getProductMeta(card, title, price, rate?.text || '');
+          const rateText = rate?.text || 'NA';
+          const isItemRate = rate?.isItemRate ?? true;
+          const meta = this.getMeta(card, title, price, rateText);
           
-          if (rate) this.injectUI(card, rate.text, rate.isItemRate, meta);
+          this.injectUI(card, rateText, isItemRate, meta);
           card.dataset.rateDone = '1';
         } catch (e) {
           console.error('Price Standardizer: Error processing Amazon card', e);
@@ -56,7 +58,7 @@ export class AmazonAdapter extends BaseAdapter {
     return '';
   }
 
-  private getProductMeta(card: HTMLElement, title: string, price: number, rateText: string): ProductMeta {
+  private getMeta(card: HTMLElement, title: string, price: number, rateText: string): WishlistItem {
     const asin = card.dataset.asin || '';
     const imgEl = card.querySelector('img.s-image');
     
@@ -102,7 +104,7 @@ export class AmazonAdapter extends BaseAdapter {
     };
   }
 
-  private injectUI(card: HTMLElement, text: string, isItemRate: boolean, meta: ProductMeta) {
+  private injectUI(card: HTMLElement, text: string, isItemRate: boolean, meta: WishlistItem) {
     const container = card.querySelector('div.a-row.a-size-base.a-color-base')
       ?? card.querySelector('._cDEzb_p13n-sc-price-animation-wrapper_3PzN2')
       ?? card;

@@ -1,69 +1,34 @@
 # MEMORY.md — Amazon & Flipkart Price Standardizer + Wishlist
 
 ## Project Overview
-- Userscript: standardizes unit prices (₹/100g, ₹/100ml) and adds a unified wishlist for Amazon and Flipkart.
-- Stack: TypeScript + Vite + vite-plugin-monkey + Bun (runtime & test runner)
-- Build: `bun run build` → `dist/amz-fk-price-std-wishlist.user.js` (v5.2)
-- Tests: `bun test` (38 tests across 2 files)
+- Userscript: Standardizes unit prices (e.g. ₹/100g) and provides a unified wishlist.
+- Stack: TypeScript + Vite + vite-plugin-monkey + Bun (runtime/tests).
+- Build: `bun run build` → `dist/amz-fk-price-std-wishlist.user.js` (v5.5)
+- Tests: `bun test`
 
 ## Architecture
-- `src/main.ts` — entry, routes to adapter by hostname
-- `src/adapters/BaseAdapter.ts` — shared MutationObserver + debounce + SPA detection
-- `src/adapters/Amazon.ts` — search result card selectors, price extraction
-- `src/adapters/Flipkart.ts` — search card selectors, qty element parsing, title fallback
-- `src/core/parser.ts` — extractWeights, parseMultiPackText, parsePackCount, parseTitleToRate, computeRate
-- `src/core/ui.ts` — injectRateUI (badge DOM injection + wishlist heart)
-- `src/core/wishlist.ts` — GM storage manager for saved items
-- `src/core/wishlistUI.ts` — Floating Action Button (FAB) and dashboard panel
-- `src/core/types.ts` — ParsedData, WeightExtract, RateResult, WishlistItem, ProductMeta
-- `src/gm.d.ts` — Tampermonkey API declarations
-- `src/utils/formatters.ts` — cleanNumber (returns number|null), fmtPrice
-- `src/utils/urlCleaner.ts` — strips tracking/referral parameters from e-commerce URLs
+- `src/main.ts` — Entry point, routes to correct adapter by hostname.
+- `src/adapters/BaseAdapter.ts` — Shared debounced MutationObserver & SPA navigation handler.
+- `src/adapters/{Amazon,Flipkart}.ts` — Platform-specific DOM selectors & price extraction.
+- `src/core/parser.ts` — Math logic for multi-packs and weights.
+- `src/core/wishlist.ts` — Cross-origin GM storage manager for saved items.
+- `src/core/wishlistUI.ts` — Floating dashboard (search, sort, platform filter, toasts).
+- `src/core/icons.ts` — Centralized SVG icon factory.
+- `src/core/ui.ts` — Badge UI injection.
 
-## Key Decisions
-- `cleanNumber` returns `null` (not NaN) for invalid input — all callers check for null
-- Bare `l`/`L` unit matching has post-match validation to avoid supplement false positives (L-Glutamine)
-- `SKIP_FOLLOWING` regex contains 13+ supplement amino acid terms
-- `FALSE_PACK_CONTEXT` blocklist prevents "6 pack abs" from being detected as pack count
-- `initObserver` lives in BaseAdapter — both adapters inherit it (DRY)
-- SPA navigation handled by checking `location.href` in MutationObserver callback, clears `data-rate-done` markers
-- Global observer flag namespaced as `__priceStdz_observer`
-- Wishlist uses `GM_getValue`/`GM_setValue` for cross-origin persistence (Amazon <-> Flipkart)
-- `wishlist-updated` custom event syncs heart states across different product cards on the same page
-- `cleanProductUrl` extracts canonical links (Amazon /dp/ASIN, Flipkart pid) for the wishlist
-- Redundant DOM queries in adapters removed by passing elements from `processCards` to `getMeta`
-- Wishlist copy feature uses Markdown table format for better compatibility with modern tools
-- Added precise selectors for Amazon (reviews-ratings-slot, puis-normal-weight-text) and Flipkart (MKiFS6, PvbNMB) to accurately capture ratings and review counts
-- Added `clearWishlist` functionality with a confirmation UI to reset the saved items list
+## Key Rules & Decisions
+- **No Global CSS**: All injected UI strictly uses inline `style.cssText`.
+- **Event Isolation**: `e.stopPropagation()` prevents host SPA navigation on wishlist clicks.
+- **Append Only**: UI is appended into safe, static containers.
+- **CSP Workaround**: Amazon images fail to load on Flipkart; fallback is a platform-initial badge (A/F).
+- **Data Model**: `WishlistItem` is the single source of truth for items; `dateAdded` used for sorting.
+- **False Positives**: `SKIP_FOLLOWING` blocks amino acids/supplements in weight extraction.
+- **Dynamic SVG IDs**: Flipkart SVG uses dynamic randomized ID prefixes to avoid multi-instance gradient and clipPath collisions.
+- **Containerless Icons**: Platform brand SVGs rendered naked (no wrapping badge backgrounds) and pushed nicely to the right edge via `margin-left: auto`.
 
 ## Blunders
 - (none yet)
 
 ## Known Limitations
-- No product page support — only search/listing pages. Both Amazon and Flipkart already show per-unit pricing on product pages.
-- Flipkart DOM uses React Native Web with obfuscated class names — selectors may break with redesigns
-- `div[data-id]` Flipkart selector is broad (may match non-product elements)
-- Mixed-unit titles (e.g. "500g Almonds + 250ml Honey") silently return null
-
-## File Structure
-```
-src/
-├── main.ts
-├── gm.d.ts
-├── adapters/
-│   ├── BaseAdapter.ts
-│   ├── Amazon.ts
-│   └── Flipkart.ts
-├── core/
-│   ├── parser.ts
-│   ├── types.ts
-│   ├── ui.ts
-│   ├── wishlist.ts
-│   └── wishlistUI.ts
-└── utils/
-    ├── formatters.ts
-    └── urlCleaner.ts
-tests/
-├── parser.test.ts
-└── formatters.test.ts
-```
+- Search/listing pages only (Amazon/Flipkart already show unit pricing on product pages).
+- Flipkart DOM uses obfuscated React Native Web classes; brittle to redesigns.
