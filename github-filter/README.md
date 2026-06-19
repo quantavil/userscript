@@ -1,32 +1,39 @@
-# GitHub Advanced Search
+# GitHub Advanced Search (v7.0)
 
-A powerful userscript that transforms the GitHub search experience with a modern, compact UI, advanced query builder, and intelligent release detection.
+A powerful userscript that transforms the GitHub search experience with a modern, premium responsive UI, advanced query builder, custom filter presets, and intelligent release detection.
 
 ## Features
 
-### 🔍 Advanced Query Builder
+### 🔍 Advanced Query Builder (Improved in v7.0)
 *   **Visual Logic**: Build complex queries using `AND` and `OR` fields without needing to remember GitHub's specific search syntax.
-*   **Metadata Filters**: Dedicated fields for filtering by **Repo**, **Stars**, **Forks**, **Size**, **Language**, **Extension**, **Path**, and dates (**Created**, **Pushed**).
-*   **State Persistence**: The modal automatically parses the current URL to populate fields, making it easy to tweak existing searches.
+*   **Robust Multi-value Parsing**: Supports comma/space-separated values in fields (e.g. searching multiple repos or specifying languages like `python, -html` to include/exclude).
+*   **Shorthand Qualifier Support (New!)**: Parses both standard and shorthand qualifiers (e.g., matching `lang:js` for language and `ext:md` for extension) when loaded into the builder.
+*   **Numeric Ranges**: Enter numeric criteria like `stars: >500 <1000` or `100..500` without syntax compilation errors or incorrect quote wrapping.
+*   **State Persistence**: The modal automatically parses the current URL search parameters (including positive/negative exclusions) to populate fields.
 
-### 🚀 Intelligent Release Detection
-*   **On-Demand Scanning**: New **"Scan repositories"** toggle allows you to enable or disable release detection on the fly.
+### 💾 Custom Filter Presets (Refactored UI)
+*   **Create Presets**: Save your current search configurations with custom names (e.g., "Type-1 Filter" or "Rust Repos").
+*   **Active Badges**: Visual indicators summarize the search options included in each saved preset.
+*   **Improved Card Layout (New!)**:
+    *   **Search**: Instantly execute search with the preset's parameters.
+    *   **Load to Builder**: Load a preset into the Filter Builder tab so you can modify it before searching.
+    *   **Top-Right Delete**: Easily delete presets via a clean cross icon in the top right of the card, preventing layout clutter.
+*   **Persistence**: Automatically saved and persisted in `localStorage`.
+
+### 🚀 Intelligent Release Detection & Rate Limit Protection
+*   **On-Demand Scanning**: Toggle release detection on/off.
 *   **Smart Filtering**: Use the **"Only with releases"** checkbox to automatically hide repositories that haven't published any releases.
-*   **Real-time Badges**:
-    *   **Green**: Repository has a release (shows version tag & relative date like "v1.0.0 · 2d ago").
-    *   **Red**: No release found.
-    *   **Filtered**: Clearly marks repositories that were hidden due to lack of releases.
+*   **Rate Limit Protection (New!)**: Detects HTTP `429 Too Many Requests` responses and implements a **60-second cooldown** to prevent further requests, displaying a warning badge ("Rate Limited") and auto-retrying outstanding items when the block expires.
+*   **Robust Link Extraction (Improved!)**: Uses browser-native URL parsing and checks against a comprehensive blacklist of reserved routes (such as topics, organizations, login, pricing) to prevent false release checks.
+*   **Transient Cache Protection**: Caches release info for **24 hours** but avoids caching transient network failures.
 
-### 🎨 Modern Compact UI
-*   **Streamlined Design**: A compact, sidebar-style modal that stays out of your way while providing full search power.
-*   **Native Dark Mode**: Fully compatible with GitHub's native light/dark themes and Dark Reader.
-*   **Floating Toggle**: A subtle, circular floating button at the bottom right for instant access.
-*   **Responsive**: Optimized for both desktop and mobile browsing.
-
-### ⚡ Performance & Reliability
-*   **Smart Caching**: Caches release information for **24 hours** to minimize API requests.
-*   **Background Processing**: Uses concurrent scanning to ensure results load quickly without freezing the page.
-*   **Technical Native**: Built using GitHub's design tokens for a seamless, "first-party" look and feel.
+### 🎨 Modern Responsive UI (Premium Design)
+*   **Dynamic Theme Sync (New!)**: Automatically syncs the search modal theme when the user changes GitHub's page mode (light/dark) in real time without a page reload.
+*   **Native Dark Controls (New!)**: Implements `color-scheme` properties to force browser-native controls (select dropdown options, checkboxes, scrollbars) to match the dark theme context.
+*   **Adaptive Badges**: Release badges adapt their text, border, and background color contrast dynamically for high readability in both dark and light modes.
+*   **Slide-out Drawer Layout**: On desktop, the modal presents as a sleek, non-intrusive sidebar drawer (380px wide) transitioning from the right.
+*   **Mobile Bottom Sheet**: On mobile devices (screen width ≤ 768px), the modal automatically shifts to a premium bottom sheet layout sliding up from the screen bottom.
+*   **Micro-animations**: Interactive transitions, rotations on hover for close and theme icons, and floating action button rotations.
 
 ## Installation
 
@@ -39,21 +46,14 @@ A powerful userscript that transforms the GitHub search experience with a modern
 ## Usage
 
 ### Opening the Filter
-*   **Floating Button**: Click the circular search icon at the bottom right corner.
-*   **Menu Command**: Access "Search Filter" via your userscript manager's menu.
+*   **Floating Button**: Click the circular search icon at the bottom right corner (designed to avoid blocking core GitHub elements).
+*   **Menu Command**: Access "Search Filter" via your userscript manager's menu commands.
 
-### Building a Search
-1.  Open the modal and select the **Type** (Repositories, Code, etc.).
-2.  Enter keywords in **And** (all must match) or **Or** (any can match).
-3.  Add specific constraints (e.g., Stars `>1000`).
-4.  **Control Scanning**:
-    *   Enable **Scan repositories** to fetch release info.
-    *   Enable **Only with releases** to hide non-released repos (requires scanning).
-5.  Click **Search** or press **Enter**.
-
-### Browsing Results
-*   Release tags are automatically added below repository names.
-*   Tags are clickable and link directly to the latest release page.
+### Creating & Using Presets
+1.  Set up your search filters in the **Filter Builder** tab.
+2.  Click **Save Preset** in the footer.
+3.  Enter a name for your preset in the **Saved Presets** tab and click **Save**.
+4.  Apply, edit, or delete saved filters directly from the list.
 
 ## License
 MIT
