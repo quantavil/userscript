@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Wishlist - Settings Layout Showcase</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-gradient-start: #f8fafc;
+      --bg-gradient-end: #e2e8f0;
+      --card-bg-light: #ffffff;
+      --card-bg-dark: #0f172a;
+      --text-light-main: #0f172a;
+      --text-light-muted: #64748b;
+      --text-dark-main: #f8fafc;
+      --text-dark-muted: #94a3b8;
+      
+      /* Accent color variables (driven by JS customizer) */
+      --primary-color: #ea580c;
+      --primary-color-rgb: 234, 88, 12;
+      --primary-color-hover: #c2410c;
+      --primary-color-light: #fff7ed;
+      
+      --border-light: #e2e8f0;
+      --border-dark: #334155;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: linear-gradient(135deg, var(--bg-gradient-start), var(--bg-gradient-end));
+      color: var(--text-light-main);
+      min-height: 100vh;
+      padding: 40px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1.5;
+    }
+
+    /* ── Header styling ─────────────────────────────────────────────────── */
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+      max-width: 900px;
+      width: 100%;
+    }
+
+    h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 2.8rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #8b5cf6, var(--primary-color));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+      letter-spacing: -0.03em;
+      transition: background 0.3s ease;
+    }
+
+    header p {
+      color: var(--text-light-muted);
+      font-size: 1.1rem;
+      max-width: 650px;
+      margin: 0 auto 16px;
+    }
+
+    .badge-bar {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .badge {
+      background: rgba(234, 88, 12, 0.1);
+      color: var(--primary-color);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Layout grid ────────────────────────────────────────────────────── */
+    .showcase-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 40px;
+      max-width: 1200px;
+      width: 100%;
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .showcase-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ── Left side control board ────────────────────────────────────────── */
+    .controls-card {
+      background: var(--card-bg-light);
+      border: 1px solid var(--border-light);
+      border-radius: 24px;
+      padding: 32px;
+      box-shadow: 0 20px 40px -15px rgba(15, 23, 42, 0.08);
+    }
+
+    .control-section {
+      margin-bottom: 28px;
+    }
+
+    .control-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .section-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-light-main);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 2px solid var(--border-light);
+      padding-bottom: 8px;
+    }
+
+    .section-number {
+      background: var(--primary-color);
+      color: white;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 800;
+    }
+
+    /* ── Interactive selectors ────────────────────────────────────────── */
+    .options-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .layout-option-card {
+      background: #f8fafc;
+      border: 2px solid #f1f5f9;
+      border-radius: 16px;
+      padding: 16px;
+      cursor: pointer;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .layout-option-card:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      transform: translateY(-2px);
+    }
+
+    .layout-option-card.selected {
+      background: #fffdfa;
+      border-color: var(--primary-color);
+      box-shadow: 0 10px 20px -10px rgba(var(--primary-color-rgb), 0.15);
+    }
+
+    .selector-bubble {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid #94a3b8;
+      background: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+      transition: border-color 0.2s, background-color 0.2s;
+    }
+
+    .layout-option-card.selected .selector-bubble {
+      border-color: var(--primary-color);
+    }
+
+    .layout-option-card.selected .selector-bubble::after {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: var(--primary-color);
+      border-radius: 50%;
+    }
+
+    .option-details {
+      flex: 1;
+    }
+
+    .option-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--text-light-main);
+      margin-bottom: 4px;
+    }
+
+    .option-desc {
+      font-size: 0.8rem;
+      color: var(--text-light-muted);
+      line-height: 1.4;
+    }
+
+    /* ── Right side live preview frame ──────────────────────────────────── */
+    .preview-frame {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      width: 100%;
+    }
+
+    .preview-header-label {
+      align-self: flex-start;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-light-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .preview-header-label span {
+      background: #e2e8f0;
+      color: #475569;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+    }
+
+    /* Device viewport mockup */
+    .viewport-box {
+      width: 100%;
+      max-width: 380px;
+      height: 560px;
+      background: #cbd5e1;
+      border-radius: 32px;
+      padding: 16px;
+      box-shadow: 0 30px 60px -20px rgba(15, 23, 42, 0.25), 0 0 0 8px #475569;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      perspective: 1000px; /* Crucial for 3D flip */
+    }
+
+    /* ── Wishlist Userscript Panel Mockup ────────────────────────────────── */
+    .panel-container {
+      width: 100%;
+      height: 100%;
+      background: var(--card-bg-light);
+      color: var(--text-light-main);
+      border-radius: 20px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .panel-container.theme-dark {
+      background: var(--card-bg-dark) !important;
+      color: var(--text-dark-main) !important;
+    }
+
+    /* Front (Items List) */
+    .panel-side-front {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      backface-visibility: hidden;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+    }
+
+    /* Header styling */
+    .mock-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-light);
+      background: linear-gradient(135deg, rgba(234, 88, 12, 0.08), rgba(139, 92, 246, 0.04));
+      transition: all 0.3s;
+    }
+
+    .panel-container.theme-dark .mock-header {
+      border-bottom-color: var(--border-dark);
+      background: linear-gradient(135deg, rgba(234, 88, 12, 0.15), rgba(15, 23, 42, 0.5));
+    }
+
+    .mock-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mock-title {
+      font-size: 15px;
+      font-weight: 800;
+      font-family: 'Outfit', sans-serif;
+      margin: 0;
+    }
+
+    .mock-count-badge {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--primary-color);
+      background: var(--primary-color-light);
+      border: 1px solid rgba(var(--primary-color-rgb), 0.2);
+      padding: 2px 7px;
+      border-radius: 12px;
+      transition: all 0.3s;
+    }
+
+    .panel-container.theme-dark .mock-count-badge {
+      background: rgba(var(--primary-color-rgb), 0.2);
+      color: #ffedd5;
+    }
+
+    .mock-header-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .header-btn {
+      color: #64748b;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .header-btn:hover {
+      background: rgba(100, 116, 139, 0.1);
+      color: var(--primary-color);
+    }
+
+    .panel-container.theme-dark .header-btn {
+      color: #94a3b8;
+    }
+
+    .panel-container.theme-dark .header-btn:hover {
+      background: rgba(148, 163, 184, 0.1);
+    }
+
+    /* Scrollable wishlist items */
+    .mock-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 12px 64px 12px; /* space for float actions */
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .mock-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: #f8fafc;
+      border: 1px solid #f1f5f9;
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+
+    .panel-container.theme-dark .mock-item {
+      background: #1e293b;
+      border-color: #334155;
+    }
+
+    .mock-item:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+    }
+
+    .mock-badge {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+
+    .mock-badge.amazon {
+      background: #fef3c7;
+      color: #d97706;
+      border: 1px solid #fde68a;
+    }
+
+    .mock-badge.flipkart {
+      background: #dbeafe;
+      color: #2563eb;
+      border: 1px solid #bfdbfe;
+    }
+
+    .mock-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .mock-item-title {
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 2px;
+    }
+
+    .mock-item-price {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--primary-color);
+    }
+
+    /* Floating double-tap action pills overlay */
+    .mock-bottom-pills {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      display: flex;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .pill-action-btn {
+      pointer-events: auto;
+      background: white;
+      border: 1px solid #cbd5e1;
+      color: #475569;
+      font-weight: 700;
+      font-size: 10px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.06);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .panel-container.theme-dark .pill-action-btn {
+      background: #1e293b;
+      border-color: #475569;
+      color: #cbd5e1;
+    }
+
+    .pill-action-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px rgba(0,0,0,0.12);
+    }
+
+    .pill-action-btn.copy {
+      color: var(--primary-color);
+      border-color: rgba(var(--primary-color-rgb), 0.3);
+      background: var(--primary-color-light);
+    }
+
+    .panel-container.theme-dark .pill-action-btn.copy {
+      background: rgba(var(--primary-color-rgb), 0.15);
+      color: #ffedd5;
+    }
+
+    /* ── Option A: Settings Drawer Sheet Overlay (Slide-In) ────────────── */
+    .drawer-overlay {
+      position: absolute;
+      top: 0;
+      left: 100%; /* off-screen right */
+      width: 100%;
+      height: 100%;
+      background: var(--card-bg-light);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      transition: left 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .panel-container.theme-dark .drawer-overlay {
+      background: var(--card-bg-dark);
+    }
+
+    .drawer-overlay.active {
+      left: 0;
+    }
+
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-light);
+      background: #f8fafc;
+    }
+
+    .panel-container.theme-dark .drawer-header {
+      background: #1e293b;
+      border-bottom-color: var(--border-dark);
+    }
+
+    .drawer-title {
+      font-size: 13px;
+      font-weight: 800;
+      font-family: 'Outfit', sans-serif;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ── Option B: 3D Flip Backside View ────────────────────────────────── */
+    .panel-side-back {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      backface-visibility: hidden;
+      transform: rotateY(180deg);
+      display: flex;
+      flex-direction: column;
+      z-index: 5;
+    }
+
+    /* Active flipped state classes applied by JS */
+    .panel-container.flipped {
+      transform: rotateY(180deg);
+    }
+
+    /* ── Option C: Fade tab switch controls ──────────────────────────────── */
+    .tab-nav-bar {
+      display: flex;
+      border-bottom: 1px solid var(--border-light);
+      background: #f8fafc;
+    }
+
+    .panel-container.theme-dark .tab-nav-bar {
+      background: #1e293b;
+      border-bottom-color: var(--border-dark);
+    }
+
+    .tab-btn {
+      flex: 1;
+      text-align: center;
+      padding: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      color: #64748b;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      color: var(--primary-color);
+      border-bottom: 2px solid var(--primary-color);
+      background: white;
+    }
+
+    .panel-container.theme-dark .tab-btn.active {
+      background: var(--card-bg-dark);
+      color: var(--text-dark-main);
+    }
+
+    /* ── Option D: HUD Overlay Modal ─────────────────────────────────────── */
+    .hud-backdrop {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.4);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    .hud-backdrop.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .hud-modal {
+      width: 90%;
+      max-height: 90%;
+      background: var(--card-bg-light);
+      border-radius: 16px;
+      border: 1px solid var(--border-light);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+      display: flex;
+      flex-direction: column;
+      transform: scale(0.92);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .panel-container.theme-dark .hud-modal {
+      background: var(--card-bg-dark);
+      border-color: var(--border-dark);
+    }
+
+    .hud-backdrop.active .hud-modal {
+      transform: scale(1);
+    }
+
+    /* ── Settings content builder (Universal layout structure) ────────── */
+    .settings-scroller {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .settings-section-card {
+      border: 1px solid var(--border-light);
+      border-radius: 14px;
+      padding: 12px;
+      background: #fdfdfd;
+    }
+
+    .panel-container.theme-dark .settings-section-card {
+      border-color: var(--border-dark);
+      background: #111b2d;
+    }
+
+    .card-title {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #94a3b8;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .settings-row {
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .settings-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .input-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-light-main);
+    }
+
+    .panel-container.theme-dark .input-label {
+      color: var(--text-dark-main);
+    }
+
+    .input-control {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      font-size: 11px;
+      background: white;
+      color: inherit;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .panel-container.theme-dark .input-control {
+      background: #1e293b;
+      border-color: var(--border-dark);
+    }
+
+    .input-control:focus {
+      border-color: var(--primary-color);
+    }
+
+    /* Settings toggles styling */
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .toggle-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .toggle-label {
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 32px;
+      height: 18px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .switch-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #cbd5e1;
+      border-radius: 18px;
+      transition: 0.25s;
+    }
+
+    .panel-container.theme-dark .switch-slider {
+      background-color: #475569;
+    }
+
+    .switch-slider::before {
+      position: absolute;
+      content: "";
+      height: 12px;
+      width: 12px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      border-radius: 50%;
+      transition: 0.25s;
+    }
+
+    .toggle-switch input:checked + .switch-slider {
+      background-color: var(--primary-color);
+    }
+
+    .toggle-switch input:checked + .switch-slider::before {
+      transform: translateX(14px);
+    }
+
+    /* Accent color theme customizer dots */
+    .dots-palette {
+      display: flex;
+      gap: 10px;
+      margin-top: 4px;
+    }
+
+    .accent-dot {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2.5px solid transparent;
+      transition: all 0.15s;
+    }
+
+    .accent-dot.active {
+      border-color: var(--text-light-main);
+      transform: scale(1.15);
+    }
+
+    .panel-container.theme-dark .accent-dot.active {
+      border-color: var(--text-dark-main);
+    }
+
+    /* Actions inside settings */
+    .settings-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .sub-btn {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-light);
+      background: white;
+      font-size: 10px;
+      font-weight: 700;
+      font-family: inherit;
+      color: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+
+    .panel-container.theme-dark .sub-btn {
+      background: #1e293b;
+      border-color: var(--border-dark);
+    }
+
+    .sub-btn:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+
+    .panel-container.theme-dark .sub-btn:hover {
+      background: #334155;
+    }
+
+    .sub-btn.danger {
+      color: #ef4444;
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+
+    .sub-btn.danger:hover {
+      background: #fef2f2;
+      border-color: #fca5a5;
+    }
+
+    .panel-container.theme-dark .sub-btn.danger:hover {
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    /* ── Live Toast Feedback ────────────────────────────────────────────── */
+    .toast-bubble {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-24px);
+      opacity: 0;
+      background: #0f172a;
+      color: white;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 20px;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+      z-index: 300;
+      pointer-events: none;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      white-space: nowrap;
+    }
+
+    .toast-bubble.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="badge-bar">
+      <span class="badge">UI/UX Design Tweak</span>
+    </div>
+    <h1>Settings Interface & Extension Options</h1>
+    <p>We need to add a dedicated Settings view for storing API keys, choosing models, themes, accent colors, and toggling background scraping. Play with the options below to pick the best flow.</p>
+  </header>
+
+  <div class="showcase-grid">
+    <!-- LEFT: Settings Options & Layout Choice Controls -->
+    <div class="controls-card">
+      <div class="control-section">
+        <div class="section-title">
+          <span class="section-number">1</span>
+          Select Settings UI Layout
+        </div>
+        <div class="options-stack">
+          <!-- Option A -->
+          <div class="layout-option-card selected" onclick="switchLayoutOption(this, 'drawer')">
+            <div class="selector-bubble"></div>
+            <div class="option-details">
+              <div class="option-title">Option A: Slide-Over Drawer Sheet</div>
+              <div class="option-desc">Settings panel glides in smoothly from the right, overlaying the active wishlist. Header contains an elegant "Back" arrow to return. Excellent for focus and clean workspace.</div>
+            </div>
+          </div>
+
+          <!-- Option B -->
+          <div class="layout-option-card" onclick="switchLayoutOption(this, 'flip')">
+            <div class="selector-bubble"></div>
+            <div class="option-details">
+              <div class="option-title">Option B: 3D Flip Card Panel</div>
+              <div class="option-desc">The entire panel rotates 180 degrees using CSS 3D perspectives to show settings on the back-face. Playful, premium, and highly engaging micro-animation.</div>
+            </div>
+          </div>
+
+          <!-- Option C -->
+          <div class="layout-option-card" onclick="switchLayoutOption(this, 'tab')">
+            <div class="selector-bubble"></div>
+            <div class="option-details">
+              <div class="option-title">Option C: Inline Tab Switcher</div>
+              <div class="option-desc">Adds a standard top tab navigation bar (Items / Settings). Smoothly fades settings controls in place of the product list, retaining consistent header height.</div>
+            </div>
+          </div>
+
+          <!-- Option D -->
+          <div class="layout-option-card" onclick="switchLayoutOption(this, 'hud')">
+            <div class="selector-bubble"></div>
+            <div class="option-details">
+              <div class="option-title">Option D: HUD Glass Modal</div>
+              <div class="option-desc">Settings open inside a centered floating card overlay, blurring the product rows in the background. Great separation of concerns.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="control-section" style="border-top: 1px solid var(--border-light); padding-top: 20px;">
+        <div class="section-title" style="border-bottom: none; margin-bottom: 8px;">
+          💡 Try it Out!
+        </div>
+        <p style="font-size: 0.85rem; color: var(--text-light-muted); margin-bottom: 0;">
+          Use the preview panel on the right. Click the <strong>gear icon (⚙)</strong> in the wishlist header to trigger settings. Choose accent dots or theme dropdowns to see styling variables apply dynamically!
+        </p>
+      </div>
+    </div>
+
+    <!-- RIGHT: Live preview container -->
+    <div class="preview-frame">
+      <div class="preview-header-label">
+        Live Userscript Panel Preview
+        <span id="active-layout-badge">Drawer Overlay</span>
+      </div>
+
+      <div class="viewport-box">
+        <!-- Wishlist UI Panel Wrapper -->
+        <div class="panel-container" id="preview-panel">
+          
+          <div class="toast-bubble" id="live-toast">Settings Saved!</div>
+
+          <!-- ── FRONT FACE (Wishlist View / Default state) ── -->
+          <div class="panel-side-front" id="panel-front-side">
+            <!-- Header -->
+            <div class="mock-header">
+              <div class="mock-title-wrap">
+                <span class="mock-title">AI Wishlist</span>
+                <span class="mock-count-badge" id="front-badge-count">3</span>
+              </div>
+              <div class="mock-header-actions">
+                <!-- Sparkle / AI prompt icon -->
+                <div class="header-btn" title="AI Assistant">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                </div>
+                <!-- Gear settings trigger -->
+                <div class="header-btn" title="Wishlist Settings" onclick="triggerSettingsOpen()">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                </div>
+                <!-- Close icon -->
+                <div class="header-btn" title="Close Panel">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab bar (Visible only under Option C) -->
+            <div class="tab-nav-bar" id="preview-tab-bar" style="display: none;">
+              <div class="tab-btn active" id="tab-items-trigger" onclick="switchOptionCTab('items')">Wishlist Items</div>
+              <div class="tab-btn" id="tab-settings-trigger" onclick="switchOptionCTab('settings')">⚙ Settings</div>
+            </div>
+
+            <!-- Items list area -->
+            <div class="mock-list" id="preview-list-container">
+              <!-- Item 1 -->
+              <div class="mock-item">
+                <div class="mock-badge amazon">A</div>
+                <div class="mock-item-info">
+                  <div class="mock-item-title">SKIENCE Biotin Bond Shampoo</div>
+                  <div class="mock-item-price">₹344</div>
+                </div>
+              </div>
+
+              <!-- Item 2 -->
+              <div class="mock-item">
+                <div class="mock-badge flipkart">F</div>
+                <div class="mock-item-info">
+                  <div class="mock-item-title">Himalaya Face Wash (Vit C)</div>
+                  <div class="mock-item-price">₹185</div>
+                </div>
+              </div>
+
+              <!-- Item 3 -->
+              <div class="mock-item">
+                <div class="mock-badge amazon">A</div>
+                <div class="mock-item-info">
+                  <div class="mock-item-title">Sony WH-1000XM4 Headphones</div>
+                  <div class="mock-item-price">₹22,990</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Float Actions -->
+            <div class="mock-bottom-pills" id="preview-bottom-actions">
+              <button class="pill-action-btn copy" onclick="fireToast('Copied JSON as clipboard data!')">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+                Copy JSON
+              </button>
+              <button class="pill-action-btn" onclick="fireToast('Confirm click to clear list')">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                Clear All
+              </button>
+            </div>
+          </div>
+
+          <!-- ── BACK FACE (Used strictly for Option B 3D Flip) ── -->
+          <div class="panel-side-back" id="panel-back-side">
+            <!-- Header for back -->
+            <div class="drawer-header">
+              <div class="drawer-title">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                Wishlist Settings
+              </div>
+              <div class="header-btn" title="Save & Close" onclick="triggerSettingsClose()">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+            </div>
+
+            <!-- Config items placeholder (injected dynamically via JS to keep sync) -->
+            <div class="settings-scroller" id="back-scroller-placeholder"></div>
+          </div>
+
+          <!-- ── SLIDE DRAWER OVERLAY (Used for Option A Drawer Sheet) ── -->
+          <div class="drawer-overlay" id="drawer-settings-overlay">
+            <div class="drawer-header">
+              <div class="drawer-title">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                Wishlist Settings
+              </div>
+              <div class="header-btn" title="Back to Items" onclick="triggerSettingsClose()">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+              </div>
+            </div>
+
+            <!-- Drawer scroller placeholder -->
+            <div class="settings-scroller" id="drawer-scroller-placeholder"></div>
+          </div>
+
+          <!-- ── HUD MODAL BACKDROP (Used for Option D HUD Modal overlay) ── -->
+          <div class="hud-backdrop" id="hud-modal-backdrop">
+            <div class="hud-modal">
+              <div class="drawer-header" style="border-radius: 16px 16px 0 0;">
+                <div class="drawer-title">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                  Wishlist Settings
+                </div>
+                <div class="header-btn" title="Close" onclick="triggerSettingsClose()">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+              </div>
+
+              <!-- HUD scroller placeholder -->
+              <div class="settings-scroller" id="hud-scroller-placeholder"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SINGLE SOURCE OF TRUTH SETTINGS PANEL ELEMENT TEMPLATE ────────── -->
+  <template id="settings-template">
+    <!-- Section 1: AI Provider details -->
+    <div class="settings-section-card">
+      <div class="card-title">🤖 AI Assistant Settings</div>
+      <div class="settings-row">
+        <label class="input-label">Gemini API Model</label>
+        <select class="input-control" id="model-select">
+          <option value="gemini-1.5-flash">Gemini 1.5 Flash (Frugal)</option>
+          <option value="gemini-1.5-pro">Gemini 1.5 Pro (Analytical)</option>
+          <option value="claude-3.5-sonnet">Claude 3.5 Sonnet (Advanced)</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <label class="input-label">Secret API Access Key</label>
+        <input type="password" class="input-control" value="AIzaSyA123_SECRET_KEY" placeholder="Paste API Key here..." id="api-key-input">
+      </div>
+    </div>
+
+    <!-- Section 2: Look & Feel Theme options -->
+    <div class="settings-section-card">
+      <div class="card-title">🎨 Theme & Palette</div>
+      <div class="settings-row">
+        <label class="input-label">Theme Mode</label>
+        <select class="input-control" id="theme-mode-select" onchange="updateLiveTheme(this.value)">
+          <option value="light">Light Mode</option>
+          <option value="dark">Dark Mode</option>
+          <option value="system">Match Browser Settings</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <label class="input-label">Accent Highlight Color</label>
+        <div class="dots-palette">
+          <div class="accent-dot" style="background: #ea580c;" onclick="updateAccentColor(this, '#ea580c')"></div>
+          <div class="accent-dot" style="background: #2563eb;" onclick="updateAccentColor(this, '#2563eb')"></div>
+          <div class="accent-dot" style="background: #16a34a;" onclick="updateAccentColor(this, '#16a34a')"></div>
+          <div class="accent-dot" style="background: #8b5cf6;" onclick="updateAccentColor(this, '#8b5cf6')"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 3: Crawler controls -->
+    <div class="settings-section-card">
+      <div class="card-title">⚙ Background Scraping</div>
+      <div class="toggle-row">
+        <span class="toggle-label" style="font-size: 11px; font-weight: 600;">Scrape details on heart hover/click</span>
+        <label class="toggle-switch">
+          <input type="checkbox" checked id="toggle-crawl">
+          <span class="switch-slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label" style="font-size: 11px; font-weight: 600;">Autoclear history when expired</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-autoclear">
+          <span class="switch-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Section 4: Data resets -->
+    <div class="settings-section-card" style="border-color: rgba(239,68,68,0.25);">
+      <div class="card-title" style="color: #ef4444;">💾 Data & System Actions</div>
+      <div class="settings-actions">
+        <button class="sub-btn" onclick="fireToast('JSON Exported to clip!')">
+          <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Export Data
+        </button>
+        <button class="sub-btn danger" onclick="fireToast('All data and storage reset successfully!')">
+          <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Reset Panel
+        </button>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    // Selected UI Flow layout state variable
+    let selectedLayout = 'drawer'; // 'drawer' | 'flip' | 'tab' | 'hud'
+    let selectedTheme = 'light';
+    let selectedAccent = '#ea580c';
+
+    // Populate initial settings placeholders in DOM
+    const template = document.getElementById('settings-template');
+    
+    // Clean-inject helper to make sure setting fields stay fully synchronized
+    function rehydrateSettingsFields() {
+      const placeholders = [
+        'drawer-scroller-placeholder',
+        'back-scroller-placeholder',
+        'hud-scroller-placeholder'
+      ];
+      
+      placeholders.forEach(pid => {
+        const target = document.getElementById(pid);
+        if (target) {
+          target.innerHTML = '';
+          target.appendChild(template.content.cloneNode(true));
+          
+          // Re-establish field values based on global mockup state
+          const mSelect = target.querySelector('#model-select');
+          if (mSelect) mSelect.value = 'gemini-1.5-flash';
+          
+          const tSelect = target.querySelector('#theme-mode-select');
+          if (tSelect) tSelect.value = selectedTheme;
+          
+          // Re-bind click state highlights for color dots in this frame
+          const dots = target.querySelectorAll('.accent-dot');
+          dots.forEach(dot => {
+            // Apply active class to current matching dot style
+            const bgColor = dot.style.backgroundColor;
+            // Compare hex or rgb conversions
+            if (bgColor.includes('234') && selectedAccent === '#ea580c' ||
+                bgColor.includes('37') && selectedAccent === '#2563eb' ||
+                bgColor.includes('22') && selectedAccent === '#16a34a' ||
+                bgColor.includes('139') && selectedAccent === '#8b5cf6') {
+              dot.classList.add('active');
+            } else {
+              dot.classList.remove('active');
+            }
+          });
+        }
+      });
+    }
+
+    // Initialize fields
+    rehydrateSettingsFields();
+
+    // ── Settings triggers based on active layout type ───────────────────
+    function switchLayoutOption(cardElement, layoutType) {
+      // Toggle selector highlights
+      document.querySelectorAll('.layout-option-card').forEach(c => c.classList.remove('selected'));
+      cardElement.classList.add('selected');
+
+      // Set global layout type
+      selectedLayout = layoutType;
+      
+      // Update badge label
+      const badge = document.getElementById('active-layout-badge');
+      if (layoutType === 'drawer') badge.textContent = 'Drawer Overlay';
+      if (layoutType === 'flip') badge.textContent = '3D Flip Card';
+      if (layoutType === 'tab') badge.textContent = 'Inline Tab switch';
+      if (layoutType === 'hud') badge.textContent = 'HUD Centered Modal';
+
+      // Reset active views to avoid weird overlapping state transitions
+      closeAllSettingsContainers();
+      
+      // Update UI configuration displays
+      const tabNav = document.getElementById('preview-tab-bar');
+      const settingsGear = document.querySelector('.header-btn[title="Wishlist Settings"]');
+      
+      if (layoutType === 'tab') {
+        tabNav.style.display = 'flex';
+        settingsGear.style.display = 'none';
+      } else {
+        tabNav.style.display = 'none';
+        settingsGear.style.display = 'flex';
+      }
+      
+      fireToast(`Switched layout view to Option ${layoutType.toUpperCase()}`);
+    }
+
+    function closeAllSettingsContainers() {
+      // Drawer
+      document.getElementById('drawer-settings-overlay').classList.remove('active');
+      // Flip
+      document.getElementById('preview-panel').classList.remove('flipped');
+      // HUD Modal
+      document.getElementById('hud-modal-backdrop').classList.remove('active');
+      // Tab switcher
+      switchOptionCTab('items');
+    }
+
+    function triggerSettingsOpen() {
+      if (selectedLayout === 'drawer') {
+        document.getElementById('drawer-settings-overlay').classList.add('active');
+      } else if (selectedLayout === 'flip') {
+        document.getElementById('preview-panel').classList.add('flipped');
+      } else if (selectedLayout === 'hud') {
+        document.getElementById('hud-modal-backdrop').classList.add('active');
+      }
+    }
+
+    function triggerSettingsClose() {
+      closeAllSettingsContainers();
+      fireToast('Settings preferences applied!');
+    }
+
+    // Option C Tab actions
+    function switchOptionCTab(activeTab) {
+      const itemsTrigger = document.getElementById('tab-items-trigger');
+      const settingsTrigger = document.getElementById('tab-settings-trigger');
+      const listContainer = document.getElementById('preview-list-container');
+      const bottomActions = document.getElementById('preview-bottom-actions');
+      
+      // Clean drawer-scroller elements or replace items inside panel container
+      if (activeTab === 'settings') {
+        itemsTrigger.classList.remove('active');
+        settingsTrigger.classList.add('active');
+        
+        // Hide list & pills, inject settings markup directly in place of list container
+        listContainer.innerHTML = '';
+        listContainer.appendChild(template.content.cloneNode(true));
+        
+        // Sync active state indicators in tab inline list fields
+        const tSelect = listContainer.querySelector('#theme-mode-select');
+        if (tSelect) tSelect.value = selectedTheme;
+        
+        const dots = listContainer.querySelectorAll('.accent-dot');
+        dots.forEach(dot => {
+          const bgColor = dot.style.backgroundColor;
+          if (bgColor.includes('234') && selectedAccent === '#ea580c' ||
+              bgColor.includes('37') && selectedAccent === '#2563eb' ||
+              bgColor.includes('22') && selectedAccent === '#16a34a' ||
+              bgColor.includes('139') && selectedAccent === '#8b5cf6') {
+            d.classList.add('active');
+          }
+        });
+
+        bottomActions.style.display = 'none';
+      } else {
+        itemsTrigger.classList.add('active');
+        settingsTrigger.classList.remove('active');
+        
+        // Re-inject items list
+        listContainer.innerHTML = `
+          <div class="mock-item">
+            <div class="mock-badge amazon">A</div>
+            <div class="mock-item-info">
+              <div class="mock-item-title">SKIENCE Biotin Bond Shampoo</div>
+              <div class="mock-item-price">₹344</div>
+            </div>
+          </div>
+          <div class="mock-item">
+            <div class="mock-badge flipkart">F</div>
+            <div class="mock-item-info">
+              <div class="mock-item-title">Himalaya Face Wash (Vit C)</div>
+              <div class="mock-item-price">₹185</div>
+            </div>
+          </div>
+          <div class="mock-item">
+            <div class="mock-badge amazon">A</div>
+            <div class="mock-item-info">
+              <div class="mock-item-title">Sony WH-1000XM4 Headphones</div>
+              <div class="mock-item-price">₹22,990</div>
+            </div>
+          </div>
+        `;
+        bottomActions.style.display = 'flex';
+      }
+    }
+
+    // ── Live customizer actions inside Preview Panel ─────────────────────
+    function updateLiveTheme(themeValue) {
+      selectedTheme = themeValue;
+      const previewPanel = document.getElementById('preview-panel');
+      
+      if (themeValue === 'dark') {
+        previewPanel.classList.add('theme-dark');
+      } else if (themeValue === 'light') {
+        previewPanel.classList.remove('theme-dark');
+      } else {
+        // System match auto simulation: sets to light
+        previewPanel.classList.remove('theme-dark');
+      }
+      
+      // Update state dropdowns inside active templates
+      rehydrateSettingsFields();
+      fireToast(`Theme set to ${themeValue.toUpperCase()}`);
+    }
+
+    function updateAccentColor(dotEl, hexValue) {
+      selectedAccent = hexValue;
+      
+      // Target elements to change accent color dynamically
+      const previewPanel = document.getElementById('preview-panel');
+      
+      // Compute RGB components
+      let r = 234, g = 88, b = 12;
+      if (hexValue === '#2563eb') { r = 37; g = 99; b = 235; }
+      else if (hexValue === '#16a34a') { r = 22; g = 163; b = 74; }
+      else if (hexValue === '#8b5cf6') { r = 139; g = 92; b = 246; }
+      
+      previewPanel.style.setProperty('--primary-color', hexValue);
+      previewPanel.style.setProperty('--primary-color-rgb', `${r}, ${g}, ${b}`);
+      
+      // Light color theme updates
+      let lightHex = '#fff7ed';
+      if (hexValue === '#2563eb') lightHex = '#eff6ff';
+      else if (hexValue === '#16a34a') lightHex = '#f0fdf4';
+      else if (hexValue === '#8b5cf6') lightHex = '#f5f3ff';
+      
+      previewPanel.style.setProperty('--primary-color-light', lightHex);
+      
+      // Sync dots highlight status
+      rehydrateSettingsFields();
+      
+      // If we are currently displaying Option C inline tab, re-highlight active
+      if (selectedLayout === 'tab') {
+        const dots = document.querySelectorAll('#preview-list-container .accent-dot');
+        dots.forEach(d => {
+          d.classList.remove('active');
+          const bgColor = d.style.backgroundColor;
+          if (bgColor.includes('234') && hexValue === '#ea580c' ||
+              bgColor.includes('37') && hexValue === '#2563eb' ||
+              bgColor.includes('22') && hexValue === '#16a34a' ||
+              bgColor.includes('139') && hexValue === '#8b5cf6') {
+            d.classList.add('active');
+          }
+        });
+      }
+      
+      fireToast('Custom Accent Theme applied!');
+    }
+
+    // ── Toast indicator ──────────────────────────────────────────────────
+    function fireToast(text) {
+      const toast = document.getElementById('live-toast');
+      toast.textContent = text;
+      toast.classList.add('visible');
+      setTimeout(() => {
+        toast.classList.remove('visible');
+      }, 2000);
+    }
+  </script>
+</body>
+</html>

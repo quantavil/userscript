@@ -16,6 +16,8 @@ export class SettingsSheet {
     public zoomSlider!: Slider;
     public gestureSwitch!: Switch;
     public preloadSwitch!: Switch;
+    public volumeBoostSwitch!: Switch;
+    public scrollCompSwitch!: Switch;
 
     constructor(
         private readonly eventBus: EventBus,
@@ -148,6 +150,8 @@ export class SettingsSheet {
             this.store.saveSetting('skipSeconds', 10);
             this.store.saveSetting('gesturesEnabled', true);
             this.store.saveSetting('preloadEnhanced', false);
+            this.store.saveSetting('volumeBoostEnabled', true);
+            this.store.saveSetting('scrollCompatibility', true);
             this.updateUI();
 
             this.eventBus.emit('video:transform-need-update', undefined);
@@ -177,6 +181,26 @@ export class SettingsSheet {
         );
         card.appendChild(this.preloadSwitch.dom);
 
+        // 8. Volume Boost Switch
+        this.volumeBoostSwitch = new Switch(
+            'Volume Boost:',
+            this.store.settings.volumeBoostEnabled,
+            (isChecked) => {
+                this.store.saveSetting('volumeBoostEnabled', isChecked);
+            }
+        );
+        card.appendChild(this.volumeBoostSwitch.dom);
+
+        // 9. Scroll Compatibility Switch
+        this.scrollCompSwitch = new Switch(
+            'Scroll Feed Compat:',
+            this.store.settings.scrollCompatibility,
+            (isChecked) => {
+                this.store.saveSetting('scrollCompatibility', isChecked);
+            }
+        );
+        card.appendChild(this.scrollCompSwitch.dom);
+
         return sheet;
     }
 
@@ -191,5 +215,7 @@ export class SettingsSheet {
         this.zoomSlider.updateValue(this.store.settings.transform.zoom);
         this.gestureSwitch.setChecked(this.store.settings.gesturesEnabled);
         this.preloadSwitch.setChecked(this.store.settings.preloadEnhanced);
+        this.volumeBoostSwitch.setChecked(this.store.settings.volumeBoostEnabled);
+        this.scrollCompSwitch.setChecked(this.store.settings.scrollCompatibility);
     }
 }

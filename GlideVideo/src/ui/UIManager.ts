@@ -10,6 +10,8 @@ export class UIManager {
     public stepper: SpeedStepper | null = null;
     public settingsBtn: HTMLButtonElement | null = null;
     public pipBtn: HTMLButtonElement | null = null;
+    public lockBtn: HTMLButtonElement | null = null;
+    public lockShield: HTMLDivElement | null = null;
     public settingsSheet: SettingsSheet | null = null;
     public backdrop: HTMLDivElement | null = null;
     public toast: HTMLDivElement | null = null;
@@ -118,13 +120,15 @@ export class UIManager {
         return svg;
     }
 
-    public getIcon(name: 'settings' | 'close' | 'rotate' | 'reset' | 'pip'): SVGSVGElement {
+    public getIcon(name: 'settings' | 'close' | 'rotate' | 'reset' | 'pip' | 'lock' | 'unlock'): SVGSVGElement {
         const paths = {
             settings: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.22-.07.49.12.61l2.03 1.58c-.04.3-.06.61-.06.94 0 .32.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
             close:    'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
             rotate:   'M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z',
             reset:    'M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z',
-            pip:      'M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z'
+            pip:      'M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z',
+            lock:     'M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z',
+            unlock:   'M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z'
         };
         return this.createSvgIcon(paths[name] || '');
     }
@@ -258,6 +262,35 @@ export class UIManager {
         };
         preventPropagation(this.settingsBtn);
         wrap.appendChild(this.settingsBtn);
+
+        // Lock Shield
+        const lockShield = this.createEl('div', 'mvc-lock-shield');
+        lockShield.style.display = 'none';
+        const blk = (e: Event) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            this.showUI(true);
+        };
+        ['click', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'dblclick', 'touchstart', 'touchend'].forEach(evt => {
+            lockShield.addEventListener(evt, blk, { capture: true, passive: false });
+        });
+        wrap.appendChild(lockShield);
+        this.lockShield = lockShield;
+
+        // Lock Button
+        this.lockBtn = document.createElement('button');
+        this.lockBtn.className = 'mvc-lock-btn';
+        this.lockBtn.style.pointerEvents = 'auto';
+        this.lockBtn.appendChild(this.getIcon('unlock'));
+        this.lockBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.toggleScreenLock();
+        };
+        const rightOffset = isPipSupported ? 120 : 68;
+        this.lockBtn.style.right = `${rightOffset}px`;
+        preventPropagation(this.lockBtn);
+        wrap.appendChild(this.lockBtn);
 
         container.appendChild(wrap);
     }
@@ -413,6 +446,16 @@ export class UIManager {
             this.showToast('Failed to toggle PiP mode');
         }
     }
+    public toggleScreenLock() {
+        const locked = !this.store.isScreenLocked;
+        this.store.isScreenLocked = locked;
+        if (this.wrap) this.wrap.classList.toggle('locked', locked);
+        if (this.lockShield) this.lockShield.style.display = locked ? 'block' : 'none';
+        if (this.lockBtn) this.lockBtn.replaceChildren(this.getIcon(locked ? 'lock' : 'unlock'));
+        if (locked) this.hideAllMenus();
+        this.showToast(locked ? 'Gestures locked' : 'Gestures unlocked');
+        this.showUI(true);
+    }
 
     public showDoubleTapOverlay(side: 'left' | 'right', x: number, y: number, seconds: number) {
         if (!this.doubleTapContainer || !this.store.activeVideo) return;
@@ -461,9 +504,18 @@ export class UIManager {
         });
 
         const pct = Math.round(volume * 100);
-        this.volumeFill.style.height  = `${pct}%`;
+        this.volumeFill.style.height  = `${Math.min(pct, 100)}%`;
         this.volumeValue.textContent  = `${pct}%`;
-        this.volumeIcon.textContent   = volume === 0 ? '🔇' : volume < 0.4 ? '🔈' : volume < 0.7 ? '🔉' : '🔊';
+        
+        if (volume > 1.0) {
+            this.volumeFill.style.background = '#ff9f0a';
+            this.volumeFill.style.boxShadow = '0 0 8px rgba(255, 159, 10, 0.6)';
+            this.volumeIcon.textContent = '🔊⚡';
+        } else {
+            this.volumeFill.style.background = '';
+            this.volumeFill.style.boxShadow = '';
+            this.volumeIcon.textContent = volume === 0 ? '🔇' : volume < 0.4 ? '🔈' : volume < 0.7 ? '🔉' : '🔊';
+        }
 
         this.volumeBar.classList.add('visible');
 

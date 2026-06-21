@@ -9,6 +9,8 @@ export interface Settings {
     transform: { ratio: string; zoom: number; rotation: number };
     gesturesEnabled: boolean;
     preloadEnhanced: boolean;
+    volumeBoostEnabled: boolean;
+    scrollCompatibility: boolean;
     [key: string]: any;
 }
 
@@ -33,6 +35,7 @@ export class StateStore {
     public brightness = 1.0;
     public isBrightnessControlling = false;
     public uiWrap: HTMLDivElement | null = null;
+    public isScreenLocked = false;
 
     // Internal rate fighting states
     public _isInternalRateChange = false;
@@ -74,9 +77,11 @@ export class StateStore {
             skipSeconds:     getStored(this.getStorageKey('skipSeconds'),     10),
             defaultSpeed:    getStored(this.getStorageKey('defaultSpeed'),    1.0),
             lastRate:        getStored(this.getStorageKey('lastRate'),        1.0),
-            transform:       getStored(this.getStorageKey('transform'),       { ratio: 'fit', zoom: 1, rotation: 0 }),
+            transform:       { ratio: 'fit', zoom: 1, rotation: 0 },
             gesturesEnabled: getStored(this.getStorageKey('gesturesEnabled'), true),
-            preloadEnhanced: getStored(this.getStorageKey('preloadEnhanced'), false)
+            preloadEnhanced: getStored(this.getStorageKey('preloadEnhanced'), false),
+            volumeBoostEnabled: getStored(this.getStorageKey('volumeBoostEnabled'), true),
+            scrollCompatibility: getStored(this.getStorageKey('scrollCompatibility'), true)
         };
     }
 
@@ -86,6 +91,8 @@ export class StateStore {
             this._rateOverrideCount = 0;
         }
         this.eventBus.emit('settings:changed', { key, val });
+        
+        if (key === 'transform') return; // Do not persist transform in localStorage
         
         clearTimeout(this.timers[`save_${key}`]);
         this.timers[`save_${key}`] = setTimeout(() => {
@@ -98,6 +105,7 @@ export class StateStore {
     public flushSettings() {
         if (!this.settings) return;
         for (const key of Object.keys(this.settings)) {
+            if (key === 'transform') continue; // Do not persist transform in localStorage
             clearTimeout(this.timers[`save_${key}`]);
             try {
                 localStorage.setItem(this.getStorageKey(key), JSON.stringify(this.settings[key]));

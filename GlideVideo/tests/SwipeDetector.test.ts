@@ -50,7 +50,9 @@ describe('SwipeDetector', () => {
             defaultSpeed: 1.0,
             lastRate: 1.0,
             transform: { ratio: 'fit', zoom: 1, rotation: 0 },
-            gesturesEnabled: true
+            gesturesEnabled: true,
+            volumeBoostEnabled: true,
+            scrollCompatibility: true
         };
 
         detector = new SwipeDetector(eventBus, store);
@@ -240,6 +242,198 @@ describe('SwipeDetector', () => {
             touches: [{ clientX: 230, clientY: 200 }]
         });
         expect(cancelSpeedBoostSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should ignore seeks of less than 5 seconds (resistance) and hide overlay', () => {
+        let touchMoveHandler: any = null;
+        let touchEndHandler: any = null;
+
+        const targetMock = {
+            addEventListener: vi.fn((event: string, cb: any) => {
+                if (event === 'touchmove') touchMoveHandler = cb;
+                if (event === 'touchend') touchEndHandler = cb;
+            }),
+            removeEventListener: vi.fn()
+        };
+
+        const overlaySpy = vi.fn();
+        eventBus.on('ui:gesture-overlay', overlaySpy);
+
+        // Touch start
+        fireWindowEvent('touchstart', {
+            touches: [{ clientX: 200, clientY: 200 }],
+            target: targetMock
+        });
+
+        // Touch move to dx = 45px (commits seek, since > 10px threshold. timeChange = 4.5s, which is < 5s)
+        touchMoveHandler({
+            touches: [{ clientX: 245, clientY: 200 }]
+        });
+        expect(store.isSwipeSeeking).toBe(true);
+
+        // The overlay should receive null (hide) because the delta is under the 5s threshold
+        expect(overlaySpy).toHaveBeenLastCalledWith(null);
+
+        // End touch
+        touchEndHandler();
+
+        expect(store.isSwipeSeeking).toBe(false);
+        expect(mockVideo.currentTime).toBe(50); // Did not change from initial 50
+    });
+
+    it('should start seek delta smoothly at 1s after crossing 5s threshold', () => {
+        let touchMoveHandler: any = null;
+        let touchEndHandler: any = null;
+
+        const targetMock = {
+            addEventListener: vi.fn((event: string, cb: any) => {
+                if (event === 'touchmove') touchMoveHandler = cb;
+                if (event === 'touchend') touchEndHandler = cb;
+            }),
+            removeEventListener: vi.fn()
+        };
+
+        const overlaySpy = vi.fn();
+        eventBus.on('ui:gesture-overlay', overlaySpy);
+
+        // Touch start
+        fireWindowEvent('touchstart', {
+            touches: [{ clientX: 200, clientY: 200 }],
+            target: targetMock
+        });
+
+        // Touch move to dx = 55px (commits seek, timeChange = 5.5s)
+        touchMoveHandler({
+            touches: [{ clientX: 255, clientY: 200 }]
+        });
+
+        // Should seek smoothly starting at 1.5s (5.5s - 4s offset = 1.5s)
+        // End touch
+        touchEndHandler();
+
+        expect(mockVideo.currentTime).toBe(51.5); // 50 + 1.5 = 51.5
+    });
+
+    it('should cancel gesture and allow page scroll in portrait mode on vertical swipe', () => {
+        const originalMatchMedia = window.matchMedia;
+        window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as any;
+
+        let touchMoveHandler: any = null;
+        let touchEndHandler: any = null;
+
+        const targetMock = {
+            addEventListener: vi.fn((event: string, cb: any) => {
+                if (event === 'touchmove') touchMoveHandler = cb;
+                if (event === 'touchend') touchEndHandler = cb;
+            }),
+            removeEventListener: vi.fn()
+        };
+
+        // Touch start
+        fireWindowEvent('touchstart', {
+            touches: [{ clientX: 200, clientY: 200 }],
+            target: targetMock
+        });
+
+        // Touch move vertically (15px)
+        const moveEvent = {
+            touches: [{ clientX: 200, clientY: 215 }],
+            preventDefault: vi.fn(),
+            cancelable: true
+        };
+        touchMoveHandler(moveEvent);
+
+        // Verify it cleaned up (removed listener) and did NOT prevent default
+        expect(targetMock.removeEventListener).toHaveBeenCalled();
+        expect(moveEvent.preventDefault).not.toHaveBeenCalled();
+
+        window.matchMedia = originalMatchMedia;
+    });
+
+    it('should support volume boost up to 200%', () => {
+        let touchMoveHandler: any = null;
+        const targetMock = {
+            addEventListener: vi.fn((event: string, cb: any) => {
+                if (event === 'touchmove') touchMoveHandler = cb;
+            }),
+            removeEventListener: vi.fn()
+        };
+
+        mockVideo.volume = 1.0;
+        mockVideo.muted = false;
+
+        // Mock Web Audio API
+        const mockGainNode = { gain: { value: 1.0 }, connect: vi.fn() };
+        const mockSource = { connect: vi.fn() };
+        const mockAudioCtx = {
+            createMediaElementSource: vi.fn().mockReturnValue(mockSource),
+            createGain: vi.fn().mockReturnValue(mockGainNode),
+            destination: {}
+        };
+        (global as any).window.AudioContext = vi.fn().mockImplementation(() => mockAudioCtx);
+
+        // Touch start (Right side for volume)
+        fireWindowEvent('touchstart', {
+            touches: [{ clientX: 450, clientY: 200 }], // Right side
+            target: targetMock
+        });
+
+        // Touch move upwards to trigger volume increase beyond 100%
+        touchMoveHandler({
+            touches: [{ clientX: 450, clientY: 100 }], // Move up 100px
+            preventDefault: vi.fn()
+        });
+
+        // Verify volume boost node was initialized and set to higher volume
+        expect(mockVideo.volume).toBe(1.0); // capped at 1.0
+        expect((mockVideo as any).gtAudioInit).toBe(true);
+        expect((mockVideo as any).gtGainNode.gain.value).toBeGreaterThan(1.0);
+
+        delete (global as any).window.AudioContext;
+    });
+
+    it('should block swipes if isScreenLocked is true', () => {
+        store.isScreenLocked = true;
+        const targetMock = {
+            addEventListener: vi.fn()
+        };
+
+        fireWindowEvent('touchstart', {
+            touches: [{ clientX: 200, clientY: 200 }],
+            target: targetMock
+        });
+
+        expect(targetMock.addEventListener).not.toHaveBeenCalled();
+        store.isScreenLocked = false;
+    });
+
+    it('should ignore swipe touchstart if it occurs in edge protection zones', () => {
+        const originalInnerWidth = window.innerWidth;
+        (global as any).window.innerWidth = 360;
+
+        const targetMock = {
+            addEventListener: vi.fn()
+        };
+
+        // Too close to left edge (10px < 18px)
+        fireWindowEvent('touchstart', {
+            touches: [{ clientX: 10, clientY: 200 }],
+            target: targetMock
+        });
+        expect(targetMock.addEventListener).not.toHaveBeenCalled();
+
+        // Too close to right edge (350px > 342px)
+        fireWindowEvent('touchstart', {
+            touches: [{ clientX: 350, clientY: 200 }],
+            target: targetMock
+        });
+        expect(targetMock.addEventListener).not.toHaveBeenCalled();
+
+        if (originalInnerWidth !== undefined) {
+            (global as any).window.innerWidth = originalInnerWidth;
+        } else {
+            delete (global as any).window.innerWidth;
+        }
     });
 });
 

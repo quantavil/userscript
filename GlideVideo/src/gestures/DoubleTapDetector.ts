@@ -25,6 +25,7 @@ export class DoubleTapDetector {
     private attachListeners() {
         window.addEventListener('pointerdown', e => {
             if (!this.store.settings.gesturesEnabled) return;
+            if (this.store.isScreenLocked) return;
             if (shouldBlockGestures()) return;
             if (e.pointerType !== 'touch') return;
             if (!this.store.activeVideo?.isConnected) return;

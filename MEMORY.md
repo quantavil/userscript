@@ -31,4 +31,5 @@ A collection of custom userscripts designed to enhance various web platforms (Gi
 
 ## Blunders
 - [2026-06-19] Test script parsing syntax error → Regex matched first nested class bracket instead of outer class end bracket → Mocked full browser context environment to run the entire IIFE script cleanly.
+- [2026-06-21] Removed particle burst feature entirely to adhere to simplicity principles.
 

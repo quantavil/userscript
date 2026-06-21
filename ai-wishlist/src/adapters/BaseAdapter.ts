@@ -1,6 +1,6 @@
 export abstract class BaseAdapter {
   private observerTimeout: number | null = null;
-  private static FLAG_KEY = '__priceStdz_observer';
+  private static FLAG_KEY = '__aiWishlist_observer';
 
   abstract processCards(): void;
 
@@ -17,8 +17,8 @@ export abstract class BaseAdapter {
       // Detect SPA navigation
       if (location.href !== lastUrl) {
         lastUrl = location.href;
-        document.querySelectorAll('[data-rate-done]').forEach(el => {
-          delete (el as HTMLElement).dataset.rateDone;
+        document.querySelectorAll('[data-wishlist-done]').forEach(el => {
+          delete (el as HTMLElement).dataset.wishlistDone;
         });
       }
 

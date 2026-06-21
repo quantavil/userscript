@@ -132,6 +132,27 @@ export class Controller {
         this.videoTracker.destroy();
         this.videoTransform.destroy();
         this.preloadEngine.destroy();
+
+        // Clean up Web Audio contexts
+        const videos = findAllVideos(document) as any[];
+        for (const v of videos) {
+            if (v.gtAudioCtx) {
+                try {
+                    v.gtAudioCtx.close();
+                } catch (e) {}
+                v.gtAudioCtx = undefined;
+            }
+            if (v.gtGainNode) {
+                try {
+                    v.gtGainNode.disconnect();
+                } catch (e) {}
+                v.gtGainNode = undefined;
+            }
+            v.gtAudioInit = false;
+            v.gtTotalVolume = undefined;
+            v.gtBoostFailedToastShown = undefined;
+        }
+
         clearTimeout(this.store.timers.hideGrace);
     }
 }

@@ -5,8 +5,8 @@ import { MVC_CONFIG } from '../config';
 import { shouldBlockGestures, vibrate, isPointOnUI } from '../utils';
 
 export class PressDetector {
-    private inLongPressGesture = false;
-    private longPressFired = false;
+    public inLongPressGesture = false;
+    public longPressFired = false;
 
     constructor(
         private readonly eventBus: EventBus,
@@ -20,14 +20,6 @@ export class PressDetector {
 
     public init() {
         this.attachLongPressListeners();
-    }
-
-    public isInLongPressGesture(): boolean {
-        return this.inLongPressGesture;
-    }
-
-    public isLongPressFired(): boolean {
-        return this.longPressFired;
     }
 
 
@@ -52,6 +44,7 @@ export class PressDetector {
 
         window.addEventListener('pointerdown', e => {
             if (!this.store.settings.gesturesEnabled) return;
+            if (this.store.isScreenLocked) return;
             if (shouldBlockGestures()) return;
             if (e.pointerType !== 'touch') return;
             if (!this.store.activeVideo?.isConnected) return;

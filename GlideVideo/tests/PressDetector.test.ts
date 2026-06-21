@@ -92,8 +92,8 @@ describe('PressDetector', () => {
 
         expect(rateSpy).toHaveBeenCalledWith({ rate: 2.0, saveToSettings: false });
         expect(uiSpy).toHaveBeenCalledWith({ text: '2x' });
-        expect(detector.isInLongPressGesture()).toBe(true);
-        expect(detector.isLongPressFired()).toBe(true);
+        expect(detector.inLongPressGesture).toBe(true);
+        expect(detector.longPressFired).toBe(true);
     });
 
     it('should cancel speed boost if user releases before delay', () => {
@@ -107,7 +107,7 @@ describe('PressDetector', () => {
         vi.advanceTimersByTime(400); // Trigger original delayed boost time
 
         expect(rateSpy).not.toHaveBeenCalled();
-        expect(detector.isInLongPressGesture()).toBe(false);
+        expect(detector.inLongPressGesture).toBe(false);
     });
 
     it('should revert speed boost when user lifts finger after long press starts', () => {
@@ -127,7 +127,7 @@ describe('PressDetector', () => {
 
         expect(rateSpy).toHaveBeenLastCalledWith({ rate: 1.0, saveToSettings: false });
         expect(uiSpy).toHaveBeenLastCalledWith(null);
-        expect(detector.isInLongPressGesture()).toBe(false);
+        expect(detector.inLongPressGesture).toBe(false);
     });
 
     it('should not cancel speed boost for pointermove under 24px, but should cancel for pointermove over 24px', () => {
@@ -145,11 +145,11 @@ describe('PressDetector', () => {
 
         // The speed boost should have started because 20px is within the 24px tolerance
         expect(rateSpy).toHaveBeenCalledWith({ rate: 2.0, saveToSettings: false });
-        expect(detector.isInLongPressGesture()).toBe(true);
+        expect(detector.inLongPressGesture).toBe(true);
 
         // Revert speed boost
         fireEvent('pointerup', { pointerType: 'touch' });
-        expect(detector.isInLongPressGesture()).toBe(false);
+        expect(detector.inLongPressGesture).toBe(false);
 
         // Now test movement exceeding tolerance
         rateSpy.mockClear();
@@ -163,7 +163,7 @@ describe('PressDetector', () => {
 
         // Long press should have been cancelled, so speed boost should NOT fire
         expect(rateSpy).not.toHaveBeenCalled();
-        expect(detector.isInLongPressGesture()).toBe(false);
+        expect(detector.inLongPressGesture).toBe(false);
     });
 });
 

@@ -28,6 +28,23 @@ export function clearWishlist(): void {
   saveWishlist([]);
 }
 
+export function clearScrapedCache(): void {
+  const items = getWishlist();
+  items.forEach(item => {
+    delete item.details;
+  });
+  saveWishlist(items);
+}
+
 export function isInWishlist(id: string): boolean {
   return getWishlist().some(i => i.id === id);
+}
+
+export function updateItemDetails(id: string, details: string): void {
+  const items = getWishlist();
+  const idx = items.findIndex(i => i.id === id);
+  if (idx !== -1) {
+    items[idx]!.details = details;
+    saveWishlist(items);
+  }
 }

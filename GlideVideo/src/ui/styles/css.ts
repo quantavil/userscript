@@ -755,6 +755,54 @@ export function injectStyles(): void {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             flex-shrink: 0;
         }
+
+        /* Lock Screen Styles */
+        .mvc-lock-btn {
+            position: fixed;
+            top: 16px;
+            z-index: 2147483647;
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--mvc-bg-pill);
+            color: rgba(255, 255, 255, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 50%;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.22);
+            transition: opacity 0.35s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s;
+            will-change: opacity, transform;
+            padding: 0;
+        }
+        .mvc-lock-btn:active {
+            transform: scale(0.9);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .mvc-lock-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor !important;
+        }
+
+        .mvc-lock-shield {
+            position: absolute;
+            inset: 0;
+            z-index: 2147483646;
+            background: rgba(0,0,0,0);
+            pointer-events: auto;
+            touch-action: none;
+        }
+
+        .mvc-ui-wrap.locked .mvc-settings-btn,
+        .mvc-ui-wrap.locked .mvc-pip-btn,
+        .mvc-ui-wrap.locked .mvc-stepper-pill {
+            display: none !important;
+            pointer-events: none !important;
+        }
     `;
     document.head.appendChild(style);
 }

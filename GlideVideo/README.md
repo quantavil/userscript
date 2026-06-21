@@ -37,14 +37,19 @@ A premium, glassmorphic dropdown card anchored right underneath the settings gea
 * **Reset All**: Quickly restores all visual transforms and configuration variables back to standard defaults.
 * **Gesture Toggle**: Instantly enable or disable gesture listeners on the fly.
 * **Preloading Switch**: Configures aggressive native preloading and optimizes internal browser buffers for faster playback response.
+* **Volume Boost Switch**: Toggle whether volume swipe can amplify sound up to 200%.
+* **Scroll Feed Compat Switch**: Toggle X-Mode scrolling compatibility in portrait view.
 
 ### 🖐 Touch Gestures & Snap Controls
 * **Double-Tap to Skip (YouTube-style Redesign)**: Double-tap the left half of the video screen to rewind, or the right half to fast-forward by the customized skip duration. Supports rapid consecutive taps (triple/quadruple tap) to accumulate seek distance (`10s → 20s → 30s...`), showing animating chevrons inside a beautiful compact inline glassmorphic pill (`mvc-doubletap-inner`). Automatically intercepts native player double-clicks to prevent accidental fullscreen toggling.
-* **Volume Swipe (YouTube-style)**: Swipe vertically up or down on the right half of the video screen to adjust the audio volume level (from 0% to 100%). Displays a modern vertical slider overlay with a glowing track, precise percentage readouts, and dynamic speaker status icons that smoothly fade out after selection.
+* **Volume Swipe & Amplification**: Swipe vertically up or down on the right half of the video screen to adjust the audio volume level (from 0% to 100%). Swiping up beyond 100% amplifies the audio up to 200% using the Web Audio API (visualized by a special speaker boost icon `🔊⚡` and an orange glow fill bar).
 * **Brightness Swipe**: Swipe vertically up or down on the left half of the video screen to adjust the display brightness level (from 10% to 100%). Displays a matching vertical slider overlay on the left edge of the video with real-time percentage readouts and dynamic sun/moon icons, and updates a smooth black backdrop overlay.
 * **Swipe to Seek**: Drag left or right across the video screen to rewind or fast-forward. Includes a beautiful, live-updating duration HUD showing the target timestamp and seek offset.
 * **Speed Boost Hold**: Long-press and hold on the video content to temporarily accelerate playback to `2.00x`. Releasing your finger restores your previous speed instantly.
 * **Pinch-to-Zoom Snap**: Pinch with two fingers to adjust scale. When released, the zoom level automatically snaps to the closest key marker (`50%`, `100%`, `125%`, `150%`, `200%`, `300%`) accompanied by a subtle haptic pulse.
+* **Screen Gesture Lock**: Tap the top-right padlock button (`🔓` / `🔒`) to block all gesture inputs and overlay overlays (excluding the lock button itself) to prevent accidental palm/finger touches.
+* **Scroll Feed Compat (X-Mode)**: In portrait layout, horizontal swipes still allow seek controls, but vertical swipes are bypassed to let the parent page scroll natively (great for Twitter/X video feeds).
+* **Edge Touch Protection**: Rejects gestures starting within 18px of the left or right viewport edges to avoid conflicts with browser swipe navigation history (back/forward).
 * **Ergonomic Safety**: Rotation gestures are completely decoupled from pinch zoom to eliminate accidental screen tilting.
 
 ### ⚡ Aggressive Preloading & Buffer Tuning

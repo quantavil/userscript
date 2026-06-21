@@ -104,6 +104,9 @@ export class VideoTransform implements EventListenerObject {
         }
 
         if (v) {
+            // Reset video transform/zoom on new video load
+            this.store.settings.transform = { ratio: 'fit', zoom: 1, rotation: 0 };
+
             this.attachUIToVideo(v);
             const scrollParents = this.findScrollableParents(v);
             this.currentScrollParents = scrollParents;

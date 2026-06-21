@@ -21,7 +21,8 @@ export class SwipeDetector {
     private attachSwipeListeners() {
         window.addEventListener('touchstart', e => {
             if (!this.store.settings.gesturesEnabled) return;
-            if (shouldBlockGestures()) return;
+            if (this.store.isScreenLocked) return;
+            if (shouldBlockGestures() && !this.store.settings.scrollCompatibility) return;
 
             // Handle multi-touch (Pinch to Zoom & Rotate)
             if (e.touches.length === 2) {
@@ -50,6 +51,10 @@ export class SwipeDetector {
 
             const touch = e.touches[0];
 
+            if (touch.clientX < MVC_CONFIG.EDGE_TOUCH_PROTECTION_PADDING || touch.clientX > window.innerWidth - MVC_CONFIG.EDGE_TOUCH_PROTECTION_PADDING) {
+                return;
+            }
+
             if (isPointOnUI(touch.target)) return;
             if (!this.store.activeVideo?.isConnected) return;
             if (!isPointInRect(touch.clientX, touch.clientY, this.store.activeVideo)) return;
@@ -61,7 +66,7 @@ export class SwipeDetector {
             const startX      = touch.clientX;
             const startY      = touch.clientY;
             const initialTime = video.currentTime;
-            const startVolume     = video.muted ? 0 : video.volume;
+            const startVolume     = video.muted ? 0 : ((video as any).gtTotalVolume !== undefined ? (video as any).gtTotalVolume : video.volume);
             const startBrightness = this.store.brightness;
 
             // Which horizontal half did the touch start on?
@@ -88,15 +93,27 @@ export class SwipeDetector {
                     const overThreshold = absDx > MVC_CONFIG.GESTURE_MOVE_THRESHOLD || absDy > MVC_CONFIG.GESTURE_MOVE_THRESHOLD;
                     if (!overThreshold) return;
 
+                    const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+                    const isPortrait = window.matchMedia?.('(orientation: portrait)')?.matches ?? false;
+                    const needsScrollComp = this.store.settings.scrollCompatibility && isPortrait && !isFullscreen;
+
                     if (absDx > absDy * 1.5) {
                         // Horizontal dominant → seek
                         mode = 'seek';
                         this.store.isSwipeSeeking = true;
                     } else if (absDy > absDx * 1.5 && startSide === 'right') {
+                        if (needsScrollComp) {
+                            onTouchEnd();
+                            return;
+                        }
                         // Vertical dominant on RIGHT side → volume
                         mode = 'volume';
                         this.store.isVolumeControlling = true;
                     } else if (absDy > absDx * 1.5 && startSide === 'left') {
+                        if (needsScrollComp) {
+                            onTouchEnd();
+                            return;
+                        }
                         // Vertical dominant on LEFT side → brightness
                         mode = 'brightness';
                         this.store.isBrightnessControlling = true;
@@ -116,21 +133,32 @@ export class SwipeDetector {
 
                 // ── Seek ───────────────────────────────────────────────────
                 if (mode === 'seek') {
-                    const timeChange = dx * MVC_CONFIG.GESTURE_SEEK_SENSITIVITY;
-                    newTime = clampTime(initialTime + timeChange, video.duration || 0);
-                    this.eventBus.emit('ui:gesture-overlay', {
-                        text: formatDuration(newTime),
-                        subText: formatDelta(timeChange)
-                    });
+                    let timeChange = dx * MVC_CONFIG.GESTURE_SEEK_SENSITIVITY;
+                    if (Math.abs(timeChange) < 5.0) {
+                        timeChange = 0;
+                    } else {
+                        timeChange = timeChange - Math.sign(timeChange) * 4.0;
+                    }
+                    if (timeChange === 0) {
+                        this.eventBus.emit('ui:gesture-overlay', null);
+                    } else {
+                        newTime = clampTime(initialTime + timeChange, video.duration || 0);
+                        this.eventBus.emit('ui:gesture-overlay', {
+                            text: formatDuration(newTime),
+                            subText: formatDelta(timeChange)
+                        });
+                    }
                 }
 
                 // ── Volume ─────────────────────────────────────────────────
                 if (mode === 'volume') {
                     // Swipe UP (dy negative) → increase; DOWN → decrease
                     const sensitivity = 1 / Math.max(vr.height * 0.8, 1); // full-height swipe = 0→100%
-                    const newVolume   = clamp(startVolume - dy * sensitivity, 0, 1);
-                    video.muted       = newVolume === 0;
-                    video.volume      = newVolume === 0 ? video.volume : newVolume;
+                    const maxVol = this.store.settings.volumeBoostEnabled ? 2.0 : 1.0;
+                    const newVolume = clamp(startVolume - dy * sensitivity, 0, maxVol);
+                    video.muted = newVolume === 0;
+                    (video as any).gtTotalVolume = newVolume;
+                    this.setVolumeWithBoost(video, newVolume);
                     this.eventBus.emit('ui:volume-changed', { volume: newVolume });
                 }
 
@@ -146,7 +174,9 @@ export class SwipeDetector {
 
             onTouchEnd = () => {
                 if (mode === 'seek') {
-                    video.currentTime = newTime;
+                    if (newTime !== initialTime) {
+                        video.currentTime = newTime;
+                    }
                     this.store.isSwipeSeeking = false;
                     this.eventBus.emit('ui:gesture-overlay', null);
                 }
@@ -174,6 +204,7 @@ export class SwipeDetector {
 
         window.addEventListener('touchmove', e => {
             if (!this.store.settings.gesturesEnabled) return;
+            if (this.store.isScreenLocked) return;
 
             if (this.isPinching && e.touches.length === 2) {
                 const t1 = e.touches[0];
@@ -220,11 +251,50 @@ export class SwipeDetector {
                     vibrate(15); // Haptic feedback on snap
                 }
 
-                this.store.saveSetting('transform', this.store.settings.transform);
             }
         };
 
         window.addEventListener('touchend', onTouchEndOrCancel, { passive: true, signal: this.store.abortController.signal });
         window.addEventListener('touchcancel', onTouchEndOrCancel, { passive: true, signal: this.store.abortController.signal });
+    }
+
+    private setVolumeWithBoost(video: HTMLVideoElement, totalVol: number) {
+        const videoAny = video as any;
+        if (totalVol <= 1.0) {
+            video.volume = totalVol;
+            if (videoAny.gtGainNode) {
+                videoAny.gtGainNode.gain.value = 1.0;
+            }
+        } else {
+            video.volume = 1.0;
+            try {
+                if (!videoAny.gtAudioInit) {
+                    const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+                    if (AudioContextClass) {
+                        const audioCtx = new AudioContextClass();
+                        const source = audioCtx.createMediaElementSource(video);
+                        const gainNode = audioCtx.createGain();
+                        source.connect(gainNode);
+                        gainNode.connect(audioCtx.destination);
+                        videoAny.gtAudioCtx = audioCtx;
+                        videoAny.gtGainNode = gainNode;
+                        videoAny.gtAudioInit = true;
+                    }
+                }
+                if (videoAny.gtGainNode) {
+                    videoAny.gtGainNode.gain.value = totalVol;
+                }
+            } catch (err) {
+                console.warn('[GlideVideo] Volume boost failed:', err);
+                video.volume = 1.0;
+                if (videoAny.gtGainNode) {
+                    videoAny.gtGainNode.gain.value = 1.0;
+                }
+                if (!videoAny.gtBoostFailedToastShown) {
+                    videoAny.gtBoostFailedToastShown = true;
+                    this.eventBus.emit('ui:toast', { message: 'Volume boost failed: CORS restriction' });
+                }
+            }
+        }
     }
 }
