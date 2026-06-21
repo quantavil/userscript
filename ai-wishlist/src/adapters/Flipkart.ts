@@ -20,7 +20,7 @@ export class FlipkartAdapter extends BaseAdapter {
 
       let parent = linkEl.parentElement;
       while (parent && parent !== document.body) {
-        if (parent.querySelector('img') && (parent.classList.contains('css-g5y9jx') || parent.style.width || parent.style.minHeight)) {
+        if (this.hasProductImage(parent) && (parent.classList.contains('css-g5y9jx') || parent.style.width || parent.style.minHeight)) {
           cards.add(parent);
           break;
         }
@@ -109,7 +109,7 @@ export class FlipkartAdapter extends BaseAdapter {
       id: `fk_${fId}`,
       title,
       price,
-      imageUrl: imgEl?.getAttribute('src') || '',
+      imageUrl: this.getBestImageUrl(imgEl as HTMLElement | null),
       url: cleanProductUrl(rawUrl, 'Flipkart'),
       platform: 'Flipkart'
     };
@@ -117,5 +117,12 @@ export class FlipkartAdapter extends BaseAdapter {
 
   private injectUI(card: HTMLElement, meta: WishlistItem) {
     injectHeartUI(card, meta);
+  }
+
+  private hasProductImage(el: HTMLElement): boolean {
+    return Array.from(el.querySelectorAll('img')).some(img => {
+      const src = img.getAttribute('src') || '';
+      return src.includes('/image/') && !src.includes('/www/') && !src.includes('/promos/');
+    });
   }
 }

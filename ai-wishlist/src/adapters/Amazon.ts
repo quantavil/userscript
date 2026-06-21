@@ -87,13 +87,18 @@ export class AmazonAdapter extends BaseAdapter {
 
     if (!asin) return null;
 
-    const imgEl = card.querySelector('img.s-image');
+    let imgEl = card.querySelector('.s-product-image-container img, [data-component-type="s-product-image"] img') as HTMLElement | null;
+    if (!imgEl) {
+      imgEl = Array.from(card.querySelectorAll('img.s-image, img')).find(img => {
+        return img.getAttribute('alt') !== 'More like this' && !img.closest('.more-like-this-container');
+      }) as HTMLElement | null;
+    }
 
     return {
       id: `amz_${asin}`,
       title,
       price,
-      imageUrl: imgEl?.getAttribute('src') || '',
+      imageUrl: this.getBestImageUrl(imgEl),
       url: `https://www.amazon.in/dp/${asin}`,
       platform: 'Amazon'
     };

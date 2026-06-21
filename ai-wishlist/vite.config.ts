@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'Amazon & Flipkart AI Wishlist',
         namespace: 'http://github.com/quantavil/userscript',
-        version: '1.6.0',
+        version: '1.8.0',
         description: 'Adds a unified cross-platform AI wishlist with background specifications parsing for Amazon and Flipkart.',
         author: 'quantavil',
         match: [

@@ -30,4 +30,39 @@ export abstract class BaseAdapter {
       }
     }).observe(document.body, { childList: true, subtree: true });
   }
+
+  protected getBestImageUrl(imgEl: HTMLElement | null): string {
+    if (!imgEl) return '';
+    
+    // Try standard data attributes for lazy loading
+    const dataSrc = imgEl.getAttribute('data-src') || 
+                    imgEl.getAttribute('data-lazy-src') || 
+                    imgEl.getAttribute('data-old-hires');
+    if (dataSrc && dataSrc.startsWith('http')) return dataSrc;
+
+    // Try srcset next
+    const srcset = imgEl.getAttribute('srcset');
+    if (srcset) {
+      const best = srcset.split(',').pop()?.trim().split(' ')[0];
+      if (best && best.startsWith('http')) return best;
+    }
+
+    const src = imgEl.getAttribute('src') || '';
+    if (src && !src.startsWith('data:image/')) {
+      return src;
+    }
+
+    // Fallback: check all other attributes starting with "data-" for absolute URLs
+    for (const attr of imgEl.getAttributeNames()) {
+      if (attr.startsWith('data-')) {
+        const val = imgEl.getAttribute(attr);
+        if (val && val.startsWith('http')) {
+          return val;
+        }
+      }
+    }
+
+    return src;
+  }
 }
+
