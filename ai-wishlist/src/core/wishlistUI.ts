@@ -695,7 +695,9 @@ function createSettingsDrawer() {
   const keyInput = document.createElement('input');
   keyInput.className = 'aiw-input-control';
   keyInput.id = 'settings-key';
-  keyInput.type = 'password';
+  keyInput.type = 'text';
+  keyInput.setAttribute('autocomplete', 'off');
+  keyInput.setAttribute('spellcheck', 'false');
   keyInput.value = settings.apiKey;
   keyInput.placeholder = 'Enter API key...';
   keyInput.addEventListener('change', () => {
@@ -1189,23 +1191,17 @@ ${itemsContext}
 
 Guidelines:
 1. You can answer general questions, chat about unrelated topics, compare wishlist products, or retrieve real-time specs/reviews. Do not restrict yourself only to the wishlist context.
-2. You can search the web (via Google Search tool grounding) to find missing details, technical specs, or general search queries.
-3. Chat in a relaxed, friendly, conversational, and natural tone.
-4. You can use standard markdown format (e.g. bold, italics, lists, or headers).
-5. To display comparison tables nicely, please use HTML: '<table class="aiw-chat-table">' with '<thead><tr><th>Feature</th>...</tr></thead>' and '<tbody>...</tbody>'.
-6. For product links, always use: '<a href="URL" target="_blank" class="aiw-chat-link">Product Title</a>'.`;
+2. Chat in a relaxed, friendly, conversational, and natural tone.
+3. You can use standard markdown format (e.g. bold, italics, lists, or headers).
+4. To display comparison tables nicely, please use HTML: '<table class="aiw-chat-table">' with '<thead><tr><th>Feature</th>...</tr></thead>' and '<tbody>...</tbody>'.
+5. For product links, always use: '<a href="URL" target="_blank" class="aiw-chat-link">Product Title</a>'.`;
 
   const payload = isGemini
     ? {
         contents: chatHistory,
         systemInstruction: {
           parts: [{ text: systemInstruction }]
-        },
-        tools: [
-          {
-            googleSearch: {}
-          }
-        ]
+        }
       }
     : {
         model: settings.model,

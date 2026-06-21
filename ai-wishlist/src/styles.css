@@ -1225,4 +1225,10 @@
   line-height: 1.4 !important;
 }
 
+#settings-key {
+  -webkit-text-security: disc !important;
+  text-security: disc !important;
+}
+
+
 

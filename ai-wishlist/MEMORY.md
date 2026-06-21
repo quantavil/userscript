@@ -37,3 +37,5 @@
 - Flipkart React unmounting/flicker: Modifying React-managed DOM elements inside card components (e.g. injecting loading spinners/classes) triggers reconciliation mismatches, causing cards to unmount/remount on focus/scroll. Resolved by removing all dynamic loaders and class changes from the card level, and routing crawling feedback to the FAB crab walking animation.
 - OpenAI compatibility: Request payloads, URLs, and key verifications were hardcoded to Gemini format. Resolved by dynamically detecting the endpoint type from `baseUrl` (Gemini if `googleapis.com` in URL, OpenAI-compatible otherwise) and formatting payloads accordingly.
 - Double-wrapped lists: Custom Markdown parser wrapped existing HTML `<li>` elements in `<ul>`. Resolved by using a temporary `<aiw-li>` placeholder.
+- [2026-06-21] Gemini API requests failed with Status 429 because googleSearch tool grounding is restricted on standard keys. Resolved by removing the googleSearch tool from the API payload. Also fixed password save triggers by changing the API Key input type from password to text and using CSS text-security disc masking.
+
