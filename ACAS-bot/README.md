@@ -15,7 +15,7 @@ flowchart LR
         B -->|UniversalBoardDrawer| C[Overlay Graphics / SVGs]
     end
 
-    subgraph Browser Tab 2: ACAS GUI [psyyke.github.io/A.C.A.S]
+    subgraph Browser Tab 2: ACAS GUI [quantavil.github.io/A.C.A.S]
         F[ACAS Orchestrator] <-->|Worker / HTTP| G[Chess Engine \nStockfish / Lc0]
     end
 
@@ -31,14 +31,14 @@ The userscript runs directly on the active chess tab. Its main responsibilities 
 * **Auto-Play:** Triggers programmatic pointer and mouse events to click/drag-and-drop pieces to automate playing the suggested engine move (if configured).
 
 ### 2. The Engine Backend (GUI)
-The engine runs inside the **ACAS GUI tab** (defaulting to the hosted [psyyke.github.io/A.C.A.S/app/](https://psyyke.github.io/A.C.A.S/app/) page or `localhost` during development).
+The engine runs inside the **ACAS GUI tab** (defaulting to the hosted [quantavil.github.io/A.C.A.S/app/](https://quantavil.github.io/A.C.A.S/app/) page or `localhost` during development).
 * **Where the engine comes from:**
   * **Web-Assembly (Wasm) Engines:** By default, ACAS runs chess engines like **Stockfish.js** or **Lc0** directly inside the browser using Web Workers. This means the engine runs locally inside the user's browser without requiring any local executable installation.
   * **Native Engines:** For players needing high depths, multi-threading, or GPU acceleration, the GUI can connect to a local native helper server running on the host system. This server hooks into local, compiled native chess engine executables (like Stockfish binary or Lc0 running on CUDA).
 * The GUI page also contains the dashboard to configure engine depth/nodes, select engine profiles, fine-tune auto-move intervals, and customize visuals.
 
 ### 3. The Communication Bridge (`CommLink`)
-Because the chess tab (e.g., `chess.com`) and the ACAS backend tab (`psyyke.github.io`) are hosted on different domains, browser sandboxing prevents them from calling each other directly.
+Because the chess tab (e.g., `chess.com`) and the ACAS backend tab (`quantavil.github.io`) are hosted on different domains, browser sandboxing prevents them from calling each other directly.
 
 ACAS-bot bypasses this using **Userscript Storage (Greasemonkey API)** as a shared IPC (Inter-Process Communication) channel:
 1. When a new board state is detected, the userscript writes a packet prefixed with `commlink-packet-` (containing the current FEN, orientation, variant, etc.) into Greasemonkey storage (`GM_setValue`).
