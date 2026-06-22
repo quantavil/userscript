@@ -14,7 +14,8 @@ import {
     getFenPieceOppositeColor,
     getCanvasPixelColor,
     canvasHasPixelAt,
-    convertPieceStrToFen
+    convertPieceStrToFen,
+    wait
 } from './core/index.js';
 
 import {
@@ -34,6 +35,7 @@ if (typeof window !== 'undefined' && window.__acas_preserve) {
         canvasHasPixelAt,
         getSquareElems,
         getBaseStyleModification,
-        convertPieceStrToFen
+        convertPieceStrToFen,
+        wait
     );
 }

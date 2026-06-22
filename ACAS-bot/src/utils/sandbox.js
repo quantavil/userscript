@@ -5,31 +5,31 @@ export function exposeViaMessages() {
         USERSCRIPT_getValue: (args, messageId) => {
             const [key] = args;
             const value = GM_getValue(key);
-            window.postMessage({ messageId, value }, '*');
+            window.postMessage({ messageId, value }, window.location.origin);
         },
         USERSCRIPT_setValue: (args, messageId) => {
             const [key, value] = args;
             GM_setValue(key, value);
-            window.postMessage({ messageId, value: true }, '*');
+            window.postMessage({ messageId, value: true }, window.location.origin);
         },
         USERSCRIPT_deleteValue: (args, messageId) => {
             const [key] = args;
             GM_deleteValue(key);
-            window.postMessage({ messageId, value: true }, '*');
+            window.postMessage({ messageId, value: true }, window.location.origin);
         },
         USERSCRIPT_listValues: (args, messageId) => {
             const value = GM_listValues();
-            window.postMessage({ messageId, value }, '*');
+            window.postMessage({ messageId, value }, window.location.origin);
         },
         USERSCRIPT_getInfo: (args, messageId) => {
             const value = typeof GM_info !== 'undefined' ? JSON.parse(JSON.stringify(GM_info)) : {};
-            window.postMessage({ messageId, value }, '*');
+            window.postMessage({ messageId, value }, window.location.origin);
         },
         USERSCRIPT_instanceVars: (args, messageId) => {
             const [instanceId, key, value] = args;
 
             if (!instanceVars.hasOwnProperty(key)) {
-                window.postMessage({ messageId, value: false }, '*');
+                window.postMessage({ messageId, value: false }, window.location.origin);
                 return;
             }
 
@@ -37,7 +37,7 @@ export function exposeViaMessages() {
                 ? instanceVars[key].set(instanceId, value)
                 : instanceVars[key].get(instanceId);
 
-            window.postMessage({ messageId, value: result }, '*');
+            window.postMessage({ messageId, value: result }, window.location.origin);
         }
     };
 

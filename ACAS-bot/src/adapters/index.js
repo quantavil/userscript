@@ -96,9 +96,9 @@ export function isPawnPromotion(bestMove) {
         return false;
 
     const endingRow = parseInt(fenCoordTo[1], 10);
-    const [_, boardFiles] = getBoardDimensions();
+    const [boardRanks] = getBoardDimensions();
 
-    if ((piece === 'P' && endingRow === (boardFiles ?? 8)) || (piece === 'p' && endingRow === 1)) {
+    if ((piece === 'P' && endingRow === (boardRanks ?? 8)) || (piece === 'p' && endingRow === 1)) {
         return true;
     }
 

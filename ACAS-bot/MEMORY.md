@@ -13,6 +13,7 @@ ACAS-bot (Advanced Chess Assistance System) is a userscript that enhances chess 
   - `src/utils/` -> configurations (`config.js`) and geometric transforms (`coordinates.js`).
 - [tests/](file:///home/quantavil/Documents/Project/userscript/ACAS-bot/tests): Contains unit tests for coordinate conversions.
 - [.dependency-cruiser.json](file:///home/quantavil/Documents/Project/userscript/ACAS-bot/.dependency-cruiser.json): Dependency cruiser boundaries rules.
+- [README.md](file:///home/quantavil/Documents/Project/userscript/ACAS-bot/README.md): Project overview, architecture, engine sourcing, and userscript GM storage IPC bridge details.
 
 ## Conventions
 - Single file userscript structure.
@@ -20,7 +21,7 @@ ACAS-bot (Advanced Chess Assistance System) is a userscript that enhances chess 
 
 ## Dependencies & Setup
 - Relies on userscript manager (e.g. Tampermonkey, Violentmonkey).
-- Uses `@require` libraries for CommLink and UniversalBoardDrawer.
+- Uses `@require` libraries for  UniversalBoardDrawer.
 - Uses `bun` to compile the modular source files (`bun run build`).
 
 ## Critical Information
@@ -42,6 +43,7 @@ ACAS-bot (Advanced Chess Assistance System) is a userscript that enhances chess 
 - Eliminated microtask race conditions in `determineBoardPositionValidity` by retrieving and caching the FEN synchronously (removed `await getFen()`), and implemented a robust, universal FEN-change turn-detection mechanism (`getTurnFromFenChange`) that compares the color of the piece that moved to identify the active turn. This eliminates race conditions, stale DOM-logs, and instant premoving.
 - Implemented a self-healing retry mechanism with a 1.5-second post-move timeout verification; if the board FEN remains unchanged after a move attempt, it retries the move up to 3 times, postponing the retry check while the user is dragging/holding a piece (instead of cancelling it completely), and triggering the retry by calling processBoardPosition directly to preserve active FENs.
 - Integrated the external `CommLink.js` library directly into the codebase inside `src/core/comm.js` to remove the `@require` script dependency, and optimized it using Ponytail rules (replaced custom ID generation with native `crypto.randomUUID()`, simplified async logic, parallelized packet fetching, and removed redundant checks).
+- Created a comprehensive `README.md` detailing the client-backend userscript architecture, GM storage IPC bridge, and Wasm/Native engine sources.
 
 ## Blunders
 - Nesting ES Module exports inside conditional blocks causes `Unexpected export` syntax errors. Kept exports at top level, wrapped executing side-effects in an conditional check.

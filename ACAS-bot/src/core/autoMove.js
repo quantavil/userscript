@@ -335,7 +335,18 @@ export class AutomaticMove {
             clientY: randomizedY,
         };
 
+        const overlay = state.BoardDrawer?.boardContainerElem;
+        let originalPointerEvents = '';
+        if(overlay) {
+            originalPointerEvents = overlay.style.pointerEvents;
+            overlay.style.pointerEvents = 'none';
+        }
+
         const elementToTrigger = (input instanceof Element) ? input : document.elementFromPoint(clientX, clientY);
+
+        if(overlay) {
+            overlay.style.pointerEvents = originalPointerEvents;
+        }
 
         if(elementToTrigger) {
             switch(domain) {
@@ -348,14 +359,8 @@ export class AutomaticMove {
 
                     break;
                 case 'lichess.org':
-                    elementToTrigger.dispatchEvent(new MouseEvent('mousedown', pointerEventOptions));
-
-                    if(this.isLegit) await this.delay(this.getRandomIntegerNearAverage(35, 125));
-
-                    elementToTrigger.dispatchEvent(new MouseEvent('mouseup', pointerEventOptions));
-
-                    break;
                 case 'worldchess.com':
+                default:
                     elementToTrigger.dispatchEvent(new MouseEvent('mousedown', pointerEventOptions));
 
                     if(this.isLegit) await this.delay(this.getRandomIntegerNearAverage(35, 125));

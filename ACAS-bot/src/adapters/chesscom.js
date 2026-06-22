@@ -130,6 +130,8 @@ addSupportedChessSite('chess.com', {
         } else {
             const pieceStr = [...pieceElem.classList].find(x => x.match(/^(b|w)[prnbqk]{1}$/));
 
+            if(!pieceStr) return null;
+
             [pieceColor, pieceName] = pieceStr.split('');
         }
 

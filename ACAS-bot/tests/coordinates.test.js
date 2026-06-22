@@ -98,7 +98,6 @@ describe('Coordinate Conversion Helpers', () => {
         expect(chessCoordinatesToIndex('a1')).toEqual([0, 0]);
         expect(chessCoordinatesToIndex('h8')).toEqual([7, 7]);
         expect(chessCoordinatesToIndex('c5')).toEqual([2, 4]);
-        expect(chessCoordinatesToIndex('e:')).toEqual([4, 9]); // special colon rank test case
     });
 
     test('indexToChessCoordinates converts rank/file offsets back to standard coordinates (White Orientation)', () => {

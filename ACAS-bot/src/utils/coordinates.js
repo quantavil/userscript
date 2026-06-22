@@ -27,12 +27,20 @@ function getElementSize(elem) {
 
 export function extractElemTransformData(elem) {
     const computedStyle = window.getComputedStyle(elem);
-    const transformMatrix = new DOMMatrix(computedStyle.transform);
+    const transform = computedStyle.transform;
 
-    const x = transformMatrix.e;
-    const y = transformMatrix.f;
+    if (!transform || transform === 'none') {
+        return [0, 0];
+    }
 
-    return [x, y];
+    try {
+        const transformMatrix = new DOMMatrix(transform);
+        const x = transformMatrix.e;
+        const y = transformMatrix.f;
+        return [x, y];
+    } catch(e) {
+        return [0, 0];
+    }
 }
 
 export function getElemCoordinatesFromTransform(elem, config) {
@@ -157,15 +165,7 @@ export function getBoardDimensionsFromSize() {
 
 export function chessCoordinatesToIndex(coord) {
     const x = coord.charCodeAt(0) - 97;
-    let y = null;
-
-    const lastHalf = coord.slice(1);
-
-    if(lastHalf === ':') {
-        y = 9;
-    } else {
-        y = Number(coord.slice(1)) - 1;
-    }
+    const y = Number(coord.slice(1)) - 1;
 
     return [x, y];
 }

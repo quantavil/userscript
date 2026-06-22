@@ -25,7 +25,7 @@ export function getArrowStyle(type, fill, opacity) {
 
 export function clearMetricRenders() {
     state.activeMetricRenders.forEach(elem => {
-        if(elem) elem?.remove();
+        if(elem) elem.remove();
     });
     activeMetricRenders = [];
     state.activeMetricRenders = [];
@@ -66,7 +66,7 @@ export function renderMetrics(addedMetrics) {
 
 export function clearFeedback() {
     state.activeFeedback.forEach(elem => {
-        if(elem) elem?.remove();
+        if(elem) elem.remove();
     });
     activeFeedback = [];
     state.activeFeedback = [];

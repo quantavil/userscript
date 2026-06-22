@@ -1,5 +1,5 @@
 export const backendConfig = {
-    'hosts': { 'prod': 'psyyke.github.io', 'dev': 'localhost' },
+    'hosts': { 'prod': 'quantavil.github.io', 'dev': 'localhost' },
     'path': '/A.C.A.S/'
 };
 

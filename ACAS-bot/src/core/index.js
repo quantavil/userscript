@@ -191,7 +191,7 @@ let lastBoardOrientation = null;
 let lastMutationObsProcessedTurn = null;
 let isCheckingBackendReady = false;
 
-const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+export const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function displayImportantNotification(title, text) {
     if(typeof GM_notification === 'function') {
@@ -231,16 +231,9 @@ function getTurnFromFenChange(lastFen, newFen) {
     const board1 = lastFen.split(' ', 1)[0].replace(/\d/g, d => ' '.repeat(Number(d))).split('/').join('');
     const board2 = newFen.split(' ', 1)[0].replace(/\d/g, d => ' '.repeat(Number(d))).split('/').join('');
 
-    for(let i = 0; i < board1.length; i++) {
-        if(board1[i] !== ' ' && board1[i] !== board2[i] && board2[i] === ' ') {
-            const piece = board1[i];
-            return piece === piece.toUpperCase() ? 'b' : 'w';
-        }
-    }
-    
-    for(let i = 0; i < board1.length; i++) {
-        if(board1[i] !== ' ' && board1[i] !== board2[i]) {
-            const piece = board1[i];
+    for(let i = 0; i < board2.length; i++) {
+        if(board2[i] !== ' ' && board2[i] !== board1[i]) {
+            const piece = board2[i];
             return piece === piece.toUpperCase() ? 'b' : 'w';
         }
     }
@@ -259,10 +252,7 @@ async function determineBoardPositionValidity(turn) {
 
     if(pieceAmount === 0) {
         state.lastCalculatedFullFen = null;
-
-        await wait(100);
-
-        return determineBoardPositionValidity(getBoardOrientation());
+        return;
     }
 
     if(!fenChanged) return;
@@ -504,13 +494,6 @@ if (!(runningOnBackend && !isDevPage)) {
     window.addEventListener('pointerup', () => { state.isUserMouseDown = false; });
     window.addEventListener('mouseup', () => { state.isUserMouseDown = false; });
     window.addEventListener('touchend', () => { state.isUserMouseDown = false; });
-
-    Object.values(configKeys).forEach(key => {
-        config[key] = {
-            get:  profile => getGmConfigValue(key, commLinkInstanceID, profile),
-            set:  (val, profile) => setGmConfigValue(key, val, commLinkInstanceID, profile)
-        };
-    });
 
     setupCommLink();
 

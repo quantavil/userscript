@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name        ACAS-bot (Advanced Chess Assistance System)
 // @description        Enhance your chess performance with a cutting-edge real-time move analysis and strategy assistance system
-// @homepageURL https://psyyke.github.io/A.C.A.S
-// @supportURL  https://github.com/Psyyke/A.C.A.S/tree/main#why-doesnt-it-work
-// @match       https://psyyke.github.io/A.C.A.S/*
+// @homepageURL https://quantavil.github.io/A.C.A.S
+// @supportURL  https://github.com/quantavil/A.C.A.S/tree/main#why-doesnt-it-work
+// @match       https://quantavil.github.io/A.C.A.S/*
 // @match       http://localhost/*
 // @match       https://www.chess.com/*
 // @match       https://lichess.org/*
@@ -32,7 +32,7 @@
 // @grant       GM_notification
 // @grant       unsafeWindow
 // @run-at      document-start
-// @version     2.4.5
+// @version     2.4.7
 // @namespace   https://github.com/quantavil/userscript
 // @license     GPL-3.0
 // ==/UserScript==
