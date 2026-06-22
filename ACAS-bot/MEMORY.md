@@ -44,7 +44,7 @@ ACAS-bot (Advanced Chess Assistance System) is a userscript that enhances chess 
 - Implemented a self-healing retry mechanism with a 1.5-second post-move timeout verification; if the board FEN remains unchanged after a move attempt, it retries the move up to 3 times, postponing the retry check while the user is dragging/holding a piece (instead of cancelling it completely), and triggering the retry by calling processBoardPosition directly to preserve active FENs.
 - Integrated the external `CommLink.js` library directly into the codebase inside `src/core/comm.js` to remove the `@require` script dependency, and optimized it using Ponytail rules (replaced custom ID generation with native `crypto.randomUUID()`, simplified async logic, parallelized packet fetching, and removed redundant checks).
 - Created a comprehensive `README.md` detailing the client-backend userscript architecture, GM storage IPC bridge, and Wasm/Native engine sources.
-- Bumped version to 2.4.7, resolved 11 verified bugs/flaws across engine interfaces and sandboxing, and configured the production host destination to the user's fork at quantavil.github.io.
+- Bumped version to 2.4.7, resolved 11 verified bugs/flaws across engine interfaces and sandboxing, configured the production host destination to the user's fork at quantavil.github.io, and implemented smooth drag-and-drop auto-move emulation.
 
 ## Blunders
 - Nesting ES Module exports inside conditional blocks causes `Unexpected export` syntax errors. Kept exports at top level, wrapped executing side-effects in an conditional check.

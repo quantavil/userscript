@@ -405,6 +405,83 @@ export class AutomaticMove {
             this.triggerPieceClick(domCoord);
     }
 
+    async drag(fromCoord, toCoord) {
+        const parentExists = activeAutomoves.find(x => x.move === this) ? true : false;
+        if(!parentExists) return;
+
+        const usePointer = !!window.PointerEvent;
+        const [xStart, yStart] = fromCoord;
+        const [xEnd, yEnd] = toCoord;
+
+        const overlay = state.BoardDrawer?.boardContainerElem;
+        let originalPointerEvents = '';
+        if(overlay) {
+            originalPointerEvents = overlay.style.pointerEvents;
+            overlay.style.pointerEvents = 'none';
+        }
+
+        const startEl = document.elementFromPoint(xStart, yStart);
+        if(!startEl) {
+            if(overlay) overlay.style.pointerEvents = originalPointerEvents;
+            return;
+        }
+
+        const pointerEventOptions = (x, y, buttons) => ({
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            clientX: x,
+            clientY: y,
+            buttons,
+            pointerId: 1,
+            pointerType: 'mouse',
+            isPrimary: true
+        });
+
+        // Dispatch pointerdown / mousedown
+        const downOpts = pointerEventOptions(xStart, yStart, 1);
+        if(usePointer) {
+            startEl.dispatchEvent(new PointerEvent('pointerdown', downOpts));
+        } else {
+            startEl.dispatchEvent(new MouseEvent('mousedown', downOpts));
+        }
+
+        // Wait 20ms for UI to register the grab
+        await this.delay(20);
+
+        // Interpolate steps
+        const steps = 10;
+        for (let i = 1; i <= steps; i++) {
+            const t = i / steps;
+            const mx = xStart + (xEnd - xStart) * t;
+            const my = yStart + (yEnd - yStart) * t;
+
+            const stepTarget = document.elementFromPoint(mx, my) || startEl;
+            const moveOpts = pointerEventOptions(mx, my, 1);
+
+            if(usePointer) {
+                stepTarget.dispatchEvent(new PointerEvent('pointermove', moveOpts));
+            } else {
+                stepTarget.dispatchEvent(new MouseEvent('mousemove', moveOpts));
+            }
+
+            await this.delay(12);
+        }
+
+        // Release at target
+        const endEl = document.elementFromPoint(xEnd, yEnd) || startEl;
+        const upOpts = pointerEventOptions(xEnd, yEnd, 0);
+        if(usePointer) {
+            endEl.dispatchEvent(new PointerEvent('pointerup', upOpts));
+        } else {
+            endEl.dispatchEvent(new MouseEvent('mouseup', upOpts));
+        }
+
+        if(overlay) {
+            overlay.style.pointerEvents = originalPointerEvents;
+        }
+    }
+
     async hesitate() {
         const hesitationPieceDomCoord = getRandomOwnPieceDomCoord(this.fenMoveArr[0], getBoardMatrix());
 
@@ -429,11 +506,16 @@ export class AutomaticMove {
     }
 
     async finishMove(delay01, delay02) {
-        this.click(this.moveDomCoords[0]);
+        const moveMethod = getConfigValue('moveMethod', this.profile) || 'click';
 
-        await this.delay(delay01);
-
-        this.click(this.moveDomCoords[1]);
+        if(moveMethod === 'drag') {
+            await this.delay(delay01);
+            await this.drag(this.moveDomCoords[0], this.moveDomCoords[1]);
+        } else {
+            this.click(this.moveDomCoords[0]);
+            await this.delay(delay01);
+            this.click(this.moveDomCoords[1]);
+        }
 
         if(this.isPromotion) {
             this.isPromotingPawn = true;
