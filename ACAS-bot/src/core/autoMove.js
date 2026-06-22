@@ -1,6 +1,7 @@
 import { domain, getConfigValue, configKeys, getUniqueID, debugModeActivated } from '../utils/config.js';
 import { getPieceElem, getBoardMatrix, isPawnPromotion } from '../adapters/index.js';
 import { state } from '../state.js';
+import { getFen } from '../utils/fen.js';
 import {
     chessCoordinatesToMatrixIndex,
     fenCoordArrToDomCoord,
@@ -77,6 +78,31 @@ export class AutomaticMove {
             this.active = false;
 
             callback(...args);
+
+            if (args[0]) {
+                const startingFen = state.lastCalculatedFullFen;
+                setTimeout(() => {
+                    const checkRetry = () => {
+                        if (state.isUserMouseDown) {
+                            // User is holding or dragging a piece; wait and check again later
+                            setTimeout(checkRetry, 100);
+                            return;
+                        }
+                        if (state.lastCalculatedFullFen === startingFen) {
+                            if (state.moveRetryCount < 3) {
+                                state.moveRetryCount++;
+                                if (debugModeActivated) console.warn(`Move failed to execute. Retry attempt ${state.moveRetryCount}/3...`);
+                                if (state.processBoardPosition) {
+                                    state.processBoardPosition(getFen());
+                                }
+                            } else {
+                                if (debugModeActivated) console.warn("Move failed 3 times. Giving up to prevent infinite loops.");
+                            }
+                        }
+                    };
+                    checkRetry();
+                }, 1500);
+            }
         };
 
         this.moveDomCoords = fenCoordArrToDomCoord(fenMoveArr);

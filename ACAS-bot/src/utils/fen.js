@@ -1,6 +1,6 @@
 import { state } from '../state.js';
 import { getBoardPiece, getBoardMatrix, getBoardOrientation } from '../adapters/index.js';
-import { getConfigValue, configKeys } from './config.js';
+import { getConfigValue, configKeys, instanceVars, commLinkInstanceID } from './config.js';
 
 export function getFenPieceColor(pieceFenStr) {
     return pieceFenStr == pieceFenStr.toUpperCase() ? 'w' : 'b';
@@ -95,8 +95,10 @@ export function getFen(onlyBasic) {
         return basicFen;
     }
 
+    const turn = instanceVars.turn.get(commLinkInstanceID) || getBoardOrientation();
+
     // FEN structure: [fen] [player color] [castling rights] [en passant targets] [halfmove clock] [fullmove clock]
-    const fullFen = `${basicFen} ${getBoardOrientation()} ${getRights()} - 0 1`;
+    const fullFen = `${basicFen} ${turn} ${getRights()} - 0 1`;
 
     return fullFen;
 }

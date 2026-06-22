@@ -186,7 +186,6 @@ const blacklistedURLs = [
 let boardObserver = null;
 let dumbBoardObservingInterval = null;
 let lastMutationObservationDate = 0;
-let lastCalculatedFullFen = null;
 let lastTurn = null;
 let lastBoardOrientation = null;
 let lastMutationObsProcessedTurn = null;
@@ -203,7 +202,7 @@ function displayImportantNotification(title, text) {
 }
 
 async function processBoardPosition(currentFullFen = getFen(), squareChangeAmount = 0) {
-    lastCalculatedFullFen = currentFullFen;
+    state.lastCalculatedFullFen = currentFullFen;
     state.lastMoveRequestTime = Date.now();
 
     clearVisuals(true);
@@ -224,17 +223,42 @@ async function processBoardPosition(currentFullFen = getFen(), squareChangeAmoun
 
     state.commLink.commands.updateBoardFen(currentFullFen);
 }
+state.processBoardPosition = processBoardPosition;
+
+function getTurnFromFenChange(lastFen, newFen) {
+    if(!lastFen || !newFen) return null;
+
+    const board1 = lastFen.split(' ', 1)[0].replace(/\d/g, d => ' '.repeat(Number(d))).split('/').join('');
+    const board2 = newFen.split(' ', 1)[0].replace(/\d/g, d => ' '.repeat(Number(d))).split('/').join('');
+
+    for(let i = 0; i < board1.length; i++) {
+        if(board1[i] !== ' ' && board1[i] !== board2[i] && board2[i] === ' ') {
+            const piece = board1[i];
+            return piece === piece.toUpperCase() ? 'b' : 'w';
+        }
+    }
+    
+    for(let i = 0; i < board1.length; i++) {
+        if(board1[i] !== ' ' && board1[i] !== board2[i]) {
+            const piece = board1[i];
+            return piece === piece.toUpperCase() ? 'b' : 'w';
+        }
+    }
+
+    return null;
+}
 
 async function determineBoardPositionValidity(turn) {
-    const currentFullFen = await getFen();
-    const fenChanged = currentFullFen?.split(' ', 1)?.[0] !== lastCalculatedFullFen?.split(' ', 1)?.[0];
+    const currentFullFen = getFen();
+    const basicFen = currentFullFen?.split(' ', 1)?.[0];
+    const fenChanged = basicFen !== state.lastCalculatedFullFen?.split(' ', 1)?.[0];
 
-    const pieceAmountChange = getPieceChangeAmount(lastCalculatedFullFen, currentFullFen);
-    const squareChangeAmount = getBoardSquareChangeAmount(lastCalculatedFullFen, currentFullFen);
+    const pieceAmountChange = getPieceChangeAmount(state.lastCalculatedFullFen, currentFullFen);
+    const squareChangeAmount = getBoardSquareChangeAmount(state.lastCalculatedFullFen, currentFullFen);
     const pieceAmount = getPieceAmount();
 
     if(pieceAmount === 0) {
-        lastCalculatedFullFen = null;
+        state.lastCalculatedFullFen = null;
 
         await wait(100);
 
@@ -243,8 +267,25 @@ async function determineBoardPositionValidity(turn) {
 
     if(!fenChanged) return;
 
+    const wasCalculatedFenNull = state.lastCalculatedFullFen === null;
+    const previousCalculatedFen = state.lastCalculatedFullFen;
+    state.lastCalculatedFullFen = currentFullFen;
+
+    if (!wasCalculatedFenNull) {
+        state.moveRetryCount = 0;
+    }
+
     if(turn) {
-        if(lastTurn === turn) turn = getBoardOrientation();
+        if (basicFen && basicFen.includes('/pppppppp/8/8/8/8/PPPPPPPP/')) {
+            turn = 'w';
+        } else {
+            const calculatedTurn = getTurnFromFenChange(previousCalculatedFen, currentFullFen);
+            if (calculatedTurn) {
+                turn = calculatedTurn;
+            } else if(lastTurn === turn) {
+                turn = getBoardOrientation();
+            }
+        }
         lastTurn = turn;
 
         instanceVars.turn.set(commLinkInstanceID, turn);
@@ -256,7 +297,7 @@ async function determineBoardPositionValidity(turn) {
         }
     }
 
-    processBoardPosition(currentFullFen, squareChangeAmount);
+    processBoardPosition(getFen(), squareChangeAmount);
 }
 
 function observeNewMoves() {
@@ -269,6 +310,7 @@ function observeNewMoves() {
     }, 250);
 
     boardObserver = new MutationObserver(mutationArr => {
+        if(state.isUserMouseDown) return;
         try {
             lastMutationObservationDate = Date.now();
 
@@ -447,10 +489,9 @@ function initializeIfSiteReady() {
     if((bothElemsExist || isChessComImageBoard) && boardElemChanged) {
         setChessBoardElem(boardElem);
 
-        state.chessBoardElem.addEventListener('mousedown', () => { state.isUserMouseDown = true; });
-        state.chessBoardElem.addEventListener('mouseup', () => { state.isUserMouseDown = false; });
-        state.chessBoardElem.addEventListener('touchstart', () => { state.isUserMouseDown = true; });
-        state.chessBoardElem.addEventListener('touchend', () => { state.isUserMouseDown = false; });
+        state.chessBoardElem.addEventListener('pointerdown', (e) => { if (e.isTrusted) state.isUserMouseDown = true; });
+        state.chessBoardElem.addEventListener('mousedown', (e) => { if (e.isTrusted) state.isUserMouseDown = true; });
+        state.chessBoardElem.addEventListener('touchstart', (e) => { if (e.isTrusted) state.isUserMouseDown = true; });
 
         if(!blacklistedURLs.includes(window.location.href)) {
             startWhenBackendReady();
@@ -460,6 +501,10 @@ function initializeIfSiteReady() {
 
 // Side effects execution check:
 if (!(runningOnBackend && !isDevPage)) {
+    window.addEventListener('pointerup', () => { state.isUserMouseDown = false; });
+    window.addEventListener('mouseup', () => { state.isUserMouseDown = false; });
+    window.addEventListener('touchend', () => { state.isUserMouseDown = false; });
+
     Object.values(configKeys).forEach(key => {
         config[key] = {
             get:  profile => getGmConfigValue(key, commLinkInstanceID, profile),

@@ -17,6 +17,8 @@ export const state = {
     isMovesOnDemandActive: false,
     matchFirstSuggestionGiven: false,
     commLink: null,
+    lastCalculatedFullFen: null,
+    moveRetryCount: 0,
 
     // Dynamic providers to avoid circular dependencies
     getBoardDimensions: () => [8, 8],

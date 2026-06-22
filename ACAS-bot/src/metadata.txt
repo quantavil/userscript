@@ -16,7 +16,6 @@
 // @match       https://worldchess.com/*
 // @match       https://*.chessclub.com/*
 // @match       https://gameknot.com/*
-// @require     https://update.greasyfork.org/scripts/470418/CommLinkjs.js?acasv=2
 // @require     https://update.greasyfork.org/scripts/470417/UniversalBoardDrawerjs.js?acasv=2
 // @grant       GM_getValue
 // @grant       GM_setValue
