@@ -1,0 +1,24 @@
+{
+  "forbidden": [
+    {
+      "name": "no-circular",
+      "severity": "error",
+      "comment": "Prevent circular dependencies to maintain modular boundaries and cleanly resolve ES module execution.",
+      "from": {},
+      "to": {
+        "circular": true
+      }
+    }
+  ],
+  "options": {
+    "doNotFollow": {
+      "path": "node_modules"
+    },
+    "moduleSystems": ["es6", "cjs"],
+    "reporterOptions": {
+      "text": {
+        "highlightFocused": true
+      }
+    }
+  }
+}

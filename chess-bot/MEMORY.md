@@ -13,25 +13,25 @@ A high-performance Tampermonkey userscript designed for **Chess.com** that provi
 │   └── bundle.user.js  # Compiled Tampermonkey userscript
 ├── package.json        # Project metadata and dependencies
 ├── src/                # Source code
-│   ├── index.js        # Entry point for the userscript
-│   ├── state.js        # Centralized BotState, LRU position cache, and local storage management
-│   ├── utils.js        # DOM helper functions
-│   ├── board.js        # Chess.com DOM board reading/writing, executing moves, drawing evaluation bar/arrows
-│   ├── controller.js   # Central tick loop coordinating UI, board, state, and analysis
-│   ├── ui.js           # Draggable glassmorphic control panel and in-game log console
+│   ├── index.ts        # Entry point for the userscript
+│   ├── state.ts        # Centralized BotState, LRU position cache, and local storage management
+│   ├── utils.ts        # DOM helper functions
+│   ├── board.ts        # Chess.com DOM board reading/writing, executing moves, drawing evaluation bar/arrows
+│   ├── controller.ts   # Central tick loop coordinating UI, board, state, and analysis
+│   ├── ui.ts           # Draggable glassmorphic control panel and in-game log console
 │   └── engine/         # Local engine module
-│       ├── constants.js # Chess piece/board representation constants
-│       ├── pst.js      # Piece-Square Tables (Midgame/Endgame)
-│       ├── zobrist.js  # Zobrist hash values and operations
-│       ├── utils.js    # Square mirroring and parsing utilities
-│       ├── san.js      # SAN string conversion helper
-│       ├── local-engine.js # Core engine state, board representation (0x88), make/unmake move, FEN loader
-│       ├── search.js   # Negamax with alpha-beta search, quiescence search, move ordering, and evaluation functions
-│       └── scheduler.js # Asynchronous search coordinator for main moves and premove calculation
+│       ├── constants.ts # Chess piece/board representation constants
+│       ├── pst.ts      # Piece-Square Tables (Midgame/Endgame)
+│       ├── zobrist.ts  # Zobrist hash values and operations
+│       ├── utils.ts    # Square mirroring and parsing utilities
+│       ├── san.ts      # SAN string conversion helper
+│       ├── local-engine.ts # Core engine state, board representation (0x88), make/unmake move, FEN loader
+│       ├── search.ts   # Negamax with alpha-beta search, quiescence search, move ordering, and evaluation functions
+│       └── scheduler.ts # Asynchronous search coordinator for main moves and premove calculation
 └── tests/              # Unit and simulation tests
-    ├── aggression.test.js
-    ├── failsafe-loop.test.js
-    └── game-simulation.test.js
+    ├── aggression.test.ts
+    ├── failsafe-loop.test.ts
+    └── game-simulation.test.ts
 ```
 
 ## Conventions
@@ -56,3 +56,7 @@ A high-performance Tampermonkey userscript designed for **Chess.com** that provi
 ## Blunders
 - `[2026-06-17] Unit tests failed on tick loop → TypeError: ui.log is not a function → Mock of ui.js in tests was missing the log/clearConsole methods → Added log/clearConsole to mocks in failsafe-loop.test.js and controller.test.js`
 - `[2026-06-17] Bot stops mid-game → TypeError: uci.substring is not a function → Opponent move returned as object by chess.com client-side API rather than UCI string → Updated extractLastMove and uciToSan to convert objects to strings.`
+- `[2026-06-22] TypeScript compiler error in scheduler.ts → BotState from state.js lacked dynamic property typing (onUpdateDisplay) → Cast BotState to BotStateInterface to solve it.`
+- `[2026-06-22] uciToSan regression on object inputs in san.ts → Returning empty string instead of original object when object fields check failed → Reverted fallback behavior to match original js implementation.`
+- `[2026-06-22] Rollup build crash due to antifeature config in vite.config.ts → Plain strings in antifeature causes crash → Replaced with structured array syntax [{ type: 'membership', description: 'free to use' }].`
+- `[2026-06-22] Corrupted test files during migration → Used echo -e in bash to prepend // @ts-nocheck to files which parsed escape sequences in string literals → Restored via git and prepended safely using Python.`

@@ -1,0 +1,39 @@
+// ==UserScript==
+// @name        ACAS-bot (Advanced Chess Assistance System)
+// @description        Enhance your chess performance with a cutting-edge real-time move analysis and strategy assistance system
+// @homepageURL https://psyyke.github.io/A.C.A.S
+// @supportURL  https://github.com/Psyyke/A.C.A.S/tree/main#why-doesnt-it-work
+// @match       https://psyyke.github.io/A.C.A.S/*
+// @match       http://localhost/*
+// @match       https://www.chess.com/*
+// @match       https://lichess.org/*
+// @match       https://playstrategy.org/*
+// @match       https://www.pychess.org/*
+// @match       https://chess.org/*
+// @match       https://papergames.io/*
+// @match       https://chess.coolmathgames.com/*
+// @match       https://www.coolmathgames.com/0-chess/*
+// @match       https://worldchess.com/*
+// @match       https://*.chessclub.com/*
+// @match       https://gameknot.com/*
+// @require     https://update.greasyfork.org/scripts/470418/CommLinkjs.js?acasv=2
+// @require     https://update.greasyfork.org/scripts/470417/UniversalBoardDrawerjs.js?acasv=2
+// @grant       GM_getValue
+// @grant       GM_setValue
+// @grant       GM_deleteValue
+// @grant       GM_listValues
+// @grant       GM_openInTab
+// @grant       GM.getValue
+// @grant       GM.setValue
+// @grant       GM.deleteValue
+// @grant       GM.listValues
+// @grant       GM.openInTab
+// @grant       GM_registerMenuCommand
+// @grant       GM_setClipboard
+// @grant       GM_notification
+// @grant       unsafeWindow
+// @run-at      document-start
+// @version     2.4.5
+// @namespace   https://github.com/quantavil/userscript
+// @license     GPL-3.0
+// ==/UserScript==

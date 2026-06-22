@@ -1,0 +1,14 @@
+{
+  "name": "acas-bot",
+  "version": "2.4.5",
+  "description": "Modular ACAS-bot Chess Userscript",
+  "type": "module",
+  "scripts": {
+    "build": "bun run build.js",
+    "test": "bun test",
+    "lint:imports": "depcruise src"
+  },
+  "devDependencies": {
+    "dependency-cruiser": "^17.4.3"
+  }
+}
