@@ -36,6 +36,7 @@ A collection of custom userscripts designed to enhance various web platforms (Gi
 - [2026-06-21] Flipkart mobile cards resolved to details containers instead of outer card containers because details containers contain coupon/promo images that triggered parent.querySelector('img') check. Resolved by verifying the image source has CDN '/image/' paths.
 - [2026-06-21] Product images failed to capture on mobile view or before scroll due to lazy loading patterns (spacer base64 images in src). Fixed by introducing getBestImageUrl in BaseAdapter to check data-src, data-lazy-src, and parse srcset for the highest resolution source.
 - [2026-06-21] Amazon mobile image extractor captured the "More like this" icon image instead of the product image because it was the first img element matching .s-image in DOM order. Resolved by prioritizing .s-product-image-container wrappers and filtering out "More like this" images. Bushed userscript version to 1.8.0.
+- [2026-06-23] Path resolution bug: fmhy_to_json.py output default output to current working directory instead of script's home. Fixed by resolving path using script's location.
 
 
 

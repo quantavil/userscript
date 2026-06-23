@@ -17,6 +17,50 @@ from urllib.parse import urlparse
 DEFAULT_REPO_ZIP = "https://github.com/fmhy/edit/archive/refs/heads/main.zip"
 DEFAULT_EXCLUDED_FILES = ["index.md", "posts.md", "sandbox.md", "startpage.md", "README.md"]
 
+# Custom user domains (Supports wildcards like "*.domain.com", raw domains, or full URLs)
+USER_LIKED = [
+    "https://www.wikipedia.org/"
+]
+
+USER_DISLIKED = [
+    "indiatvnews.com",
+    "news18.com",
+    "opindia.com",
+    "opinida.com",
+    "quora.com",
+    "swarajyamag.com",
+    "republicworld.com",
+    "india.com",
+    "infowars.com",
+    "thegatewaypundit.com",
+    "palmerreport.com",
+    "breitbart.com",
+    "dailywire.com",
+    "dailykos.com",
+    "foxnews.com",
+    "rt.com",
+    "kcna.kp",
+    "cgtn.com",
+    "trtworld.com",
+    "naturalnews.com",
+    "mercola.com",
+    "climatedepot.com",
+    "omicsonline.org",
+    "waset.org",
+    "jpands.org",
+    "answersresearchjournal.org",
+    "beallslist.net",
+    "jetir.org",
+    "ijcrt.org",
+    "gisscience.net",
+    "rockartweb.com",
+    "unipune.ac.in",
+    "ayush.gov.in",
+    "vibhaindia.org",
+    "rss.org",
+    "pump.fun"
+]
+
 COMMON_EXCLUDED_DOMAINS = {
     'github.com', 'github.io', 'reddit.com', 'discord.gg', 'discord.com',
     't.me', 'telegram.org', 'youtube.com', 'youtu.be', 'wikipedia.org',
@@ -41,6 +85,17 @@ def extract_domain(url):
         return netloc.strip('.') if netloc else None
     except Exception:
         return None
+
+def normalize_user_domain(item):
+    """Clean and normalize user-defined domains, preserving wildcard (*.) notation if present."""
+    item = item.strip().lower()
+    is_wildcard = item.startswith('*.')
+    if is_wildcard:
+        item = item[2:]
+    domain = extract_domain(item)
+    if domain:
+        return f"*.{domain}" if is_wildcard else domain
+    return None
 
 def is_excluded(domain):
     """Checks if a domain or its parent domains are in the exclusion list."""
@@ -178,9 +233,12 @@ def fetch_filterlist():
     return disliked
 
 def main():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_output = os.path.join(script_dir, "fmhy_domains.json")
+
     parser = argparse.ArgumentParser(description="Convert FMHY markdown docs to userscript JSON")
     parser.add_argument("--local-dir", help="Path to local docs directory")
-    parser.add_argument("--output", default="fmhy_domains.json", help="Output JSON filepath")
+    parser.add_argument("--output", default=default_output, help="Output JSON filepath")
     args = parser.parse_args()
 
     docs_dir = args.local_dir
@@ -190,6 +248,17 @@ def main():
         liked = extract_domains_from_zip(DEFAULT_REPO_ZIP, DEFAULT_EXCLUDED_FILES)
 
     disliked = fetch_filterlist()
+
+    # Merge custom user domains
+    for item in USER_LIKED:
+        domain = normalize_user_domain(item)
+        if domain:
+            liked.add(domain)
+
+    for item in USER_DISLIKED:
+        domain = normalize_user_domain(item)
+        if domain:
+            disliked.add(domain)
 
     # Consolidate liked and disliked domains to wildcards (threshold of 3+ subdomains)
     liked = consolidate_to_wildcards(liked, threshold=3)

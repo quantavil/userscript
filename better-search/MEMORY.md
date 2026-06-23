@@ -79,4 +79,5 @@ better-search/
 - Animation & Transition Lag: Replaced `transition: all` with targeted CSS transitions, added `will-change` GPU layer promotions, deferred textarea `_autoResize` scrollHeight measurements to avoid synchronous reflows, and suspended `HoverOverlay` tracking when panel is open.
 - HoverOverlay reconnection leak: Component-scoped event listeners accumulated on document/window and element itself upon disconnect/reconnect cycles. Fixed by managing all connection-scoped listeners and timers via connection-scoped AbortController.
 - HoverOverlay disappearing bug: Hovering/clicking overlay buttons caused it to vanish after 350ms because Node.contains() does not traverse shadow boundaries. Fixed by checking this.shadowRoot.contains() in the pointermove handler.
+- Path resolution bug: fmhy_to_json.py output default output to current working directory instead of script's home. Fixed by resolving path using script's location.
 
