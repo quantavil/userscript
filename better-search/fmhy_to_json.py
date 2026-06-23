@@ -226,7 +226,12 @@ def fetch_filterlist():
             for line in resp.read().decode('utf-8').splitlines():
                 line = line.strip()
                 if line and not line.startswith('#'):
-                    disliked.add(line)
+                    is_wildcard = line.startswith('*.')
+                    if is_wildcard:
+                        line = line[2:]
+                    domain = extract_domain(line)
+                    if domain:
+                        disliked.add(f"*.{domain}" if is_wildcard else domain)
         print(f"Loaded {len(disliked)} blocked domains.")
     except Exception as e:
         print(f"Warning: Failed to fetch filterlist-domains: {e}")
