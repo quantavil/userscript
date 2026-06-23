@@ -1,6 +1,6 @@
 {
   "name": "acas-bot",
-  "version": "2.4.7",
+  "version": "2.4.9",
   "description": "Modular ACAS-bot Chess Userscript",
   "type": "module",
   "scripts": {
