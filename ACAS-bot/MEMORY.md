@@ -36,8 +36,9 @@ ACAS-bot (Advanced Chess Assistance System) is a userscript that enhances chess 
 - Resolved autoplay failures on drags/mouse releases by checking pointerdown/pointerup events and checking turn FEN changes synchronously to avoid microtask race conditions.
 - Implemented a self-healing retry mechanism (with a 1.5s post-move timeout) to retry auto-moves up to 3 times if FEN remains unchanged.
 - Implemented player-relative Adaptive Depth scaling (6 to 14 depth mapped to evaluation score from +5 to -5).
-- Removed all terms of service (TOS) acceptance modal views, configuration database keys, and related CSS/JS logic.
+- Implemented all terms of service (TOS) acceptance modal views, configuration database keys, and related CSS/JS logic removal.
 - Implemented a "Natural (Hybrid)" move method option that dynamically alternates between clicks and drags, and bends mouse drag paths along a Bezier curve when legit mode is active.
+- Bumped version to 2.5.0.
 
 ## Blunders
 - Nesting ES Module exports inside conditional blocks causes `Unexpected export` syntax errors. Kept exports at top level, wrapped executing side-effects in an conditional check.
