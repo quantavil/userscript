@@ -3,7 +3,7 @@ import {
     getBoardOrientation,
     getMutationTurn
 } from './index.js';
-import { chessCoordinatesToIndex, getBoardDimensionsFromSize } from '../utils/coordinates.js';
+import { chessCoordinatesToIndex, getBoardDimensionsFromSize, getElemCoordinatesFromTransform } from '../utils/coordinates.js';
 
 addSupportedChessSite('pychess.org', {
     'boardElem': obj => {
@@ -72,6 +72,8 @@ addSupportedChessSite('pychess.org', {
         if(key) {
             return chessCoordinatesToIndex(key);
         }
+
+        return getElemCoordinatesFromTransform(pieceElem);
     },
 
     'boardDimensions': obj => {

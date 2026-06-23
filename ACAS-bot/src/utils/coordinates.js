@@ -151,8 +151,8 @@ export function getBoardDimensionsFromSize() {
         const boardPieceWidth = pieceDimensions?.width;
         const boardPieceHeight = pieceDimensions?.height;
 
-        const boardRanks = Math.floor(boardHeight / boardPieceHeight);
-        const boardFiles = Math.floor(boardWidth / boardPieceWidth);
+        const boardRanks = Math.round(boardHeight / boardPieceHeight);
+        const boardFiles = Math.round(boardWidth / boardPieceWidth);
 
         const ranksInAllowedRange = 0 < boardRanks && boardRanks <= 69;
         const filesInAllowedRange = 0 < boardFiles && boardFiles <= 69;
