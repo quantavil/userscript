@@ -31,7 +31,8 @@ export const configKeys = Object.freeze([
     'renderPieceEnemyCapture', 'renderOnExternalSite', 'feedbackOnExternalSite',
     'enableMoveRatings', 'enableEnemyFeedback', 'feedbackEngineDepth',
     'enableAdvancedElo', 'moveAsFilledSquares',
-    'movesOnDemand', 'onlySuggestPieces', 'isUserscriptGhost'
+    'movesOnDemand', 'onlySuggestPieces', 'isUserscriptGhost',
+    'enableAdaptiveDepth', 'adaptiveDepthMin', 'adaptiveDepthMax'
 ].reduce((o, k) => (o[k] = k, o), {}));
 
 export const getUniqueID = () => crypto.randomUUID();

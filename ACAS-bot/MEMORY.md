@@ -45,6 +45,8 @@ ACAS-bot (Advanced Chess Assistance System) is a userscript that enhances chess 
 - Integrated the external `CommLink.js` library directly into the codebase inside `src/core/comm.js` to remove the `@require` script dependency, and optimized it using Ponytail rules (replaced custom ID generation with native `crypto.randomUUID()`, simplified async logic, parallelized packet fetching, and removed redundant checks).
 - Created a comprehensive `README.md` detailing the client-backend userscript architecture, GM storage IPC bridge, and Wasm/Native engine sources.
 - Bumped version to 2.4.7, resolved 11 verified bugs/flaws across engine interfaces and sandboxing, configured the production host destination to the user's fork at quantavil.github.io, and implemented smooth drag-and-drop auto-move emulation.
+- Implemented Adaptive Depth calculation in the GUI app, scaling search depth between min/max limits dynamically based on positional evaluation scores.
+- Removed the terms of service (TOS) accept pop-up modal and all related assets/styles/logic.
 
 ## Blunders
 - Nesting ES Module exports inside conditional blocks causes `Unexpected export` syntax errors. Kept exports at top level, wrapped executing side-effects in an conditional check.
