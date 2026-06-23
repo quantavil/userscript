@@ -28,14 +28,14 @@ The userscript runs directly on the active chess tab. Its main responsibilities 
 * **FEN Generation:** Converts visual board placements (CSS translation metrics, transforms) into standard FEN (Forsyth-Edwards Notation) strings in real time.
 * **Move Detection:** Monitors moves made by both players using a `MutationObserver` on the board container and a fallback polling routine.
 * **Visual Rendering:** Highlights squares, overlays directional paths, and displays move ratings (best/alternative moves) using the `UniversalBoardDrawer` overlay.
-* **Auto-Play:** Triggers programmatic pointer and mouse events to click/drag-and-drop pieces to automate playing the suggested engine move (if configured).
+* **Auto-Play:** Triggers programmatic pointer and mouse events to click, drag-and-drop, or alternate between them using "Natural (Hybrid)" mode (with Bezier curved trajectories) to automate playing the suggested engine move (if configured).
 
 ### 2. The Engine Backend (GUI)
 The engine runs inside the **ACAS GUI tab** (defaulting to the hosted [quantavil.github.io/A.C.A.S/app/](https://quantavil.github.io/A.C.A.S/app/) page or `localhost` during development).
 * **Where the engine comes from:**
   * **Web-Assembly (Wasm) Engines:** By default, ACAS runs chess engines like **Stockfish.js** or **Lc0** directly inside the browser using Web Workers. This means the engine runs locally inside the user's browser without requiring any local executable installation.
   * **Native Engines:** For players needing high depths, multi-threading, or GPU acceleration, the GUI can connect to a local native helper server running on the host system. This server hooks into local, compiled native chess engine executables (like Stockfish binary or Lc0 running on CUDA).
-* The GUI page also contains the dashboard to configure engine depth/nodes, select engine profiles, fine-tune auto-move intervals, and customize visuals.
+* The GUI page also contains the dashboard to configure engine depth/nodes, select engine profiles, fine-tune auto-move intervals (with options for click, drag, or natural hybrid moves), and customize visuals.
 
 ### 3. The Communication Bridge (`CommLink`)
 Because the chess tab (e.g., `chess.com`) and the ACAS backend tab (`quantavil.github.io`) are hosted on different domains, browser sandboxing prevents them from calling each other directly.
