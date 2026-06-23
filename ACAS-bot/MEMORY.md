@@ -28,25 +28,15 @@ ACAS-bot (Advanced Chess Assistance System) is a userscript that enhances chess 
 - Must not over-engineer or touch adjacent code/formatting (Surgical Changes rule).
 - Minimize changes to only what is requested.
 
-## Insights
-- Fixed duplicate getBoardOrientation definitions, setConfigValue implementation, activeAutomoves memory leak, maybeAnnounceMarkingsToPage mismatch, getRights Chess960 support, duplicate indexToChessCoordinates rank branches, dead URL builder paths, horrific variant ternary code, and countTotalPieces boxed primitive lookup.
-- Added a validation script to compare defined functions/site registries between original and bundled code to check correctness.
-- Prevented tree-shaking of unused legacy functions by referencing them in `src/entry.js` under a dynamic dummy condition.
-- Established coordinate transformation unit tests (`tests/coordinates.test.js`) and circular dependency verification (`dependency-cruiser`) for import safety.
-- Refactored modular code to eliminate over-engineered loops/helpers (getArrowStyle configuration map, isBoardDrawerNeeded check, countTotalPieces regex evaluation, getUniqueID crypto.randomUUID()).
-- Corrected the ranks vs files terminology swap in getBoardDimensionsFromSize and coordinates.js to avoid incorrect pawn promotion logic.
-- Restructured flat `src/` files into nested domain subdirectories (`core/`, `drawing/`, `adapters/`, `utils/`) to isolate concerns and improve codebase readability.
-- Decoupled the monolithic index.js by distributing sandboxing, input handling, FEN calculations, CommLink setup, and on-demand pathfinding into cohesive submodule files while preserving all API signatures.
-- Replaced the monolithic backup `main.js.bak` with the new modular compiled bundle and cleaned up verify.js site validation parameters.
-- Resolved autoplay stopping during slow matches by registering global `window` release listeners and filtering out simulated bot clicks using `e.isTrusted` on mouse/pointer event handlers.
-- Enforced active turn checks in FEN generation and auto-move triggers, added pointerdown/pointerup event support to properly detect drags on modern boards, and filtered out DOM mutations inside `MutationObserver` when the user is actively dragging/holding a piece (`state.isUserMouseDown = true`) to prevent intermediate invalid FEN updates.
-- Eliminated microtask race conditions in `determineBoardPositionValidity` by retrieving and caching the FEN synchronously (removed `await getFen()`), and implemented a robust, universal FEN-change turn-detection mechanism (`getTurnFromFenChange`) that compares the color of the piece that moved to identify the active turn. This eliminates race conditions, stale DOM-logs, and instant premoving.
-- Implemented a self-healing retry mechanism with a 1.5-second post-move timeout verification; if the board FEN remains unchanged after a move attempt, it retries the move up to 3 times, postponing the retry check while the user is dragging/holding a piece (instead of cancelling it completely), and triggering the retry by calling processBoardPosition directly to preserve active FENs.
-- Integrated the external `CommLink.js` library directly into the codebase inside `src/core/comm.js` to remove the `@require` script dependency, and optimized it using Ponytail rules (replaced custom ID generation with native `crypto.randomUUID()`, simplified async logic, parallelized packet fetching, and removed redundant checks).
-- Created a comprehensive `README.md` detailing the client-backend userscript architecture, GM storage IPC bridge, and Wasm/Native engine sources.
-- Bumped version to 2.4.7, resolved 11 verified bugs/flaws across engine interfaces and sandboxing, configured the production host destination to the user's fork at quantavil.github.io, and implemented smooth drag-and-drop auto-move emulation.
-- Implemented Adaptive Depth calculation in the GUI app, scaling search depth between min/max limits dynamically based on positional evaluation scores.
-- Removed the terms of service (TOS) accept pop-up modal and all related assets/styles/logic.
+### Insights
+- Fixed coordinate ranks vs files terminology swap in `coordinates.js` to avoid incorrect pawn promotion logic.
+- Restructured flat `src/` files into nested domain subdirectories (`core/`, `drawing/`, `adapters/`, `utils/`) to isolate concerns.
+- Decoupled monolithic files to distribute sandboxing, FEN calculations, auto-move logic, and CommLink integration into modular files.
+- Integrated `CommLink.js` directly into `src/core/comm.js` to remove the external `@require` dependency.
+- Resolved autoplay failures on drags/mouse releases by checking pointerdown/pointerup events and checking turn FEN changes synchronously to avoid microtask race conditions.
+- Implemented a self-healing retry mechanism (with a 1.5s post-move timeout) to retry auto-moves up to 3 times if FEN remains unchanged.
+- Implemented player-relative Adaptive Depth scaling (6 to 14 depth mapped to evaluation score from +5 to -5).
+- Removed all terms of service (TOS) acceptance modal views, configuration database keys, and related CSS/JS logic.
 
 ## Blunders
 - Nesting ES Module exports inside conditional blocks causes `Unexpected export` syntax errors. Kept exports at top level, wrapped executing side-effects in an conditional check.
