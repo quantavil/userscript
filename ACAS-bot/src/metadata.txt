@@ -32,7 +32,7 @@
 // @grant       GM_notification
 // @grant       unsafeWindow
 // @run-at      document-start
-// @version     2.4.9
+// @version     2.5.0
 // @namespace   https://github.com/quantavil/userscript
 // @license     GPL-3.0
 // ==/UserScript==
