@@ -121,14 +121,7 @@ export class PanelElement extends LitElement {
         }
         
         // Auto-save any active textarea edits on close
-        for (const type of ['liked', 'disliked'] as const) {
-            if (this._isTextareaEditable[type]) {
-                const textValue = type === 'liked' ? this._likedText : this._dislikedText;
-                const lines = this._getLines(textValue);
-                this._saveAndReapply(type, lines);
-            }
-        }
-        this._isTextareaEditable = { liked: false, disliked: false };
+        this._autoSavePendingTextareaEdits();
         
         if (this._lastActiveElement) {
             this._lastActiveElement.focus();
@@ -156,17 +149,21 @@ export class PanelElement extends LitElement {
         
         // Auto-save edits when leaving filters tab
         if (this._activeTab === 'filters') {
-            for (const type of ['liked', 'disliked'] as const) {
-                if (this._isTextareaEditable[type]) {
-                    const textValue = type === 'liked' ? this._likedText : this._dislikedText;
-                    const lines = this._getLines(textValue);
-                    this._saveAndReapply(type, lines);
-                }
-            }
-            this._isTextareaEditable = { liked: false, disliked: false };
+            this._autoSavePendingTextareaEdits();
         }
         
         this._activeTab = tab;
+    }
+
+    private _autoSavePendingTextareaEdits(): void {
+        // ponytail: DRY helper for auto-saving active list editing states
+        for (const type of ['liked', 'disliked'] as const) {
+            if (this._isTextareaEditable[type]) {
+                const textValue = type === 'liked' ? this._likedText : this._dislikedText;
+                this._saveAndReapply(type, this._getLines(textValue));
+            }
+        }
+        this._isTextareaEditable = { liked: false, disliked: false };
     }
 
     isOpen(): boolean {
