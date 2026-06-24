@@ -83,14 +83,73 @@ export class GistSync {
 
             let liked = rLiked;
             let disliked = rDisliked;
+            let mergedTimestamps = remote.timestamps || {};
             const local = this._store.exportDomains();
 
             if (mode === 'union') {
-                liked = [...new Set([...local.liked, ...rLiked])].sort();
-                disliked = [...new Set([...local.disliked, ...rDisliked])].filter(x => !liked.includes(x)).sort();
+                const localTimestamps = local.timestamps || {};
+                const remoteTimestamps = remote.timestamps || {};
+                
+                const allDomains = new Set([
+                    ...Object.keys(localTimestamps),
+                    ...Object.keys(remoteTimestamps),
+                    ...local.liked,
+                    ...local.disliked,
+                    ...rLiked,
+                    ...rDisliked
+                ]);
+                
+                const mergedLikedList: string[] = [];
+                const mergedDislikedList: string[] = [];
+                mergedTimestamps = {};
+                
+                for (const d of allDomains) {
+                    const localTs = localTimestamps[d] || 0;
+                    const remoteTs = remoteTimestamps[d] || 0;
+                    
+                    let localState: 'liked' | 'disliked' | 'deleted' = 'deleted';
+                    if (local.liked.includes(d)) localState = 'liked';
+                    else if (local.disliked.includes(d)) localState = 'disliked';
+                    
+                    let remoteState: 'liked' | 'disliked' | 'deleted' = 'deleted';
+                    if (rLiked.includes(d)) remoteState = 'liked';
+                    else if (rDisliked.includes(d)) remoteState = 'disliked';
+                    
+                    let finalState: 'liked' | 'disliked' | 'deleted';
+                    let finalTs: number;
+                    
+                    if (localTs > remoteTs) {
+                        finalState = localState;
+                        finalTs = localTs;
+                    } else if (remoteTs > localTs) {
+                        finalState = remoteState;
+                        finalTs = remoteTs;
+                    } else {
+                        if (localState === remoteState) {
+                            finalState = localState;
+                        } else if (localState === 'liked' || remoteState === 'liked') {
+                            finalState = 'liked';
+                        } else if (localState === 'disliked' || remoteState === 'disliked') {
+                            finalState = 'disliked';
+                        } else {
+                            finalState = 'deleted';
+                        }
+                        finalTs = localTs || remoteTs || Date.now();
+                    }
+                    
+                    mergedTimestamps[d] = finalTs;
+                    if (finalState === 'liked') {
+                        mergedLikedList.push(d);
+                    } else if (finalState === 'disliked') {
+                        mergedDislikedList.push(d);
+                    }
+                }
+                
+                liked = mergedLikedList.sort();
+                disliked = mergedDislikedList.sort();
             }
 
-            this._store.replaceDomains({ liked, disliked });
+            this._store.replaceDomains({ liked, disliked, timestamps: mergedTimestamps });
             return mode === 'replace' ? (liked.length + disliked.length) : (liked.length + disliked.length - local.liked.length - local.disliked.length);
         } finally {
             if (!isInternal) this._isSyncing = false;

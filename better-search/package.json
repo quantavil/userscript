@@ -1,7 +1,7 @@
 {
   "name": "better-search",
   "private": true,
-  "version": "3.8",
+  "version": "3.9",
   "author": "quantavil (https://github.com/quantavil)",
   "homepage": "https://github.com/quantavil/userscript",
   "description": "Clean up your search results! Highlights preferred websites and fades or completely hides sites you dislike on Google, Bing, DuckDuckGo, Brave, and Yandex.",

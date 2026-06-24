@@ -70,6 +70,7 @@ export function removeAccentVariables(el: HTMLElement): void {
 export interface Settings {
     liked: string[];
     disliked: string[];
+    timestamps: Record<string, number>;
     dislikeMode: DislikeMode;
     showTrigger: boolean;
     accent: AccentColor;

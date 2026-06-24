@@ -41,6 +41,7 @@ export class Store {
         this._settings = {
             liked:       gmGet<string[]>('liked',       SVF_CONFIG.DEFAULT_LIKED as unknown as string[]),
             disliked:    gmGet<string[]>('disliked',    SVF_CONFIG.DEFAULT_DISLIKED as unknown as string[]),
+            timestamps:  gmGet<Record<string, number>>('timestamps', {}),
             dislikeMode: gmGet<DislikeMode>('dislikeMode', 'fade'),
             showTrigger: gmGet<boolean>('showTrigger', true),
             accent:      gmGet<AccentColor>('accent', 'emerald'),
@@ -48,6 +49,25 @@ export class Store {
             gistId:      gmGet<string>('gistId', ''),
             syncEnabled: gmGet<boolean>('syncEnabled', false),
         };
+
+        // Initialize timestamps for existing domains if missing
+        let updatedTimestamps = false;
+        const now = Date.now();
+        for (const d of this._settings.liked) {
+            if (!this._settings.timestamps[d]) {
+                this._settings.timestamps[d] = now;
+                updatedTimestamps = true;
+            }
+        }
+        for (const d of this._settings.disliked) {
+            if (!this._settings.timestamps[d]) {
+                this._settings.timestamps[d] = now;
+                updatedTimestamps = true;
+            }
+        }
+        if (updatedTimestamps) {
+            this._persistDirect('timestamps');
+        }
  
         // Flush pending debounced saves on tab close to prevent data loss
         this._pagehideHandler = () => {
@@ -66,6 +86,7 @@ export class Store {
  
     get liked(): readonly string[] { return this._settings.liked; }
     get disliked(): readonly string[] { return this._settings.disliked; }
+    get timestamps(): Record<string, number> { return this._settings.timestamps; }
     get dislikeMode(): DislikeMode { return this._settings.dislikeMode; }
     get showTrigger(): boolean { return this._settings.showTrigger; }
     get accent(): AccentColor { return this._settings.accent; }
@@ -97,26 +118,48 @@ export class Store {
         if (!d || this._settings[list].includes(d)) return;
         this._settings[otherList] = this._settings[otherList].filter(x => x !== d);
         this._settings[list] = [...this._settings[list], d].sort();
+        this._settings.timestamps[d] = Date.now();
         this._persist('liked');
         this._persist('disliked');
+        this._persist('timestamps');
         this._notify();
     }
 
     removeDomain(list: 'liked' | 'disliked', domain: string): void {
         const d = normalizeDomain(domain);
+        if (!d) return;
         this._settings[list] = this._settings[list].filter(x => x !== d);
+        this._settings.timestamps[d] = Date.now();
         this._persist(list);
+        this._persist('timestamps');
         this._notify();
     }
 
     setDomains(list: 'liked' | 'disliked', domains: string[]): void {
         const normalized = domains.map(x => normalizeDomain(x)).filter(Boolean);
+        const nextSet = [...new Set(normalized)];
         const otherList = list === 'liked' ? 'disliked' : 'liked';
-        this._settings[list] = [...new Set(normalized)];
-        // Ensure no overlap with the other list
+        
+        const now = Date.now();
+        const oldSet = this._settings[list];
+        for (const d of oldSet) {
+            if (!nextSet.includes(d)) {
+                if (!this._settings[otherList].includes(d)) {
+                    this._settings.timestamps[d] = now;
+                }
+            }
+        }
+        for (const d of nextSet) {
+            if (!oldSet.includes(d)) {
+                this._settings.timestamps[d] = now;
+            }
+        }
+        
+        this._settings[list] = nextSet;
         this._settings[otherList] = this._settings[otherList].filter(x => !this._settings[list].includes(x));
         this._persist('liked');
         this._persist('disliked');
+        this._persist('timestamps');
         this._notify();
     }
 
@@ -156,18 +199,29 @@ export class Store {
         this._notify();
     }
 
-    replaceDomains(data: { liked?: string[]; disliked?: string[] }): void {
+    replaceDomains(data: { liked?: string[]; disliked?: string[]; timestamps?: Record<string, number> }): void {
         const liked = Array.isArray(data.liked) ? data.liked.map(normalizeDomain).filter(Boolean) : [];
         const disliked = Array.isArray(data.disliked) ? data.disliked.map(normalizeDomain).filter(Boolean) : [];
+        const timestamps = (data.timestamps && typeof data.timestamps === 'object') ? { ...data.timestamps } : {};
         
         const dedupedLiked = [...new Set(liked)].sort();
         const dedupedDisliked = [...new Set(disliked)].filter(x => !dedupedLiked.includes(x)).sort();
 
+        const now = Date.now();
+        for (const d of dedupedLiked) {
+            if (!timestamps[d]) timestamps[d] = now;
+        }
+        for (const d of dedupedDisliked) {
+            if (!timestamps[d]) timestamps[d] = now;
+        }
+
         this._settings.liked = dedupedLiked;
         this._settings.disliked = dedupedDisliked;
+        this._settings.timestamps = timestamps;
         
         this._persistDirect('liked');
         this._persistDirect('disliked');
+        this._persistDirect('timestamps');
         this._notify();
     }
 
@@ -177,22 +231,27 @@ export class Store {
     }
 
     /** Export current domain lists as a plain object. */
-    exportDomains(): { liked: string[]; disliked: string[] } {
+    exportDomains(): { liked: string[]; disliked: string[]; timestamps: Record<string, number> } {
         return {
             liked: [...this._settings.liked],
             disliked: [...this._settings.disliked],
+            timestamps: { ...this._settings.timestamps },
         };
     }
 
     /** Merge imported domains into current lists (additive, deduplicated). */
-    importDomains(data: { liked?: string[]; disliked?: string[] }): number {
+    importDomains(data: { liked?: string[]; disliked?: string[]; timestamps?: Record<string, number> }): number {
         let added = 0;
+        const now = Date.now();
+        const importedTimestamps = data.timestamps || {};
+        
         if (Array.isArray(data.liked)) {
             for (const raw of data.liked) {
                 const d = normalizeDomain(raw);
                 if (d && !this._settings.liked.includes(d)) {
                     this._settings.disliked = this._settings.disliked.filter(x => x !== d);
                     this._settings.liked = [...this._settings.liked, d];
+                    this._settings.timestamps[d] = importedTimestamps[d] || now;
                     added++;
                 }
             }
@@ -203,13 +262,31 @@ export class Store {
                 if (d && !this._settings.disliked.includes(d)) {
                     this._settings.liked = this._settings.liked.filter(x => x !== d);
                     this._settings.disliked = [...this._settings.disliked, d];
+                    this._settings.timestamps[d] = importedTimestamps[d] || now;
                     added++;
                 }
             }
         }
+        for (const [d, ts] of Object.entries(importedTimestamps)) {
+            const normalized = normalizeDomain(d);
+            if (normalized) {
+                const localTs = this._settings.timestamps[normalized];
+                if (localTs === undefined || ts > localTs) {
+                    const isLiked = this._settings.liked.includes(normalized);
+                    const isDisliked = this._settings.disliked.includes(normalized);
+                    if (!isLiked && !isDisliked) {
+                        this._settings.timestamps[normalized] = ts;
+                    }
+                }
+            }
+        }
+        
         if (added > 0) {
+            this._settings.liked.sort();
+            this._settings.disliked.sort();
             this._persist('liked');
             this._persist('disliked');
+            this._persist('timestamps');
             this._notify();
         }
         return added;

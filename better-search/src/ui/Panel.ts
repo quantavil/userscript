@@ -74,6 +74,7 @@ export class PanelElement extends LitElement {
         super.disconnectedCallback();
         this._unsubscribe?.();
         window.removeEventListener('keydown', this._handleKeydown);
+        document.body.style.removeProperty('overflow');
     }
     
     private _syncTextFromStore() {
@@ -90,22 +91,13 @@ export class PanelElement extends LitElement {
         if (this.store) {
             applyAccentVariables(this, this.store.accent);
         }
-        const textChanged = changedProperties.has('_likedText') || changedProperties.has('_dislikedText');
-        const tabChangedToFilters = changedProperties.has('_activeTab') && this._activeTab === 'filters';
-        const panelOpened = changedProperties.has('_isOpen') && this._isOpen;
-        
-        if (textChanged || tabChangedToFilters || panelOpened) {
-            if (this._activeTab === 'filters') {
-                const delay = panelOpened ? 200 : 0;
-                if (this._likedTextarea) this._autoResize(this._likedTextarea, delay);
-                if (this._dislikedTextarea) this._autoResize(this._dislikedTextarea, delay);
-            }
-        }
     }
 
     open(): void {
         this.style.display = 'block';
         this.offsetHeight; // force reflow
+        
+        document.body.style.setProperty('overflow', 'hidden');
         
         this._lastActiveElement = document.activeElement as HTMLElement;
         this._isOpen = true;
@@ -117,6 +109,7 @@ export class PanelElement extends LitElement {
 
     close(): void {
         this._isOpen = false;
+        document.body.style.removeProperty('overflow');
         if (this._lastActiveElement) {
             this._lastActiveElement.focus();
             this._lastActiveElement = null;
@@ -644,21 +637,10 @@ export class PanelElement extends LitElement {
     private _getLines(text: string): string[] {
         return text.split('\n').map(l => l.trim().toLowerCase()).filter(Boolean);
     }
-    
     private _saveAndReapply(type: 'liked' | 'disliked', domains: string[]): void {
         const deduped = [...new Set(domains)];
         deduped.sort();
         this.store.setDomains(type, deduped);
         this.scanner.reapply();
-    }
-    
-    private _autoResize(textarea: HTMLTextAreaElement, delay = 0) {
-        const resize = () => {
-            if (!textarea) return;
-            textarea.style.height = 'auto';
-            textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight + 2, 60), 150)}px`;
-        };
-        if (delay > 0) setTimeout(resize, delay);
-        else resize();
     }
 }
