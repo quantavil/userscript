@@ -75,6 +75,7 @@ export class PanelElement extends LitElement {
         this._unsubscribe?.();
         window.removeEventListener('keydown', this._handleKeydown);
         document.body.style.removeProperty('overflow');
+        document.body.style.removeProperty('margin-right');
     }
     
     private _syncTextFromStore() {
@@ -98,6 +99,10 @@ export class PanelElement extends LitElement {
         this.offsetHeight; // force reflow
         
         document.body.style.setProperty('overflow', 'hidden');
+        if (window.innerWidth > 640) {
+            document.body.style.transition = 'margin-right 0.3s cubic-bezier(0.32, 0.94, 0.6, 1)';
+            document.body.style.marginRight = '460px';
+        }
         
         this._lastActiveElement = document.activeElement as HTMLElement;
         this._isOpen = true;
@@ -110,6 +115,9 @@ export class PanelElement extends LitElement {
     close(): void {
         this._isOpen = false;
         document.body.style.removeProperty('overflow');
+        if (window.innerWidth > 640) {
+            document.body.style.marginRight = '';
+        }
         if (this._lastActiveElement) {
             this._lastActiveElement.focus();
             this._lastActiveElement = null;
@@ -279,26 +287,31 @@ export class PanelElement extends LitElement {
                             const isEditing = this._editingMatches[`${type}:${match}`] !== undefined;
                             return html`
                                 <div class="svf-filtered-item">
-                                    ${isEditing ? html`
-                                        <input type="text" class="svf-filtered-input" .value=${this._editingMatches[`${type}:${match}`]}
-                                            @blur=${(e: any) => this._saveEdit(type, match, e.target.value)}
+                                    <div class="svf-filtered-input-wrapper">
+                                        <input type="text" 
+                                            class="svf-filtered-input ${isEditing ? 'editing' : 'readonly'}" 
+                                            .value=${isEditing ? this._editingMatches[`${type}:${match}`] : match}
+                                            ?readonly=${!isEditing}
+                                            @blur=${(e: any) => { if (isEditing) this._saveEdit(type, match, e.target.value); }}
                                             @keydown=${(e: KeyboardEvent) => {
-                                                if (e.key === 'Enter') this._saveEdit(type, match, (e.target as HTMLInputElement).value);
-                                                if (e.key === 'Escape') this._cancelEdit(type, match);
+                                                if (isEditing) {
+                                                    if (e.key === 'Enter') this._saveEdit(type, match, (e.target as HTMLInputElement).value);
+                                                    if (e.key === 'Escape') this._cancelEdit(type, match);
+                                                }
                                             }}
-                                            ${ref((el) => { if(el) setTimeout(() => (el as HTMLElement).focus(), 0) })}
+                                            ${ref((el) => { if (isEditing && el) setTimeout(() => (el as HTMLElement).focus(), 0) })}
                                         >
-                                    ` : html`
-                                        <span class="svf-filtered-text">${match}</span>
-                                        <div class="svf-filtered-actions">
+                                    </div>
+                                    <div class="svf-filtered-actions">
+                                        ${isEditing ? nothing : html`
                                             <button type="button" class="svf-filtered-btn" title="Edit" @click=${() => this._startEdit(type, match)}>
                                                 ${unsafeHTML(ICON_EDIT)}
                                             </button>
-                                            <button type="button" class="svf-filtered-btn delete" title="Remove" @click=${() => this._deleteMatch(type, match)}>
-                                                ${unsafeHTML(ICON_DELETE)}
-                                            </button>
-                                        </div>
-                                    `}
+                                        `}
+                                        <button type="button" class="svf-filtered-btn delete" title="Remove" @click=${() => this._deleteMatch(type, match)}>
+                                            ${unsafeHTML(ICON_DELETE)}
+                                        </button>
+                                    </div>
                                 </div>
                             `;
                         })}
