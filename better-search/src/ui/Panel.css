@@ -268,8 +268,8 @@
   color: var(--svf-danger);
 }
 
-/* Smart Textarea */
-.svf-textarea {
+/* Smart Textarea & Preview */
+.svf-textarea, .svf-textarea-preview {
   width: 100%;
   flex: 1;
   min-height: 80px;
@@ -283,12 +283,15 @@
   font-family: var(--svf-mono, monospace);
   font-size: 12.5px;
   line-height: 1.5;
-  resize: none;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   overflow-x: hidden;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.svf-textarea {
+  resize: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .svf-textarea:focus {
@@ -296,17 +299,18 @@
   box-shadow: 0 0 0 2px var(--svf-primary-glow);
 }
 
-.svf-textarea.readonly {
-  background: rgba(245, 158, 11, 0.03);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  box-shadow: 0 0 10px rgba(245, 158, 11, 0.04);
-  color: rgba(255, 255, 255, 0.85);
-  cursor: not-allowed;
+.svf-textarea-preview {
+  overflow-y: auto;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
-.svf-textarea.readonly:focus {
-  border-color: rgba(245, 158, 11, 0.35);
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.08);
+.svf-textarea-preview.readonly {
+  background: var(--svf-primary-bg);
+  border: 1px solid var(--svf-primary-border);
+  box-shadow: 0 0 10px var(--svf-primary-glow);
+  color: var(--svf-text);
+  opacity: 0.85;
 }
 
 .svf-textarea-status-row {
@@ -339,19 +343,6 @@
   border-color: var(--svf-primary);
   color: #0c0d10;
   box-shadow: 0 0 12px var(--svf-primary-glow);
-}
-
-.svf-apply-btn.edit {
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  color: #f59e0b;
-}
-
-.svf-apply-btn.edit:hover {
-  background: #f59e0b;
-  border-color: #f59e0b;
-  color: #0f1015;
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
 }
 
 .svf-cancel-btn {

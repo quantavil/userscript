@@ -149,14 +149,6 @@ export class PanelElement extends LitElement {
 
     private _startTextareaEdit(type: 'liked' | 'disliked') {
         this._isTextareaEditable = { ...this._isTextareaEditable, [type]: true };
-        setTimeout(() => {
-            const textarea = this.shadowRoot?.querySelector(`#svf-${type}-textarea`) as HTMLTextAreaElement;
-            if (textarea) {
-                textarea.focus();
-                const len = textarea.value.length;
-                textarea.setSelectionRange(len, len);
-            }
-        }, 50);
     }
 
     private _changeTab(tab: 'filters' | 'settings') {
@@ -354,21 +346,35 @@ export class PanelElement extends LitElement {
                         })}
                     </div>
                 ` : html`
-                        <textarea class="svf-textarea ${this._isTextareaEditable[type] ? '' : 'readonly'}" 
-                        id="svf-${type}-textarea" 
-                        placeholder="e.g.\nstackoverflow.com\ngithub.com"
-                        style="display: block"
-                        .value=${textValue}
-                        ?readonly=${!this._isTextareaEditable[type]}
-                        @input=${(e: any) => {
-                            if (type === 'liked') this._likedText = e.target.value;
-                            else this._dislikedText = e.target.value;
-                        }}
-                        @focus=${() => this._isTextareaFocused[type] = true}
-                        @blur=${() => {
-                            this._isTextareaFocused[type] = false;
-                        }}
-                    ></textarea>
+                        ${this._isTextareaEditable[type] ? html`
+                            <textarea class="svf-textarea" 
+                                id="svf-${type}-textarea" 
+                                placeholder="e.g.\nstackoverflow.com\ngithub.com"
+                                style="display: block"
+                                .value=${textValue}
+                                @input=${(e: any) => {
+                                    if (type === 'liked') this._likedText = e.target.value;
+                                    else this._dislikedText = e.target.value;
+                                }}
+                                @focus=${() => this._isTextareaFocused[type] = true}
+                                @blur=${() => {
+                                    this._isTextareaFocused[type] = false;
+                                }}
+                                ${ref((el) => {
+                                    if (el) {
+                                        const ta = el as HTMLTextAreaElement;
+                                        ta.focus();
+                                        const len = ta.value.length;
+                                        ta.setSelectionRange(len, len);
+                                    }
+                                })}
+                            ></textarea>
+                        ` : html`
+                            <div class="svf-textarea-preview readonly" 
+                                id="svf-${type}-textarea-preview"
+                                style="display: block"
+                            >${textValue || html`<span style="color: var(--svf-text-muted); font-style: italic;">No domains configured</span>`}</div>
+                        `}
                     
                     <div class="svf-textarea-status-row" style="display: flex">
                         <div class="svf-textarea-msg-info" id="svf-${type}-msg-info">
