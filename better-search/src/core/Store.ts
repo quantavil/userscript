@@ -242,6 +242,7 @@ export class Store {
     /** Merge imported domains into current lists (additive, deduplicated). */
     importDomains(data: { liked?: string[]; disliked?: string[]; timestamps?: Record<string, number> }): number {
         let added = 0;
+        let mutatedTimestamps = false;
         const now = Date.now();
         const importedTimestamps = data.timestamps || {};
         
@@ -253,6 +254,7 @@ export class Store {
                     this._settings.liked = [...this._settings.liked, d];
                     this._settings.timestamps[d] = importedTimestamps[d] || now;
                     added++;
+                    mutatedTimestamps = true;
                 }
             }
         }
@@ -264,6 +266,7 @@ export class Store {
                     this._settings.disliked = [...this._settings.disliked, d];
                     this._settings.timestamps[d] = importedTimestamps[d] || now;
                     added++;
+                    mutatedTimestamps = true;
                 }
             }
         }
@@ -276,16 +279,19 @@ export class Store {
                     const isDisliked = this._settings.disliked.includes(normalized);
                     if (!isLiked && !isDisliked) {
                         this._settings.timestamps[normalized] = ts;
+                        mutatedTimestamps = true;
                     }
                 }
             }
         }
         
-        if (added > 0) {
-            this._settings.liked.sort();
-            this._settings.disliked.sort();
-            this._persist('liked');
-            this._persist('disliked');
+        if (added > 0 || mutatedTimestamps) {
+            if (added > 0) {
+                this._settings.liked.sort();
+                this._settings.disliked.sort();
+                this._persist('liked');
+                this._persist('disliked');
+            }
             this._persist('timestamps');
             this._notify();
         }
