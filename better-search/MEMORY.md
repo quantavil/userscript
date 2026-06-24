@@ -71,6 +71,7 @@ better-search/
 
 
 ## Blunders
+- Lit deep mutation change-detection: Mutating `this._isTextareaEditable[type] = true` directly did not change the object reference, preventing Lit from re-rendering the edit/readonly state immediately. Fixed by re-assigning the reference using object spreading.
 - Wildcard match bug: Literal wildcard rules (`*.domain.com`) failed to match subdomains in `Store.matchDomain` due to literal string matching. Fixed by parsing rules and stripping `*.` prefixes.
 - Registerable domain grouping bug: TLDs with ccTLDs (like `co.uk`) were incorrectly merged to `*.co.uk`. Fixed by implementing standard SLD+ccTLD heuristic.
 - MutationObserver subtree limitation: Container childList-only observer missed lazy-loaded URLs on grandchild mutations. Fixed by watching subtree, attributes, and href filter.

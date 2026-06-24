@@ -80,10 +80,10 @@ export class PanelElement extends LitElement {
     }
     
     private _syncTextFromStore() {
-        if (!this._isTextareaFocused.liked) {
+        if (!this._isTextareaFocused.liked && !this._isTextareaEditable.liked) {
             this._likedText = this.store.liked.join('\n');
         }
-        if (!this._isTextareaFocused.disliked) {
+        if (!this._isTextareaFocused.disliked && !this._isTextareaEditable.disliked) {
             this._dislikedText = this.store.disliked.join('\n');
         }
     }
@@ -119,6 +119,17 @@ export class PanelElement extends LitElement {
         if (window.innerWidth > 640) {
             document.body.style.marginRight = '';
         }
+        
+        // Auto-save any active textarea edits on close
+        for (const type of ['liked', 'disliked'] as const) {
+            if (this._isTextareaEditable[type]) {
+                const textValue = type === 'liked' ? this._likedText : this._dislikedText;
+                const lines = this._getLines(textValue);
+                this._saveAndReapply(type, lines);
+            }
+        }
+        this._isTextareaEditable = { liked: false, disliked: false };
+        
         if (this._lastActiveElement) {
             this._lastActiveElement.focus();
             this._lastActiveElement = null;
@@ -134,6 +145,36 @@ export class PanelElement extends LitElement {
         } else {
             this.style.display = 'none';
         }
+    }
+
+    private _startTextareaEdit(type: 'liked' | 'disliked') {
+        this._isTextareaEditable = { ...this._isTextareaEditable, [type]: true };
+        setTimeout(() => {
+            const textarea = this.shadowRoot?.querySelector(`#svf-${type}-textarea`) as HTMLTextAreaElement;
+            if (textarea) {
+                textarea.focus();
+                const len = textarea.value.length;
+                textarea.setSelectionRange(len, len);
+            }
+        }, 50);
+    }
+
+    private _changeTab(tab: 'filters' | 'settings') {
+        if (this._activeTab === tab) return;
+        
+        // Auto-save edits when leaving filters tab
+        if (this._activeTab === 'filters') {
+            for (const type of ['liked', 'disliked'] as const) {
+                if (this._isTextareaEditable[type]) {
+                    const textValue = type === 'liked' ? this._likedText : this._dislikedText;
+                    const lines = this._getLines(textValue);
+                    this._saveAndReapply(type, lines);
+                }
+            }
+            this._isTextareaEditable = { liked: false, disliked: false };
+        }
+        
+        this._activeTab = tab;
     }
 
     isOpen(): boolean {
@@ -193,8 +234,8 @@ export class PanelElement extends LitElement {
                 </div>
                 
                 <div class="svf-tab-nav">
-                    <button class="svf-tab-btn ${this._activeTab === 'filters' ? 'active' : ''}" @click=${() => this._activeTab = 'filters'}>Domain Filter</button>
-                    <button class="svf-tab-btn ${this._activeTab === 'settings' ? 'active' : ''}" @click=${() => this._activeTab = 'settings'}>Settings</button>
+                    <button class="svf-tab-btn ${this._activeTab === 'filters' ? 'active' : ''}" @click=${() => this._changeTab('filters')}>Domain Filter</button>
+                    <button class="svf-tab-btn ${this._activeTab === 'settings' ? 'active' : ''}" @click=${() => this._changeTab('settings')}>Settings</button>
                 </div>
                 
                 <div class="svf-body">
@@ -336,20 +377,20 @@ export class PanelElement extends LitElement {
                         ${this._isTextareaEditable[type] ? html`
                             <div class="svf-status-actions" style="display: flex; gap: 8px;">
                                 <button class="svf-cancel-btn" type="button" @click=${() => {
-                                    this._isTextareaEditable[type] = false;
+                                    this._isTextareaEditable = { ...this._isTextareaEditable, [type]: false };
                                     this._syncTextFromStore();
                                 }}>
                                     Cancel
                                 </button>
                                 <button class="svf-apply-btn" id="svf-${type}-apply" type="button" @click=${() => {
                                     this._saveAndReapply(type, lines);
-                                    this._isTextareaEditable[type] = false;
+                                    this._isTextareaEditable = { ...this._isTextareaEditable, [type]: false };
                                 }}>
                                     Apply Changes
                                 </button>
                             </div>
                         ` : html`
-                            <button class="svf-apply-btn edit" type="button" @click=${() => this._isTextareaEditable[type] = true}>
+                            <button class="svf-apply-btn edit" type="button" @click=${() => this._startTextareaEdit(type)}>
                                 Edit List
                             </button>
                         `}
