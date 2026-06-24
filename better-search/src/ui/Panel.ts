@@ -22,7 +22,7 @@ export class PanelElement extends LitElement {
     @property({ attribute: false }) gistSync!: GistSync;
 
     @state() private _isOpen = false;
-    @state() private _activeTab: 'filters' | 'io' | 'settings' = 'filters';
+    @state() private _activeTab: 'filters' | 'settings' = 'filters';
     @state() private _searchQuery = '';
     @state() private _ioStatus: { msg: string, type: 'success' | 'error' } | null = null;
     @state() private _isFetchingUrl = false;
@@ -185,16 +185,12 @@ export class PanelElement extends LitElement {
                 
                 <div class="svf-tab-nav">
                     <button class="svf-tab-btn ${this._activeTab === 'filters' ? 'active' : ''}" @click=${() => this._activeTab = 'filters'}>Domain Filter</button>
-                    <button class="svf-tab-btn ${this._activeTab === 'io' ? 'active' : ''}" @click=${() => this._activeTab = 'io'}>Import/Export/Sync</button>
                     <button class="svf-tab-btn ${this._activeTab === 'settings' ? 'active' : ''}" @click=${() => this._activeTab = 'settings'}>Settings</button>
                 </div>
                 
                 <div class="svf-body">
                     <div class="svf-tab-content ${this._activeTab === 'filters' ? 'active' : ''}" style="display: ${this._activeTab === 'filters' ? 'flex' : 'none'}">
                         ${this._renderFiltersTab()}
-                    </div>
-                    <div class="svf-tab-content ${this._activeTab === 'io' ? 'active' : ''}" style="display: ${this._activeTab === 'io' ? 'flex' : 'none'}">
-                        ${this._renderIOTab()}
                     </div>
                     <div class="svf-tab-content ${this._activeTab === 'settings' ? 'active' : ''}" style="display: ${this._activeTab === 'settings' ? 'flex' : 'none'}">
                         ${this._renderSettingsTab()}
@@ -338,6 +334,8 @@ export class PanelElement extends LitElement {
         const accent = this.store.accent;
         const mode = this.store.dislikeMode;
         return html`
+            <div class="svf-settings-section-title">Preferences</div>
+            
             <div class="svf-control-group">
                 <div class="svf-label">Dislike Filter Mode</div>
                 <div class="svf-segmented">
@@ -359,7 +357,6 @@ export class PanelElement extends LitElement {
             </div>
 
             <div class="svf-control-group">
-                <div class="svf-label">Preferences</div>
                 <div class="svf-switch-row">
                     <div class="svf-switch-label-group">
                         <div class="svf-switch-title">Show floating button</div>
@@ -371,6 +368,9 @@ export class PanelElement extends LitElement {
                     </label>
                 </div>
             </div>
+
+            <div class="svf-settings-section-title" style="margin-top: 12px; border-top: 1px solid var(--svf-border); padding-top: 16px;">Backup & Synchronization</div>
+            ${this._renderIOTab()}
         `;
     }
 

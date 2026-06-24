@@ -61,11 +61,11 @@ better-search/
 - Restored the floating HoverOverlay design for desktop search results.
 - Implemented mobile swipe-to-action gestures for search result rows, positioning action buttons dynamically behind cards using layout offsets and CSS transforms.
 - Implemented GitHub Gist Sync: Features one-click Quick Import (always-latest Raw Gist URL, additive merge) and optional Gist Sync (PAT token, push/pull, auto-sync with 5s debounce, periodic 1h pull, pull-before-push union merge to prevent conflict).
-- Refined Gist Sync UI/UX: Split the settings panel into 3 evenly-spaced tabs (Domain Filter, Import/Export/Sync, Settings). Auto-sync triggers a union pull immediately when enabled. Registered a Controller-level subscriber that automatically reapplies scanner filters to DOM elements on any background pull.
+- Refined Gist Sync UI/UX: Consolidated the settings panel into 2 tabs (Domain Filter and Settings) to simplify navigation and prevent header crowding, nesting Backup & Synchronization inside the Settings tab.
 - Optimized fmhy_to_json.py to process the repo ZIP in memory (no disk extraction) and filter for starred domains (⭐) only, reducing JSON size from 14k+ to ~2.7k domains, and optimized the blocklist override logic using a set lookup on domain suffixes.
 - Implemented a conflict-free CRDT LWW-Element-Set merge logic using local and Gist-stored domain modification timestamps, solving the issue of deleted domains reappearing on multi-device sync.
 - Locked background page body scrolling when settings modal is open by dynamically applying overflow styles, preventing scroll leakage.
-- Stabilized settings UI by assigning a fixed height (660px) to the card and matching heights (110px) for textareas and search results lists to eliminate jiggly layout shifts.
+- Stabilized settings UI by implementing a slide-out sidebar for desktop (100vh height, 460px width) and a responsive slide-up bottom sheet for mobile (80vh height), matching textarea and list heights (110px) to prevent layout shifts.
 
 
 
