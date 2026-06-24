@@ -296,6 +296,19 @@
   box-shadow: 0 0 0 2px var(--svf-primary-glow);
 }
 
+.svf-textarea.readonly {
+  background: rgba(245, 158, 11, 0.03);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.04);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: not-allowed;
+}
+
+.svf-textarea.readonly:focus {
+  border-color: rgba(245, 158, 11, 0.35);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.08);
+}
+
 .svf-textarea-status-row {
   display: flex;
   justify-content: space-between;
@@ -326,6 +339,38 @@
   border-color: var(--svf-primary);
   color: #0c0d10;
   box-shadow: 0 0 12px var(--svf-primary-glow);
+}
+
+.svf-apply-btn.edit {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #f59e0b;
+}
+
+.svf-apply-btn.edit:hover {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #0f1015;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+}
+
+.svf-cancel-btn {
+  background: transparent;
+  border: 1px solid var(--svf-border);
+  color: var(--svf-text-muted);
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-family: var(--svf-font);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.svf-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--svf-text);
+  border-color: var(--svf-border-hover);
 }
 
 /* Merger Proposal Card */
@@ -728,11 +773,12 @@ input:checked + .svf-slider:before {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 8px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  font-family: var(--svf-mono, monospace);
+  font-size: 12px;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -741,34 +787,9 @@ input:checked + .svf-slider:before {
   border-color: var(--svf-border-hover);
 }
 
-.svf-filtered-input-wrapper {
-  flex: 1;
-  min-width: 0;
-}
-
-.svf-filtered-input {
-  width: 100%;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 6px;
-  padding: 5px 8px;
-  color: #fff;
-  font-family: var(--svf-mono, monospace);
-  font-size: 12px;
-  outline: none;
-  transition: all 0.2s ease;
-  text-overflow: ellipsis;
-}
-
-.svf-filtered-input.readonly {
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  box-shadow: 0 0 6px rgba(245, 158, 11, 0.08);
-  cursor: default;
-}
-
-.svf-filtered-input.editing {
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid #f59e0b;
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.45), inset 0 0 4px rgba(245, 158, 11, 0.25);
+.svf-filtered-text {
+  color: var(--svf-text);
+  word-break: break-all;
 }
 
 .svf-filtered-actions {
@@ -799,6 +820,18 @@ input:checked + .svf-slider:before {
 .svf-filtered-btn.delete:hover {
   color: var(--svf-danger);
   background: rgba(239, 68, 68, 0.1);
+}
+
+.svf-filtered-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--svf-primary);
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #fff;
+  font-family: var(--svf-mono, monospace);
+  font-size: 12px;
+  outline: none;
 }
 
 .svf-filtered-empty {

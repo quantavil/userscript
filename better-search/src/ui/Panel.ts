@@ -34,6 +34,7 @@ export class PanelElement extends LitElement {
     @state() private _likedText = '';
     @state() private _dislikedText = '';
     @state() private _editingMatches: Record<string, string> = {};
+    @state() private _isTextareaEditable: Record<'liked' | 'disliked', boolean> = { liked: false, disliked: false };
 
     private _lastActiveElement: HTMLElement | null = null;
     private _unsubscribe?: () => void;
@@ -287,39 +288,37 @@ export class PanelElement extends LitElement {
                             const isEditing = this._editingMatches[`${type}:${match}`] !== undefined;
                             return html`
                                 <div class="svf-filtered-item">
-                                    <div class="svf-filtered-input-wrapper">
-                                        <input type="text" 
-                                            class="svf-filtered-input ${isEditing ? 'editing' : 'readonly'}" 
-                                            .value=${isEditing ? this._editingMatches[`${type}:${match}`] : match}
-                                            ?readonly=${!isEditing}
-                                            @blur=${(e: any) => { if (isEditing) this._saveEdit(type, match, e.target.value); }}
+                                    ${isEditing ? html`
+                                        <input type="text" class="svf-filtered-input" .value=${this._editingMatches[`${type}:${match}`]}
+                                            @blur=${(e: any) => this._saveEdit(type, match, e.target.value)}
                                             @keydown=${(e: KeyboardEvent) => {
-                                                if (isEditing) {
-                                                    if (e.key === 'Enter') this._saveEdit(type, match, (e.target as HTMLInputElement).value);
-                                                    if (e.key === 'Escape') this._cancelEdit(type, match);
-                                                }
+                                                if (e.key === 'Enter') this._saveEdit(type, match, (e.target as HTMLInputElement).value);
+                                                if (e.key === 'Escape') this._cancelEdit(type, match);
                                             }}
-                                            ${ref((el) => { if (isEditing && el) setTimeout(() => (el as HTMLElement).focus(), 0) })}
+                                            ${ref((el) => { if(el) setTimeout(() => (el as HTMLElement).focus(), 0) })}
                                         >
-                                    </div>
-                                    <div class="svf-filtered-actions">
-                                        ${isEditing ? nothing : html`
+                                    ` : html`
+                                        <span class="svf-filtered-text">${match}</span>
+                                        <div class="svf-filtered-actions">
                                             <button type="button" class="svf-filtered-btn" title="Edit" @click=${() => this._startEdit(type, match)}>
                                                 ${unsafeHTML(ICON_EDIT)}
                                             </button>
-                                        `}
-                                        <button type="button" class="svf-filtered-btn delete" title="Remove" @click=${() => this._deleteMatch(type, match)}>
-                                            ${unsafeHTML(ICON_DELETE)}
-                                        </button>
-                                    </div>
+                                            <button type="button" class="svf-filtered-btn delete" title="Remove" @click=${() => this._deleteMatch(type, match)}>
+                                                ${unsafeHTML(ICON_DELETE)}
+                                            </button>
+                                        </div>
+                                    `}
                                 </div>
                             `;
                         })}
                     </div>
                 ` : html`
-                        <textarea class="svf-textarea" id="svf-${type}-textarea" placeholder="e.g.\nstackoverflow.com\ngithub.com"
+                        <textarea class="svf-textarea ${this._isTextareaEditable[type] ? '' : 'readonly'}" 
+                        id="svf-${type}-textarea" 
+                        placeholder="e.g.\nstackoverflow.com\ngithub.com"
                         style="display: block"
                         .value=${textValue}
+                        ?readonly=${!this._isTextareaEditable[type]}
                         @input=${(e: any) => {
                             if (type === 'liked') this._likedText = e.target.value;
                             else this._dislikedText = e.target.value;
@@ -334,9 +333,26 @@ export class PanelElement extends LitElement {
                         <div class="svf-textarea-msg-info" id="svf-${type}-msg-info">
                             ${duplicateCount > 0 ? html`<span style="color: var(--svf-danger)">⚠️ ${duplicateCount} duplicates found (will merge on apply)</span>` : html`${lines.length} domains configured`}
                         </div>
-                        <button class="svf-apply-btn" id="svf-${type}-apply" type="button" @click=${() => this._saveAndReapply(type, lines)}>
-                            Apply Changes
-                        </button>
+                        ${this._isTextareaEditable[type] ? html`
+                            <div class="svf-status-actions" style="display: flex; gap: 8px;">
+                                <button class="svf-cancel-btn" type="button" @click=${() => {
+                                    this._isTextareaEditable[type] = false;
+                                    this._syncTextFromStore();
+                                }}>
+                                    Cancel
+                                </button>
+                                <button class="svf-apply-btn" id="svf-${type}-apply" type="button" @click=${() => {
+                                    this._saveAndReapply(type, lines);
+                                    this._isTextareaEditable[type] = false;
+                                }}>
+                                    Apply Changes
+                                </button>
+                            </div>
+                        ` : html`
+                            <button class="svf-apply-btn edit" type="button" @click=${() => this._isTextareaEditable[type] = true}>
+                                Edit List
+                            </button>
+                        `}
                     </div>
                 `}
             </div>

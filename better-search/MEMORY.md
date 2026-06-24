@@ -65,7 +65,8 @@ better-search/
 - Optimized fmhy_to_json.py to process the repo ZIP in memory (no disk extraction) and filter for starred domains (⭐) only, reducing JSON size from 14k+ to ~2.7k domains, and optimized the blocklist override logic using a set lookup on domain suffixes.
 - Implemented a conflict-free CRDT LWW-Element-Set merge logic using local and Gist-stored domain modification timestamps, solving the issue of deleted domains reappearing on multi-device sync.
 - Locked background page body scrolling when settings modal is open by dynamically applying overflow styles, preventing scroll leakage.
-- Stabilized settings UI by implementing a slide-out sidebar for desktop (100vh height, 460px width) and a responsive slide-up bottom sheet for mobile (80vh height), matching textarea and list heights (110px) to prevent layout shifts.
+- Stabilized settings UI by implementing a slide-out sidebar for desktop (100vh height, 460px width) that dynamically squeezes the page layout, and a responsive slide-up bottom sheet for mobile (90vh height), leveraging flexbox stretching to utilize left over card space.
+- Added write-protection lock-state to raw textareas: read-only by default (styled translucent yellow with yellow border/glow) and unlocked using an Edit List action button to prevent accidental modifications.
 
 
 
