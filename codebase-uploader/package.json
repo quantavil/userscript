@@ -1,0 +1,21 @@
+{
+  "name": "codebase-uploader",
+  "private": true,
+  "version": "4.0.0",
+  "author": "quantavil (https://github.com/quantavil)",
+  "homepage": "https://github.com/quantavil/userscript",
+  "description": "Fully customizable codebase uploader for AI chats. Editable limits, ignore lists, binary file support. Power-user tool.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "tsc": "tsc"
+  },
+  "devDependencies": {
+    "@types/greasemonkey": "^4.0.7",
+    "@types/node": "^25.9.1",
+    "typescript": "~5.8.3",
+    "vite": "^7.3.3",
+    "vite-plugin-monkey": "^5.0.9"
+  }
+}
