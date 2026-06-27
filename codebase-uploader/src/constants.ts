@@ -179,15 +179,14 @@ export const STYLESHEET = `
 
   /* ─── Colored Header Controls ─── */
   #cu-close {
-    color: var(--danger);
-    background: rgba(255, 107, 107, 0.06);
-    border: 1px solid rgba(255, 107, 107, 0.12);
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--glass-border);
   }
   #cu-close:hover {
-    background: rgba(255, 107, 107, 0.16);
-    border-color: rgba(255, 107, 107, 0.3);
-    color: #FFAAAB;
-    box-shadow: 0 0 8px var(--danger-glow);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--glass-border-highlight);
+    color: var(--text-primary);
   }
   #cu-settings-toggle {
     color: var(--accent);
@@ -611,6 +610,23 @@ export const STYLESHEET = `
   #cu-copy-side-pane-header h3 {
     font-size: 13.5px;
     font-weight: 600;
+    color: var(--text-primary);
+  }
+  #cu-copy-side-pane-close {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--glass-border);
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+  }
+  #cu-copy-side-pane-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--glass-border-highlight);
     color: var(--text-primary);
   }
   #cu-copy-side-pane-body {

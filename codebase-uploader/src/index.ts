@@ -557,11 +557,8 @@ registerCopyModal((chunks) => {
   const treePane = $('cu-tree-pane');
   if (treePane) {
     const existing = $('cu-copy-side-pane');
-    if (existing) {
-      existing.remove();
-    } else {
-      treePane.appendChild(buildCopySidePane(chunks));
-    }
+    if (existing) existing.remove();
+    treePane.appendChild(buildCopySidePane(chunks));
   }
 });
 
