@@ -3,7 +3,7 @@ declare function GM_registerMenuCommand(name: string, callback: () => void): voi
 import { STYLESHEET } from './constants';
 import { state, $, el, showToast, formatSize } from './state';
 import { renderTree } from './tree';
-import { ingestFiles, run } from './uploader';
+import { ingestFiles, run, registerCopyModal } from './uploader';
 import { DroppedFile } from './types';
 import { settings, saveSettings, resetSettings } from './settings';
 import { icon } from './icons';
@@ -499,6 +499,67 @@ function buildUI() {
     if (!document.getElementById('codebase-uploader-root')) buildUI();
   }).observe(document.documentElement, { childList: true });
 }
+
+function buildCopyModal(chunks: File[]): HTMLElement {
+  const modal = el('div', { id: 'cu-copy-modal' });
+
+  const closeBtn = el('button', { cls: 'cu-icon-btn', id: 'cu-copy-modal-close', title: 'Close' });
+  closeBtn.appendChild(icon('x', 16));
+  closeBtn.addEventListener('click', () => modal.remove());
+
+  const header = el('div', { id: 'cu-copy-modal-header' }, [
+    el('h3', { txt: 'Copy Codebase Parts' }),
+    closeBtn
+  ]);
+
+  const body = el('div', { id: 'cu-copy-modal-body' });
+
+  chunks.forEach((chunk, index) => {
+    const info = el('div', { cls: 'cu-chunk-info' }, [
+      el('span', { cls: 'cu-chunk-title', txt: `Part ${index + 1}: ${chunk.name}` }),
+      el('span', { cls: 'cu-chunk-stats', txt: formatSize(chunk.size) })
+    ]);
+
+    const copyBtn = el('button', { cls: 'cu-chunk-copy-btn', txt: `Copy Part ${index + 1}` });
+    copyBtn.insertBefore(icon('copy', 13), copyBtn.firstChild);
+
+    copyBtn.addEventListener('click', async () => {
+      try {
+        const text = await chunk.text();
+        await navigator.clipboard.writeText(text);
+        
+        copyBtn.textContent = ' Copied!';
+        copyBtn.insertBefore(icon('zap', 13), copyBtn.firstChild);
+        copyBtn.classList.add('copied');
+        showToast(`Copied codebase Part ${index + 1}!`);
+        
+        setTimeout(() => {
+          copyBtn.textContent = ` Copy Part ${index + 1}`;
+          copyBtn.insertBefore(icon('copy', 13), copyBtn.firstChild);
+          copyBtn.classList.remove('copied');
+        }, 2000);
+      } catch (err) {
+        showToast('Failed to copy.', 'error');
+      }
+    });
+
+    const row = el('div', { cls: 'cu-chunk-row' }, [info, copyBtn]);
+    body.appendChild(row);
+  });
+
+  modal.appendChild(header);
+  modal.appendChild(body);
+  return modal;
+}
+
+registerCopyModal((chunks) => {
+  const panel = $('cu-panel');
+  if (panel) {
+    const existing = $('cu-copy-modal');
+    if (existing) existing.remove();
+    panel.appendChild(buildCopyModal(chunks));
+  }
+});
 
 // ─── Init ───
 buildUI();

@@ -73,6 +73,10 @@ const PATHS: Record<string, string[]> = {
     'm17 8-5-5-5 5',
     'M12 3v12',
   ],
+  copy: [
+    'M20 9H11a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2z',
+    'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1',
+  ],
 };
 
 export function icon(name: string, size = 16): SVGSVGElement {

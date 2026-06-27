@@ -582,6 +582,65 @@ export const STYLESHEET = `
   }
   #cu-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+  /* ─── Copy Parts Modal ─── */
+  #cu-copy-modal {
+    position: absolute; inset: 0;
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    display: flex; flex-direction: column;
+    z-index: 100;
+  }
+  #cu-copy-modal-header {
+    padding: 18px 24px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--glass-border);
+  }
+  #cu-copy-modal-header h3 {
+    font-size: 15px; font-weight: 600; color: var(--text-primary);
+  }
+  #cu-copy-modal-body {
+    flex: 1; overflow-y: auto; padding: 24px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .cu-chunk-row {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    padding: 14px 20px;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 16px; transition: all 0.2s var(--ease-out);
+  }
+  .cu-chunk-row:hover {
+    background: rgba(255, 255, 255, 0.045);
+    border-color: var(--glass-border-highlight);
+  }
+  .cu-chunk-info {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .cu-chunk-title {
+    font-size: 13.5px; font-weight: 500; color: var(--text-primary);
+  }
+  .cu-chunk-stats {
+    font-size: 11.5px; color: var(--text-secondary);
+    font-family: var(--font-mono);
+  }
+  .cu-chunk-copy-btn {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px; border-radius: var(--radius-sm);
+    border: none; font-size: 12.5px; font-weight: 500;
+    cursor: pointer; transition: all 0.2s var(--ease-out);
+    background: var(--accent); color: #0c0c10;
+  }
+  .cu-chunk-copy-btn:hover {
+    background: var(--accent-strong);
+    box-shadow: 0 0 12px var(--accent-glow);
+  }
+  .cu-chunk-copy-btn.copied {
+    background: var(--success) !important;
+    color: #0c0c10 !important;
+  }
+
   /* ─── Reduced Motion ─── */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

@@ -3,6 +3,12 @@ import { TEXT_EXTS, BINARY_EXTS, TEXT_FILENAMES, SITE_SELECTORS, LIMIT_WARNING_T
 import { settings, ignoreFoldersSet, ignoreExtsSet } from './settings';
 import { state, $, showToast, formatSize } from './state';
 
+let copyModalCallback: ((chunks: File[]) => void) | null = null;
+
+export function registerCopyModal(cb: (chunks: File[]) => void): void {
+  copyModalCallback = cb;
+}
+
 export function isBinaryFile(name: string): boolean {
   const filename = (name || '').split('/').pop()!.toLowerCase();
   const dotIdx = filename.lastIndexOf('.');
@@ -286,10 +292,13 @@ export async function run(mode: 'upload' | 'download' | 'copy' = 'upload'): Prom
   const doCopy = async () => {
     const mdFiles = allUploads.filter(f => f.name.endsWith('.md'));
     if (mdFiles.length) {
+      if (mdFiles.length > 1 && copyModalCallback) {
+        copyModalCallback(mdFiles);
+        return;
+      }
       try {
-        const contents = await Promise.all(mdFiles.map(f => f.text()));
-        const combinedText = contents.join('\n\n---\n\n');
-        await navigator.clipboard.writeText(combinedText);
+        const text = await mdFiles[0].text();
+        await navigator.clipboard.writeText(text);
         showToast('Copied codebase context to clipboard! Press Ctrl+V in prompt.', 'success');
         if (statsEl) statsEl.textContent = 'Copied to clipboard. Paste (Ctrl+V) in prompt.';
         if (overlay) overlay.classList.remove('open');
