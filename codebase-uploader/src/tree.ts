@@ -1,7 +1,9 @@
 import { TreeNode, FolderNode, FileNode, FileObj } from './types';
-import { state, $ } from './state';
-import { updateStats } from './uploader';
+import { state, $, formatSize } from './state';
+import { updateStats, shouldSkip } from './uploader';
 import { icon } from './icons';
+
+let searchMatches = new Map<string, boolean>();
 
 export function buildTree(files: FileObj[]): FolderNode {
   const root: FolderNode = { isFolder: true, children: new Map(), path: '', name: '' };
@@ -38,12 +40,6 @@ function setNodeChecked(node: TreeNode, val: boolean): void {
   for (const c of node.children.values()) setNodeChecked(c, val);
 }
 
-export function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1048576).toFixed(2)} MB`;
-}
-
 function highlightLabel(text: string): Node {
   if (!state.searchQ) return document.createTextNode(text);
   const idx = text.toLowerCase().indexOf(state.searchQ);
@@ -56,13 +52,20 @@ function highlightLabel(text: string): Node {
   return span;
 }
 
-function hasMatchingDescendant(node: TreeNode, query: string): boolean {
-  if (!node.isFolder) return node.path.toLowerCase().includes(query);
-  if (node.path.toLowerCase().includes(query)) return true;
-  for (const child of node.children.values()) {
-    if (hasMatchingDescendant(child, query)) return true;
+function precomputeMatches(node: TreeNode, query: string): boolean {
+  if (!node.isFolder) {
+    const match = node.path.toLowerCase().includes(query);
+    searchMatches.set(node.path, match);
+    return match;
   }
-  return false;
+  let anyMatch = node.path.toLowerCase().includes(query);
+  for (const child of node.children.values()) {
+    if (precomputeMatches(child, query)) {
+      anyMatch = true;
+    }
+  }
+  searchMatches.set(node.path, anyMatch);
+  return anyMatch;
 }
 
 export function renderTree(): void {
@@ -72,7 +75,10 @@ export function renderTree(): void {
 
   const scrollTop = treePane.scrollTop;
 
-  if (!state.allFiles.length) {
+  // Filter state.allFiles dynamically based on skip settings
+  const visibleFiles = state.allFiles.filter(f => !shouldSkip(f.path, f.file.size));
+
+  if (!visibleFiles.length) {
     treePane.classList.add('cu-empty');
     treeList.textContent = '';
     updateStats();
@@ -80,7 +86,13 @@ export function renderTree(): void {
   }
 
   treePane.classList.remove('cu-empty');
-  const tree = buildTree(state.allFiles);
+  const tree = buildTree(visibleFiles);
+
+  searchMatches.clear();
+  if (state.searchQ) {
+    precomputeMatches(tree, state.searchQ);
+  }
+
   const frag = document.createDocumentFragment();
   renderChildren(tree, frag);
   treeList.textContent = '';
@@ -95,14 +107,62 @@ function renderChildren(node: FolderNode, container: HTMLElement | DocumentFragm
     return a.name.localeCompare(b.name);
   });
   for (const child of sorted) {
-    if (state.searchQ && !hasMatchingDescendant(child, state.searchQ)) continue;
+    if (state.searchQ && searchMatches.get(child.path) === false) continue;
     container.appendChild(child.isFolder ? renderFolder(child) : renderFile(child));
+  }
+}
+
+function updateDescendantCheckboxes(cb: HTMLInputElement, checked: boolean): void {
+  const row = cb.closest('.tr');
+  if (!row) return;
+  const wrap = row.parentElement;
+  if (!wrap) return;
+  const childrenWrap = wrap.querySelector('.tr-children');
+  if (childrenWrap) {
+    const childCbs = childrenWrap.querySelectorAll('input[type="checkbox"]');
+    for (const childCb of childCbs as any) {
+      childCb.checked = checked;
+      childCb.indeterminate = false;
+    }
+  }
+}
+
+function updateAncestorCheckboxes(cb: HTMLInputElement): void {
+  let cur = cb.closest('.tr-children');
+  while (cur) {
+    const parentWrap = cur.parentElement;
+    if (!parentWrap) break;
+    const parentCb = parentWrap.querySelector('.tr > input[type="checkbox"]') as HTMLInputElement | null;
+    if (!parentCb) break;
+
+    const siblingCbs = Array.from(cur.children)
+      .map(child => child.classList.contains('tr') ? child.querySelector('input') : child.querySelector('.tr > input'))
+      .filter(Boolean) as HTMLInputElement[];
+    let checkedCount = 0;
+    let indeterminateCount = 0;
+    for (const scb of siblingCbs) {
+      if (scb.checked) checkedCount++;
+      if (scb.indeterminate) indeterminateCount++;
+    }
+
+    if (checkedCount === siblingCbs.length) {
+      parentCb.checked = true;
+      parentCb.indeterminate = false;
+    } else if (checkedCount === 0 && indeterminateCount === 0) {
+      parentCb.checked = false;
+      parentCb.indeterminate = false;
+    } else {
+      parentCb.checked = false;
+      parentCb.indeterminate = true;
+    }
+
+    cur = parentWrap.closest('.tr-children');
   }
 }
 
 function renderFolder(node: FolderNode): HTMLDivElement {
   const wrap = document.createElement('div');
-  const hasMatch = state.searchQ && hasMatchingDescendant(node, state.searchQ);
+  const hasMatch = state.searchQ && searchMatches.get(node.path) === true;
   const isOpen = state.openFolders.has(node.path) || !!hasMatch;
 
   const row = document.createElement('div');
@@ -114,8 +174,11 @@ function renderFolder(node: FolderNode): HTMLDivElement {
   cb.checked = stateVal === 1;
   cb.indeterminate = stateVal === 0.5;
   cb.addEventListener('change', e => {
-    setNodeChecked(node, (e.target as HTMLInputElement).checked);
-    renderTree();
+    const checked = (e.target as HTMLInputElement).checked;
+    setNodeChecked(node, checked);
+    updateDescendantCheckboxes(cb, checked);
+    updateAncestorCheckboxes(cb);
+    updateStats();
   });
 
   const caret = document.createElement('span');
@@ -161,8 +224,10 @@ function renderFile(node: FileNode): HTMLDivElement {
   cb.type = 'checkbox';
   cb.checked = node.item.selected;
   cb.addEventListener('change', e => {
-    node.item.selected = (e.target as HTMLInputElement).checked;
-    renderTree();
+    const checked = (e.target as HTMLInputElement).checked;
+    node.item.selected = checked;
+    updateAncestorCheckboxes(cb);
+    updateStats();
   });
 
   const spacer = document.createElement('span');

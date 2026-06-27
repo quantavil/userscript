@@ -1,17 +1,13 @@
 import { FileObj, DroppedFile } from './types';
-import { TEXT_EXTS, BINARY_EXTS, TEXT_FILENAMES, SITE_SELECTORS } from './constants';
-import { settings, getIgnoreFolders, getIgnoreExts } from './settings';
-import { state, $, showToast } from './state';
-import { formatSize } from './tree';
+import { TEXT_EXTS, BINARY_EXTS, TEXT_FILENAMES, SITE_SELECTORS, LIMIT_WARNING_THRESHOLD, CHUNK_OVERHEAD_CHARS, REVOCATION_DELAY_MS } from './constants';
+import { settings, ignoreFoldersSet, ignoreExtsSet } from './settings';
+import { state, $, showToast, formatSize } from './state';
 
 export function isBinaryFile(name: string): boolean {
   const filename = (name || '').split('/').pop()!.toLowerCase();
   const dotIdx = filename.lastIndexOf('.');
   const ext = dotIdx > 0 ? filename.slice(dotIdx) : '';
-  if (TEXT_EXTS.has(ext)) return false;
-  if (BINARY_EXTS.has(ext)) return true;
-  if (TEXT_FILENAMES.has(filename)) return false;
-  return false;
+  return BINARY_EXTS.has(ext);
 }
 
 export function shouldSkip(path: string, size: number): boolean {
@@ -27,12 +23,15 @@ export function shouldSkip(path: string, size: number): boolean {
     }
   }
 
-  if (segs.some(s => getIgnoreFolders().has(s.toLowerCase()))) return true;
+  if (segs.some(s => ignoreFoldersSet.has(s.toLowerCase()))) return true;
 
   const name = segs[segs.length - 1].toLowerCase();
-  const dotIdx = name.lastIndexOf('.');
-  const ext = dotIdx >= 0 ? name.slice(dotIdx) : '';
-  if (getIgnoreExts().has(ext) || getIgnoreExts().has(name)) return true;
+  if (ignoreExtsSet.has(name)) return true;
+
+  // Support multi-dot extensions correctly (e.g. .min.js)
+  for (const ignoreExt of ignoreExtsSet) {
+    if (ignoreExt.startsWith('.') && name.endsWith(ignoreExt)) return true;
+  }
 
   if (size > settings.maxFileBytes) return true;
   return false;
@@ -82,13 +81,35 @@ export async function buildChunks(textFiles: FileObj[], binaryFiles: FileObj[] =
 
   for (const { file, path } of textFiles) {
     let content: string;
-    try { content = await file.text(); } catch (_) { content = `[binary or unreadable — skipped]`; }
+    try { 
+      content = await file.text(); 
+    } catch (e) { 
+      console.warn(`[Codebase Uploader] Failed to read text file ${path}:`, e);
+      content = `[binary or unreadable — skipped]`; 
+    }
     const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase();
-    const block = `## File: \`${path}\`\n\n\`\`\`${ext}\n${content}\n\`\`\`\n\n`;
+    
+    // Split large files exceeding maxChunkChars
+    const maxContentSize = Math.max(1000, settings.maxChunkChars - 300);
+    let offset = 0;
+    let partNum = 1;
+    const isLarge = content.length > maxContentSize;
 
-    if (parts.length > 0 && currentChars + block.length > settings.maxChunkChars) flush();
-    parts.push(block);
-    currentChars += block.length;
+    while (offset < content.length || (offset === 0 && content.length === 0)) {
+      const chunkContent = content.slice(offset, offset + maxContentSize);
+      const displayPath = isLarge ? `${path} (Part ${partNum})` : path;
+      const block = `## File: \`${displayPath}\`\n\n\`\`\`${ext}\n${chunkContent}\n\`\`\`\n\n`;
+
+      if (parts.length > 0 && currentChars + block.length > settings.maxChunkChars) {
+        flush();
+      }
+      parts.push(block);
+      currentChars += block.length;
+
+      offset += chunkContent.length;
+      partNum++;
+      if (chunkContent.length === 0) break; // empty file
+    }
   }
   flush();
 
@@ -105,20 +126,87 @@ export async function buildChunks(textFiles: FileObj[], binaryFiles: FileObj[] =
   return chunks;
 }
 
-export function injectToChat(files: File[]): boolean {
-  for (const sel of SITE_SELECTORS) {
-    const elElement = document.querySelector(sel) as HTMLInputElement | null;
-    if (elElement) {
-      try {
-        const dt = new DataTransfer();
-        files.forEach(f => dt.items.add(f));
-        elElement.files = dt.files;
-        elElement.dispatchEvent(new Event('change', { bubbles: true }));
-        elElement.dispatchEvent(new Event('input', { bubbles: true }));
-        return true;
-      } catch (_) {}
+function findInShadows(selectors: string[], root: Document | ShadowRoot = document): HTMLElement | null {
+  for (const sel of selectors) {
+    const elElement = root.querySelector(sel);
+    if (elElement instanceof HTMLElement) return elElement;
+  }
+  const elements = root.querySelectorAll('*');
+  for (const elNode of elements as any) {
+    if (elNode.shadowRoot) {
+      const found = findInShadows(selectors, elNode.shadowRoot);
+      if (found) return found;
     }
   }
+  return null;
+}
+
+function findFileInput(): HTMLInputElement | null {
+  return findInShadows(SITE_SELECTORS) as HTMLInputElement | null;
+}
+
+function findChatInput(): HTMLElement | null {
+  const chatSelectors = [
+    '#prompt-textarea',
+    'textarea',
+    '[contenteditable="true"]',
+    'input[type="text"]',
+  ];
+  return findInShadows(chatSelectors);
+}
+
+export function injectToChat(files: File[]): boolean {
+  const dt = new DataTransfer();
+  files.forEach(f => dt.items.add(f));
+
+  // 1. Try file input injection first (standard and direct)
+  const fileInput = findFileInput();
+  if (fileInput) {
+    try {
+      fileInput.files = dt.files;
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+      fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    } catch (e) {
+      console.error('[Codebase Uploader] File input injection failed:', e);
+    }
+  }
+
+  // 2. Fallback: Try dispatching a drag/drop event on the chat input container
+  const chatInput = findChatInput();
+  if (chatInput) {
+    try {
+      // Dispatch dragenter and dragover to trigger dropzone states
+      chatInput.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
+      chatInput.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+      
+      // Dispatch the drop event
+      const dropEvent = new DragEvent('drop', {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: dt
+      });
+      chatInput.dispatchEvent(dropEvent);
+      return true;
+    } catch (e) {
+      console.error('[Codebase Uploader] Drop event injection failed:', e);
+    }
+  }
+
+  // 3. Last fallback: Dispatch drop event globally on document.body
+  try {
+    document.body.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    document.body.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    document.body.dispatchEvent(new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: dt
+    }));
+    return true;
+  } catch (e) {
+    console.error('[Codebase Uploader] Body drop event failed:', e);
+  }
+
   return false;
 }
 
@@ -127,7 +215,7 @@ function downloadFiles(files: File[]): void {
     const url = URL.createObjectURL(f);
     const a = Object.assign(document.createElement('a'), { href: url, download: f.name });
     a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    setTimeout(() => URL.revokeObjectURL(url), REVOCATION_DELAY_MS);
   });
 }
 
@@ -136,12 +224,13 @@ export function updateStats(): void {
   const chunkEstimate = $('cu-chunk-estimate');
   if (!statsEl || !chunkEstimate) return;
 
-  const active = state.allFiles.filter(f => f.selected);
+  const visible = state.allFiles.filter(f => !shouldSkip(f.path, f.file.size));
+  const active = visible.filter(f => f.selected);
   const textActive = active.filter(f => !f.isBinary);
   const binActive = active.filter(f => f.isBinary);
   const totalBytes = active.reduce((a, f) => a + f.file.size, 0);
 
-  statsEl.textContent = `${active.length}/${state.allFiles.length} files · ${textActive.length} text, ${binActive.length} bin · ${formatSize(totalBytes)}`;
+  statsEl.textContent = `${active.length}/${visible.length} files · ${textActive.length} text, ${binActive.length} bin · ${formatSize(totalBytes)}`;
 
   if (!active.length) {
     chunkEstimate.textContent = '—';
@@ -149,19 +238,20 @@ export function updateStats(): void {
     return;
   }
 
-  const estChunks = Math.max(1, Math.ceil((textActive.reduce((a, f) => a + f.file.size, 0) + textActive.length * 100) / settings.maxChunkChars));
+  const estChunks = Math.max(1, Math.ceil((textActive.reduce((a, f) => a + f.file.size, 0) + textActive.length * CHUNK_OVERHEAD_CHARS) / settings.maxChunkChars));
   const estTotal = estChunks + binActive.length;
   chunkEstimate.textContent = `~${estTotal} upload${estTotal !== 1 ? 's' : ''}`;
-  chunkEstimate.className = estTotal > settings.maxChunks ? 'danger' : estTotal > settings.maxChunks * 0.7 ? 'warn' : '';
+  chunkEstimate.className = estTotal > settings.maxChunks ? 'danger' : estTotal > settings.maxChunks * LIMIT_WARNING_THRESHOLD ? 'warn' : '';
 }
 
 export async function run(downloadMode: boolean = false): Promise<void> {
   const statsEl = $('cu-stats');
   const overlay = $('cu-overlay');
 
-  const files = state.allFiles.filter(f => f.selected);
+  const visible = state.allFiles.filter(f => !shouldSkip(f.path, f.file.size));
+  const files = visible.filter(f => f.selected);
   if (!files.length) {
-    showToast('Select at least one file first.');
+    showToast('Select at least one file first.', 'error');
     return;
   }
 
@@ -206,7 +296,7 @@ export async function run(downloadMode: boolean = false): Promise<void> {
     showToast(`Uploaded ${allUploads.length} item(s)!`);
     if (statsEl) statsEl.textContent = `Uploaded ${allUploads.length} item(s).`;
   } else {
-    showToast('No chat input found — downloading instead.');
+    showToast('No chat input found — downloading instead.', 'error');
     if (statsEl) statsEl.textContent = 'No chat input — downloading.';
     doDownload();
   }

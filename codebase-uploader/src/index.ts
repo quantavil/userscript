@@ -1,7 +1,7 @@
 declare function GM_registerMenuCommand(name: string, callback: () => void): void;
 
 import { STYLESHEET } from './constants';
-import { state, $, el, showToast } from './state';
+import { state, $, el, showToast, formatSize } from './state';
 import { renderTree } from './tree';
 import { ingestFiles, run } from './uploader';
 import { DroppedFile } from './types';
@@ -10,6 +10,17 @@ import { icon } from './icons';
 
 let isOpen = false;
 let isSettingsOpen = false;
+
+const isMac = typeof navigator !== 'undefined' && (/Mac|iPhone|iPad|iPod/i.test(navigator.platform) || /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent));
+const MAX_DRAG_FILES = 5000;
+
+function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): (...args: Parameters<T>) => void {
+  let timer: any = null;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
 
 // ─── Open / Close ───
 
@@ -40,6 +51,11 @@ function pickFolder() {
   input.addEventListener('change', e => {
     const target = e.target as HTMLInputElement;
     if (target.files) {
+      if (target.files.length > MAX_DRAG_FILES) {
+        if (!confirm(`You are selecting ${target.files.length} files. This may freeze the browser.\n\nAre you sure you want to proceed?`)) {
+          return;
+        }
+      }
       ingestFiles(Array.from(target.files).map(f => ({ file: f, path: f.webkitRelativePath || f.name })));
       renderTree();
     }
@@ -54,24 +70,46 @@ async function handleDrop(e: DragEvent, treePane: Element) {
   treePane.classList.remove('drag-over');
   if (!e.dataTransfer) return;
   const droppedFiles: DroppedFile[] = [];
+  let fileCount = 0;
+  let aborted = false;
 
   async function traverse(entry: any, prefix = '') {
+    if (aborted) return;
     if (entry.isFile) {
+      fileCount++;
+      if (fileCount > MAX_DRAG_FILES) {
+        aborted = true;
+        if (confirm(`You are uploading more than ${MAX_DRAG_FILES} files. This might be a mistake (e.g., dropping a root directory or node_modules).\n\nDo you want to cancel the upload?`)) {
+          droppedFiles.length = 0;
+          return;
+        } else {
+          aborted = false;
+        }
+      }
       const file = await new Promise<File>(r => entry.file(r));
+      if (aborted) return;
       droppedFiles.push({ file, path: prefix + file.name });
     } else if (entry.isDirectory) {
       const reader = entry.createReader();
       let entries: any[] = [], batch: any[];
-      do { batch = await new Promise<any[]>(r => reader.readEntries(r)); entries = entries.concat(batch); } while (batch.length > 0);
-      for (const child of entries) await traverse(child, prefix + entry.name + '/');
+      do {
+        batch = await new Promise<any[]>(r => reader.readEntries(r));
+        entries = entries.concat(batch);
+      } while (batch.length > 0 && !aborted);
+      for (const child of entries) {
+        if (aborted) break;
+        await traverse(child, prefix + entry.name + '/');
+      }
     }
   }
 
   await Promise.all(
     [...e.dataTransfer.items].filter(i => i.kind === 'file').map(i => i.webkitGetAsEntry?.()).filter(Boolean).map(entry => traverse(entry))
   );
-  ingestFiles(droppedFiles);
-  renderTree();
+  if (droppedFiles.length > 0) {
+    ingestFiles(droppedFiles);
+    renderTree();
+  }
 }
 
 // ─── Tag Editor Component (Imperative, Trusted Types Safe) ───
@@ -123,7 +161,7 @@ function updateShortcutHint() {
   const hint = $('cu-kbd-hint');
   if (hint) {
     const key = (settings.shortcutKey || 'u').toUpperCase();
-    hint.textContent = `⌥⇧${key}`;
+    hint.textContent = `${isMac ? '⌥⇧' : 'Alt+Shift+'}${key}`;
   }
 }
 
@@ -144,11 +182,20 @@ function buildSettingsPane(): HTMLElement {
     saveSettings();
   });
 
+  const sizeLabel = el('label', { txt: 'Max file size (bytes)' });
+  const sizeHelper = el('span', { id: 'cu-size-helper', txt: ` (${formatSize(settings.maxFileBytes)})`, style: 'color: var(--accent-strong); font-size: 11.5px; margin-left: 6px;' });
+  sizeLabel.appendChild(sizeHelper);
+
   const sizeRow = el('div', { cls: 'cu-setting-row' }, [
-    el('label', { txt: 'Max file size (bytes)' }),
+    sizeLabel,
     el('input', { id: 'cu-set-maxFileBytes', type: 'number', value: String(settings.maxFileBytes) }),
   ]);
-  sizeRow.querySelector('input')?.addEventListener('change', e => {
+  const sizeInput = sizeRow.querySelector('input');
+  sizeInput?.addEventListener('input', e => {
+    const bytes = Number((e.target as HTMLInputElement).value) || 0;
+    sizeHelper.textContent = ` (${formatSize(bytes)})`;
+  });
+  sizeInput?.addEventListener('change', e => {
     settings.maxFileBytes = Number((e.target as HTMLInputElement).value) || settings.maxFileBytes;
     saveSettings();
   });
@@ -214,7 +261,7 @@ function buildSettingsPane(): HTMLElement {
 
   const includeBinRow = el('div', { cls: 'cu-setting-row row-cb' }, [
     el('input', { id: 'cu-set-includeBinary', type: 'checkbox' }),
-    el('label', { txt: 'Include binary files' }),
+    el('label', { txt: 'Include binary files (images, zip, etc.)' }),
   ]);
   const includeBinCb = includeBinRow.querySelector('input') as HTMLInputElement;
   includeBinCb.checked = settings.includeBinary;
@@ -223,8 +270,8 @@ function buildSettingsPane(): HTMLElement {
     saveSettings();
   });
 
-  // Group checkboxes inline side-by-side
-  const optionsGrid = el('div', { cls: 'cu-setting-grid-cb' }, [skipHiddenRow, includeBinRow]);
+  // Group checkboxes inline side-by-side using the same setting-grid class
+  const optionsGrid = el('div', { cls: 'cu-setting-grid' }, [skipHiddenRow, includeBinRow]);
   pane.appendChild(optionsGrid);
 
   // Section 4: Custom Manifest Prompt
@@ -327,7 +374,7 @@ function buildUI() {
   const settingsBtn = el('button', { cls: 'cu-icon-btn', id: 'cu-settings-toggle', title: 'Settings' });
   settingsBtn.appendChild(icon('settings', 16));
 
-  const kbdHint = el('span', { id: 'cu-kbd-hint', cls: 'cu-kbd', txt: '⌥⇧U' });
+  const kbdHint = el('span', { id: 'cu-kbd-hint', cls: 'cu-kbd', txt: `${isMac ? '⌥⇧' : 'Alt+Shift+'}U` });
   const header = el('div', { id: 'cu-header' }, [
     el('h3', { txt: 'Codebase Uploader' }),
     kbdHint,
@@ -410,10 +457,11 @@ function buildUI() {
   addFolderBtn.addEventListener('click', pickFolder);
   dropzoneBtn.addEventListener('click', pickFolder);
 
-  searchInput.addEventListener('input', () => {
+  const onSearchInput = debounce(() => {
     state.searchQ = searchInput.value.trim().toLowerCase();
     renderTree();
-  });
+  }, 150);
+  searchInput.addEventListener('input', onSearchInput);
 
   selAll.addEventListener('click', () => { state.allFiles.forEach(f => (f.selected = true)); renderTree(); });
   selNone.addEventListener('click', () => { state.allFiles.forEach(f => (f.selected = false)); renderTree(); });
@@ -453,7 +501,16 @@ buildUI();
 
 // Keyboard: Alt+Shift+Shortcut (e.g. Alt+Shift+U) to toggle, Escape to close
 window.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && isOpen) { closePanel(); e.preventDefault(); }
+  if (e.key === 'Escape' && isOpen) {
+    const active = state.shadowRoot?.activeElement || document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+      (active as HTMLElement).blur();
+      e.preventDefault();
+      return;
+    }
+    closePanel();
+    e.preventDefault();
+  }
   const targetKey = (settings.shortcutKey || 'u').toLowerCase();
   if (e.altKey && e.shiftKey && e.key.toLowerCase() === targetKey) {
     togglePanel();

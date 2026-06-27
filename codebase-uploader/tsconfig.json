@@ -8,9 +8,7 @@
     "noEmit": true,
     "isolatedModules": true,
     "skipLibCheck": true,
-    "esModuleInterop": true,
-    "experimentalDecorators": true,
-    "useDefineForClassFields": false
+    "esModuleInterop": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

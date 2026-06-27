@@ -3,6 +3,14 @@ import { DEFAULT_SETTINGS } from './constants';
 
 export let settings: Settings = { ...DEFAULT_SETTINGS };
 
+export let ignoreFoldersSet = new Set<string>();
+export let ignoreExtsSet = new Set<string>();
+
+export function updateCachedSettings(): void {
+  ignoreFoldersSet = new Set(settings.ignoreFolders.split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
+  ignoreExtsSet = new Set(settings.ignoreExts.split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
+}
+
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem('cu-settings');
@@ -11,16 +19,21 @@ export function loadSettings(): Settings {
     } else {
       settings = { ...DEFAULT_SETTINGS };
     }
-  } catch (_) {
+  } catch (e) {
+    console.warn('[Codebase Uploader] Failed to load settings:', e);
     settings = { ...DEFAULT_SETTINGS };
   }
+  updateCachedSettings();
   return settings;
 }
 
 export function saveSettings(): void {
   try {
     localStorage.setItem('cu-settings', JSON.stringify(settings));
-  } catch (_) {}
+  } catch (e) {
+    console.warn('[Codebase Uploader] Failed to save settings:', e);
+  }
+  updateCachedSettings();
 }
 
 export function resetSettings(): void {
@@ -29,11 +42,11 @@ export function resetSettings(): void {
 }
 
 export function getIgnoreFolders(): Set<string> {
-  return new Set(settings.ignoreFolders.split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
+  return ignoreFoldersSet;
 }
 
 export function getIgnoreExts(): Set<string> {
-  return new Set(settings.ignoreExts.split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
+  return ignoreExtsSet;
 }
 
 loadSettings();

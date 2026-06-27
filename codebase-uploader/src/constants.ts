@@ -1,5 +1,12 @@
 import { Settings } from './types';
 
+export const TOAST_DURATION = 2500;
+export const TOAST_FADE_MS = 300;
+export const TREE_INDENT_PX = 20;
+export const LIMIT_WARNING_THRESHOLD = 0.7;
+export const CHUNK_OVERHEAD_CHARS = 100;
+export const REVOCATION_DELAY_MS = 10000;
+
 export const DEFAULT_SETTINGS: Settings = {
   maxChunks: 10,
   maxFileBytes: 2_000_000,
@@ -7,7 +14,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ignoreFolders: 'node_modules,__pycache__,dist,build,venv,.next,.nuxt,.idea,.vscode,coverage,.git,out,tmp,temp,.cache,.parcel-cache,vendor,Pods,target,bin,obj,.angular,.svelte-kit',
   ignoreExts: '.pyc,.pyo,.log,.lock,.map,.DS_Store,.min.js,.min.css,.exe,.dll,.so,.dylib,.bin,.o,.obj,.class',
   skipHidden: true,
-  includeBinary: true,
+  includeBinary: false,
   customPrompt: '',
   shortcutKey: 'u',
 };
@@ -40,9 +47,7 @@ export const TEXT_FILENAMES = new Set([
   'dockerfile', 'makefile', 'justfile', 'rakefile', 'gemfile', 'brewfile',
   'procfile', 'vagrantfile', 'license', 'licence', 'readme', 'changelog',
   'contributing', 'authors', 'thanks', 'todo', 'notice',
-  '.gitignore', '.dockerignore', '.npmignore', '.editorconfig', '.gitattributes',
-  '.gitmodules', '.env', '.babelrc', '.eslintrc', '.prettierrc', '.stylelintrc',
-  '.rspec', '.nvmrc', '.node-version', '.python-version', '.ruby-version',
+  '.env', '.eslintrc', '.prettierrc', '.node-version', '.python-version', '.ruby-version',
 ]);
 
 export const SITE_SELECTORS = [
@@ -51,6 +56,7 @@ export const SITE_SELECTORS = [
   'input.chat-upload__input',
   'input[type="file"][accept*="text"]',
   'input[type="file"][multiple]',
+  'input[type="file"]',
 ];
 
 export const STYLESHEET = `
@@ -382,7 +388,7 @@ export const STYLESHEET = `
   .tr:hover .t-remove { opacity: 0.7; }
   .tr .t-remove:hover { opacity: 1; background: rgba(255,107,107,0.12); color: var(--danger); }
   .tr-children {
-    margin-left: 20px;
+    margin-left: ${TREE_INDENT_PX}px;
     border-left: 1px solid rgba(255, 255, 255, 0.04);
     padding-left: 10px;
     display: flex; flex-direction: column; gap: 2px;
@@ -406,11 +412,6 @@ export const STYLESHEET = `
 
   /* Grid Layout for inline inputs */
   .cu-setting-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-  }
-  .cu-setting-grid-cb {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 16px;
@@ -558,15 +559,26 @@ export const STYLESHEET = `
     background: var(--glass-bg);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    color: var(--success); padding: 8px 18px;
+    padding: 8px 18px;
     border-radius: 999px;
-    border: 1px solid rgba(99, 255, 180, 0.2);
+    border: 1px solid var(--glass-border);
     font-size: 13px; font-weight: 500;
     box-shadow: 0 8px 24px rgba(0,0,0,0.45);
     pointer-events: none; opacity: 0;
     transition: all 0.3s var(--ease-out);
     z-index: 2147483647;
     font-family: var(--font-sans);
+    color: var(--text-primary);
+  }
+  #cu-toast.success {
+    color: var(--success);
+    border-color: rgba(99, 255, 180, 0.25);
+    box-shadow: 0 8px 24px rgba(99, 255, 180, 0.1);
+  }
+  #cu-toast.error {
+    color: var(--danger);
+    border-color: rgba(255, 107, 107, 0.25);
+    box-shadow: 0 8px 24px rgba(255, 107, 107, 0.1);
   }
   #cu-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 

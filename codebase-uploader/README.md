@@ -31,10 +31,13 @@ The userscript runs on and is optimized for the following AI platforms:
 
 - **Liquid Glass Aesthetic**: Translucent frosted-glass panels, custom specular-highlight borders, soft multi-layer depth shadows, and micro-interactions.
 - **Zero Dependencies & Google Trusted Types Compatible**: Imperative DOM rendering (`createElementNS` and custom helpers) with absolutely no `innerHTML` injection, rendering cleanly on Google Gemini and Google AI Studio.
-- **Smart Directory Chunking**: Auto-splits large codebases into size-limited markdown chunks containing code block file definitions and constructs a master `codebase_manifest.md`.
-- **Manifest Prompt Customization**: Specify custom instructions or guidelines prepended directly into the manifest output.
-- **Interactive Ignored Lists**: Clean, modern tag chips editor in settings for filtering folders (`node_modules`, `dist`, etc.) and extensions (`.lock`, `.log`, etc.).
-- **Hotkeys**: Configurable hotkey toggle (defaults to `Alt+Shift+U` or `Option+Shift+U`) which dynamically updates the header hotkey badge.
+- **Smart Directory Chunking & Oversized Splitting**: Auto-splits large codebases into size-limited markdown chunks containing code block file definitions, constructs a master `codebase_manifest.md`, and dynamically chunks individual files exceeding settings limits to prevent LLM rejection.
+- **Shadow DOM selector traversal**: Recursively crawls shadow DOM roots of AI chat platforms to locate file input elements, ensuring robust click-to-upload injection.
+- **Safeguard Ingestion Limit**: Prompts the user before loading folders or drag-and-drop actions with >5,000 files to avoid browser tab crashes.
+- **O(N) Search & Debouncing**: Uses debounced input search and pre-computed O(N) matching to search large repositories instantly without freezing the UI.
+- **Local DOM Checkbox walking**: Updates checked and indeterminate states in-place by traversing parent and children DOM nodes directly, preventing full tree rebuilds and preserving scroll position.
+- **Dynamic Size Helper**: Displays a live, formatted size (e.g. `(2.00 MB)`) next to the byte input in settings.
+- **OS-Aware Hotkeys**: Automatically adapts modifier labels (`⌥⇧` on macOS, `Alt+Shift+` on Windows/Linux) and keyboard handlers based on the host operating system.
 - **Color-Coded File Tree**: Distinct, high-visibility Lucide-style SVG folder and file icons (amber folders, blue documents, green binary paperclips).
 
 ---

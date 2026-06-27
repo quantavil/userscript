@@ -19,11 +19,11 @@ Tampermonkey userscript. Uploads codebase folders into AI chat inputs (ChatGPT, 
 - `index.ts` — entry point, UI assembly, events, keyboard shortcuts, tag editor for settings
 
 ## Key Decisions
-- **No FAB** — removed in v1.0.0. `Alt+Shift+[ShortcutKey]` or Tampermonkey menu to toggle.
-- **No version in header** — removed to keep the title clean.
-- **No tree cache** — buildTree is <1ms, cache was premature optimization causing bugs.
-- **No showConfirm** — native `confirm()` for the single use case (chunk overflow).
-- **Checkbox re-render** — toggling any checkbox calls full `renderTree()` instead of manual parent/child DOM walking. Simpler, no bugs.
+- **Checkbox DOM walking** — toggling any checkbox walks the DOM tree to update ancestor/descendant checkbox states and stats instead of destroying/rebuilding the DOM. Eliminates UI flicker/lag.
+- **Pre-computed O(N) search** — search query matches are pre-computed in a single post-order pass of the tree, eliminating N² search rendering complexity.
+- **Dynamic ignore filtering** — ignore lists/limits filter files dynamically during rendering/upload rather than permanently removing files from memory during ingestion.
+- **Safeguard ingestion limit** — dropping/selecting more than 5,000 files warns the user via a confirm prompt to prevent freezing the browser tab.
+- **Shadow DOM input traversal** — recursively crawls shadow roots to locate chat file inputs for robust click-and-upload injection.
 - **Custom Manifest Prompt** — text box in settings allows prepending instructions to `codebase_manifest.md`.
 - **Liquid Glass CSS v4** — Apple WWDC25 inspired. Design tokens via CSS custom properties. Translucent glass surfaces, specular highlight borders, layered shadows, tag chips, and text areas.
 - **Compact Settings Grid Layout**:
