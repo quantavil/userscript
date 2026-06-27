@@ -413,7 +413,8 @@ function buildUI() {
     dropzoneBtn,
   ]);
   const treeList = el('div', { id: 'cu-tree-list' });
-  const treePane = el('div', { id: 'cu-tree-pane', cls: 'cu-empty' }, [dropzone, treeList]);
+  const treeContent = el('div', { id: 'cu-tree-content' }, [dropzone, treeList]);
+  const treePane = el('div', { id: 'cu-tree-pane', cls: 'cu-empty' }, [treeContent]);
 
   // ── Footer ──
   const stats = el('div', { id: 'cu-stats', txt: 'No files loaded.' });
@@ -500,19 +501,19 @@ function buildUI() {
   }).observe(document.documentElement, { childList: true });
 }
 
-function buildCopyModal(chunks: File[]): HTMLElement {
-  const modal = el('div', { id: 'cu-copy-modal' });
+function buildCopySidePane(chunks: File[]): HTMLElement {
+  const pane = el('div', { id: 'cu-copy-side-pane' });
 
-  const closeBtn = el('button', { cls: 'cu-icon-btn', id: 'cu-copy-modal-close', title: 'Close' });
-  closeBtn.appendChild(icon('x', 16));
-  closeBtn.addEventListener('click', () => modal.remove());
+  const closeBtn = el('button', { cls: 'cu-icon-btn', id: 'cu-copy-side-pane-close', title: 'Close side panel' });
+  closeBtn.appendChild(icon('x', 14));
+  closeBtn.addEventListener('click', () => pane.remove());
 
-  const header = el('div', { id: 'cu-copy-modal-header' }, [
-    el('h3', { txt: 'Copy Codebase Parts' }),
+  const header = el('div', { id: 'cu-copy-side-pane-header' }, [
+    el('h3', { txt: 'Copy Parts' }),
     closeBtn
   ]);
 
-  const body = el('div', { id: 'cu-copy-modal-body' });
+  const body = el('div', { id: 'cu-copy-side-pane-body' });
 
   chunks.forEach((chunk, index) => {
     const info = el('div', { cls: 'cu-chunk-info' }, [
@@ -547,17 +548,20 @@ function buildCopyModal(chunks: File[]): HTMLElement {
     body.appendChild(row);
   });
 
-  modal.appendChild(header);
-  modal.appendChild(body);
-  return modal;
+  pane.appendChild(header);
+  pane.appendChild(body);
+  return pane;
 }
 
 registerCopyModal((chunks) => {
-  const panel = $('cu-panel');
-  if (panel) {
-    const existing = $('cu-copy-modal');
-    if (existing) existing.remove();
-    panel.appendChild(buildCopyModal(chunks));
+  const treePane = $('cu-tree-pane');
+  if (treePane) {
+    const existing = $('cu-copy-side-pane');
+    if (existing) {
+      existing.remove();
+    } else {
+      treePane.appendChild(buildCopySidePane(chunks));
+    }
   }
 });
 

@@ -292,20 +292,24 @@ export const STYLESHEET = `
 
   /* ─── Tree Pane ─── */
   #cu-tree-pane {
-    flex: 1; overflow-y: auto; padding: 14px 20px;
-    font-family: var(--font-mono);
-    font-size: 13.5px; position: relative;
+    flex: 1; display: flex; flex-direction: row;
+    overflow: hidden; position: relative;
     background: var(--surface-0);
+  }
+  #cu-tree-content {
+    flex: 1; overflow-y: auto; padding: 14px 20px;
+    display: flex; flex-direction: column;
+    height: 100%;
   }
   #cu-tree-pane.drag-over {
     background: rgba(143, 160, 255, 0.03);
     outline: 2px dashed rgba(143, 160, 255, 0.35);
     outline-offset: -6px;
   }
-  #cu-tree-pane::-webkit-scrollbar { width: 5px; }
-  #cu-tree-pane::-webkit-scrollbar-track { background: transparent; }
-  #cu-tree-pane::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
-  #cu-tree-pane::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
+  #cu-tree-content::-webkit-scrollbar { width: 5px; }
+  #cu-tree-content::-webkit-scrollbar-track { background: transparent; }
+  #cu-tree-content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
+  #cu-tree-content::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
 
   /* ─── Dropzone ─── */
   #cu-dropzone {
@@ -582,59 +586,95 @@ export const STYLESHEET = `
   }
   #cu-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  /* ─── Copy Parts Modal ─── */
-  #cu-copy-modal {
-    position: absolute; inset: 0;
-    background: var(--glass-bg);
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-    display: flex; flex-direction: column;
-    z-index: 100;
+  /* ─── Copy Parts Side Pane ─── */
+  #cu-copy-side-pane {
+    width: 320px;
+    border-left: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    background: rgba(0, 0, 0, 0.12);
+    flex-shrink: 0;
+    height: 100%;
+    animation: cu-slide-in 0.2s var(--ease-out);
   }
-  #cu-copy-modal-header {
-    padding: 18px 24px;
-    display: flex; justify-content: space-between; align-items: center;
+  @keyframes cu-slide-in {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+  #cu-copy-side-pane-header {
+    padding: 14px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     border-bottom: 1px solid var(--glass-border);
   }
-  #cu-copy-modal-header h3 {
-    font-size: 15px; font-weight: 600; color: var(--text-primary);
+  #cu-copy-side-pane-header h3 {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-primary);
   }
-  #cu-copy-modal-body {
-    flex: 1; overflow-y: auto; padding: 24px;
-    display: flex; flex-direction: column; gap: 14px;
+  #cu-copy-side-pane-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
+  #cu-copy-side-pane-body::-webkit-scrollbar { width: 5px; }
+  #cu-copy-side-pane-body::-webkit-scrollbar-track { background: transparent; }
+  #cu-copy-side-pane-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
+  #cu-copy-side-pane-body::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
+
   .cu-chunk-row {
-    background: rgba(255, 255, 255, 0.025);
+    background: rgba(255, 255, 255, 0.015);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
-    padding: 14px 20px;
-    display: flex; justify-content: space-between; align-items: center;
-    gap: 16px; transition: all 0.2s var(--ease-out);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: all 0.2s var(--ease-out);
   }
   .cu-chunk-row:hover {
-    background: rgba(255, 255, 255, 0.045);
+    background: rgba(255, 255, 255, 0.035);
     border-color: var(--glass-border-highlight);
   }
   .cu-chunk-info {
-    display: flex; flex-direction: column; gap: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
   }
   .cu-chunk-title {
-    font-size: 13.5px; font-weight: 500; color: var(--text-primary);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-primary);
+    word-break: break-all;
   }
   .cu-chunk-stats {
-    font-size: 11.5px; color: var(--text-secondary);
+    font-size: 11px;
+    color: var(--text-secondary);
     font-family: var(--font-mono);
   }
   .cu-chunk-copy-btn {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 16px; border-radius: var(--radius-sm);
-    border: none; font-size: 12.5px; font-weight: 500;
-    cursor: pointer; transition: all 0.2s var(--ease-out);
-    background: var(--accent); color: #0c0c10;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s var(--ease-out);
+    background: var(--accent);
+    color: #0c0c10;
   }
   .cu-chunk-copy-btn:hover {
     background: var(--accent-strong);
-    box-shadow: 0 0 12px var(--accent-glow);
+    box-shadow: 0 0 10px var(--accent-glow);
   }
   .cu-chunk-copy-btn.copied {
     background: var(--success) !important;
