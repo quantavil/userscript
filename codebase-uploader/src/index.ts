@@ -3,7 +3,7 @@ declare function GM_registerMenuCommand(name: string, callback: () => void): voi
 import { STYLESHEET } from './constants';
 import { state, $, el, showToast, formatSize } from './state';
 import { renderTree } from './tree';
-import { ingestFiles, run, registerCopyModal } from './uploader';
+import { ingestFiles, run, registerCopyModal, copyFileToClipboard } from './uploader';
 import { DroppedFile } from './types';
 import { settings, saveSettings, resetSettings } from './settings';
 import { icon } from './icons';
@@ -516,26 +516,30 @@ function buildCopySidePane(chunks: File[]): HTMLElement {
   const body = el('div', { id: 'cu-copy-side-pane-body' });
 
   chunks.forEach((chunk, index) => {
+    const isChunk = chunk.name.startsWith('codebase_part_');
+    const label = isChunk ? `Part ${chunk.name.match(/_part_(\d+)/)?.[1] || index + 1}` : chunk.name;
+    const title = isChunk ? `Text Chunk (${label})` : chunk.name;
+
     const info = el('div', { cls: 'cu-chunk-info' }, [
-      el('span', { cls: 'cu-chunk-title', txt: `Part ${index + 1}: ${chunk.name}` }),
+      el('span', { cls: 'cu-chunk-title', txt: title }),
       el('span', { cls: 'cu-chunk-stats', txt: formatSize(chunk.size) })
     ]);
 
-    const copyBtn = el('button', { cls: 'cu-chunk-copy-btn', txt: `Copy Part ${index + 1}` });
+    const copyBtn = el('button', { cls: 'cu-chunk-copy-btn', txt: ` Copy` });
     copyBtn.insertBefore(icon('copy', 13), copyBtn.firstChild);
 
     copyBtn.addEventListener('click', async () => {
       try {
-        const text = await chunk.text();
-        await navigator.clipboard.writeText(text);
+        const type = await copyFileToClipboard(chunk);
+        const msg = type === 'base64' ? 'image Base64' : label;
+        showToast(`Copied ${msg}!`);
         
         copyBtn.textContent = ' Copied!';
         copyBtn.insertBefore(icon('zap', 13), copyBtn.firstChild);
         copyBtn.classList.add('copied');
-        showToast(`Copied codebase Part ${index + 1}!`);
         
         setTimeout(() => {
-          copyBtn.textContent = ` Copy Part ${index + 1}`;
+          copyBtn.textContent = ` Copy`;
           copyBtn.insertBefore(icon('copy', 13), copyBtn.firstChild);
           copyBtn.classList.remove('copied');
         }, 2000);

@@ -9,6 +9,39 @@ export function registerCopyModal(cb: (chunks: File[]) => void): void {
   copyModalCallback = cb;
 }
 
+export async function copyFileToClipboard(file: File): Promise<'image' | 'base64' | 'text'> {
+  if (file.type.startsWith('image/') && file.type !== 'image/svg+xml') {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({ [file.type]: file })
+      ]);
+      return 'image';
+    } catch (err) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          if (typeof reader.result === 'string') {
+            try {
+              await navigator.clipboard.writeText(reader.result);
+              resolve('base64');
+            } catch (e) {
+              reject(e);
+            }
+          } else {
+            reject(new Error('Invalid read result'));
+          }
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+    }
+  } else {
+    const text = await file.text();
+    await navigator.clipboard.writeText(text);
+    return 'text';
+  }
+}
+
 export function isBinaryFile(name: string): boolean {
   const filename = (name || '').split('/').pop()!.toLowerCase();
   const dotIdx = filename.lastIndexOf('.');
@@ -290,17 +323,17 @@ export async function run(mode: 'upload' | 'download' | 'copy' = 'upload'): Prom
   };
 
   const doCopy = async () => {
-    const mdFiles = allUploads.filter(f => f.name.endsWith('.md'));
-    if (mdFiles.length) {
-      if (mdFiles.length > 1 && copyModalCallback) {
-        copyModalCallback(mdFiles);
+    if (allUploads.length) {
+      if (allUploads.length > 1 && copyModalCallback) {
+        copyModalCallback(allUploads);
         return;
       }
+      const file = allUploads[0];
       try {
-        const text = await mdFiles[0].text();
-        await navigator.clipboard.writeText(text);
-        showToast('Copied codebase context to clipboard! Press Ctrl+V in prompt.', 'success');
-        if (statsEl) statsEl.textContent = 'Copied to clipboard. Paste (Ctrl+V) in prompt.';
+        const type = await copyFileToClipboard(file);
+        const msg = type === 'base64' ? 'image Base64 data URL' : file.name;
+        showToast(`Copied ${msg} to clipboard!`, 'success');
+        if (statsEl) statsEl.textContent = `Copied ${msg} to clipboard.`;
         if (overlay) overlay.classList.remove('open');
       } catch (err) {
         console.error('[Codebase Uploader] Failed to copy to clipboard:', err);
@@ -308,7 +341,7 @@ export async function run(mode: 'upload' | 'download' | 'copy' = 'upload'): Prom
         doDownload();
       }
     } else {
-      showToast('No text files to copy.', 'error');
+      showToast('No files to copy.', 'error');
     }
   };
 
