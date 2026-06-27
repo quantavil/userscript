@@ -156,6 +156,10 @@ function findChatInput(): HTMLElement | null {
 }
 
 export function injectToChat(files: File[]): boolean {
+  if (window.location.hostname.includes('qwen.ai')) {
+    return false;
+  }
+
   const dt = new DataTransfer();
   files.forEach(f => dt.items.add(f));
 
@@ -244,7 +248,7 @@ export function updateStats(): void {
   chunkEstimate.className = estTotal > settings.maxChunks ? 'danger' : estTotal > settings.maxChunks * LIMIT_WARNING_THRESHOLD ? 'warn' : '';
 }
 
-export async function run(downloadMode: boolean = false): Promise<void> {
+export async function run(mode: 'upload' | 'download' | 'copy' = 'upload'): Promise<void> {
   const statsEl = $('cu-stats');
   const overlay = $('cu-overlay');
 
@@ -279,6 +283,26 @@ export async function run(downloadMode: boolean = false): Promise<void> {
     if (statsEl) statsEl.textContent = `Downloaded ${downloads.length} file(s).`;
   };
 
+  const doCopy = async () => {
+    const mdFiles = allUploads.filter(f => f.name.endsWith('.md'));
+    if (mdFiles.length) {
+      try {
+        const contents = await Promise.all(mdFiles.map(f => f.text()));
+        const combinedText = contents.join('\n\n---\n\n');
+        await navigator.clipboard.writeText(combinedText);
+        showToast('Copied codebase context to clipboard! Press Ctrl+V in prompt.', 'success');
+        if (statsEl) statsEl.textContent = 'Copied to clipboard. Paste (Ctrl+V) in prompt.';
+        if (overlay) overlay.classList.remove('open');
+      } catch (err) {
+        console.error('[Codebase Uploader] Failed to copy to clipboard:', err);
+        showToast('Clipboard block — downloading files instead.', 'error');
+        doDownload();
+      }
+    } else {
+      showToast('No text files to copy.', 'error');
+    }
+  };
+
   if (allUploads.length > settings.maxChunks) {
     if (confirm(`${allUploads.length} uploads exceeds limit of ${settings.maxChunks}.\n\nDownload combined files instead?`)) {
       doDownload();
@@ -288,7 +312,8 @@ export async function run(downloadMode: boolean = false): Promise<void> {
     return;
   }
 
-  if (downloadMode) { doDownload(); return; }
+  if (mode === 'download') { doDownload(); return; }
+  if (mode === 'copy') { await doCopy(); return; }
 
   const injected = injectToChat(allUploads);
   if (injected) {
@@ -296,8 +321,6 @@ export async function run(downloadMode: boolean = false): Promise<void> {
     showToast(`Uploaded ${allUploads.length} item(s)!`);
     if (statsEl) statsEl.textContent = `Uploaded ${allUploads.length} item(s).`;
   } else {
-    showToast('No chat input found — downloading instead.', 'error');
-    if (statsEl) statsEl.textContent = 'No chat input — downloading.';
-    doDownload();
+    await doCopy();
   }
 }

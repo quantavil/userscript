@@ -422,10 +422,13 @@ function buildUI() {
   const downloadBtn = el('button', { cls: 'cu-btn', id: 'cu-download-btn', txt: ' Download' });
   downloadBtn.insertBefore(icon('download', 14), downloadBtn.firstChild);
 
+  const copyBtn = el('button', { cls: 'cu-btn', id: 'cu-copy-btn', txt: ' Copy' });
+  copyBtn.insertBefore(icon('copy', 14), copyBtn.firstChild);
+
   const uploadBtn = el('button', { cls: 'cu-btn cu-btn-primary', id: 'cu-upload-btn', txt: ' Upload' });
   uploadBtn.insertBefore(icon('zap', 14), uploadBtn.firstChild);
 
-  const footer = el('div', { id: 'cu-footer' }, [stats, chunkEstimate, downloadBtn, uploadBtn]);
+  const footer = el('div', { id: 'cu-footer' }, [stats, chunkEstimate, downloadBtn, copyBtn, uploadBtn]);
 
   // ── Assemble ──
   const panel = el('div', { id: 'cu-panel' }, [header, toolbar, actions, treePane, footer]);
@@ -479,8 +482,9 @@ function buildUI() {
   });
   collapseAll.addEventListener('click', () => { state.openFolders.clear(); renderTree(); });
 
-  uploadBtn.addEventListener('click', () => run(false));
-  downloadBtn.addEventListener('click', () => run(true));
+  uploadBtn.addEventListener('click', () => run('upload'));
+  copyBtn.addEventListener('click', () => run('copy'));
+  downloadBtn.addEventListener('click', () => run('download'));
 
   // Drag & drop
   treePane.addEventListener('dragover', e => { e.preventDefault(); treePane.classList.add('drag-over'); });
