@@ -1,6 +1,12 @@
 import { TreeNode, FolderNode, FileNode, FileObj } from './types';
-import { allFiles, openFolders, searchQ, setAllFiles, addOpenFolder, removeOpenFolder, $, shadowRoot } from './state';
+import { state, $ } from './state';
 import { updateStats } from './uploader';
+
+export let cachedTree: FolderNode | null = null;
+
+export function invalidateTreeCache(): void {
+  cachedTree = null;
+}
 
 export function buildTree(files: FileObj[]): FolderNode {
   const root: FolderNode = { isFolder: true, children: new Map(), path: '', name: '' };
@@ -47,16 +53,57 @@ export function formatSize(bytes: number): string {
 }
 
 export function highlightLabel(text: string): Node {
-  if (!searchQ) return document.createTextNode(text);
-  const idx = text.toLowerCase().indexOf(searchQ);
+  if (!state.searchQ) return document.createTextNode(text);
+  const idx = text.toLowerCase().indexOf(state.searchQ);
   if (idx < 0) return document.createTextNode(text);
   const span = document.createElement('span');
   span.appendChild(document.createTextNode(text.slice(0, idx)));
   const mark = document.createElement('mark');
-  mark.textContent = text.slice(idx, idx + searchQ.length);
+  mark.textContent = text.slice(idx, idx + state.searchQ.length);
   span.appendChild(mark);
-  span.appendChild(document.createTextNode(text.slice(idx + searchQ.length)));
+  span.appendChild(document.createTextNode(text.slice(idx + state.searchQ.length)));
   return span;
+}
+
+export function hasMatchingDescendant(node: TreeNode, query: string): boolean {
+  if (!node.isFolder) {
+    return node.path.toLowerCase().includes(query);
+  }
+  if (node.path.toLowerCase().includes(query)) return true;
+  for (const child of node.children.values()) {
+    if (hasMatchingDescendant(child, query)) return true;
+  }
+  return false;
+}
+
+export function findNodeByPath(root: FolderNode | null, path: string): TreeNode | null {
+  if (!root) return null;
+  if (path === '') return root;
+  const parts = path.split('/');
+  let cur: TreeNode = root;
+  for (const part of parts) {
+    if (!cur.isFolder) return null;
+    const next = cur.children.get(part);
+    if (!next) return null;
+    cur = next;
+  }
+  return cur;
+}
+
+export function updateParentCheckboxes(path: string) {
+  let currentPath = path;
+  while (currentPath.includes('/')) {
+    currentPath = currentPath.slice(0, currentPath.lastIndexOf('/'));
+    const parentCb = state.shadowRoot?.querySelector(`input[data-path="${window.CSS.escape(currentPath)}"][data-type="cb"]`) as HTMLInputElement | null;
+    if (parentCb) {
+      const parentNode = findNodeByPath(cachedTree, currentPath);
+      if (parentNode) {
+        const checkVal = nodeCheckState(parentNode);
+        parentCb.checked = checkVal === 1;
+        parentCb.indeterminate = checkVal === 0.5;
+      }
+    }
+  }
 }
 
 export function renderTree(): void {
@@ -65,11 +112,11 @@ export function renderTree(): void {
   if (!treePane || !treeList) return;
 
   const scrollTop = treePane.scrollTop;
-  const activeEl = shadowRoot?.activeElement as HTMLElement | null;
+  const activeEl = state.shadowRoot?.activeElement as HTMLElement | null;
   const activePath = activeEl?.getAttribute('data-path');
   const activeType = activeEl?.getAttribute('data-type');
 
-  if (!allFiles.length) {
+  if (!state.allFiles.length) {
     treePane.classList.add('cu-empty');
     treeList.innerHTML = '';
     updateStats();
@@ -77,9 +124,11 @@ export function renderTree(): void {
   }
 
   treePane.classList.remove('cu-empty');
-  const tree = buildTree(allFiles);
+  if (!cachedTree) {
+    cachedTree = buildTree(state.allFiles);
+  }
   const frag = document.createDocumentFragment();
-  renderChildren(tree, frag);
+  renderChildren(cachedTree, frag);
   treeList.innerHTML = '';
   treeList.appendChild(frag);
   updateStats();
@@ -88,9 +137,9 @@ export function renderTree(): void {
   treePane.scrollTop = scrollTop;
 
   // Restore focus
-  if (activePath && activeType && shadowRoot) {
-    const selector = `[data-path="${CSS.escape(activePath)}"][data-type="${activeType}"]`;
-    const newActive = shadowRoot.querySelector(selector) as HTMLElement | null;
+  if (activePath && activeType && state.shadowRoot) {
+    const selector = `[data-path="${window.CSS.escape(activePath)}"][data-type="${activeType}"]`;
+    const newActive = state.shadowRoot.querySelector(selector) as HTMLElement | null;
     newActive?.focus();
   }
 }
@@ -101,14 +150,15 @@ export function renderChildren(node: FolderNode, container: HTMLElement | Docume
     return a.name.localeCompare(b.name);
   });
   for (const child of sorted) {
-    if (searchQ && !child.path.toLowerCase().includes(searchQ)) continue;
+    if (state.searchQ && !hasMatchingDescendant(child, state.searchQ)) continue;
     container.appendChild(child.isFolder ? renderFolder(child) : renderFile(child));
   }
 }
 
 export function renderFolder(node: FolderNode): HTMLDivElement {
   const wrap = document.createElement('div');
-  const isOpen = openFolders.has(node.path);
+  const hasMatch = state.searchQ && hasMatchingDescendant(node, state.searchQ);
+  const isOpen = state.openFolders.has(node.path) || !!hasMatch;
 
   const row = document.createElement('div');
   row.className = 'tr';
@@ -117,12 +167,24 @@ export function renderFolder(node: FolderNode): HTMLDivElement {
   cb.type = 'checkbox';
   cb.setAttribute('data-path', node.path);
   cb.setAttribute('data-type', 'cb');
-  const state = nodeCheckState(node);
-  cb.checked = state === 1;
-  cb.indeterminate = state === 0.5;
+  const stateVal = nodeCheckState(node);
+  cb.checked = stateVal === 1;
+  cb.indeterminate = stateVal === 0.5;
   cb.addEventListener('change', e => {
-    setNodeChecked(node, (e.target as HTMLInputElement).checked);
-    renderTree();
+    const isChecked = (e.target as HTMLInputElement).checked;
+    setNodeChecked(node, isChecked);
+    
+    // Update descendants in DOM directly
+    const childrenWrap = wrap.querySelector('.tr-children');
+    if (childrenWrap) {
+      const cbs = childrenWrap.querySelectorAll('input[type="checkbox"]');
+      cbs.forEach(c => {
+        (c as HTMLInputElement).checked = isChecked;
+        (c as HTMLInputElement).indeterminate = false;
+      });
+    }
+    updateParentCheckboxes(node.path);
+    updateStats();
   });
 
   const caret = document.createElement('span');
@@ -138,12 +200,27 @@ export function renderFolder(node: FolderNode): HTMLDivElement {
   label.appendChild(highlightLabel(node.name));
 
   const toggle = () => {
-    if (openFolders.has(node.path)) {
-      removeOpenFolder(node.path);
+    const isAlreadyOpen = state.openFolders.has(node.path);
+    if (isAlreadyOpen) {
+      state.openFolders.delete(node.path);
+      caret.textContent = '▸';
+      icon.textContent = '📁';
+      const childrenWrap = wrap.querySelector('.tr-children') as HTMLElement | null;
+      if (childrenWrap) childrenWrap.style.display = 'none';
     } else {
-      addOpenFolder(node.path);
+      state.openFolders.add(node.path);
+      caret.textContent = '▾';
+      icon.textContent = '📂';
+      let childrenWrap = wrap.querySelector('.tr-children') as HTMLElement | null;
+      if (!childrenWrap) {
+        childrenWrap = document.createElement('div');
+        childrenWrap.className = 'tr-children';
+        renderChildren(node, childrenWrap);
+        wrap.appendChild(childrenWrap);
+      } else {
+        childrenWrap.style.display = 'flex';
+      }
     }
-    renderTree();
   };
   caret.addEventListener('click', toggle);
   label.addEventListener('click', toggle);
@@ -171,11 +248,12 @@ export function renderFile(node: FileNode): HTMLDivElement {
   cb.checked = node.item.selected;
   cb.addEventListener('change', e => {
     node.item.selected = (e.target as HTMLInputElement).checked;
+    updateParentCheckboxes(node.item.path);
     updateStats();
   });
 
   const caret = document.createElement('span');
-  caret.className = 'caret';
+  caret.className = 'caret spacer';
 
   const icon = document.createElement('span');
   icon.className = 't-icon';
@@ -204,7 +282,8 @@ export function renderFile(node: FileNode): HTMLDivElement {
   removeBtn.textContent = '✕';
   removeBtn.addEventListener('click', e => {
     e.stopPropagation();
-    setAllFiles(allFiles.filter(f => f.path !== node.item.path));
+    state.allFiles = state.allFiles.filter(f => f.path !== node.item.path);
+    invalidateTreeCache();
     renderTree();
   });
   row.appendChild(removeBtn);

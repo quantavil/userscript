@@ -1,15 +1,17 @@
 import { FileObj, DroppedFile } from './types';
 import { TEXT_EXTS, BINARY_EXTS, TEXT_FILENAMES, SITE_SELECTORS } from './constants';
 import { settings, getIgnoreFolders, getIgnoreExts } from './settings';
-import { allFiles, setAllFiles, $ } from './state';
+import { state, $, showToast, showConfirm } from './state';
+import { formatSize, invalidateTreeCache } from './tree';
 
 export function isBinaryFile(name: string, mimeType?: string): boolean {
-  const lower = (name || '').toLowerCase();
-  const dotIdx = lower.lastIndexOf('.');
-  const ext = dotIdx > 0 ? lower.slice(dotIdx) : '';
+  const segments = (name || '').split('/');
+  const filename = segments[segments.length - 1].toLowerCase();
+  const dotIdx = filename.lastIndexOf('.');
+  const ext = dotIdx > 0 ? filename.slice(dotIdx) : '';
   if (TEXT_EXTS.has(ext)) return false;
   if (BINARY_EXTS.has(ext)) return true;
-  if (TEXT_FILENAMES.has(lower)) return false;
+  if (TEXT_FILENAMES.has(filename)) return false;
   if (mimeType) {
     if (mimeType.startsWith('text/')) return false;
     if (['application/json', 'application/xml', 'application/javascript',
@@ -25,7 +27,19 @@ export function isBinaryFile(name: string, mimeType?: string): boolean {
 
 export function shouldSkip(path: string, size: number): boolean {
   const segs = path.split('/');
-  if (settings.skipHidden && segs.some(s => s.startsWith('.'))) return true;
+  
+  if (settings.skipHidden) {
+    if (segs.slice(0, -1).some(s => s.startsWith('.'))) return true;
+    
+    const filename = segs[segs.length - 1].toLowerCase();
+    if (filename.startsWith('.')) {
+      const dotIdx = filename.lastIndexOf('.');
+      const ext = dotIdx >= 0 ? filename.slice(dotIdx) : '';
+      const isWanted = TEXT_FILENAMES.has(filename) || TEXT_EXTS.has(ext) || BINARY_EXTS.has(ext);
+      if (!isWanted) return true;
+    }
+  }
+
   if (segs.some(s => getIgnoreFolders().has(s.toLowerCase()))) return true;
 
   const name = segs[segs.length - 1].toLowerCase();
@@ -38,9 +52,9 @@ export function shouldSkip(path: string, size: number): boolean {
 }
 
 export function ingestFiles(fileObjs: DroppedFile[]): void {
-  const existingPaths = new Set(allFiles.map(f => f.path));
+  const existingPaths = new Set(state.allFiles.map(f => f.path));
   let added = 0, skipped = 0;
-  const newFiles = [...allFiles];
+  const newFiles = [...state.allFiles];
 
   for (const { file, path } of fileObjs) {
     if (shouldSkip(path, file.size)) { skipped++; continue; }
@@ -54,24 +68,24 @@ export function ingestFiles(fileObjs: DroppedFile[]): void {
     added++;
   }
 
-  if (added > 0 || newFiles.length !== allFiles.length) {
-    setAllFiles(newFiles);
+  if (added > 0 || newFiles.length !== state.allFiles.length) {
+    state.allFiles = newFiles;
+    invalidateTreeCache();
   }
   const statsEl = $('cu-stats');
-  if (skipped > 0 && added === 0 && statsEl) {
-    statsEl.textContent = `Skipped ${skipped} file(s) based on current settings. Adjust in ⚙ Settings.`;
+  if (statsEl) {
+    if (added > 0 && skipped > 0) {
+      statsEl.textContent = `Added ${added} file(s), skipped ${skipped} based on settings.`;
+    } else if (added > 0) {
+      statsEl.textContent = `Added ${added} file(s).`;
+    } else if (skipped > 0) {
+      statsEl.textContent = `Skipped ${skipped} file(s) based on settings.`;
+    }
   }
 }
 
-export function guessFenceLang(path: string): string {
-  if (!settings.fenceLangFromExt) return '';
-  const name = path.split('/').pop()?.toLowerCase() || '';
-  if (!name) return '';
-  const dotIdx = name.lastIndexOf('.');
-  return dotIdx > 0 ? name.slice(dotIdx + 1) : name;
-}
 
-export async function buildChunks(files: FileObj[]): Promise<File[]> {
+export async function buildChunks(textFiles: FileObj[], binaryFiles: FileObj[] = []): Promise<File[]> {
   const chunks: File[] = [];
   let chunkNum = 1;
   let parts: string[] = [];
@@ -85,15 +99,15 @@ export async function buildChunks(files: FileObj[]): Promise<File[]> {
     currentChars = 0;
   };
 
-  for (const { file, path } of files) {
+  for (const { file, path } of textFiles) {
     let content: string;
     try {
       content = await file.text();
     } catch (_) {
       content = `[binary or unreadable content — skipped]`;
     }
-    const lang = guessFenceLang(path);
-    const block = `## File: \`${path}\`\n\n\`\`\`${lang}\n${content}\n\`\`\`\n\n`;
+    const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase();
+    const block = `## File: \`${path}\`\n\n\`\`\`${ext}\n${content}\n\`\`\`\n\n`;
 
     if (parts.length > 0 && currentChars + block.length > settings.maxChunkChars) flush();
 
@@ -102,23 +116,28 @@ export async function buildChunks(files: FileObj[]): Promise<File[]> {
   }
   flush();
 
-  const manifest = `# Codebase Manifest\n- **Total files:** ${files.length}\n- **Chunks:** ${chunks.length}\n\n## File list\n${files.map(f => `- \`${f.path}\``).join('\n')}`;
+  const totalFiles = textFiles.length + binaryFiles.length;
+  const fileLines = [
+    ...textFiles.map(f => `- \`${f.path}\``),
+    ...binaryFiles.map(f => `- \`${f.path}\` (binary)`)
+  ];
+
+  const manifest = `# Codebase Manifest\n- **Total files:** ${totalFiles}\n- **Chunks:** ${chunks.length}\n\n## File list\n${fileLines.join('\n')}`;
   chunks.unshift(new File([manifest], 'codebase_manifest.md', { type: 'text/markdown' }));
 
   return chunks;
 }
 
 export function injectToChat(files: File[]): boolean {
-  const overlay = $('cu-overlay');
   for (const sel of SITE_SELECTORS) {
-    const el = document.querySelector(sel) as HTMLInputElement | null;
-    if (el && (!overlay || !overlay.contains(el))) {
+    const elElement = document.querySelector(sel) as HTMLInputElement | null;
+    if (elElement) {
       try {
         const dt = new DataTransfer();
         files.forEach(f => dt.items.add(f));
-        el.files = dt.files;
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('input', { bubbles: true }));
+        elElement.files = dt.files;
+        elElement.dispatchEvent(new Event('change', { bubbles: true }));
+        elElement.dispatchEvent(new Event('input', { bubbles: true }));
         return true;
       } catch (_) {}
     }
@@ -127,13 +146,11 @@ export function injectToChat(files: File[]): boolean {
 }
 
 export function downloadFiles(files: File[]): void {
-  files.forEach((f, i) => {
-    setTimeout(() => {
-      const url = URL.createObjectURL(f);
-      const a = Object.assign(document.createElement('a'), { href: url, download: f.name });
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    }, i * 120);
+  files.forEach((f) => {
+    const url = URL.createObjectURL(f);
+    const a = Object.assign(document.createElement('a'), { href: url, download: f.name });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
   });
 }
 
@@ -142,18 +159,12 @@ export function updateStats(): void {
   const chunkEstimate = $('cu-chunk-estimate');
   if (!statsEl || !chunkEstimate) return;
 
-  const active = allFiles.filter(f => f.selected);
+  const active = state.allFiles.filter(f => f.selected);
   const textActive = active.filter(f => !f.isBinary);
   const binActive = active.filter(f => f.isBinary);
   const totalBytes = active.reduce((a, f) => a + f.file.size, 0);
 
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / 1048576).toFixed(2)} MB`;
-  };
-
-  statsEl.textContent = `${active.length} / ${allFiles.length} files selected  ·  ${textActive.length} text, ${binActive.length} binary  ·  ${formatSize(totalBytes)} raw`;
+  statsEl.textContent = `${active.length} / ${state.allFiles.length} files selected  ·  ${textActive.length} text, ${binActive.length} binary  ·  ${formatSize(totalBytes)} raw`;
 
   if (!active.length) {
     chunkEstimate.textContent = '—';
@@ -168,19 +179,31 @@ export function updateStats(): void {
   chunkEstimate.className = estTotal > settings.maxChunks ? 'danger' : estTotal > settings.maxChunks * 0.7 ? 'warn' : '';
 }
 
+export function combineMarkdownFiles(files: File[]): File {
+  const parts: any[] = [];
+  files.forEach((f, idx) => {
+    if (idx > 0) parts.push('\n\n---\n\n');
+    parts.push(f);
+  });
+  return new File(parts, 'codebase_combined.md', { type: 'text/markdown' });
+}
+
 export async function run(downloadMode: boolean = false): Promise<void> {
   const statsEl = $('cu-stats');
   const fab = $('cu-fab');
   const overlay = $('cu-overlay');
 
-  const files = allFiles.filter(f => f.selected);
-  if (!files.length) return alert('Select at least one file first.');
+  const files = state.allFiles.filter(f => f.selected);
+  if (!files.length) {
+    showToast('Select at least one file first.');
+    return;
+  }
 
   const textFiles = files.filter(f => !f.isBinary);
   const binaryFiles = files.filter(f => f.isBinary);
 
   if (statsEl) statsEl.textContent = `Building chunks from ${textFiles.length} text file(s)…`;
-  const chunks = textFiles.length ? await buildChunks(textFiles) : [];
+  const chunks = (textFiles.length || binaryFiles.length) ? await buildChunks(textFiles, binaryFiles) : [];
   const rawFiles = binaryFiles.map(f => f.file);
   const allUploads = [...chunks, ...rawFiles];
 
@@ -189,32 +212,43 @@ export async function run(downloadMode: boolean = false): Promise<void> {
     return;
   }
 
+  const proceedWithDownload = () => {
+    const markdownFiles = allUploads.filter(f => f.name.endsWith('.md'));
+    const nonMarkdownFiles = allUploads.filter(f => !f.name.endsWith('.md'));
+    const downloads = markdownFiles.length ? [combineMarkdownFiles(markdownFiles), ...nonMarkdownFiles] : nonMarkdownFiles;
+    downloadFiles(downloads);
+    showToast(`Downloaded ${downloads.length} file(s).`);
+    if (statsEl) statsEl.textContent = `Downloaded ${downloads.length} file(s).`;
+  };
+
   if (allUploads.length > settings.maxChunks) {
-    if (confirm(`${allUploads.length} uploads exceeds your limit of ${settings.maxChunks}.\n\nDownload all as files instead?`)) {
-      downloadFiles(allUploads);
-      if (statsEl) statsEl.textContent = `Downloaded ${allUploads.length} file(s).`;
-    } else {
-      if (statsEl) statsEl.textContent = `Too many uploads (${allUploads.length}). Deselect some or raise the limit in ⚙ Settings.`;
-    }
+    showConfirm(
+      `${allUploads.length} uploads exceeds your limit of ${settings.maxChunks}.\n\nDownload combined files instead?`,
+      proceedWithDownload,
+      () => {
+        if (statsEl) statsEl.textContent = `Too many uploads (${allUploads.length}). Deselect some or raise the limit in ⚙ Settings.`;
+      }
+    );
     return;
   }
 
   if (downloadMode) {
-    downloadFiles(allUploads);
-    if (statsEl) statsEl.textContent = `Downloaded ${allUploads.length} file(s).`;
+    proceedWithDownload();
     return;
   }
 
   const injected = injectToChat(allUploads);
   if (injected) {
     if (overlay) overlay.classList.remove('open');
-    if (fab) {
+    if (fab && settings.showFab) {
       fab.classList.add('success');
       setTimeout(() => fab.classList.remove('success'), 2000);
     }
+    showToast(`Uploaded ${allUploads.length} item(s) successfully!`);
     if (statsEl) statsEl.textContent = `Uploaded ${allUploads.length} item(s) (${chunks.length} chunk(s) + ${rawFiles.length} raw).`;
   } else {
+    showToast('No chat input found — downloading instead.');
     if (statsEl) statsEl.textContent = 'No chat file input found — downloading instead.';
-    downloadFiles(allUploads);
+    proceedWithDownload();
   }
 }

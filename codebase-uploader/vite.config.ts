@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'Codebase Uploader (Power User Mode)',
         namespace: 'http://tampermonkey.net/',
-        version: '4.0.0',
+        version: '4.1.0',
         description: 'Fully customizable codebase uploader for AI chats. Editable limits, ignore lists, binary file support. Power-user tool.',
         author: 'quantavil',
         match: [
@@ -17,9 +17,13 @@ export default defineConfig({
           '*://arena.lmsys.org/*',
           '*://*.z.ai/*',
           '*://chatgpt.com/*',
-          '*://claude.ai/*'
+          '*://claude.ai/*',
+          '*://gemini.google.com/*',
+          '*://aistudio.google.com/*'
         ],
-        grant: 'none'
+        noframes: true,
+        'run-at': 'document-start',
+        grant: 'GM_registerMenuCommand'
       },
       build: {
         fileName: 'codebase-uploader.user.js'

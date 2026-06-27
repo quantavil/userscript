@@ -28,11 +28,6 @@ export function resetSettings(): void {
   saveSettings();
 }
 
-export function updateSettings(newSettings: Partial<Settings>): void {
-  settings = { ...settings, ...newSettings };
-  saveSettings();
-}
-
 export function getIgnoreFolders(): Set<string> {
   return new Set(settings.ignoreFolders.split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
 }
@@ -40,3 +35,7 @@ export function getIgnoreFolders(): Set<string> {
 export function getIgnoreExts(): Set<string> {
   return new Set(settings.ignoreExts.split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
 }
+
+// Load settings initially
+loadSettings();
+

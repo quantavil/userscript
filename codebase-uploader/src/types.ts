@@ -6,7 +6,7 @@ export interface Settings {
   ignoreExts: string;
   skipHidden: boolean;
   includeBinary: boolean;
-  fenceLangFromExt: boolean;
+  showFab: boolean;
 }
 
 export interface FileObj {
