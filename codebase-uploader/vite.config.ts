@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'Codebase Uploader',
         namespace: 'http://tampermonkey.net/',
-        version: '1.1.0',
+        version: '1.2.0',
         description: 'An elegant, zero-dependency userscript that packages directories and codebases for AI chats. Features smart markdown chunking, customizable ignore patterns, binary file uploads, and a premium Liquid Glass interface.',
         author: 'quantavil',
         license: 'MIT',
