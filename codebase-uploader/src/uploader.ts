@@ -42,7 +42,7 @@ export async function copyFileToClipboard(file: File): Promise<'image' | 'base64
   }
 }
 
-export function isBinaryFile(name: string): boolean {
+function isBinaryFile(name: string): boolean {
   const filename = (name || '').split('/').pop()!.toLowerCase();
   const dotIdx = filename.lastIndexOf('.');
   const ext = dotIdx > 0 ? filename.slice(dotIdx) : '';
@@ -194,15 +194,24 @@ function findChatInput(): HTMLElement | null {
   return findInShadows(chatSelectors);
 }
 
-export function injectToChat(files: File[]): boolean {
-  if (window.location.hostname.includes('qwen.ai')) {
+function dispatchDrop(target: HTMLElement, dt: DataTransfer): boolean {
+  try {
+    target.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    return true;
+  } catch (e) {
     return false;
   }
+}
+
+function injectToChat(files: File[]): boolean {
+  if (window.location.hostname.includes('qwen.ai')) return false;
 
   const dt = new DataTransfer();
   files.forEach(f => dt.items.add(f));
 
-  // 1. Try file input injection first (standard and direct)
+  // 1. Try file input injection first
   const fileInput = findFileInput();
   if (fileInput) {
     try {
@@ -215,42 +224,12 @@ export function injectToChat(files: File[]): boolean {
     }
   }
 
-  // 2. Fallback: Try dispatching a drag/drop event on the chat input container
+  // 2. Fallback: drop on chat input
   const chatInput = findChatInput();
-  if (chatInput) {
-    try {
-      // Dispatch dragenter and dragover to trigger dropzone states
-      chatInput.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
-      chatInput.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
-      
-      // Dispatch the drop event
-      const dropEvent = new DragEvent('drop', {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer: dt
-      });
-      chatInput.dispatchEvent(dropEvent);
-      return true;
-    } catch (e) {
-      console.error('[Codebase Uploader] Drop event injection failed:', e);
-    }
-  }
+  if (chatInput && dispatchDrop(chatInput, dt)) return true;
 
-  // 3. Last fallback: Dispatch drop event globally on document.body
-  try {
-    document.body.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
-    document.body.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
-    document.body.dispatchEvent(new DragEvent('drop', {
-      bubbles: true,
-      cancelable: true,
-      dataTransfer: dt
-    }));
-    return true;
-  } catch (e) {
-    console.error('[Codebase Uploader] Body drop event failed:', e);
-  }
-
-  return false;
+  // 3. Last fallback: drop on body
+  return dispatchDrop(document.body, dt);
 }
 
 function downloadFiles(files: File[]): void {
@@ -323,25 +302,21 @@ export async function run(mode: 'upload' | 'download' | 'copy' = 'upload'): Prom
   };
 
   const doCopy = async () => {
-    if (allUploads.length) {
-      if (allUploads.length > 1 && copyModalCallback) {
-        copyModalCallback(allUploads);
-        return;
-      }
-      const file = allUploads[0];
-      try {
-        const type = await copyFileToClipboard(file);
-        const msg = type === 'base64' ? 'image Base64 data URL' : file.name;
-        showToast(`Copied ${msg} to clipboard!`, 'success');
-        if (statsEl) statsEl.textContent = `Copied ${msg} to clipboard.`;
-        if (overlay) overlay.classList.remove('open');
-      } catch (err) {
-        console.error('[Codebase Uploader] Failed to copy to clipboard:', err);
-        showToast('Clipboard block — downloading files instead.', 'error');
-        doDownload();
-      }
-    } else {
-      showToast('No files to copy.', 'error');
+    if (allUploads.length > 1 && copyModalCallback) {
+      copyModalCallback(allUploads);
+      return;
+    }
+    const file = allUploads[0];
+    try {
+      const type = await copyFileToClipboard(file);
+      const msg = type === 'base64' ? 'image Base64 data URL' : file.name;
+      showToast(`Copied ${msg} to clipboard!`, 'success');
+      if (statsEl) statsEl.textContent = `Copied ${msg} to clipboard.`;
+      if (overlay) overlay.classList.remove('open');
+    } catch (err) {
+      console.error('[Codebase Uploader] Failed to copy to clipboard:', err);
+      showToast('Clipboard block — downloading files instead.', 'error');
+      doDownload();
     }
   };
 

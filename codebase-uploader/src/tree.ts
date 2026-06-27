@@ -5,7 +5,7 @@ import { icon } from './icons';
 
 let searchMatches = new Map<string, boolean>();
 
-export function buildTree(files: FileObj[]): FolderNode {
+function buildTree(files: FileObj[]): FolderNode {
   const root: FolderNode = { isFolder: true, children: new Map(), path: '', name: '' };
   for (const item of files) {
     const parts = item.path.split('/').filter(Boolean);

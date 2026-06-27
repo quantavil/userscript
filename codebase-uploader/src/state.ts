@@ -13,27 +13,14 @@ export function $<T extends HTMLElement = HTMLElement>(id: string): T | null {
   return state.shadowRoot.getElementById(id) as T | null;
 }
 
-export interface ElProps {
-  cls?: string;
-  txt?: string;
-  id?: string;
-  title?: string;
-  type?: string;
-  placeholder?: string;
-  autocomplete?: string;
-  rows?: number;
-  spellcheck?: boolean;
-  [key: string]: any;
-}
+const DOM_PROPS = new Set(['id', 'title', 'type', 'placeholder', 'autocomplete', 'rows', 'spellcheck']);
 
-export function el(tag: string, props: ElProps = {}, children: (Node | null)[] = []): HTMLElement {
+export function el(tag: string, props: Record<string, any> = {}, children: (Node | null)[] = []): HTMLElement {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
     if (k === 'cls') e.className = v;
     else if (k === 'txt') e.textContent = v;
-    else if (k === 'id' || k === 'title') (e as any)[k] = v;
-    else if (k === 'type' || k === 'placeholder' || k === 'autocomplete' || k === 'rows') (e as any)[k] = v;
-    else if (k === 'spellcheck') (e as any).spellcheck = v;
+    else if (DOM_PROPS.has(k)) (e as any)[k] = v;
     else e.setAttribute(k, v);
   }
   for (const c of children) if (c) e.appendChild(c);

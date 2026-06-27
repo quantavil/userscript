@@ -52,12 +52,12 @@ npx tsc --noEmit  # type check
 ## Structure
 ```
 src/
-  types.ts        — 33 lines
-  settings.ts     — 39 lines
-  state.ts        — 41 lines
-  constants.ts    — 456 lines (mostly CSS)
-  icons.ts        — 104 lines (SVG paths)
-  tree.ts         — 221 lines
-  uploader.ts     — 212 lines
-  index.ts        — 310 lines
+  types.ts        — 35 lines
+  settings.ts     — 38 lines
+  state.ts        — 48 lines
+  constants.ts    — 708 lines (mostly CSS)
+  icons.ts        — 86 lines (SVG paths)
+  tree.ts         — 269 lines
+  uploader.ts     — 343 lines
+  index.ts        — 588 lines
 ```

@@ -317,10 +317,7 @@ function toggleSettings() {
   const actions = $('cu-actions');
   const settingsToggle = $('cu-settings-toggle');
 
-  if (!treePane || !settingsToggle || !toolbar || !actions) return;
-
-  const shadow = state.shadowRoot;
-  if (!shadow) return;
+  if (!treePane || !settingsToggle || !toolbar || !actions || !state.shadowRoot) return;
 
   let settingsPane = $('cu-settings-pane');
   isSettingsOpen = !isSettingsOpen;

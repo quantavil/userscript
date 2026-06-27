@@ -1,5 +1,8 @@
 # ⚡ Codebase Uploader
 
+[![Version](https://img.shields.io/badge/version-1.2.0-blue)](dist/codebase-uploader.user.js)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 An elegant, zero-dependency userscript that packages directories and codebases for AI chats. Features smart markdown chunking, customizable ignore patterns, binary file uploads, and a premium Apple-inspired "Liquid Glass" interface.
 
 ---
@@ -18,6 +21,7 @@ The userscript runs on and is optimized for the following AI platforms:
 - **Mistral Chat** (`chat.mistral.ai`)
 - **Microsoft Copilot** (`copilot.microsoft.com`)
 - **Hugging Chat** (`huggingface.co/chat`)
+- **Qwen** (`qwen.ai`)
 - **Xiaomi MiMo AI Studio** (`aistudio.xiaomimimo.com`)
 - **MiniMax Agent** (`agent.minimax.io`)
 - **Groq** (`groq.com`)
@@ -32,11 +36,15 @@ The userscript runs on and is optimized for the following AI platforms:
 - **Liquid Glass Aesthetic**: Translucent frosted-glass panels, custom specular-highlight borders, soft multi-layer depth shadows, and micro-interactions.
 - **Zero Dependencies & Google Trusted Types Compatible**: Imperative DOM rendering (`createElementNS` and custom helpers) with absolutely no `innerHTML` injection, rendering cleanly on Google Gemini and Google AI Studio.
 - **Smart Directory Chunking & Oversized Splitting**: Auto-splits large codebases into size-limited markdown chunks containing code block file definitions, constructs a master `codebase_manifest.md`, and dynamically chunks individual files exceeding settings limits to prevent LLM rejection.
-- **Shadow DOM selector traversal**: Recursively crawls shadow DOM roots of AI chat platforms to locate file input elements, ensuring robust click-to-upload injection.
+- **Copy Parts Side Panel**: When copying multi-chunk output, an inline side panel displays each chunk with individual copy buttons for sequential pasting.
+- **Custom Manifest Prompt**: Prepend custom instructions to the generated `codebase_manifest.md` for targeted analysis requests.
+- **Tag Chip Editors**: Interactive tag-based editors for ignored folders and extensions — add/remove with Enter and click, replacing error-prone comma-separated lists.
+- **Shadow DOM Selector Traversal**: Recursively crawls shadow DOM roots of AI chat platforms to locate file input elements, ensuring robust click-to-upload injection.
 - **Safeguard Ingestion Limit**: Prompts the user before loading folders or drag-and-drop actions with >5,000 files to avoid browser tab crashes.
 - **O(N) Search & Debouncing**: Uses debounced input search and pre-computed O(N) matching to search large repositories instantly without freezing the UI.
-- **Local DOM Checkbox walking**: Updates checked and indeterminate states in-place by traversing parent and children DOM nodes directly, preventing full tree rebuilds and preserving scroll position.
+- **Local DOM Checkbox Walking**: Updates checked and indeterminate states in-place by traversing parent and children DOM nodes directly, preventing full tree rebuilds and preserving scroll position.
 - **Dynamic Size Helper**: Displays a live, formatted size (e.g. `(2.00 MB)`) next to the byte input in settings.
+- **Configurable Hotkey**: Customizable trigger key in settings with a dynamically updating header badge (e.g. `⌥⇧U` or `Alt+Shift+X`).
 - **OS-Aware Hotkeys**: Automatically adapts modifier labels (`⌥⇧` on macOS, `Alt+Shift+` on Windows/Linux) and keyboard handlers based on the host operating system.
 - **Color-Coded File Tree**: Distinct, high-visibility Lucide-style SVG folder and file icons (amber folders, blue documents, green binary paperclips).
 
@@ -74,12 +82,13 @@ npm run dev
 
 ### Build User Script
 ```bash
-npm run build
+npm run build        # outputs dist/codebase-uploader.user.js
+npx tsc --noEmit     # type check
 ```
-This outputs the ready-to-use userscript file at `dist/codebase-uploader.user.js`.
 
 ---
 
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
