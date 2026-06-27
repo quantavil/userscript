@@ -1,7 +1,7 @@
 {
   "name": "codebase-uploader",
   "private": true,
-  "version": "4.0.0",
+  "version": "1.0.0",
   "author": "quantavil (https://github.com/quantavil)",
   "homepage": "https://github.com/quantavil/userscript",
   "description": "Fully customizable codebase uploader for AI chats. Editable limits, ignore lists, binary file support. Power-user tool.",

@@ -1,12 +1,7 @@
 import { TreeNode, FolderNode, FileNode, FileObj } from './types';
 import { state, $ } from './state';
 import { updateStats } from './uploader';
-
-export let cachedTree: FolderNode | null = null;
-
-export function invalidateTreeCache(): void {
-  cachedTree = null;
-}
+import { icon } from './icons';
 
 export function buildTree(files: FileObj[]): FolderNode {
   const root: FolderNode = { isFolder: true, children: new Map(), path: '', name: '' };
@@ -30,7 +25,7 @@ export function buildTree(files: FileObj[]): FolderNode {
   return root;
 }
 
-export function nodeCheckState(node: TreeNode): number {
+function nodeCheckState(node: TreeNode): number {
   if (!node.isFolder) return node.item.selected ? 1 : 0;
   const vals = [...node.children.values()].map(nodeCheckState);
   if (!vals.length) return 0;
@@ -38,72 +33,36 @@ export function nodeCheckState(node: TreeNode): number {
   return sum === vals.length ? 1 : sum === 0 ? 0 : 0.5;
 }
 
-export function setNodeChecked(node: TreeNode, val: boolean): void {
-  if (!node.isFolder) {
-    node.item.selected = val;
-    return;
-  }
+function setNodeChecked(node: TreeNode, val: boolean): void {
+  if (!node.isFolder) { node.item.selected = val; return; }
   for (const c of node.children.values()) setNodeChecked(c, val);
 }
 
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1048576).toFixed(2)} MB`;
 }
 
-export function highlightLabel(text: string): Node {
+function highlightLabel(text: string): Node {
   if (!state.searchQ) return document.createTextNode(text);
   const idx = text.toLowerCase().indexOf(state.searchQ);
   if (idx < 0) return document.createTextNode(text);
   const span = document.createElement('span');
-  span.appendChild(document.createTextNode(text.slice(0, idx)));
+  span.append(text.slice(0, idx));
   const mark = document.createElement('mark');
   mark.textContent = text.slice(idx, idx + state.searchQ.length);
-  span.appendChild(mark);
-  span.appendChild(document.createTextNode(text.slice(idx + state.searchQ.length)));
+  span.append(mark, text.slice(idx + state.searchQ.length));
   return span;
 }
 
-export function hasMatchingDescendant(node: TreeNode, query: string): boolean {
-  if (!node.isFolder) {
-    return node.path.toLowerCase().includes(query);
-  }
+function hasMatchingDescendant(node: TreeNode, query: string): boolean {
+  if (!node.isFolder) return node.path.toLowerCase().includes(query);
   if (node.path.toLowerCase().includes(query)) return true;
   for (const child of node.children.values()) {
     if (hasMatchingDescendant(child, query)) return true;
   }
   return false;
-}
-
-export function findNodeByPath(root: FolderNode | null, path: string): TreeNode | null {
-  if (!root) return null;
-  if (path === '') return root;
-  const parts = path.split('/');
-  let cur: TreeNode = root;
-  for (const part of parts) {
-    if (!cur.isFolder) return null;
-    const next = cur.children.get(part);
-    if (!next) return null;
-    cur = next;
-  }
-  return cur;
-}
-
-export function updateParentCheckboxes(path: string) {
-  let currentPath = path;
-  while (currentPath.includes('/')) {
-    currentPath = currentPath.slice(0, currentPath.lastIndexOf('/'));
-    const parentCb = state.shadowRoot?.querySelector(`input[data-path="${window.CSS.escape(currentPath)}"][data-type="cb"]`) as HTMLInputElement | null;
-    if (parentCb) {
-      const parentNode = findNodeByPath(cachedTree, currentPath);
-      if (parentNode) {
-        const checkVal = nodeCheckState(parentNode);
-        parentCb.checked = checkVal === 1;
-        parentCb.indeterminate = checkVal === 0.5;
-      }
-    }
-  }
 }
 
 export function renderTree(): void {
@@ -112,39 +71,25 @@ export function renderTree(): void {
   if (!treePane || !treeList) return;
 
   const scrollTop = treePane.scrollTop;
-  const activeEl = state.shadowRoot?.activeElement as HTMLElement | null;
-  const activePath = activeEl?.getAttribute('data-path');
-  const activeType = activeEl?.getAttribute('data-type');
 
   if (!state.allFiles.length) {
     treePane.classList.add('cu-empty');
-    treeList.innerHTML = '';
+    treeList.textContent = '';
     updateStats();
     return;
   }
 
   treePane.classList.remove('cu-empty');
-  if (!cachedTree) {
-    cachedTree = buildTree(state.allFiles);
-  }
+  const tree = buildTree(state.allFiles);
   const frag = document.createDocumentFragment();
-  renderChildren(cachedTree, frag);
-  treeList.innerHTML = '';
+  renderChildren(tree, frag);
+  treeList.textContent = '';
   treeList.appendChild(frag);
   updateStats();
-
-  // Restore scroll
   treePane.scrollTop = scrollTop;
-
-  // Restore focus
-  if (activePath && activeType && state.shadowRoot) {
-    const selector = `[data-path="${window.CSS.escape(activePath)}"][data-type="${activeType}"]`;
-    const newActive = state.shadowRoot.querySelector(selector) as HTMLElement | null;
-    newActive?.focus();
-  }
 }
 
-export function renderChildren(node: FolderNode, container: HTMLElement | DocumentFragment): void {
+function renderChildren(node: FolderNode, container: HTMLElement | DocumentFragment): void {
   const sorted = [...node.children.values()].sort((a, b) => {
     if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
     return a.name.localeCompare(b.name);
@@ -155,7 +100,7 @@ export function renderChildren(node: FolderNode, container: HTMLElement | Docume
   }
 }
 
-export function renderFolder(node: FolderNode): HTMLDivElement {
+function renderFolder(node: FolderNode): HTMLDivElement {
   const wrap = document.createElement('div');
   const hasMatch = state.searchQ && hasMatchingDescendant(node, state.searchQ);
   const isOpen = state.openFolders.has(node.path) || !!hasMatch;
@@ -165,67 +110,38 @@ export function renderFolder(node: FolderNode): HTMLDivElement {
 
   const cb = document.createElement('input');
   cb.type = 'checkbox';
-  cb.setAttribute('data-path', node.path);
-  cb.setAttribute('data-type', 'cb');
   const stateVal = nodeCheckState(node);
   cb.checked = stateVal === 1;
   cb.indeterminate = stateVal === 0.5;
   cb.addEventListener('change', e => {
-    const isChecked = (e.target as HTMLInputElement).checked;
-    setNodeChecked(node, isChecked);
-    
-    // Update descendants in DOM directly
-    const childrenWrap = wrap.querySelector('.tr-children');
-    if (childrenWrap) {
-      const cbs = childrenWrap.querySelectorAll('input[type="checkbox"]');
-      cbs.forEach(c => {
-        (c as HTMLInputElement).checked = isChecked;
-        (c as HTMLInputElement).indeterminate = false;
-      });
-    }
-    updateParentCheckboxes(node.path);
-    updateStats();
+    setNodeChecked(node, (e.target as HTMLInputElement).checked);
+    renderTree();
   });
 
   const caret = document.createElement('span');
   caret.className = 'caret';
-  caret.textContent = isOpen ? '▾' : '▸';
+  caret.appendChild(icon(isOpen ? 'chevronDown' : 'chevronRight', 14));
 
-  const icon = document.createElement('span');
-  icon.className = 't-icon';
-  icon.textContent = isOpen ? '📂' : '📁';
+  const iconEl = document.createElement('span');
+  iconEl.className = `t-icon ${isOpen ? 'folderOpen' : 'folder'}`;
+  iconEl.appendChild(icon(isOpen ? 'folderOpen' : 'folder', 17));
 
   const label = document.createElement('span');
   label.className = 't-label';
   label.appendChild(highlightLabel(node.name));
 
   const toggle = () => {
-    const isAlreadyOpen = state.openFolders.has(node.path);
-    if (isAlreadyOpen) {
+    if (state.openFolders.has(node.path)) {
       state.openFolders.delete(node.path);
-      caret.textContent = '▸';
-      icon.textContent = '📁';
-      const childrenWrap = wrap.querySelector('.tr-children') as HTMLElement | null;
-      if (childrenWrap) childrenWrap.style.display = 'none';
     } else {
       state.openFolders.add(node.path);
-      caret.textContent = '▾';
-      icon.textContent = '📂';
-      let childrenWrap = wrap.querySelector('.tr-children') as HTMLElement | null;
-      if (!childrenWrap) {
-        childrenWrap = document.createElement('div');
-        childrenWrap.className = 'tr-children';
-        renderChildren(node, childrenWrap);
-        wrap.appendChild(childrenWrap);
-      } else {
-        childrenWrap.style.display = 'flex';
-      }
     }
+    renderTree();
   };
   caret.addEventListener('click', toggle);
   label.addEventListener('click', toggle);
 
-  row.append(cb, caret, icon, label);
+  row.append(cb, caret, iconEl, label);
   wrap.appendChild(row);
 
   if (isOpen) {
@@ -237,27 +153,24 @@ export function renderFolder(node: FolderNode): HTMLDivElement {
   return wrap;
 }
 
-export function renderFile(node: FileNode): HTMLDivElement {
+function renderFile(node: FileNode): HTMLDivElement {
   const row = document.createElement('div');
   row.className = 'tr';
 
   const cb = document.createElement('input');
   cb.type = 'checkbox';
-  cb.setAttribute('data-path', node.item.path);
-  cb.setAttribute('data-type', 'cb');
   cb.checked = node.item.selected;
   cb.addEventListener('change', e => {
     node.item.selected = (e.target as HTMLInputElement).checked;
-    updateParentCheckboxes(node.item.path);
-    updateStats();
+    renderTree();
   });
 
-  const caret = document.createElement('span');
-  caret.className = 'caret spacer';
+  const spacer = document.createElement('span');
+  spacer.className = 'caret spacer';
 
-  const icon = document.createElement('span');
-  icon.className = 't-icon';
-  icon.textContent = node.item.isBinary ? '📎' : '📄';
+  const iconEl = document.createElement('span');
+  iconEl.className = `t-icon ${node.item.isBinary ? 'bin' : 'file'}`;
+  iconEl.appendChild(icon(node.item.isBinary ? 'paperclip' : 'file', 16));
 
   const label = document.createElement('span');
   label.className = 't-label';
@@ -268,22 +181,21 @@ export function renderFile(node: FileNode): HTMLDivElement {
   size.className = 't-size';
   size.textContent = formatSize(node.item.file.size);
 
+  row.append(cb, spacer, iconEl, label, size);
+
   if (node.item.isBinary) {
     const badge = document.createElement('span');
     badge.className = 't-badge bin';
     badge.textContent = 'raw';
-    row.append(cb, caret, icon, label, size, badge);
-  } else {
-    row.append(cb, caret, icon, label, size);
+    row.appendChild(badge);
   }
 
   const removeBtn = document.createElement('span');
   removeBtn.className = 't-remove';
-  removeBtn.textContent = '✕';
+  removeBtn.appendChild(icon('x', 13));
   removeBtn.addEventListener('click', e => {
     e.stopPropagation();
     state.allFiles = state.allFiles.filter(f => f.path !== node.item.path);
-    invalidateTreeCache();
     renderTree();
   });
   row.appendChild(removeBtn);

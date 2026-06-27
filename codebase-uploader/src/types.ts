@@ -6,7 +6,8 @@ export interface Settings {
   ignoreExts: string;
   skipHidden: boolean;
   includeBinary: boolean;
-  showFab: boolean;
+  customPrompt: string;
+  shortcutKey: string;
 }
 
 export interface FileObj {

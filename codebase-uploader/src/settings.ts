@@ -36,6 +36,4 @@ export function getIgnoreExts(): Set<string> {
   return new Set(settings.ignoreExts.split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
 }
 
-// Load settings initially
 loadSettings();
-

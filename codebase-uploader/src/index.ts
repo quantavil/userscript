@@ -2,18 +2,18 @@ declare function GM_registerMenuCommand(name: string, callback: () => void): voi
 
 import { STYLESHEET } from './constants';
 import { state, $, el, showToast } from './state';
-import { renderTree, invalidateTreeCache } from './tree';
+import { renderTree } from './tree';
 import { ingestFiles, run } from './uploader';
 import { DroppedFile } from './types';
-import { settings, saveSettings } from './settings';
+import { settings, saveSettings, resetSettings } from './settings';
+import { icon } from './icons';
 
-let $host: HTMLDivElement;
 let isOpen = false;
 let isSettingsOpen = false;
 
-// --- Modal open/close ---
+// ─── Open / Close ───
 
-function openModal() {
+function openPanel() {
   isOpen = true;
   const overlay = $('cu-overlay');
   if (overlay) {
@@ -22,7 +22,15 @@ function openModal() {
   }
 }
 
-// --- Folder picking ---
+function closePanel() {
+  isOpen = false;
+  const overlay = $('cu-overlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+function togglePanel() { isOpen ? closePanel() : openPanel(); }
+
+// ─── Folder picking ───
 
 function pickFolder() {
   const input = document.createElement('input');
@@ -39,13 +47,7 @@ function pickFolder() {
   input.click();
 }
 
-function closeModal() {
-  isOpen = false;
-  const overlay = $('cu-overlay');
-  if (overlay) overlay.classList.remove('open');
-}
-
-// --- Drag & Drop ---
+// ─── Drag & Drop ───
 
 async function handleDrop(e: DragEvent, treePane: Element) {
   e.preventDefault();
@@ -72,191 +74,339 @@ async function handleDrop(e: DragEvent, treePane: Element) {
   renderTree();
 }
 
-// --- Settings UI controller ---
+// ─── Tag Editor Component (Imperative, Trusted Types Safe) ───
 
-function renderSettingsPane() {
+function buildTagEditor(initialValue: string, onUpdate: (val: string) => void): HTMLElement {
+  const container = el('div', { cls: 'cu-tag-editor' });
+  const chips = el('div', { cls: 'cu-chips' });
+  const input = el('input', { cls: 'cu-chip-input', type: 'text', placeholder: 'Add tag + Enter...' }) as HTMLInputElement;
+
+  let tags = initialValue.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+  const renderChips = () => {
+    chips.textContent = '';
+    tags.forEach(tag => {
+      const chip = el('div', { cls: 'cu-chip', txt: tag });
+      const remove = el('span', { cls: 'cu-chip-x' });
+      remove.appendChild(icon('x', 10));
+      remove.addEventListener('click', () => {
+        tags = tags.filter(t => t !== tag);
+        onUpdate(tags.join(','));
+        renderChips();
+      });
+      chip.appendChild(remove);
+      chips.appendChild(chip);
+    });
+  };
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = input.value.trim().toLowerCase();
+      if (val && !tags.includes(val)) {
+        tags.push(val);
+        onUpdate(tags.join(','));
+        renderChips();
+      }
+      input.value = '';
+    }
+  });
+
+  renderChips();
+  container.append(chips, input);
+  return container;
+}
+
+// ─── Update Shortcut Hint ───
+
+function updateShortcutHint() {
+  const hint = $('cu-kbd-hint');
+  if (hint) {
+    const key = (settings.shortcutKey || 'u').toUpperCase();
+    hint.textContent = `⌥⇧${key}`;
+  }
+}
+
+// ─── Settings Panel Controller ───
+
+function buildSettingsPane(): HTMLElement {
+  const pane = el('div', { id: 'cu-settings-pane' });
+
+  // Section 1: Limits & Hotkey
+  pane.appendChild(el('div', { cls: 'cu-setting-section', txt: 'Limits & Shortcut' }));
+  
+  const limitRow = el('div', { cls: 'cu-setting-row' }, [
+    el('label', { txt: 'Max uploads / chunks' }),
+    el('input', { id: 'cu-set-maxChunks', type: 'number', value: String(settings.maxChunks) }),
+  ]);
+  limitRow.querySelector('input')?.addEventListener('change', e => {
+    settings.maxChunks = Number((e.target as HTMLInputElement).value) || settings.maxChunks;
+    saveSettings();
+  });
+
+  const sizeRow = el('div', { cls: 'cu-setting-row' }, [
+    el('label', { txt: 'Max file size (bytes)' }),
+    el('input', { id: 'cu-set-maxFileBytes', type: 'number', value: String(settings.maxFileBytes) }),
+  ]);
+  sizeRow.querySelector('input')?.addEventListener('change', e => {
+    settings.maxFileBytes = Number((e.target as HTMLInputElement).value) || settings.maxFileBytes;
+    saveSettings();
+  });
+
+  const charRow = el('div', { cls: 'cu-setting-row' }, [
+    el('label', { txt: 'Max characters per chunk' }),
+    el('input', { id: 'cu-set-maxChunkChars', type: 'number', value: String(settings.maxChunkChars) }),
+  ]);
+  charRow.querySelector('input')?.addEventListener('change', e => {
+    settings.maxChunkChars = Number((e.target as HTMLInputElement).value) || settings.maxChunkChars;
+    saveSettings();
+  });
+
+  const shortcutRow = el('div', { cls: 'cu-setting-row' }, [
+    el('label', { txt: 'Hotkey Letter (Alt+Shift+Key)' }),
+    el('input', { id: 'cu-set-shortcutKey', type: 'text', value: settings.shortcutKey || 'u', maxLength: 1 }),
+  ]);
+  shortcutRow.querySelector('input')?.addEventListener('input', e => {
+    const val = (e.target as HTMLInputElement).value.trim().toLowerCase();
+    settings.shortcutKey = val || 'u';
+    saveSettings();
+    updateShortcutHint();
+  });
+
+  // Group inputs inline side-by-side (two items per grid row)
+  const limitsGrid1 = el('div', { cls: 'cu-setting-grid' }, [limitRow, sizeRow]);
+  const limitsGrid2 = el('div', { cls: 'cu-setting-grid' }, [charRow, shortcutRow]);
+
+  pane.append(limitsGrid1, limitsGrid2);
+
+  // Section 2: Filtering & Ingestion
+  pane.appendChild(el('div', { cls: 'cu-setting-section', txt: 'Ignored Folders & Extensions' }));
+
+  const folderLabel = el('label', { txt: 'Ignored folders' });
+  const folderEditor = buildTagEditor(settings.ignoreFolders, val => {
+    settings.ignoreFolders = val;
+    saveSettings();
+  });
+  const extLabel = el('label', { txt: 'Ignored extensions' });
+  const extEditor = buildTagEditor(settings.ignoreExts, val => {
+    settings.ignoreExts = val;
+    saveSettings();
+  });
+
+  pane.append(
+    el('div', { cls: 'cu-setting-row' }, [folderLabel, folderEditor]),
+    el('div', { cls: 'cu-setting-row' }, [extLabel, extEditor])
+  );
+
+  // Section 3: Options
+  pane.appendChild(el('div', { cls: 'cu-setting-section', txt: 'Inclusion Options' }));
+
+  const skipHiddenRow = el('div', { cls: 'cu-setting-row row-cb' }, [
+    el('input', { id: 'cu-set-skipHidden', type: 'checkbox' }),
+    el('label', { txt: 'Skip hidden files & folders' }),
+  ]);
+  const skipHiddenCb = skipHiddenRow.querySelector('input') as HTMLInputElement;
+  skipHiddenCb.checked = settings.skipHidden;
+  skipHiddenCb.addEventListener('change', () => {
+    settings.skipHidden = skipHiddenCb.checked;
+    saveSettings();
+  });
+
+  const includeBinRow = el('div', { cls: 'cu-setting-row row-cb' }, [
+    el('input', { id: 'cu-set-includeBinary', type: 'checkbox' }),
+    el('label', { txt: 'Include binary files' }),
+  ]);
+  const includeBinCb = includeBinRow.querySelector('input') as HTMLInputElement;
+  includeBinCb.checked = settings.includeBinary;
+  includeBinCb.addEventListener('change', () => {
+    settings.includeBinary = includeBinCb.checked;
+    saveSettings();
+  });
+
+  // Group checkboxes inline side-by-side
+  const optionsGrid = el('div', { cls: 'cu-setting-grid-cb' }, [skipHiddenRow, includeBinRow]);
+  pane.appendChild(optionsGrid);
+
+  // Section 4: Custom Manifest Prompt
+  pane.appendChild(el('div', { cls: 'cu-setting-section', txt: 'Custom Manifest Prompt' }));
+
+  const promptRow = el('div', { cls: 'cu-setting-row' }, [
+    el('label', { txt: 'Instructions prepended to manifest' }),
+    el('textarea', { id: 'cu-set-customPrompt', placeholder: 'e.g. Please analyze this codebase for memory leaks...', rows: 3 }),
+  ]);
+  const promptTextarea = promptRow.querySelector('textarea') as HTMLTextAreaElement;
+  promptTextarea.value = settings.customPrompt || '';
+  promptTextarea.addEventListener('change', () => {
+    settings.customPrompt = promptTextarea.value;
+    saveSettings();
+  });
+
+  pane.appendChild(promptRow);
+
+  // Reset Button
+  const resetBtn = el('button', { cls: 'cu-reset-btn', txt: 'Reset to Defaults' });
+  resetBtn.addEventListener('click', () => {
+    if (confirm('Are you sure you want to reset all settings to defaults?')) {
+      resetSettings();
+      updateShortcutHint();
+      const parent = pane.parentElement;
+      if (parent) {
+        pane.remove();
+        const newPane = buildSettingsPane();
+        newPane.classList.add('open');
+        parent.insertBefore(newPane, $('cu-footer'));
+      }
+      showToast('Settings reset to defaults.');
+    }
+  });
+  pane.appendChild(el('div', { cls: 'cu-settings-footer' }, [resetBtn]));
+
+  return pane;
+}
+
+function toggleSettings() {
   const treePane = $('cu-tree-pane');
   const toolbar = $('cu-toolbar');
-  const subbar = $('cu-subbar');
-  const settingsPane = $('cu-settings-pane');
+  const actions = $('cu-actions');
   const settingsToggle = $('cu-settings-toggle');
 
-  if (!treePane || !settingsPane || !settingsToggle || !toolbar || !subbar) return;
+  if (!treePane || !settingsToggle || !toolbar || !actions) return;
+
+  const shadow = state.shadowRoot;
+  if (!shadow) return;
+
+  let settingsPane = $('cu-settings-pane');
+  isSettingsOpen = !isSettingsOpen;
 
   if (isSettingsOpen) {
+    if (!settingsPane) {
+      settingsPane = buildSettingsPane();
+      const footer = $('cu-footer');
+      if (footer) footer.parentElement?.insertBefore(settingsPane, footer);
+    }
+    
     treePane.style.display = 'none';
     toolbar.style.display = 'none';
-    subbar.style.display = 'none';
-    settingsPane.style.display = 'flex';
-    settingsToggle.textContent = '📁';
+    actions.style.display = 'none';
+    settingsPane.classList.add('open');
+    settingsToggle.textContent = '';
+    settingsToggle.appendChild(icon('arrowLeft', 16));
     settingsToggle.title = 'Back to Files';
-
-    ($('cu-set-max-chunks') as HTMLInputElement).value = String(settings.maxChunks);
-    ($('cu-set-max-file-bytes') as HTMLInputElement).value = String(settings.maxFileBytes);
-    ($('cu-set-max-chunk-chars') as HTMLInputElement).value = String(settings.maxChunkChars);
-    ($('cu-set-ignore-folders') as HTMLInputElement).value = settings.ignoreFolders;
-    ($('cu-set-ignore-exts') as HTMLInputElement).value = settings.ignoreExts;
-    ($('cu-set-skip-hidden') as HTMLInputElement).checked = settings.skipHidden;
-    ($('cu-set-include-binary') as HTMLInputElement).checked = settings.includeBinary;
-    ($('cu-set-show-fab') as HTMLInputElement).checked = settings.showFab;
   } else {
     treePane.style.display = 'block';
     toolbar.style.display = 'flex';
-    subbar.style.display = 'flex';
-    settingsPane.style.display = 'none';
-    settingsToggle.textContent = '⚙';
+    actions.style.display = 'flex';
+    if (settingsPane) settingsPane.classList.remove('open');
+    settingsToggle.textContent = '';
+    settingsToggle.appendChild(icon('settings', 16));
     settingsToggle.title = 'Settings';
-
-    settings.maxChunks = Number(($('cu-set-max-chunks') as HTMLInputElement).value) || 10;
-    settings.maxFileBytes = Number(($('cu-set-max-file-bytes') as HTMLInputElement).value) || 2000000;
-    settings.maxChunkChars = Number(($('cu-set-max-chunk-chars') as HTMLInputElement).value) || 480000;
-    settings.ignoreFolders = ($('cu-set-ignore-folders') as HTMLInputElement).value;
-    settings.ignoreExts = ($('cu-set-ignore-exts') as HTMLInputElement).value;
-    settings.skipHidden = ($('cu-set-skip-hidden') as HTMLInputElement).checked;
-    settings.includeBinary = ($('cu-set-include-binary') as HTMLInputElement).checked;
-    settings.showFab = ($('cu-set-show-fab') as HTMLInputElement).checked;
-    saveSettings();
-
-    const fab = $('cu-fab');
-    if (fab) fab.style.display = settings.showFab ? 'flex' : 'none';
-
-    invalidateTreeCache();
     renderTree();
   }
 }
 
-// --- Build UI (programmatic, no innerHTML — bypasses Trusted Types on Google sites) ---
+// ─── Build UI (imperative DOM ── no innerHTML for Google Trusted Types) ───
 
 function buildUI() {
   if (document.getElementById('codebase-uploader-root')) return;
 
-  $host = document.createElement('div');
+  const $host = document.createElement('div');
   $host.id = 'codebase-uploader-root';
   $host.style.cssText = 'all:initial;position:fixed!important;top:0;left:0;width:0;height:0;z-index:2147483647!important;pointer-events:none;';
-  
-  // Use open shadow DOM
+
   const shadow = $host.attachShadow({ mode: 'open' });
   state.shadowRoot = shadow;
 
-  // Inject STYLESHEET
   const style = document.createElement('style');
   style.textContent = STYLESHEET;
   shadow.appendChild(style);
 
-  // FAB
-  const fab = el('button', { id: 'cu-fab', title: 'Codebase Uploader', txt: '📂' });
-  fab.style.display = settings.showFab ? 'flex' : 'none';
-  shadow.appendChild(fab);
+  // ── Header ──
+  const closeBtn = el('button', { cls: 'cu-icon-btn', id: 'cu-close', title: 'Close (Esc)' });
+  closeBtn.appendChild(icon('x', 16));
 
-  // Overlay + Modal
-  const closeBtn = el('button', { cls: 'cu-icon-btn', id: 'cu-close', title: 'Close', txt: '✕' });
-  const settingsToggleBtn = el('button', { cls: 'cu-icon-btn', id: 'cu-settings-toggle', title: 'Settings', txt: '⚙' });
-  const clearBtn = el('button', { cls: 'cu-btn cu-btn-sm cu-btn-danger', id: 'cu-clear', txt: 'Clear' });
+  const settingsBtn = el('button', { cls: 'cu-icon-btn', id: 'cu-settings-toggle', title: 'Settings' });
+  settingsBtn.appendChild(icon('settings', 16));
+
+  const kbdHint = el('span', { id: 'cu-kbd-hint', cls: 'cu-kbd', txt: '⌥⇧U' });
   const header = el('div', { id: 'cu-header' }, [
-    el('h3', { txt: '⚡ Codebase Uploader' }), clearBtn, settingsToggleBtn, closeBtn
+    el('h3', { txt: 'Codebase Uploader' }),
+    kbdHint,
+    settingsBtn,
+    closeBtn,
   ]);
 
-  const searchInput = el('input', { id: 'cu-search', type: 'text', placeholder: '🔍  Filter files…', autocomplete: 'off', spellcheck: false }) as HTMLInputElement;
-  const addFolderBtn = el('button', { cls: 'cu-btn cu-btn-sm', id: 'cu-add-folder', txt: '📁 Add Folder' });
+  // ── Toolbar ──
+  const searchInput = el('input', { id: 'cu-search', type: 'text', placeholder: 'Filter files…', autocomplete: 'off', spellcheck: false }) as HTMLInputElement;
+  const addFolderBtn = el('button', { cls: 'cu-btn', id: 'cu-add-folder', txt: ' Folder' });
+  addFolderBtn.insertBefore(icon('plus', 14), addFolderBtn.firstChild);
   const toolbar = el('div', { id: 'cu-toolbar' }, [searchInput, addFolderBtn]);
 
-  const selAll = el('button', { cls: 'cu-btn cu-btn-sm', id: 'cu-sel-all', txt: '✔ All' });
-  const selNone = el('button', { cls: 'cu-btn cu-btn-sm', id: 'cu-sel-none', txt: '✗ None' });
-  const selText = el('button', { cls: 'cu-btn cu-btn-sm', id: 'cu-sel-text', txt: '📝 Text only' });
-  const selBin = el('button', { cls: 'cu-btn cu-btn-sm', id: 'cu-sel-bin', txt: '📎 Binary only' });
-  const expandAll = el('button', { cls: 'cu-btn cu-btn-sm', id: 'cu-expand-all', txt: '▾ Expand' });
-  const collapseAll = el('button', { cls: 'cu-btn cu-btn-sm', id: 'cu-collapse-all', txt: '▸ Collapse' });
-  const subbar = el('div', { id: 'cu-subbar' }, [selAll, selNone, selText, selBin, expandAll, collapseAll]);
+  // ── Action Bar (grouped buttons) ──
+  const selAll = el('button', { cls: 'cu-btn', txt: 'All' });
+  const selNone = el('button', { cls: 'cu-btn', txt: 'None' });
+  const selectionGroup = el('div', { cls: 'cu-action-group' }, [selAll, selNone]);
 
-  const dropzoneBtn = el('button', { cls: 'cu-btn cu-btn-primary', id: 'cu-dropzone-btn', txt: 'Choose Folder' });
+  const expandAll = el('button', { cls: 'cu-btn', txt: 'Expand' });
+  const collapseAll = el('button', { cls: 'cu-btn', txt: 'Collapse' });
+  const viewGroup = el('div', { cls: 'cu-action-group' }, [expandAll, collapseAll]);
+
+  const clearBtn = el('button', { cls: 'cu-btn cu-btn-danger', id: 'cu-clear', txt: 'Clear' });
+
+  const actions = el('div', { id: 'cu-actions' }, [selectionGroup, viewGroup, clearBtn]);
+
+  // ── Tree ──
+  const dropzoneBtn = el('button', { cls: 'cu-btn cu-btn-primary', txt: 'Choose Folder' });
+  const dropIcon = icon('folderOpen', 48);
+  dropIcon.setAttribute('class', 'cu-drop-icon');
+
   const dropzone = el('div', { id: 'cu-dropzone' }, [
-    el('div', { cls: 'icon', txt: '📂' }),
-    el('strong', { txt: 'Add a folder to get started' }),
-    el('div', { cls: 'hint', txt: 'Drag & drop a folder here, or click below. Text files → markdown chunks; binary files → raw attachments.' }),
-    dropzoneBtn
+    dropIcon,
+    el('strong', { txt: 'Drop a folder or click below' }),
+    el('div', { cls: 'hint', txt: 'Text → markdown chunks · Binary → raw attachments' }),
+    dropzoneBtn,
   ]);
   const treeList = el('div', { id: 'cu-tree-list' });
   const treePane = el('div', { id: 'cu-tree-pane', cls: 'cu-empty' }, [dropzone, treeList]);
 
-  // Settings Panel Inputs
-  const settingsPane = el('div', { id: 'cu-settings-pane' }, [
-    el('div', { cls: 'cu-setting-row' }, [
-      el('label', { txt: 'Max Chunks / Uploads Limit' }),
-      el('input', { id: 'cu-set-max-chunks', type: 'number' })
-    ]),
-    el('div', { cls: 'cu-setting-row' }, [
-      el('label', { txt: 'Max File Size (Bytes)' }),
-      el('input', { id: 'cu-set-max-file-bytes', type: 'number' })
-    ]),
-    el('div', { cls: 'cu-setting-row' }, [
-      el('label', { txt: 'Max Characters Per Chunk' }),
-      el('input', { id: 'cu-set-max-chunk-chars', type: 'number' })
-    ]),
-    el('div', { cls: 'cu-setting-row' }, [
-      el('label', { txt: 'Ignore Folders (comma-separated)' }),
-      el('input', { id: 'cu-set-ignore-folders', type: 'text' })
-    ]),
-    el('div', { cls: 'cu-setting-row' }, [
-      el('label', { txt: 'Ignore Extensions (comma-separated)' }),
-      el('input', { id: 'cu-set-ignore-exts', type: 'text' })
-    ]),
-    el('div', { cls: 'cu-setting-row row-cb' }, [
-      el('input', { id: 'cu-set-skip-hidden', type: 'checkbox' }),
-      el('label', { txt: 'Skip hidden files & folders' })
-    ]),
-    el('div', { cls: 'cu-setting-row row-cb' }, [
-      el('input', { id: 'cu-set-include-binary', type: 'checkbox' }),
-      el('label', { txt: 'Include binary files' })
-    ]),
-    el('div', { cls: 'cu-setting-row row-cb' }, [
-      el('input', { id: 'cu-set-show-fab', type: 'checkbox' }),
-      el('label', { txt: 'Show Floating Action Button (FAB)' })
-    ])
-  ]);
-
-  const stats = el('div', { id: 'cu-stats', txt: 'No files selected.' });
+  // ── Footer ──
+  const stats = el('div', { id: 'cu-stats', txt: 'No files loaded.' });
   const chunkEstimate = el('div', { id: 'cu-chunk-estimate', txt: '—' });
-  const downloadBtn = el('button', { cls: 'cu-btn cu-btn-sm', id: 'cu-download-btn', txt: '⬇ Download' });
-  const uploadBtn = el('button', { cls: 'cu-btn cu-btn-sm cu-btn-primary', id: 'cu-upload-btn', txt: '⚡ Upload' });
+  
+  const downloadBtn = el('button', { cls: 'cu-btn', id: 'cu-download-btn', txt: ' Download' });
+  downloadBtn.insertBefore(icon('download', 14), downloadBtn.firstChild);
+
+  const uploadBtn = el('button', { cls: 'cu-btn cu-btn-primary', id: 'cu-upload-btn', txt: ' Upload' });
+  uploadBtn.insertBefore(icon('zap', 14), uploadBtn.firstChild);
+
   const footer = el('div', { id: 'cu-footer' }, [stats, chunkEstimate, downloadBtn, uploadBtn]);
 
-  const modal = el('div', { id: 'cu-modal' }, [header, toolbar, subbar, treePane, settingsPane, footer]);
-  const overlay = el('div', { id: 'cu-overlay', role: 'dialog', 'aria-modal': 'true' }, [modal]);
+  // ── Assemble ──
+  const panel = el('div', { id: 'cu-panel' }, [header, toolbar, actions, treePane, footer]);
+  const overlay = el('div', { id: 'cu-overlay', role: 'dialog', 'aria-modal': 'true' }, [panel]);
   shadow.appendChild(overlay);
 
   document.documentElement.appendChild($host);
 
-  // --- Event listeners ---
-  fab.addEventListener('click', openModal);
-  closeBtn.addEventListener('click', closeModal);
-  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+  // ─── Events ───
+  closeBtn.addEventListener('click', closePanel);
+  overlay.addEventListener('click', e => { if (e.target === overlay) closePanel(); });
 
-  // Custom Double-click Clear Confirmation
+  // Clear with double-tap confirm
   let clearTimer: any = null;
   clearBtn.addEventListener('click', () => {
     if (clearBtn.textContent === 'Clear') {
       clearBtn.textContent = 'Confirm?';
-      clearBtn.classList.add('confirm-state');
-      clearTimer = setTimeout(() => {
-        clearBtn.textContent = 'Clear';
-        clearBtn.classList.remove('confirm-state');
-      }, 3000);
+      clearTimer = setTimeout(() => { clearBtn.textContent = 'Clear'; }, 2500);
     } else {
       clearTimeout(clearTimer);
       clearBtn.textContent = 'Clear';
-      clearBtn.classList.remove('confirm-state');
       state.allFiles = [];
-      invalidateTreeCache();
       renderTree();
-      showToast('Cleared codebase ingestion.');
+      showToast('Cleared.');
     }
   });
 
-  settingsToggleBtn.addEventListener('click', () => {
-    isSettingsOpen = !isSettingsOpen;
-    renderSettingsPane();
-  });
-
+  settingsBtn.addEventListener('click', toggleSettings);
   addFolderBtn.addEventListener('click', pickFolder);
   dropzoneBtn.addEventListener('click', pickFolder);
 
@@ -267,8 +417,6 @@ function buildUI() {
 
   selAll.addEventListener('click', () => { state.allFiles.forEach(f => (f.selected = true)); renderTree(); });
   selNone.addEventListener('click', () => { state.allFiles.forEach(f => (f.selected = false)); renderTree(); });
-  selText.addEventListener('click', () => { state.allFiles.forEach(f => (f.selected = !f.isBinary)); renderTree(); });
-  selBin.addEventListener('click', () => { state.allFiles.forEach(f => (f.selected = f.isBinary)); renderTree(); });
 
   expandAll.addEventListener('click', () => {
     state.allFiles.forEach(f => {
@@ -286,34 +434,31 @@ function buildUI() {
   uploadBtn.addEventListener('click', () => run(false));
   downloadBtn.addEventListener('click', () => run(true));
 
+  // Drag & drop
   treePane.addEventListener('dragover', e => { e.preventDefault(); treePane.classList.add('drag-over'); });
   treePane.addEventListener('dragleave', () => treePane.classList.remove('drag-over'));
   treePane.addEventListener('drop', e => handleDrop(e as DragEvent, treePane));
 
-  if (isOpen) openModal();
+  if (isOpen) openPanel();
+  updateShortcutHint();
+
+  // Re-attach if removed by SPA navigation
+  new MutationObserver(() => {
+    if (!document.getElementById('codebase-uploader-root')) buildUI();
+  }).observe(document.documentElement, { childList: true });
 }
 
-function toggleFab() {
-  settings.showFab = !settings.showFab;
-  saveSettings();
-  const fab = $('cu-fab');
-  if (fab) {
-    fab.style.display = settings.showFab ? 'flex' : 'none';
-  }
-}
-
-// --- Init ---
+// ─── Init ───
 buildUI();
 
-window.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
-
-new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
-    for (const node of mutation.removedNodes) {
-      if (node === $host || (node instanceof HTMLElement && node.id === 'codebase-uploader-root')) { buildUI(); return; }
-    }
+// Keyboard: Alt+Shift+Shortcut (e.g. Alt+Shift+U) to toggle, Escape to close
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && isOpen) { closePanel(); e.preventDefault(); }
+  const targetKey = (settings.shortcutKey || 'u').toLowerCase();
+  if (e.altKey && e.shiftKey && e.key.toLowerCase() === targetKey) {
+    togglePanel();
+    e.preventDefault();
   }
-}).observe(document.documentElement, { childList: true });
+});
 
-GM_registerMenuCommand('📂 Toggle Codebase Uploader', () => { isOpen ? closeModal() : openModal(); });
-GM_registerMenuCommand('⚙ Toggle Floating Button (FAB)', toggleFab);
+GM_registerMenuCommand('📂 Toggle Codebase Uploader', togglePanel);
