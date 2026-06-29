@@ -11,6 +11,7 @@ export default defineConfig({
         version: '1.0.0',
         description: 'Advanced filtering and on-thumbnail stats/badges for Babepedia list pages with dynamic progress scraper and responsive Apple Glassmorphic UI.',
         author: 'quantavil',
+        license: 'MIT',
         match: [
           'https://www.babepedia.com/*',
           'https://babepedia.com/*'
