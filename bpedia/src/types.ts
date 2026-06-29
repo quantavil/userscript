@@ -39,7 +39,6 @@ export interface BadgeSettings {
   showAge: boolean;
   showCupBoobs: boolean;
   showCountry: boolean;
-  enabled: boolean;
 }
 
 export interface FilterSettings {

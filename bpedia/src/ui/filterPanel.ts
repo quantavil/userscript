@@ -1,11 +1,11 @@
 import { Cache } from '../cache';
 import { FilterSettings, BadgeSettings, PerformerProfile } from '../types';
 import { Badges } from './badges';
+import { icon } from './icons';
+import { extractPerformerName } from '../parser';
 
 let filterFab: HTMLButtonElement | null = null;
-let settingsFab: HTMLButtonElement | null = null;
 let filterDrawer: HTMLDivElement | null = null;
-let settingsDrawer: HTMLDivElement | null = null;
 let backdrop: HTMLDivElement | null = null;
 let activeFiltersCountEl: HTMLSpanElement | null = null;
 let statusLineEl: HTMLDivElement | null = null;
@@ -38,47 +38,38 @@ export const FilterPanel = {
   },
 
   createFABs(): void {
-    settingsFab = document.createElement('button');
-    settingsFab.id = 'bp-settings-fab';
-    settingsFab.className = 'bp-fab';
-    settingsFab.title = 'Userscript Settings';
-    settingsFab.innerHTML = `
-      <svg viewBox="0 0 24 24">
-        <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-      </svg>
-    `;
-    document.body.appendChild(settingsFab);
-
     filterFab = document.createElement('button');
     filterFab.id = 'bp-filter-fab';
     filterFab.className = 'bp-fab';
     filterFab.title = 'Filter Performers';
-    filterFab.innerHTML = `
-      <svg viewBox="0 0 24 24">
-        <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/>
-      </svg>
-      <span class="bp-fab-badge" style="display:none;">0</span>
-    `;
+    filterFab.appendChild(icon('filter', 24));
+
+    const badge = document.createElement('span');
+    badge.className = 'bp-fab-badge';
+    badge.style.display = 'none';
+    badge.textContent = '0';
+    filterFab.appendChild(badge);
+
     document.body.appendChild(filterFab);
-    activeFiltersCountEl = filterFab.querySelector('.bp-fab-badge');
+    activeFiltersCountEl = badge;
   },
 
   createDrawers(onFilterChange: () => void): void {
-    // ── Filter Drawer ──
+    // ── Single Combined Filter & Settings Drawer ──
     filterDrawer = document.createElement('div');
     filterDrawer.id = 'bp-filter-drawer';
     filterDrawer.className = 'bp-drawer';
     filterDrawer.innerHTML = `
       <div class="bp-drawer-header">
-        <h3>Babepedia Filter</h3>
-        <button class="bp-close-btn" title="Close Panel">
-          <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
+        <h3 id="bp-drawer-title">Babepedia Filter</h3>
+        <div class="bp-header-actions">
+          <button id="bp-drawer-settings-toggle" class="bp-icon-btn" title="Settings"></button>
+          <button class="bp-close-btn" title="Close Panel"></button>
+        </div>
       </div>
-      <div class="bp-drawer-body">
+      
+      <!-- Filters View -->
+      <div id="bp-filters-view" class="bp-drawer-body">
         <!-- Status Line -->
         <div id="bp-status-line" class="bp-status-line" style="display:none;"></div>
 
@@ -183,36 +174,12 @@ export const FilterPanel = {
           <button id="bp-reset-filters-btn" class="bp-btn-reset">Reset All Filters</button>
         </div>
       </div>
-    `;
-    document.body.appendChild(filterDrawer);
 
-    statusLineEl = filterDrawer.querySelector('#bp-status-line');
-
-    // ── Settings Drawer ──
-    settingsDrawer = document.createElement('div');
-    settingsDrawer.id = 'bp-settings-drawer';
-    settingsDrawer.className = 'bp-drawer';
-    settingsDrawer.innerHTML = `
-      <div class="bp-drawer-header">
-        <h3>Userscript Settings</h3>
-        <button class="bp-close-btn" title="Close Panel">
-          <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-      <div class="bp-drawer-body">
+      <!-- Settings View -->
+      <div id="bp-settings-view" class="bp-drawer-body" style="display:none;">
         <div class="bp-section">
           <div class="bp-section-title">Badge Configuration</div>
 
-          <div class="bp-switch-row">
-            <label>Enable Badges</label>
-            <label class="bp-switch">
-              <input type="checkbox" id="bp-sett-enabled" checked />
-              <span class="bp-switch-slider"></span>
-            </label>
-          </div>
           <div class="bp-switch-row">
             <label>Show Age</label>
             <label class="bp-switch">
@@ -236,6 +203,16 @@ export const FilterPanel = {
           </div>
         </div>
 
+        <!-- Import / Export Section -->
+        <div class="bp-section">
+          <div class="bp-section-title">Backup & Sync</div>
+          <div style="display:flex; gap:8px;">
+            <button id="bp-export-btn" class="bp-btn-reset" style="flex:1;">Export JSON</button>
+            <button id="bp-import-btn" class="bp-btn-reset" style="flex:1;">Import JSON</button>
+          </div>
+          <input type="file" id="bp-import-file" accept=".json" style="display:none;" />
+        </div>
+
         <div class="bp-section">
           <div class="bp-section-title">Database Utilities</div>
           <button id="bp-clear-profiles-btn" class="bp-btn-danger">Clear Cached Profiles</button>
@@ -243,23 +220,30 @@ export const FilterPanel = {
         </div>
       </div>
     `;
-    document.body.appendChild(settingsDrawer);
+    document.body.appendChild(filterDrawer);
+
+    // Programmatically append header icons (Trusted Types safe)
+    const settingsBtn = filterDrawer.querySelector('#bp-drawer-settings-toggle');
+    if (settingsBtn) settingsBtn.appendChild(icon('settings', 20));
+    
+    const closeBtn = filterDrawer.querySelector('.bp-close-btn');
+    if (closeBtn) closeBtn.appendChild(icon('x', 20));
+
+    statusLineEl = filterDrawer.querySelector('#bp-status-line');
   },
 
   setupEvents(onFilterChange: () => void): void {
-    if (!filterFab || !settingsFab || !filterDrawer || !settingsDrawer || !backdrop) return;
+    if (!filterFab || !filterDrawer || !backdrop) return;
 
-    const openDrawer = (drawer: HTMLDivElement, fab: HTMLButtonElement) => {
-      drawer.classList.add('open');
-      fab.classList.add('active');
+    const openDrawer = () => {
+      filterDrawer!.classList.add('open');
+      filterFab!.classList.add('active');
       backdrop!.classList.add('active');
     };
 
     const closeAll = () => {
       filterDrawer?.classList.remove('open');
       filterFab?.classList.remove('active');
-      settingsDrawer?.classList.remove('open');
-      settingsFab?.classList.remove('active');
       backdrop?.classList.remove('active');
     };
 
@@ -267,22 +251,41 @@ export const FilterPanel = {
     filterFab.addEventListener('click', () => {
       const isOpen = filterDrawer!.classList.contains('open');
       closeAll();
-      if (!isOpen) openDrawer(filterDrawer!, filterFab!);
-    });
-
-    // Toggle Settings Drawer
-    settingsFab.addEventListener('click', () => {
-      const isOpen = settingsDrawer!.classList.contains('open');
-      closeAll();
-      if (!isOpen) openDrawer(settingsDrawer!, settingsFab!);
+      if (!isOpen) openDrawer();
     });
 
     // Close on backdrop click
     backdrop.addEventListener('click', closeAll);
 
-    // Close buttons
+    // Close button
     filterDrawer.querySelector('.bp-close-btn')?.addEventListener('click', closeAll);
-    settingsDrawer.querySelector('.bp-close-btn')?.addEventListener('click', closeAll);
+
+    // ── Drawer view toggling (Filters <=> Settings) ──
+    const settingsToggle = document.getElementById('bp-drawer-settings-toggle');
+    const filtersView = document.getElementById('bp-filters-view');
+    const settingsView = document.getElementById('bp-settings-view');
+    const drawerTitle = document.getElementById('bp-drawer-title');
+
+    settingsToggle?.addEventListener('click', () => {
+      const isSettingsVisible = settingsView?.style.display !== 'none';
+      if (isSettingsVisible) {
+        // Switch to Filters
+        if (settingsView) settingsView.style.display = 'none';
+        if (filtersView) filtersView.style.display = 'block';
+        if (drawerTitle) drawerTitle.textContent = 'Babepedia Filter';
+        settingsToggle.title = 'Settings';
+        settingsToggle.textContent = '';
+        settingsToggle.appendChild(icon('settings', 20));
+      } else {
+        // Switch to Settings
+        if (settingsView) settingsView.style.display = 'block';
+        if (filtersView) filtersView.style.display = 'none';
+        if (drawerTitle) drawerTitle.textContent = 'Userscript Settings';
+        settingsToggle.title = 'Back to Filters';
+        settingsToggle.textContent = '';
+        settingsToggle.appendChild(icon('back', 20));
+      }
+    });
 
     // ── Sliders validation min/max boundaries (Bug 11) ──
     const minAgeEl = document.getElementById('bp-min-age') as HTMLInputElement;
@@ -344,11 +347,10 @@ export const FilterPanel = {
     this.setupSegmented('#bp-profession-segment', onFilterChange);
 
     // ── Badge toggles ──
-    const badgeToggles = ['bp-sett-enabled', 'bp-sett-age', 'bp-sett-cup-boobs', 'bp-sett-country'];
+    const badgeToggles = ['bp-sett-age', 'bp-sett-cup-boobs', 'bp-sett-country'];
     badgeToggles.forEach((id) => {
       document.getElementById(id)?.addEventListener('change', () => {
         const badgeSettings: BadgeSettings = {
-          enabled: (document.getElementById('bp-sett-enabled') as HTMLInputElement).checked,
           showAge: (document.getElementById('bp-sett-age') as HTMLInputElement).checked,
           showCupBoobs: (document.getElementById('bp-sett-cup-boobs') as HTMLInputElement).checked,
           showCountry: (document.getElementById('bp-sett-country') as HTMLInputElement).checked
@@ -356,6 +358,47 @@ export const FilterPanel = {
         Cache.setBadgeSettings(badgeSettings);
         onFilterChange();
       });
+    });
+
+    // ── Export JSON ──
+    document.getElementById('bp-export-btn')?.addEventListener('click', () => {
+      try {
+        const jsonString = Cache.exportData();
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `bpedia-filter-backup.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert('Failed to export data: ' + err);
+      }
+    });
+
+    // ── Import JSON ──
+    const importFileEl = document.getElementById('bp-import-file') as HTMLInputElement | null;
+    document.getElementById('bp-import-btn')?.addEventListener('click', () => {
+      importFileEl?.click();
+    });
+
+    importFileEl?.addEventListener('change', (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        if (Cache.importData(content)) {
+          alert('Data imported successfully! Reloading page...');
+          location.reload();
+        } else {
+          alert('Failed to import data. Please check if the file format is valid.');
+        }
+      };
+      reader.readAsText(file);
     });
 
     // ── Reset Filters ──
@@ -465,7 +508,6 @@ export const FilterPanel = {
       const el = document.getElementById(id) as HTMLInputElement;
       if (el) el.checked = val;
     };
-    setChk('bp-sett-enabled', b.enabled);
     setChk('bp-sett-age', b.showAge);
     setChk('bp-sett-cup-boobs', b.showCupBoobs);
     setChk('bp-sett-country', b.showCountry);
@@ -572,7 +614,8 @@ export const FilterPanel = {
     // Toggle badge CSS visibility flags once on parent container (Bug 7 - Avoid thrashing)
     const thumbsContainer = document.getElementById('thumbs');
     if (thumbsContainer) {
-      thumbsContainer.classList.toggle('bp-hide-badges', !badgeSettings.enabled);
+      const hideAll = !badgeSettings.showAge && !badgeSettings.showCupBoobs && !badgeSettings.showCountry;
+      thumbsContainer.classList.toggle('bp-hide-badges', hideAll);
       thumbsContainer.classList.toggle('bp-hide-age', !badgeSettings.showAge);
       thumbsContainer.classList.toggle('bp-hide-cup-boobs', !badgeSettings.showCupBoobs);
       thumbsContainer.classList.toggle('bp-hide-country', !badgeSettings.showCountry);
@@ -604,11 +647,7 @@ export const FilterPanel = {
 
         // Bug 2: Name search fallback extraction must read ONLY name, avoiding badge text Pollution
         if (filters.searchQuery) {
-          const textEl = el.querySelector('.thumbtext');
-          const cleanName = textEl 
-            ? (textEl.textContent || '').replace(/^#\d+:\s*/, '').trim() 
-            : (anchor.getAttribute('title') || '').trim();
-
+          const cleanName = extractPerformerName(el, anchor);
           el.style.display = cleanName.toLowerCase().includes(filters.searchQuery.toLowerCase()) ? '' : 'none';
         } else {
           el.style.display = '';

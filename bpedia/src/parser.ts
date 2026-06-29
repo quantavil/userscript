@@ -186,3 +186,23 @@ export function parseProfileHtml(html: string, url: string, name: string): Perfo
 
   return profile;
 }
+
+export function extractPerformerName(thumb: HTMLElement, anchor?: HTMLAnchorElement | null): string {
+  const a = anchor || thumb.querySelector('a');
+  const url = a?.getAttribute('href') || '';
+  let name = '';
+  const textLink = thumb.querySelector('.thumbtext a');
+  if (textLink) {
+    name = textLink.textContent?.trim() || '';
+  } else {
+    const textEl = thumb.querySelector('.thumbtext');
+    if (textEl) {
+      const rawText = textEl.textContent || '';
+      const colonIdx = rawText.indexOf(':');
+      name = colonIdx !== -1 ? rawText.substring(colonIdx + 1).trim() : rawText.trim();
+    } else {
+      name = a?.getAttribute('title')?.trim() || url.split('/').pop()?.replace(/_/g, ' ') || '';
+    }
+  }
+  return name.replace(/^#\d+:\s*/, '').trim();
+}

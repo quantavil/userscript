@@ -9,8 +9,7 @@ let filterSettingsTimeout: ReturnType<typeof setTimeout> | null = null;
 const DEFAULT_BADGE_SETTINGS: BadgeSettings = {
   showAge: true,
   showCupBoobs: true,
-  showCountry: true,
-  enabled: true
+  showCountry: true
 };
 
 const DEFAULT_FILTER_SETTINGS: FilterSettings = {
@@ -100,6 +99,71 @@ export const Cache = {
       GM_deleteValue(key);
     });
     console.log('[BP Filter] Cleared all storage');
+  },
+
+  exportData(): string {
+    const allKeys = GM_listValues();
+    const data: {
+      version: string;
+      exportedAt: number;
+      settings: Record<string, any>;
+      profiles: Record<string, any>;
+    } = {
+      version: '1.0.0',
+      exportedAt: Date.now(),
+      settings: {},
+      profiles: {}
+    };
+
+    allKeys.forEach((key: string) => {
+      if (key.startsWith(PROFILE_PREFIX)) {
+        const clean = key.substring(PROFILE_PREFIX.length);
+        const val = GM_getValue<string | null>(key, null);
+        if (val) {
+          try {
+            data.profiles[clean] = JSON.parse(val);
+          } catch {}
+        }
+      } else if (key === BADGE_SETTINGS_KEY || key === FILTER_SETTINGS_KEY) {
+        const val = GM_getValue<string | null>(key, null);
+        if (val) {
+          try {
+            data.settings[key] = JSON.parse(val);
+          } catch {}
+        }
+      }
+    });
+
+    return JSON.stringify(data, null, 2);
+  },
+
+  importData(jsonString: string): boolean {
+    try {
+      const data = JSON.parse(jsonString);
+      if (!data || typeof data !== 'object') return false;
+
+      // Import profiles
+      if (data.profiles && typeof data.profiles === 'object') {
+        Object.entries(data.profiles).forEach(([cleanUrl, profile]) => {
+          const key = PROFILE_PREFIX + cleanUrl;
+          GM_setValue(key, JSON.stringify(profile));
+        });
+      }
+
+      // Import settings
+      if (data.settings && typeof data.settings === 'object') {
+        Object.entries(data.settings).forEach(([key, val]) => {
+          if (key === BADGE_SETTINGS_KEY || key === FILTER_SETTINGS_KEY) {
+            GM_setValue(key, JSON.stringify(val));
+          }
+        });
+      }
+
+      return true;
+    } catch (e) {
+      console.error('[BP Cache] Import failed:', e);
+      return false;
+    }
   }
 };
 

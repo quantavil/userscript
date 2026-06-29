@@ -152,12 +152,8 @@ body.lightsoff {
   fill: var(--bp-accent);
 }
 
-#bp-settings-fab {
-  bottom: 20px;
-}
-
 #bp-filter-fab {
-  bottom: 82px;
+  bottom: 20px;
 }
 
 /* Badge Indicator on FAB */
@@ -216,6 +212,35 @@ body.lightsoff {
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.5px;
+}
+
+.bp-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bp-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--bp-text);
+  border-radius: 4px;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.bp-icon-btn:hover {
+  background: rgba(171, 82, 11, 0.1);
+  color: var(--bp-accent);
+}
+
+body.lightsoff .bp-icon-btn:hover {
+  background: rgba(255, 151, 60, 0.15);
+  color: var(--bp-accent);
 }
 
 .bp-close-btn {
@@ -554,11 +579,7 @@ body.lightsoff .bp-tag {
     height: 48px;
   }
 
-  #bp-settings-fab {
-    bottom: 15px;
-  }
-
   #bp-filter-fab {
-    bottom: 72px;
+    bottom: 15px;
   }
 }
