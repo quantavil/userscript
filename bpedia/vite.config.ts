@@ -33,5 +33,8 @@ export default defineConfig({
         fileName: 'bpedia-filter.user.js'
       }
     })
-  ]
+  ],
+  build: {
+    minify: false
+  }
 });

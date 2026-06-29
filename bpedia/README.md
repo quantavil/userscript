@@ -8,10 +8,10 @@ Lists on Babepedia only show names and thumbnails. This script sequentially scra
 
 ## 🌟 Key Features
 
-### 1. Dual-Drawer Interface
-- **Filters Panel**: Stacked drawer with real-time controls for age, height, boobs type (natural/implants), profession (porn star/model only), ethnicities, hair colors, eye colors, cup sizes, performance acts (solo, girl/girl, boy/girl), minimum rating, and minimum favorites.
-- **Settings Panel**: Separate drawer to customize badge configuration (enable/disable specific badge types) and clear local databases.
-- **Apple Glassmorphic Design**: Clean blur saturation backdrops, responsive mobile drawers, smooth FAB icons, iOS-style toggle switches, and automatic dark mode synchronization (respects the site's `.lightsoff` class).
+### 1. Unified Filter & Settings Panel
+- **Filters View**: Segmented drawer with real-time controls for age, height, boobs type (natural/implants), profession (porn star/model only), ethnicities, hair colors, eye colors, cup sizes, performance acts (solo, girl/girl, boy/girl), minimum rating, and minimum favorites.
+- **Settings View**: Directly accessible inside the panel header, allowing customization of badge configuration (enable/disable specific badge types), backup export/import (single JSON backup), and clearing local databases.
+- **Apple Glassmorphic Design**: Clean blur saturation backdrops, responsive mobile drawer, smooth FAB icon, iOS-style toggle switches, and automatic dark mode synchronization (respects the site's `.lightsoff` class).
 
 ### 2. High-Performance Filtering Pipeline
 - **Zero DOM Thrashing**: Corner badges are injected exactly once upon profile load and tagged via a `data-bp-badged` attribute. Show/hide states are controlled instantaneously via CSS parent class toggles on the `#thumbs` container.
@@ -19,10 +19,10 @@ Lists on Babepedia only show names and thumbnails. This script sequentially scra
 - **Coalesced Frame Updates**: Filtering passes and tag refreshes are batched per frame using `requestAnimationFrame`, preventing multiple redundant filter calculations when background fetches resolve.
 - **In-Memory Cache**: Active performer profiles are loaded into an in-memory `Map` once on load. Hot paths (like filtering on search keystrokes) read exclusively from memory.
 
-### 3. Background Scraper & AutoPager Support
-- **Throttled Scraping**: Performs background fetches sequentially with a 250ms delay to prevent IP rate-limiting, accompanied by a dynamic progress bar at the top of the viewport.
+### 3. Scraper Queue, Rate-Limit Resiliency & AutoPager Support
+- **Rate-Limit Resiliency**: Performs background fetches sequentially with a 250ms delay. If blocked or rate-limited (HTTP 429/403/503), it dynamically triggers incremental cooldowns and cycles the performer to the end of the queue, retrying up to 3 times.
 - **AutoPager Compatibility**: A `MutationObserver` watches the list container and automatically queues newly appended performer cards, dynamically updating the progress counts.
-- **Robust Parsing**: Parses complex bio formats (metric/imperial unit conversions, bracketed nationality formats, custom cup mappings, etc.) cleanly.
+- **Robust Parsing**: Parses complex bio formats (metric/imperial unit conversions, bracketed nationality formats, custom cup mappings, etc.) cleanly, extracting names robustly on pages like birthdays.
 
 ---
 
@@ -58,19 +58,19 @@ bpedia/
 ### Installation
 1. Install dependencies:
    ```bash
-   npm install
+   bun install
    ```
 2. Run development environment:
    ```bash
-   npm run dev
+   bun run dev
    ```
    *Vite will start a local server and print a link to install the development version of the script. Any changes you make will live-reload in the browser.*
 
 3. Compile production bundle:
    ```bash
-   npm run build
+   bun run build
    ```
-   *This compiles TypeScript, merges styling, packages resources, and outputs the production userscript inside the `dist/bpedia-filter.user.js` file.*
+   *This compiles TypeScript (without minification), merges styling, packages resources, and outputs the production userscript inside the `dist/bpedia-filter.user.js` file.*
 
 ---
 
