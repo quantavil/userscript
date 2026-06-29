@@ -77,13 +77,13 @@ npm install
 
 ### Dev Mode
 ```bash
-npm run dev
+bun run dev
 ```
 
 ### Build User Script
 ```bash
-npm run build        # outputs dist/codebase-uploader.user.js
-npx tsc --noEmit     # type check
+bun run build        # outputs dist/codebase-uploader.user.js
+bun tsc --noEmit     # type check
 ```
 
 ---
