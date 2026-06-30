@@ -107,7 +107,7 @@ export const Cache = {
       settings: Record<string, any>;
       profiles: Record<string, any>;
     } = {
-      version: '1.1.0',
+      version: '1.1.1',
       exportedAt: Date.now(),
       settings: {},
       profiles: {}
