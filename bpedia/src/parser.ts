@@ -55,6 +55,9 @@ export function parseProfileHtml(html: string, url: string, name: string): Perfo
   };
 
   const infoItems = doc.querySelectorAll('#personal-info-block .info-grid .info-item');
+  if (infoItems.length === 0) {
+    throw new Error('Verification failed: Personal info block is missing or empty.');
+  }
   infoItems.forEach((item) => {
     const labelEl = item.querySelector('.label');
     const valueEl = item.querySelector('.value');

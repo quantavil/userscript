@@ -75,3 +75,4 @@ bpedia/
 - Scraper retry boilerplate: onload and onerror blocks duplicated failure logic. Fix: extracted a safety-aware handleRetryOrFail helper.
 - Slider bounds listener boilerplate: repetitive min/max listener bindings. Fix: looped listener assignments over pair array.
 - Cache try/catch boilerplate: JSON parsing try/catch blocks repeated across multiple getters. Fix: extracted a safeParse utility.
+- Corrupted blank cache: truncated HTML loads or Cloudflare challenge pages got cached as valid blank profiles. Fix: throw verification error in parser if info block is missing.
