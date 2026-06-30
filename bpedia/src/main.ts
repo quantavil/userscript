@@ -78,6 +78,7 @@ function processThumbshot(thumb: HTMLElement): void {
   if (!url) return;
 
   const name = extractPerformerName(thumb, anchor);
+  thumb.setAttribute('data-bp-name', name);
 
   // Check cache first
   const cached = Cache.getProfile(url);
@@ -98,6 +99,32 @@ function startQueueProcessor(): void {
 
   ProgressBar.show();
   ProgressBar.update(scrapedCount, totalToScrape);
+  processNextQueueItem();
+}
+
+function handleRetryOrFail(item: QueueItem, isRetryable: boolean, errorMsg: string): void {
+  scrapeQueue.shift();
+  if (isRetryable) {
+    consecutiveFailures++;
+    console.warn(errorMsg);
+    const retries = itemRetries.get(item.url) || 0;
+    if (retries < MAX_RETRIES) {
+      itemRetries.set(item.url, retries + 1);
+      scrapeQueue.push(item);
+    } else {
+      console.error(`[BP] Max retries reached for ${item.name}. Skipping.`);
+      queuedUrls.delete(item.url);
+      itemRetries.delete(item.url);
+      scrapedCount++;
+      ProgressBar.update(scrapedCount, totalToScrape);
+    }
+  } else {
+    console.warn(errorMsg);
+    queuedUrls.delete(item.url);
+    itemRetries.delete(item.url);
+    scrapedCount++;
+    ProgressBar.update(scrapedCount, totalToScrape);
+  }
   processNextQueueItem();
 }
 
@@ -146,54 +173,20 @@ function processNextQueueItem(): void {
           } catch (e) {
             console.error(`[BP] Parse error for ${item.name}:`, e);
           }
+          itemRetries.delete(item.url);
           scrapeQueue.shift();
           queuedUrls.delete(item.url);
           scrapedCount++;
           ProgressBar.update(scrapedCount, totalToScrape);
           processNextQueueItem();
         } else if (response.status === 429 || response.status === 503 || response.status === 403) {
-          consecutiveFailures++;
-          const retries = itemRetries.get(item.url) || 0;
-          console.warn(`[BP] Rate limited or blocked (${response.status}) for ${item.name}. Retry ${retries + 1}/${MAX_RETRIES}`);
-
-          if (retries < MAX_RETRIES) {
-            itemRetries.set(item.url, retries + 1);
-            // Move item to the end of the queue
-            scrapeQueue.shift();
-            scrapeQueue.push(item);
-            processNextQueueItem();
-          } else {
-            console.error(`[BP] Max retries reached for ${item.name}. Skipping.`);
-            scrapeQueue.shift();
-            queuedUrls.delete(item.url);
-            scrapedCount++;
-            ProgressBar.update(scrapedCount, totalToScrape);
-            processNextQueueItem();
-          }
+          handleRetryOrFail(item, true, `[BP] Rate limited or blocked (${response.status}) for ${item.name}.`);
         } else {
-          console.warn(`[BP] Fetch failed for ${item.name}: ${response.status}`);
-          scrapeQueue.shift();
-          queuedUrls.delete(item.url);
-          scrapedCount++;
-          ProgressBar.update(scrapedCount, totalToScrape);
-          processNextQueueItem();
+          handleRetryOrFail(item, false, `[BP] Fetch failed for ${item.name}: ${response.status}`);
         }
       },
       onerror: (err: any) => {
-        consecutiveFailures++;
-        console.error(`[BP] Network error for ${item.name}:`, err);
-        const retries = itemRetries.get(item.url) || 0;
-        if (retries < MAX_RETRIES) {
-          itemRetries.set(item.url, retries + 1);
-          scrapeQueue.shift();
-          scrapeQueue.push(item);
-        } else {
-          scrapeQueue.shift();
-          queuedUrls.delete(item.url);
-          scrapedCount++;
-          ProgressBar.update(scrapedCount, totalToScrape);
-        }
-        processNextQueueItem();
+        handleRetryOrFail(item, true, `[BP] Network error for ${item.name}: ${err}`);
       }
     });
   }, currentDelay);

@@ -5,6 +5,7 @@ const PROFILE_PREFIX = 'bprof_';
 const BADGE_SETTINGS_KEY = 'badge_settings';
 const FILTER_SETTINGS_KEY = 'filter_settings';
 let filterSettingsTimeout: ReturnType<typeof setTimeout> | null = null;
+let inMemoryFilterSettings: FilterSettings | null = null;
 
 const DEFAULT_BADGE_SETTINGS: BadgeSettings = {
   showAge: true,
@@ -29,16 +30,20 @@ const DEFAULT_FILTER_SETTINGS: FilterSettings = {
   searchQuery: ''
 };
 
+const safeParse = <T>(json: string | null, fallback: T): T => {
+  if (!json) return fallback;
+  try {
+    return JSON.parse(json) as T;
+  } catch {
+    return fallback;
+  }
+};
+
 export const Cache = {
   getProfile(url: string): PerformerProfile | null {
     const key = PROFILE_PREFIX + cleanUrl(url);
     const stored = GM_getValue<string | null>(key, null);
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored) as PerformerProfile;
-    } catch {
-      return null;
-    }
+    return safeParse<PerformerProfile | null>(stored, null);
   },
 
   setProfile(url: string, profile: PerformerProfile): void {
@@ -48,12 +53,7 @@ export const Cache = {
 
   getBadgeSettings(): BadgeSettings {
     const stored = GM_getValue<string | null>(BADGE_SETTINGS_KEY, null);
-    if (!stored) return DEFAULT_BADGE_SETTINGS;
-    try {
-      return { ...DEFAULT_BADGE_SETTINGS, ...JSON.parse(stored) };
-    } catch {
-      return DEFAULT_BADGE_SETTINGS;
-    }
+    return { ...DEFAULT_BADGE_SETTINGS, ...safeParse<Partial<BadgeSettings>>(stored, {}) };
   },
 
   setBadgeSettings(settings: BadgeSettings): void {
@@ -61,16 +61,14 @@ export const Cache = {
   },
 
   getFilterSettings(): FilterSettings {
+    if (inMemoryFilterSettings) return inMemoryFilterSettings;
     const stored = GM_getValue<string | null>(FILTER_SETTINGS_KEY, null);
-    if (!stored) return DEFAULT_FILTER_SETTINGS;
-    try {
-      return { ...DEFAULT_FILTER_SETTINGS, ...JSON.parse(stored) };
-    } catch {
-      return DEFAULT_FILTER_SETTINGS;
-    }
+    inMemoryFilterSettings = { ...DEFAULT_FILTER_SETTINGS, ...safeParse<Partial<FilterSettings>>(stored, {}) };
+    return inMemoryFilterSettings;
   },
 
   setFilterSettings(settings: FilterSettings, debounce = false): void {
+    inMemoryFilterSettings = settings;
     if (filterSettingsTimeout) clearTimeout(filterSettingsTimeout);
     if (debounce) {
       filterSettingsTimeout = setTimeout(() => {
@@ -109,7 +107,7 @@ export const Cache = {
       settings: Record<string, any>;
       profiles: Record<string, any>;
     } = {
-      version: '1.0.0',
+      version: '1.1.0',
       exportedAt: Date.now(),
       settings: {},
       profiles: {}
@@ -155,6 +153,9 @@ export const Cache = {
         Object.entries(data.settings).forEach(([key, val]) => {
           if (key === BADGE_SETTINGS_KEY || key === FILTER_SETTINGS_KEY) {
             GM_setValue(key, JSON.stringify(val));
+            if (key === FILTER_SETTINGS_KEY) {
+              inMemoryFilterSettings = val as FilterSettings;
+            }
           }
         });
       }

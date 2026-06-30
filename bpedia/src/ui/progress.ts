@@ -29,9 +29,11 @@ export const ProgressBar = {
     const percent = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
     bar.style.width = `${percent}%`;
 
-    // Only target the filter drawer title, not the settings drawer
+    // Only target the filter drawer title, not the settings drawer, and only if settings view is not active
+    const settingsView = document.getElementById('bp-settings-view');
+    const isSettingsVisible = settingsView && settingsView.style.display !== 'none';
     const filterTitle = document.querySelector('#bp-filter-drawer .bp-drawer-header h3');
-    if (filterTitle) {
+    if (filterTitle && !isSettingsVisible) {
       filterTitle.textContent = percent < 100
         ? `Scraping (${current}/${total})`
         : 'Babepedia Filter';
@@ -45,8 +47,10 @@ export const ProgressBar = {
     fadeTimeout = setTimeout(() => {
       container?.classList.remove('active');
       if (bar) bar.style.width = '0%';
+      const settingsView = document.getElementById('bp-settings-view');
+      const isSettingsVisible = settingsView && settingsView.style.display !== 'none';
       const filterTitle = document.querySelector('#bp-filter-drawer .bp-drawer-header h3');
-      if (filterTitle) filterTitle.textContent = 'Babepedia Filter';
+      if (filterTitle && !isSettingsVisible) filterTitle.textContent = 'Babepedia Filter';
     }, 1000);
   }
 };

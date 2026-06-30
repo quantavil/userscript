@@ -571,6 +571,13 @@ body.lightsoff .bp-tag {
     width: 100vw;
     right: -100vw;
     border-left: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #fdf6f0;
+  }
+
+  body.lightsoff .bp-drawer {
+    background: #1c1a19;
   }
 
   .bp-fab {

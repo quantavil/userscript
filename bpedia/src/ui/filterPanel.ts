@@ -288,30 +288,11 @@ export const FilterPanel = {
     });
 
     // ── Sliders validation min/max boundaries (Bug 11) ──
-    const minAgeEl = document.getElementById('bp-min-age') as HTMLInputElement;
-    const maxAgeEl = document.getElementById('bp-max-age') as HTMLInputElement;
-    minAgeEl?.addEventListener('input', () => {
-      const minVal = parseInt(minAgeEl.value, 10);
-      const maxVal = parseInt(maxAgeEl.value, 10);
-      if (minVal > maxVal) maxAgeEl.value = String(minVal);
-    });
-    maxAgeEl?.addEventListener('input', () => {
-      const minVal = parseInt(minAgeEl.value, 10);
-      const maxVal = parseInt(maxAgeEl.value, 10);
-      if (maxVal < minVal) minAgeEl.value = String(maxVal);
-    });
-
-    const minHeightEl = document.getElementById('bp-min-height') as HTMLInputElement;
-    const maxHeightEl = document.getElementById('bp-max-height') as HTMLInputElement;
-    minHeightEl?.addEventListener('input', () => {
-      const minVal = parseInt(minHeightEl.value, 10);
-      const maxVal = parseInt(maxHeightEl.value, 10);
-      if (minVal > maxVal) maxHeightEl.value = String(minVal);
-    });
-    maxHeightEl?.addEventListener('input', () => {
-      const minVal = parseInt(minHeightEl.value, 10);
-      const maxVal = parseInt(maxHeightEl.value, 10);
-      if (maxVal < minVal) minHeightEl.value = String(maxVal);
+    [['bp-min-age', 'bp-max-age'], ['bp-min-height', 'bp-max-height']].forEach(([minId, maxId]) => {
+      const minEl = document.getElementById(minId) as HTMLInputElement;
+      const maxEl = document.getElementById(maxId) as HTMLInputElement;
+      minEl?.addEventListener('input', () => { if (+minEl.value > +maxEl.value) maxEl.value = minEl.value; });
+      maxEl?.addEventListener('input', () => { if (+maxEl.value < +minEl.value) minEl.value = maxEl.value; });
     });
 
     // ── Range sliders: instant feedback & debounced storage saves (Bug 8) ──
@@ -639,15 +620,13 @@ export const FilterPanel = {
 
       if (!profile) {
         // Unscraped profile
-        // Bug 1: If any active filter criteria requires stats, hide unscraped performers until loaded
-        if (nonSearchFilterActive) {
-          el.style.display = 'none';
-          return;
-        }
+        // Keep unscraped thumbnails visible until they are actually scraped and fail the criteria
+        // Dim them slightly to indicate they are loading/unscraped
+        el.style.opacity = '0.5';
 
-        // Bug 2: Name search fallback extraction must read ONLY name, avoiding badge text Pollution
+        // Read performer name from attribute to avoid costly DOM scraping on every keystroke
         if (filters.searchQuery) {
-          const cleanName = extractPerformerName(el, anchor);
+          const cleanName = el.getAttribute('data-bp-name') || extractPerformerName(el, anchor);
           el.style.display = cleanName.toLowerCase().includes(filters.searchQuery.toLowerCase()) ? '' : 'none';
         } else {
           el.style.display = '';
@@ -656,97 +635,38 @@ export const FilterPanel = {
         return;
       }
 
+      // Reset opacity for scraped profiles
+      el.style.opacity = '';
+
       // Render badges once (internally writes data-bp-badged to prevent DOM rebuild cycles)
       Badges.render(el, profile);
 
       // Apply filter conditions
-      let matches = true;
+      const q = filters.searchQuery.toLowerCase();
+      const isPornstar = profile.personal.professions.some(p => p.includes('porn star') || p.includes('pornstar'));
+      const allActs = [
+        ...profile.performances.solo,
+        ...profile.performances.girlGirl,
+        ...profile.performances.boyGirl
+      ];
 
-      // Search Query
-      if (filters.searchQuery && !profile.name.toLowerCase().includes(filters.searchQuery.toLowerCase())) {
-        matches = false;
-      }
+      const inRange = (val: number | null, min: number, max: number, active: boolean) =>
+        !active || (val !== null && val >= min && val <= max);
 
-      // Profession
-      if (matches && filters.professionFilter !== 'all') {
-        const isPornstar = profile.personal.professions.includes('Porn Star');
-        if (filters.professionFilter === 'pornstar' && !isPornstar) matches = false;
-        if (filters.professionFilter === 'non-pornstar' && isPornstar) matches = false;
-      }
-
-      // Age (Bug 1: If non-default settings set and field is null, filter it out)
-      if (matches) {
-        const isAgeFilterActive = filters.minAge > 18 || filters.maxAge < 70;
-        if (profile.personal.age !== null) {
-          if (profile.personal.age < filters.minAge || profile.personal.age > filters.maxAge) matches = false;
-        } else if (isAgeFilterActive) {
-          matches = false;
-        }
-      }
-
-      // Height (Bug 1: Filter out null height when height constraint is set)
-      if (matches) {
-        const isHeightFilterActive = filters.minHeight > 130 || filters.maxHeight < 220;
-        if (profile.body.heightCm !== null) {
-          if (profile.body.heightCm < filters.minHeight || profile.body.heightCm > filters.maxHeight) matches = false;
-        } else if (isHeightFilterActive) {
-          matches = false;
-        }
-      }
-
-      // Rating (Bug 1: Filter out null rating when constraint is active)
-      if (matches && filters.minRating > 0) {
-        if (profile.rating.score === null || profile.rating.score < filters.minRating) {
-          matches = false;
-        }
-      }
-
-      // Favorites (Bug 1: Filter out null when constraint is active)
-      if (matches && filters.minFavorites > 0) {
-        if (profile.rating.favorites === null || profile.rating.favorites < filters.minFavorites) {
-          matches = false;
-        }
-      }
-
-      // Boobs (Bug 1: Filter out null when boobs criteria is chosen)
-      if (matches && filters.boobs !== 'all') {
-        if (profile.body.boobs === 'Unknown') {
-          matches = false;
-        } else {
-          if (filters.boobs === 'natural' && profile.body.boobs !== 'Natural') matches = false;
-          if (filters.boobs === 'implants' && profile.body.boobs !== 'Implants') matches = false;
-        }
-      }
-
-      // Ethnicities
-      if (matches && filters.ethnicities.length > 0) {
-        if (!profile.personal.ethnicity || !filters.ethnicities.includes(profile.personal.ethnicity)) matches = false;
-      }
-
-      // Hair color
-      if (matches && filters.hairColors.length > 0) {
-        if (!profile.body.hairColor || !filters.hairColors.includes(profile.body.hairColor)) matches = false;
-      }
-
-      // Eye color
-      if (matches && filters.eyeColors.length > 0) {
-        if (!profile.body.eyeColor || !filters.eyeColors.includes(profile.body.eyeColor)) matches = false;
-      }
-
-      // Cup
-      if (matches && filters.cupSizes.length > 0) {
-        if (!profile.body.cup || !filters.cupSizes.includes(profile.body.cup)) matches = false;
-      }
-
-      // Performances (ALL selected must match)
-      if (matches && filters.performances.length > 0) {
-        const allActs = [
-          ...profile.performances.solo,
-          ...profile.performances.girlGirl,
-          ...profile.performances.boyGirl
-        ];
-        if (!filters.performances.every((act) => allActs.includes(act))) matches = false;
-      }
+      const matches = !!(
+        (!q || profile.name.toLowerCase().includes(q)) &&
+        (filters.professionFilter === 'all' || (filters.professionFilter === 'pornstar' ? isPornstar : !isPornstar)) &&
+        inRange(profile.personal.age, filters.minAge, filters.maxAge, filters.minAge > 18 || filters.maxAge < 70) &&
+        inRange(profile.body.heightCm, filters.minHeight, filters.maxHeight, filters.minHeight > 130 || filters.maxHeight < 220) &&
+        (filters.minRating === 0 || (profile.rating.score !== null && profile.rating.score >= filters.minRating)) &&
+        (filters.minFavorites === 0 || (profile.rating.favorites !== null && profile.rating.favorites >= filters.minFavorites)) &&
+        (filters.boobs === 'all' || profile.body.boobs === (filters.boobs === 'natural' ? 'Natural' : 'Implants')) &&
+        (!filters.ethnicities.length || (!!profile.personal.ethnicity && filters.ethnicities.includes(profile.personal.ethnicity))) &&
+        (!filters.hairColors.length || (!!profile.body.hairColor && filters.hairColors.includes(profile.body.hairColor))) &&
+        (!filters.eyeColors.length || (!!profile.body.eyeColor && filters.eyeColors.includes(profile.body.eyeColor))) &&
+        (!filters.cupSizes.length || (!!profile.body.cup && filters.cupSizes.includes(profile.body.cup))) &&
+        (!filters.performances.length || filters.performances.every(act => allActs.includes(act)))
+      );
 
       el.style.display = matches ? '' : 'none';
       if (matches) matchCount++;
@@ -784,20 +704,12 @@ export const FilterPanel = {
   },
 
   getActiveFiltersCount(f: FilterSettings): number {
-    let count = 0;
-    if (f.searchQuery) count++;
-    if (f.minAge > 18 || f.maxAge < 70) count++;
-    if (f.minHeight > 130 || f.maxHeight < 220) count++;
-    if (f.minRating > 0) count++;
-    if (f.minFavorites > 0) count++;
-    if (f.boobs !== 'all') count++;
-    if (f.professionFilter !== 'all') count++;
-    if (f.ethnicities.length > 0) count++;
-    if (f.hairColors.length > 0) count++;
-    if (f.eyeColors.length > 0) count++;
-    if (f.cupSizes.length > 0) count++;
-    if (f.performances.length > 0) count++;
-    return count;
+    return [
+      !!f.searchQuery, f.minAge > 18 || f.maxAge < 70, f.minHeight > 130 || f.maxHeight < 220,
+      f.minRating > 0, f.minFavorites > 0, f.boobs !== 'all', f.professionFilter !== 'all',
+      f.ethnicities.length > 0, f.hairColors.length > 0, f.eyeColors.length > 0,
+      f.cupSizes.length > 0, f.performances.length > 0
+    ].filter(Boolean).length;
   },
 
   isFiltering(f: FilterSettings): boolean {
@@ -805,18 +717,6 @@ export const FilterPanel = {
   },
 
   isNonSearchFilterActive(f: FilterSettings): boolean {
-    return !!(
-      f.minAge > 18 || f.maxAge < 70 ||
-      f.minHeight > 130 || f.maxHeight < 220 ||
-      f.minRating > 0 ||
-      f.minFavorites > 0 ||
-      f.boobs !== 'all' ||
-      f.professionFilter !== 'all' ||
-      f.ethnicities.length > 0 ||
-      f.hairColors.length > 0 ||
-      f.eyeColors.length > 0 ||
-      f.cupSizes.length > 0 ||
-      f.performances.length > 0
-    );
+    return this.getActiveFiltersCount(f) - (f.searchQuery ? 1 : 0) > 0;
   }
 };

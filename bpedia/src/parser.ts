@@ -92,7 +92,7 @@ export function parseProfileHtml(html: string, url: string, name: string): Perfo
       case 'professions':
         profile.personal.professions = value
           .split(',')
-          .map((p) => p.replace(/\(former\)|\(active\)/gi, '').trim())
+          .map((p) => p.replace(/\(former\)|\(active\)/gi, '').trim().toLowerCase())
           .filter(Boolean);
         break;
       case 'hair color':

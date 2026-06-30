@@ -9,9 +9,6 @@ export const Badges = {
     const anchor = thumbshotEl.querySelector('a');
     if (!anchor) return;
 
-    anchor.style.position = 'relative';
-    anchor.style.display = 'block';
-
     // Top-Left: Age
     if (profile.personal.age) {
       const badge = document.createElement('div');
@@ -25,13 +22,31 @@ export const Badges = {
       const badge = document.createElement('div');
       badge.className = 'bp-badge bp-badge-bottom-left';
 
-      let dotHtml = '';
       if (profile.body.boobs !== 'Unknown') {
         const color = profile.body.boobs === 'Natural' ? 'var(--bp-success)' : 'var(--bp-danger)';
-        dotHtml = `<svg viewBox="0 0 10 10" width="8" height="8" style="display:inline-block;vertical-align:middle;margin-right:3px;"><circle cx="5" cy="5" r="4.5" fill="${color}"/></svg>`;
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('viewBox', '0 0 10 10');
+        svg.setAttribute('width', '8');
+        svg.setAttribute('height', '8');
+        svg.style.display = 'inline-block';
+        svg.style.verticalAlign = 'middle';
+        svg.style.marginRight = '3px';
+
+        const circle = document.createElementNS(svgNS, 'circle');
+        circle.setAttribute('cx', '5');
+        circle.setAttribute('cy', '5');
+        circle.setAttribute('r', '4.5');
+        circle.setAttribute('fill', color);
+        svg.appendChild(circle);
+        badge.appendChild(svg);
       }
 
-      badge.innerHTML = `${dotHtml}<span style="vertical-align:middle;">${profile.body.cup}</span>`;
+      const span = document.createElement('span');
+      span.style.verticalAlign = 'middle';
+      span.textContent = profile.body.cup;
+      badge.appendChild(span);
+
       anchor.appendChild(badge);
     }
 

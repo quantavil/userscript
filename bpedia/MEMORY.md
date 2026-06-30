@@ -62,3 +62,16 @@ bpedia/
 - Search badge text pollution: searching read textContent of badges. Fix: extract performer name cleanly.
 - Autopager progress limit: total count of items to scrape was static. Fix: increment total dynamically.
 - Country code substring fallback displayed incorrect ISO letters. Fix: remove substring fallback, display null if unmapped.
+- Slider stale state read: debounced GM storage writes caused stale readings on slide events. Fix: added synchronous in-memory settings cache.
+- Collapsing UI on scrape: unscraped cards vanished when filters were active. Fix: kept visible and dimmed unscraped cards until parsed.
+- Title hijacking: scraping progress updates overwrote drawer title when settings view was open. Fix: check view visibility before text override.
+- Scraper memory leak: itemRetries map grew indefinitely. Fix: clean up map keys on item success/max-retry skip.
+- Case-sensitive professions: strict string includes check failed on casing variants. Fix: normalize to lowercase and check flexibly.
+- Filter hot path DOM queries: typing in search triggered multiple querySelector calls per card. Fix: cache name on element attribute.
+- Heavy mobile blur: full-screen 20px blur caused scrolling jank on mobile. Fix: disable backdrop-filter and fallback to solid background colors.
+- SVG innerHTML and inline styles: mixed styling rules and string-interpolated SVGs. Fix: removed redundant styles, built SVGs via namespace DOM APIs.
+- Logic duplication: same filter activity checks repeated in three places. Fix: refactored checks to reuse getActiveFiltersCount.
+- Verbose logic chains: long chains of if checks nested in applyFiltersToPage. Fix: desloppified using single type-safe matches expression.
+- Scraper retry boilerplate: onload and onerror blocks duplicated failure logic. Fix: extracted a safety-aware handleRetryOrFail helper.
+- Slider bounds listener boilerplate: repetitive min/max listener bindings. Fix: looped listener assignments over pair array.
+- Cache try/catch boilerplate: JSON parsing try/catch blocks repeated across multiple getters. Fix: extracted a safeParse utility.
