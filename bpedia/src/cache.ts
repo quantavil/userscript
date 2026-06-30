@@ -6,6 +6,7 @@ const BADGE_SETTINGS_KEY = 'badge_settings';
 const FILTER_SETTINGS_KEY = 'filter_settings';
 let filterSettingsTimeout: ReturnType<typeof setTimeout> | null = null;
 let inMemoryFilterSettings: FilterSettings | null = null;
+const dbCache = new Map<string, PerformerProfile>();
 
 const DEFAULT_BADGE_SETTINGS: BadgeSettings = {
   showAge: true,
@@ -15,7 +16,7 @@ const DEFAULT_BADGE_SETTINGS: BadgeSettings = {
 
 const DEFAULT_FILTER_SETTINGS: FilterSettings = {
   minAge: 18,
-  maxAge: 70,
+  maxAge: 50,
   minHeight: 130,
   maxHeight: 220,
   minRating: 0,
@@ -40,14 +41,30 @@ const safeParse = <T>(json: string | null, fallback: T): T => {
 };
 
 export const Cache = {
+  initDbCache(): void {
+    dbCache.clear();
+    const allKeys = GM_listValues();
+    allKeys.forEach((key: string) => {
+      if (key.startsWith(PROFILE_PREFIX)) {
+        const clean = key.substring(PROFILE_PREFIX.length);
+        const val = GM_getValue<string | null>(key, null);
+        const parsed = safeParse<PerformerProfile | null>(val, null);
+        if (parsed) {
+          dbCache.set(clean, parsed);
+        }
+      }
+    });
+  },
+
   getProfile(url: string): PerformerProfile | null {
-    const key = PROFILE_PREFIX + cleanUrl(url);
-    const stored = GM_getValue<string | null>(key, null);
-    return safeParse<PerformerProfile | null>(stored, null);
+    const clean = cleanUrl(url);
+    return dbCache.get(clean) || null;
   },
 
   setProfile(url: string, profile: PerformerProfile): void {
-    const key = PROFILE_PREFIX + cleanUrl(url);
+    const clean = cleanUrl(url);
+    dbCache.set(clean, profile);
+    const key = PROFILE_PREFIX + clean;
     GM_setValue(key, JSON.stringify(profile));
   },
 
@@ -73,13 +90,25 @@ export const Cache = {
     if (debounce) {
       filterSettingsTimeout = setTimeout(() => {
         GM_setValue(FILTER_SETTINGS_KEY, JSON.stringify(settings));
+        filterSettingsTimeout = null;
       }, 300);
     } else {
       GM_setValue(FILTER_SETTINGS_KEY, JSON.stringify(settings));
     }
   },
 
+  flushFilterSettings(): void {
+    if (filterSettingsTimeout) {
+      clearTimeout(filterSettingsTimeout);
+      filterSettingsTimeout = null;
+      if (inMemoryFilterSettings) {
+        GM_setValue(FILTER_SETTINGS_KEY, JSON.stringify(inMemoryFilterSettings));
+      }
+    }
+  },
+
   clearAllProfiles(): void {
+    dbCache.clear();
     const allKeys = GM_listValues();
     let count = 0;
     allKeys.forEach((key: string) => {
@@ -92,6 +121,12 @@ export const Cache = {
   },
 
   clearEverything(): void {
+    dbCache.clear();
+    inMemoryFilterSettings = null;
+    if (filterSettingsTimeout) {
+      clearTimeout(filterSettingsTimeout);
+      filterSettingsTimeout = null;
+    }
     const allKeys = GM_listValues();
     allKeys.forEach((key: string) => {
       GM_deleteValue(key);
@@ -107,7 +142,7 @@ export const Cache = {
       settings: Record<string, any>;
       profiles: Record<string, any>;
     } = {
-      version: '1.1.1',
+      version: '1.1.3',
       exportedAt: Date.now(),
       settings: {},
       profiles: {}
@@ -117,17 +152,15 @@ export const Cache = {
       if (key.startsWith(PROFILE_PREFIX)) {
         const clean = key.substring(PROFILE_PREFIX.length);
         const val = GM_getValue<string | null>(key, null);
-        if (val) {
-          try {
-            data.profiles[clean] = JSON.parse(val);
-          } catch {}
+        const parsed = safeParse<any>(val, null);
+        if (parsed) {
+          data.profiles[clean] = parsed;
         }
       } else if (key === BADGE_SETTINGS_KEY || key === FILTER_SETTINGS_KEY) {
         const val = GM_getValue<string | null>(key, null);
-        if (val) {
-          try {
-            data.settings[key] = JSON.parse(val);
-          } catch {}
+        const parsed = safeParse<any>(val, null);
+        if (parsed) {
+          data.settings[key] = parsed;
         }
       }
     });
@@ -144,7 +177,13 @@ export const Cache = {
       if (data.profiles && typeof data.profiles === 'object') {
         Object.entries(data.profiles).forEach(([cleanUrl, profile]) => {
           const key = PROFILE_PREFIX + cleanUrl;
-          GM_setValue(key, JSON.stringify(profile));
+          if (profile && typeof profile === 'object') {
+            GM_setValue(key, JSON.stringify(profile));
+            const parsed = safeParse<PerformerProfile | null>(JSON.stringify(profile), null);
+            if (parsed) {
+              dbCache.set(cleanUrl, parsed);
+            }
+          }
         });
       }
 
@@ -152,9 +191,12 @@ export const Cache = {
       if (data.settings && typeof data.settings === 'object') {
         Object.entries(data.settings).forEach(([key, val]) => {
           if (key === BADGE_SETTINGS_KEY || key === FILTER_SETTINGS_KEY) {
-            GM_setValue(key, JSON.stringify(val));
             if (key === FILTER_SETTINGS_KEY) {
-              inMemoryFilterSettings = val as FilterSettings;
+              const validated = validateFilterSettings(val);
+              GM_setValue(key, JSON.stringify(validated));
+              inMemoryFilterSettings = validated;
+            } else {
+              GM_setValue(key, JSON.stringify(val));
             }
           }
         });
@@ -167,6 +209,29 @@ export const Cache = {
     }
   }
 };
+
+function validateFilterSettings(input: any): FilterSettings {
+  const res = { ...DEFAULT_FILTER_SETTINGS };
+  if (!input || typeof input !== 'object') return res;
+
+  if (typeof input.searchQuery === 'string') res.searchQuery = input.searchQuery;
+  if (typeof input.minAge === 'number') res.minAge = input.minAge;
+  if (typeof input.maxAge === 'number') res.maxAge = input.maxAge;
+  if (typeof input.minHeight === 'number') res.minHeight = input.minHeight;
+  if (typeof input.maxHeight === 'number') res.maxHeight = input.maxHeight;
+  if (typeof input.minRating === 'number') res.minRating = input.minRating;
+  if (typeof input.minFavorites === 'number') res.minFavorites = input.minFavorites;
+  if (['all', 'natural', 'implants'].includes(input.boobs)) res.boobs = input.boobs;
+  if (['all', 'pornstar', 'non-pornstar'].includes(input.professionFilter)) res.professionFilter = input.professionFilter;
+  if (Array.isArray(input.ethnicities)) res.ethnicities = input.ethnicities.filter((x: any) => typeof x === 'string');
+  if (Array.isArray(input.hairColors)) res.hairColors = input.hairColors.filter((x: any) => typeof x === 'string');
+  if (Array.isArray(input.eyeColors)) res.eyeColors = input.eyeColors.filter((x: any) => typeof x === 'string');
+  if (Array.isArray(input.cupSizes)) res.cupSizes = input.cupSizes.filter((x: any) => typeof x === 'string');
+  if (Array.isArray(input.performances)) res.performances = input.performances.filter((x: any) => typeof x === 'string');
+
+  return res;
+}
+
 
 function cleanUrl(url: string): string {
   return url.replace(/^\/babe\//, '').replace(/\/$/, '');

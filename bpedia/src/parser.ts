@@ -33,9 +33,10 @@ export function getCountryCode(nationality: string | null): string | null {
   return NATIONALITY_MAP[clean] || null;
 }
 
+const domParser = new DOMParser();
+
 export function parseProfileHtml(html: string, url: string, name: string): PerformerProfile {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
+  const doc = domParser.parseFromString(html, 'text/html');
 
   const profile: PerformerProfile = {
     name,

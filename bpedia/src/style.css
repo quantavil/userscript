@@ -4,6 +4,7 @@
 
 :root {
   --bp-glass-bg: rgba(253, 246, 240, 0.75);
+  --bp-solid-bg: #fdf6f0;
   --bp-glass-border: rgba(171, 82, 11, 0.18);
   --bp-glass-shadow: rgba(171, 82, 11, 0.08);
   --bp-text: #272727;
@@ -15,6 +16,7 @@
 
 body.lightsoff {
   --bp-glass-bg: rgba(28, 26, 25, 0.85);
+  --bp-solid-bg: #1c1a19;
   --bp-glass-border: rgba(255, 255, 255, 0.08);
   --bp-glass-shadow: rgba(0, 0, 0, 0.4);
   --bp-text: #e0e0e0;
@@ -54,6 +56,13 @@ body.lightsoff {
   -webkit-backdrop-filter: blur(6px);
   pointer-events: none;
   transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* Accessible and themeable SVG inside badges */
+.bp-badge svg {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 3px;
 }
 
 .bp-badge-top-left {
@@ -332,6 +341,19 @@ body.lightsoff .bp-text-input {
   border-color: var(--bp-accent);
 }
 
+/* Keyboard navigation focus rings */
+.bp-fab:focus-visible,
+.bp-icon-btn:focus-visible,
+.bp-close-btn:focus-visible,
+.bp-segmented-btn:focus-visible,
+.bp-tag:focus-visible,
+.bp-btn-danger:focus-visible,
+.bp-btn-reset:focus-visible,
+.bp-text-input:focus-visible {
+  outline: 2px solid var(--bp-accent);
+  outline-offset: 2px;
+}
+
 /* Range Sliders */
 .bp-range-display {
   font-size: 12px;
@@ -491,6 +513,8 @@ body.lightsoff .bp-tag-container {
   cursor: pointer;
   transition: all 0.2s;
   user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--bp-text);
 }
 
 body.lightsoff .bp-tag {
@@ -565,6 +589,19 @@ body.lightsoff .bp-tag {
   color: #fff;
 }
 
+/* Screen readers accessibility utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Responsive */
 @media (max-width: 600px) {
   .bp-drawer {
@@ -573,17 +610,20 @@ body.lightsoff .bp-tag {
     border-left: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    background: #fdf6f0;
+    background: var(--bp-solid-bg);
   }
 
   body.lightsoff .bp-drawer {
-    background: #1c1a19;
+    background: var(--bp-solid-bg);
   }
 
   .bp-fab {
     right: 15px;
     width: 48px;
     height: 48px;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--bp-glass-bg);
   }
 
   #bp-filter-fab {
@@ -592,5 +632,16 @@ body.lightsoff .bp-tag {
 
   .bp-text-input {
     font-size: 16px; /* Prevents auto-zoom on mobile focus */
+  }
+}
+
+/* Accessibility: prefers-reduced-motion support */
+@media (prefers-reduced-motion: reduce) {
+  .bp-drawer,
+  .bp-fab,
+  .bp-badge,
+  .bp-switch-slider,
+  .bp-switch-slider:before {
+    transition: none !important;
   }
 }

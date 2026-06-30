@@ -1,6 +1,7 @@
 let container: HTMLDivElement | null = null;
 let bar: HTMLDivElement | null = null;
 let fadeTimeout: ReturnType<typeof setTimeout> | null = null;
+let cachedTitleEl: HTMLElement | null = null;
 
 export const ProgressBar = {
   init(): void {
@@ -8,12 +9,17 @@ export const ProgressBar = {
 
     container = document.createElement('div');
     container.id = 'bp-progress-bar-container';
+    container.setAttribute('role', 'progressbar');
+    container.setAttribute('aria-valuemin', '0');
+    container.setAttribute('aria-valuemax', '100');
+    container.setAttribute('aria-valuenow', '0');
 
     bar = document.createElement('div');
     bar.id = 'bp-progress-bar';
     container.appendChild(bar);
 
     document.body.appendChild(container);
+    cachedTitleEl = null;
   },
 
   show(): void {
@@ -28,13 +34,17 @@ export const ProgressBar = {
 
     const percent = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
     bar.style.width = `${percent}%`;
+    container?.setAttribute('aria-valuenow', String(percent));
+    container?.setAttribute('aria-valuetext', `Scraping progress: ${percent}%`);
 
     // Only target the filter drawer title, not the settings drawer, and only if settings view is not active
     const settingsView = document.getElementById('bp-settings-view');
     const isSettingsVisible = settingsView && settingsView.style.display !== 'none';
-    const filterTitle = document.querySelector('#bp-filter-drawer .bp-drawer-header h3');
-    if (filterTitle && !isSettingsVisible) {
-      filterTitle.textContent = percent < 100
+    if (!cachedTitleEl) {
+      cachedTitleEl = document.querySelector('#bp-filter-drawer .bp-drawer-header h3');
+    }
+    if (cachedTitleEl && !isSettingsVisible) {
+      cachedTitleEl.textContent = percent < 100
         ? `Scraping (${current}/${total})`
         : 'Babepedia Filter';
     }
@@ -49,8 +59,10 @@ export const ProgressBar = {
       if (bar) bar.style.width = '0%';
       const settingsView = document.getElementById('bp-settings-view');
       const isSettingsVisible = settingsView && settingsView.style.display !== 'none';
-      const filterTitle = document.querySelector('#bp-filter-drawer .bp-drawer-header h3');
-      if (filterTitle && !isSettingsVisible) filterTitle.textContent = 'Babepedia Filter';
+      if (!cachedTitleEl) {
+        cachedTitleEl = document.querySelector('#bp-filter-drawer .bp-drawer-header h3');
+      }
+      if (cachedTitleEl && !isSettingsVisible) cachedTitleEl.textContent = 'Babepedia Filter';
     }, 1000);
   }
 };

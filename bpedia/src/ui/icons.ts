@@ -49,6 +49,7 @@ const PATHS: Record<string, { paths: string[]; isStroke: boolean; fill?: string;
 export function icon(name: string, size = 20, strokeWidth = 2): SVGSVGElement {
   const conf = PATHS[name];
   if (!conf) {
+    console.warn(`[BP Filter] Unknown icon requested: ${name}`);
     return svg(size, strokeWidth);
   }
 

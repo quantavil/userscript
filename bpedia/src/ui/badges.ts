@@ -29,9 +29,12 @@ export const Badges = {
         svg.setAttribute('viewBox', '0 0 10 10');
         svg.setAttribute('width', '8');
         svg.setAttribute('height', '8');
-        svg.style.display = 'inline-block';
-        svg.style.verticalAlign = 'middle';
-        svg.style.marginRight = '3px';
+        svg.setAttribute('role', 'img');
+        svg.setAttribute('aria-label', profile.body.boobs);
+
+        const title = document.createElementNS(svgNS, 'title');
+        title.textContent = profile.body.boobs;
+        svg.appendChild(title);
 
         const circle = document.createElementNS(svgNS, 'circle');
         circle.setAttribute('cx', '5');

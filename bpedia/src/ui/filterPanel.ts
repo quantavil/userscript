@@ -20,6 +20,21 @@ const knownPerformances = new Set<string>();
 // Debounce timer for text search
 let searchDebounce: ReturnType<typeof setTimeout> | null = null;
 
+// File-scope DRY helpers
+const getVal = (id: string): string =>
+  (document.getElementById(id) as HTMLInputElement | null)?.value ?? '';
+
+const setVal = (id: string, value: any): void => {
+  const el = document.getElementById(id) as HTMLInputElement | null;
+  if (el) el.value = String(value);
+};
+
+const activeTags = (cid: string): string[] => {
+  const c = document.getElementById(cid);
+  if (!c) return [];
+  return Array.from(c.querySelectorAll('.bp-tag.active')).map((el) => el.textContent || '');
+};
+
 export const FilterPanel = {
   init(onFilterChange: () => void): void {
     if (document.getElementById('bp-filter-fab')) return;
@@ -42,7 +57,7 @@ export const FilterPanel = {
     filterFab.id = 'bp-filter-fab';
     filterFab.className = 'bp-fab';
     filterFab.title = 'Filter Performers';
-    filterFab.appendChild(icon('filter', 24));
+    filterFab.setAttribute('aria-label', 'Filter Performers');
 
     const badge = document.createElement('span');
     badge.className = 'bp-fab-badge';
@@ -59,6 +74,9 @@ export const FilterPanel = {
     filterDrawer = document.createElement('div');
     filterDrawer.id = 'bp-filter-drawer';
     filterDrawer.className = 'bp-drawer';
+    filterDrawer.setAttribute('role', 'dialog');
+    filterDrawer.setAttribute('aria-modal', 'true');
+    filterDrawer.setAttribute('aria-labelledby', 'bp-drawer-title');
     filterDrawer.innerHTML = `
       <div class="bp-drawer-header">
         <h3 id="bp-drawer-title">Babepedia Filter</h3>
@@ -76,7 +94,8 @@ export const FilterPanel = {
         <!-- Search -->
         <div class="bp-section">
           <div class="bp-input-group">
-            <input type="text" id="bp-search" class="bp-text-input" placeholder="Search by name..." />
+            <label for="bp-search" class="sr-only">Search performers by name</label>
+            <input type="search" id="bp-search" class="bp-text-input" placeholder="Search by name..." />
           </div>
         </div>
 
@@ -85,11 +104,11 @@ export const FilterPanel = {
           <div class="bp-section-title">Personal Details</div>
 
           <div class="bp-input-group">
-            <label>Performer Type</label>
-            <div class="bp-segmented" id="bp-profession-segment">
-              <button class="bp-segmented-btn active" data-val="all">All</button>
-              <button class="bp-segmented-btn" data-val="pornstar">Porn Star</button>
-              <button class="bp-segmented-btn" data-val="non-pornstar">Model Only</button>
+            <label id="bp-profession-label">Performer Type</label>
+            <div class="bp-segmented" id="bp-profession-segment" role="radiogroup" aria-labelledby="bp-profession-label">
+              <button class="bp-segmented-btn active" data-val="all" role="radio" aria-checked="true">All</button>
+              <button class="bp-segmented-btn" data-val="pornstar" role="radio" aria-checked="false">Porn Star</button>
+              <button class="bp-segmented-btn" data-val="non-pornstar" role="radio" aria-checked="false">Model Only</button>
             </div>
           </div>
 
@@ -113,11 +132,11 @@ export const FilterPanel = {
           <div class="bp-section-title">Body Stats</div>
 
           <div class="bp-input-group">
-            <label>Boobs Type</label>
-            <div class="bp-segmented" id="bp-boobs-segment">
-              <button class="bp-segmented-btn active" data-val="all">All</button>
-              <button class="bp-segmented-btn" data-val="natural">Natural</button>
-              <button class="bp-segmented-btn" data-val="implants">Implants</button>
+            <label id="bp-boobs-label">Boobs Type</label>
+            <div class="bp-segmented" id="bp-boobs-segment" role="radiogroup" aria-labelledby="bp-boobs-label">
+              <button class="bp-segmented-btn active" data-val="all" role="radio" aria-checked="true">All</button>
+              <button class="bp-segmented-btn" data-val="natural" role="radio" aria-checked="false">Natural</button>
+              <button class="bp-segmented-btn" data-val="implants" role="radio" aria-checked="false">Implants</button>
             </div>
           </div>
 
@@ -164,7 +183,7 @@ export const FilterPanel = {
           </div>
 
           <div class="bp-input-group">
-            <label>Min Favorites</label>
+            <label for="bp-min-favs">Min Favorites</label>
             <input type="number" id="bp-min-favs" class="bp-text-input" min="0" placeholder="e.g. 500" />
           </div>
         </div>
@@ -181,21 +200,21 @@ export const FilterPanel = {
           <div class="bp-section-title">Badge Configuration</div>
 
           <div class="bp-switch-row">
-            <label>Show Age</label>
+            <label for="bp-sett-age">Show Age</label>
             <label class="bp-switch">
               <input type="checkbox" id="bp-sett-age" checked />
               <span class="bp-switch-slider"></span>
             </label>
           </div>
           <div class="bp-switch-row">
-            <label>Show Cup & Boobs Status</label>
+            <label for="bp-sett-cup-boobs">Show Cup & Boobs Status</label>
             <label class="bp-switch">
               <input type="checkbox" id="bp-sett-cup-boobs" checked />
               <span class="bp-switch-slider"></span>
             </label>
           </div>
           <div class="bp-switch-row">
-            <label>Show Nationality</label>
+            <label for="bp-sett-country">Show Nationality</label>
             <label class="bp-switch">
               <input type="checkbox" id="bp-sett-country" checked />
               <span class="bp-switch-slider"></span>
@@ -224,10 +243,16 @@ export const FilterPanel = {
 
     // Programmatically append header icons (Trusted Types safe)
     const settingsBtn = filterDrawer.querySelector('#bp-drawer-settings-toggle');
-    if (settingsBtn) settingsBtn.appendChild(icon('settings', 20));
+    if (settingsBtn) {
+      settingsBtn.appendChild(icon('settings', 20));
+      settingsBtn.setAttribute('aria-label', 'Settings');
+    }
     
     const closeBtn = filterDrawer.querySelector('.bp-close-btn');
-    if (closeBtn) closeBtn.appendChild(icon('x', 20));
+    if (closeBtn) {
+      closeBtn.appendChild(icon('x', 20));
+      closeBtn.setAttribute('aria-label', 'Close Panel');
+    }
 
     statusLineEl = filterDrawer.querySelector('#bp-status-line');
   },
@@ -274,6 +299,7 @@ export const FilterPanel = {
         if (filtersView) filtersView.style.display = 'block';
         if (drawerTitle) drawerTitle.textContent = 'Babepedia Filter';
         settingsToggle.title = 'Settings';
+        settingsToggle.setAttribute('aria-label', 'Settings');
         settingsToggle.textContent = '';
         settingsToggle.appendChild(icon('settings', 20));
       } else {
@@ -282,12 +308,13 @@ export const FilterPanel = {
         if (filtersView) filtersView.style.display = 'none';
         if (drawerTitle) drawerTitle.textContent = 'Userscript Settings';
         settingsToggle.title = 'Back to Filters';
+        settingsToggle.setAttribute('aria-label', 'Back to Filters');
         settingsToggle.textContent = '';
         settingsToggle.appendChild(icon('back', 20));
       }
     });
 
-    // ── Sliders validation min/max boundaries (Bug 11) ──
+    // ── Sliders validation min/max boundaries ──
     [['bp-min-age', 'bp-max-age'], ['bp-min-height', 'bp-max-height']].forEach(([minId, maxId]) => {
       const minEl = document.getElementById(minId) as HTMLInputElement;
       const maxEl = document.getElementById(maxId) as HTMLInputElement;
@@ -295,14 +322,19 @@ export const FilterPanel = {
       maxEl?.addEventListener('input', () => { if (+maxEl.value < +minEl.value) minEl.value = maxEl.value; });
     });
 
-    // ── Range sliders: instant feedback & debounced storage saves (Bug 8) ──
+    // Centralized filter state save function
+    const commitFilters = (debounce = false) => {
+      this.saveFiltersToCache(debounce);
+      onFilterChange();
+    };
+
+    // ── Range sliders: instant feedback & debounced storage saves ──
     const rangeInputs = ['bp-min-age', 'bp-max-age', 'bp-min-height', 'bp-max-height', 'bp-min-rating'];
     rangeInputs.forEach((id) => {
       const el = document.getElementById(id);
       el?.addEventListener('input', () => {
-        this.saveFiltersToCache(true); // Debounce write to avoid blocking GM thread
         this.updateLabelBubbles();
-        onFilterChange();
+        commitFilters(true);
       });
     });
 
@@ -311,21 +343,19 @@ export const FilterPanel = {
     searchEl?.addEventListener('input', () => {
       if (searchDebounce) clearTimeout(searchDebounce);
       searchDebounce = setTimeout(() => {
-        this.saveFiltersToCache(false);
-        onFilterChange();
+        commitFilters(false);
       }, 200);
     });
 
     // ── Min Favorites: on change ──
     const favsEl = document.getElementById('bp-min-favs');
     favsEl?.addEventListener('change', () => {
-      this.saveFiltersToCache(false);
-      onFilterChange();
+      commitFilters(false);
     });
 
     // ── Segmented Buttons ──
-    this.setupSegmented('#bp-boobs-segment', onFilterChange);
-    this.setupSegmented('#bp-profession-segment', onFilterChange);
+    this.setupSegmented('#bp-boobs-segment', commitFilters);
+    this.setupSegmented('#bp-profession-segment', commitFilters);
 
     // ── Badge toggles ──
     const badgeToggles = ['bp-sett-age', 'bp-sett-cup-boobs', 'bp-sett-country'];
@@ -369,6 +399,12 @@ export const FilterPanel = {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
 
+      const MAX_BACKUP_SIZE_BYTES = 10 * 1024 * 1024; // 10MB limit
+      if (file.size > MAX_BACKUP_SIZE_BYTES) {
+        alert('Selected backup file is too large. Limit is 10 MB.');
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = (event) => {
         const content = event.target?.result as string;
@@ -404,24 +440,22 @@ export const FilterPanel = {
     });
   },
 
-  setupSegmented(selector: string, onFilterChange: () => void): void {
+  setupSegmented(selector: string, commitFilters: (debounce: boolean) => void): void {
     const btns = document.querySelectorAll(`${selector} .bp-segmented-btn`);
     btns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        btns.forEach((b) => b.classList.remove('active'));
+        btns.forEach((b) => {
+          b.classList.remove('active');
+          b.setAttribute('aria-checked', 'false');
+        });
         btn.classList.add('active');
-        this.saveFiltersToCache(false);
-        onFilterChange();
+        btn.setAttribute('aria-checked', 'true');
+        commitFilters(false);
       });
     });
   },
 
   resetFilters(onFilterChange: () => void): void {
-    // Reset sliders
-    const setVal = (id: string, val: string) => {
-      const el = document.getElementById(id) as HTMLInputElement;
-      if (el) el.value = val;
-    };
     setVal('bp-search', '');
     setVal('bp-min-age', '18');
     setVal('bp-max-age', '70');
@@ -433,14 +467,17 @@ export const FilterPanel = {
     // Reset segmented buttons
     document.querySelectorAll('#bp-boobs-segment .bp-segmented-btn').forEach((btn, i) => {
       btn.classList.toggle('active', i === 0);
+      btn.setAttribute('aria-checked', i === 0 ? 'true' : 'false');
     });
     document.querySelectorAll('#bp-profession-segment .bp-segmented-btn').forEach((btn, i) => {
       btn.classList.toggle('active', i === 0);
+      btn.setAttribute('aria-checked', i === 0 ? 'true' : 'false');
     });
 
     // Clear all active tags
     document.querySelectorAll('.bp-tag-container .bp-tag.active').forEach((tag) => {
       tag.classList.remove('active');
+      tag.setAttribute('aria-checked', 'false');
     });
 
     this.updateLabelBubbles();
@@ -449,28 +486,21 @@ export const FilterPanel = {
   },
 
   updateLabelBubbles(): void {
-    const val = (id: string) => (document.getElementById(id) as HTMLInputElement)?.value || '';
-
     const set = (lblId: string, text: string) => {
       const el = document.getElementById(lblId);
       if (el) el.textContent = text;
     };
 
-    set('bp-lbl-min-age', val('bp-min-age'));
-    set('bp-lbl-max-age', val('bp-max-age'));
-    set('bp-lbl-min-height', `${val('bp-min-height')} cm`);
-    set('bp-lbl-max-height', `${val('bp-max-height')} cm`);
-    set('bp-lbl-min-rating', parseFloat(val('bp-min-rating')).toFixed(1));
+    set('bp-lbl-min-age', getVal('bp-min-age'));
+    set('bp-lbl-max-age', getVal('bp-max-age'));
+    set('bp-lbl-min-height', `${getVal('bp-min-height')} cm`);
+    set('bp-lbl-max-height', `${getVal('bp-max-height')} cm`);
+    set('bp-lbl-min-rating', parseFloat(getVal('bp-min-rating')).toFixed(1));
   },
 
   applySettingsUI(): void {
     const f = Cache.getFilterSettings();
     const b = Cache.getBadgeSettings();
-
-    const setVal = (id: string, val: any) => {
-      const el = document.getElementById(id) as HTMLInputElement;
-      if (el) el.value = String(val);
-    };
 
     setVal('bp-search', f.searchQuery);
     setVal('bp-min-age', f.minAge);
@@ -498,7 +528,9 @@ export const FilterPanel = {
 
   setSegmented(selector: string, activeVal: string): void {
     document.querySelectorAll(`${selector} .bp-segmented-btn`).forEach((btn) => {
-      btn.classList.toggle('active', btn.getAttribute('data-val') === activeVal);
+      const isActive = btn.getAttribute('data-val') === activeVal;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
     });
   },
 
@@ -540,13 +572,17 @@ export const FilterPanel = {
     // Sort new values and append
     Array.from(newValues).sort().forEach((val) => {
       tracker.add(val);
-      const tag = document.createElement('div');
-      tag.className = `bp-tag ${activeList.includes(val) ? 'active' : ''}`;
+      const tag = document.createElement('button');
+      tag.type = 'button';
+      const isActive = activeList.includes(val);
+      tag.className = `bp-tag ${isActive ? 'active' : ''}`;
       tag.textContent = val;
+      tag.setAttribute('role', 'checkbox');
+      tag.setAttribute('aria-checked', isActive ? 'true' : 'false');
       tag.addEventListener('click', () => {
-        tag.classList.toggle('active');
+        const nowActive = tag.classList.toggle('active');
+        tag.setAttribute('aria-checked', nowActive ? 'true' : 'false');
         this.saveFiltersToCache(false);
-        // Trigger filter via cached onFilterChange — we re-apply
         this.applyFiltersToPage(this._lastProfiles!);
       });
       container.appendChild(tag);
@@ -557,24 +593,17 @@ export const FilterPanel = {
   _lastProfiles: null as Map<string, PerformerProfile> | null,
 
   saveFiltersToCache(debounce = false): void {
-    const val = (id: string) => (document.getElementById(id) as HTMLInputElement)?.value || '';
-    const activeTags = (cid: string) => {
-      const c = document.getElementById(cid);
-      if (!c) return [];
-      return Array.from(c.querySelectorAll('.bp-tag.active')).map((el) => el.textContent || '');
-    };
-
     const activeBtn = (segId: string) =>
       document.querySelector(`${segId} .bp-segmented-btn.active`)?.getAttribute('data-val') || 'all';
 
     const settings: FilterSettings = {
-      searchQuery: val('bp-search'),
-      minAge: parseInt(val('bp-min-age'), 10) || 18,
-      maxAge: parseInt(val('bp-max-age'), 10) || 70,
-      minHeight: parseInt(val('bp-min-height'), 10) || 130,
-      maxHeight: parseInt(val('bp-max-height'), 10) || 220,
-      minRating: parseFloat(val('bp-min-rating')) || 0,
-      minFavorites: parseInt(val('bp-min-favs'), 10) || 0,
+      searchQuery: getVal('bp-search'),
+      minAge: parseInt(getVal('bp-min-age'), 10) || 18,
+      maxAge: parseInt(getVal('bp-max-age'), 10) || 70,
+      minHeight: parseInt(getVal('bp-min-height'), 10) || 130,
+      maxHeight: parseInt(getVal('bp-max-height'), 10) || 220,
+      minRating: parseFloat(getVal('bp-min-rating')) || 0,
+      minFavorites: parseInt(getVal('bp-min-favs'), 10) || 0,
       boobs: activeBtn('#bp-boobs-segment') as FilterSettings['boobs'],
       professionFilter: activeBtn('#bp-profession-segment') as FilterSettings['professionFilter'],
       ethnicities: activeTags('bp-ethnicities-container'),
@@ -592,7 +621,7 @@ export const FilterPanel = {
     const filters = Cache.getFilterSettings();
     const badgeSettings = Cache.getBadgeSettings();
 
-    // Toggle badge CSS visibility flags once on parent container (Bug 7 - Avoid thrashing)
+    // Toggle badge CSS visibility flags once on parent container (Avoid thrashing)
     const thumbsContainer = document.getElementById('thumbs');
     if (thumbsContainer) {
       const hideAll = !badgeSettings.showAge && !badgeSettings.showCupBoobs && !badgeSettings.showCountry;
@@ -607,6 +636,10 @@ export const FilterPanel = {
     let totalCount = 0;
 
     const nonSearchFilterActive = this.isNonSearchFilterActive(filters);
+    
+    // Hoist range check function
+    const inRange = (val: number | null, min: number, max: number, active: boolean) =>
+      !active || (val !== null && val >= min && val <= max);
 
     thumbshots.forEach((thumb) => {
       const el = thumb as HTMLElement;
@@ -656,9 +689,6 @@ export const FilterPanel = {
         ...profile.performances.boyGirl
       ];
 
-      const inRange = (val: number | null, min: number, max: number, active: boolean) =>
-        !active || (val !== null && val >= min && val <= max);
-
       const matches = !!(
         (!q || profile.name.toLowerCase().includes(q)) &&
         (filters.professionFilter === 'all' || (filters.professionFilter === 'pornstar' ? isPornstar : !isPornstar)) &&
@@ -681,7 +711,7 @@ export const FilterPanel = {
     // Update status line
     this.updateStatusLine(matchCount, totalCount, filters);
 
-    // Update FAB badge to display active filters count (Bug 10)
+    // Update FAB badge to display active filters count
     this.updateFabBadge(filters);
   },
 

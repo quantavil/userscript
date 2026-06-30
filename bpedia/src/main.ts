@@ -47,6 +47,7 @@ function scheduleTagRefresh(): void {
 }
 
 function main() {
+  Cache.initDbCache();
   const thumbsContainer = document.getElementById('thumbs');
   if (!thumbsContainer) return;
 
@@ -68,6 +69,9 @@ function main() {
   FilterPanel.applyFiltersToPage(pageProfiles);
 
   setupAutoPagerObserver(thumbsContainer);
+  window.addEventListener('pagehide', () => {
+    Cache.flushFilterSettings();
+  });
 }
 
 function processThumbshot(thumb: HTMLElement): void {
@@ -235,7 +239,7 @@ function setupAutoPagerObserver(thumbsContainer: HTMLElement): void {
     }
   });
 
-  observer.observe(thumbsContainer, { childList: true, subtree: true });
+  observer.observe(thumbsContainer, { childList: true, subtree: false });
 }
 
 main();

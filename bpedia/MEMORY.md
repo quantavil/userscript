@@ -43,10 +43,9 @@ bpedia/
 ## Insights
 - **Performance**: Synchronous `GM_getValue` lookups inside loop iterations (e.g., search filtering hot paths) cause UI stuttering. Pre-populating an in-memory Map once on page load and reading exclusively from memory keeps card rendering lag-free.
 - **Combined Badges**: Merging related visual indicators (e.g., green/red SVG dots for natural/implants inside the cup size badge) minimizes thumbnail clutter and maximizes space for the performers' pictures.
-- **Dedicated Drawers**: Splitting settings (badge controls, cache wippers) and filters into two distinct floating drawers reduces panel clutter and makes mobile navigation significantly cleaner.
+- **Dedicated Panel Toggles**: Keeping settings (badge controls, cache wippers) and filters within a single drawer toggled via a settings button reduces panel clutter and keeps mobile navigation significantly cleaner.
 - **Coalesced Updates**: Use `requestAnimationFrame` to batch filter/tag DOM updates per frame instead of per-scrape. Prevents 3× redundant filter passes per profile fetch.
 - **Diff-based Tags**: Track known tag values in Sets. Only append new DOM elements instead of `innerHTML = ''` + full rebuild on every scrape.
-
 - **CSS-driven Badge Visibility**: Hiding badges via CSS parent toggles instead of destroying/recreating DOM elements eliminates keypress filter layout thrashing.
 
 ## Blunders
@@ -79,3 +78,8 @@ bpedia/
 - Mobile zoom input focus: focusing 13px inputs on mobile triggered browser auto-zoom, hiding the fixed filter FAB off-screen. Fix: set input font-size to 16px in mobile media query.
 - Uncached card filter leak: unscraped card thumbnails remained visible when non-search filters were active. Fix: hide uncached thumbnails when nonSearchFilterActive is true.
 - Unused dead code: Badges.remove() was defined but never used, and nonSearchFilterActive was assigned but never referenced. Fix: removed Badges.remove() and utilized nonSearchFilterActive.
+- Stale export version: `Cache.exportData` claimed `1.1.1` while build tools were on `1.1.3`. Fix: aligned version metadata to `1.1.3`.
+- Unsaved filter settings on exit: debounced filter settings saves were lost on immediate tab close. Fix: added `pagehide` listener that flushes settings immediately.
+- Poisoned import settings: JSON imports did not perform validation and could crash card filters. Fix: added schema validator check to `importData`.
+- Redundant DOM queries during progress updates: ProgressBar queried header elements on every completion frame. Fix: added lazy title DOM reference caching.
+- Stale architecture docs: MEMORY described two floating drawers instead of a single tabbed drawer. Fix: updated documentation and comments.
