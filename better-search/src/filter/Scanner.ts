@@ -3,9 +3,8 @@
 // Scans result items, assigns data-svf-id, and applies CSS classes for
 // liked / disliked / normal. Also handles click-to-reveal on hidden items.
 //
-// KEY DESIGN: we only observe childList on the search container — NOT subtree.
-// This means autopager appending new <li>/<div> result items to the container
-// triggers our observer without us watching the entire document.
+// KEY DESIGN: we observe childList, subtree, and href attribute changes on the
+// search container to handle lazy-loaded results and autopager appends.
 
 import { SVF_CONFIG } from '../config';
 import type { Store } from '../core/Store';

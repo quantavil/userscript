@@ -29,7 +29,7 @@ export class GistSync {
             };
 
             if (token) {
-                headers['Authorization'] = `token ${token}`;
+                headers['Authorization'] = `Bearer ${token}`;
             }
 
             if (body) {
@@ -65,6 +65,11 @@ export class GistSync {
 
         if (!token) throw new Error('No GitHub token configured');
         if (!gistId) throw new Error('No Gist ID configured');
+
+        if (this._isSyncing && !isInternal) {
+            console.warn('[SVF] Pull skipped: Sync already in progress');
+            return 0;
+        }
 
         if (!isInternal) this._isSyncing = true;
         try {
@@ -164,6 +169,11 @@ export class GistSync {
         const gistId = this._store.gistId;
 
         if (!token) throw new Error('No GitHub token configured');
+
+        if (this._isSyncing) {
+            console.warn('[SVF] Push skipped: Sync already in progress');
+            return;
+        }
 
         this._isSyncing = true;
         try {

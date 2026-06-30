@@ -37,6 +37,7 @@ export class PanelElement extends LitElement {
     @state() private _isTextareaEditable: Record<'liked' | 'disliked', boolean> = { liked: false, disliked: false };
 
     private _lastActiveElement: HTMLElement | null = null;
+    private _originalOverflow: string | null = null;
     private _unsubscribe?: () => void;
     private _ioTimeout?: number;
     private _syncStatusTimeout?: number;
@@ -49,13 +50,6 @@ export class PanelElement extends LitElement {
     connectedCallback() {
         super.connectedCallback();
         
-        if (!document.querySelector('link[href*="fonts.googleapis.com/css2?family=Outfit"]')) {
-            const fontLink = document.createElement('link');
-            fontLink.rel = 'stylesheet';
-            fontLink.href = 'https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap';
-            document.head.appendChild(fontLink);
-        }
-
         this.style.display = 'none';
 
         this._unsubscribe?.();
@@ -99,11 +93,8 @@ export class PanelElement extends LitElement {
         this.style.display = 'block';
         this.offsetHeight; // force reflow
         
-        document.body.style.setProperty('overflow', 'hidden');
-        if (window.innerWidth > 640) {
-            document.body.style.transition = 'margin-right 0.3s cubic-bezier(0.32, 0.94, 0.6, 1)';
-            document.body.style.marginRight = '460px';
-        }
+        this._originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
         
         this._lastActiveElement = document.activeElement as HTMLElement;
         this._isOpen = true;
@@ -115,9 +106,11 @@ export class PanelElement extends LitElement {
 
     close(): void {
         this._isOpen = false;
-        document.body.style.removeProperty('overflow');
-        if (window.innerWidth > 640) {
-            document.body.style.marginRight = '';
+        if (this._originalOverflow !== null) {
+            document.body.style.overflow = this._originalOverflow;
+            this._originalOverflow = null;
+        } else {
+            document.body.style.removeProperty('overflow');
         }
         
         // Auto-save any active textarea edits on close
@@ -592,6 +585,9 @@ export class PanelElement extends LitElement {
     }
 
     private _syncPull() {
+        if (!window.confirm('Are you sure you want to pull? This will overwrite all your local domain lists with the Gist content.')) {
+            return;
+        }
         this._runSync(async () => {
             const count = await this.gistSync.pull('replace');
             this.scanner.reapply();

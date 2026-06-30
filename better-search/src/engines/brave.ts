@@ -4,7 +4,7 @@ import type { EngineConfig } from '../types';
 function extractUrl(item: Element): string | null {
     // Brave Search: title link is <a class="result-header" href="...">
     const a = item.querySelector<HTMLAnchorElement>(
-        'a.result-header[href], a.svelte-1dh4yef[href], .snippet-title a[href]'
+        'a.result-header[href], a[class*="svelte-"][href], .snippet-title a[href]'
     );
     if (a?.href) return a.href;
     // Generic fallback

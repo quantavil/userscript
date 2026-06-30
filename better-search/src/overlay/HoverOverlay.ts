@@ -61,6 +61,12 @@ export class HoverOverlayElement extends LitElement {
             this._scheduleHide();
         }, docOpts);
 
+        document.addEventListener('scroll', () => {
+            if (this._activeItem && this.classList.contains('visible')) {
+                this._positionBar(this._activeItem);
+            }
+        }, { signal, passive: true, capture: true });
+
         this.addEventListener('pointerenter', () => this._cancelHide(), { signal });
         this.addEventListener('pointerleave', () => this._scheduleHide(), { signal });
     }

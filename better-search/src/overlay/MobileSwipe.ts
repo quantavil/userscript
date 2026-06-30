@@ -172,6 +172,14 @@ export class MobileSwipe {
     private _prepareSwipeBg(item: HTMLElement): void {
         if (this._activeBg) return;
 
+        const parent = item.parentElement;
+        if (parent) {
+            if (!parent.hasAttribute('data-svf-orig-pos')) {
+                parent.setAttribute('data-svf-orig-pos', window.getComputedStyle(parent).position || 'static');
+            }
+            parent.style.position = 'relative';
+        }
+
         const domain = item.getAttribute(DOMAIN_ATTR) || '';
         const match = this._store.matchDomain(domain);
 
@@ -294,6 +302,13 @@ export class MobileSwipe {
             if (bg && bg.parentNode) {
                 bg.remove();
             }
+
+            const parent = item.parentElement;
+            if (parent && parent.hasAttribute('data-svf-orig-pos')) {
+                const orig = parent.getAttribute('data-svf-orig-pos') || 'static';
+                parent.style.position = orig === 'static' ? '' : orig;
+                parent.removeAttribute('data-svf-orig-pos');
+            }
         }, 200);
     }
 
@@ -305,6 +320,13 @@ export class MobileSwipe {
             this._activeItem.classList.remove('svf-swipe-active', 'svf-swipe-transition');
             this._activeItem.style.transform = '';
             this._activeItem.style.backgroundColor = '';
+
+            const parent = this._activeItem.parentElement;
+            if (parent && parent.hasAttribute('data-svf-orig-pos')) {
+                const orig = parent.getAttribute('data-svf-orig-pos') || 'static';
+                parent.style.position = orig === 'static' ? '' : orig;
+                parent.removeAttribute('data-svf-orig-pos');
+            }
         }
         this._activeItem = null;
         this._activeBg = null;

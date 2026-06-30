@@ -20,7 +20,7 @@ function extractUrl(item: Element): string | null {
         try {
             const u = new URL(href);
             // Skip internal Google links and search URLs, but allow organic google subdomains
-            if (GOOGLE_INTERNAL_HOSTS.has(u.hostname) || u.pathname.startsWith('/search') || u.hostname.includes('gstatic.')) {
+            if (GOOGLE_INTERNAL_HOSTS.has(u.hostname) || u.pathname.startsWith('/search') || u.hostname === 'gstatic.com' || u.hostname.endsWith('.gstatic.com')) {
                 continue;
             }
             return href;

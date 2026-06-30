@@ -67,8 +67,10 @@ better-search/
 - Locked background page body scrolling when settings modal is open by dynamically applying overflow styles, preventing scroll leakage.
 - Stabilized settings UI by implementing a slide-out sidebar for desktop (100vh height, 460px width) that dynamically squeezes the page layout, and a responsive slide-up bottom sheet for mobile (90vh height), leveraging flexbox stretching to utilize left over card space.
 - Added write-protection lock-state to raw textareas: read-only by default (styled translucent yellow with yellow border/glow) and unlocked using an Edit List action button to prevent accidental modifications.
-- Consolidated duplicate auto-save blocks in settings panel into a unified helper method _autoSavePendingTextareaEdits to reduce code redundancy.
-
+- Removed body margin shifting (marginRight) on desktop settings panel opening to prevent fixed-position headers and widgets from breaking.
+- Added scroll-event tracking to HoverOverlay to dynamically reposition it during scroll.
+- Upgraded Gist synchronization to support GitHub fine-grained PATs using Bearer scheme and added concurrency locks.
+- Improved registerable domain calculations to support popular public suffixes like github.io.
 
 
 ## Blunders

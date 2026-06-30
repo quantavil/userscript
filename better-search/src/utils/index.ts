@@ -20,7 +20,19 @@ export function getRegisterableDomain(domain: string): string {
     const isCcTld = tld.length === 2;
     const isCommonSld = /^(co|com|org|net|gov|edu|ac|or|ne|ltd|plc|sch|asn)$/.test(sld);
     
-    if (isCcTld && isCommonSld && parts.length >= 3) {
+    const lastTwo = parts.slice(-2).join('.');
+    const KNOWN_PUBLIC_SUFFIXES = new Set([
+        'github.io',
+        'gitlab.io',
+        'pages.dev',
+        'vercel.app',
+        'herokuapp.com',
+        'githubusercontent.com',
+        'workers.dev',
+        'js.org'
+    ]);
+    
+    if ((isCcTld && isCommonSld || KNOWN_PUBLIC_SUFFIXES.has(lastTwo)) && parts.length >= 3) {
         return parts.slice(-3).join('.');
     }
     return parts.slice(-2).join('.');
