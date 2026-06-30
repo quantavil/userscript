@@ -620,6 +620,12 @@ export const FilterPanel = {
 
       if (!profile) {
         // Unscraped profile
+        // If non-search filters are active, hide the card since we don't know if it matches yet
+        if (nonSearchFilterActive) {
+          el.style.display = 'none';
+          return;
+        }
+
         // Keep unscraped thumbnails visible until they are actually scraped and fail the criteria
         // Dim them slightly to indicate they are loading/unscraped
         el.style.opacity = '0.5';

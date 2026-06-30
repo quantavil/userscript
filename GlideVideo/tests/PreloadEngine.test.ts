@@ -81,8 +81,12 @@ describe('PreloadEngine', () => {
         delete (global as any).HTMLVideoElement;
     });
 
-    it('should patch HTMLVideoElement.prototype.play', () => {
-        expect(HTMLVideoElement.prototype.play.__mvc_patched).toBe(true);
+    it('should patch the individual video.play when preloading is triggered and restore on cancel', () => {
+        expect((mockVideo as any).__mvc_play_patched).toBeUndefined();
+        engine.triggerEnhancedPreload(mockVideo);
+        expect((mockVideo as any).__mvc_play_patched).toBe(true);
+        engine.cancelPreload();
+        expect((mockVideo as any).__mvc_play_patched).toBeUndefined();
     });
 
     it('should trigger preload on video active changed', () => {

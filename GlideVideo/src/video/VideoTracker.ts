@@ -2,7 +2,7 @@
 import { EventBus } from '../events/EventBus';
 import { StateStore } from '../core/StateStore';
 import { MVC_CONFIG } from '../config';
-import { findAllVideos, isPlaying, debounce } from '../utils';
+import { findAllVideos, isPlaying, debounce, cleanupVideoAudioContext } from '../utils';
 
 export class VideoTracker {
     public intersectionObserver?: IntersectionObserver;
@@ -58,7 +58,12 @@ export class VideoTracker {
             
             if (area < MVC_CONFIG.MIN_VIDEO_AREA || r.height < MVC_CONFIG.MIN_VIDEO_HEIGHT) continue;
             
-            if (v.closest('a')) continue;
+            // Skip small preview thumbnails inside links, but allow large players wrapped in <a>
+            if (v.closest('a')) {
+                if (r.width < 250 || r.height < 140) {
+                    continue;
+                }
+            }
             if (v.closest('.video-ads, .ytp-ad-player-overlay, .ad-container, [class*="ad-unit"], [id*="ad-unit"]')) continue;
             if (r.height < 150 && v.muted) continue;
 
@@ -131,6 +136,7 @@ export class VideoTracker {
                 mutation.removedNodes.forEach(node => {
                     if (node.nodeType === 1) {
                         const el = node as HTMLElement;
+                        this.cleanupShadowObserversFor(el);
                         const videos = findAllVideos(el);
                         if (videos.length) {
                             relevantMutation = true;
@@ -138,6 +144,7 @@ export class VideoTracker {
                                 this.intersectionObserver?.unobserve(v);
                                 this.store.visibleVideos.delete(v);
                                 if (v === this.store.activeVideo) activeVideoRemoved = true;
+                                cleanupVideoAudioContext(v);
                             });
                         }
                     }
@@ -239,5 +246,25 @@ export class VideoTracker {
         };
         newAttachShadow.__mvc_patched = true;
         (proto as { attachShadow: any }).attachShadow = newAttachShadow;
+    }
+
+    private cleanupShadowObserversFor(element: HTMLElement) {
+        const walk = (node: Node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                const el = node as HTMLElement;
+                if (el.shadowRoot) {
+                    const observer = this.shadowObservers.get(el.shadowRoot);
+                    if (observer) {
+                        observer.disconnect();
+                        this.shadowObservers.delete(el.shadowRoot);
+                    }
+                    walk(el.shadowRoot);
+                }
+            }
+            for (let i = 0; i < node.childNodes.length; i++) {
+                walk(node.childNodes[i]);
+            }
+        };
+        walk(element);
     }
 }

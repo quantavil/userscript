@@ -188,18 +188,14 @@ export class SwipeDetector {
                     this.store.isBrightnessControlling = false;
                 }
                 mode = 'undecided';
-                if (e.target) {
-                    e.target.removeEventListener('touchmove', onTouchMove as any);
-                    e.target.removeEventListener('touchend',  onTouchEnd);
-                    e.target.removeEventListener('touchcancel', onTouchEnd);
-                }
+                window.removeEventListener('touchmove', onTouchMove as any);
+                window.removeEventListener('touchend',  onTouchEnd);
+                window.removeEventListener('touchcancel', onTouchEnd);
             };
 
-            if (e.target) {
-                e.target.addEventListener('touchmove', onTouchMove as any, { passive: false });
-                e.target.addEventListener('touchend',   onTouchEnd);
-                e.target.addEventListener('touchcancel', onTouchEnd);
-            }
+            window.addEventListener('touchmove', onTouchMove as any, { passive: false });
+            window.addEventListener('touchend',   onTouchEnd);
+            window.addEventListener('touchcancel', onTouchEnd);
         }, { passive: true, capture: true, signal: this.store.abortController.signal });
 
         window.addEventListener('touchmove', e => {

@@ -62,11 +62,15 @@ export class UIManager {
         });
         this.eventBus.on('video:rate-changed', () => this.updateSpeedDisplay());
         this.eventBus.on('video:play-state-changed', () => this.updateSpeedDisplay());
-        this.eventBus.on('video:transform-need-update', () => this.updateSettingsTransformUI());
+        this.eventBus.on('video:transform-need-update', () => {
+            this.updateSettingsTransformUI();
+            this.updateBrightnessOverlayPosition();
+        });
         this.eventBus.on('video:active-changed', (video) => {
             if (video) {
                 this.updateSpeedDisplay();
                 this.updateSettingsTransformUI();
+                this.updateBrightnessOverlayPosition();
             }
         });
         this.eventBus.on('settings:changed', ({ key }) => {
@@ -74,6 +78,7 @@ export class UIManager {
                 if (this.settingsSheet) this.settingsSheet.updateUI();
             } else if (key === 'transform') {
                 this.updateSettingsTransformUI();
+                this.updateBrightnessOverlayPosition();
             }
         });
         this.eventBus.on('video:double-tap-skipped', ({ side, x, y, seconds }) => {
@@ -531,6 +536,7 @@ export class UIManager {
 
         const opacity = 1 - brightness;
         this.brightnessOverlay.style.opacity = `${opacity}`;
+        this.updateBrightnessOverlayPosition();
 
         const rect   = this.store.activeVideo.getBoundingClientRect();
         const barH   = Math.min(Math.max(rect.height * 0.55, 120), 220);
@@ -554,5 +560,16 @@ export class UIManager {
         this.store.timers.brightnessBarHide = setTimeout(() => {
             if (this.brightnessBar) this.brightnessBar.classList.remove('visible');
         }, 1200) as any;
+    }
+
+    public updateBrightnessOverlayPosition() {
+        if (!this.brightnessOverlay || !this.store.activeVideo) return;
+        const rect = this.store.activeVideo.getBoundingClientRect();
+        Object.assign(this.brightnessOverlay.style, {
+            top: `${rect.top}px`,
+            left: `${rect.left}px`,
+            width: `${rect.width}px`,
+            height: `${rect.height}px`
+        });
     }
 }

@@ -589,4 +589,8 @@ body.lightsoff .bp-tag {
   #bp-filter-fab {
     bottom: 15px;
   }
+
+  .bp-text-input {
+    font-size: 16px; /* Prevents auto-zoom on mobile focus */
+  }
 }

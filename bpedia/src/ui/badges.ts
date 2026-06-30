@@ -57,10 +57,5 @@ export const Badges = {
       badge.textContent = profile.personal.countryCode;
       anchor.appendChild(badge);
     }
-  },
-
-  remove(thumbshotEl: HTMLElement): void {
-    thumbshotEl.removeAttribute('data-bp-badged');
-    thumbshotEl.querySelectorAll('.bp-badge').forEach((b) => b.remove());
   }
 };

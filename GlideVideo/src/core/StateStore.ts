@@ -92,7 +92,12 @@ export class StateStore {
         }
         this.eventBus.emit('settings:changed', { key, val });
         
-        if (key === 'transform') return; // Do not persist transform in localStorage
+        if (key === 'transform') {
+            if (this.activeVideo) {
+                (this.activeVideo as any).__mvc_transform = val;
+            }
+            return; // Do not persist transform in localStorage
+        }
         
         clearTimeout(this.timers[`save_${key}`]);
         this.timers[`save_${key}`] = setTimeout(() => {

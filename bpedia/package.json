@@ -1,6 +1,6 @@
 {
   "name": "bpedia-filter-userscript",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Babepedia Advanced Filter and Badges userscript",
   "main": "dist/bpedia-filter.user.js",
   "type": "module",

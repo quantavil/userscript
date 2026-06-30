@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'Babepedia Advanced Filter & Badges',
         namespace: 'quantavil/bpedia',
-        version: '1.1.1',
+        version: '1.1.2',
         description: 'Advanced filtering and on-thumbnail stats/badges for Babepedia list pages with dynamic progress scraper and responsive Apple Glassmorphic UI.',
         author: 'quantavil',
         license: 'MIT',

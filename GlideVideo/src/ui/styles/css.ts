@@ -686,7 +686,6 @@ export function injectStyles(): void {
         /* Brightness Overlay */
         .mvc-brightness-overlay {
             position: fixed;
-            inset: 0;
             background: black;
             opacity: 0;
             pointer-events: none;

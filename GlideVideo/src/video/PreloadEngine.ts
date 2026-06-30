@@ -12,16 +12,17 @@ export class PreloadEngine {
         private readonly store: StateStore
     ) {
         this.setupSubscriptions();
-        this.patchVideoPlay();
     }
 
-    private patchVideoPlay() {
-        const proto = HTMLVideoElement.prototype;
-        if (proto.play && proto.play.__mvc_patched) return;
+    private patchVideoElementPlay(video: HTMLVideoElement) {
+        if ((video as any).__mvc_play_patched) return;
+        (video as any).__mvc_play_patched = true;
 
-        const originalPlay = proto.play;
-        
-        const newPlay = function(this: HTMLVideoElement) {
+        const originalPlay = video.play;
+        (video as any).__mvc_original_play = originalPlay;
+
+        const self = this;
+        video.play = function(this: HTMLVideoElement) {
             try {
                 if (this.__mvc_preload_user_time !== undefined) {
                     const userTime = this.__mvc_preload_user_time;
@@ -30,10 +31,7 @@ export class PreloadEngine {
                         this.__mvc_preload_is_pumping = false;
                         this.currentTime = userTime;
                         
-                        const instance = window.__MVC_INSTANCE;
-                        if (instance && instance.preloadEngine) {
-                            instance.preloadEngine.cancelPreload();
-                        }
+                        self.cancelPreload();
                     }
                 }
             } catch (e) {
@@ -41,9 +39,6 @@ export class PreloadEngine {
             }
             return originalPlay.apply(this, arguments as any);
         };
-        
-        newPlay.__mvc_patched = true;
-        (proto as any).play = newPlay;
     }
 
     private setupSubscriptions() {
@@ -79,6 +74,7 @@ export class PreloadEngine {
         if (!video.paused) return;
 
         this.preloadedVideo = video;
+        this.patchVideoElementPlay(video);
         if (video.getAttribute('preload') !== 'auto') {
             video.setAttribute('preload', 'auto');
         }
@@ -226,6 +222,12 @@ export class PreloadEngine {
     public cancelPreload() {
         this.clearPumpDelay();
         if (this.preloadedVideo) {
+            const video = this.preloadedVideo as any;
+            if (video.__mvc_original_play) {
+                video.play = video.__mvc_original_play;
+                delete video.__mvc_original_play;
+            }
+            delete video.__mvc_play_patched;
             delete this.preloadedVideo.__mvc_preload_user_time;
             delete this.preloadedVideo.__mvc_preload_is_pumping;
             this.preloadedVideo = null;

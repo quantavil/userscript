@@ -76,3 +76,6 @@ bpedia/
 - Slider bounds listener boilerplate: repetitive min/max listener bindings. Fix: looped listener assignments over pair array.
 - Cache try/catch boilerplate: JSON parsing try/catch blocks repeated across multiple getters. Fix: extracted a safeParse utility.
 - Corrupted blank cache: truncated HTML loads or Cloudflare challenge pages got cached as valid blank profiles. Fix: throw verification error in parser if info block is missing.
+- Mobile zoom input focus: focusing 13px inputs on mobile triggered browser auto-zoom, hiding the fixed filter FAB off-screen. Fix: set input font-size to 16px in mobile media query.
+- Uncached card filter leak: unscraped card thumbnails remained visible when non-search filters were active. Fix: hide uncached thumbnails when nonSearchFilterActive is true.
+- Unused dead code: Badges.remove() was defined but never used, and nonSearchFilterActive was assigned but never referenced. Fix: removed Badges.remove() and utilized nonSearchFilterActive.

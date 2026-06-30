@@ -165,5 +165,26 @@ describe('PressDetector', () => {
         expect(rateSpy).not.toHaveBeenCalled();
         expect(detector.inLongPressGesture).toBe(false);
     });
+
+    it('should ignore pointerdown if it starts in edge protection zones', () => {
+        const rateSpy = vi.fn();
+        eventBus.on('video:rate-change-requested', rateSpy);
+
+        // Edge protection zones are clientX < 18px or clientX > window.innerWidth - 18px
+        (global as any).window.innerWidth = 360;
+
+        // Pointerdown too close to left edge (10px < 18px)
+        fireEvent('pointerdown', { clientX: 10, clientY: 200, pointerType: 'touch' });
+        vi.advanceTimersByTime(650);
+        expect(rateSpy).not.toHaveBeenCalled();
+
+        // Pointerdown too close to right edge (350px > 342px)
+        fireEvent('pointerdown', { clientX: 350, clientY: 200, pointerType: 'touch' });
+        vi.advanceTimersByTime(650);
+        expect(rateSpy).not.toHaveBeenCalled();
+
+        // Clean up mock window.innerWidth
+        delete (global as any).window.innerWidth;
+    });
 });
 

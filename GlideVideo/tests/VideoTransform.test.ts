@@ -101,7 +101,8 @@ describe('VideoTransform', () => {
             brightnessOverlay: mockElement(),
             brightnessBar: mockElement(),
             doubleTapContainer: mockElement(),
-            settingsSheet: { dom: mockElement() }
+            settingsSheet: { dom: mockElement() },
+            updateBrightnessOverlayPosition: vi.fn()
         } as any;
 
         // Mock video element

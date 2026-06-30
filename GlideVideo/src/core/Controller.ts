@@ -9,7 +9,7 @@ import { PreloadEngine } from '../video/PreloadEngine';
 import { SwipeDetector } from '../gestures/SwipeDetector';
 import { PressDetector } from '../gestures/PressDetector';
 import { DoubleTapDetector } from '../gestures/DoubleTapDetector';
-import { findAllVideos } from '../utils';
+import { findAllVideos, cleanupVideoAudioContext } from '../utils';
 
 export class Controller {
     public readonly eventBus: EventBus;
@@ -134,23 +134,9 @@ export class Controller {
         this.preloadEngine.destroy();
 
         // Clean up Web Audio contexts
-        const videos = findAllVideos(document) as any[];
+        const videos = findAllVideos(document);
         for (const v of videos) {
-            if (v.gtAudioCtx) {
-                try {
-                    v.gtAudioCtx.close();
-                } catch (e) {}
-                v.gtAudioCtx = undefined;
-            }
-            if (v.gtGainNode) {
-                try {
-                    v.gtGainNode.disconnect();
-                } catch (e) {}
-                v.gtGainNode = undefined;
-            }
-            v.gtAudioInit = false;
-            v.gtTotalVolume = undefined;
-            v.gtBoostFailedToastShown = undefined;
+            cleanupVideoAudioContext(v);
         }
 
         clearTimeout(this.store.timers.hideGrace);

@@ -114,3 +114,23 @@ export function shouldBlockGestures(): boolean {
     return isPortrait && !isFullscreen;
 }
 
+export function cleanupVideoAudioContext(video: HTMLVideoElement) {
+    const vAny = video as any;
+    if (vAny.gtAudioCtx) {
+        try {
+            vAny.gtAudioCtx.close();
+        } catch (e) {}
+        vAny.gtAudioCtx = undefined;
+    }
+    if (vAny.gtGainNode) {
+        try {
+            vAny.gtGainNode.disconnect();
+        } catch (e) {}
+        vAny.gtGainNode = undefined;
+    }
+    vAny.gtAudioInit = false;
+    vAny.gtTotalVolume = undefined;
+    vAny.gtBoostFailedToastShown = undefined;
+}
+
+

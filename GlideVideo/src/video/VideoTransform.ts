@@ -104,8 +104,11 @@ export class VideoTransform implements EventListenerObject {
         }
 
         if (v) {
-            // Reset video transform/zoom on new video load
-            this.store.settings.transform = { ratio: 'fit', zoom: 1, rotation: 0 };
+            // Restore video transform/zoom on new video load, or initialize default
+            if (!(v as any).__mvc_transform) {
+                (v as any).__mvc_transform = { ratio: 'fit', zoom: 1, rotation: 0 };
+            }
+            this.store.settings.transform = (v as any).__mvc_transform;
 
             this.attachUIToVideo(v);
             const scrollParents = this.findScrollableParents(v);
@@ -291,6 +294,7 @@ export class VideoTransform implements EventListenerObject {
         let desiredTopPage = vr.top + offsetY + window.scrollY + MVC_CONFIG.EDGE;
 
         this._applyPagePosition(desiredLeftPage, desiredTopPage, this.store.isScrolling);
+        this.ui.updateBrightnessOverlayPosition();
     }
 
     public ensureUIInViewport() {
@@ -310,8 +314,12 @@ export class VideoTransform implements EventListenerObject {
 
     public onViewportChange() {
         if (this.store.isManuallyPositioned) return;
-        if (this.store.activeVideo) this.throttledPositionOnVideo();
-        else this.ensureUIInViewport();
+        if (this.store.activeVideo) {
+            this.throttledPositionOnVideo();
+            this.ui.updateBrightnessOverlayPosition();
+        } else {
+            this.ensureUIInViewport();
+        }
     }
 
     public getViewportPageBounds() {

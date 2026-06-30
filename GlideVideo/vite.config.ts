@@ -14,7 +14,11 @@ export default defineConfig({
         version: pkg.version,
         description: pkg.description,
         match: ['*://*/*'],
-        grant: 'none',
+        grant: [
+          'GM_registerMenuCommand',
+          'GM_getValue',
+          'GM_setValue'
+        ],
         license: 'MIT',
         'run-at': 'document-start'
       },

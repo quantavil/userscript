@@ -50,6 +50,10 @@ export class PressDetector {
             if (!this.store.activeVideo?.isConnected) return;
             if (this.store.isSwipeSeeking || this.store.isPinching || this.store.isVolumeControlling) return;
 
+            if (e.clientX < MVC_CONFIG.EDGE_TOUCH_PROTECTION_PADDING || e.clientX > window.innerWidth - MVC_CONFIG.EDGE_TOUCH_PROTECTION_PADDING) {
+                return;
+            }
+
             if (isPointOnUI(e.target)) return;
 
             const r = this.store.activeVideo.getBoundingClientRect();

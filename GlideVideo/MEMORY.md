@@ -55,6 +55,8 @@ src/
 - Gestures use explicit class properties to cancel active pointer events/intervals and prevent collisions between seeks, pinch-zooms, and speed-boosts.
 - Picture-in-Picture (PiP) support is dynamically evaluated and displayed if supported by the browser (handling both standard HTML5 PiP and iOS Safari presentation modes).
 - Preventing native site fullscreen on double-tap: Capture phase pointerdown/pointerup/click/dblclick events are cancelled (`preventDefault`, `stopPropagation`) when the gesture is detected, blocking site scripts from receiving the second tap.
+- **Site-level Enable/Disable Menu Command**: Users can toggle the userscript on/off per domain using GM menu commands stored via cross-site GM storage, which reloads the page to apply the active/inactive state.
+
 
 ## Blunders
 - **Early Exit Video Check**: Exiting early in `safeInit` if no video exists breaks pages loading videos dynamically (e.g. YouTube/Twitter SPAs). Fixed by deferring initialization until a video is detected via a lightweight observer.
@@ -96,3 +98,5 @@ src/
 - **Edge Touch Protection**: Added edge protection padding check to SwipeDetector to ignore touch inputs starting within 18px of the left or right screen borders, preventing browser history back/forward swipe conflicts.
 - **Orphaned Settings Button**: Lock shield insertion in `UIManager.createMainUI` accidentally removed `preventPropagation(this.settingsBtn)` and `wrap.appendChild(this.settingsBtn)`, leaving the settings button created but never added to the DOM. Fixed by restoring both calls.
 - **Stale Volume Boost Properties**: `destroy()` cleaned up `gtAudioCtx`/`gtGainNode`/`gtAudioInit` but not `gtTotalVolume`/`gtBoostFailedToastShown`, causing phantom boosted volume on re-init. Fixed.
+- **Reliability & Leak Fixes**: Replaced play monkey-patching with instance-level patching, attached gestures to window, bounded brightness overlay, cached zoom transforms per-video element, added size check to anchor video matching, fixed AudioContext and shadow root MutationObserver leaks, and added PressDetector edge protection.
+
