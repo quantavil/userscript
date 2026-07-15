@@ -92,6 +92,30 @@ describe('StateStore', () => {
         expect(getStorageKeyPrivate('skipSeconds')).toBe('mvc_skipSeconds');
     });
 
+    describe('Domain-based Speed Remembrance', () => {
+        it('should save lastRate under a domain-specific key', () => {
+            (global as any).window.location.href = 'https://anikoto.tv/watch/123';
+            (global as any).window.location.hostname = 'anikoto.tv';
+            const store = new StateStore(eventBus);
+            
+            store.saveSetting('lastRate', 1.25);
+            vi.advanceTimersByTime(2000);
+            
+            expect(mockStorage['mvc_lastRate_anikoto.tv']).toBe('1.25');
+            // Should not save under the global key
+            expect(mockStorage['mvc_lastRate']).toBeUndefined();
+        });
+
+        it('should fallback to global lastRate if domain-specific rate is missing', () => {
+            mockStorage['mvc_lastRate'] = '1.2';
+            (global as any).window.location.href = 'https://reddit.com/r/videos';
+            (global as any).window.location.hostname = 'reddit.com';
+            
+            const store = new StateStore(eventBus);
+            expect(store.settings.lastRate).toBe(1.2);
+        });
+    });
+
     describe('Video Position Tracking', () => {
         let store: StateStore;
         let mockVideo: HTMLVideoElement;

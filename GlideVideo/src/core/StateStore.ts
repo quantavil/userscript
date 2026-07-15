@@ -125,12 +125,31 @@ export class StateStore {
         return `mvc_${key}`;
     }
 
+    private getDomainSpeedKey(): string {
+        let domain = '';
+        if (typeof window !== 'undefined' && window.location) {
+            if (window.location.hostname) {
+                domain = window.location.hostname;
+            } else if (window.location.href) {
+                try {
+                    domain = new URL(window.location.href).hostname;
+                } catch (e) {}
+            }
+        }
+        return domain ? `mvc_lastRate_${domain}` : 'mvc_lastRate';
+    }
+
     // ── Settings persistence ────────────────────────────────────────────────
     public loadSettings() {
+        let savedRate = this.storageGet(this.getDomainSpeedKey(), null);
+        if (savedRate === null) {
+            savedRate = this.storageGet(this.getStorageKey('lastRate'), 1.0);
+        }
+
         this.settings = {
             skipSeconds:     this.storageGet(this.getStorageKey('skipSeconds'),     10),
             defaultSpeed:    this.storageGet(this.getStorageKey('defaultSpeed'),    1.0),
-            lastRate:        this.storageGet(this.getStorageKey('lastRate'),        1.0),
+            lastRate:        savedRate,
             transform:       { ratio: 'fit', zoom: 1 },
             gesturesEnabled: this.storageGet(this.getStorageKey('gesturesEnabled'), true),
             scrollCompatibility: this.storageGet(this.getStorageKey('scrollCompatibility'), true),
@@ -154,7 +173,8 @@ export class StateStore {
         
         clearTimeout(this.timers[`save_${key}`]);
         this.timers[`save_${key}`] = setTimeout(() => {
-            this.storageSet(this.getStorageKey(key), val);
+            const storageKey = key === 'lastRate' ? this.getDomainSpeedKey() : this.getStorageKey(key);
+            this.storageSet(storageKey, val);
         }, MVC_CONFIG.STORAGE_DEBOUNCE_MS) as any;
     }
 
@@ -163,7 +183,8 @@ export class StateStore {
         for (const key of Object.keys(this.settings)) {
             if (key === 'transform') continue; // Do not persist transform in localStorage
             clearTimeout(this.timers[`save_${key}`]);
-            this.storageSet(this.getStorageKey(key), this.settings[key]);
+            const storageKey = key === 'lastRate' ? this.getDomainSpeedKey() : this.getStorageKey(key);
+            this.storageSet(storageKey, this.settings[key]);
         }
     }
 
