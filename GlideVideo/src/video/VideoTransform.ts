@@ -117,7 +117,9 @@ export class VideoTransform implements EventListenerObject {
             if (savedTime > 0) {
                 const applyRestore = () => {
                     if (this.store.activeVideo === v && this.store.settings.rememberPlayback) {
-                        v.currentTime = savedTime;
+                        if (v.currentTime < savedTime) {
+                            v.currentTime = savedTime;
+                        }
                     }
                 };
                 if (v.readyState >= 1) {

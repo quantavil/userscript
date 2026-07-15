@@ -55,6 +55,21 @@ describe('VideoTransform', () => {
 
 
         (global as any).document = {
+            createElement: vi.fn().mockImplementation((tagName: string) => {
+                if (tagName === 'video') {
+                    return {
+                        currentTime: 0,
+                        readyState: 0,
+                        playbackRate: 1.0,
+                        style: {},
+                        dataset: {},
+                        addEventListener: vi.fn(),
+                        removeEventListener: vi.fn(),
+                        getBoundingClientRect: vi.fn().mockReturnValue({ left: 0, top: 0, width: 640, height: 360 })
+                    };
+                }
+                return {};
+            }),
             addEventListener: vi.fn((event: string, callback: any) => {
                 mockDocumentListeners[event] = callback;
             }),
@@ -347,6 +362,22 @@ describe('VideoTransform', () => {
 
             // It should set readyState to seek
             expect(newVideo.currentTime).toBe(60);
+        });
+
+        it('should not rewind active video to saved position if background progress is ahead', () => {
+            // Mock video element already playing at time 50
+            const video = document.createElement('video') as HTMLVideoElement;
+            Object.defineProperty(video, 'readyState', { value: 4, writable: true });
+            video.currentTime = 50;
+            
+            // Save position is set to 30
+            vi.spyOn(store, 'getVideoPosition').mockReturnValue(30);
+            
+            // Trigger active video change to this video
+            store.setActiveVideo(video);
+            
+            // Expect currentTime to remain 50, not jump back to 30
+            expect(video.currentTime).toBe(50);
         });
     });
 

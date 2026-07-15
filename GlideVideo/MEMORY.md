@@ -90,4 +90,5 @@ src/
 - **Passive touchstart preventDefault**: `window.addEventListener('touchstart')` is passive by default on mobile browsers. Use `{ passive: false }` to allow `preventDefault()` to suppress browser pinch-zooming.
 - **Stable Video ID fallback**: `window.location.href.split('#')[0]` breaks hash-routed SPAs and DOM indexes shift. Strip query parameters using `URLSearchParams` on search/hash and build CSS-like paths for stable IDs.
 - **Numeric Video ID LRU Eviction**: Pure numeric video IDs are sorted numerically rather than by insertion order. Fixed by prefixing keys in `positions` with `_` to guarantee insertion-order based LRU eviction, while maintaining backward compatibility.
+- **Background Playback Scroll Jump**: Active video restored to saved position rewinds currentTime if background progress is already ahead. Fixed by only updating currentTime if current progress is behind the saved position.
 
