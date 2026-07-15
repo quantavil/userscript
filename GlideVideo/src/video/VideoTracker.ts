@@ -235,7 +235,7 @@ export class VideoTracker {
         const newAttachShadow = function(this: Element, init: ShadowRootInit) {
             const shadowRoot = originalAttachShadow.call(this, init);
             try {
-                if (init && init.mode === 'open') {
+                if (init) {
                     setTimeout(() => {
                         const instance = window.__MVC_INSTANCE;
                         if (instance && instance.videoTracker) {

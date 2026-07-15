@@ -23,7 +23,14 @@ describe('VideoTracker', () => {
 
         if (typeof (global as any).Element === 'undefined') {
             class MockElement {
-                attachShadow() {}
+                attachShadow() {
+                    return {
+                        nodeType: 1,
+                        childNodes: [],
+                        querySelector: () => null,
+                        querySelectorAll: () => []
+                    };
+                }
             }
             (global as any).Element = MockElement;
         }
@@ -64,7 +71,25 @@ describe('VideoTracker', () => {
                 nodeType: 1,
                 tagName: 'HTML',
                 childNodes: []
-            }
+            },
+            createElement: vi.fn().mockImplementation((tag: string) => {
+                const el = Object.create((global as any).Element.prototype);
+                el.tagName = tag.toUpperCase();
+                el.style = {};
+                el.classList = {
+                    add: vi.fn(),
+                    remove: vi.fn(),
+                    contains: vi.fn(),
+                    toggle: vi.fn()
+                };
+                el.appendChild = vi.fn();
+                el.append = vi.fn();
+                el.addEventListener = vi.fn(),
+                el.removeEventListener = vi.fn(),
+                el.setAttribute = vi.fn(),
+                el.remove = vi.fn()
+                return el;
+            })
         };
 
         (global as any).window = {
@@ -288,5 +313,21 @@ describe('VideoTracker', () => {
         // Cleanup
         tracker.destroy();
         expect(Element.prototype.attachShadow).toBe(attachShadowSpy);
+    });
+
+    it('should patch attachShadow to observe closed shadow roots', () => {
+        const trackerInstance = new VideoTracker(eventBus, store);
+        (global as any).window.__MVC_INSTANCE = { videoTracker: trackerInstance };
+        trackerInstance.patchAttachShadow();
+        
+        const mockElement = document.createElement('div');
+        const spySetup = vi.spyOn(trackerInstance, 'setupShadowRootObserver');
+        
+        const closedShadow = mockElement.attachShadow({ mode: 'closed' });
+        
+        vi.advanceTimersByTime(10);
+        
+        expect(spySetup).toHaveBeenCalledWith(closedShadow);
+        trackerInstance.destroy();
     });
 });
