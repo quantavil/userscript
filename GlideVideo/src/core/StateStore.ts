@@ -22,6 +22,7 @@ export interface VideoMetadata {
     lastPositionSave?: number;
     originalTransform?: string;
     originalObjectFit?: string;
+    rateOverrideCount?: number;
 }
 
 export class StateStore {
@@ -47,7 +48,14 @@ export class StateStore {
     public isScreenLocked = false;
 
     // Internal rate fighting states
-    public _rateOverrideCount = 0;
+    get _rateOverrideCount(): number {
+        if (!this.activeVideo) return 0;
+        return this.getVideoMetadata(this.activeVideo).rateOverrideCount || 0;
+    }
+    set _rateOverrideCount(value: number) {
+        if (!this.activeVideo) return;
+        this.updateVideoMetadata(this.activeVideo, { rateOverrideCount: value });
+    }
 
     public settings!: Settings;
     public timers: Record<string, any> = {};

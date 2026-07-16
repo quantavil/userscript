@@ -27,10 +27,10 @@ export function injectStyles(): void {
             z-index: 2147483647;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             background: var(--mvc-bg-pill);
             color: #fff;
-            padding: 6px 12px;
+            padding: 4px 8px;
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.12);
@@ -50,11 +50,11 @@ export function injectStyles(): void {
             background: transparent !important;
             border: none;
             color: rgba(255, 255, 255, 0.8) !important;
-            font-size: 20px;
+            font-size: 18px;
             font-weight: 400;
             cursor: pointer;
-            width: 30px;
-            height: 30px;
+            width: 26px;
+            height: 26px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -70,8 +70,8 @@ export function injectStyles(): void {
 
         .mvc-stepper-pill-val {
             font-variant-numeric: tabular-nums;
-            font-size: 14px;
-            min-width: 50px;
+            font-size: 13px;
+            min-width: 44px;
             text-align: center;
             color: var(--mvc-color-accent);
             text-shadow: 0 0 8px var(--mvc-color-accent-glow);
@@ -84,22 +84,26 @@ export function injectStyles(): void {
             background: rgba(255, 255, 255, 0.08);
         }
 
-        /* Header Control Buttons (Top Right) */
+        /* Header Control Buttons (Top Right) & Collapse Button */
         .mvc-settings-btn,
         .mvc-pip-btn,
         .mvc-lock-btn,
-        .mvc-ratio-btn {
+        .mvc-ratio-btn,
+        .mvc-collapse-btn {
             position: relative;
-            width: 44px;
-            height: 44px;
+            width: 36px;
+            height: 36px;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: transparent;
+            background: var(--mvc-bg-pill);
             color: rgba(255, 255, 255, 0.85);
-            border: none;
+            border: 1px solid rgba(255, 255, 255, 0.12);
             border-radius: 50%;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.2);
             transition: opacity 0.35s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s;
             will-change: opacity, transform;
             padding: 0;
@@ -131,30 +135,6 @@ export function injectStyles(): void {
             opacity: 0;
             pointer-events: none;
         }
-        .mvc-collapse-btn {
-            position: relative;
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--mvc-bg-pill);
-            color: rgba(255, 255, 255, 0.85);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.2);
-            transition: opacity 0.35s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s;
-            will-change: opacity, transform;
-            padding: 0;
-            flex-shrink: 0;
-        }
-        .mvc-collapse-btn:active {
-            transform: scale(0.9);
-            background: rgba(255, 255, 255, 0.1);
-        }
         .mvc-collapse-btn svg {
             width: 16px;
             height: 16px;
@@ -168,16 +148,17 @@ export function injectStyles(): void {
         .mvc-settings-btn:active,
         .mvc-pip-btn:active,
         .mvc-lock-btn:active,
-        .mvc-ratio-btn:active {
+        .mvc-ratio-btn:active,
+        .mvc-collapse-btn:active {
             transform: scale(0.9);
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.15) !important;
         }
         .mvc-settings-btn svg,
         .mvc-pip-btn svg,
         .mvc-lock-btn svg,
         .mvc-ratio-btn svg {
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
             fill: currentColor !important;
         }
         .mvc-settings-btn svg {
