@@ -10,6 +10,10 @@ userscript/
 ├── GlideVideo/           # GlideVideo Userscript
 ├── StreamGrabber/        # StreamGrabber project
 ├── better-search/        # Better Search project
+├── gate-extractor/       # Streamlined, manual-first gate extractor userscript
+│   └── MEMORY.md         # Detailed memory for gate-extractor
+├── form-genie/           # Local-first auto form filler (desktop + mobile)
+│   └── MEMORY.md         # Detailed memory for form-genie
 └── ... (other projects)  # Various other scripts and bots
 
 ## Conventions

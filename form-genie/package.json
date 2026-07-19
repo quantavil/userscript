@@ -1,0 +1,24 @@
+{
+  "name": "form-genie",
+  "private": true,
+  "version": "1.0.0",
+  "author": "quantavil (https://github.com/quantavil)",
+  "homepage": "https://github.com/quantavil/userscript",
+  "description": "Local-first auto form filler for desktop and mobile. Fills any website (incl. Indian exam portals) from a stored profile using teach-mode rules, heuristics, and an optional Gemini AI tier.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "tsc": "tsc",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^15.11.6",
+    "@types/bun": "^1.3.14",
+    "@types/node": "^25.9.5",
+    "happy-dom": "^15.11.6",
+    "typescript": "~5.8.3",
+    "vite": "^7.3.6",
+    "vite-plugin-monkey": "^5.0.9"
+  }
+}
