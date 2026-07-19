@@ -2,8 +2,8 @@
 import { FillResult } from '../engine/fill';
 import { FIELD_CATALOG } from '../profile/schema';
 
-const ICON: Record<string, string> = {
-  filled: '✅', skipped: '⏭️', unmatched: '❓', suggested: '💡', error: '⚠️',
+const BADGE: Record<string, string> = {
+  filled: 'Filled', skipped: 'Skip', unmatched: 'Miss', suggested: 'Hint', error: 'Err',
 };
 
 export function renderReport(
@@ -34,16 +34,16 @@ export function renderReport(
     const item = document.createElement('div');
     item.className = 'report-item' + (r.status === 'suggested' || r.status === 'unmatched' ? ' act' : '');
 
-    const ico = document.createElement('span');
-    ico.className = 'ico';
-    ico.textContent = ICON[r.status] ?? '•';
-    item.appendChild(ico);
+    const badge = document.createElement('span');
+    badge.className = `badge ${r.status}`;
+    badge.textContent = BADGE[r.status] ?? '•';
+    item.appendChild(badge);
 
     const label = r.match.key ? FIELD_CATALOG[r.match.key]?.label ?? r.match.key : '(unmatched)';
     const desc = r.match.descriptor.text.slice(0, 40) || '(no label)';
     const info = document.createElement('div');
     info.innerHTML =
-      `<div>${escapeHtml(label)}</div>` +
+      `<div class="name">${escapeHtml(label)}</div>` +
       `<div class="meta">${escapeHtml(desc)}${r.reason ? ' · ' + escapeHtml(r.reason) : ''}` +
       `${r.status === 'suggested' ? ` · ${(r.match.confidence * 100) | 0}%` : ''}</div>`;
     item.appendChild(info);

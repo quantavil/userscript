@@ -28,9 +28,21 @@ Pipeline: **scan → describe → match → fill**, each a pure, unit-tested mod
 `fg:profile` (versioned), `fg:settings` (holds API key — never exported),
 `fg:rules:<host>`, `fg:fab`.
 
+## Design
+- **"Press" theme** (v1.1.0) — editorial printed-form aesthetic: warm paper
+  (`--paper #f3efe4`), ink-black type, single vermilion spot (`--spot #cc3b1d`),
+  serif masthead (Georgia stack), monospace field keys/labels/buttons, hairline
+  rules, hard letterpress offset shadows (`5px 5px 0`). Light `color-scheme`.
+  Chosen deliberately against the generic dark-glass default (ref: Nutlope
+  hallmark's anti-slop themes). Opaque so it reads over any host page.
+- Do NOT add `feTurbulence` SVG grain: it hangs headless screenshot capture and
+  costs on low-end mobile. Tried and removed.
+
 ## Conventions
 - UI in a **closed shadow root**; styles in `ui/styles.ts` (design tokens in
-  `:host` CSS vars).
+  `:host` CSS vars). Closed shadow means preview_click can't reach panel
+  internals — verify UI via screenshots + the `window.__menu` hook in
+  `dev/preview.html`.
 - **Opt-in per site**: dormant everywhere until enabled via GM menu command
   (`fg:settings.enabledSites`). This was an explicit user requirement.
 - Panel stops propagation of key/paste/click events at the shadow host

@@ -128,14 +128,21 @@ export class FormGeniePanel {
 
     const head = document.createElement('div');
     head.className = 'head';
-    head.innerHTML =
-      `<div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>` +
-      `<div class="titles"><div class="title">Form Genie</div><div class="sub">${this.ctl.host}</div></div>`;
+    const row1 = document.createElement('div');
+    row1.className = 'row1';
+    row1.innerHTML =
+      `<div class="mono-mark">G</div>` +
+      `<div class="titles"><div class="title">Form Genie</div>` +
+      `<div class="sub">EST. ON — ${this.ctl.host}</div></div>`;
     const close = document.createElement('button');
     close.className = 'close';
     close.textContent = '×';
+    close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', () => this.toggleSheet());
-    head.appendChild(close);
+    row1.appendChild(close);
+    const rule = document.createElement('div');
+    rule.className = 'masthead-rule';
+    head.append(row1, rule);
 
     const tabs = document.createElement('div');
     tabs.className = 'tabs';
@@ -227,11 +234,15 @@ export class FormGeniePanel {
 
   private renderProfile(): void {
     const handle = renderProfileEditor(this.ctl.getProfile());
-    const save = button('Save profile', 'primary full', () => {
-      this.ctl.saveProfile(handle.collect());
-      this.toast('Profile saved');
-    });
-    this.body.append(save, handle.el);
+    const footbar = document.createElement('div');
+    footbar.className = 'footbar';
+    footbar.appendChild(
+      button('Save profile', 'primary full', () => {
+        this.ctl.saveProfile(handle.collect());
+        this.toast('Profile saved');
+      }),
+    );
+    this.body.append(handle.el, footbar);
   }
 
   private renderSettings(): void {

@@ -106,7 +106,7 @@ export class TeachMode {
         if (nq && !hay.includes(nq)) continue;
         const opt = document.createElement('div');
         opt.className = 'picker-opt';
-        opt.innerHTML = `<div>${def.label}</div><div class="k">${key}</div>`;
+        opt.innerHTML = `<div class="l">${def.label}</div><div class="k">${key}</div>`;
         opt.addEventListener('click', () => {
           upsertRule(this.host, {
             fingerprint: fingerprintOf(d),
