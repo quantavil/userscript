@@ -79,13 +79,17 @@ function ownText(el: Element): string {
  * For inputs wrapped in containers (e.g. radios inside .custom-control divs),
  * walks up to the wrapper's parent to find group-level question labels.
  */
+// A label is a few words; anything longer is a whole paragraph/section bleeding
+// in, which bloats the descriptor and skews token scoring. Cap what we return.
+const NEARBY_MAX = 120;
+
 function nearbyText(el: HTMLElement): string {
   const cell = el.closest('td, th');
   if (cell) {
     let prev = cell.previousElementSibling;
     while (prev) {
       const t = (prev.textContent ?? '').trim();
-      if (t) return t;
+      if (t) return t.slice(0, NEARBY_MAX);
       prev = prev.previousElementSibling;
     }
     // Some layouts put the label in the row's first cell.
@@ -93,7 +97,7 @@ function nearbyText(el: HTMLElement): string {
     const first = row?.querySelector('td, th');
     if (first && first !== cell) {
       const t = (first.textContent ?? '').trim();
-      if (t) return t;
+      if (t) return t.slice(0, NEARBY_MAX);
     }
   }
   // Walk up to 3 levels, checking preceding siblings at each level.
@@ -103,7 +107,7 @@ function nearbyText(el: HTMLElement): string {
     let sib = node.previousSibling;
     while (sib) {
       const t = (sib.textContent ?? '').trim();
-      if (t) return t;
+      if (t) return t.slice(0, NEARBY_MAX);
       sib = sib.previousSibling;
     }
     node = node.parentElement;

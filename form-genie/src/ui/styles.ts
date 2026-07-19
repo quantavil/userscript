@@ -225,12 +225,26 @@ input[type='checkbox']:checked::after {
   overflow: hidden; background: var(--paper); border: 1.5px solid var(--ink);
   border-radius: 3px; box-shadow: var(--shadow);
 }
-.picker-box input {
-  margin: 12px 12px 8px; padding: 9px 11px; border-radius: 2px; font-size: 13px;
-  font-family: var(--sans); background: #fbf9f3; border: 1.5px solid var(--rule-strong);
-  color: var(--ink); outline: none;
+.picker-main { display: flex; flex-direction: column; width: 100%; }
+.picker-box input, .picker-box select {
+  width: calc(100% - 24px); margin: 8px 12px; padding: 9px 11px;
+  border-radius: 2px; font-size: 13px; font-family: var(--sans);
+  background: #fbf9f3; border: 1.5px solid var(--rule-strong);
+  color: var(--ink); outline: none; appearance: none;
+  transition: border-color .12s ease;
 }
-.picker-box input:focus { border-color: var(--spot); }
+.picker-box input:focus, .picker-box select:focus { border-color: var(--spot); }
+.picker-create { display: none; flex-direction: column; width: 100%; padding: 12px 0; }
+.picker-create.show { display: flex; }
+.picker-create-title {
+  margin: 0 12px 8px; font-family: var(--mono); font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1px; color: var(--ink-2);
+}
+.picker-actions { display: flex; gap: 6px; margin: 8px 12px 0; }
+.field-error {
+  margin: 4px 12px 0; font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: .3px; color: var(--spot);
+}
 .picker-list { overflow-y: auto; padding: 0 8px 10px; display: flex; flex-direction: column; }
 .picker-opt { padding: 8px 10px; border-radius: 2px; cursor: pointer; border-bottom: 1px solid var(--rule); }
 .picker-opt:last-child { border-bottom: none; }

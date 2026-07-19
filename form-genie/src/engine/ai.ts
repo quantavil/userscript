@@ -22,12 +22,14 @@ export type AiResult =
   | { ok: true; mapping: Map<number, string> }
   | { ok: false; error: string };
 
-const SYSTEM = `You map web form fields to a fixed set of profile keys.
+function getSystemPrompt(): string {
+  return `You map web form fields to a fixed set of profile keys.
 Given a JSON array of fields (index, descriptorText, type, options), return a JSON
 array of {index, key} where key is EXACTLY one of the allowed keys or the string
 "null" if no key fits. Only use allowed keys. Do not invent keys.
 Allowed keys:
 ${ALL_KEYS.join('\n')}`;
+}
 
 const RESPONSE_SCHEMA = {
   type: 'ARRAY',
@@ -49,7 +51,7 @@ export async function mapWithAI(inputs: AiInput[], settings: Settings): Promise<
   }));
 
   const body = JSON.stringify({
-    system_instruction: { parts: [{ text: SYSTEM }] },
+    system_instruction: { parts: [{ text: getSystemPrompt() }] },
     contents: [{ parts: [{ text: JSON.stringify(trimmed) }] }],
     generationConfig: {
       temperature: 0,
@@ -102,9 +104,11 @@ function request(url: string, apiKey: string, body: string): Promise<RawResult> 
 }
 
 function httpError(status: number, text: string): string {
-  if (status === 400 || status === 403) return 'invalid API key or request';
-  if (status === 429) return 'quota exceeded';
   const msg = safeApiMessage(text);
+  if (status === 401 || status === 403) return 'invalid API key';
+  if (status === 400) return msg ? `bad request: ${msg}` : 'bad request (check the model name)';
+  if (status === 404) return 'model not found (check the model name)';
+  if (status === 429) return 'quota exceeded';
   return msg ? `Gemini ${status}: ${msg}` : `Gemini error ${status}`;
 }
 

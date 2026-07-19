@@ -89,7 +89,7 @@ function boot(): void {
   log('Form Genie ready on', host);
 }
 
-async function runFill(
+export async function runFill(
   accepted: Set<string> | undefined,
   notify: (msg: string) => void,
 ): Promise<FillResult[]> {
@@ -105,6 +105,22 @@ async function runFill(
 
   if (settings.ai.enabled && settings.ai.apiKey) {
     await applyAiTier(matches, settings, notify);
+  }
+
+  if (accepted && accepted.size > 0) {
+    for (const m of matches) {
+      if (accepted.has(m.fingerprint) && m.key) {
+        upsertRule(host, {
+          fingerprint: m.fingerprint,
+          occurrence: m.occurrence,
+          key: m.key,
+          source: 'teach',
+          ts: Date.now(),
+        });
+        m.source = 'teach';
+        m.confidence = 1;
+      }
+    }
   }
 
   drawOverlay(matches);
@@ -140,8 +156,14 @@ async function applyAiTier(
     notify(`AI: ${res.error}`);
     return;
   }
+  // Only trust indices we actually sent: a hallucinated/out-of-range index would
+  // otherwise write a rule with an undefined fingerprint and crash the filler.
+  const sent = new Set(inputs.map((i) => i.index));
+  let applied = 0;
   for (const [index, key] of res.mapping) {
+    if (!sent.has(index)) continue;
     const m = matches[index];
+    if (!m) continue;
     matches[index] = { ...m, key, confidence: 0.8, source: 'ai' };
     upsertRule(host, {
       fingerprint: m.fingerprint,
@@ -150,8 +172,9 @@ async function applyAiTier(
       source: 'ai',
       ts: Date.now(),
     });
+    applied++;
   }
-  log('AI mapped', res.mapping.size, 'fields');
+  log('AI mapped', applied, 'fields');
 }
 
 boot();

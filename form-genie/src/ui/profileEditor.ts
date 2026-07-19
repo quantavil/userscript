@@ -1,4 +1,5 @@
-import { SECTIONS, ProfileData, registerCustomFields } from '../profile/schema';
+import { SECTIONS, ProfileData, FieldDef, registerCustomFields } from '../profile/schema';
+import { buildCustomField } from '../profile/customFields';
 
 export interface EditorHandle {
   el: HTMLElement;
@@ -8,13 +9,14 @@ export interface EditorHandle {
 export function renderProfileEditor(
   data: ProfileData,
   onRefresh: (updatedData: ProfileData) => void,
+  save: (data: ProfileData) => void,
 ): EditorHandle {
   const wrap = document.createElement('div');
   wrap.style.display = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.gap = '8px';
 
-  let customFieldsList: { key: string; label: string; kind: 'text' | 'number' | 'date' | 'select'; options?: string[] }[] = [];
+  let customFieldsList: FieldDef[] = [];
   try {
     const raw = data._customFields;
     if (raw) customFieldsList = JSON.parse(raw);
@@ -66,12 +68,12 @@ export function renderProfileEditor(
         delBtn.type = 'button';
         delBtn.textContent = '✕';
         delBtn.addEventListener('click', () => {
-          const updated = customFieldsList.filter((x) => x.key !== f.key);
-          data._customFields = JSON.stringify(updated);
-          // Delete from local data map too so it's not saved
-          delete data[f.key];
-          registerCustomFields(updated);
-          onRefresh(data);
+          customFieldsList = customFieldsList.filter((x) => x.key !== f.key);
+          const current = collect();
+          delete current[f.key];
+          registerCustomFields(customFieldsList);
+          save(current);
+          onRefresh(current);
         });
 
         row.appendChild(controlEl);
@@ -95,9 +97,10 @@ export function renderProfileEditor(
   if (sameSelect) {
     const syncDisabled = () => {
       const off = sameSelect!.value === 'Yes';
+      // Disable (not erase) — permanent takes precedence at fill time, and the
+      // user's typed correspondence values survive a toggle back to "No".
       for (const { inp, field } of corrInputs) {
         inp.disabled = off;
-        if (off) inp.value = '';
         field.style.opacity = off ? '0.4' : '';
       }
     };
@@ -152,49 +155,37 @@ export function renderProfileEditor(
     row2.style.display = typeSel.value === 'select' ? 'flex' : 'none';
   });
 
-  const row3 = document.createElement('div');
-  row3.className = 'row';
-  row3.style.marginTop = '4px';
+  const errEl = document.createElement('div');
+  errEl.className = 'field-error';
+  errEl.style.display = 'none';
+  addPanel.appendChild(errEl);
 
   const addBtn = document.createElement('button');
   addBtn.className = 'btn ghost full';
   addBtn.type = 'button';
   addBtn.textContent = '＋ Add Custom Field';
+  addBtn.style.marginTop = '4px';
 
   addBtn.addEventListener('click', () => {
-    const label = labelInp.value.trim();
-    if (!label) return;
-    const key = 'custom.' + label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    if (key === 'custom.') return;
-
-    const exists = SECTIONS.flatMap((s) => s.fields).some((field) => field.key === key);
-    if (exists) {
-      alert('A field with this label or key already exists.');
+    const built = buildCustomField({
+      label: labelInp.value,
+      kind: typeSel.value as 'text' | 'number' | 'date' | 'select',
+      optionsText: optionsInp.value,
+    });
+    if (!built.ok) {
+      errEl.textContent = built.error;
+      errEl.style.display = 'block';
       return;
     }
 
-    let options: string[] | undefined = undefined;
-    if (typeSel.value === 'select') {
-      const optsText = optionsInp.value.trim();
-      if (!optsText) {
-        alert('Please enter options for choices field.');
-        return;
-      }
-      options = optsText.split(',').map((s) => s.trim()).filter(Boolean);
-      if (options.length === 0) {
-        alert('Please enter valid options.');
-        return;
-      }
-    }
-
-    customFieldsList.push({ key, label, kind: typeSel.value as any, options });
-    data._customFields = JSON.stringify(customFieldsList);
+    customFieldsList.push(built.field);
+    const current = collect();
     registerCustomFields(customFieldsList);
-    onRefresh(data);
+    save(current);
+    onRefresh(current);
   });
 
-  row3.appendChild(addBtn);
-  addPanel.appendChild(row3);
+  addPanel.appendChild(addBtn);
   wrap.appendChild(addPanel);
 
   const collect = (): ProfileData => {

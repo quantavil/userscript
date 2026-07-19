@@ -11,14 +11,15 @@ function get(data: ProfileData, key: string): string {
 
 /** Resolve a key to its base value, applying composition/aliasing rules. */
 export function resolveValue(data: ProfileData, key: string): string {
-  // Correspondence mirrors permanent when the flag is set.
+  // Correspondence mirrors permanent when the flag is set. Permanent wins over
+  // any stale correspondence value so toggling the flag on is authoritative
+  // (the editor disables — but does not erase — those inputs).
   if (key.startsWith('address.correspondence.') && key !== 'address.correspondence.sameAsPermanent') {
     const same = get(data, 'address.correspondence.sameAsPermanent').toLowerCase();
-    const own = get(data, key);
-    if (!own && (same === 'yes' || same === 'true' || same === '1')) {
+    if (same === 'yes' || same === 'true' || same === '1') {
       return get(data, key.replace('address.correspondence.', 'address.permanent.'));
     }
-    return own;
+    return get(data, key);
   }
 
   const direct = get(data, key);

@@ -24,11 +24,22 @@ describe('resolveValue', () => {
     expect(resolveValue(data, 'address.correspondence.city')).toBe('Patna');
   });
 
-  it('does not mirror when own value exists', () => {
+  it('permanent wins over a stale own value when flag is set', () => {
+    // "Same as permanent = Yes" is authoritative: the editor disables (no longer
+    // erases) correspondence inputs, so any leftover own value must not win.
     const data = {
       'address.permanent.city': 'Patna',
       'address.correspondence.city': 'Delhi',
       'address.correspondence.sameAsPermanent': 'Yes',
+    };
+    expect(resolveValue(data, 'address.correspondence.city')).toBe('Patna');
+  });
+
+  it('uses own value when flag is not set', () => {
+    const data = {
+      'address.permanent.city': 'Patna',
+      'address.correspondence.city': 'Delhi',
+      'address.correspondence.sameAsPermanent': 'No',
     };
     expect(resolveValue(data, 'address.correspondence.city')).toBe('Delhi');
   });

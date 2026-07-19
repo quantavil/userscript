@@ -85,3 +85,9 @@ Pipeline: **scan → describe → match → fill**, each a pure, unit-tested mod
 - `SYN_TOKENS` and `rebuildSynTokens` were needlessly exported from `match.ts`;
   dead text-node check in `hasAdjacentAt` duplicated the `querySelectorAll`
   logic. Both removed.
+- Heuristics suggestions accepted by user were not saved as teach rules; fixed in `runFill`.
+- Split-email and split DOB dropdown selectors were not matched/filled; resolved with option-list signals and segment-level date/email extraction.
+- TypeScript compiler was red due to type mismatches in GreaseMonkey stubs and missing test imports; resolved along with securing HTML injection risks in teach picker and panel rules list via DOM API node construction.
+- happy-dom's MutationObserver failed to trigger on innerHTML option replacement; shimmed a polling observer in tests to correctly verify the cascading select wait path.
+- Import bundle lacked schema validation; added schema structure checks and custom field sanitization in `importBundle`.
+

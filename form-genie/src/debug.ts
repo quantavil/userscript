@@ -13,20 +13,8 @@ export function setDebug(on: boolean): void {
   if (!on) clearOverlay();
 }
 
-export function isDebug(): boolean {
-  return enabled;
-}
-
 export function log(...args: unknown[]): void {
   if (enabled) console.log(TAG, ...args);
-}
-
-export function time<T>(label: string, fn: () => T): T {
-  if (!enabled) return fn();
-  const t0 = performance.now();
-  const out = fn();
-  console.log(TAG, `${label} took ${(performance.now() - t0).toFixed(1)}ms`);
-  return out;
 }
 
 const OVERLAY_ID = 'fg-debug-overlay';

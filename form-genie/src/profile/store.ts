@@ -143,12 +143,41 @@ export function exportProfileJson(): string {
   return JSON.stringify({ profile: loadProfile() }, null, 2);
 }
 
+function validateProfile(data: any): boolean {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+
+  for (const [k, v] of Object.entries(data)) {
+    if (typeof k !== 'string' || typeof v !== 'string') return false;
+  }
+
+  if ('_customFields' in data) {
+    try {
+      const parsed = JSON.parse(data._customFields);
+      if (!Array.isArray(parsed)) return false;
+      for (const item of parsed) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+        if (typeof item.key !== 'string' || typeof item.label !== 'string' || typeof item.kind !== 'string') {
+          return false;
+        }
+        if (item.options !== undefined && !Array.isArray(item.options)) return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function importBundle(json: string): { ok: true } | { ok: false; error: string } {
   try {
     const parsed = JSON.parse(json);
     const data = parsed?.profile?.data ?? parsed?.data;
     if (!data || typeof data !== 'object') {
       return { ok: false, error: 'No profile data found in file' };
+    }
+    if (!validateProfile(data)) {
+      return { ok: false, error: 'Invalid profile data schema' };
     }
     saveProfile(data as ProfileData);
     return { ok: true };

@@ -94,6 +94,9 @@ function scoreOptionSignal(d: FieldDescriptor): Scored | null {
   const states = opts.filter((o) => INDIAN_STATES.some((s) => o.includes(s))).length;
   if (states >= 5) return { key: 'address.permanent.state', score: 0.82 };
 
+  const emailDomains = opts.filter((o) => /\b(gmail|yahoo|hotmail|outlook|rediffmail|live|icloud|mail)\s+(com|in|co\s+in|org|net)\b/.test(o)).length;
+  if (emailDomains >= 2) return { key: 'contact.email', score: 0.85 };
+
   return null;
 }
 

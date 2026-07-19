@@ -79,6 +79,7 @@ export function scan(root: ParentNode = document): FieldUnit[] {
   const units: FieldUnit[] = [];
   const radioGroups = new Map<string, HTMLInputElement[]>();
   const checkGroups = new Map<string, HTMLInputElement[]>();
+  let anonSeq = 0;
 
   for (const el of controls) {
     if (!isVisible(el)) continue;
@@ -108,7 +109,9 @@ export function scan(root: ParentNode = document): FieldUnit[] {
 
     if (t === 'radio' || t === 'checkbox') {
       const map = t === 'radio' ? radioGroups : checkGroups;
-      const gkey = input.name || `__anon_${input.id || Math.random()}`;
+      // A name-less radio/checkbox isn't a group per HTML, so give each its own
+      // stable key (a document-order sequence, not a random one).
+      const gkey = input.name || `__anon_${input.id || anonSeq++}`;
       if (!map.has(gkey)) map.set(gkey, []);
       map.get(gkey)!.push(input);
       continue;

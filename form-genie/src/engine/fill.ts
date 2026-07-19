@@ -69,6 +69,31 @@ async function fillOne(m: FieldMatch, data: ProfileData, opts: FillOptions): Pro
       await waitForOptions(unit.el as HTMLSelectElement);
     }
 
+    if ((m.key === 'contact.email' || m.key === 'contact.altEmail') && unit.type === 'select' && value.includes('@')) {
+      value = value.slice(value.indexOf('@') + 1);
+    }
+
+    if (m.key === 'personal.dob' && unit.type === 'select') {
+      const dp = parseDate(value);
+      if (dp) {
+        const part = detectDobPart(unit.el as HTMLSelectElement);
+        const sel = unit.el as HTMLSelectElement;
+        let applied: FillResult;
+        if (part === 'day') {
+          // Cover both "5" and "05" option styles.
+          applied = selectByCandidates(m, sel, [String(parseInt(dp.day, 10)), dp.day], opts);
+        } else if (part === 'month') {
+          applied = selectByCandidates(m, sel, getMonthEquivalences(dp.month), opts);
+        } else if (part === 'year') {
+          applied = selectByCandidates(m, sel, [dp.year], opts);
+        } else {
+          return { match: m, status: 'skipped', reason: 'unknown DOB select part' };
+        }
+        if (applied.status === 'filled') highlight(unit.el);
+        return applied;
+      }
+    }
+
     const applied = await applyValue(m, value, opts);
     if (applied.status === 'filled') highlight(unit.el);
     return applied;
@@ -114,6 +139,21 @@ async function applyValue(m: FieldMatch, value: string, opts: FillOptions): Prom
 }
 
 function fillSelect(m: FieldMatch, sel: HTMLSelectElement, value: string, opts: FillOptions): FillResult {
+  // Expand into the value plus its domain equivalences, then match by candidate.
+  return selectByCandidates(m, sel, Array.from(expandEquiv(normalize(value))), opts);
+}
+
+/**
+ * Select the first option matching any candidate: exact (text or value) first,
+ * then substring either direction. Candidates are pre-normalized here. Used for
+ * plain selects (value + equivalences) and DOB day/month/year part-selects.
+ */
+function selectByCandidates(
+  m: FieldMatch,
+  sel: HTMLSelectElement,
+  candidates: string[],
+  opts: FillOptions,
+): FillResult {
   if (sel.disabled) {
     return { match: m, status: 'skipped', reason: 'options never loaded (still disabled)' };
   }
@@ -123,20 +163,25 @@ function fillSelect(m: FieldMatch, sel: HTMLSelectElement, value: string, opts: 
       return { match: m, status: 'skipped', reason: 'already selected' };
     }
   }
-  const target = normalize(value);
-  const equiv = expandEquiv(target);
 
-  let idx = -1;
-  const opts2 = Array.from(sel.options);
-  // Exact, then equivalence, then substring.
-  idx = opts2.findIndex((o) => normalize(o.text) === target || normalize(o.value) === target);
-  if (idx < 0) idx = opts2.findIndex((o) => equiv.has(normalize(o.text)) || equiv.has(normalize(o.value)));
-  if (idx < 0) idx = opts2.findIndex((o) => {
-    const t = normalize(o.text);
-    return t.length > 1 && (t.includes(target) || target.includes(t));
-  });
+  const cands = Array.from(new Set(candidates.map(normalize))).filter(Boolean);
+  const options = Array.from(sel.options);
 
-  if (idx < 0) return { match: m, status: 'skipped', reason: `no option matches "${value}"` };
+  let idx = options.findIndex((o) => cands.includes(normalize(o.text)) || cands.includes(normalize(o.value)));
+  if (idx < 0) {
+    idx = options.findIndex((o) => {
+      const t = normalize(o.text);
+      const v = normalize(o.value);
+      return cands.some((c) =>
+        c.length > 1 && (
+          (t.length > 1 && (t.includes(c) || c.includes(t))) ||
+          (v.length > 1 && (v.includes(c) || c.includes(v)))
+        ),
+      );
+    });
+  }
+
+  if (idx < 0) return { match: m, status: 'skipped', reason: `no option matches "${candidates.join(', ')}"` };
 
   sel.selectedIndex = idx;
   fireEvents(sel);
@@ -257,4 +302,48 @@ function highlight(el: HTMLElement): void {
   el.style.transition = 'outline 0.2s ease';
   el.style.outline = '2px solid #22c55e';
   setTimeout(() => { el.style.outline = prev; el.style.transition = prevT; }, 1200);
+}
+
+function detectDobPart(sel: HTMLSelectElement): 'day' | 'month' | 'year' | null {
+  const opts = Array.from(sel.options).map((o) => normalize(o.text || o.value));
+  const numericOpts = opts.map(o => parseInt(o, 10)).filter(n => !isNaN(n));
+
+  if (numericOpts.some(n => n >= 1900 && n <= 2100)) {
+    return 'year';
+  }
+  if (opts.includes('31') || (numericOpts.some(n => n > 12 && n <= 31))) {
+    return 'day';
+  }
+  const monthNames = opts.filter(o => /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(o)).length;
+  if (sel.options.length <= 14 && (numericOpts.every(n => n >= 1 && n <= 12) || monthNames >= 6)) {
+    return 'month';
+  }
+
+  const name = (sel.getAttribute('name') ?? '').toLowerCase();
+  const id = (sel.getAttribute('id') ?? '').toLowerCase();
+  if (name.includes('year') || id.includes('year') || name.includes('yr') || id.includes('yr')) return 'year';
+  if (name.includes('month') || id.includes('month') || name.includes('mon') || id.includes('mon')) return 'month';
+  if (name.includes('day') || id.includes('day')) return 'day';
+
+  return null;
+}
+
+function getMonthEquivalences(monthNumStr: string): string[] {
+  const m = parseInt(monthNumStr, 10);
+  if (isNaN(m) || m < 1 || m > 12) return [];
+  const names = [
+    ['1', '01', 'jan', 'january'],
+    ['2', '02', 'feb', 'february'],
+    ['3', '03', 'mar', 'march'],
+    ['4', '04', 'apr', 'april'],
+    ['5', '05', 'may'],
+    ['6', '06', 'jun', 'june'],
+    ['7', '07', 'jul', 'july'],
+    ['8', '08', 'aug', 'august'],
+    ['9', '09', 'sep', 'september', 'sept'],
+    ['10', 'oct', 'october'],
+    ['11', 'nov', 'november'],
+    ['12', 'dec', 'december'],
+  ];
+  return names[m - 1];
 }

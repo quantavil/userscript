@@ -163,16 +163,15 @@ export function setCustomFieldsCallback(cb: (fields: FieldDef[]) => void): void 
 }
 
 export function registerCustomFields(customFields: FieldDef[]): void {
-  let customSection = SECTIONS.find((s) => s.id === 'custom');
-  if (!customSection) {
-    customSection = {
-      id: 'custom',
-      title: 'Custom fields',
-      fields: [],
-    };
-    SECTIONS.push(customSection);
+  const existingIdx = SECTIONS.findIndex((s) => s.id === 'custom');
+  if (!customFields.length) {
+    // Drop the section entirely when empty so the editor shows no stray header.
+    if (existingIdx >= 0) SECTIONS.splice(existingIdx, 1);
+  } else if (existingIdx >= 0) {
+    SECTIONS[existingIdx].fields = customFields;
+  } else {
+    SECTIONS.push({ id: 'custom', title: 'Custom fields', fields: customFields });
   }
-  customSection.fields = customFields;
 
   // Rebuild catalog and keys in-place to preserve references
   const newCatalog = Object.fromEntries(

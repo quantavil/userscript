@@ -3,7 +3,7 @@ import { scan } from '../src/engine/scan';
 import { describe as describeField } from '../src/engine/describe';
 import { matchAll } from '../src/engine/match';
 import { fillAll } from '../src/engine/fill';
-import { registerCustomFields } from '../src/profile/schema';
+import { registerCustomFields, ProfileData } from '../src/profile/schema';
 import { renderProfileEditor } from '../src/ui/profileEditor';
 import { TeachMode } from '../src/ui/teach';
 
@@ -184,7 +184,7 @@ describe('fill — framework-safe + constraints', () => {
       'custom.my_aadhaar_vid': '9999-8888-7777',
       'custom.mobile_belongs': 'Parents/Relatives',
       '_customFields': JSON.stringify(customList)
-    }, () => {});
+    }, () => {}, () => {});
     const collected = handle.collect();
     expect(collected['custom.my_aadhaar_vid']).toBe('9999-8888-7777');
     expect(collected['custom.mobile_belongs']).toBe('Parents/Relatives');
@@ -429,9 +429,8 @@ describe('IBPS page integration', () => {
     const cEmailEl = document.getElementById('txtcemail') as HTMLInputElement;
     const cEmailResult = results.find(r => r.match.descriptor.name === 'txtcemail');
     // Confirm email should map to contact.email and fill the FULL address.
-    if (cEmailResult?.status === 'filled') {
-      expect(cEmailEl.value).toBe('karanrawat2q@gmail.com');
-    }
+    expect(cEmailResult?.status).toBe('filled');
+    expect(cEmailEl.value).toBe('karanrawat2q@gmail.com');
 
     // 7. Verify mobile strips +91 (maxlength=10).
     const mobileEl = document.getElementById('txtmobile') as HTMLInputElement;
@@ -443,13 +442,68 @@ describe('IBPS page integration', () => {
     // 9. Verify Confirm First Name also fills to the same value.
     const cFullname = document.getElementById('cfullname') as HTMLInputElement;
     const cFullResult = results.find(r => r.match.descriptor.name === 'cfullname');
-    if (cFullResult?.status === 'filled') {
-      expect(cFullname.value).toBe('Karan');
-    }
+    expect(cFullResult?.status).toBe('filled');
+    expect(cFullname.value).toBe('Karan');
 
     // 10. Verify nameChanged radio selects "No".
     const nc2 = document.getElementById('namechange2') as HTMLInputElement;
     expect(nc2.checked).toBe(true);
+  });
+
+  it('fills split email domain select', async () => {
+    setBody(`
+      <label for="txtemail">Email ID</label>
+      <input id="txtemail" name="txtemail">
+      <span>@</span>
+      <select id="seldomain" name="seldomain">
+        <option value="">Domain</option>
+        <option value="gmail.com">gmail.com</option>
+        <option value="yahoo.com">yahoo.com</option>
+      </select>
+    `);
+    const matches = matchAll(scan().map(describeField), []);
+    const domainMatch = matches.find(m => m.descriptor.name === 'seldomain');
+    expect(domainMatch?.key).toBe('contact.email');
+
+    await fillAll(matches, { 'contact.email': 'karanrawat2q@gmail.com' }, { overwrite: false });
+    expect((document.getElementById('txtemail') as HTMLInputElement).value).toBe('karanrawat2q');
+    expect((document.getElementById('seldomain') as HTMLSelectElement).value).toBe('gmail.com');
+  });
+
+  it('fills split DOB day/month/year selects', async () => {
+    setBody(`
+      <label>Date of Birth</label>
+      <select id="dob_d" name="dob_d">
+        <option value="">Day</option>
+        ${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('')}
+      </select>
+      <select id="dob_m" name="dob_m">
+        <option value="">Month</option>
+        <option value="1">Jan</option>
+        <option value="2">Feb</option>
+        <option value="3">Mar</option>
+        <option value="4">Apr</option>
+        <option value="5">May</option>
+      </select>
+      <select id="dob_y" name="dob_y">
+        <option value="">Year</option>
+        <option value="1995">1995</option>
+        <option value="1996">1996</option>
+      </select>
+    `);
+    const matches = matchAll(scan().map(describeField), []);
+    
+    const dMatch = matches.find(m => m.descriptor.name === 'dob_d');
+    const mMatch = matches.find(m => m.descriptor.name === 'dob_m');
+    const yMatch = matches.find(m => m.descriptor.name === 'dob_y');
+    expect(dMatch?.key).toBe('personal.dob');
+    expect(mMatch?.key).toBe('personal.dob');
+    expect(yMatch?.key).toBe('personal.dob');
+
+    await fillAll(matches, { 'personal.dob': '1995-05-24' }, { overwrite: false });
+    expect((document.getElementById('dob_d') as HTMLSelectElement).value).toBe('24');
+    expect((document.getElementById('dob_m') as HTMLSelectElement).value).toBe('5');
+    expect((document.getElementById('dob_y') as HTMLSelectElement).value).toBe('1995');
   });
 });
 

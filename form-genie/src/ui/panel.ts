@@ -88,8 +88,18 @@ export class FormGeniePanel {
       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>` +
       `<span>Fill</span>`;
     const pos = loadFabPos();
-    if (pos) { this.fab.style.left = `${pos.x}px`; this.fab.style.top = `${pos.y}px`; }
-    else { this.fab.style.right = '16px'; this.fab.style.bottom = '16px'; }
+    if (pos) {
+      // Clamp to the current viewport: a position saved on a wider/taller screen
+      // could otherwise place the FAB off-screen and out of reach.
+      const w = 120, h = 46; // approximate FAB size before it's laid out
+      const x = Math.max(0, Math.min(window.innerWidth - w, pos.x));
+      const y = Math.max(0, Math.min(window.innerHeight - h, pos.y));
+      this.fab.style.left = `${x}px`;
+      this.fab.style.top = `${y}px`;
+    } else {
+      this.fab.style.right = '16px';
+      this.fab.style.bottom = '16px';
+    }
     this.enableDrag();
     this.shadow.appendChild(this.fab);
   }
@@ -200,7 +210,14 @@ export class FormGeniePanel {
     const fillBtn = button('Fill this page', 'primary full', async () => {
       fillBtn.textContent = 'Filling…';
       (fillBtn as HTMLButtonElement).disabled = true;
-      this.lastResults = await this.ctl.runFill();
+      try {
+        this.lastResults = await this.ctl.runFill();
+      } catch (e) {
+        this.toast(`Fill failed: ${(e as Error).message}`);
+        fillBtn.textContent = 'Fill this page';
+        (fillBtn as HTMLButtonElement).disabled = false;
+        return;
+      }
       this.renderBody();
     });
     this.body.appendChild(fillBtn);
@@ -221,7 +238,12 @@ export class FormGeniePanel {
         renderReport(
           this.lastResults,
           async (fp) => {
-            this.lastResults = await this.ctl.runFill(new Set([fp]));
+            try {
+              this.lastResults = await this.ctl.runFill(new Set([fp]));
+            } catch (e) {
+              this.toast(`Fill failed: ${(e as Error).message}`);
+              return;
+            }
             this.renderBody();
           },
           () => {
@@ -240,9 +262,11 @@ export class FormGeniePanel {
 
   private renderProfile(data: ProfileData = this.ctl.getProfile()): void {
     this.body.innerHTML = '';
-    const handle = renderProfileEditor(data, (updatedData) => {
-      this.renderProfile(updatedData);
-    });
+    const handle = renderProfileEditor(
+      data,
+      (updatedData) => this.renderProfile(updatedData),
+      (updatedData) => this.ctl.saveProfile(updatedData),
+    );
     const footbar = document.createElement('div');
     footbar.className = 'footbar';
     footbar.appendChild(
@@ -264,7 +288,11 @@ export class FormGeniePanel {
     this.body.appendChild(sectionTitle('AI tier (Gemini)'));
     this.body.appendChild(toggleRow('Enable AI matching', s.ai.enabled, (v) => { s.ai.enabled = v; this.ctl.saveSettings(s); }));
     this.body.appendChild(textRow('API key', s.ai.apiKey, 'password', (v) => { s.ai.apiKey = v; this.ctl.saveSettings(s); }));
-    this.body.appendChild(textRow('Model', s.ai.model, 'text', (v) => { s.ai.model = v.trim() || 'gemini-3.1-flash-lite'; this.ctl.saveSettings(s); }));
+    this.body.appendChild(textRow('Model', s.ai.model, 'text', (v, input) => {
+      s.ai.model = v.trim() || 'gemini-3.1-flash-lite';
+      input.value = s.ai.model; // reflect the fallback when cleared
+      this.ctl.saveSettings(s);
+    }));
     const note = document.createElement('div');
     note.className = 'muted';
     note.textContent = 'Only field labels are sent to Gemini — never your data. The API key is never included in exports.';
@@ -295,8 +323,22 @@ export class FormGeniePanel {
     for (const r of rules) {
       const item = document.createElement('div');
       item.className = 'report-item';
-      item.innerHTML = `<div style="flex:1"><div>${FIELD_CATALOG[r.key]?.label ?? r.key}</div>` +
-        `<div class="meta">${r.fingerprint} · ${r.source}</div></div>`;
+
+      const content = document.createElement('div');
+      content.style.flex = '1';
+
+      const label = document.createElement('div');
+      label.textContent = FIELD_CATALOG[r.key]?.label ?? r.key;
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      // Fingerprints are prefixed by kind (n:/i:/h:); drop it for display.
+      meta.textContent = `${r.fingerprint.replace(/^[nih]:/, '')} · ${r.source}`;
+
+      content.appendChild(label);
+      content.appendChild(meta);
+      item.appendChild(content);
+
       item.appendChild(button('✕', 'danger sm', () => {
         this.ctl.deleteRule(r.fingerprint, r.occurrence);
         this.renderBody();
@@ -336,15 +378,13 @@ export class FormGeniePanel {
   }
 
   toast(msg: string): void {
+    // Replace any visible toast so they don't stack at the same position.
+    this.shadow.querySelectorAll('.toast').forEach((t) => t.remove());
     const t = document.createElement('div');
     t.className = 'toast';
     t.textContent = msg;
     this.shadow.appendChild(t);
     setTimeout(() => t.remove(), 2200);
-  }
-
-  toggleFab(show: boolean): void {
-    this.fab.style.display = show ? 'flex' : 'none';
   }
 }
 
@@ -380,7 +420,12 @@ function toggleRow(label: string, value: boolean, onChange: (v: boolean) => void
   return row;
 }
 
-function textRow(label: string, value: string, type: string, onChange: (v: string) => void): HTMLElement {
+function textRow(
+  label: string,
+  value: string,
+  type: string,
+  onChange: (v: string, input: HTMLInputElement) => void,
+): HTMLElement {
   const field = document.createElement('div');
   field.className = 'field';
   const l = document.createElement('label');
@@ -388,7 +433,7 @@ function textRow(label: string, value: string, type: string, onChange: (v: strin
   const inp = document.createElement('input');
   inp.type = type;
   inp.value = value;
-  inp.addEventListener('change', () => onChange(inp.value));
+  inp.addEventListener('change', () => onChange(inp.value, inp));
   field.append(l, inp);
   return field;
 }
