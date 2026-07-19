@@ -18,7 +18,8 @@ export interface Settings {
     apiKey: string;
     model: string;
   };
-  disabledSites: string[];
+  /** Opt-in model: the script stays dormant except on these hostnames. */
+  enabledSites: string[];
 }
 
 export type RuleSource = 'teach' | 'ai';
@@ -35,7 +36,7 @@ const DEFAULT_SETTINGS: Settings = {
   overwrite: false,
   debug: false,
   ai: { enabled: false, apiKey: '', model: 'gemini-3.1-flash-lite' },
-  disabledSites: [],
+  enabledSites: [],
 };
 
 // ---- Profile --------------------------------------------------------------
@@ -71,7 +72,7 @@ export function loadSettings(): Settings {
     ...DEFAULT_SETTINGS,
     ...raw,
     ai: { ...DEFAULT_SETTINGS.ai, ...raw?.ai },
-    disabledSites: raw?.disabledSites ?? [],
+    enabledSites: raw?.enabledSites ?? [],
   };
 }
 
@@ -79,17 +80,16 @@ export function saveSettings(s: Settings): void {
   GM_setValue<Settings>(K_SETTINGS, s);
 }
 
-export function isSiteDisabled(host: string): boolean {
-  return loadSettings().disabledSites.includes(host);
+export function isSiteEnabled(host: string): boolean {
+  return loadSettings().enabledSites.includes(host);
 }
 
-export function toggleSiteDisabled(host: string): boolean {
+export function setSiteEnabled(host: string, enabled: boolean): void {
   const s = loadSettings();
-  const i = s.disabledSites.indexOf(host);
-  if (i >= 0) s.disabledSites.splice(i, 1);
-  else s.disabledSites.push(host);
+  const i = s.enabledSites.indexOf(host);
+  if (enabled && i < 0) s.enabledSites.push(host);
+  if (!enabled && i >= 0) s.enabledSites.splice(i, 1);
   saveSettings(s);
-  return s.disabledSites.includes(host);
 }
 
 // ---- Rules ----------------------------------------------------------------
@@ -138,16 +138,9 @@ export function saveFabPos(pos: FabPos): void {
 
 // ---- Export / import ------------------------------------------------------
 
-/** Export bundle — profile + optionally per-site rules; never settings/API key. */
-export function exportBundle(includeRules: boolean): string {
-  const profile = loadProfile();
-  const bundle: { profile: StoredProfile; rules?: Record<string, Rule[]> } = { profile };
-  if (includeRules) {
-    // GM has no key enumeration in the base API; rules travel only when the
-    // caller supplies known hosts. For the common case we export the profile
-    // and let rules re-learn per site.
-  }
-  return JSON.stringify(bundle, null, 2);
+/** Export the profile only — never settings (the API key lives there). */
+export function exportProfileJson(): string {
+  return JSON.stringify({ profile: loadProfile() }, null, 2);
 }
 
 export function importBundle(json: string): { ok: true } | { ok: false; error: string } {

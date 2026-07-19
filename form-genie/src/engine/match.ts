@@ -53,8 +53,11 @@ function scoreHeuristic(d: FieldDescriptor): Scored | null {
       } else {
         s = coverage * 0.7;
       }
-      // Prefer more specific (longer) phrases on ties.
-      s += Math.min(tokens.length, 4) * 0.001;
+      // Prefer the more specific (longer) phrase on ties — e.g. "alternative
+      // number" must beat "mobile number" on an alternate-number field. Never
+      // grant a bonus to a zero score: that used to hand gibberish fields an
+      // arbitrary key at confidence ~0.
+      if (s > 0) s += Math.min(phrase.length, 40) * 0.0008;
       if (s > keyScore) keyScore = s;
     }
     if (keyScore > 0 && (!best || keyScore > best.score)) {

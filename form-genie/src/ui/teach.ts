@@ -3,7 +3,7 @@
  * searchable key picker and saves the chosen mapping as a per-site rule.
  */
 import { scan } from '../engine/scan';
-import { describe, FieldDescriptor } from '../engine/describe';
+import { describe, isCaptchaLike, FieldDescriptor } from '../engine/describe';
 import { fingerprintOf } from '../engine/rules';
 import { ALL_KEYS, FIELD_CATALOG } from '../profile/schema';
 import { upsertRule } from '../profile/store';
@@ -44,6 +44,7 @@ export class TeachMode {
     const seen = new Map<string, number>();
     for (const u of units) {
       const d = describe(u);
+      if (isCaptchaLike(d)) continue;
       const fp = fingerprintOf(d);
       const occ = seen.get(fp) ?? 0;
       seen.set(fp, occ + 1);

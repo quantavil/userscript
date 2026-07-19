@@ -44,16 +44,33 @@ export class FormGeniePanel {
     const style = document.createElement('style');
     style.textContent = STYLES;
     this.shadow.appendChild(style);
+    this.isolateEvents();
 
-    this.teach = new TeachMode(this.shadow, ctl.host, () => {
-      this.toast('Mapping saved');
-      if (this.teach.isActive()) return;
-      this.renderBody();
-    });
+    this.teach = new TeachMode(this.shadow, ctl.host, () => this.toast('Mapping saved'));
 
     this.buildFab();
     this.buildSheet();
     document.documentElement.appendChild(this.container);
+  }
+
+  /**
+   * Keep host-page listeners out of the panel. Portals like ibps.in register
+   * document-level key/paste/click handlers (to block copy-paste or validate
+   * globally) that also fire for events bubbling out of our shadow root —
+   * which made panel inputs untypable there. Stopping propagation at the
+   * shadow host runs after our internal handlers but before the page's.
+   */
+  private isolateEvents(): void {
+    const events = [
+      'keydown', 'keyup', 'keypress', 'input', 'change',
+      'paste', 'copy', 'cut', 'contextmenu',
+      'mousedown', 'mouseup', 'click', 'dblclick',
+      'pointerdown', 'pointerup', 'touchstart', 'touchend',
+      'focusin', 'focusout', 'wheel',
+    ];
+    for (const evt of events) {
+      this.container.addEventListener(evt, (e) => e.stopPropagation());
+    }
   }
 
   // ---- FAB ----------------------------------------------------------------
@@ -111,7 +128,9 @@ export class FormGeniePanel {
 
     const head = document.createElement('div');
     head.className = 'head';
-    head.innerHTML = `<span class="title">Form Genie</span>`;
+    head.innerHTML =
+      `<div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>` +
+      `<div class="titles"><div class="title">Form Genie</div><div class="sub">${this.ctl.host}</div></div>`;
     const close = document.createElement('button');
     close.className = 'close';
     close.textContent = '×';
@@ -192,10 +211,9 @@ export class FormGeniePanel {
             this.lastResults = await this.ctl.runFill(new Set([fp]));
             this.renderBody();
           },
-          (fp, occ) => {
+          () => {
             this.teach.start();
             this.sheet.classList.add('hidden');
-            void fp; void occ;
           },
         ),
       );

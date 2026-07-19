@@ -7,7 +7,9 @@ export const SYNONYMS: Record<string, string[]> = {
   'personal.firstName': ['first name', 'given name', 'fname', 'pratham naam'],
   'personal.middleName': ['middle name', 'mname'],
   'personal.lastName': ['last name', 'surname', 'family name', 'lname', 'upnaam'],
-  'personal.fullName': ["candidate name", 'full name', 'applicant name', 'name of candidate', 'your name', 'naam', 'name of applicant', 'student name'],
+  // NOTE: no bare "your name" here — it false-positives on questions like
+  // "Have you ever changed your name?".
+  'personal.fullName': ["candidate name", 'full name', 'applicant name', 'name of candidate', 'naam', 'name of applicant', 'student name'],
   'personal.dob': ['date of birth', 'dob', 'birth date', 'birthdate', 'janm tithi', 'date birth'],
   'personal.gender': ['gender', 'sex', 'ling'],
   'personal.category': ['category', 'caste category', 'social category', 'reservation category', 'varg', 'community'],
@@ -25,7 +27,7 @@ export const SYNONYMS: Record<string, string[]> = {
   'contact.email': ['email', 'e mail', 'email address', 'email id', 'e mail id'],
   'contact.altEmail': ['alternate email', 'alternative email', 'secondary email'],
   'contact.mobile': ['mobile', 'mobile number', 'phone', 'phone number', 'contact number', 'cell', 'mobile no', 'contact no'],
-  'contact.altMobile': ['alternate mobile', 'alternative mobile', 'secondary mobile', 'landline', 'alternate number'],
+  'contact.altMobile': ['alternate mobile', 'alternative mobile', 'secondary mobile', 'landline', 'alternate number', 'alternative number', 'alternate contact number'],
 
   'address.permanent.line1': ['permanent address', 'address line 1', 'address line', 'permanent address line 1', 'house no', 'street', 'address'],
   'address.permanent.line2': ['permanent address line 2', 'address line 2', 'locality', 'area'],

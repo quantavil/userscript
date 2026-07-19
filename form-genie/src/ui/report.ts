@@ -9,7 +9,7 @@ const ICON: Record<string, string> = {
 export function renderReport(
   results: FillResult[],
   onAcceptSuggestion: (fingerprint: string) => void,
-  onTeach: (fingerprint: string, occurrence: number) => void,
+  onTeach: () => void,
 ): HTMLElement {
   const wrap = document.createElement('div');
   wrap.style.display = 'flex';
@@ -53,7 +53,7 @@ export function renderReport(
       item.addEventListener('click', () => onAcceptSuggestion(r.match.fingerprint));
     } else if (r.status === 'unmatched') {
       item.title = 'Tap to map this field (teach)';
-      item.addEventListener('click', () => onTeach(r.match.fingerprint, r.match.occurrence));
+      item.addEventListener('click', () => onTeach());
     }
     wrap.appendChild(item);
   }

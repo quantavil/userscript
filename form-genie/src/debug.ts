@@ -30,19 +30,28 @@ export function time<T>(label: string, fn: () => T): T {
 }
 
 const OVERLAY_ID = 'fg-debug-overlay';
+const OVERLAY_TTL = 15000;
+let overlayTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function clearOverlay(): void {
   document.getElementById(OVERLAY_ID)?.remove();
+  if (overlayTimer) { clearTimeout(overlayTimer); overlayTimer = null; }
 }
 
-/** Draw labelled boxes over each matched field for on-device diagnosis. */
+/**
+ * Draw labelled boxes over each matched field for on-device diagnosis.
+ * Boxes use document coordinates inside an absolute layer, so they scroll
+ * with the page instead of sticking to the viewport; the layer self-clears
+ * after a few seconds.
+ */
 export function drawOverlay(matches: FieldMatch[]): void {
   if (!enabled) return;
   clearOverlay();
   const layer = document.createElement('div');
   layer.id = OVERLAY_ID;
   Object.assign(layer.style, {
-    position: 'fixed', inset: '0', zIndex: '2147483646', pointerEvents: 'none',
+    position: 'absolute', left: '0', top: '0', width: '0', height: '0',
+    overflow: 'visible', zIndex: '2147483646', pointerEvents: 'none',
   } as CSSStyleDeclaration);
 
   for (const m of matches) {
@@ -51,8 +60,8 @@ export function drawOverlay(matches: FieldMatch[]): void {
     const color = !m.key ? '#ef4444' : m.confidence >= 0.75 ? '#22c55e' : '#f59e0b';
     const box = document.createElement('div');
     Object.assign(box.style, {
-      position: 'fixed',
-      left: `${rect.left}px`, top: `${rect.top}px`,
+      position: 'absolute',
+      left: `${rect.left + window.scrollX}px`, top: `${rect.top + window.scrollY}px`,
       width: `${rect.width}px`, height: `${rect.height}px`,
       border: `2px solid ${color}`, boxSizing: 'border-box',
     } as CSSStyleDeclaration);
@@ -67,4 +76,5 @@ export function drawOverlay(matches: FieldMatch[]): void {
     layer.appendChild(box);
   }
   document.documentElement.appendChild(layer);
+  overlayTimer = setTimeout(clearOverlay, OVERLAY_TTL);
 }

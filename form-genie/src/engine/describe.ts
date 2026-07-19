@@ -141,6 +141,18 @@ function cssEscape(s: string): string {
   return s.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
 }
 
+/**
+ * Second-chance captcha/OTP detection on the full descriptor text — catches
+ * fields (e.g. IBPS "Security Code") whose hint lives in nearby label text
+ * rather than their own attributes. Text is already normalized (lowercase,
+ * punctuation stripped).
+ */
+const CAPTCHA_TEXT = /captcha|\botp\b|one time password|verification code|security code|word in the textbox|as in the image|image code/;
+
+export function isCaptchaLike(d: FieldDescriptor): boolean {
+  return CAPTCHA_TEXT.test(d.text);
+}
+
 export function describe(unit: FieldUnit): FieldDescriptor {
   const el = unit.el;
   const name = el.getAttribute('name') ?? '';

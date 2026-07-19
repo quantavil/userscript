@@ -4,9 +4,9 @@
  * checkbox, dates, and cascading dropdowns. Never submits, never truncates
  * silently, isolates each field so one failure can't abort the run.
  */
-import { FieldMatch, THRESHOLD_FILL } from './match';
+import { FieldMatch, THRESHOLD_FILL, THRESHOLD_SUGGEST } from './match';
 import { ProfileData } from '../profile/schema';
-import { resolveValue, parseDate, formatDate, monthName, DateFormat } from '../profile/derive';
+import { resolveValue, parseDate, formatDate, DateFormat } from '../profile/derive';
 import { normalize, radioLabel } from './describe';
 import { log } from '../debug';
 
@@ -50,7 +50,8 @@ export async function fillAll(
 }
 
 async function fillOne(m: FieldMatch, data: ProfileData, opts: FillOptions): Promise<FillResult> {
-  if (!m.key) return { match: m, status: 'unmatched' };
+  // Below the suggest floor a weak key is noise, not a suggestion.
+  if (!m.key || m.confidence < THRESHOLD_SUGGEST) return { match: m, status: 'unmatched' };
 
   const accepted = opts.acceptedFingerprints?.has(m.fingerprint) ?? false;
   if (m.confidence < THRESHOLD_FILL && !accepted) {
@@ -243,5 +244,3 @@ function highlight(el: HTMLElement): void {
   el.style.outline = '2px solid #22c55e';
   setTimeout(() => { el.style.outline = prev; el.style.transition = prevT; }, 1200);
 }
-
-export { detectDateFormat, formatForField, monthName };

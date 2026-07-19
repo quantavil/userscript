@@ -6,6 +6,10 @@ GATE, state PSCs) — from a profile stored on your device.
 
 ## How it works
 
+Form Genie is **dormant by default on every site**. On a page where you want it,
+open your userscript manager's menu and choose **"✅ Enable Form Genie on this
+site"** — the floating button appears (disable it again from the same menu).
+
 Tap the floating **Fill** button. Form Genie scans the page, matches fields to
 your profile, and fills them. Matching runs in three tiers:
 

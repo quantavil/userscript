@@ -4,24 +4,25 @@
  * enable/disable.
  */
 import { scan } from './engine/scan';
-import { describe } from './engine/describe';
+import { describe, isCaptchaLike } from './engine/describe';
 import { matchAll, THRESHOLD_SUGGEST, FieldMatch } from './engine/match';
 import { fillAll, FillResult } from './engine/fill';
 import { mapWithAI, AiInput } from './engine/ai';
 import { FormGeniePanel, PanelController } from './ui/panel';
 import {
   loadProfile, saveProfile, loadSettings, saveSettings, loadRules,
-  deleteRule, upsertRule, exportBundle, importBundle,
-  isSiteDisabled, toggleSiteDisabled,
+  deleteRule, upsertRule, exportProfileJson, importBundle,
+  isSiteEnabled, setSiteEnabled,
 } from './profile/store';
 import { setDebug, drawOverlay, log } from './debug';
 
 const host = location.hostname;
 
 function boot(): void {
-  if (isSiteDisabled(host)) {
-    GM_registerMenuCommand('Enable Form Genie on this site', () => {
-      toggleSiteDisabled(host);
+  // Opt-in per site: dormant everywhere until enabled from the manager menu.
+  if (!isSiteEnabled(host)) {
+    GM_registerMenuCommand('✅ Enable Form Genie on this site', () => {
+      setSiteEnabled(host, true);
       location.reload();
     });
     return;
@@ -39,7 +40,7 @@ function boot(): void {
     saveSettings: (s) => { saveSettings(s); setDebug(s.debug); },
     getRules: () => loadRules(host),
     deleteRule: (fp, occ) => deleteRule(host, fp, occ),
-    exportJson: () => exportBundle(false),
+    exportJson: () => exportProfileJson(),
     importJson: (json) => importBundle(json),
     runFill: (accepted) => runFill(accepted, (m) => panel.toast(m)),
   };
@@ -47,8 +48,8 @@ function boot(): void {
   panel = new FormGeniePanel(controller);
 
   GM_registerMenuCommand('Open Form Genie', () => panel.open());
-  GM_registerMenuCommand('Disable Form Genie on this site', () => {
-    toggleSiteDisabled(host);
+  GM_registerMenuCommand('🚫 Disable Form Genie on this site', () => {
+    setSiteEnabled(host, false);
     location.reload();
   });
   GM_registerMenuCommand('Toggle debug mode', () => {
@@ -72,7 +73,7 @@ async function runFill(
   const rules = loadRules(host);
 
   const units = scan();
-  const descriptors = units.map(describe);
+  const descriptors = units.map(describe).filter((d) => !isCaptchaLike(d));
   const matches: FieldMatch[] = matchAll(descriptors, rules);
 
   if (settings.ai.enabled && settings.ai.apiKey) {
