@@ -1,12 +1,8 @@
-/**
- * Stage 3 — Match. Resolve each descriptor to a profile key with a confidence
- * score. Priority: teach/AI rules (from the rule store) > option-list signals >
- * synonym token scoring. Thresholds decide auto-fill vs suggestion vs unmatched.
- */
 import { FieldDescriptor, normalize, tokenize } from './describe';
 import { SYNONYMS, INDIAN_STATES } from './synonyms';
 import { Rule } from '../profile/store';
 import { fingerprintOf } from './rules';
+import { setCustomFieldsCallback } from '../profile/schema';
 
 export type MatchSource = 'teach' | 'ai' | 'heuristic' | 'option-signal';
 
@@ -27,11 +23,27 @@ interface Scored {
   score: number;
 }
 
-/** Pre-tokenized synonyms, built once. */
+/** Pre-tokenized synonyms, rebuilt when custom fields change. */
 const SYN_TOKENS: Record<string, { phrase: string; tokens: string[] }[]> = {};
-for (const [key, phrases] of Object.entries(SYNONYMS)) {
-  SYN_TOKENS[key] = phrases.map((p) => ({ phrase: normalize(p), tokens: tokenize(p) }));
+
+function rebuildSynTokens(): void {
+  for (const k of Object.keys(SYN_TOKENS)) delete SYN_TOKENS[k];
+  for (const [key, phrases] of Object.entries(SYNONYMS)) {
+    SYN_TOKENS[key] = phrases.map((p) => ({ phrase: normalize(p), tokens: tokenize(p) }));
+  }
 }
+
+rebuildSynTokens();
+setCustomFieldsCallback((customFields) => {
+  for (const k of Object.keys(SYNONYMS)) {
+    if (k.startsWith('custom.')) delete SYNONYMS[k];
+  }
+  for (const f of customFields) {
+    SYNONYMS[f.key] = [f.label];
+  }
+  rebuildSynTokens();
+});
+
 
 function scoreHeuristic(d: FieldDescriptor): Scored | null {
   let best: Scored | null = null;

@@ -195,11 +195,25 @@ function formatForField(
       value = digits;
     }
   }
+  // Split-email: if there's an adjacent '@' separator, fill only the local part.
+  if ((key === 'contact.email' || key === 'contact.altEmail') && value.includes('@') && hasAdjacentAt(el)) {
+    value = value.slice(0, value.indexOf('@'));
+  }
   // Uppercase when the field visually forces caps.
   try {
     if (getComputedStyle(el).textTransform === 'uppercase') value = value.toUpperCase();
   } catch { /* jsdom/no-style */ }
   return value;
+}
+
+/** Check for an adjacent '@' separator — the hallmark of a split-email layout. */
+function hasAdjacentAt(el: Element): boolean {
+  const container = el.closest('.input-group, td, .form-group, .row') || el.parentElement;
+  if (!container) return false;
+  for (const child of container.querySelectorAll('*')) {
+    if ((child.textContent ?? '').trim() === '@') return true;
+  }
+  return false;
 }
 
 function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {

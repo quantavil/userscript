@@ -76,6 +76,8 @@ function ownText(el: Element): string {
 /**
  * Nearest descriptive text for table/grid layouts with no real label:
  * the preceding cell in the same row, or preceding sibling text.
+ * For inputs wrapped in containers (e.g. radios inside .custom-control divs),
+ * walks up to the wrapper's parent to find group-level question labels.
  */
 function nearbyText(el: HTMLElement): string {
   const cell = el.closest('td, th');
@@ -94,12 +96,17 @@ function nearbyText(el: HTMLElement): string {
       if (t) return t;
     }
   }
-  // Preceding sibling text node / element.
-  let sib = el.previousSibling;
-  while (sib) {
-    const t = (sib.textContent ?? '').trim();
-    if (t) return t;
-    sib = sib.previousSibling;
+  // Walk up to 3 levels, checking preceding siblings at each level.
+  // This catches group labels that sit as siblings of a wrapper div.
+  let node: HTMLElement | null = el;
+  for (let depth = 0; depth < 3 && node; depth++) {
+    let sib = node.previousSibling;
+    while (sib) {
+      const t = (sib.textContent ?? '').trim();
+      if (t) return t;
+      sib = sib.previousSibling;
+    }
+    node = node.parentElement;
   }
   return '';
 }

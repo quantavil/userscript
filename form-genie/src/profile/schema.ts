@@ -54,6 +54,7 @@ export const SECTIONS: SectionDef[] = [
       { key: 'personal.bloodGroup', label: 'Blood group', kind: 'select', options: BLOOD },
       { key: 'personal.identificationMark1', label: 'Identification mark 1', kind: 'text' },
       { key: 'personal.identificationMark2', label: 'Identification mark 2', kind: 'text' },
+      { key: 'personal.nameChanged', label: 'Have you ever changed name', kind: 'select', options: ['Yes', 'No'] },
     ],
   },
   {
@@ -155,3 +156,38 @@ export const PROFILE_VERSION = 1;
 export function emptyProfile(): StoredProfile {
   return { v: PROFILE_VERSION, data: {} };
 }
+
+let customFieldsCallback: ((fields: FieldDef[]) => void) | null = null;
+export function setCustomFieldsCallback(cb: (fields: FieldDef[]) => void): void {
+  customFieldsCallback = cb;
+}
+
+export function registerCustomFields(customFields: FieldDef[]): void {
+  let customSection = SECTIONS.find((s) => s.id === 'custom');
+  if (!customSection) {
+    customSection = {
+      id: 'custom',
+      title: 'Custom fields',
+      fields: [],
+    };
+    SECTIONS.push(customSection);
+  }
+  customSection.fields = customFields;
+
+  // Rebuild catalog and keys in-place to preserve references
+  const newCatalog = Object.fromEntries(
+    SECTIONS.flatMap((s) => s.fields).map((f) => [f.key, f]),
+  );
+  for (const k of Object.keys(FIELD_CATALOG)) {
+    delete FIELD_CATALOG[k];
+  }
+  Object.assign(FIELD_CATALOG, newCatalog);
+
+  ALL_KEYS.length = 0;
+  ALL_KEYS.push(...Object.keys(FIELD_CATALOG));
+
+  if (customFieldsCallback) {
+    customFieldsCallback(customFields);
+  }
+}
+

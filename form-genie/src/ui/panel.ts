@@ -46,7 +46,13 @@ export class FormGeniePanel {
     this.shadow.appendChild(style);
     this.isolateEvents();
 
-    this.teach = new TeachMode(this.shadow, ctl.host, () => this.toast('Mapping saved'));
+    this.teach = new TeachMode(
+      this.shadow,
+      ctl.host,
+      () => ctl.getProfile(),
+      (data) => ctl.saveProfile(data),
+      () => this.toast('Mapping saved'),
+    );
 
     this.buildFab();
     this.buildSheet();
@@ -232,8 +238,11 @@ export class FormGeniePanel {
     }
   }
 
-  private renderProfile(): void {
-    const handle = renderProfileEditor(this.ctl.getProfile());
+  private renderProfile(data: ProfileData = this.ctl.getProfile()): void {
+    this.body.innerHTML = '';
+    const handle = renderProfileEditor(data, (updatedData) => {
+      this.renderProfile(updatedData);
+    });
     const footbar = document.createElement('div');
     footbar.className = 'footbar';
     footbar.appendChild(

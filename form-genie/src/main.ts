@@ -15,8 +15,23 @@ import {
   isSiteEnabled, setSiteEnabled,
 } from './profile/store';
 import { setDebug, drawOverlay, log } from './debug';
+import { registerCustomFields } from './profile/schema';
 
 const host = location.hostname;
+
+function syncCustomFields(data: Record<string, string>): void {
+  const raw = data._customFields;
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        registerCustomFields(parsed);
+        return;
+      }
+    } catch { /* no-op */ }
+  }
+  registerCustomFields([]);
+}
 
 function boot(): void {
   // Opt-in per site: dormant everywhere until enabled from the manager menu.
@@ -29,19 +44,30 @@ function boot(): void {
   }
 
   setDebug(loadSettings().debug);
+  const initialProfile = loadProfile();
+  syncCustomFields(initialProfile.data);
 
   let panel: FormGeniePanel;
 
   const controller: PanelController = {
     host,
     getProfile: () => loadProfile().data,
-    saveProfile: (data) => saveProfile(data),
+    saveProfile: (data) => {
+      syncCustomFields(data);
+      saveProfile(data);
+    },
     getSettings: () => loadSettings(),
     saveSettings: (s) => { saveSettings(s); setDebug(s.debug); },
     getRules: () => loadRules(host),
     deleteRule: (fp, occ) => deleteRule(host, fp, occ),
     exportJson: () => exportProfileJson(),
-    importJson: (json) => importBundle(json),
+    importJson: (json) => {
+      const res = importBundle(json);
+      if (res.ok) {
+        syncCustomFields(loadProfile().data);
+      }
+      return res;
+    },
     runFill: (accepted) => runFill(accepted, (m) => panel.toast(m)),
   };
 
@@ -70,6 +96,7 @@ async function runFill(
   const settings = loadSettings();
   setDebug(settings.debug);
   const profile = loadProfile();
+  syncCustomFields(profile.data);
   const rules = loadRules(host);
 
   const units = scan();

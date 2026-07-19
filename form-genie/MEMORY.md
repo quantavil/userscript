@@ -11,21 +11,34 @@ Pipeline: **scan → describe → match → fill**, each a pure, unit-tested mod
   password/captcha/OTP. **Includes disabled `<select>`s** (cascade children start
   disabled) but skips disabled inputs/textareas.
 - `describe.ts` builds a text descriptor; reads the nearest preceding table cell
-  for gov table layouts with no `<label>`.
+  for gov table layouts with no `<label>`. `nearbyText` walks up to 3 DOM levels
+  to find group-level question labels (e.g. radios inside `.custom-control` divs).
 - `match.ts` three-tier: rules (teach/AI) > option-list signal > synonym token
   scoring. Thresholds: ≥0.75 fill, 0.45–0.75 suggest, else unmatched. Single
   distinctive token full-coverage scores 0.8 (so a field labelled just "State"
   fills).
 - `fill.ts` native-setter + `focus/input/change/blur` for framework compat;
   select equivalence (OBC↔OBC-NCL); +91 strip; maxlength = skip (no truncate);
-  cascading via `waitForOptions` (MutationObserver, 3s timeout). Fills in scan
-  (DOM) order — do NOT re-sort by compareDocumentPosition (unreliable in tests).
+  cascading via `waitForOptions` (MutationObserver, 3s timeout); split-email
+  detection (`hasAdjacentAt` — searches descendants and text nodes of closest
+  parent wrapper for exactly `@` to strip domain, e.g. IBPS split email layout).
+  Fills in scan (DOM) order — do NOT re-sort by compareDocumentPosition.
 - `ai.ts` optional Gemini tier via `GM_xmlhttpRequest`; sends **descriptors
   only**, default model `gemini-3.1-flash-lite`; results cached as `source:'ai'`
   rules. Off by default.
+- Custom Fields: dynamic custom fields added by user (Text, Number, Date, or Choices/Select).
+  Saved in `profile.data._customFields` as a JSON list of `{key, label, kind, options?}`.
+  Registered at boot time/refresh via `registerCustomFields` callback to update `SECTIONS`,
+  `FIELD_CATALOG`, `ALL_KEYS`, and rebuild synonym tokens in `match.ts`. Fully supports
+  teach-mode mapping and choices/dropdown rendering in the editor.
+- Teach Mode Custom Field Creation: Users can create and map new custom fields directly from the
+  Teach Mode picker overlay. It automatically pre-fills the label, auto-detects the field type
+  from the DOM (text, number, date, or select for radio/checkbox/select), auto-parses choice
+  options from the DOM options/labels, and pre-fills the field value on the profile from the
+  currently selected option/input.
 
 ## Storage (GM keys, in `profile/store.ts`)
-`fg:profile` (versioned), `fg:settings` (holds API key — never exported),
+`fg:profile` (versioned, contains `_customFields` metadata), `fg:settings` (holds API key — never exported),
 `fg:rules:<host>`, `fg:fab`.
 
 ## Design
@@ -66,3 +79,9 @@ Pipeline: **scan → describe → match → fill**, each a pure, unit-tested mod
   your name?" — removed.
 - Debug overlay used fixed positioning → boxes stuck to viewport on scroll.
   Now document-absolute + 15s auto-clear.
+- `nearbyText` only checked immediate previousSiblings → radio groups wrapped
+  in `.custom-control` divs missed the parent-level question label (e.g. "Have
+  you ever changed your name?"). Fixed by walking up to 3 DOM levels.
+- `SYN_TOKENS` and `rebuildSynTokens` were needlessly exported from `match.ts`;
+  dead text-node check in `hasAdjacentAt` duplicated the `querySelectorAll`
+  logic. Both removed.

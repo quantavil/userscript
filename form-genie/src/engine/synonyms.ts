@@ -19,6 +19,7 @@ export const SYNONYMS: Record<string, string[]> = {
   'personal.bloodGroup': ['blood group', 'blood', 'rakt samuh'],
   'personal.identificationMark1': ['identification mark', 'visible mark', 'pehchan chinh', 'identification mark 1'],
   'personal.identificationMark2': ['identification mark 2', 'second identification mark'],
+  'personal.nameChanged': ['have you ever changed your name', 'ever changed your name', 'changed your name', 'name change', 'changed name', 'namechanged'],
 
   'family.fatherName': ["father name", "father's name", 'fathers name', 'pita ka naam', 'pita name', "father husband name"],
   'family.motherName': ["mother name", "mother's name", 'mothers name', 'mata ka naam', 'mata name'],
