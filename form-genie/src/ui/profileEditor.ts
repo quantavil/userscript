@@ -65,6 +65,8 @@ export function renderProfileEditor(
 
         const delBtn = document.createElement('button');
         delBtn.className = 'btn danger sm';
+        delBtn.style.height = '37px';
+        delBtn.style.boxSizing = 'border-box';
         delBtn.type = 'button';
         delBtn.textContent = '✕';
         delBtn.addEventListener('click', () => {
@@ -110,7 +112,7 @@ export function renderProfileEditor(
 
   // Add custom fields creation panel
   const addPanel = document.createElement('div');
-  addPanel.style.borderTop = '1px dashed var(--line)';
+  addPanel.style.borderTop = '1px dashed var(--rule-strong)';
   addPanel.style.paddingTop = '12px';
   addPanel.style.marginTop = '12px';
   addPanel.style.display = 'flex';
@@ -129,9 +131,11 @@ export function renderProfileEditor(
   const labelInp = document.createElement('input');
   labelInp.placeholder = 'Label (e.g. Aadhaar Virtual ID)';
   labelInp.style.flex = '2';
+  labelInp.style.minWidth = '0';
 
   const typeSel = document.createElement('select');
   typeSel.style.flex = '1';
+  typeSel.style.minWidth = '0';
   typeSel.appendChild(createOption('Text', 'text'));
   typeSel.appendChild(createOption('Number', 'number'));
   typeSel.appendChild(createOption('Date', 'date'));
@@ -148,6 +152,7 @@ export function renderProfileEditor(
   const optionsInp = document.createElement('input');
   optionsInp.placeholder = 'Options (comma-separated, e.g. Yes, No)';
   optionsInp.style.flex = '1';
+  optionsInp.style.minWidth = '0';
   row2.appendChild(optionsInp);
   addPanel.appendChild(row2);
 
@@ -210,6 +215,8 @@ function wrapSensitive(sensitive: boolean | undefined, input: HTMLInputElement |
   input.style.flex = '1';
   const toggle = document.createElement('button');
   toggle.className = 'btn ghost sm';
+  toggle.style.height = '37px';
+  toggle.style.boxSizing = 'border-box';
   toggle.type = 'button';
   toggle.textContent = '👁';
   toggle.addEventListener('click', () => {

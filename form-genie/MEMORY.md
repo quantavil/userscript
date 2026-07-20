@@ -90,4 +90,6 @@ Pipeline: **scan → describe → match → fill**, each a pure, unit-tested mod
 - TypeScript compiler was red due to type mismatches in GreaseMonkey stubs and missing test imports; resolved along with securing HTML injection risks in teach picker and panel rules list via DOM API node construction.
 - happy-dom's MutationObserver failed to trigger on innerHTML option replacement; shimmed a polling observer in tests to correctly verify the cascading select wait path.
 - Import bundle lacked schema validation; added schema structure checks and custom field sanitization in `importBundle`.
+- UI border token mismatch (`var(--line)` → `var(--rule-strong)`), missing disabled input states, unaligned action button heights in profile editor, and flat button active states resolved to enforce "Press" theme consistency.
+- Bumped version to `v1.5.1` and rebuilt `dist/form-genie.user.js`.
 

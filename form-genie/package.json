@@ -1,10 +1,10 @@
 {
   "name": "form-genie",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.5.1",
   "author": "quantavil (https://github.com/quantavil)",
   "homepage": "https://github.com/quantavil/userscript",
-  "description": "Local-first auto form filler for desktop and mobile. Fills any website (incl. Indian exam portals) from a stored profile using teach-mode rules, heuristics, and an optional Gemini AI tier.",
+  "description": "Privacy-first, AI-powered auto form filler for desktop & mobile. Instantly fills complex application forms, job portals, and exam sites (IBPS, NTA, SSC, UPSC) using smart teach rules, heuristics, and optional Gemini AI.",
   "type": "module",
   "scripts": {
     "dev": "vite",

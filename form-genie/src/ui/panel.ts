@@ -323,6 +323,7 @@ export class FormGeniePanel {
     for (const r of rules) {
       const item = document.createElement('div');
       item.className = 'report-item';
+      item.style.alignItems = 'center';
 
       const content = document.createElement('div');
       content.style.flex = '1';
