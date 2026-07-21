@@ -6,10 +6,27 @@ export interface EditorHandle {
   collect: () => ProfileData;
 }
 
+interface SubtabDef {
+  id: string;
+  label: string;
+  sectionIds: string[];
+}
+
+const SUBTABS: SubtabDef[] = [
+  { id: 'personal', label: 'Personal', sectionIds: ['personal'] },
+  { id: 'family-contact', label: 'Family & Contact', sectionIds: ['family', 'contact'] },
+  { id: 'address', label: 'Address', sectionIds: ['permanent', 'correspondence'] },
+  { id: 'education', label: 'Education', sectionIds: ['edu-tenth', 'edu-twelfth', 'edu-graduation', 'edu-postgrad'] },
+  { id: 'identity', label: 'Identity', sectionIds: ['ids'] },
+  { id: 'custom', label: 'Custom', sectionIds: ['custom'] },
+  { id: 'all', label: 'All', sectionIds: [] },
+];
+
 export function renderProfileEditor(
   data: ProfileData,
-  onRefresh: (updatedData: ProfileData) => void,
+  onRefresh: (updatedData: ProfileData, activeTab: string) => void,
   save: (data: ProfileData) => void,
+  initialTab = 'personal',
 ): EditorHandle {
   const wrap = document.createElement('div');
   wrap.style.display = 'flex';
@@ -22,14 +39,81 @@ export function renderProfileEditor(
     if (raw) customFieldsList = JSON.parse(raw);
   } catch { /* no-op */ }
 
+  let activeTabId = initialTab;
+
+  // ---- Toolbar: Search Input + Subtabs -----------------------------------
+  const toolbar = document.createElement('div');
+  toolbar.className = 'profile-toolbar';
+
+  const searchWrap = document.createElement('div');
+  searchWrap.className = 'profile-search-wrap';
+
+  const searchInput = document.createElement('input');
+  searchInput.type = 'text';
+  searchInput.className = 'profile-search-input';
+  searchInput.placeholder = 'Search fields (e.g. mobile, dob, aadhaar)';
+
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.className = 'profile-search-clear';
+  clearBtn.textContent = '✕';
+  clearBtn.title = 'Clear search';
+
+  searchWrap.append(searchInput, clearBtn);
+
+  const subtabsContainer = document.createElement('div');
+  subtabsContainer.className = 'profile-subtabs';
+
+  const subtabButtons: HTMLButtonElement[] = [];
+
+  for (const tab of SUBTABS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `profile-subtab${tab.id === activeTabId ? ' active' : ''}`;
+    btn.textContent = tab.label;
+    btn.dataset.tabId = tab.id;
+    btn.addEventListener('click', () => {
+      activeTabId = tab.id;
+      // Clear search when switching tabs for a clean view
+      if (searchInput.value) {
+        searchInput.value = '';
+      }
+      updateView();
+    });
+    subtabButtons.push(btn);
+    subtabsContainer.appendChild(btn);
+  }
+
+  const searchSummary = document.createElement('div');
+  searchSummary.className = 'search-summary';
+  searchSummary.style.display = 'none';
+
+  toolbar.append(searchWrap, subtabsContainer, searchSummary);
+  wrap.appendChild(toolbar);
+
+  // ---- Render Section Fields ---------------------------------------------
   let sameSelect: HTMLSelectElement | null = null;
   const corrInputs: { inp: HTMLInputElement | HTMLSelectElement; field: HTMLElement }[] = [];
 
+  interface RenderedSection {
+    id: string;
+    title: string;
+    el: HTMLElement;
+    fieldEntries: { key: string; label: string; el: HTMLElement }[];
+  }
+
+  const renderedSections: RenderedSection[] = [];
+
   for (const section of SECTIONS) {
-    const title = document.createElement('div');
-    title.className = 'section-title';
-    title.textContent = section.title;
-    wrap.appendChild(title);
+    const sectionEl = document.createElement('div');
+    sectionEl.className = 'profile-section';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'section-title';
+    titleEl.textContent = section.title;
+    sectionEl.appendChild(titleEl);
+
+    const fieldEntries: { key: string; label: string; el: HTMLElement }[] = [];
 
     for (const f of section.fields) {
       const field = document.createElement('div');
@@ -75,7 +159,7 @@ export function renderProfileEditor(
           delete current[f.key];
           registerCustomFields(customFieldsList);
           save(current);
-          onRefresh(current);
+          onRefresh(current, activeTabId);
         });
 
         row.appendChild(controlEl);
@@ -84,7 +168,9 @@ export function renderProfileEditor(
       }
 
       field.appendChild(controlEl);
-      wrap.appendChild(field);
+      sectionEl.appendChild(field);
+
+      fieldEntries.push({ key: f.key, label: f.label, el: field });
 
       // Track correspondence fields for reactive disable
       if (f.key === 'address.correspondence.sameAsPermanent') {
@@ -93,6 +179,14 @@ export function renderProfileEditor(
         corrInputs.push({ inp: input, field });
       }
     }
+
+    wrap.appendChild(sectionEl);
+    renderedSections.push({
+      id: section.id,
+      title: section.title,
+      el: sectionEl,
+      fieldEntries,
+    });
   }
 
   // Disable correspondence fields when "Same as permanent" is Yes
@@ -110,7 +204,7 @@ export function renderProfileEditor(
     syncDisabled();
   }
 
-  // Add custom fields creation panel
+  // ---- Add Custom Field Creator Panel ------------------------------------
   const addPanel = document.createElement('div');
   addPanel.style.borderTop = '1px dashed var(--rule-strong)';
   addPanel.style.paddingTop = '12px';
@@ -187,11 +281,85 @@ export function renderProfileEditor(
     const current = collect();
     registerCustomFields(customFieldsList);
     save(current);
-    onRefresh(current);
+    // Land on a tab where the new field is actually visible.
+    onRefresh(current, activeTabId === 'all' ? 'all' : 'custom');
   });
 
   addPanel.appendChild(addBtn);
   wrap.appendChild(addPanel);
+
+  // ---- Empty State -------------------------------------------------------
+  const noMatchEl = document.createElement('div');
+  noMatchEl.className = 'no-match-msg';
+  noMatchEl.style.display = 'none';
+  noMatchEl.textContent = 'No matching fields found';
+  wrap.appendChild(noMatchEl);
+
+  // ---- Dynamic Filter / View Update --------------------------------------
+  const updateView = () => {
+    const q = searchInput.value.trim().toLowerCase();
+    clearBtn.classList.toggle('show', q.length > 0);
+
+    // Update active state on subtab buttons
+    for (const btn of subtabButtons) {
+      btn.classList.toggle('active', btn.dataset.tabId === activeTabId);
+    }
+
+    const currentTabDef = SUBTABS.find((t) => t.id === activeTabId) ?? SUBTABS[0];
+    let totalVisibleFields = 0;
+
+    for (const section of renderedSections) {
+      const isAllowedByTab =
+        currentTabDef.id === 'all' ||
+        q.length > 0 ||
+        currentTabDef.sectionIds.includes(section.id);
+
+      if (!isAllowedByTab) {
+        section.el.style.display = 'none';
+        continue;
+      }
+
+      let sectionVisibleCount = 0;
+      for (const field of section.fieldEntries) {
+        const matchesQuery =
+          q.length === 0 ||
+          field.label.toLowerCase().includes(q) ||
+          field.key.toLowerCase().includes(q) ||
+          section.title.toLowerCase().includes(q);
+
+        if (matchesQuery) {
+          field.el.style.display = '';
+          sectionVisibleCount++;
+          totalVisibleFields++;
+        } else {
+          field.el.style.display = 'none';
+        }
+      }
+
+      section.el.style.display = sectionVisibleCount > 0 ? '' : 'none';
+    }
+
+    // The add-custom-field panel lives on the Custom and All tabs; hide it
+    // while a search is active so results aren't padded with unrelated inputs.
+    const showAddPanel = q.length === 0 && (activeTabId === 'custom' || activeTabId === 'all');
+    addPanel.style.display = showAddPanel ? 'flex' : 'none';
+
+    const searching = q.length > 0;
+    searchSummary.style.display = searching && totalVisibleFields > 0 ? 'block' : 'none';
+    if (searching) {
+      searchSummary.textContent = `Found ${totalVisibleFields} matching field${totalVisibleFields === 1 ? '' : 's'}`;
+    }
+    noMatchEl.style.display = searching && totalVisibleFields === 0 ? 'block' : 'none';
+  };
+
+  searchInput.addEventListener('input', updateView);
+  clearBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    updateView();
+  });
+
+  // Initial view sync
+  updateView();
 
   const collect = (): ProfileData => {
     const out: ProfileData = {};

@@ -55,6 +55,10 @@ export const SECTIONS: SectionDef[] = [
       { key: 'personal.identificationMark1', label: 'Identification mark 1', kind: 'text' },
       { key: 'personal.identificationMark2', label: 'Identification mark 2', kind: 'text' },
       { key: 'personal.nameChanged', label: 'Have you ever changed name', kind: 'select', options: ['Yes', 'No'] },
+      { key: 'personal.isPwd', label: 'Person with Benchmark Disability (PwBD)', kind: 'select', options: ['Yes', 'No'] },
+      { key: 'personal.isExServiceman', label: 'Ex-Serviceman status', kind: 'select', options: ['Yes', 'No'] },
+      { key: 'personal.isMinority', label: 'Religious minority community', kind: 'select', options: ['Yes', 'No'] },
+      { key: 'personal.isGovtEmployee', label: 'Serving in Govt / PSU / Bank', kind: 'select', options: ['Yes', 'No'] },
     ],
   },
   {
@@ -64,6 +68,7 @@ export const SECTIONS: SectionDef[] = [
       { key: 'family.fatherName', label: "Father's name", kind: 'text' },
       { key: 'family.motherName', label: "Mother's name", kind: 'text' },
       { key: 'family.guardianName', label: "Guardian's name", kind: 'text' },
+      { key: 'family.hasTwin', label: 'Twin / Triplet brother or sister', kind: 'select', options: ['Yes', 'No'] },
     ],
   },
   {
@@ -74,6 +79,7 @@ export const SECTIONS: SectionDef[] = [
       { key: 'contact.altEmail', label: 'Alternate email', kind: 'email' },
       { key: 'contact.mobile', label: 'Mobile', kind: 'tel' },
       { key: 'contact.altMobile', label: 'Alternate mobile', kind: 'tel' },
+      { key: 'contact.mobileBelongsTo', label: 'Mobile number belongs to', kind: 'select', options: ['Self', 'Parents/Relatives'] },
     ],
   },
   {
@@ -101,6 +107,7 @@ export const SECTIONS: SectionDef[] = [
       { key: 'address.correspondence.state', label: 'State', kind: 'text' },
       { key: 'address.correspondence.pincode', label: 'PIN code', kind: 'text' },
       { key: 'address.correspondence.country', label: 'Country', kind: 'text' },
+      { key: 'address.gstInvoicingAddress', label: 'Address for GST Invoicing', kind: 'select', options: ['Correspondence Address', 'Permanent Address'] },
     ],
   },
   ...educationSection('tenth', '10th / Matriculation'),

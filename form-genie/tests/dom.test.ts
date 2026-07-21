@@ -505,5 +505,42 @@ describe('IBPS page integration', () => {
     expect((document.getElementById('dob_m') as HTMLSelectElement).value).toBe('5');
     expect((document.getElementById('dob_y') as HTMLSelectElement).value).toBe('1995');
   });
+
+  it('supports quick search and sub-section tabs in profile editor', () => {
+    // Earlier tests register custom fields globally; clear them so the match
+    // counts below only depend on the built-in schema.
+    registerCustomFields([]);
+    const handle = renderProfileEditor(
+      {
+        'personal.firstName': 'Karan',
+        'contact.mobile': '9876543210',
+        'address.permanent.city': 'Moradabad',
+        'ids.aadhaar': '123456789012',
+      },
+      () => {},
+      () => {},
+    );
+
+    const el = handle.el;
+    const searchInput = el.querySelector<HTMLInputElement>('.profile-search-input')!;
+    const subtabs = el.querySelectorAll<HTMLButtonElement>('.profile-subtab');
+    expect(searchInput).not.toBeNull();
+    expect(subtabs.length).toBe(7); // Personal, Family & Contact, Address, Education, Identity, Custom, All
+
+    // Test quick search filtering
+    searchInput.value = 'mobile';
+    searchInput.dispatchEvent(new Event('input'));
+
+    // Built-in schema: contact.mobile, contact.altMobile, contact.mobileBelongsTo
+    const searchSummary = el.querySelector<HTMLElement>('.search-summary')!;
+    expect(searchSummary.style.display).toBe('block');
+    expect(searchSummary.textContent).toContain('3 matching fields');
+
+    // Test tab switching
+    const identityTab = Array.from(subtabs).find((b) => b.textContent === 'Identity')!;
+    identityTab.click();
+    expect(searchInput.value).toBe(''); // Clears search on tab click
+    expect(identityTab.classList.contains('active')).toBe(true);
+  });
 });
 

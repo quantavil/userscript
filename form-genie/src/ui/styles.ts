@@ -186,6 +186,54 @@ input[type='checkbox']:checked::after {
 .section-title::after { content: ''; flex: 1; height: 1px; background: var(--rule); }
 .section-title:first-child { margin-top: 0; }
 
+/* ---- Profile Toolbar, Search & Subtabs ----------------------------------- */
+.profile-toolbar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+.profile-section { display: flex; flex-direction: column; gap: 8px; }
+/* Each title is now :first-child of its section wrapper, which would zero the
+   inter-section margin above — restore it (this rule must follow the
+   .section-title:first-child rule to win the tie). */
+.profile-section > .section-title { margin-top: 10px; }
+.profile-search-wrap { position: relative; display: flex; align-items: center; width: 100%; }
+.profile-search-input {
+  width: 100%; padding: 8px 30px 8px 10px; border-radius: 2px; font-size: 12.5px;
+  font-family: var(--sans); background: #fbf9f3; border: 1.5px solid var(--rule-strong);
+  color: var(--ink); outline: none; transition: border-color .12s ease;
+}
+.profile-search-input:focus { border-color: var(--spot); }
+.profile-search-clear {
+  position: absolute; right: 8px; background: transparent; border: none;
+  color: var(--ink-3); font-size: 14px; cursor: pointer; display: none;
+  padding: 0 4px; line-height: 1;
+}
+.profile-search-clear.show { display: block; }
+.profile-search-clear:hover { color: var(--ink); }
+
+.profile-subtabs {
+  display: flex; gap: 5px; overflow-x: auto; padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.profile-subtabs::-webkit-scrollbar { display: none; }
+.profile-subtab {
+  padding: 5px 9px; border: 1.5px solid var(--rule-strong); background: var(--paper);
+  color: var(--ink-2); font-family: var(--mono); font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .8px; border-radius: 2px; cursor: pointer;
+  white-space: nowrap; transition: all .1s ease;
+}
+.profile-subtab:hover { background: var(--paper-2); color: var(--ink); border-color: var(--ink); }
+.profile-subtab.active {
+  background: var(--ink); color: var(--paper); border-color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.search-summary {
+  font-family: var(--mono); font-size: 10.5px; color: var(--spot); font-weight: 700;
+  letter-spacing: .5px; padding: 2px 0;
+}
+.no-match-msg {
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-3);
+  text-align: center; padding: 20px 10px; border: 1px dashed var(--rule-strong);
+}
+
 /* ---- Sticky action footer (profile save) -------------------------------- */
 .footbar {
   position: sticky; bottom: -16px; margin: 4px -16px -16px; padding: 12px 16px;

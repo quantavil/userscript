@@ -70,6 +70,9 @@ function scoreHeuristic(d: FieldDescriptor): Scored | null {
       // grant a bonus to a zero score: that used to hand gibberish fields an
       // arbitrary key at confidence ~0.
       if (s > 0) s += Math.min(phrase.length, 40) * 0.0008;
+      // A field the user explicitly created must outrank a built-in synonym
+      // that scores the same or nearly the same.
+      if (s > 0 && key.startsWith('custom.')) s = Math.min(s + 0.05, 1);
       if (s > keyScore) keyScore = s;
     }
     if (keyScore > 0 && (!best || keyScore > best.score)) {

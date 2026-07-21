@@ -260,12 +260,13 @@ export class FormGeniePanel {
     }
   }
 
-  private renderProfile(data: ProfileData = this.ctl.getProfile()): void {
+  private renderProfile(data: ProfileData = this.ctl.getProfile(), initialTab?: string): void {
     this.body.innerHTML = '';
     const handle = renderProfileEditor(
       data,
-      (updatedData) => this.renderProfile(updatedData),
+      (updatedData, activeTab) => this.renderProfile(updatedData, activeTab),
       (updatedData) => this.ctl.saveProfile(updatedData),
+      initialTab,
     );
     const footbar = document.createElement('div');
     footbar.className = 'footbar';

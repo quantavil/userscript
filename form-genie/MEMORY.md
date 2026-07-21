@@ -91,5 +91,7 @@ Pipeline: **scan → describe → match → fill**, each a pure, unit-tested mod
 - happy-dom's MutationObserver failed to trigger on innerHTML option replacement; shimmed a polling observer in tests to correctly verify the cascading select wait path.
 - Import bundle lacked schema validation; added schema structure checks and custom field sanitization in `importBundle`.
 - UI border token mismatch (`var(--line)` → `var(--rule-strong)`), missing disabled input states, unaligned action button heights in profile editor, and flat button active states resolved to enforce "Press" theme consistency.
-- Bumped version to `v1.5.1` and rebuilt `dist/form-genie.user.js`.
+- Added 7 standard Indian portal fields (`isPwd`, `isExServiceman`, `isMinority`, `isGovtEmployee`, `hasTwin`, `mobileBelongsTo`, `gstInvoicingAddress`) to `SECTIONS` and `SYNONYMS`.
+- Added Quick Search input and 7 sub-section tabs (`Personal`, `Family & Contact`, `Address`, `Education`, `Identity`, `Custom`, `All`) to the Profile Editor UI for instant field navigation.
+- Bumped version to `v1.6.0` and rebuilt `dist/form-genie.user.js`.
 

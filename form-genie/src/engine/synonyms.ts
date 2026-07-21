@@ -20,15 +20,21 @@ export const SYNONYMS: Record<string, string[]> = {
   'personal.identificationMark1': ['identification mark', 'visible mark', 'pehchan chinh', 'identification mark 1'],
   'personal.identificationMark2': ['identification mark 2', 'second identification mark'],
   'personal.nameChanged': ['have you ever changed your name', 'ever changed your name', 'changed your name', 'name change', 'changed name', 'namechanged'],
+  'personal.isPwd': ['person with benchmark disability', 'person with disability', 'pwbd', 'pwd', 'benchmark disability', 'differently abled', 'handicapped', 'disabled', 'disability of 40'],
+  'personal.isExServiceman': ['ex serviceman', 'ex servicemen', 'esm', 'are you an ex serviceman', 'ex service'],
+  'personal.isMinority': ['religious minority', 'minority community', 'religious minority community', 'minority'],
+  'personal.isGovtEmployee': ['serving in govt', 'govt employee', 'public sector undertakings', 'serving in govt quasi govt', 'psu employee', 'bank employee'],
 
   'family.fatherName': ["father name", "father's name", 'fathers name', 'pita ka naam', 'pita name', "father husband name"],
   'family.motherName': ["mother name", "mother's name", 'mothers name', 'mata ka naam', 'mata name'],
   'family.guardianName': ['guardian name', "guardian's name", 'sanrakshak'],
+  'family.hasTwin': ['twin', 'triplet', 'twin brother sister', 'quadruplet', 'twin triplet quadruplet'],
 
   'contact.email': ['email', 'e mail', 'email address', 'email id', 'e mail id'],
   'contact.altEmail': ['alternate email', 'alternative email', 'secondary email'],
   'contact.mobile': ['mobile', 'mobile number', 'phone', 'phone number', 'contact number', 'cell', 'mobile no', 'contact no'],
   'contact.altMobile': ['alternate mobile', 'alternative mobile', 'secondary mobile', 'landline', 'alternate number', 'alternative number', 'alternate contact number'],
+  'contact.mobileBelongsTo': ['mobile number belongs to', 'mobile belongs to', 'confirm that the mobile number belongs to', 'phone belongs to'],
 
   'address.permanent.line1': ['permanent address', 'address line 1', 'address line', 'permanent address line 1', 'house no', 'street', 'address'],
   'address.permanent.line2': ['permanent address line 2', 'address line 2', 'locality', 'area'],
@@ -46,6 +52,7 @@ export const SYNONYMS: Record<string, string[]> = {
   'address.correspondence.state': ['correspondence state', 'communication state', 'present state'],
   'address.correspondence.pincode': ['correspondence pincode', 'communication pincode', 'present pincode'],
   'address.correspondence.country': ['correspondence country', 'communication country'],
+  'address.gstInvoicingAddress': ['address for gst invoicing', 'gst invoicing', 'gst address', 'invoicing address', 'choose the address for gst'],
 
   'ids.aadhaar': ['aadhaar', 'aadhar', 'aadhaar number', 'uid', 'uidai'],
   'ids.pan': ['pan', 'pan number', 'pan card', 'permanent account number'],
