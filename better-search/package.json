@@ -1,0 +1,25 @@
+{
+  "name": "better-search",
+  "private": true,
+  "version": "4.4",
+  "author": "quantavil (https://github.com/quantavil)",
+  "homepage": "https://github.com/quantavil/userscript",
+  "description": "Clean up your search results! Highlights preferred websites and fades or completely hides sites you dislike on Google, Bing, DuckDuckGo, Brave, and Yandex.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "tsc": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.5",
+    "typescript": "~5.8.3",
+    "vite": "^7.3.6",
+    "vite-plugin-monkey": "^5.0.9",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "lit": "^3.3.3"
+  }
+}

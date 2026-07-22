@@ -1,0 +1,156 @@
+
+
+# 10 High-Impact Improvements
+
+
+
+### 3. **Pack moves as 32-bit integers — eliminate GC pressure in the hottest path**
+
+Every `createMove` allocates an object. Millions per search. Use a packed int:
+
+```js
+// Encoding: from(6) | to(6) | flags(3) | promo(3) | piece(4) | captured(4) = 26 bits
+function encodeMove(from, to, flags, promo, piece, captured) {
+    return (from) | (to << 6) | (flags << 12) | ((promo & 7) << 15)
+         | (((piece + 6) & 0xF) << 18) | (((captured + 6) & 0xF) << 22);
+}
+function decodeFrom(mv)     { return mv & 0x3F; }
+function decodeTo(mv)       { return (mv >> 6) & 0x3F; }
+function decodeFlags(mv)    { return (mv >> 12) & 0x7; }
+function decodePromo(mv)    { return ((mv >> 15) & 0x7) - 6; } // adjust back
+function decodePiece(mv)    { return ((mv >> 18) & 0xF) - 6; }
+function decodeCaptured(mv) { return ((mv >> 22) & 0xF) - 6; }
+```
+
+This eliminates **millions of object allocations** per search and enables storing moves in typed arrays.
+
+---
+
+### 4. **Add Late Move Reductions (LMR) — the single biggest search speedup you're missing**
+
+```js
+// In negamax, after the first few moves at non-root:
+let score;
+if (movesSearched === 0) {
+    score = -this.negamax(depth - 1, -beta, -alpha, ply + 1, childPv, ext);
+} else {
+    let reduction = 0;
+    // LMR: reduce late quiet moves
+    if (depth >= 3 && movesSearched >= 3
+        && mv.captured === EMPTY && !(mv.flags & FLAG_PROMO) && !inChk) {
+        reduction = 1 + Math.log2(depth) * Math.log2(movesSearched) * 0.4 | 0;
+        reduction = Math.min(reduction, depth - 2);
+    }
+
+    score = -this.negamax(depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, childPv, ext);
+
+    if (score > alpha && (reduction > 0 || score < beta)) {
+        childPv.length = 0;
+        score = -this.negamax(depth - 1, -beta, -alpha, ply + 1, childPv, ext);
+    }
+}
+```
+
+Typical speedup: **2–5× deeper** at equal time.
+
+---
+
+### 5. **Replace TT with typed arrays — 4× larger table, zero GC**
+
+```js
+// Current: Array of objects, 65536 entries → GC-heavy, small
+// Replace with parallel typed arrays:
+const TT_SIZE = 1 << 20; // 1M entries
+const TT_MASK = TT_SIZE - 1;
+this.ttHashHi  = new Int32Array(TT_SIZE);
+this.ttHashLo  = new Int32Array(TT_SIZE);
+this.ttDepth   = new Int8Array(TT_SIZE);
+this.ttScore   = new Int16Array(TT_SIZE);
+this.ttFlag    = new Uint8Array(TT_SIZE);
+this.ttMove    = new Int32Array(TT_SIZE); // packed move from suggestion #3
+
+ttProbe(depth, alpha, beta) {
+    const idx = this.hash[1] & TT_MASK;
+    if (this.ttHashHi[idx] !== this.hash[0] || this.ttHashLo[idx] !== this.hash[1]) return null;
+    const move = this.ttMove[idx];
+    if (this.ttDepth[idx] < depth) return { score: null, move };
+    // ...flag checks same as before
+}
+```
+
+---
+
+### 6. **Add basic SEE (Static Exchange Evaluation) for capture ordering and pruning**
+
+```js
+see(sq, sideToMove) {
+    const gain = [];
+    let side = sideToMove;
+    let piece = this.smallestAttacker(sq, side);
+    if (!piece) return 0;
+
+    gain.push(PIECE_VAL[Math.abs(this.board[sq])]);
+    let val = PIECE_VAL[Math.abs(piece)];
+
+    // Simulate exchange sequence
+    while (piece) {
+        side = -side;
+        gain.push(val - gain[gain.length - 1]);
+        val = PIECE_VAL[Math.abs(piece)];
+        // Remove attacker, find next smallest
+        piece = this.smallestAttacker(sq, side); // excluding removed pieces
+    }
+
+    // Minimax the gain stack
+    for (let i = gain.length - 2; i >= 0; i--) {
+        gain[i] = -Math.max(-gain[i], gain[i + 1]);
+    }
+    return gain[0];
+}
+```
+
+Use in move ordering (`scoreMoves`) and to **prune losing captures** in quiescence.
+
+---
+
+### 7. **Fix repetition detection — avoid string allocation on every node**
+
+```js
+// CURRENT (allocates string every makeMove):
+this.positionHistory.push(this.hash[0] + '|' + this.hash[1]);
+
+// FIX — store raw pairs, compare numerically:
+this.posHistoryHi = new Int32Array(1024);
+this.posHistoryLo = new Int32Array(1024);
+this.posHistoryLen = 0;
+
+// In makeMove:
+this.posHistoryHi[this.posHistoryLen] = this.hash[0];
+this.posHistoryLo[this.posHistoryLen] = this.hash[1];
+this.posHistoryLen++;
+
+// In repetition check:
+isRepetition() {
+    const h0 = this.hash[0], h1 = this.hash[1];
+    // Only check back to last irreversible move (halfmove clock)
+    const start = Math.max(0, this.posHistoryLen - this.halfmove);
+    for (let i = this.posHistoryLen - 2; i >= start; i -= 2) {
+        if (this.posHistoryHi[i] === h0 && this.posHistoryLo[i] === h1) return true;
+    }
+    return false;
+}
+```
+
+The `i -= 2` skip is valid because same-side positions only occur on even plies.
+
+
+
+### Priority Order
+
+| # | Change | Impact |
+|---|--------|--------|
+
+| 4 | Add LMR | **2–5× search depth** |
+| 3 | Pack moves as ints | **~30% speed**, eliminates GC stalls |
+| 7 | Numeric repetition | **~10% node throughput** |
+

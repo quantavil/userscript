@@ -1,0 +1,23 @@
+{
+  "name": "glidevideo",
+  "private": true,
+  "version": "6.5.0",
+  "author": "quantavil (https://github.com/quantavil)",
+  "homepage": "https://github.com/quantavil/userscript",
+  "description": "Makes mobile web video actually usable — control playback, volume, and zoom without fumbling for tiny buttons, all through natural touch gestures. Works on any browser that support extension like Edge, Firefox, Cromite etc.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "tsc": "tsc",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/greasemonkey": "^4.0.7",
+    "@types/node": "^25.9.4",
+    "typescript": "~5.8.3",
+    "vite": "^7.3.6",
+    "vite-plugin-monkey": "^5.0.9",
+    "vitest": "^3.2.6"
+  }
+}

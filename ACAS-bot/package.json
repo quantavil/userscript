@@ -1,0 +1,14 @@
+{
+  "name": "omnichess",
+  "version": "1.0.0",
+  "description": "Modular OmniChess Chess Userscript",
+  "type": "module",
+  "scripts": {
+    "build": "bun run build.js",
+    "test": "bun test",
+    "lint:imports": "depcruise src"
+  },
+  "devDependencies": {
+    "dependency-cruiser": "^17.4.3"
+  }
+}

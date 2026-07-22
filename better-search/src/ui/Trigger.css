@@ -1,0 +1,47 @@
+:host {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.svf-trigger {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(18, 18, 22, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.02);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  z-index: 2147483640;
+  transition: transform 0.25s cubic-bezier(0.25, 0.8, 0.25, 1), border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+  will-change: transform;
+  pointer-events: auto;
+  padding: 0;
+  outline: none;
+}
+
+.svf-trigger:hover {
+  transform: translateY(-3px) scale(1.05);
+  border-color: var(--svf-primary);
+  box-shadow: 0 12px 36px var(--svf-primary-glow), 0 0 0 1px var(--svf-primary-glow);
+  color: var(--svf-primary);
+}
+
+.svf-trigger:active {
+  transform: translateY(0) scale(0.95);
+}
+
+.svf-trigger svg {
+  transition: transform 0.4s ease;
+}
+
+.svf-trigger:hover svg {
+  transform: rotate(30deg) scale(1.05);
+}
