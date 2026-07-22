@@ -46,5 +46,31 @@ describe('EventBus', () => {
             bus.emit('ui:toast', { message: 'no listeners' });
         }).not.toThrow();
     });
+
+    it('should isolate errors in subscribers so subsequent subscribers still run', () => {
+        const bus = new EventBus();
+        const spy1 = vi.fn();
+        const throwingSpy = vi.fn().mockImplementation(() => {
+            throw new Error('Subscriber error');
+        });
+        const spy2 = vi.fn();
+
+        bus.on('ui:toast', spy1);
+        bus.on('ui:toast', throwingSpy);
+        bus.on('ui:toast', spy2);
+
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        expect(() => {
+            bus.emit('ui:toast', { message: 'isolated error test' });
+        }).not.toThrow();
+
+        expect(spy1).toHaveBeenCalledTimes(1);
+        expect(throwingSpy).toHaveBeenCalledTimes(1);
+        expect(spy2).toHaveBeenCalledTimes(1);
+        expect(consoleSpy).toHaveBeenCalled();
+
+        consoleSpy.mockRestore();
+    });
 });
 

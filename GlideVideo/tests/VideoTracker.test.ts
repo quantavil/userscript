@@ -261,8 +261,8 @@ describe('VideoTracker', () => {
             } as any
         ]);
 
-        expect(tracker.intersectionObserver?.observe).toHaveBeenCalledWith(video);
         vi.advanceTimersByTime(1000);
+        expect(tracker.intersectionObserver?.observe).toHaveBeenCalledWith(video);
         expect(evaluateSpy).toHaveBeenCalled();
 
         // Target removed

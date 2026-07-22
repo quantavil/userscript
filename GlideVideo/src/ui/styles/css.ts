@@ -1,18 +1,18 @@
 // src/ui/styles/css.ts
 
 export function injectStyles(): void {
-    if (document.getElementById('mvc-styles')) return;
-    if (!document.head) return;
-    const style = document.createElement('style');
-    style.id = 'mvc-styles';
-    style.textContent = `
+	if (document.getElementById("mvc-styles")) return;
+	if (!document.head) return;
+	const style = document.createElement("style");
+	style.id = "mvc-styles";
+	style.textContent = `
         :root {
             --mvc-radius-lg: 24px;
             --mvc-radius-md: 20px;
             --mvc-radius-sm: 10px;
             --mvc-bg-pill: rgba(20, 20, 22, 0.45);
             --mvc-bg-sheet: rgba(20, 20, 22, 0.7);
-            --mvc-bg-toast: rgba(20, 20, 22, 0.55);
+            --mvc-bg-toast: rgba(20, 20, 22, 0.85);
             --mvc-color-accent: #00e5ff;
             --mvc-color-accent-glow: rgba(0, 229, 255, 0.3);
             --mvc-color-accent-glow-strong: rgba(0, 229, 255, 0.5);
@@ -410,8 +410,6 @@ export function injectStyles(): void {
             bottom: 40px;
             transform: translateX(-50%) translateY(10px);
             background: var(--mvc-bg-toast);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: var(--mvc-radius-md);
             color: #fff;
@@ -437,9 +435,7 @@ export function injectStyles(): void {
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background: var(--mvc-bg-pill);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            background: var(--mvc-bg-toast);
             border: 1px solid rgba(255, 255, 255, 0.12);
             color: #fff;
             font-size: 14px;
@@ -484,9 +480,7 @@ export function injectStyles(): void {
             display: flex;
             align-items: center;
             gap: 6px;
-            background: rgba(0, 0, 0, 0.45);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
+            background: rgba(0, 0, 0, 0.75);
             padding: 6px 14px;
             border-radius: 20px;
             box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
@@ -710,5 +704,5 @@ export function injectStyles(): void {
             overflow: visible !important;
         }
     `;
-    document.head.appendChild(style);
+	document.head.appendChild(style);
 }
