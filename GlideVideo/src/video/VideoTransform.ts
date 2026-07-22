@@ -167,7 +167,9 @@ export class VideoTransform implements EventListenerObject {
         const container = getFullscreenContainer();
         
         if (container && container.isConnected) {
-            if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+            if (container !== document.body && container !== document.documentElement && getComputedStyle(container).position === 'static') {
+                container.style.position = 'relative';
+            }
             container.appendChild(this.ui.wrap);
         } else {
             document.body.appendChild(this.ui.wrap);
