@@ -28,6 +28,7 @@ export function injectStyles(): void {
             z-index: 2147483647;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 8px;
             pointer-events: none;
         }
@@ -280,6 +281,7 @@ export function injectStyles(): void {
             z-index: 2147483647;
             pointer-events: auto;
             flex-shrink: 0;
+            margin-left: auto;
         }
         .mvc-controls-row {
             display: flex;
