@@ -19,11 +19,64 @@ export function injectStyles(): void {
             --mvc-color-success: #30d158;
         }
 
-        /* Stepper Pill (Top Left) */
-        .mvc-stepper-pill {
+        /* Top Header Bar Container */
+        .mvc-top-bar {
             position: fixed;
             top: 16px;
             left: 16px;
+            right: 16px;
+            z-index: 2147483647;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+        }
+
+        /* Speed Control Container & Minimal Speed FAB */
+        .mvc-speed-control-wrap {
+            display: flex;
+            align-items: center;
+            pointer-events: auto;
+            flex-shrink: 0;
+            z-index: 2147483647;
+        }
+
+        .mvc-speed-fab {
+            position: relative;
+            z-index: 2147483647;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--mvc-bg-pill);
+            color: var(--mvc-color-accent);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.22);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: opacity 0.35s ease, transform 0.15s ease, background 0.15s ease;
+            will-change: opacity, transform;
+            padding: 0;
+        }
+        .mvc-speed-fab:active {
+            transform: scale(0.9);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Stepper Pill */
+        .mvc-stepper-pill {
+            position: relative;
             z-index: 2147483647;
             display: flex;
             align-items: center;
@@ -44,6 +97,114 @@ export function injectStyles(): void {
             transition: opacity 0.35s cubic-bezier(0.25, 1, 0.5, 1), transform 0.35s cubic-bezier(0.25, 1, 0.5, 1);
             will-change: opacity, transform;
             touch-action: none;
+            flex-shrink: 0;
+        }
+
+        /* Progress Bar (Ultra-Minimal Floating Line) */
+        .mvc-progress-bar {
+            flex: 1;
+            min-width: 60px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            padding: 0 4px;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            pointer-events: auto;
+            box-sizing: border-box;
+            transition: opacity 0.35s ease, transform 0.35s ease;
+        }
+
+        .mvc-progress-track-wrap {
+            position: relative;
+            flex: 1;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            touch-action: none;
+        }
+
+        .mvc-progress-bg-track {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+
+        .mvc-progress-buf-track {
+            position: absolute;
+            left: 0;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.45);
+            border-radius: 2px;
+            width: 0%;
+        }
+
+        .mvc-progress-fill-track {
+            position: absolute;
+            left: 0;
+            height: 3px;
+            background: var(--mvc-color-accent);
+            border-radius: 2px;
+            width: 0%;
+            box-shadow: 0 0 6px var(--mvc-color-accent-glow-strong);
+        }
+
+        .mvc-progress-thumb {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 0 8px var(--mvc-color-accent), 0 2px 4px rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+            opacity: 0;
+            transition: transform 0.15s ease, background 0.15s ease, opacity 0.2s ease;
+        }
+
+        .mvc-progress-tooltip {
+            position: absolute;
+            bottom: calc(100% + 4px);
+            transform: translateX(-50%);
+            background: var(--mvc-bg-toast);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: var(--mvc-radius-sm);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+            white-space: nowrap;
+            z-index: 2;
+            font-variant-numeric: tabular-nums;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        .mvc-progress-track-wrap.dragging .mvc-progress-thumb,
+        .mvc-progress-track-wrap:active .mvc-progress-thumb {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1.4);
+            background: var(--mvc-color-accent);
+        }
+
+        @media (hover: hover) {
+            .mvc-progress-track-wrap:hover .mvc-progress-thumb {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1.4);
+                background: var(--mvc-color-accent);
+            }
         }
 
         .mvc-stepper-pill-btn {
@@ -112,14 +273,13 @@ export function injectStyles(): void {
 
         /* Header Controls Group & Row */
         .mvc-controls-group {
-            position: fixed;
-            top: 16px;
-            right: 16px;
+            position: relative;
             display: flex;
             align-items: center;
             gap: 8px;
             z-index: 2147483647;
             pointer-events: auto;
+            flex-shrink: 0;
         }
         .mvc-controls-row {
             display: flex;
@@ -689,7 +849,9 @@ export function injectStyles(): void {
         .mvc-ui-wrap.locked .mvc-settings-btn,
         .mvc-ui-wrap.locked .mvc-pip-btn,
         .mvc-ui-wrap.locked .mvc-ratio-btn,
-        .mvc-ui-wrap.locked .mvc-stepper-pill {
+        .mvc-ui-wrap.locked .mvc-stepper-pill,
+        .mvc-ui-wrap.locked .mvc-speed-fab,
+        .mvc-ui-wrap.locked .mvc-progress-bar {
             display: none !important;
             pointer-events: none !important;
         }

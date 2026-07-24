@@ -18,6 +18,7 @@ A premium, highly polished mobile userscript that brings rich touch gestures, ad
 
 ### 📐 Ergonomic Split Layout
 * **Left-Aligned SpeedStepper**: Quick-access speed controls tucked neatly in the top-left corner.
+* **Centered Time Scrubber Bar**: Centered in the top header row between the SpeedStepper pill and collapsible controls. A clean, minimal straight-line progress bar with loaded buffer line, draggable thumb handle, floating seek timestamp preview, and touch/tap seeking.
 * **Right-Aligned Collapsible Controls**: A compact chevron arrow button in the top-right that expands to reveal visual controls (Aspect Ratio, Lock, PiP, Settings) and auto-collapses to keep the screen uncluttered.
 * **Clean Gesture Zone**: The entire middle and lower portions of the video screen are kept entirely unobstructed for natural, comfortable touch gestures.
 

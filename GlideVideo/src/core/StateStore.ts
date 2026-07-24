@@ -11,6 +11,8 @@ export interface Settings {
 	gesturesEnabled: boolean;
 	scrollCompatibility: boolean;
 	rememberPlayback: boolean;
+	progressBarEnabled: boolean;
+	minimalSpeedFab: boolean;
 	[key: string]: any;
 }
 
@@ -188,12 +190,21 @@ export class StateStore {
 	public loadSettings() {
 		let savedRate = this.storageGet(this.getDomainSpeedKey(), null);
 		if (savedRate === null) {
-			savedRate = this.storageGet(this.getStorageKey("lastRate"), 1.0);
+			savedRate = this.storageGet(
+				this.getStorageKey("lastRate"),
+				MVC_CONFIG.SPEED_DEFAULT,
+			);
 		}
 
 		this.settings = {
-			skipSeconds: this.storageGet(this.getStorageKey("skipSeconds"), 10),
-			defaultSpeed: this.storageGet(this.getStorageKey("defaultSpeed"), 1.0),
+			skipSeconds: this.storageGet(
+				this.getStorageKey("skipSeconds"),
+				MVC_CONFIG.SKIP_DEFAULT,
+			),
+			defaultSpeed: this.storageGet(
+				this.getStorageKey("defaultSpeed"),
+				MVC_CONFIG.SPEED_DEFAULT,
+			),
 			lastRate: savedRate,
 			transform: { ratio: "fit", zoom: 1 },
 			gesturesEnabled: this.storageGet(
@@ -207,6 +218,14 @@ export class StateStore {
 			rememberPlayback: this.storageGet(
 				this.getStorageKey("rememberPlayback"),
 				true,
+			),
+			progressBarEnabled: this.storageGet(
+				this.getStorageKey("progressBarEnabled"),
+				true,
+			),
+			minimalSpeedFab: this.storageGet(
+				this.getStorageKey("minimalSpeedFab"),
+				false,
 			),
 		};
 	}
@@ -252,7 +271,11 @@ export class StateStore {
 			// Backward compatibility: read both prefixed and legacy non-prefixed keys
 			const time = positions[`_${id}`] ?? positions[id];
 			if (typeof time === "number") {
-				if (video.duration && time >= video.duration - 5) return 0;
+				if (
+					video.duration &&
+					time >= video.duration - MVC_CONFIG.POSITION_SAVE_END_BUFFER
+				)
+					return 0;
 				return time;
 			}
 		} catch (e) {}
@@ -262,7 +285,12 @@ export class StateStore {
 	public saveVideoPosition(video: HTMLVideoElement) {
 		if (!this.settings.rememberPlayback) return;
 		const time = video.currentTime;
-		if (time === undefined || isNaN(time) || time < 3) return;
+		if (
+			time === undefined ||
+			isNaN(time) ||
+			time < MVC_CONFIG.POSITION_SAVE_MIN_TIME
+		)
+			return;
 		try {
 			const key = this.getStorageKey("positions");
 			const positions = this.storageGet(key, {});
@@ -273,14 +301,17 @@ export class StateStore {
 			delete positions[id];
 			delete positions[storageId];
 
-			if (video.duration && time >= video.duration - 5) {
+			if (
+				video.duration &&
+				time >= video.duration - MVC_CONFIG.POSITION_SAVE_END_BUFFER
+			) {
 				// Already deleted
 			} else {
 				positions[storageId] = time;
 			}
 
 			const keys = Object.keys(positions);
-			if (keys.length > 100) {
+			if (keys.length > MVC_CONFIG.MAX_POSITION_HISTORY) {
 				delete positions[keys[0]];
 			}
 

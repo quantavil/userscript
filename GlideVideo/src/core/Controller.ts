@@ -136,6 +136,7 @@ export class Controller {
 		if (this.ui.brightnessBar) this.ui.brightnessBar.remove();
 		if (this.ui.settingsSheet) this.ui.settingsSheet.dom.remove();
 		if (this.ui.doubleTapContainer) this.ui.doubleTapContainer.remove();
+		if (this.ui.progressBar) this.ui.progressBar.destroy();
 
 		this.videoTracker.destroy();
 		this.videoTransform.destroy();

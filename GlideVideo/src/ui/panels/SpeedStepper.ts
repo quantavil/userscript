@@ -5,6 +5,8 @@ import { UIComponent } from "../UIComponent";
 import type { UIManager } from "../UIManager";
 
 export class SpeedStepper extends UIComponent {
+	private stepperPill!: HTMLDivElement;
+	private fabBtn!: HTMLButtonElement;
 	private decBtn!: HTMLButtonElement;
 	private incBtn!: HTMLButtonElement;
 	private valEl!: HTMLSpanElement;
@@ -13,6 +15,7 @@ export class SpeedStepper extends UIComponent {
 	private holdInterval?: any;
 	private longPressTimeout?: any;
 	private wasLongPress = false;
+	private unsubscribers: Array<() => void> = [];
 
 	constructor(
 		private readonly eventBus: EventBus,
@@ -20,50 +23,150 @@ export class SpeedStepper extends UIComponent {
 	) {
 		super();
 		this.element = this.render();
+		this.setupSubscriptions();
 	}
 
 	protected render(): HTMLDivElement {
-		const stepper = document.createElement("div");
-		stepper.className = "mvc-stepper-pill";
+		const wrap = document.createElement("div");
+		wrap.className = "mvc-speed-control-wrap";
 
-		// Dec Button (-)
+		// Standard Stepper Pill
+		this.stepperPill = document.createElement("div");
+		this.stepperPill.className = "mvc-stepper-pill";
+
 		this.decBtn = document.createElement("button");
 		this.decBtn.className = "mvc-stepper-pill-btn mvc-btn-dec";
 		this.decBtn.textContent = "−";
 		this.setupButtonHold(this.decBtn, -1);
 
-		// Val Span (1.00x)
 		this.valEl = document.createElement("span");
 		this.valEl.className = "mvc-stepper-pill-val";
 		this.setupValHandlers(this.valEl);
 
-		// Inc Button (+)
 		this.incBtn = document.createElement("button");
 		this.incBtn.className = "mvc-stepper-pill-btn mvc-btn-inc";
 		this.incBtn.textContent = "+";
 		this.setupButtonHold(this.incBtn, 1);
 
-		stepper.append(this.decBtn, this.valEl, this.incBtn);
+		this.stepperPill.append(this.decBtn, this.valEl, this.incBtn);
 
-		// Initial update
+		// Minimal Speed FAB (circular button)
+		this.fabBtn = document.createElement("button");
+		this.fabBtn.className = "mvc-speed-fab";
+		this.fabBtn.setAttribute("aria-label", "Speed control");
+		this.setupFabHandlers(this.fabBtn);
+
+		wrap.append(this.stepperPill, this.fabBtn);
+
+		this.updateLayout();
 		this.update();
 
-		return stepper;
+		return wrap;
+	}
+
+	private setupSubscriptions() {
+		this.unsubscribers.push(
+			this.eventBus.on("settings:changed", ({ key }) => {
+				if (key === "minimalSpeedFab") {
+					this.updateLayout();
+					this.update();
+				}
+			}),
+		);
+	}
+
+	public updateLayout() {
+		const isMinimal = !!this.ui.store.settings.minimalSpeedFab;
+		if (isMinimal) {
+			this.stepperPill.style.display = "none";
+			this.fabBtn.style.display = "flex";
+		} else {
+			this.stepperPill.style.display = "flex";
+			this.fabBtn.style.display = "none";
+		}
 	}
 
 	public update() {
 		const video = this.ui.store.activeVideo;
+		const isMinimal = !!this.ui.store.settings.minimalSpeedFab;
+		const rate = video ? video.playbackRate : 1.0;
+
+		let text = "1.00x";
 		if (!video) {
-			this.valEl.textContent = "1.00x";
-			return;
-		}
-		if (video.ended) {
-			this.valEl.textContent = "Replay";
+			text = isMinimal ? "1.0x" : "1.00x";
+		} else if (video.ended) {
+			text = "Replay";
 		} else if (video.paused) {
-			this.valEl.textContent = "▶︎";
+			text = "▶︎";
 		} else {
-			this.valEl.textContent = `${video.playbackRate.toFixed(2)}x`;
+			text = isMinimal ? `${rate.toFixed(1)}x` : `${rate.toFixed(2)}x`;
 		}
+
+		this.valEl.textContent = text;
+		this.fabBtn.textContent = isMinimal ? `${rate.toFixed(1)}x` : text;
+	}
+
+	private cycleFabSpeed() {
+		const video = this.ui.store.activeVideo;
+		const currentRate = video ? video.playbackRate : MVC_CONFIG.SPEED_DEFAULT;
+		let nextRate =
+			Math.round((currentRate + MVC_CONFIG.FAB_SPEED_STEP) * 10) / 10;
+
+		if (
+			nextRate > MVC_CONFIG.FAB_SPEED_MAX + 0.001 ||
+			currentRate < MVC_CONFIG.FAB_SPEED_MIN - 0.001
+		) {
+			nextRate = MVC_CONFIG.FAB_SPEED_MIN;
+		}
+
+		this.eventBus.emit("video:rate-change-requested", {
+			rate: nextRate,
+			saveToSettings: true,
+		});
+		vibrate(MVC_CONFIG.HAPTIC_VIBRATION_MS);
+		this.ui.showToast(`Speed: ${nextRate.toFixed(1)}x`);
+		this.update();
+	}
+
+	private setupFabHandlers(btn: HTMLButtonElement) {
+		let isLongPress = false;
+
+		btn.addEventListener("pointerdown", (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			this.ui.showUI(true);
+			isLongPress = false;
+
+			this.longPressTimeout = setTimeout(() => {
+				isLongPress = true;
+				vibrate(MVC_CONFIG.LONG_PRESS_VIBRATE_MS);
+				this.eventBus.emit("video:rate-change-requested", {
+					rate: MVC_CONFIG.SPEED_DEFAULT,
+					saveToSettings: true,
+				});
+				this.ui.showToast("Speed reset to 1.00x");
+				this.update();
+			}, MVC_CONFIG.LONG_PRESS_DURATION_MS);
+		});
+
+		const cancelLongPress = () => {
+			clearTimeout(this.longPressTimeout);
+		};
+
+		btn.addEventListener("pointerup", (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			cancelLongPress();
+
+			if (isLongPress) {
+				isLongPress = false;
+				return;
+			}
+			this.cycleFabSpeed();
+		});
+
+		btn.addEventListener("pointerleave", cancelLongPress);
+		btn.addEventListener("pointercancel", cancelLongPress);
 	}
 
 	private adjustSpeed(delta: number, saveToSettings: boolean) {
@@ -71,7 +174,11 @@ export class SpeedStepper extends UIComponent {
 		if (!video) return;
 
 		const currentRate = video.playbackRate;
-		const newRate = clamp(currentRate + delta, 0.1, 16.0);
+		const newRate = clamp(
+			currentRate + delta,
+			MVC_CONFIG.SPEED_MIN,
+			MVC_CONFIG.SPEED_MAX,
+		);
 
 		this.eventBus.emit("video:rate-change-requested", {
 			rate: newRate,
@@ -101,7 +208,6 @@ export class SpeedStepper extends UIComponent {
 				isHolding = true;
 				this.holdInterval = setInterval(() => {
 					elapsed += MVC_CONFIG.SPEED_HOLD_INTERVAL_MS;
-					// Accelerate to 0.10x step after 1 second of holding
 					const step = elapsed > 1000 ? 0.1 : MVC_CONFIG.SPEED_HOLD_STEP;
 					this.adjustSpeed(dir * step, false);
 					vibrate(5);
@@ -115,10 +221,8 @@ export class SpeedStepper extends UIComponent {
 			clearInterval(this.holdInterval);
 
 			if (!isHolding && e.type === "pointerup") {
-				// Short tap -> coarse step
 				this.adjustSpeed(dir * MVC_CONFIG.SPEED_TAP_STEP, true);
 			} else if (isHolding) {
-				// Finished holding -> save final speed to settings
 				const video = this.ui.store.activeVideo;
 				if (video) {
 					this.ui.store.saveSetting("lastRate", video.playbackRate);
@@ -181,5 +285,11 @@ export class SpeedStepper extends UIComponent {
 
 		el.addEventListener("pointerleave", cancelLongPress);
 		el.addEventListener("pointercancel", cancelLongPress);
+	}
+
+	public destroy() {
+		this.unsubscribers.forEach((unsub) => unsub());
+		this.unsubscribers = [];
+		this.element.remove();
 	}
 }

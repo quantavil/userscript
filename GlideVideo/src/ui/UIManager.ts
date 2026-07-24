@@ -11,10 +11,12 @@ import {
 import { type IconName, getSvgIcon } from "./icons";
 import { SettingsSheet } from "./panels/SettingsSheet";
 import { SpeedStepper } from "./panels/SpeedStepper";
+import { ProgressBar } from "./components/ProgressBar";
 
 export class UIManager {
 	public wrap: HTMLDivElement | null = null;
 	public stepper: SpeedStepper | null = null;
+	public progressBar: ProgressBar | null = null;
 	public settingsBtn: HTMLButtonElement | null = null;
 	public pipBtn: HTMLButtonElement | null = null;
 	public lockBtn: HTMLButtonElement | null = null;
@@ -222,11 +224,12 @@ export class UIManager {
 		this.doubleTapLeftText = leftText;
 		this.doubleTapRightText = rightText;
 
-		// Mount modular Stepper & PiP / Settings Buttons
+		// Mount modular Stepper & ProgressBar
 		this.stepper = new SpeedStepper(this.eventBus, this);
 		this.stepper.dom.style.pointerEvents = "auto"; // allow clicks
 		preventPropagation(this.stepper.dom);
-		wrap.appendChild(this.stepper.dom);
+
+		this.progressBar = new ProgressBar(this.eventBus, this);
 
 		// Check PiP support (either native Picture-in-Picture API, video prototype request, or iOS Webkit Presentation Mode)
 		const isPipSupported = !!(
@@ -350,7 +353,10 @@ export class UIManager {
 
 		controlsGroup.appendChild(controlsRow);
 		controlsGroup.appendChild(this.collapseBtn);
-		wrap.appendChild(controlsGroup);
+
+		const topBar = this.createEl("div", "mvc-top-bar");
+		topBar.append(this.stepper.dom, this.progressBar.dom, controlsGroup);
+		wrap.appendChild(topBar);
 
 		container.appendChild(wrap);
 	}
@@ -373,7 +379,11 @@ export class UIManager {
 	// Vertically centers the pill on the active video and returns its height
 	private positionSideBar(bar: HTMLDivElement, side: "left" | "right") {
 		const rect = this.store.activeVideo!.getBoundingClientRect();
-		const barH = clamp(rect.height * 0.55, 120, 220);
+		const barH = clamp(
+			rect.height * MVC_CONFIG.SIDEBAR_HEIGHT_RATIO,
+			MVC_CONFIG.SIDEBAR_MIN_HEIGHT,
+			MVC_CONFIG.SIDEBAR_MAX_HEIGHT,
+		);
 		const top = rect.top + (rect.height - barH) / 2;
 		const styles: Record<string, string> = {
 			top: `${top}px`,

@@ -22,6 +22,8 @@ export type MvcEvents = {
 	};
 	"ui:volume-changed": { volume: number };
 	"ui:brightness-changed": { brightness: number };
+	"video:time-update": { currentTime: number; duration: number; buffered: number };
+	"video:seek-requested": { time: number };
 };
 
 export class EventBus {
@@ -59,9 +61,13 @@ export class EventBus {
 		}
 		this.listeners[event]!.push(cb);
 		return () => {
-			this.listeners[event] = (this.listeners[event] as any)!.filter(
-				(x: any) => x !== cb,
-			);
+			const arr = this.listeners[event];
+			if (arr) {
+				const idx = arr.indexOf(cb);
+				if (idx !== -1) {
+					arr.splice(idx, 1);
+				}
+			}
 		};
 	}
 }

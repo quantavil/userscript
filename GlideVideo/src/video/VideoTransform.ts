@@ -5,6 +5,19 @@ import type { EventBus } from "../events/EventBus";
 import type { UIManager } from "../ui/UIManager";
 import { clamp, clampTime, getFullscreenContainer } from "../utils";
 
+const VIDEO_LISTENED_EVENTS = [
+	"ended",
+	"play",
+	"pause",
+	"ratechange",
+	"click",
+	"timeupdate",
+	"durationchange",
+	"progress",
+	"seeking",
+	"seeked",
+];
+
 export class VideoTransform implements EventListenerObject {
 	public videoResizeObserver?: ResizeObserver;
 	public videoMutationObserver?: MutationObserver;
@@ -33,11 +46,9 @@ export class VideoTransform implements EventListenerObject {
 		}
 		if (this.lastVideo) {
 			this.store.saveVideoPosition(this.lastVideo);
-			["ended", "play", "pause", "ratechange", "click", "timeupdate"].forEach(
-				(ev) => {
-					this.lastVideo?.removeEventListener(ev, this);
-				},
-			);
+			VIDEO_LISTENED_EVENTS.forEach((ev) => {
+				this.lastVideo?.removeEventListener(ev, this);
+			});
 		}
 	}
 
@@ -132,6 +143,13 @@ export class VideoTransform implements EventListenerObject {
 		this.eventBus.on("video:active-changed", (video) => {
 			this.onActiveVideoChanged(video);
 		});
+		this.eventBus.on("video:seek-requested", ({ time }) => {
+			const video = this.store.activeVideo;
+			if (video && isFinite(time)) {
+				video.currentTime = clampTime(time, video.duration || 0);
+				this.emitTimeUpdate(video);
+			}
+		});
 	}
 
 	private onActiveVideoChanged(v: HTMLVideoElement | null) {
@@ -140,11 +158,9 @@ export class VideoTransform implements EventListenerObject {
 		// Clean up listeners for previous video element
 		if (this.lastVideo) {
 			this.store.saveVideoPosition(this.lastVideo);
-			["ended", "play", "pause", "ratechange", "click", "timeupdate"].forEach(
-				(ev) => {
-					this.lastVideo?.removeEventListener(ev, this);
-				},
-			);
+			VIDEO_LISTENED_EVENTS.forEach((ev) => {
+				this.lastVideo?.removeEventListener(ev, this);
+			});
 		}
 		this.lastVideo = v;
 
@@ -261,12 +277,26 @@ export class VideoTransform implements EventListenerObject {
 			});
 		}, 50);
 
-		["ended", "play", "pause", "ratechange", "click", "timeupdate"].forEach(
-			(ev) => {
-				video.removeEventListener(ev, this);
-				video.addEventListener(ev, this);
-			},
-		);
+		VIDEO_LISTENED_EVENTS.forEach((ev) => {
+			video.removeEventListener(ev, this);
+			video.addEventListener(ev, this);
+		});
+		this.emitTimeUpdate(video);
+	}
+
+	public emitTimeUpdate(v: HTMLVideoElement) {
+		if (!v) return;
+		let buffered = 0;
+		if (v.buffered && v.buffered.length > 0) {
+			try {
+				buffered = v.buffered.end(v.buffered.length - 1);
+			} catch (e) {}
+		}
+		this.eventBus.emit("video:time-update", {
+			currentTime: v.currentTime || 0,
+			duration: v.duration || 0,
+			buffered,
+		});
 	}
 
 	// ── Event Listener interface ────────────────────────────────────────────
@@ -279,18 +309,25 @@ export class VideoTransform implements EventListenerObject {
 				this.onVideoEnded();
 				break;
 			case "play":
+				if (this.store.activeVideo) this.emitTimeUpdate(this.store.activeVideo);
 				this.eventBus.emit("video:play-state-changed", { playing: true });
 				this.eventBus.emit("control:visibility-requested", { visible: true });
 				break;
 			case "pause":
 				if (this.store.activeVideo) {
 					this.store.saveVideoPosition(this.store.activeVideo);
+					this.emitTimeUpdate(this.store.activeVideo);
 				}
 				this.eventBus.emit("video:play-state-changed", { playing: false });
 				this.eventBus.emit("control:visibility-requested", { visible: true });
 				break;
+			case "durationchange":
+			case "progress":
+			case "seeking":
+			case "seeked":
 			case "timeupdate":
 				if (this.store.activeVideo) {
+					this.emitTimeUpdate(this.store.activeVideo);
 					const now = Date.now();
 					const meta = this.store.getVideoMetadata(this.store.activeVideo);
 					const lastSave = meta.lastPositionSave || 0;

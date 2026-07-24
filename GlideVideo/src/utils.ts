@@ -29,7 +29,7 @@ export function preventPropagation(el: HTMLElement) {
 }
 
 export function formatDuration(seconds: number): string {
-	if (isNaN(seconds)) return "00:00";
+	if (!isFinite(seconds) || isNaN(seconds)) return "00:00";
 	const abs = Math.floor(Math.abs(seconds));
 	const h = Math.floor(abs / 3600);
 	const m = Math.floor((abs % 3600) / 60);

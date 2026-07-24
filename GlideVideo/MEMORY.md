@@ -24,7 +24,7 @@ src/
 │   ├── UIComponent.ts      # Abstract base for UI widgets (dom getter, render/update contract)
 │   ├── UIManager.ts        # Overlay layout placement & visibility fader
 │   ├── icons.ts            # SVG path registry + builder
-│   ├── components/         # Reusable widgets (Switch, Stepper)
+│   ├── components/         # Reusable widgets (Switch, Stepper, ProgressBar)
 │   ├── panels/             # Panel cards (SpeedStepper, SettingsSheet)
 │   └── styles/
 │       └── css.ts          # Injected stylesheet styles
@@ -66,6 +66,10 @@ src/
 - Bundle Dead Code Elimination: Vite `define` replaces `process.env.VITEST` so test-only bypasses are stripped from production builds.
 - UIManager global activity listeners (`pointerdown`/`keydown`/`touchstart` → `lastRealUserEvent`) must be capture-phase: UI elements call `stopPropagation()` via `preventPropagation()`, which blocks bubble-phase window listeners.
 - Shadow DOM Path Traversal: When videos are nested inside a shadow root, `getVideoDomPath` traverses up via `parentNode.host` to build a stable hierarchical selector path.
+- Straight Line Scrubber (ProgressBar.ts): Lightweight CSS-based progress bar positioned in the top header row. Features active fill line, loaded buffer line, draggable thumb, and floating timestamp preview badge on touch drag. Controlled by `progressBarEnabled` toggle switch in Settings.
+- Centralized Configuration (config.ts): All timeouts, layout dimensions, gesture thresholds, speed boundaries, stepper steps, FAB loop ranges, and storage/eco settings are centralized in `src/config.ts` (`MVC_CONFIG`) as the single source of truth.
+- Speed Control Modes (SpeedStepper.ts): Dual mode speed control supporting standard Stepper Pill (`[-] 1.00x [+]`) and Minimal Speed FAB (`1.0x` circular button with `0.5x` -> `2.0x` -> `0.5x` loop cycling, long press reset to 1.0x). Controlled by `minimalSpeedFab` toggle switch in Settings.
+- EventBus Unsubscribers in UI Components: UI components store returned `EventBus.on` unsubscriber functions in an array and execute them during `destroy()` to guarantee zero event listener leaks.
 
 
 ## Blunders
@@ -87,4 +91,6 @@ src/
 - **Stable Video ID fallback**: `window.location.href.split('#')[0]` breaks hash-routed SPAs and DOM indexes shift. Strip query parameters using `URLSearchParams` on search/hash and build CSS-like paths for stable IDs.
 - **Numeric Video ID LRU Eviction**: Pure numeric video IDs are sorted numerically rather than by insertion order. Fixed by prefixing keys in `positions` with `_` to guarantee insertion-order based LRU eviction, while maintaining backward compatibility.
 - **Standalone Video Page Layout Collapse**: Setting `container.style.position = 'relative'` on `document.body` breaks browser UA stylesheets on direct video URLs (`.mp4`), collapsing absolute-positioned videos to 0 height. Fixed by skipping `position: relative` assignment when `container` is `document.body` or `document.documentElement`.
+- **Media Event Listener Cleanup in VideoTransform**: `destroy()` and `onActiveVideoChanged()` must clean up the complete array of video events (`ended`, `play`, `pause`, `ratechange`, `click`, `timeupdate`, `durationchange`, `progress`, `seeking`, `seeked`) to prevent listener leaks across SPA video changes.
+- **Pointer Capture Freeze & EventBus Array Splice**: `lostpointercapture` must be handled during touch scrubbing to prevent `isDragging` state from freezing progress bar updates on system popups/gestures. In `EventBus`, use in-place `splice` for unsubscribing to guarantee clean removal without generic type mismatches.
 
