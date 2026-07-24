@@ -22,16 +22,16 @@ A premium, highly polished mobile userscript that brings rich touch gestures, ad
 * **Right-Aligned Collapsible Controls**: A compact chevron arrow button in the top-right that expands to reveal visual controls (Aspect Ratio, Lock, PiP, Settings) and auto-collapses to keep the screen uncluttered.
 * **Clean Gesture Zone**: The entire middle and lower portions of the video screen are kept entirely unobstructed for natural, comfortable touch gestures.
 
-### ⚡ SpeedStepper Pill
-* **Coarse Steps**: Tap `+` or `−` to instantly adjust playback speed by `±0.10x` (e.g., `1.00x → 1.10x → 1.20x`).
-* **Fine-Tuning Holds**: Press and hold `+` or `−` for continuous sub-steps of `±0.05x`. If held for more than 1 second, it automatically accelerates to `±0.10x` increments for rapid speed scanning.
-* **Play/Pause Toggle**: Tap the speed display label to instantly play or pause the active video player.
-* **Instant Reset**: Long-press the speed display to instantly revert playback speed back to `1.00x` with a tactile haptic vibration confirmation.
+### ⚡ Dual Speed Control Modes
+* **SpeedStepper Pill (Standard)**: Coarse steps (`±0.10x`), fine-tuning holds (`±0.05x`), play/pause tap toggle, and long-press reset to `1.00x`.
+* **Minimal Speed FAB**: An ultra-compact circular badge button showing current speed (e.g. `1.0x`). Tap to cycle through playback speeds in a circular loop (`0.5x → 0.6x → ... → 2.0x → 0.5x`). Long-press to instantly reset speed back to `1.00x`.
 
 ### ⚙ Unified Settings Sheet
 A premium, glassmorphic dropdown card anchored right underneath the settings gear:
 * **Default Playback Speed**: Establish a persistent fallback speed for all new videos.
 * **Skip Duration**: Customize the distance (in seconds) used during seeks.
+* **Minimal Speed FAB Toggle**: Switch between the standard SpeedStepper Pill and the Minimal Speed FAB.
+* **Progress Bar Toggle**: Easily enable or disable the top header time scrubber bar on the fly.
 * **Reset All**: Quickly restores all visual transforms and configuration variables back to standard defaults.
 * **Gesture Toggle**: Instantly enable or disable gesture listeners on the fly.
 * **Preloading Switch**: Configures aggressive native preloading and optimizes internal browser buffers for faster playback response.
@@ -65,6 +65,7 @@ A premium, glassmorphic dropdown card anchored right underneath the settings gea
 ---
 
 ## 🛠 Tech & Architecture
+* **Centralized Configuration (`src/config.ts`)**: All layout dimensions, timeouts, gesture thresholds, speed boundaries, stepper steps, FAB loop ranges, and storage/eco settings are centralized in `MVC_CONFIG` as the single source of truth for easy customization.
 * **Pub/Sub decoupling**: Components and views emit events on the `EventBus` to prevent tight cross-linking.
 * **Shadow DOM Integration**: Traversing tree structures to locate and hook into video elements embedded inside open Shadow Roots (e.g., YouTube components).
 * **Fluid Layout Tracking**: Active resize observers, visual viewport listeners, and scroll monitors keep controls anchored perfectly alongside the target video element even inside nested, scrollable wrappers.
