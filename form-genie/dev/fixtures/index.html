@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Form Genie — test fixtures</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; }
+    fieldset { margin: 18px 0; border: 1px solid #ccc; border-radius: 8px; padding: 14px; }
+    legend { font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; }
+    td { padding: 6px 8px; border: 1px solid #eee; }
+    input, select { padding: 6px; width: 100%; box-sizing: border-box; }
+    .uc { text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <h1>Form Genie fixtures</h1>
+  <p>Load the dev userscript build, then use the Fill button. These forms mimic
+     real portal patterns.</p>
+
+  <!-- 1. Gov table layout: no <label>, cascading state -> district -->
+  <fieldset>
+    <legend>1 · SSC-style table layout (cascading)</legend>
+    <table>
+      <tr><td>Candidate's Name</td><td><input name="cand_name" maxlength="50"></td></tr>
+      <tr><td>Father's Name</td><td><input name="father_name"></td></tr>
+      <tr><td>Date of Birth</td><td><input name="dob" placeholder="DD/MM/YYYY"></td></tr>
+      <tr><td>Category</td><td>
+        <select name="cat">
+          <option value="">Select</option>
+          <option>General</option><option>OBC</option>
+          <option>SC</option><option>ST</option><option>EWS</option>
+        </select></td></tr>
+      <tr><td>Mobile No.</td><td><input name="mob" maxlength="10"></td></tr>
+      <tr><td>PIN Code</td><td><input name="pin" maxlength="6"></td></tr>
+      <tr><td>State</td><td>
+        <select name="state" id="state">
+          <option value="">Select State</option>
+          <option>Bihar</option><option>Delhi</option><option>Maharashtra</option>
+          <option>Uttar Pradesh</option><option>West Bengal</option>
+        </select></td></tr>
+      <tr><td>District</td><td>
+        <select name="district" id="district" disabled>
+          <option value="">Select District</option>
+        </select></td></tr>
+      <tr><td>PAN</td><td><input name="pan" class="uc" maxlength="10"></td></tr>
+    </table>
+  </fieldset>
+
+  <!-- 2. Modern labelled form -->
+  <fieldset>
+    <legend>2 · Modern labelled form</legend>
+    <p><label for="fn">First Name</label><input id="fn"></p>
+    <p><label for="ln">Last Name</label><input id="ln"></p>
+    <p><label for="em">Email Address</label><input id="em" type="email"></p>
+    <p>Gender:
+      <label><input type="radio" name="g" value="Male"> Male</label>
+      <label><input type="radio" name="g" value="Female"> Female</label>
+    </p>
+    <p><label for="bd">Date of Birth</label><input id="bd" type="date"></p>
+  </fieldset>
+
+  <!-- 3. Pathological: OTP + hidden + duplicate names must be handled/skipped -->
+  <fieldset>
+    <legend>3 · Pathological</legend>
+    <p><label for="otp">Enter OTP</label><input id="otp" name="otp" maxlength="6"></p>
+    <p><label for="cap">Captcha Code</label><input id="cap" name="captcha"></p>
+    <input type="hidden" name="csrf" value="x">
+    <p><label for="pw">Password</label><input id="pw" type="password"></p>
+  </fieldset>
+
+  <script>
+    // Simulate cascading AJAX: district options load ~800ms after state change.
+    const state = document.getElementById('state');
+    const district = document.getElementById('district');
+    state.addEventListener('change', () => {
+      district.disabled = true;
+      district.innerHTML = '<option value="">Loading…</option>';
+      setTimeout(() => {
+        district.innerHTML = '<option value="">Select District</option>' +
+          ['Central', 'North', 'South', 'East', 'West']
+            .map((d) => `<option>${d}</option>`).join('');
+        district.disabled = false;
+      }, 800);
+    });
+  </script>
+</body>
+</html>

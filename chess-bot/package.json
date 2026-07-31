@@ -1,0 +1,22 @@
+{
+  "name": "super-chess-bot",
+  "version": "9.1.0",
+  "type": "module",
+  "description": "Super chess Bot is a tournament level bullet bot",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "test": "vitest run"
+  },
+  "author": "quantavil",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/greasemonkey": "^4.0.7",
+    "@types/node": "^25.9.3",
+    "typescript": "~5.8.3",
+    "vite": "^7.3.5",
+    "vite-plugin-monkey": "^5.0.9",
+    "vitest": "^4.0.18"
+  }
+}

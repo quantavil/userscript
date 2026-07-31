@@ -1,0 +1,15 @@
+{
+  "name": "wallhaven-enhancer",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "vite": "^8.1.3",
+    "vite-plugin-monkey": "^8.0.6",
+    "typescript": "^6.0.3"
+  }
+}

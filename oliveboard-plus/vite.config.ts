@@ -1,0 +1,20 @@
+import { defineConfig } from 'vite';
+import monkey from 'vite-plugin-monkey';
+
+export default defineConfig({
+  plugins: [
+    monkey({
+      entry: 'src/main.ts',
+      userscript: {
+        name: 'Oliveboard Plus',
+        namespace: 'ob-enhancer',
+        version: '1.2.1',
+        description: 'Enhance Oliveboard UI and functionality.',
+        author: 'quantavil',
+        match: ['*://*.oliveboard.in/*'],
+        'run-at': 'document-start',
+        grant: [],
+      },
+    }),
+  ],
+});

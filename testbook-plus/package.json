@@ -1,0 +1,24 @@
+{
+  "name": "testbook-plus",
+  "version": "2.2.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "bunx vite build",
+    "dev": "bunx vite"
+  },
+  "keywords": [],
+  "author": "quantavil",
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "@types/turndown": "^5.0.6",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.13",
+    "vite-plugin-monkey": "^8.0.5"
+  },
+  "dependencies": {
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2"
+  }
+}

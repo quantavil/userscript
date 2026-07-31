@@ -1,0 +1,73 @@
+:host {
+  position: fixed;
+  z-index: 2147483640;
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  background: rgba(22, 22, 26, 0.9);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 4px 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  font-family: system-ui, sans-serif;
+  visibility: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+:host(.visible) {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: none;
+}
+
+.svf-hb-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.6);
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+  padding: 0;
+  pointer-events: auto;
+}
+
+.svf-hb-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.svf-hb-btn.like-active {
+  color: var(--svf-primary, #10b981);
+}
+
+.svf-hb-btn.dislike-active {
+  color: #ef4444;
+}
+
+.svf-hb-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 2px;
+}
+
+.svf-hb-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  max-width: 120px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
