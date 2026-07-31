@@ -1,6 +1,6 @@
 import { DownloaderUI } from './ui';
 import { Crawler } from './crawler';
-import { downloadFile, enableCopyAndRightClick, onReady } from './utils';
+import { downloadFile, enableCopyAndRightClick, getExportFilename, onReady } from './utils';
 import { hideElements, modifyLinks, interceptViewSolutions } from './uiCleaner';
 import { ensureCopyButton } from './copyMarkdown';
 
@@ -12,7 +12,7 @@ function initDownloader() {
                 (msg) => ui.updateStatus(msg),
                 (md) => {
                     ui.finish();
-                    downloadFile(md, 'Oliveboard_Questions.md');
+                    downloadFile(md, getExportFilename());
                 },
                 (errMsg) => ui.error(errMsg)
             );

@@ -13,7 +13,27 @@ export interface QuestionData {
 }
 
 export function fixImageUrls(html: string): string {
-  return html.replace(/src=["'](?:\/)?(oliveimg\/[^"']+)["']/gi, 'src="https://u1.oliveboard.in/exams/solution/$1"');
+  if (!html) return '';
+  let result = html.replace(/src=["']\/\/(?!u1\.oliveboard)/gi, 'src="https://');
+  result = result.replace(/src=["'](?:\/)?(oliveimg\/[^"']+)["']/gi, 'src="https://u1.oliveboard.in/exams/solution/$1"');
+  result = result.replace(/src=["'](?:\/)?(images\/[^"']+)["']/gi, 'src="https://u1.oliveboard.in/exams/solution/$1"');
+  return result;
+}
+
+function getSectionRelativeIndex(globalDomIndex: number): number {
+  if (globalDomIndex <= 0) return 0;
+  const boxes = document.querySelectorAll('.question-map .box');
+  for (const box of Array.from(boxes)) {
+    const qSpans = box.querySelectorAll('.map-qno');
+    for (let i = 0; i < qSpans.length; i++) {
+      const onclick = qSpans[i].getAttribute('onclick') || '';
+      const match = onclick.match(/goToQuestion\((\d+)\)/);
+      if (match && parseInt(match[1], 10) === globalDomIndex) {
+        return i + 1;
+      }
+    }
+  }
+  return globalDomIndex;
 }
 
 export function extractCurrentQuestion(fallbackIndex: number): QuestionData | null {
@@ -61,8 +81,10 @@ export function extractCurrentQuestion(fallbackIndex: number): QuestionData | nu
     const solblock = activeBlock.querySelector('.solutiontxt .eqt') || activeBlock.querySelector('.solutiontxt');
     const solutionHtml = solblock ? fixImageUrls(solblock.innerHTML.trim()) : '';
 
+    const displayIdx = domIndex ? getSectionRelativeIndex(domIndex) : fallbackIndex;
+
     return {
-      index: domIndex || fallbackIndex,
+      index: displayIdx,
       sectionName,
       questionHtml,
       options,

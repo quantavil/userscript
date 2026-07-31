@@ -1,4 +1,4 @@
-# MEMORY — Oliveboard Plus
+# AGENT — Oliveboard Plus
 
 ## Project Overview
 - Userscript for oliveboard.in — enhances UI, enables copy/right-click, exports questions to Markdown
@@ -12,7 +12,7 @@
 - `uiCleaner.ts` — hides ads, zendesk chat, sidebar; fixes links
 - `copyMarkdown.ts` — per-question copy button in solution header
 - `converter.ts` — shared TurndownService singleton
-- `utils.ts` — downloadFile, enableCopyAndRightClick, onReady
+- `utils.ts` — downloadFile, getExportFilename, enableCopyAndRightClick, onReady
 
 ## DOM Structure (Oliveboard Solution Page)
 - `.singleqid` — each question block (only one visible at a time via `display:block/none`)
@@ -27,8 +27,11 @@
 ## Blunders
 - Linear "Next button" crawl broke at section boundaries — stopped ~10 questions in. Fixed by reading `.question-map` to get all section indices, navigating directly via `goToQuestion()`.
 - Oliveboard overrides `cloneNode` with base64-garbage. Use innerHTML directly, not cloned nodes.
+- Question deduplication with plain-text regex `<[^>]*>` stripped `<img>` tags and dropped image questions. Fixed by hashing full HTML and option structure.
+- `:has()` CSS selector in `querySelectorAll` threw uncaught `DOMException` on unsupported engines. Fixed with `try...catch` per selector.
 
 ## Key Decisions
 - Sections parsed from `.question-map .box` sidebar, not from dropdown
 - Section-aware crawl navigates to each question individually via `.map-qno.q-{N}.click()`
 - Fallback linear crawl preserved for pages without question-map
+- Dynamic export filename format: `Oliveboard_${c}_${testid}.md` (parsed from `c` and `testid` URL params)

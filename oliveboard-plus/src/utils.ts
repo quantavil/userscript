@@ -37,3 +37,22 @@ export function onReady(fn: () => void) {
         fn();
     }
 }
+
+export function getExportFilename(urlStr: string = window.location.href): string {
+    try {
+        const url = new URL(urlStr);
+        const c = url.searchParams.get('c')?.trim();
+        const testid = url.searchParams.get('testid')?.trim();
+        if (c && testid) {
+            return `Oliveboard_${c}_${testid}.md`;
+        } else if (c) {
+            return `Oliveboard_${c}.md`;
+        } else if (testid) {
+            return `Oliveboard_test_${testid}.md`;
+        }
+    } catch {
+        // Fallback if URL parsing fails
+    }
+    return 'Oliveboard_Questions.md';
+}
+

@@ -19,17 +19,25 @@ const selectorsToHide = [
 
 export function hideElements() {
     selectorsToHide.forEach(selector => {
-        document.querySelectorAll<HTMLElement>(selector).forEach(el => {
-            el.style.display = 'none';
-        });
+        try {
+            document.querySelectorAll<HTMLElement>(selector).forEach(el => {
+                el.style.display = 'none';
+            });
+        } catch {
+            // Ignore invalid/unsupported CSS selectors (e.g. :has in older browser engines)
+        }
     });
 
     // Fix: chat widget container (fixed-position div with iframes at bottom-right)
-    document.querySelectorAll<HTMLElement>('div[style*="z-index: 999999"]').forEach(el => {
-        if (el.style.position === 'fixed' && el.querySelector('iframe')) {
-            el.style.display = 'none';
-        }
-    });
+    try {
+        document.querySelectorAll<HTMLElement>('div[style*="z-index: 999999"]').forEach(el => {
+            if (el.style.position === 'fixed' && el.querySelector('iframe')) {
+                el.style.display = 'none';
+            }
+        });
+    } catch {
+        // Ignore query error
+    }
 }
 
 export function modifyLinks() {

@@ -126,9 +126,13 @@ export class Crawler {
     this.onComplete(md);
   }
 
+  private getQuestionSignature(qData: QuestionData): string {
+    const rawContent = qData.questionHtml + '|' + qData.options.map(o => o.label + ':' + o.html).join('|');
+    return this.hashString(rawContent.trim());
+  }
+
   private addQuestion(qData: QuestionData, sectionName: string) {
-    const textContent = qData.questionHtml.replace(/<[^>]*>/g, '').trim();
-    const signature = this.hashString(textContent);
+    const signature = this.getQuestionSignature(qData);
     if (!this.questionsData.has(signature)) {
       qData.sectionName = sectionName;
       this.questionsData.set(signature, qData);
@@ -166,8 +170,7 @@ export class Crawler {
 
       consecutiveNulls = 0;
 
-      const textContent = qData.questionHtml.replace(/<[^>]*>/g, '').trim();
-      const signature = this.hashString(textContent);
+      const signature = this.getQuestionSignature(qData);
         
       if (signature === lastSignature) {
         sameQuestionCount++;
