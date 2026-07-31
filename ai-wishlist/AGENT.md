@@ -1,4 +1,4 @@
-# MEMORY.md — AI Wishlist
+# AGENT — AI Wishlist
 
 ## Project Overview
 - Userscript: Syncs shopping wishlist across Amazon & Flipkart with background specs parsing for AI ingestion.
@@ -50,5 +50,3 @@
 - [2026-07-04] Event Refactor & Bug Fix: Resolved PDP heart click being silently dropped by attaching `__wishlistMeta` and `dataset.wishlistId` to the floating heart container. Delegated click logic to global capture listener in `ui.ts` (DRY alignment).
 - [2026-07-04] Crawler Optimization: Modified global click listener in `ui.ts` to skip background `GM_xmlhttpRequest` detail pages fetches if `meta.details` is already pre-populated.
 - [2026-07-04] UX Enhancements: Wrapped the FAB icon inside a span (`aiw-fab-icon-wrap`) to dynamically swap it with a cross icon when the wishlist panel is open. Configured `updatePdpLikeButton` to hide the floating PDP heart button whenever `panelVisible` is true.
-
-

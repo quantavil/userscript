@@ -1,4 +1,4 @@
-# Project: google-ai-brave
+# AGENT — google-ai-brave
 
 ## Overview
 A userscript that extracts Google AI Mode search results and injects them into the Brave Search sidebar. Recently migrated from a monolithic JavaScript script to a modular TypeScript project using esbuild for bundling.

@@ -1,6 +1,6 @@
-# Codebase Uploader — MEMORY
+# AGENT — Codebase Uploader
 
-## What
+## Overview
 Tampermonkey userscript. Uploads codebase folders into AI chat inputs (ChatGPT, Claude, Gemini, etc.) as markdown chunks + raw binary attachments.
 
 ## Stack

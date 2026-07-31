@@ -1,4 +1,4 @@
-# Project: ImpexCube Duty Structure -> Markdown Exporter Userscript
+# AGENT — ImpexCube Duty Structure -> Markdown Exporter Userscript
 
 ## Overview
 A browser userscript (Tampermonkey/Violentmonkey) that exports ImpexCube's Export Duty Structure data for one or more HSN/RITC codes into a consolidated Markdown document. It supports bulk export (mass mode) and can be triggered via the userscript command menu on various web interfaces (ImpexCube, Gemini, Claude, ChatGPT, Grok).

@@ -1,18 +1,18 @@
-# Project: wallhaven-enhancer
+# AGENT — wallhaven-enhancer
 
 ## Overview
 A userscript (Wallhaven Enhancer) that modifies the wallhaven.cc wallpaper listing page to include an explorer-style details side panel, click-to-select behavior, low-resolution details view, full-resolution lightbox viewer, key controls (Download, Favorite, Navigation), and cached wallpaper metadata. Built using Bun, Vite, TypeScript, and `vite-plugin-monkey`.
 
 ## Structure
-- [tsconfig.json](file:///home/quantavil/Documents/Project/userscript/wallhaven-enhancer/tsconfig.json): TypeScript configuration specifying ESNext, strict types, and vite-plugin-monkey typings.
-- [vite.config.ts](file:///home/quantavil/Documents/Project/userscript/wallhaven-enhancer/vite.config.ts): Vite build configuration mapping client script compiling output metadata.
-- [src/styles.ts](file:///home/quantavil/Documents/Project/userscript/wallhaven-enhancer/src/styles.ts): CSS stylesheets injected via GM_addStyle.
-- [src/cache.ts](file:///home/quantavil/Documents/Project/userscript/wallhaven-enhancer/src/cache.ts): LocalStorage and session-map metadata caching.
-- [src/api.ts](file:///home/quantavil/Documents/Project/userscript/wallhaven-enhancer/src/api.ts): Scrapes Wallhaven details page to retrieve exact high-res URLs, sizes, properties, and tags.
-- [src/grid.ts](file:///home/quantavil/Documents/Project/userscript/wallhaven-enhancer/src/grid.ts): Center-based grid navigation using bounding rect.
-- [src/sidebar.ts](file:///home/quantavil/Documents/Project/userscript/wallhaven-enhancer/src/sidebar.ts): Sidebar UI layout and mouse-drag resize handlers.
-- [src/lightbox.ts](file:///home/quantavil/Documents/Project/userscript/wallhaven-enhancer/src/lightbox.ts): High-resolution lightbox keyboard overlay.
-- [src/main.ts](file:///home/quantavil/Documents/Project/userscript/wallhaven-enhancer/src/main.ts): Loader and body click/keydown event router.
+- `tsconfig.json`: TypeScript configuration specifying ESNext, strict types, and vite-plugin-monkey typings.
+- `vite.config.ts`: Vite build configuration mapping client script compiling output metadata.
+- `src/styles.ts`: CSS stylesheets injected via GM_addStyle.
+- `src/cache.ts`: LocalStorage and session-map metadata caching.
+- `src/api.ts`: Scrapes Wallhaven details page to retrieve exact high-res URLs, sizes, properties, and tags.
+- `src/grid.ts`: Center-based grid navigation using bounding rect.
+- `src/sidebar.ts`: Sidebar UI layout and mouse-drag resize handlers.
+- `src/lightbox.ts`: High-resolution lightbox keyboard overlay.
+- `src/main.ts`: Loader and body click/keydown event router.
 
 ## Conventions
 - Modular TypeScript structure compiled into a single Userscript (`dist/wallhaven-enhancer.user.js`) via Vite.

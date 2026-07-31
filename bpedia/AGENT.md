@@ -1,4 +1,4 @@
-# Project: Babepedia Advanced Filter Userscript
+# AGENT — Babepedia Advanced Filter Userscript
 
 ## Overview
 A Tampermonkey/Violentmonkey userscript that adds advanced filtering capabilities to Babepedia list pages. Since list pages (like Top 100) only show names and thumbnails, the script fetches individual profiles asynchronously, extracts biography stats (age, ethnicity, professions, cup size, natural/fake boobs, and performance acts), caches them locally in extension storage, and provides a dual-drawer UI (Filters panel and Settings panel) to customize the active view.
@@ -12,7 +12,7 @@ bpedia/
 ├── vite.config.ts            # Vite + monkey plugin configuration
 ├── index1.html               # Example list page
 ├── index2.html               # Example profile page
-├── MEMORY.md                 # Project context and state tracking
+├── AGENT.md                  # Project context and state tracking
 └── src/
     ├── main.ts               # Entry point, event listeners, and throttled queue
     ├── style.css             # Glassmorphic responsive styling
@@ -82,4 +82,4 @@ bpedia/
 - Unsaved filter settings on exit: debounced filter settings saves were lost on immediate tab close. Fix: added `pagehide` listener that flushes settings immediately.
 - Poisoned import settings: JSON imports did not perform validation and could crash card filters. Fix: added schema validator check to `importData`.
 - Redundant DOM queries during progress updates: ProgressBar queried header elements on every completion frame. Fix: added lazy title DOM reference caching.
-- Stale architecture docs: MEMORY described two floating drawers instead of a single tabbed drawer. Fix: updated documentation and comments.
+- Stale architecture docs: updated documentation and comments.

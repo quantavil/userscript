@@ -1,4 +1,4 @@
-# Project: Better Search
+# AGENT — Better Search
 
 ## Overview
 A high-performance, lightweight userscript that enhances the web searching experience by highlighting preferred domains and fading or hiding disliked domains in search results. It is built using TypeScript and uses Vite to bundle the codebase into a single userscript file.
@@ -75,7 +75,6 @@ better-search/
 - Added `showHoverOverlay` config property and UI toggle to disable the hover quick action controls (star/ban overlay) in search results.
 - Optimized parseJsonRobust in json.ts and settings setters in Store.ts to simplify code structure and reduce build size.
 
-
 ## Blunders
 - Lit deep mutation change-detection: Mutating `this._isTextareaEditable[type] = true` directly did not change the object reference, preventing Lit from re-rendering the edit/readonly state immediately. Fixed by re-assigning the reference using object spreading.
 - Wildcard match bug: Literal wildcard rules (`*.domain.com`) failed to match subdomains in `Store.matchDomain` due to literal string matching. Fixed by parsing rules and stripping `*.` prefixes.
@@ -91,4 +90,3 @@ better-search/
 - HoverOverlay reconnection leak: Component-scoped event listeners accumulated on document/window and element itself upon disconnect/reconnect cycles. Fixed by managing all connection-scoped listeners and timers via connection-scoped AbortController.
 - HoverOverlay disappearing bug: Hovering/clicking overlay buttons caused it to vanish after 350ms because Node.contains() does not traverse shadow boundaries. Fixed by checking this.shadowRoot.contains() in the pointermove handler.
 - Path resolution bug: fmhy_to_json.py output default output to current working directory instead of script's home. Fixed by resolving path using script's location.
-

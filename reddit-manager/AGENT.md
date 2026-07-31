@@ -1,4 +1,4 @@
-# Project: reddit-subscription-manager
+# AGENT — reddit-subscription-manager
 
 ## Overview
 Browser userscript for export, import, and bulk management of Reddit subscriptions, posts, comments, and account deletion redirect. Features a 3-cell live dashboard (Subreddits, Posts, Comments) and Pause / Cancel controls.

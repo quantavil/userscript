@@ -1,6 +1,4 @@
-# MEMORY.md
-
-# Project: Super Chess Bot
+# AGENT — Super Chess Bot
 
 ## Overview
 A high-performance Tampermonkey userscript designed for **Chess.com** that provides tournament-level analysis and auto-play, optimized for hyper-bullet and blitz games. It uses a single-engine architecture running a high-performance local JS engine built on an 0x88 board representation, Zobrist hashing, transposition tables (TT), iterative deepening search, and advanced pruning techniques (Reverse Futility Pruning, Razoring, Null Move Pruning).

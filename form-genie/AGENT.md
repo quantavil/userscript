@@ -1,4 +1,4 @@
-# Project: Form Genie
+# AGENT — Form Genie
 
 ## Overview
 Local-first auto form filler userscript (desktop + mobile). Fills arbitrary
@@ -94,4 +94,3 @@ Pipeline: **scan → describe → match → fill**, each a pure, unit-tested mod
 - Added 7 standard Indian portal fields (`isPwd`, `isExServiceman`, `isMinority`, `isGovtEmployee`, `hasTwin`, `mobileBelongsTo`, `gstInvoicingAddress`) to `SECTIONS` and `SYNONYMS`.
 - Added Quick Search input and 7 sub-section tabs (`Personal`, `Family & Contact`, `Address`, `Education`, `Identity`, `Custom`, `All`) to the Profile Editor UI for instant field navigation.
 - Bumped version to `v1.6.0` and rebuilt `dist/form-genie.user.js`.
-

@@ -1,4 +1,4 @@
-# Project: GlideVideo
+# AGENT — GlideVideo
 
 ## Overview
 GlideVideo is a mobile-friendly userscript designed to add touch gestures and a floating controller overlay to HTML5 video players on mobile browsers. It is built using TypeScript, Vite, and `vite-plugin-monkey` for deployment as a Greasemonkey/Tampermonkey userscript. The entry point is `src/index.ts`.
@@ -71,7 +71,6 @@ src/
 - Speed Control Modes (SpeedStepper.ts): Dual mode speed control supporting standard Stepper Pill (`[-] 1.00x [+]`) and Minimal Speed FAB (`1.0x` circular button with `0.5x` -> `2.0x` -> `0.5x` loop cycling, long press reset to 1.0x). Controlled by `minimalSpeedFab` toggle switch in Settings.
 - EventBus Unsubscribers in UI Components: UI components store returned `EventBus.on` unsubscriber functions in an array and execute them during `destroy()` to guarantee zero event listener leaks.
 
-
 ## Blunders
 - **Early Exit Video Check**: Exiting early in `safeInit` if no video exists breaks SPAs (e.g. YouTube). Fixed by deferring initialization until a video is detected via a lightweight observer.
 - **Event Listener Cleanup**: All global listeners must be registered under an `AbortController` signal to prevent memory/closure leaks during SPA page transitions.
@@ -93,4 +92,3 @@ src/
 - **Standalone Video Page Layout Collapse**: Setting `container.style.position = 'relative'` on `document.body` breaks browser UA stylesheets on direct video URLs (`.mp4`), collapsing absolute-positioned videos to 0 height. Fixed by skipping `position: relative` assignment when `container` is `document.body` or `document.documentElement`.
 - **Media Event Listener Cleanup in VideoTransform**: `destroy()` and `onActiveVideoChanged()` must clean up the complete array of video events (`ended`, `play`, `pause`, `ratechange`, `click`, `timeupdate`, `durationchange`, `progress`, `seeking`, `seeked`) to prevent listener leaks across SPA video changes.
 - **Pointer Capture Freeze & EventBus Array Splice**: `lostpointercapture` must be handled during touch scrubbing to prevent `isDragging` state from freezing progress bar updates on system popups/gestures. In `EventBus`, use in-place `splice` for unsubscribing to guarantee clean removal without generic type mismatches.
-
