@@ -19,7 +19,7 @@ describe("Panel", () => {
 		const rows = [...panel.root.querySelectorAll(".act")];
 		expect(rows).toHaveLength(ACTIONS.length);
 		expect(rows.filter((r) => r.classList.contains("is-danger"))).toHaveLength(
-			1,
+			4,
 		);
 	});
 
@@ -66,5 +66,28 @@ describe("Panel", () => {
 
 		expect(await answer).toBe(false);
 		expect(q(panel, ".sheet")).toBeNull();
+	});
+
+	it("renders 3 dashboard cells for subreddits, posts, and comments", () => {
+		const panel = new Panel();
+		panel.count(15, { posts: 42, comments: 108 });
+		expect(q(panel, ".fig-subs")!.textContent).toBe("15");
+		expect(q(panel, ".fig-posts")!.textContent).toBe("42");
+		expect(q(panel, ".fig-comments")!.textContent).toBe("108");
+	});
+
+	it("updates the correct metric figure during progress without affecting others", () => {
+		const panel = new Panel();
+		panel.count(470, { posts: 10, comments: 486 });
+
+		panel.progress("Deleting comments", 24, 486, 462, "comments");
+		expect(q(panel, ".fig-subs")!.textContent).toBe("470");
+		expect(q(panel, ".fig-posts")!.textContent).toBe("10");
+		expect(q(panel, ".fig-comments")!.textContent).toBe("462");
+
+		panel.progress("Deleting posts", 2, 10, 8, "posts");
+		expect(q(panel, ".fig-subs")!.textContent).toBe("470");
+		expect(q(panel, ".fig-posts")!.textContent).toBe("8");
+		expect(q(panel, ".fig-comments")!.textContent).toBe("462");
 	});
 });

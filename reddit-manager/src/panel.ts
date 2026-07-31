@@ -1,8 +1,16 @@
-// The floating readout: a count of your subreddits and the four things you can
-// do to it. Lives in a shadow root so reddit's stylesheet can't reach it.
+// The floating readout: a count of your subreddits and operations.
+// Lives in a shadow root so Reddit's stylesheet can't reach it.
 
-import type { ConfirmSpec, Report } from "./portability";
-import { exportSubs, importSubs, leaveAll, refresh } from "./portability";
+import type { ConfirmSpec, ProgressMetric, Report } from "./portability";
+import {
+	deleteAccount,
+	deleteAllComments,
+	deleteAllPosts,
+	exportSubs,
+	importSubs,
+	leaveAll,
+	refresh,
+} from "./portability";
 
 const svg = (d: string) =>
 	`<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -29,7 +37,7 @@ export const ACTIONS = [
 		icon: svg(
 			'<path d="M13.2 8a5.2 5.2 0 1 1-1.7-3.85M13.5 1.8v3.4h-3.4"/>',
 		),
-		run: (r: Report) => refresh(r, true).then(() => undefined),
+		run: (r: Report) => refresh(r, true, true).then(() => undefined),
 	},
 	{
 		key: "leave",
@@ -37,6 +45,30 @@ export const ACTIONS = [
 		hint: "Unsubscribe from every subreddit",
 		icon: svg('<path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/>'),
 		run: leaveAll,
+		danger: true,
+	},
+	{
+		key: "deletePosts",
+		name: "Delete visible posts",
+		hint: "Overwrite & delete up to 1,000 visible posts",
+		icon: svg('<path d="M3 4h10M5 4v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4M6 2h4"/>'),
+		run: deleteAllPosts,
+		danger: true,
+	},
+	{
+		key: "deleteComments",
+		name: "Delete visible comments",
+		hint: "Overwrite & delete up to 1,000 visible comments",
+		icon: svg('<path d="M3 3h10v7H6l-3 3V3z"/>'),
+		run: deleteAllComments,
+		danger: true,
+	},
+	{
+		key: "deleteAccount",
+		name: "Open account deletion page",
+		hint: "Navigate to official account deletion",
+		icon: svg('<path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 1.5c-3 0-5.5 2-5.5 4.5v.5h11v-.5c0-2.5-2.5-4.5-5.5-4.5z"/>'),
+		run: deleteAccount,
 		danger: true,
 	},
 ] as const;
@@ -47,7 +79,6 @@ const CSS = `
 :host {
   position: fixed;
   right: 24px;
-  /* clears the home-indicator bar on notched phones */
   bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   z-index: 2147483647;
   --ink: #0f1217;
@@ -60,7 +91,6 @@ const CSS = `
   color: var(--chalk);
 }
 * { box-sizing: border-box; }
-/* touch-action kills the 300ms tap delay mobile browsers add for double-tap zoom */
 button { font: inherit; color: inherit; touch-action: manipulation; }
 :focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
@@ -102,33 +132,40 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 .panel {
   position: relative;
   width: 292px;
+  max-height: calc(100vh - 120px - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--ink);
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 18px 48px rgba(0, 0, 0, .55);
-  overflow: hidden;
   transform-origin: bottom right;
   opacity: 0;
   transform: translateY(10px) scale(.96);
   pointer-events: none;
-  transition: opacity .16s ease, transform .22s cubic-bezier(.2,.9,.3,1);
+  visibility: hidden;
+  transition: opacity .16s ease, transform .22s cubic-bezier(.2,.9,.3,1), visibility .16s ease;
 }
-.panel.is-open { opacity: 1; transform: none; pointer-events: auto; }
+.panel.is-open { opacity: 1; transform: none; pointer-events: auto; visibility: visible; }
 
 .head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 0; }
 .eyebrow { font-size: 10px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
 .close { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 8px; margin: -8px -8px -8px 0; line-height: 0; border-radius: 4px; }
 .close:hover { color: var(--chalk); }
 
-.readout { padding: 8px 14px 14px; }
+.readout { padding: 12px 14px 14px; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; }
+.stat-cell { display: flex; flex-direction: column; align-items: center; }
 .figure {
-  font: 700 34px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 700 20px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: -.02em;
   color: var(--amber);
 }
-.unit { margin-top: 5px; font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-.rule { margin-top: 13px; height: 2px; background: var(--line); }
+.unit { margin-top: 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.progress-label { margin-top: 6px; font-size: 11px; font-weight: 600; color: var(--muted); min-height: 14px; text-align: center; }
+.progress-label:empty { display: none; }
+.rule { margin-top: 8px; height: 2px; background: var(--line); }
 .rule > i { display: block; height: 100%; width: 0; background: var(--amber); transition: width .25s ease; }
 
 .actions { border-top: 1px solid var(--line); }
@@ -145,7 +182,6 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 .act > .ico { color: var(--amber); line-height: 0; padding-top: 1px; }
 .act .name { display: block; font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
 .act .hint { display: block; margin-top: 2px; font-size: 11px; line-height: 1.35; color: var(--muted); }
-/* danger reads as hazard texture on the edge, not as a red button */
 .act.is-danger {
   background-image: repeating-linear-gradient(45deg, rgba(255,184,77,.22) 0 2px, transparent 2px 6px);
   background-size: 4px 100%;
@@ -159,25 +195,59 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 
 .sheet {
   position: absolute; inset: 0;
-  display: flex; flex-direction: column; justify-content: center; gap: 9px;
-  padding: 16px 14px;
-  background: var(--ink);
+  display: flex; align-items: center; justify-content: center;
+  padding: 14px;
+  background: rgba(15, 18, 23, 0.88);
+  backdrop-filter: blur(6px);
+  z-index: 20;
+  animation: fadeIn .16s ease;
 }
-.sheet.is-danger { background-image: repeating-linear-gradient(45deg, rgba(255,184,77,.22) 0 2px, transparent 2px 6px); background-size: 4px 100%; background-repeat: no-repeat; }
-.sheet__title { font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
-.sheet__body { font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+.sheet__card {
+  position: relative;
+  width: 100%;
+  max-width: 264px;
+  background: #1c2026;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: popIn .2s cubic-bezier(.2,.9,.3,1) both;
+}
+.sheet.is-danger .sheet__card {
+  border-color: rgba(245, 158, 11, 0.35);
+  background-image: repeating-linear-gradient(45deg, rgba(245, 158, 11, .06) 0 2px, transparent 2px 6px);
+}
+.sheet__badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 8px;
+  background: rgba(245, 158, 11, 0.14); color: var(--amber);
+  margin-bottom: 2px;
+}
+.sheet.is-danger .sheet__badge {
+  background: rgba(245, 158, 11, 0.18); color: var(--amber);
+}
+.sheet__title { font-size: 14px; font-weight: 700; letter-spacing: -.01em; color: var(--chalk); }
+.sheet__body { font-size: 11.5px; line-height: 1.45; color: var(--muted); }
 .sheet__input {
-  width: 100%; padding: 8px 10px;
+  width: 100%; padding: 9px 10px;
   font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--chalk); background: var(--plate);
   border: 1px solid var(--line); border-radius: 8px;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
-.sheet__row { display: flex; gap: 8px; margin-top: 3px; }
-.btn { flex: 1; padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: transparent; font-size: 12px; font-weight: 600; cursor: pointer; }
+.sheet__input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2); }
+.sheet__row { display: flex; gap: 8px; margin-top: 4px; }
+.btn { flex: 1; padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: transparent; font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s ease; }
 .btn:hover { background: var(--plate); }
 .btn--go { background: var(--amber); border-color: var(--amber); color: #17130a; }
-.btn--go:hover { background: #ffc76e; }
+.btn--go:hover:not(:disabled) { background: #ffc76e; }
 .btn--go:disabled { background: transparent; border-color: var(--line); color: var(--muted); opacity: .5; cursor: default; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popIn { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: scale(1); } }
 
 .panel.is-open .act { animation: rise .26s cubic-bezier(.2,.9,.3,1) both; }
 .panel.is-open .act:nth-child(1) { animation-delay: .04s; }
@@ -186,37 +256,45 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 .panel.is-open .act:nth-child(4) { animation-delay: .13s; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 
-/* Stop is only reachable while something is running, so it lives outside the
-   action list and stays enabled when everything else is disabled. */
-.stop {
+.controls-running {
   display: none;
-  width: 100%; padding: 11px 14px;
-  border: 0; border-top: 1px solid var(--line);
-  background: transparent; color: var(--amber);
-  font-size: 13px; font-weight: 600; text-align: left; cursor: pointer;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
 }
-.panel.is-running .stop { display: block; }
-.stop:hover { background: var(--plate); }
-.stop:disabled { opacity: .4; cursor: default; }
+.panel.is-running .controls-running { display: flex; }
+.btn-ctrl {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--plate);
+  color: var(--chalk);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.btn-ctrl:hover:not(:disabled) { background: rgba(236, 238, 242, 0.12); }
+.btn-ctrl.cancel-btn { color: #f87171; border-color: rgba(248, 113, 113, 0.3); }
+.btn-ctrl.cancel-btn:hover:not(:disabled) { background: rgba(248, 113, 113, 0.15); }
+.btn-ctrl:disabled { opacity: .4; cursor: default; }
 
 @media (prefers-reduced-motion: reduce) {
   .fab, .panel, .rule > i, .act { transition: none; animation: none; }
 }
 
-/* Phones: reddit's own bottom bar sits where the fab does, and 292px is most of
-   a narrow viewport. Pull in, and let the panel use the width it has. */
 @media (max-width: 480px) {
   :host { right: 12px; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
   .panel { width: min(320px, calc(100vw - 24px)); }
   .fab { width: 52px; height: 52px; }
   .act { padding: 13px 14px; }
   .btn { padding: 12px; }
-  .sheet__input { padding: 10px; font-size: 16px; } /* 16px stops ios zooming on focus */
+  .sheet__input { padding: 10px; font-size: 16px; }
 }
 `;
 
-const EASE_OUT = (t: number) => 1 - (1 - t) ** 3;
-const RING = 2 * Math.PI * 20; // circumference of the r=20 progress ring
+const RING = 2 * Math.PI * 20;
 
 export class Panel implements Report {
 	readonly root: ShadowRoot;
@@ -224,17 +302,21 @@ export class Panel implements Report {
 	private fab!: HTMLElement;
 	private ringFill!: SVGCircleElement;
 	private badge!: HTMLElement;
-	private figure!: HTMLElement;
-	private unit!: HTMLElement;
+	private figSubs!: HTMLElement;
+	private figPosts!: HTMLElement;
+	private figComments!: HTMLElement;
+	private progressLabel!: HTMLElement;
 	private bar!: HTMLElement;
 	private statusEl!: HTMLElement;
-	private stopBtn!: HTMLButtonElement;
+	private pauseBtn!: HTMLButtonElement;
+	private cancelBtn!: HTMLButtonElement;
 	private buttons: HTMLButtonElement[] = [];
-	private shown = 0;
-	private anim = 0; // bumped to abandon an in-flight count-up
 	private busy = false;
 	private open = false;
+	private paused = false;
 	private stopping = false;
+	private refreshGen = 0;
+	private activeResolve: ((ok: boolean) => void) | null = null;
 
 	constructor() {
 		const host = document.createElement("div");
@@ -242,14 +324,27 @@ export class Panel implements Report {
 		this.root.innerHTML = `
       <style>${CSS}</style>
       <div class="wrap">
-        <div class="panel" role="dialog" aria-label="Subreddit subscriptions">
+        <div class="panel" role="dialog" aria-label="Reddit Manager" aria-hidden="true">
           <div class="head">
-            <span class="eyebrow">Subscriptions</span>
+            <span class="eyebrow">Dashboard</span>
             <button class="close" aria-label="Close">${svg('<path d="M4 4l8 8M12 4l-8 8"/>')}</button>
           </div>
           <div class="readout">
-            <div class="figure">—</div>
-            <div class="unit">subreddits</div>
+            <div class="stats-grid">
+              <div class="stat-cell">
+                <div class="figure fig-subs">—</div>
+                <div class="unit">Subreddits</div>
+              </div>
+              <div class="stat-cell">
+                <div class="figure fig-posts">—</div>
+                <div class="unit">Posts</div>
+              </div>
+              <div class="stat-cell">
+                <div class="figure fig-comments">—</div>
+                <div class="unit">Comments</div>
+              </div>
+            </div>
+            <div class="progress-label"></div>
             <div class="rule"><i></i></div>
           </div>
           <div class="actions">${ACTIONS.map(
@@ -259,7 +354,10 @@ export class Panel implements Report {
               <span><span class="name">${a.name}</span><span class="hint">${a.hint}</span></span>
             </button>`,
 					).join("")}</div>
-          <button class="stop">Stop after this one</button>
+          <div class="controls-running">
+            <button class="btn-ctrl pause-btn">Pause</button>
+            <button class="btn-ctrl cancel-btn">Cancel</button>
+          </div>
           <div class="status"></div>
         </div>
         <button class="fab" aria-label="Subreddit Subscriptions" title="Subreddit Subscription Manager" aria-expanded="false">
@@ -279,19 +377,33 @@ export class Panel implements Report {
 		this.fab = $(".fab");
 		this.ringFill = $(".ring-fill") as unknown as SVGCircleElement;
 		this.badge = $(".fab-badge");
-		this.figure = $(".figure");
-		this.unit = $(".unit");
+		this.figSubs = $(".fig-subs");
+		this.figPosts = $(".fig-posts");
+		this.figComments = $(".fig-comments");
+		this.progressLabel = $(".progress-label");
 		this.bar = $(".rule > i");
 		this.statusEl = $(".status");
-		this.stopBtn = $(".stop");
+		this.pauseBtn = $(".pause-btn");
+		this.cancelBtn = $(".cancel-btn");
 		this.buttons = [...this.root.querySelectorAll<HTMLButtonElement>(".act")];
 
 		this.fab.addEventListener("click", () => this.toggle());
 		$(".close").addEventListener("click", () => this.toggle(false));
-		this.stopBtn.addEventListener("click", () => {
+		this.pauseBtn.addEventListener("click", () => {
+			this.paused = !this.paused;
+			this.pauseBtn.textContent = this.paused ? "Resume" : "Pause";
+			if (this.paused) {
+				this.status("Operation paused", "bad");
+			} else {
+				this.status("");
+			}
+		});
+		this.cancelBtn.addEventListener("click", () => {
 			this.stopping = true;
-			this.stopBtn.disabled = true;
-			this.stopBtn.textContent = "Stopping…";
+			this.paused = false;
+			this.cancelBtn.disabled = true;
+			this.cancelBtn.textContent = "Cancelling…";
+			this.status("Cancelling after current item…", "bad");
 		});
 		for (const btn of this.buttons) {
 			btn.addEventListener("click", () => this.run(btn.dataset.key as ActionKey));
@@ -309,12 +421,31 @@ export class Panel implements Report {
 	toggle(next = !this.open): void {
 		this.open = next;
 		this.panel.classList.toggle("is-open", next);
+		this.panel.setAttribute("aria-hidden", String(!next));
+		this.panel.style.visibility = next ? "visible" : "hidden";
 		this.fab.setAttribute("aria-expanded", String(next));
-		if (next && !this.busy)
-			void refresh(this).catch((e: Error) => this.status(e.message, "bad"));
+
+		if (!next) {
+			this.fab.focus();
+			if (this.activeResolve) {
+				const resolve = this.activeResolve;
+				this.activeResolve = null;
+				resolve(false);
+			}
+		}
+
+		if (next && !this.busy) {
+			const gen = ++this.refreshGen;
+			refresh(this, false, false)
+				.then(() => {
+					if (gen !== this.refreshGen) return;
+				})
+				.catch((e: Error) => {
+					if (gen === this.refreshGen) this.status(e.message, "bad");
+				});
+		}
 	}
 
-	/** Runs an action, keeping the buttons locked until it ends. */
 	async run(key: ActionKey): Promise<void> {
 		const action = ACTIONS.find((a) => a.key === key);
 		if (!action || this.busy) return;
@@ -343,6 +474,10 @@ export class Panel implements Report {
 		return this.stopping;
 	}
 
+	isPaused(): boolean {
+		return this.paused;
+	}
+
 	private setBusy(busy: boolean): void {
 		this.busy = busy;
 		this.fab.classList.toggle("is-busy", busy);
@@ -350,53 +485,50 @@ export class Panel implements Report {
 		for (const b of this.buttons) b.disabled = busy;
 		if (busy) {
 			this.stopping = false;
-			this.stopBtn.disabled = false;
-			this.stopBtn.textContent = "Stop after this one";
+			this.paused = false;
+			this.pauseBtn.disabled = false;
+			this.pauseBtn.textContent = "Pause";
+			this.cancelBtn.disabled = false;
+			this.cancelBtn.textContent = "Cancel";
 			window.addEventListener("beforeunload", this.onBeforeUnload);
 		} else {
 			window.removeEventListener("beforeunload", this.onBeforeUnload);
 			this.fab.title = "Subreddit Subscription Manager";
 			this.ringFill.style.strokeDashoffset = String(RING);
 			this.badge.textContent = "0%";
+			this.progressLabel.textContent = "";
 		}
 	}
 
 	// ---------- Report ----------
 
-	count(n: number | null): void {
-		const gen = ++this.anim;
-		this.unit.textContent = "subreddits";
+	count(n: number | null, stats?: { posts?: number | null; comments?: number | null }): void {
 		this.bar.style.width = "0%";
-		if (n === null) {
-			this.figure.textContent = "—";
-			this.shown = 0;
-			return;
-		}
-		const from = this.shown;
-		this.shown = n;
-		const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-		if (reduce || from === n) {
-			this.figure.textContent = String(n);
-			return;
-		}
-		const start = performance.now();
-		const step = (now: number) => {
-			if (gen !== this.anim) return; // something newer owns the figure now
-			const t = Math.min((now - start) / 420, 1);
-			this.figure.textContent = String(
-				Math.round(from + (n - from) * EASE_OUT(t)),
-			);
-			if (t < 1) requestAnimationFrame(step);
-		};
-		requestAnimationFrame(step);
+		this.progressLabel.textContent = "";
+		this.figSubs.textContent = n === null ? "—" : String(n);
+		this.figPosts.textContent =
+			stats?.posts == null ? "—" : String(stats.posts);
+		this.figComments.textContent =
+			stats?.comments == null ? "—" : String(stats.comments);
 	}
 
-	/** `headline` is the live subscription count; `done`/`total` drive the bar. */
-	progress(verb: string, done: number, total: number, headline: number): void {
-		this.anim++; // any count-up animation still running no longer owns the figure
-		this.shown = headline;
-		this.figure.textContent = String(headline);
-		this.unit.textContent = `${verb} — ${done} of ${total}`;
+	progress(
+		verb: string,
+		done: number,
+		total: number,
+		headline?: number,
+		metric: ProgressMetric = "subs",
+	): void {
+		this.progressLabel.textContent = `${verb} — ${done} of ${total}`;
+		if (headline != null) {
+			if (metric === "posts") {
+				this.figPosts.textContent = String(headline);
+			} else if (metric === "comments") {
+				this.figComments.textContent = String(headline);
+			} else {
+				this.figSubs.textContent = String(headline);
+			}
+		}
 
 		const pct = total > 0 ? done / total : 0;
 		this.bar.style.width = `${pct * 100}%`;
@@ -412,39 +544,74 @@ export class Panel implements Report {
 
 	confirm(spec: ConfirmSpec): Promise<boolean> {
 		return new Promise((resolve) => {
+			this.activeResolve = resolve;
+
 			const sheet = document.createElement("div");
 			sheet.className = `sheet${spec.danger ? " is-danger" : ""}`;
-			sheet.innerHTML = `
-        <div class="sheet__title">${spec.title}</div>
-        <div class="sheet__body">${spec.body}</div>
-        ${spec.typed ? `<input class="sheet__input" placeholder="Type ${spec.typed} to confirm" aria-label="Type ${spec.typed} to confirm">` : ""}
-        <div class="sheet__row">
-          <button class="btn btn--cancel">Cancel</button>
-          <button class="btn btn--go"${spec.typed ? " disabled" : ""}>${spec.action}</button>
-        </div>`;
 
-			const go = sheet.querySelector<HTMLButtonElement>(".btn--go")!;
-			const input = sheet.querySelector<HTMLInputElement>(".sheet__input");
+			const card = document.createElement("div");
+			card.className = "sheet__card";
+
+			const badge = document.createElement("div");
+			badge.className = "sheet__badge";
+			badge.innerHTML = spec.danger
+				? svg('<path d="M8 2l6 11H2L8 2zM8 6v3M8 11h.01"/>')
+				: svg('<path d="M8 2.5v11M2.5 8h11"/>');
+
+			const titleEl = document.createElement("div");
+			titleEl.className = "sheet__title";
+			titleEl.textContent = spec.title;
+
+			const bodyEl = document.createElement("div");
+			bodyEl.className = "sheet__body";
+			bodyEl.textContent = spec.body;
+
+			card.append(badge, titleEl, bodyEl);
+
+			let input: HTMLInputElement | null = null;
+			if (spec.typed) {
+				input = document.createElement("input");
+				input.className = "sheet__input";
+				input.placeholder = `Type ${spec.typed} to confirm`;
+				input.setAttribute("aria-label", `Type ${spec.typed} to confirm`);
+				card.append(input);
+			}
+
+			const row = document.createElement("div");
+			row.className = "sheet__row";
+
+			const cancelBtn = document.createElement("button");
+			cancelBtn.className = "btn btn--cancel";
+			cancelBtn.textContent = "Cancel";
+
+			const goBtn = document.createElement("button");
+			goBtn.className = "btn btn--go";
+			goBtn.textContent = spec.action;
+			if (spec.typed) goBtn.disabled = true;
+
+			row.append(cancelBtn, goBtn);
+			card.append(row);
+			sheet.append(card);
+
 			const finish = (ok: boolean) => {
+				this.activeResolve = null;
 				sheet.remove();
 				resolve(ok);
 			};
 
 			if (input) {
 				input.addEventListener("input", () => {
-					go.disabled = input.value.trim() !== spec.typed;
+					goBtn.disabled = input.value.trim() !== spec.typed;
 				});
 				input.addEventListener("keydown", (e) => {
-					if (e.key === "Enter" && !go.disabled) finish(true);
+					if (e.key === "Enter" && !goBtn.disabled) finish(true);
 				});
 			}
-			go.addEventListener("click", () => finish(true));
-			sheet
-				.querySelector<HTMLButtonElement>(".btn--cancel")!
-				.addEventListener("click", () => finish(false));
+			goBtn.addEventListener("click", () => finish(true));
+			cancelBtn.addEventListener("click", () => finish(false));
 
 			this.panel.append(sheet);
-			(input ?? go).focus();
+			(input ?? goBtn).focus();
 		});
 	}
 
@@ -454,9 +621,6 @@ export class Panel implements Report {
 			input.type = "file";
 			input.accept = ".json,.txt,.csv,application/json,text/plain";
 
-			// `cancel` is unsupported on older Safari, and a cancel we never hear
-			// about leaves every button disabled for good. Regaining focus without
-			// a file means the dialog closed empty.
 			const done = (v: string | null | Promise<string>) => {
 				window.removeEventListener("focus", onFocus);
 				resolve(v as string | null);

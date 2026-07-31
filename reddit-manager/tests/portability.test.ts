@@ -1,15 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeName } from "../src/api";
-import { applyAll, parseImport } from "../src/portability";
+import {
+	applyAll,
+	deleteAccount,
+	deleteAllComments,
+	deleteAllPosts,
+	parseImport,
+} from "../src/portability";
 
 vi.mock("../src/api", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../src/api")>()),
 	setSubscribed: vi.fn(),
 	loadSubs: vi.fn(async () => []),
+	loadUserItems: vi.fn(async () => []),
+	deleteUserItem: vi.fn(async () => {}),
 }));
 
-const { setSubscribed } = await import("../src/api");
+const { setSubscribed, loadUserItems, deleteUserItem } = await import("../src/api");
 const mockSub = vi.mocked(setSubscribed);
+const mockLoadItems = vi.mocked(loadUserItems);
+const mockDeleteItem = vi.mocked(deleteUserItem);
 
 describe("normalizeName", () => {
 	it("strips every shape a subreddit reference comes in", () => {
@@ -83,8 +93,11 @@ describe("applyAll", () => {
 	});
 
 	const drain = async <T>(p: Promise<T>): Promise<T> => {
+		const caught = p.catch((e) => e);
 		await vi.runAllTimersAsync();
-		return p;
+		const result = await caught;
+		if (result instanceof Error) throw result;
+		return result;
 	};
 
 	it("sends exactly one request per subreddit", async () => {
@@ -167,3 +180,75 @@ describe("applyAll", () => {
 		vi.useRealTimers();
 	});
 });
+
+describe("deleteAllPosts and deleteAllComments", () => {
+	beforeEach(() => {
+		mockLoadItems.mockReset();
+		mockDeleteItem.mockReset();
+	});
+
+	it("deletes all fetched posts when confirmed", async () => {
+		mockLoadItems.mockResolvedValue([
+			{ fullname: "t3_post1", title: "Post 1" },
+			{ fullname: "t3_post2", title: "Post 2" },
+		]);
+		mockDeleteItem.mockResolvedValue(undefined);
+
+		const mockReport = {
+			status: vi.fn(),
+			progress: vi.fn(),
+			confirm: vi.fn(async () => true),
+			count: vi.fn(),
+			pickFile: vi.fn(),
+		};
+
+		await deleteAllPosts(mockReport);
+
+		expect(mockLoadItems).toHaveBeenCalledWith("posts");
+		expect(mockDeleteItem).toHaveBeenCalledTimes(2);
+		expect(mockDeleteItem).toHaveBeenCalledWith("t3_post1", true, expect.any(Function));
+		expect(mockDeleteItem).toHaveBeenCalledWith("t3_post2", true, expect.any(Function));
+	});
+
+	it("deletes all fetched comments when confirmed", async () => {
+		mockLoadItems.mockResolvedValue([
+			{ fullname: "t1_comment1", body: "Comment 1" },
+		]);
+		mockDeleteItem.mockResolvedValue(undefined);
+
+		const mockReport = {
+			status: vi.fn(),
+			progress: vi.fn(),
+			confirm: vi.fn(async () => true),
+			count: vi.fn(),
+			pickFile: vi.fn(),
+		};
+
+		await deleteAllComments(mockReport);
+
+		expect(mockLoadItems).toHaveBeenCalledWith("comments");
+		expect(mockDeleteItem).toHaveBeenCalledTimes(1);
+		expect(mockDeleteItem).toHaveBeenCalledWith("t1_comment1", true, expect.any(Function));
+	});
+});
+
+describe("deleteAccount", () => {
+	it("prompts for confirmation before setting location", async () => {
+		const mockReport = {
+			status: vi.fn(),
+			progress: vi.fn(),
+			confirm: vi.fn(async () => false),
+			count: vi.fn(),
+			pickFile: vi.fn(),
+		};
+
+		await deleteAccount(mockReport);
+		expect(mockReport.confirm).toHaveBeenCalledWith(
+			expect.objectContaining({
+				title: "Open Account Deletion Page",
+				danger: true,
+			}),
+		);
+	});
+});
+

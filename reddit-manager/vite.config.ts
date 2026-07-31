@@ -10,8 +10,8 @@ export default defineConfig({
 		monkey({
 			entry: "src/index.ts",
 			userscript: {
-				name: "Reddit Subscription Manager",
-				namespace: "https://github.com/quantavil/userscript/reddit-subscription-manager",
+				name: "Reddit Manager",
+				namespace: "https://github.com/quantavil/userscript/reddit-manager",
 				version: pkg.version,
 				description: pkg.description,
 				// old.reddit.com serves the same API on the same cookies; the script
@@ -27,7 +27,7 @@ export default defineConfig({
 				"run-at": "document-idle",
 			},
 			build: {
-				fileName: "reddit-subscription-manager.user.js",
+				fileName: "reddit-manager.user.js",
 			},
 		}),
 	],

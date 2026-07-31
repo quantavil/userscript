@@ -1,10 +1,20 @@
-// The four operations. They report through `Report` so the panel owns every
+// The operations. They report through `Report` so the panel owns every
 // pixel and this file owns none.
 
-import { type Sub, loadSubs, normalizeName, setSubscribed } from "./api";
+import {
+	type Sub,
+	type UserItem,
+	deleteUserItem,
+	loadSubs,
+	loadUserItems,
+	normalizeName,
+	setSubscribed,
+	sleep,
+} from "./api";
 
-const PAUSE_MS = 350; // ~170 writes/min, under reddit's ceiling; 429s back off on their own
-const GIVE_UP_AFTER = 3; // consecutive failures from the very start = broken session, not bad subreddits
+const SUB_PAUSE_MS = 650; // 1 req/item -> ~92 req/min, safely under Reddit's 100 limit
+const DELETE_PAUSE_MS = 1300; // 2 reqs/item (edit+del) -> ~92 req/min, safely under Reddit's 100 limit
+const GIVE_UP_AFTER = 3; // consecutive failures = broken session, not bad subreddits/items
 
 export interface ConfirmSpec {
 	title: string;
@@ -15,27 +25,35 @@ export interface ConfirmSpec {
 	typed?: string;
 }
 
+export interface Stats {
+	posts?: number | null;
+	comments?: number | null;
+}
+
+export type ProgressMetric = "subs" | "posts" | "comments";
+
 export interface Report {
-	/** The headline figure: how many subreddits you have. */
-	count(n: number | null): void;
-	/** `headline` is the live subscription count, `done`/`total` the work queue. */
-	progress(verb: string, done: number, total: number, headline: number): void;
+	/** The headline figures: subreddits, posts, comments. */
+	count(n: number | null, stats?: Stats): void;
+	/** `headline` is the live count, `done`/`total` the work queue. */
+	progress(
+		verb: string,
+		done: number,
+		total: number,
+		headline?: number,
+		metric?: ProgressMetric,
+	): void;
 	status(text: string, tone?: "ok" | "bad"): void;
 	confirm(spec: ConfirmSpec): Promise<boolean>;
 	pickFile(): Promise<string | null>;
 	/** True once the user has asked to stop. Checked between requests. */
 	stopped?(): boolean;
+	/** True while the user has paused execution. */
+	isPaused?(): boolean;
 }
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Joins or leaves every identifier, one request at a time, reporting after each.
- * Every request commits server-side the moment it returns, so closing the tab
- * mid-run keeps the work already done — it only cancels the remainder.
- *
- * `onProgress` gets attempted-so-far and how many of those failed, so the caller
- * can show a figure that matches reality instead of counting requests it sent.
  */
 export async function applyAll(
 	identifiers: string[],
@@ -54,39 +72,37 @@ export async function applyAll(
 	) => {
 		const msg = `Reddit returned ${status}. Retrying in ${(waitMs / 1000).toFixed(1)}s (${attempt}/${maxRetries})…`;
 		r?.status(msg, "bad");
-		console.warn(`[Reddit Subscription Manager] ${msg}`);
+		console.warn(`[Reddit Manager] ${msg}`);
 	};
 
 	for (let i = 0; i < identifiers.length; i++) {
+		while (r?.isPaused?.() && !r?.stopped?.()) {
+			await sleep(200);
+		}
 		if (r?.stopped?.())
 			return { failed, error: lastError, stoppedAt: i };
 
 		try {
 			await setSubscribed(identifiers[i], subscribe, onRetry);
-			r?.status(""); // clear any rate-limit notice
+			r?.status(""); // clear rate-limit notice
 		} catch (err) {
 			lastError = (err as Error).message;
 			failed.push(identifiers[i]);
 			console.warn(
-				`[Reddit Subscription Manager] ${subscribe ? "join" : "leave"} ${identifiers[i]} failed: ${lastError}`,
+				`[Reddit Manager] ${subscribe ? "join" : "leave"} ${identifiers[i]} failed: ${lastError}`,
 			);
 
-			// Nothing has ever worked. That is the session or the endpoint, not the
-			// subreddits — grinding out the remaining hundreds changes nothing and
-			// buries the one error that matters.
 			if (failed.length === i + 1 && failed.length >= GIVE_UP_AFTER)
 				throw new Error(
 					`${lastError} (first ${failed.length} all failed the same way — stopped, nothing was changed)`,
 				);
 		}
 		onProgress(i + 1, identifiers.length, failed.length);
-		if (i + 1 < identifiers.length) await sleep(PAUSE_MS);
+		if (i + 1 < identifiers.length) await sleep(SUB_PAUSE_MS);
 	}
 	return { failed, error: lastError, stoppedAt: identifiers.length };
 }
 
-// A pasted csv/tsv brings its header row along. Only ever stripped from the
-// first token of a plain-text file, so r/names and r/subreddit still import.
 const HEADERS = new Set([
 	"subreddit",
 	"subreddits",
@@ -95,11 +111,6 @@ const HEADERS = new Set([
 	"url",
 ]);
 
-/**
- * Accepts our own export, a bare JSON array, reddit's comma-separated
- * multireddit export, or a plain list of names/URLs one per line.
- * Returns deduped, normalized subreddit names.
- */
 export function parseImport(text: string): string[] {
 	const trimmed = text.trim();
 	let raw: unknown[];
@@ -129,9 +140,6 @@ export function parseImport(text: string): string[] {
 	return [...seen.values()];
 }
 
-// ---------- operations ----------
-
-/** Writes the list to a dated json file. Shared by Export and Leave all's backup. */
 function downloadSubs(subs: Sub[], tag = ""): void {
 	const text = `${JSON.stringify(
 		{
@@ -153,8 +161,15 @@ function downloadSubs(subs: Sub[], tag = ""): void {
 	setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Reads the list and hands the count to the panel. Also the `Refresh` action. */
-export async function refresh(r: Report, force = false): Promise<number> {
+/**
+ * Reads counts using Promise.allSettled so failed requests report unavailable
+ * state rather than faking 0 counts.
+ */
+export async function refresh(
+	r: Report,
+	force = false,
+	full = false,
+): Promise<number> {
 	r.status(force ? "Reading from Reddit…" : "");
 	const onRetry = (
 		attempt: number,
@@ -168,10 +183,38 @@ export async function refresh(r: Report, force = false): Promise<number> {
 		);
 
 	try {
-		const subs = await loadSubs(force, onRetry);
-		r.count(subs.length);
-		if (force) r.status(`Read ${subs.length} subreddits.`, "ok");
-		return subs.length;
+		const subsPromise = loadSubs(force, onRetry);
+		const postsPromise = full ? loadUserItems("posts", onRetry) : Promise.reject("skipped");
+		const commentsPromise = full ? loadUserItems("comments", onRetry) : Promise.reject("skipped");
+
+		const results = await Promise.allSettled([
+			subsPromise,
+			postsPromise,
+			commentsPromise,
+		]);
+
+		const subs = results[0].status === "fulfilled" ? results[0].value : null;
+		const posts = results[1].status === "fulfilled" ? results[1].value : null;
+		const comments = results[2].status === "fulfilled" ? results[2].value : null;
+
+		r.count(subs?.length ?? null, {
+			posts: posts?.length ?? null,
+			comments: comments?.length ?? null,
+		});
+
+		if (results[0].status === "rejected") {
+			const err = (results[0].reason as Error)?.message ?? "Failed to read subscriptions";
+			r.status(err, "bad");
+			throw new Error(err);
+		}
+
+		if (force) {
+			const countsMsg = `${subs ? `${subs.length} subreddits` : "subscriptions unavailable"}${
+				posts ? `, ${posts.length} posts` : ""
+			}${comments ? `, ${comments.length} comments` : ""}`;
+			r.status(`Read ${countsMsg}.`, "ok");
+		}
+		return subs?.length ?? 0;
 	} catch (e) {
 		r.status((e as Error).message, "bad");
 		throw e;
@@ -208,9 +251,6 @@ export async function importSubs(r: Report): Promise<void> {
 		return;
 	}
 
-	// The confirmation has always promised this; now it's true. Re-joining a
-	// subreddit you're already in is a wasted request, and at ~3/second that
-	// waste is measured in minutes.
 	r.status("Reading your subscriptions…");
 	const subs = await loadSubs();
 	r.count(subs.length);
@@ -243,8 +283,6 @@ export async function leaveAll(r: Report): Promise<void> {
 		return;
 	}
 
-	// Destructive and slow to undo by hand, so it takes a typed confirmation
-	// rather than a click that muscle memory can fire off.
 	const ok = await r.confirm({
 		title: `Leave all ${subs.length} subreddits`,
 		body: "A backup file downloads first, so Import can put them back. One request per subreddit — whatever gets through stays done even if you close the tab.",
@@ -254,8 +292,6 @@ export async function leaveAll(r: Report): Promise<void> {
 	});
 	if (!ok) return;
 
-	// Unprompted, because "export first" as advice is a data-loss bug waiting for
-	// the one person who doesn't take it.
 	downloadSubs(subs, "-backup");
 	r.status("Backup downloaded.", "ok");
 
@@ -277,18 +313,18 @@ async function apply(
 	const headline = (succeeded: number) =>
 		subscribe ? startCount + succeeded : startCount - succeeded;
 
-	r.progress(verb, 0, names.length, startCount);
+	r.progress(verb, 0, names.length, startCount, "subs");
 	const { failed, error: lastError, stoppedAt } = await applyAll(
 		names,
 		subscribe,
-		(done, total, bad) => r.progress(verb, done, total, headline(done - bad)),
+		(done, total, bad) =>
+			r.progress(verb, done, total, headline(done - bad), "subs"),
 		r,
 	);
 	const succeeded = stoppedAt - failed.length;
-	const halted = stoppedAt < names.length ? ` Stopped — ${names.length - stoppedAt} left untouched.` : "";
+	const untouched = names.length - stoppedAt;
+	const halted = untouched ? ` Stopped — ${untouched} left untouched.` : "";
 
-	// Reddit's own list endpoint trails the writes by a beat; a forced reread
-	// straight away can come back with the pre-change count.
 	r.status("Confirming with Reddit…");
 	await sleep(1000);
 	await refresh(r, true).catch(() => r.count(null));
@@ -301,5 +337,128 @@ async function apply(
 		`${past} ${succeeded}. Skipped ${failed.length} (${lastError}): ${failed.slice(0, 6).join(", ")}${failed.length > 6 ? "…" : ""}${halted}`,
 		"bad",
 	);
-	console.warn("[Reddit Subscription Manager] failed:", failed, lastError);
+	console.warn("[Reddit Manager] failed:", failed, lastError);
+}
+
+export async function applyItemDeletions(
+	items: UserItem[],
+	onProgress: (done: number, total: number, failed: number) => void,
+	r?: Report,
+): Promise<{ failed: string[]; error: string; stoppedAt: number }> {
+	const failed: string[] = [];
+	let lastError = "";
+	let consecutiveFailures = 0;
+
+	const onRetry = (
+		attempt: number,
+		maxRetries: number,
+		waitMs: number,
+		status: number,
+	) => {
+		const msg = `Reddit returned ${status}. Retrying in ${(waitMs / 1000).toFixed(1)}s (${attempt}/${maxRetries})…`;
+		r?.status(msg, "bad");
+	};
+
+	for (let i = 0; i < items.length; i++) {
+		while (r?.isPaused?.() && !r?.stopped?.()) {
+			await sleep(200);
+		}
+		if (r?.stopped?.())
+			return { failed, error: lastError, stoppedAt: i };
+
+		try {
+			await deleteUserItem(items[i].fullname, true, onRetry);
+			consecutiveFailures = 0;
+			r?.status("");
+		} catch (err) {
+			lastError = (err as Error).message;
+			failed.push(items[i].fullname);
+			consecutiveFailures++;
+
+			if (consecutiveFailures >= GIVE_UP_AFTER) {
+				return { failed, error: lastError, stoppedAt: i + 1 };
+			}
+		}
+		onProgress(i + 1, items.length, failed.length);
+		if (i + 1 < items.length) await sleep(DELETE_PAUSE_MS);
+	}
+	return { failed, error: lastError, stoppedAt: items.length };
+}
+
+/** Unified batch deletion helper for visible posts or comments. */
+async function deleteAllUserItems(
+	r: Report,
+	kind: "posts" | "comments",
+	label: string,
+): Promise<void> {
+	r.status(`Reading your visible ${label} from Reddit…`);
+	let items: UserItem[];
+	try {
+		items = await loadUserItems(kind);
+	} catch (e) {
+		r.status((e as Error).message, "bad");
+		return;
+	}
+
+	if (items.length === 0) {
+		r.status(`No visible ${label} found to delete.`, "ok");
+		return;
+	}
+
+	const ok = await r.confirm({
+		title: `Delete ${items.length} visible ${label}`,
+		body: `Deletes up to Reddit's 1,000 visible history limit. Each item will be overwritten with '.' prior to deletion.`,
+		action: `Delete ${label}`,
+		danger: true,
+		typed: String(items.length),
+	});
+	if (!ok) return;
+
+	const verb = `Deleting ${label}`;
+	r.progress(verb, 0, items.length, items.length, kind);
+	const { failed, error: lastError, stoppedAt } = await applyItemDeletions(
+		items,
+		(done, total, bad) =>
+			r.progress(
+				verb,
+				done,
+				total,
+				items.length - (done - bad),
+				kind,
+			),
+		r,
+	);
+	const succeeded = stoppedAt - failed.length;
+	const untouched = items.length - stoppedAt;
+	const halted = untouched ? ` Stopped — ${untouched} left untouched.` : "";
+
+	r.status("Confirming with Reddit…");
+	await sleep(500);
+	await refresh(r, true, true).catch(() => r.count(null));
+
+	r.status(
+		`Deleted ${succeeded} ${label}.${failed.length ? ` (${failed.length} failed: ${lastError})` : ""}${halted}`,
+		failed.length || halted ? "bad" : "ok",
+	);
+}
+
+export async function deleteAllPosts(r: Report): Promise<void> {
+	return deleteAllUserItems(r, "posts", "posts");
+}
+
+export async function deleteAllComments(r: Report): Promise<void> {
+	return deleteAllUserItems(r, "comments", "comments");
+}
+
+export async function deleteAccount(r: Report): Promise<void> {
+	const ok = await r.confirm({
+		title: "Open Account Deletion Page",
+		body: "Reddit requires password verification to delete an account. You will be redirected to Reddit's official account deletion page.",
+		action: "Open deletion page",
+		danger: true,
+	});
+	if (!ok) return;
+
+	r.status("Redirecting to account deletion page…", "ok");
+	window.location.href = "https://old.reddit.com/prefs/delete/";
 }
