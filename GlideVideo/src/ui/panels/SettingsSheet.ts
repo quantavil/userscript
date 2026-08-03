@@ -4,24 +4,22 @@ import type { EventBus } from "../../events/EventBus";
 import { clamp, vibrate } from "../../utils";
 import { Stepper } from "../components/Stepper";
 import { Switch } from "../components/Switch";
-import {
-	MVC_THEME_LABELS,
-	MVC_THEMES,
-	type MvcTheme,
-} from "../styles/css";
+import { MVC_THEME_LABELS, MVC_THEMES, type MvcTheme } from "../styles/css";
 import { UIComponent } from "../UIComponent";
 import type { UIManager } from "../UIManager";
 
+/** Toggles, in sheet order. Labels stay short — two share a line. */
+const TOGGLES: Array<{ label: string; key: string; def: boolean }> = [
+	{ label: "Speed FAB", key: "minimalSpeedFab", def: false },
+	{ label: "Progress bar", key: "progressBarEnabled", def: true },
+	{ label: "Gestures", key: "gesturesEnabled", def: true },
+	{ label: "Remember", key: "rememberPlayback", def: true },
+	{ label: "Page scroll", key: "scrollCompatibility", def: true },
+];
+
 export class SettingsSheet extends UIComponent {
-	public themeStepper!: Stepper;
-	public rotateStepper!: Stepper;
-	public defaultSpeedStepper!: Stepper;
-	public skipStepper!: Stepper;
-	public minimalSpeedFabSwitch!: Switch;
-	public progressBarSwitch!: Switch;
-	public gestureSwitch!: Switch;
-	public rememberPlaybackSwitch!: Switch;
-	public scrollCompatibilitySwitch!: Switch;
+	private steppers: Stepper[] = [];
+	private switches: Switch[] = [];
 
 	constructor(
 		private readonly eventBus: EventBus,
@@ -57,175 +55,132 @@ export class SettingsSheet extends UIComponent {
 		header.append(title, closeBtn);
 		sheet.appendChild(header);
 
-		// Card Container
 		const card = document.createElement("div");
 		card.className = "mvc-settings-card";
 		sheet.appendChild(card);
 
-		// 1. Theme — a Stepper cycling an index is exactly a theme picker
-		this.themeStepper = new Stepper(
+		// Theme — a Stepper cycling an index is exactly a theme picker
+		this.addStepper(
+			card,
 			"Theme",
 			(i) => MVC_THEME_LABELS[MVC_THEMES[i] as MvcTheme] ?? "Halo",
-			() => {
-				const i = MVC_THEMES.indexOf(this.store.settings.theme as MvcTheme);
-				return i < 0 ? 0 : i;
-			},
+			() => Math.max(0, MVC_THEMES.indexOf(this.store.settings.theme as MvcTheme)),
 			(dir) => {
 				const n = MVC_THEMES.length;
-				const cur = MVC_THEMES.indexOf(this.store.settings.theme as MvcTheme);
-				const next = ((cur < 0 ? 0 : cur) + dir + n) % n;
-				this.store.saveSetting("theme", MVC_THEMES[next]);
+				const cur = Math.max(0, MVC_THEMES.indexOf(this.store.settings.theme as MvcTheme));
+				this.store.saveSetting("theme", MVC_THEMES[(cur + dir + n) % n]);
 			},
 		);
-		card.appendChild(this.themeStepper.dom);
 
-		// 2. Rotation — also reachable by long-pressing the ratio button
-		this.rotateStepper = new Stepper(
+		// Rotation — also reachable by long-pressing the ratio button
+		this.addStepper(
+			card,
 			"Rotate",
 			(v) => `${v}°`,
 			() => this.store.settings.transform.rot || 0,
 			(dir) => {
 				const t = this.store.settings.transform;
-				t.rot = (((t.rot || 0) + dir * 90) % 360 + 360) % 360;
+				t.rot = ((((t.rot || 0) + dir * 90) % 360) + 360) % 360;
 				this.store.saveSetting("transform", t);
 				this.eventBus.emit("video:transform-need-update", undefined);
 				this.ui.updateRotationUI();
 			},
 		);
-		card.appendChild(this.rotateStepper.dom);
 
-		// 3. Default Speed Stepper
-		this.defaultSpeedStepper = new Stepper(
+		this.addStepper(
+			card,
 			"Default speed",
 			(v) => `${v.toFixed(2)}x`,
 			() => this.store.settings.defaultSpeed,
-			(dir) => {
-				const step = MVC_CONFIG.SPEED_STEPPER_STEP;
-				const next = clamp(
-					this.store.settings.defaultSpeed + dir * step,
-					MVC_CONFIG.SPEED_MIN,
-					MVC_CONFIG.SPEED_MAX,
-				);
-				this.store.saveSetting("defaultSpeed", next);
-			},
+			(dir) =>
+				this.store.saveSetting(
+					"defaultSpeed",
+					clamp(
+						this.store.settings.defaultSpeed +
+							dir * MVC_CONFIG.SPEED_STEPPER_STEP,
+						MVC_CONFIG.SPEED_MIN,
+						MVC_CONFIG.SPEED_MAX,
+					),
+				),
 		);
-		card.appendChild(this.defaultSpeedStepper.dom);
 
-		// 2. Skip Duration Stepper
-		this.skipStepper = new Stepper(
+		this.addStepper(
+			card,
 			"Skip duration",
 			(v) => `${v}s`,
 			() => this.store.settings.skipSeconds,
-			(dir) => {
-				const step = MVC_CONFIG.SKIP_STEPPER_STEP;
-				const next = clamp(
-					this.store.settings.skipSeconds + dir * step,
-					MVC_CONFIG.SKIP_MIN,
-					MVC_CONFIG.SKIP_MAX,
-				);
-				this.store.saveSetting("skipSeconds", next);
-			},
+			(dir) =>
+				this.store.saveSetting(
+					"skipSeconds",
+					clamp(
+						this.store.settings.skipSeconds + dir * MVC_CONFIG.SKIP_STEPPER_STEP,
+						MVC_CONFIG.SKIP_MIN,
+						MVC_CONFIG.SKIP_MAX,
+					),
+				),
 		);
-		card.appendChild(this.skipStepper.dom);
 
-		// 3. Reset All Button
-		const transformResetBtn = document.createElement("button");
-		transformResetBtn.className = "mvc-grid-btn";
-		transformResetBtn.style.width = "100%";
-		transformResetBtn.appendChild(this.ui.getIcon("reset"));
-		const resetLabel = document.createElement("span");
-		resetLabel.textContent = "Reset all";
-		transformResetBtn.appendChild(resetLabel);
-		transformResetBtn.onclick = (e) => {
-			e.stopPropagation();
-			vibrate(MVC_CONFIG.HAPTIC_VIBRATION_MS);
-			this.store.saveSetting("transform", { ratio: "fit", zoom: 1, rot: 0 });
-			this.store.saveSetting("theme", "halo");
+		for (const { label, key, def } of TOGGLES) {
+			const sw = new Switch(label, this.readToggle(key, def), (checked) =>
+				this.store.saveSetting(key, checked),
+			);
+			this.switches.push(sw);
+			card.appendChild(sw.dom);
+		}
 
-			this.store.saveSetting("defaultSpeed", MVC_CONFIG.SPEED_DEFAULT);
-			this.store.saveSetting("skipSeconds", MVC_CONFIG.SKIP_DEFAULT);
-			this.store.saveSetting("minimalSpeedFab", false);
-			this.store.saveSetting("gesturesEnabled", true);
-			this.store.saveSetting("progressBarEnabled", true);
-			this.store.saveSetting("rememberPlayback", true);
-			this.store.saveSetting("scrollCompatibility", true);
-			this.update();
-
-			this.eventBus.emit("video:transform-need-update", undefined);
-			this.ui.showToast("Reset settings to default");
-		};
-		card.appendChild(transformResetBtn);
-
-		// 5. Minimal Speed FAB Switch
-		this.minimalSpeedFabSwitch = new Switch(
-			"Minimal speed FAB",
-			!!this.store.settings.minimalSpeedFab,
-			(isChecked) => {
-				this.store.saveSetting("minimalSpeedFab", isChecked);
-			},
-		);
-		card.appendChild(this.minimalSpeedFabSwitch.dom);
-
-		// 6. Progress Bar Scrubber Switch
-		this.progressBarSwitch = new Switch(
-			"Progress bar",
-			this.store.settings.progressBarEnabled !== false,
-			(isChecked) => {
-				this.store.saveSetting("progressBarEnabled", isChecked);
-			},
-		);
-		card.appendChild(this.progressBarSwitch.dom);
-
-		// 7. Swipe & Hold Gestures Switch
-		this.gestureSwitch = new Switch(
-			"Gestures",
-			this.store.settings.gesturesEnabled,
-			(isChecked) => {
-				this.store.saveSetting("gesturesEnabled", isChecked);
-			},
-		);
-		card.appendChild(this.gestureSwitch.dom);
-
-		// 9. Remember Playback Switch
-		this.rememberPlaybackSwitch = new Switch(
-			"Remember playback",
-			this.store.settings.rememberPlayback,
-			(isChecked) => {
-				this.store.saveSetting("rememberPlayback", isChecked);
-			},
-		);
-		card.appendChild(this.rememberPlaybackSwitch.dom);
-
-		// 10. Scroll Compatibility Switch
-		this.scrollCompatibilitySwitch = new Switch(
-			"Scroll compatibility",
-			this.store.settings.scrollCompatibility,
-			(isChecked) => {
-				this.store.saveSetting("scrollCompatibility", isChecked);
-			},
-		);
-		card.appendChild(this.scrollCompatibilitySwitch.dom);
+		card.appendChild(this.buildResetButton());
 
 		return sheet;
 	}
 
+	private addStepper(
+		card: HTMLDivElement,
+		label: string,
+		valFmt: (v: number) => string,
+		getVal: () => number,
+		onAdjust: (dir: number) => void,
+	): void {
+		const stepper = new Stepper(label, valFmt, getVal, onAdjust);
+		this.steppers.push(stepper);
+		card.appendChild(stepper.dom);
+	}
+
+	/** Stored settings may be undefined on first run, so fall back to the default. */
+	private readToggle(key: string, def: boolean): boolean {
+		const v = this.store.settings[key];
+		return v === undefined ? def : !!v;
+	}
+
+	private buildResetButton(): HTMLButtonElement {
+		const btn = document.createElement("button");
+		btn.className = "mvc-grid-btn";
+		btn.appendChild(this.ui.getIcon("reset"));
+
+		const label = document.createElement("span");
+		label.textContent = "Reset all";
+		btn.appendChild(label);
+
+		btn.onclick = (e) => {
+			e.stopPropagation();
+			vibrate(MVC_CONFIG.HAPTIC_VIBRATION_MS);
+			this.store.saveSetting("transform", { ratio: "fit", zoom: 1, rot: 0 });
+			this.store.saveSetting("theme", "halo");
+			this.store.saveSetting("defaultSpeed", MVC_CONFIG.SPEED_DEFAULT);
+			this.store.saveSetting("skipSeconds", MVC_CONFIG.SKIP_DEFAULT);
+			for (const { key, def } of TOGGLES) this.store.saveSetting(key, def);
+			this.update();
+
+			this.eventBus.emit("video:transform-need-update", undefined);
+			this.ui.updateRotationUI();
+			this.ui.showToast("Reset settings to default");
+		};
+		return btn;
+	}
+
 	public update(): void {
-		this.themeStepper.update();
-		this.rotateStepper.update();
-		this.defaultSpeedStepper.update();
-		this.skipStepper.update();
-		this.minimalSpeedFabSwitch.setChecked(
-			!!this.store.settings.minimalSpeedFab,
-		);
-		this.progressBarSwitch.setChecked(
-			this.store.settings.progressBarEnabled !== false,
-		);
-		this.gestureSwitch.setChecked(this.store.settings.gesturesEnabled);
-		this.rememberPlaybackSwitch.setChecked(
-			this.store.settings.rememberPlayback,
-		);
-		this.scrollCompatibilitySwitch.setChecked(
-			this.store.settings.scrollCompatibility,
+		for (const s of this.steppers) s.update();
+		this.switches.forEach((sw, i) =>
+			sw.setChecked(this.readToggle(TOGGLES[i].key, TOGGLES[i].def)),
 		);
 	}
 }

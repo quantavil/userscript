@@ -149,7 +149,7 @@ export class VideoTransform implements EventListenerObject {
 		});
 		this.eventBus.on("video:seek-requested", ({ time }) => {
 			const video = this.store.activeVideo;
-			if (video && isFinite(time)) {
+			if (video && Number.isFinite(time)) {
 				video.currentTime = clampTime(time, video.duration || 0);
 				this.emitTimeUpdate(video);
 			}
@@ -296,7 +296,7 @@ export class VideoTransform implements EventListenerObject {
 		if (v.buffered && v.buffered.length > 0) {
 			try {
 				buffered = v.buffered.end(v.buffered.length - 1);
-			} catch (e) {}
+			} catch {}
 		}
 		this.eventBus.emit("video:time-update", {
 			currentTime: v.currentTime || 0,
@@ -587,7 +587,7 @@ export class VideoTransform implements EventListenerObject {
 	public doSkip(dir: number, seconds: number) {
 		const video = this.store.activeVideo;
 		if (video) {
-			if (isNaN(video.duration) || video.duration === 0) return;
+			if (Number.isNaN(video.duration) || video.duration === 0) return;
 			video.currentTime = clampTime(
 				video.currentTime + dir * seconds,
 				video.duration,
@@ -682,6 +682,7 @@ export class VideoTransform implements EventListenerObject {
 			this.ui.brightnessOverlay,
 			this.ui.brightnessBar,
 			this.ui.doubleTapContainer,
+			this.ui.frameEl,
 			this.ui.settingsSheet?.dom,
 		];
 		uiElements.forEach((el) => {

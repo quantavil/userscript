@@ -127,16 +127,24 @@ export class Controller {
 			this.lightObserver.disconnect();
 			this.lightObserver = undefined;
 		}
-		if (this.ui.wrap) this.ui.wrap.remove();
-		if (this.ui.backdrop) this.ui.backdrop.remove();
-		if (this.ui.toast) this.ui.toast.remove();
-		if (this.ui.gestureOverlay) this.ui.gestureOverlay.remove();
-		if (this.ui.volumeBar) this.ui.volumeBar.remove();
-		if (this.ui.brightnessOverlay) this.ui.brightnessOverlay.remove();
-		if (this.ui.brightnessBar) this.ui.brightnessBar.remove();
-		if (this.ui.settingsSheet) this.ui.settingsSheet.dom.remove();
-		if (this.ui.doubleTapContainer) this.ui.doubleTapContainer.remove();
-		if (this.ui.progressBar) this.ui.progressBar.destroy();
+		// Every overlay lives outside `wrap`, so each has to be removed by hand —
+		// one missed entry leaks a node into the page on re-injection.
+		for (const el of [
+			this.ui.wrap,
+			this.ui.backdrop,
+			this.ui.toast,
+			this.ui.gestureOverlay,
+			this.ui.volumeBar,
+			this.ui.brightnessOverlay,
+			this.ui.brightnessBar,
+			this.ui.doubleTapContainer,
+			this.ui.frameEl,
+			this.ui.settingsSheet?.dom,
+		]) {
+			el?.remove();
+		}
+		this.ui.progressBar?.destroy();
+		this.ui.stepper?.destroy();
 
 		this.videoTracker.destroy();
 		this.videoTransform.destroy();

@@ -1,5 +1,6 @@
 import { vibrate } from "../../utils";
 import { UIComponent } from "../UIComponent";
+import { settingsRow } from "./settingsRow";
 
 export class Switch extends UIComponent {
 	private switchContainer!: HTMLDivElement;
@@ -14,13 +15,6 @@ export class Switch extends UIComponent {
 	}
 
 	protected render(): HTMLDivElement {
-		const row = document.createElement("div");
-		row.className = "mvc-settings-row";
-
-		const labelEl = document.createElement("label");
-		labelEl.className = "mvc-settings-label";
-		labelEl.textContent = this.label;
-
 		this.switchContainer = document.createElement("div");
 		this.switchContainer.className = "mvc-switch";
 		if (this.checked) {
@@ -39,8 +33,8 @@ export class Switch extends UIComponent {
 			this.onChange(isChecked);
 		};
 
-		row.append(labelEl, this.switchContainer);
-		return row;
+		// Toggles are narrow enough to sit two-per-line in the sheet grid
+		return settingsRow(this.label, this.switchContainer, true);
 	}
 
 	public setChecked(checked: boolean): void {

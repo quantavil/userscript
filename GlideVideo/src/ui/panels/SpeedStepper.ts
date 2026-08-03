@@ -86,24 +86,16 @@ export class SpeedStepper extends UIComponent {
 		}
 	}
 
+	/**
+	 * Always the speed, never the play state — a ▶/Replay glyph here made the
+	 * control jump between two meanings in the corner of the screen. Play/pause
+	 * feedback goes to the toast instead.
+	 */
 	public update() {
-		const video = this.ui.store.activeVideo;
-		const isMinimal = !!this.ui.store.settings.minimalSpeedFab;
-		const rate = video ? video.playbackRate : 1.0;
-
-		let text = "1.00x";
-		if (!video) {
-			text = isMinimal ? "1.0x" : "1.00x";
-		} else if (video.ended) {
-			text = "Replay";
-		} else if (video.paused) {
-			text = "▶︎";
-		} else {
-			text = isMinimal ? `${rate.toFixed(1)}x` : `${rate.toFixed(2)}x`;
-		}
-
+		const rate = this.ui.store.activeVideo?.playbackRate ?? 1.0;
+		const text = `${rate.toFixed(this.ui.store.settings.minimalSpeedFab ? 1 : 2)}x`;
 		this.valEl.textContent = text;
-		this.fabBtn.textContent = isMinimal ? `${rate.toFixed(1)}x` : text;
+		this.fabBtn.textContent = text;
 	}
 
 	private cycleFabSpeed() {
@@ -278,8 +270,11 @@ export class SpeedStepper extends UIComponent {
 			}
 			const video = this.ui.store.activeVideo;
 			if (video) {
+				// Read before the toggle — the state flips asynchronously
+				const willPlay = video.paused || video.ended;
 				this.eventBus.emit("video:play-pause-requested", undefined);
 				vibrate(10);
+				this.ui.showToast(willPlay ? "Playing" : "Paused");
 			}
 		});
 

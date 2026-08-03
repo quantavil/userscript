@@ -129,12 +129,17 @@ ${THEMES}
             filter: var(--mvc-glyph-shadow);
         }
 
-        /* Camera-gate corner brackets — invisible unless a theme colours them */
+        /* Camera-gate corner brackets — invisible unless a theme colours them.
+           They fade with the rest of the chrome; left on permanently they just
+           sit on the picture and distract. */
         .mvc-frame {
             position: fixed;
             pointer-events: none;
             z-index: 2147483645;
+            opacity: 0;
+            transition: opacity .35s ease;
         }
+        .mvc-frame.visible { opacity: 1; }
         .mvc-frame i {
             position: absolute;
             width: 20px;
@@ -470,8 +475,8 @@ ${THEMES}
             left: 50%;
             bottom: 0;
             z-index: 2147483647;
-            width: 340px;
-            max-width: 92vw;
+            width: 420px;
+            max-width: 94vw;
             max-height: 78vh;
             max-height: 78dvh;
             background: var(--mvc-sheet);
@@ -550,9 +555,12 @@ ${THEMES}
             fill: currentColor !important;
         }
 
+        /* Two columns: toggles pair up, steppers and buttons span the width */
         .mvc-settings-card {
-            display: flex;
-            flex-direction: column;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            column-gap: 18px;
+            align-content: start;
             overflow-y: auto;
             flex: 1;
             scrollbar-width: none;
@@ -571,21 +579,32 @@ ${THEMES}
         }
 
         .mvc-settings-row {
+            grid-column: 1 / -1;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 12px;
-            width: 100%;
-            padding: 9px 0;
+            gap: 10px;
+            min-width: 0;
+            padding: 7px 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.07);
         }
-        .mvc-settings-row:last-child { border-bottom: 0; }
+        .mvc-settings-row.half { grid-column: auto; }
+        /* Odd toggle count leaves the last row alone — a half-width rule above
+           the reset button just looks broken. */
+        .mvc-settings-row:last-of-type { border-bottom: 0; }
 
         .mvc-settings-label {
             color: var(--mvc-dim);
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 500;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* One column is unreadable below ~320px of sheet */
+        @media (max-width: 360px) {
+            .mvc-settings-row.half { grid-column: 1 / -1; }
         }
 
         /* Steppers inside settings */
@@ -625,8 +644,8 @@ ${THEMES}
         /* Switch */
         .mvc-switch {
             position: relative;
-            width: 42px;
-            height: 24px;
+            width: 38px;
+            height: 22px;
             flex-shrink: 0;
             background: var(--mvc-track);
             border-radius: var(--mvc-r-pill);
@@ -640,19 +659,20 @@ ${THEMES}
             position: absolute;
             top: 2px;
             left: 2px;
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
             border-radius: var(--mvc-r-pill);
             background: #fff;
             transition: transform var(--mvc-dur) var(--mvc-ease), background var(--mvc-dur) var(--mvc-ease);
         }
         .mvc-switch.checked .mvc-switch-thumb {
-            transform: translateX(18px);
+            transform: translateX(16px);
             background: var(--mvc-on-accent);
         }
 
         /* Grid buttons */
         .mvc-grid-btn {
+            grid-column: 1 / -1;
             appearance: none;
             border: var(--mvc-border);
             background: transparent;

@@ -8,8 +8,6 @@
 			"suspicious": {
 				"noExplicitAny": "off",
 				"noDoubleEquals": "off",
-				"noGlobalIsNan": "off",
-				"noGlobalIsFinite": "off",
 				"noConfusingVoidType": "off",
 				"useIterableCallbackReturn": "off"
 			},

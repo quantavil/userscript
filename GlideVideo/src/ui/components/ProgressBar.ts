@@ -64,9 +64,9 @@ export class ProgressBar extends UIComponent {
 			this.eventBus.on(
 				"video:time-update",
 				({ currentTime, duration, buffered }) => {
-					this.currentTime = isFinite(currentTime) ? currentTime : 0;
-					this.duration = isFinite(duration) ? duration : 0;
-					this.buffered = isFinite(buffered) ? buffered : 0;
+					this.currentTime = Number.isFinite(currentTime) ? currentTime : 0;
+					this.duration = Number.isFinite(duration) ? duration : 0;
+					this.buffered = Number.isFinite(buffered) ? buffered : 0;
 					this.updateDisplay();
 				},
 			),
@@ -78,8 +78,8 @@ export class ProgressBar extends UIComponent {
 				this.trackWrap.classList.remove("dragging");
 				this.tooltipEl.style.display = "none";
 				if (v) {
-					this.currentTime = isFinite(v.currentTime) ? v.currentTime : 0;
-					this.duration = isFinite(v.duration) ? v.duration : 0;
+					this.currentTime = Number.isFinite(v.currentTime) ? v.currentTime : 0;
+					this.duration = Number.isFinite(v.duration) ? v.duration : 0;
 					this.updateDisplay();
 				}
 			}),
@@ -104,7 +104,7 @@ export class ProgressBar extends UIComponent {
 		if (this.isDragging) return;
 		this.tooltipEl.style.display = "none";
 
-		const duration = isFinite(this.duration) ? this.duration : 0;
+		const duration = Number.isFinite(this.duration) ? this.duration : 0;
 		const pct = duration > 0 ? clamp((this.currentTime / duration) * 100, 0, 100) : 0;
 		const bufPct = duration > 0 ? clamp((this.buffered / duration) * 100, 0, 100) : 0;
 
@@ -122,7 +122,7 @@ export class ProgressBar extends UIComponent {
 			this.trackWrap.classList.add("dragging");
 			try {
 				this.trackWrap.setPointerCapture(e.pointerId);
-			} catch (err) {}
+			} catch {}
 
 			this.updateDragPosition(e);
 			vibrate(MVC_CONFIG.HAPTIC_VIBRATION_MS);
@@ -139,7 +139,7 @@ export class ProgressBar extends UIComponent {
 			if (!this.isDragging) return;
 			e.stopPropagation();
 			e.preventDefault();
-			const duration = isFinite(this.duration) ? this.duration : 0;
+			const duration = Number.isFinite(this.duration) ? this.duration : 0;
 			const targetTime = (this.dragPct / 100) * duration;
 			this.endDrag(e);
 			this.eventBus.emit("video:seek-requested", { time: targetTime });
@@ -175,7 +175,7 @@ export class ProgressBar extends UIComponent {
 		this.tooltipEl.style.display = "none";
 		try {
 			this.trackWrap.releasePointerCapture(e.pointerId);
-		} catch (err) {}
+		} catch {}
 	}
 
 	private updateDragPosition(e: PointerEvent) {
@@ -186,7 +186,7 @@ export class ProgressBar extends UIComponent {
 		const pct = clamp((x / rect.width) * 100, 0, 100);
 		this.dragPct = pct;
 
-		const duration = isFinite(this.duration) ? this.duration : 0;
+		const duration = Number.isFinite(this.duration) ? this.duration : 0;
 		const previewTime = (pct / 100) * duration;
 		this.fillTrack.style.width = `${pct}%`;
 		this.thumbEl.style.left = `${pct}%`;

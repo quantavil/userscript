@@ -34,7 +34,7 @@ Three overlay themes, each answering the same question a different way — *how 
   <img src="https://raw.githubusercontent.com/quantavil/userscript/main/GlideVideo/asset/theme-frame.jpg" width="49%" alt="Frame theme" />
 </p>
 
-**High Contrast** — amber on near-opaque black; the only theme fully readable in direct sunlight or on a washed-out panel. &nbsp;·&nbsp; **Frame** — Halo's mechanism with a point of view: hairline corner brackets, a 1px scrub line with frame ticks, one red playhead.
+**High Contrast** — amber on near-opaque black; the only theme fully readable in direct sunlight or on a washed-out panel. &nbsp;·&nbsp; **Frame** — Halo's mechanism with a point of view: hairline corner brackets, a 1px scrub line with frame ticks, one red playhead. The brackets fade with the rest of the controls, so nothing sits on the picture while you watch.
 
 ---
 
@@ -78,12 +78,14 @@ Prefer something smaller? **Minimal Speed FAB** swaps the speed pill for a singl
 | **Rotate** | 0° / 90° / 180° / 270°, also on a long-press of the aspect-ratio button |
 | **Default speed** | Fallback speed for new videos |
 | **Skip duration** | Seconds per double-tap skip, 5–300 |
-| **Minimal speed FAB** | Compact speed badge instead of the pill |
+| **Speed FAB** | Compact speed badge instead of the pill |
 | **Progress bar** | Show or hide the scrubber |
 | **Gestures** | Master switch |
-| **Remember playback** | Restores position and speed when you come back |
-| **Scroll compatibility** | Keeps vertical page scrolling in portrait |
+| **Remember** | Restores position and speed when you come back |
+| **Page scroll** | Keeps vertical page scrolling in portrait |
 | **Reset all** | Back to defaults |
+
+Toggles sit two to a line, so the whole sheet fits without scrolling on a phone.
 
 Speed and theme are remembered per domain. Playback position is remembered per video, for the last 100. Zoom and rotation are per-video and reset on the next one, so a stray 90° never follows you around.
 

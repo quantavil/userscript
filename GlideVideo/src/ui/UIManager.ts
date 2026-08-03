@@ -78,10 +78,9 @@ export class UIManager {
 				this.hideGestureOverlay();
 			}
 		});
+		// The speed display reads playbackRate only, so ratechange is the one
+		// signal it needs — play/pause no longer changes what it shows.
 		this.eventBus.on("video:rate-changed", () => this.updateSpeedDisplay());
-		this.eventBus.on("video:play-state-changed", () => {
-			this.updateSpeedDisplay();
-		});
 		this.eventBus.on("video:transform-need-update", () => {
 			this.updateSettingsTransformUI();
 			this.updateBrightnessOverlayPosition();
@@ -597,6 +596,8 @@ export class UIManager {
 		// Force reflow
 		this.wrap.offsetHeight;
 		this.wrap.style.opacity = "1";
+		// frameEl is a sibling of wrap, not a child, so it fades on its own
+		this.frameEl?.classList.add("visible");
 
 		clearTimeout(this.store.timers.hide);
 
@@ -615,6 +616,7 @@ export class UIManager {
 		if (this.store.activeVideo?.paused || this.isAnyMenuOpen()) return;
 
 		this.wrap.style.opacity = "0";
+		this.frameEl?.classList.remove("visible");
 		clearTimeout(this.store.timers.hide);
 		this.store.timers.hide = setTimeout(() => {
 			if (this.wrap && this.wrap.style.opacity === "0") {

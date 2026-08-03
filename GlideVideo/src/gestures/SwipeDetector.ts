@@ -178,7 +178,7 @@ export class SwipeDetector {
 						let timeChange = dx * MVC_CONFIG.GESTURE_SEEK_SENSITIVITY;
 						if (
 							Math.abs(timeChange) < MVC_CONFIG.GESTURE_SEEK_DEADZONE ||
-							isNaN(video.duration) ||
+							Number.isNaN(video.duration) ||
 							video.duration === 0
 						) {
 							timeChange = 0;

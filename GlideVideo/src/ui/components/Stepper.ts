@@ -1,5 +1,6 @@
 import { vibrate } from "../../utils";
 import { UIComponent } from "../UIComponent";
+import { settingsRow } from "./settingsRow";
 
 export class Stepper extends UIComponent {
 	private valEl!: HTMLSpanElement;
@@ -15,13 +16,6 @@ export class Stepper extends UIComponent {
 	}
 
 	protected render(): HTMLDivElement {
-		const row = document.createElement("div");
-		row.className = "mvc-settings-row";
-
-		const labelEl = document.createElement("label");
-		labelEl.className = "mvc-settings-label";
-		labelEl.textContent = this.label;
-
 		const stepper = document.createElement("div");
 		stepper.className = "mvc-stepper";
 
@@ -52,8 +46,7 @@ export class Stepper extends UIComponent {
 		};
 
 		stepper.append(decBtn, this.valEl, incBtn);
-		row.append(labelEl, stepper);
-		return row;
+		return settingsRow(this.label, stepper);
 	}
 
 	public update(): void {

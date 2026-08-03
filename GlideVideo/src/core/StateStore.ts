@@ -122,7 +122,7 @@ export class StateStore {
 				GM_deleteValue("mvc_preloadEnhanced");
 				GM_deleteValue("mvc_volumeBoostEnabled");
 			}
-		} catch (e) {}
+		} catch {}
 
 		this.loadSettings();
 
@@ -160,7 +160,7 @@ export class StateStore {
 			} else {
 				localStorage.setItem(key, JSON.stringify(val));
 			}
-		} catch (e) {}
+		} catch {}
 	}
 
 	public setActiveVideo(v: HTMLVideoElement | null) {
@@ -181,7 +181,7 @@ export class StateStore {
 			} else if (window.location.href) {
 				try {
 					domain = new URL(window.location.href).hostname;
-				} catch (e) {}
+				} catch {}
 			}
 		}
 		return domain ? `mvc_lastRate_${domain}` : "mvc_lastRate";
@@ -280,7 +280,7 @@ export class StateStore {
 					return 0;
 				return time;
 			}
-		} catch (e) {}
+		} catch {}
 		return 0;
 	}
 
@@ -289,7 +289,7 @@ export class StateStore {
 		const time = video.currentTime;
 		if (
 			time === undefined ||
-			isNaN(time) ||
+			Number.isNaN(time) ||
 			time < MVC_CONFIG.POSITION_SAVE_MIN_TIME
 		)
 			return;
@@ -318,7 +318,7 @@ export class StateStore {
 			}
 
 			this.storageSet(key, positions);
-		} catch (e) {}
+		} catch {}
 	}
 
 	private getVideoId(v: HTMLVideoElement): string {
@@ -350,7 +350,7 @@ export class StateStore {
 
 		try {
 			this.updateVideoMetadata(v, { videoId: id, videoIdSrc: src });
-		} catch (e) {}
+		} catch {}
 
 		return id;
 	}
@@ -429,7 +429,7 @@ function getVideoDomPath(v: HTMLVideoElement): string {
 					}
 					sibling = sibling.previousElementSibling;
 				}
-			} catch (e) {}
+			} catch {}
 			segment += `[${index}]`;
 		}
 		path.unshift(segment);

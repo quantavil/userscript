@@ -29,7 +29,7 @@ export function preventPropagation(el: HTMLElement) {
 }
 
 export function formatDuration(seconds: number): string {
-	if (!isFinite(seconds) || isNaN(seconds)) return "00:00";
+	if (!Number.isFinite(seconds) || Number.isNaN(seconds)) return "00:00";
 	const abs = Math.floor(Math.abs(seconds));
 	const h = Math.floor(abs / 3600);
 	const m = Math.floor((abs % 3600) / 60);
@@ -39,7 +39,7 @@ export function formatDuration(seconds: number): string {
 }
 
 export function formatDelta(seconds: number): string {
-	if (isNaN(seconds)) return "+0s";
+	if (Number.isNaN(seconds)) return "+0s";
 	const sign = seconds < 0 ? "-" : "+";
 	const abs = Math.floor(Math.abs(seconds));
 	if (abs < 60) {
@@ -90,7 +90,7 @@ export function vibrate(ms = 10) {
 	if (navigator.vibrate) {
 		try {
 			navigator.vibrate(ms);
-		} catch (e) {}
+		} catch {}
 	}
 }
 
