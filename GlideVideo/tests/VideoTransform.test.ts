@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from 'vitest';
 import { VideoTransform } from '../src/video/VideoTransform';
 import { EventBus } from '../src/events/EventBus';
 import { StateStore } from '../src/core/StateStore';
@@ -409,5 +409,47 @@ describe('VideoTransform', () => {
         
         expect(store._rateOverrideCount).toBe(1);
         expect(setRateSpy).toHaveBeenCalledWith(1.5, false);
+    });
+});
+
+describe('VideoTransform — rotation fit scale', () => {
+    // Rotating alone makes a portrait clip in a landscape box worse: the
+    // letterboxed strip just turns on its side. The fit scale is what makes
+    // the rotated content fill the box.
+    const calc = (proto: any, W: number, H: number, vw: number, vh: number, rot: number) =>
+        proto.getRotationFitScale.call({}, {
+            clientWidth: W, clientHeight: H, videoWidth: vw, videoHeight: vh,
+        } as any, rot);
+
+    let proto: any;
+    beforeAll(async () => {
+        proto = (await import('../src/video/VideoTransform')).VideoTransform.prototype;
+    });
+
+    it('is a no-op at 0 and 180 degrees', () => {
+        expect(calc(proto, 640, 360, 720, 1280, 0)).toBe(1);
+        expect(calc(proto, 640, 360, 720, 1280, 180)).toBe(1);
+    });
+
+    it('scales a portrait clip up to fill a landscape box when turned', () => {
+        // 9:16 content letterboxed in a 16:9 box renders as a 202x360 strip.
+        // Turned 90 deg its footprint is 360x202, so it can grow ~1.78x.
+        const k = calc(proto, 640, 360, 720, 1280, 90);
+        expect(k).toBeGreaterThan(1.7);
+        expect(k).toBeLessThan(1.8);
+        // The rotated content must not overflow the box in either axis.
+        const [wc, hc] = [360 * (720 / 1280), 360];
+        expect(hc * k).toBeLessThanOrEqual(640 + 0.01);
+        expect(wc * k).toBeLessThanOrEqual(360 + 0.01);
+    });
+
+    it('scales a landscape clip down so it still fits when turned', () => {
+        const k = calc(proto, 640, 360, 1920, 1080, 270);
+        expect(k).toBeCloseTo(360 / 640, 5);
+    });
+
+    it('falls back to 1 when dimensions are not known yet', () => {
+        expect(calc(proto, 0, 0, 0, 0, 90)).toBe(1);
+        expect(calc(proto, 640, 360, 0, 0, 90)).toBe(1);
     });
 });

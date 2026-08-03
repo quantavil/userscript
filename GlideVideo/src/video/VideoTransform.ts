@@ -16,6 +16,7 @@ const VIDEO_LISTENED_EVENTS = [
 	"progress",
 	"seeking",
 	"seeked",
+	"loadedmetadata",
 ];
 
 export class VideoTransform implements EventListenerObject {
@@ -53,9 +54,12 @@ export class VideoTransform implements EventListenerObject {
 	}
 
 	private setupObservers() {
-		this.videoResizeObserver = new ResizeObserver(() =>
-			this.throttledPositionOnVideo(),
-		);
+		this.videoResizeObserver = new ResizeObserver(() => {
+			// The rotation fit-scale is derived from the box size, so it has to
+			// be recomputed whenever the box changes.
+			if (this.store.settings.transform?.rot) this.applyVideoTransform();
+			this.throttledPositionOnVideo();
+		});
 		this.videoMutationObserver = new MutationObserver(() =>
 			this.throttledPositionOnVideo(),
 		);
@@ -179,8 +183,10 @@ export class VideoTransform implements EventListenerObject {
 			const meta = this.store.getVideoMetadata(v);
 			if (!meta.transform) {
 				this.store.updateVideoMetadata(v, {
-					transform: { ratio: "fit", zoom: 1 },
+					transform: { ratio: "fit", zoom: 1, rot: 0 },
 				});
+			} else if (meta.transform.rot === undefined) {
+				meta.transform.rot = 0;
 			}
 			this.store.settings.transform = meta.transform!;
 
@@ -320,6 +326,11 @@ export class VideoTransform implements EventListenerObject {
 				}
 				this.eventBus.emit("video:play-state-changed", { playing: false });
 				this.eventBus.emit("control:visibility-requested", { visible: true });
+				break;
+			case "loadedmetadata":
+				// videoWidth/Height are only known now — the fit-scale depends on them
+				if (this.store.settings.transform?.rot) this.applyVideoTransform();
+				if (this.store.activeVideo) this.emitTimeUpdate(this.store.activeVideo);
 				break;
 			case "durationchange":
 			case "progress":
@@ -584,11 +595,41 @@ export class VideoTransform implements EventListenerObject {
 		}
 	}
 
+	/**
+	 * Scale needed so a rotated video still fills its layout box.
+	 *
+	 * Rotating alone makes a portrait clip in a landscape box *worse*: the
+	 * letterboxed strip just turns on its side. Rotated 90°, the rendered
+	 * content's footprint is (h × w), so scale by whatever makes that fit the
+	 * original box.
+	 *
+	 * ponytail: assumes object-fit:contain framing — exact for "fit",
+	 * approximate for fill/stretch. Good enough; revisit if it looks wrong.
+	 */
+	public getRotationFitScale(v: HTMLVideoElement, rot: number): number {
+		if (rot % 180 === 0) return 1;
+		const W = v.clientWidth;
+		const H = v.clientHeight;
+		const vw = v.videoWidth;
+		const vh = v.videoHeight;
+		if (!W || !H || !vw || !vh) return 1;
+
+		const boxAspect = W / H;
+		const vidAspect = vw / vh;
+		// Rendered content size under object-fit: contain
+		const [wc, hc] =
+			vidAspect > boxAspect ? [W, W / vidAspect] : [H * vidAspect, H];
+		if (!wc || !hc) return 1;
+		// After a quarter turn the footprint is hc wide by wc tall
+		return Math.min(W / hc, H / wc);
+	}
+
 	public applyVideoTransform() {
 		if (!this.store.activeVideo) return;
 		const { ratio, zoom } = this.store.settings.transform;
+		const rot = this.store.settings.transform.rot || 0;
 
-		const isDefault = ratio === "fit" && zoom === 1;
+		const isDefault = ratio === "fit" && zoom === 1 && rot === 0;
 		const meta = this.store.getVideoMetadata(this.store.activeVideo);
 
 		if (isDefault) {
@@ -624,8 +665,11 @@ export class VideoTransform implements EventListenerObject {
 
 		this.store.activeVideo.style.objectFit =
 			ratio === "fit" ? "contain" : ratio === "fill" ? "cover" : "fill";
+
+		const fit = this.getRotationFitScale(this.store.activeVideo, rot);
+		const rotPart = rot ? ` rotate(${rot}deg)` : "";
 		this.store.activeVideo.style.transform =
-			`${origTransform} scale(${zoom})`.trim();
+			`${origTransform}${rotPart} scale(${zoom * fit})`.trim();
 	}
 
 	public onFullScreenChange() {

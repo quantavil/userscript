@@ -48,6 +48,13 @@ describe('VideoTracker', () => {
             disconnect = vi.fn();
         };
 
+        // Mock ResizeObserver
+        (global as any).ResizeObserver = class {
+            observe = vi.fn();
+            unobserve = vi.fn();
+            disconnect = vi.fn();
+        };
+
         // Mock MutationObserver
         (global as any).MutationObserver = class {
             constructor(cb: any) {
@@ -137,6 +144,7 @@ describe('VideoTracker', () => {
         delete (global as any).localStorage;
         delete (global as any).Element;
         delete (global as any).IntersectionObserver;
+        delete (global as any).ResizeObserver;
         delete (global as any).MutationObserver;
         delete (global as any).getComputedStyle;
     });
@@ -157,6 +165,8 @@ describe('VideoTracker', () => {
             clientWidth: 640,
             clientHeight: 360,
             childNodes: [],
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
             getBoundingClientRect: vi.fn().mockReturnValue({
                 left: 100,
                 top: 100,

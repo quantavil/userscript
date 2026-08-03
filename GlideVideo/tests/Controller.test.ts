@@ -3,7 +3,10 @@ import { Controller } from '../src/core/Controller';
 
 // Mock injectStyles
 vi.mock('../src/ui/styles/css', () => ({
-    injectStyles: vi.fn()
+    injectStyles: vi.fn(),
+    applyTheme: vi.fn(),
+    MVC_THEMES: ['halo', 'contrast', 'frame'],
+    MVC_THEME_LABELS: { halo: 'Halo', contrast: 'High Contrast', frame: 'Frame' },
 }));
 
 describe('Controller', () => {

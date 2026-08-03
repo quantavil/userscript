@@ -61,7 +61,7 @@ In portrait, vertical swipes are handed back to the page so feeds still scroll. 
 |---|---|
 | **Speed** | `−` / `+` steps by 0.10×, hold to fine-tune by 0.05×. Tap the number to play/pause, long-press to reset to 1.00× |
 | **Scrubber** | Drag to seek. Shows buffered range and a timestamp preview |
-| **Aspect ratio** | Cycles Fit → Fill → Stretch |
+| **Aspect ratio** | Tap cycles Fit → Fill → Stretch. **Hold to rotate** 90° at a time — turns a portrait clip to fill a landscape screen, scaled to fit rather than just tipped on its side |
 | **Lock** | Blocks every gesture, so a stray palm does nothing |
 | **Picture-in-Picture** | Where the browser supports it |
 | **Settings** | Below |
@@ -75,6 +75,7 @@ Prefer something smaller? **Minimal Speed FAB** swaps the speed pill for a singl
 | | |
 |---|---|
 | **Theme** | Halo, High Contrast, or Frame |
+| **Rotate** | 0° / 90° / 180° / 270°, also on a long-press of the aspect-ratio button |
 | **Default speed** | Fallback speed for new videos |
 | **Skip duration** | Seconds per double-tap skip, 5–300 |
 | **Minimal speed FAB** | Compact speed badge instead of the pill |
@@ -84,7 +85,7 @@ Prefer something smaller? **Minimal Speed FAB** swaps the speed pill for a singl
 | **Scroll compatibility** | Keeps vertical page scrolling in portrait |
 | **Reset all** | Back to defaults |
 
-Speed is remembered per domain. Playback position is remembered per video, for the last 100.
+Speed and theme are remembered per domain. Playback position is remembered per video, for the last 100. Zoom and rotation are per-video and reset on the next one, so a stray 90° never follows you around.
 
 If a site keeps overriding your speed, GlideVideo pushes back three times, then says so in a toast and lets the site win rather than fighting in a loop.
 

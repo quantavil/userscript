@@ -4,10 +4,17 @@ import type { EventBus } from "../../events/EventBus";
 import { clamp, vibrate } from "../../utils";
 import { Stepper } from "../components/Stepper";
 import { Switch } from "../components/Switch";
+import {
+	MVC_THEME_LABELS,
+	MVC_THEMES,
+	type MvcTheme,
+} from "../styles/css";
 import { UIComponent } from "../UIComponent";
 import type { UIManager } from "../UIManager";
 
 export class SettingsSheet extends UIComponent {
+	public themeStepper!: Stepper;
+	public rotateStepper!: Stepper;
 	public defaultSpeedStepper!: Stepper;
 	public skipStepper!: Stepper;
 	public minimalSpeedFabSwitch!: Switch;
@@ -55,9 +62,41 @@ export class SettingsSheet extends UIComponent {
 		card.className = "mvc-settings-card";
 		sheet.appendChild(card);
 
-		// 1. Default Speed Stepper
+		// 1. Theme — a Stepper cycling an index is exactly a theme picker
+		this.themeStepper = new Stepper(
+			"Theme",
+			(i) => MVC_THEME_LABELS[MVC_THEMES[i] as MvcTheme] ?? "Halo",
+			() => {
+				const i = MVC_THEMES.indexOf(this.store.settings.theme as MvcTheme);
+				return i < 0 ? 0 : i;
+			},
+			(dir) => {
+				const n = MVC_THEMES.length;
+				const cur = MVC_THEMES.indexOf(this.store.settings.theme as MvcTheme);
+				const next = ((cur < 0 ? 0 : cur) + dir + n) % n;
+				this.store.saveSetting("theme", MVC_THEMES[next]);
+			},
+		);
+		card.appendChild(this.themeStepper.dom);
+
+		// 2. Rotation — also reachable by long-pressing the ratio button
+		this.rotateStepper = new Stepper(
+			"Rotate",
+			(v) => `${v}°`,
+			() => this.store.settings.transform.rot || 0,
+			(dir) => {
+				const t = this.store.settings.transform;
+				t.rot = (((t.rot || 0) + dir * 90) % 360 + 360) % 360;
+				this.store.saveSetting("transform", t);
+				this.eventBus.emit("video:transform-need-update", undefined);
+				this.ui.updateRotationUI();
+			},
+		);
+		card.appendChild(this.rotateStepper.dom);
+
+		// 3. Default Speed Stepper
 		this.defaultSpeedStepper = new Stepper(
-			"Default Speed:",
+			"Default speed",
 			(v) => `${v.toFixed(2)}x`,
 			() => this.store.settings.defaultSpeed,
 			(dir) => {
@@ -74,7 +113,7 @@ export class SettingsSheet extends UIComponent {
 
 		// 2. Skip Duration Stepper
 		this.skipStepper = new Stepper(
-			"Skip Duration:",
+			"Skip duration",
 			(v) => `${v}s`,
 			() => this.store.settings.skipSeconds,
 			(dir) => {
@@ -95,12 +134,13 @@ export class SettingsSheet extends UIComponent {
 		transformResetBtn.style.width = "100%";
 		transformResetBtn.appendChild(this.ui.getIcon("reset"));
 		const resetLabel = document.createElement("span");
-		resetLabel.textContent = "Reset All";
+		resetLabel.textContent = "Reset all";
 		transformResetBtn.appendChild(resetLabel);
 		transformResetBtn.onclick = (e) => {
 			e.stopPropagation();
 			vibrate(MVC_CONFIG.HAPTIC_VIBRATION_MS);
-			this.store.saveSetting("transform", { ratio: "fit", zoom: 1 });
+			this.store.saveSetting("transform", { ratio: "fit", zoom: 1, rot: 0 });
+			this.store.saveSetting("theme", "halo");
 
 			this.store.saveSetting("defaultSpeed", MVC_CONFIG.SPEED_DEFAULT);
 			this.store.saveSetting("skipSeconds", MVC_CONFIG.SKIP_DEFAULT);
@@ -118,7 +158,7 @@ export class SettingsSheet extends UIComponent {
 
 		// 5. Minimal Speed FAB Switch
 		this.minimalSpeedFabSwitch = new Switch(
-			"Minimal Speed FAB:",
+			"Minimal speed FAB",
 			!!this.store.settings.minimalSpeedFab,
 			(isChecked) => {
 				this.store.saveSetting("minimalSpeedFab", isChecked);
@@ -128,7 +168,7 @@ export class SettingsSheet extends UIComponent {
 
 		// 6. Progress Bar Scrubber Switch
 		this.progressBarSwitch = new Switch(
-			"Progress Bar:",
+			"Progress bar",
 			this.store.settings.progressBarEnabled !== false,
 			(isChecked) => {
 				this.store.saveSetting("progressBarEnabled", isChecked);
@@ -138,7 +178,7 @@ export class SettingsSheet extends UIComponent {
 
 		// 7. Swipe & Hold Gestures Switch
 		this.gestureSwitch = new Switch(
-			"Gestures:",
+			"Gestures",
 			this.store.settings.gesturesEnabled,
 			(isChecked) => {
 				this.store.saveSetting("gesturesEnabled", isChecked);
@@ -148,7 +188,7 @@ export class SettingsSheet extends UIComponent {
 
 		// 9. Remember Playback Switch
 		this.rememberPlaybackSwitch = new Switch(
-			"Remember Playback:",
+			"Remember playback",
 			this.store.settings.rememberPlayback,
 			(isChecked) => {
 				this.store.saveSetting("rememberPlayback", isChecked);
@@ -158,7 +198,7 @@ export class SettingsSheet extends UIComponent {
 
 		// 10. Scroll Compatibility Switch
 		this.scrollCompatibilitySwitch = new Switch(
-			"Scroll Compatibility:",
+			"Scroll compatibility",
 			this.store.settings.scrollCompatibility,
 			(isChecked) => {
 				this.store.saveSetting("scrollCompatibility", isChecked);
@@ -170,6 +210,8 @@ export class SettingsSheet extends UIComponent {
 	}
 
 	public update(): void {
+		this.themeStepper.update();
+		this.rotateStepper.update();
 		this.defaultSpeedStepper.update();
 		this.skipStepper.update();
 		this.minimalSpeedFabSwitch.setChecked(

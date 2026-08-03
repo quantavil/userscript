@@ -27,7 +27,7 @@ src/
 │   ├── components/         # Reusable widgets (Switch, Stepper, ProgressBar)
 │   ├── panels/             # Panel cards (SpeedStepper, SettingsSheet)
 │   └── styles/
-│       └── css.ts          # Injected stylesheet styles
+│       └── css.ts          # Token system + the three themes, injected as one stylesheet
 └── video/
     ├── VideoAdapter.ts     # Site-specific video filtering (Generic + YouTube adapters)
     ├── VideoTracker.ts     # Mutation/Shadow DOM active video detection
@@ -38,6 +38,7 @@ src/
 - **Pub/Sub decoupling**: Components and views emit events on the `EventBus` to prevent tight cross-linking.
 - **Self-contained Panel Views**: UI panels manage their own local gestures/listeners (e.g. spaced speed stepper, settings button).
 - **CSS Injection**: Styles are written as template literal CSS in `src/ui/styles/css.ts` and loaded dynamically.
+- **Themes are token blocks, nothing else**: Every visual value is a `--mvc-*` custom property; components read tokens and never reference a theme selector. A theme is ~30 lines of tokens. `applyTheme()` sets `data-mvc-theme` on `<html>` — the one ancestor shared by the overlays, which are scattered across `document.body` and the fullscreen element. Adding a fourth theme is a token block plus an entry in `MVC_THEMES`.
 - **Single Source of Version**: Version and description are loaded dynamically from `package.json` inside `vite.config.ts` to prevent DRY violations.
 
 ## Dependencies & Setup
@@ -72,6 +73,10 @@ src/
 - EventBus Unsubscribers in UI Components: UI components store returned `EventBus.on` unsubscriber functions in an array and execute them during `destroy()` to guarantee zero event listener leaks.
 
 ## Blunders
+- **Active-video re-evaluation must be event-driven, not one-shot**: `evaluateActive()` rejects videos on size, visibility and muted-ness — all of which change after the first pass. IntersectionObserver does *not* fire again when an element merely resizes or unmutes, so a video rejected at `INITIAL_EVAL_DELAY` was never reconsidered and the overlay never appeared until a page refresh. Fixed by routing every tracked video through `watchVideo()`/`unwatchVideo()`, which register an IntersectionObserver, a shared ResizeObserver, and capture-phase `play`/`loadedmetadata`/`volumechange` listeners together so they cannot drift apart. Media events do not bubble, so a delegated listener on an ancestor will not work.
+- **Debounce starvation**: `debounce()` takes a `maxWait`; without it a page that mutates continuously (ad reloads, live chat) resets the timer forever and the trailing call never runs.
+- **Rotation needs a fit-scale, not just a rotate**: `rotate(90deg)` alone turns a letterboxed portrait strip into a letterboxed landscape strip — strictly worse. `getRotationFitScale()` derives the extra scale from the intrinsic aspect vs the box aspect. It depends on `videoWidth`/`videoHeight`, so it must be recomputed on `loadedmetadata` and on every ResizeObserver tick.
+- **`el.isConnected === false` is not `!el.isConnected`**: the mutation walk deliberately skips only *explicitly* disconnected nodes; loosening it to a falsy check drops nodes whose `isConnected` is merely undefined.
 - **Early Exit Video Check**: Exiting early in `safeInit` if no video exists breaks SPAs (e.g. YouTube). Fixed by deferring initialization until a video is detected via a lightweight observer.
 - **Event Listener Cleanup**: All global listeners must be registered under an `AbortController` signal to prevent memory/closure leaks during SPA page transitions.
 - **Settings Sheet Landscape Overflow**: Viewport bottom overflows in landscape mode. Fixed by applying a flex scrollable container, dynamic max-height, and a landscape media query.

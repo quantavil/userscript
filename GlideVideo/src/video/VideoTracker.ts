@@ -5,12 +5,21 @@ import type { EventBus } from "../events/EventBus";
 import { debounce, findAllVideos, isPlaying } from "../utils";
 import { getVideoAdapter, type VideoAdapter } from "./VideoAdapter";
 
+/**
+ * Media events don't bubble, so they can't be caught by a listener on an
+ * ancestor — but they do capture. Each of these changes something a reject
+ * filter in evaluateActive() depends on.
+ */
+const REEVALUATE_ON = ["play", "loadedmetadata", "volumechange"];
+
 export class VideoTracker {
 	public intersectionObserver?: IntersectionObserver;
 	public mutationObserver?: MutationObserver;
+	public resizeObserver?: ResizeObserver;
 	public shadowObservers = new Map<ShadowRoot, MutationObserver>();
 	private originalAttachShadow?: typeof Element.prototype.attachShadow;
 	private readonly adapter: VideoAdapter = getVideoAdapter();
+	private readonly onMediaEvent = () => this.debouncedEvaluate();
 
 	public debouncedEvaluate: () => void;
 
@@ -21,6 +30,7 @@ export class VideoTracker {
 		this.debouncedEvaluate = debounce(
 			this.evaluateActive.bind(this),
 			MVC_CONFIG.MUTATION_DEBOUNCE_MS,
+			MVC_CONFIG.MUTATION_DEBOUNCE_MAX_MS,
 		);
 	}
 
@@ -29,11 +39,42 @@ export class VideoTracker {
 		setTimeout(() => this.evaluateActive(), MVC_CONFIG.INITIAL_EVAL_DELAY);
 	}
 
+	/**
+	 * Every video we watch goes through here, so the IntersectionObserver, the
+	 * ResizeObserver and the media listeners can never drift apart.
+	 *
+	 * The ResizeObserver is the important one: a video that is 0x0 or too small
+	 * when evaluateActive() first runs gets rejected, but IntersectionObserver
+	 * has already reported it as intersecting — so it never fires again and the
+	 * video is never reconsidered once the player sizes it. That is the "have to
+	 * refresh the page" bug.
+	 */
+	public watchVideo(v: HTMLVideoElement) {
+		this.intersectionObserver?.observe(v);
+		this.resizeObserver?.observe(v);
+		REEVALUATE_ON.forEach((ev) =>
+			v.addEventListener(ev, this.onMediaEvent, { passive: true }),
+		);
+	}
+
+	public unwatchVideo(v: HTMLVideoElement) {
+		this.intersectionObserver?.unobserve(v);
+		this.resizeObserver?.unobserve(v);
+		REEVALUATE_ON.forEach((ev) => v.removeEventListener(ev, this.onMediaEvent));
+	}
+
 	public destroy() {
 		if (this.intersectionObserver) this.intersectionObserver.disconnect();
 		if (this.mutationObserver) this.mutationObserver.disconnect();
+		if (this.resizeObserver) this.resizeObserver.disconnect();
 		this.shadowObservers.forEach((obs) => obs.disconnect());
 		this.shadowObservers.clear();
+		// Nothing after this point may be skipped — a throw here would leave the
+		// attachShadow patch installed.
+		this.store.visibleVideos.forEach((_, v) => {
+			if (typeof v?.removeEventListener !== "function") return;
+			REEVALUATE_ON.forEach((ev) => v.removeEventListener(ev, this.onMediaEvent));
+		});
 		if (this.originalAttachShadow) {
 			Element.prototype.attachShadow = this.originalAttachShadow;
 			this.originalAttachShadow = undefined;
@@ -108,9 +149,9 @@ export class VideoTracker {
 			(e) => this.handleIntersection(e),
 			{ threshold: 0.05 },
 		);
-		findAllVideos(document).forEach((v) =>
-			this.intersectionObserver?.observe(v),
-		);
+		// A video growing into eligibility fires no IntersectionObserver entry
+		this.resizeObserver = new ResizeObserver(() => this.debouncedEvaluate());
+		findAllVideos(document).forEach((v) => this.watchVideo(v));
 
 		this.mutationObserver = new MutationObserver((m) => this.handleMutation(m));
 		const root = document.body || document.documentElement;
@@ -170,7 +211,7 @@ export class VideoTracker {
 						if (videos.length) {
 							removedNodesPresent = true;
 							videos.forEach((v) => {
-								this.intersectionObserver?.unobserve(v);
+								this.unwatchVideo(v);
 								this.store.visibleVideos.delete(v);
 								if (v === this.store.activeVideo) activeVideoRemoved = true;
 							});
@@ -208,7 +249,7 @@ export class VideoTracker {
 					const videos = findAllVideos(el);
 					if (videos.length > 0) {
 						videos.forEach((v) => {
-							this.intersectionObserver?.observe(v);
+							this.watchVideo(v);
 							videoAdded = true;
 						});
 					}
@@ -241,9 +282,7 @@ export class VideoTracker {
 	public setupShadowRootObserver(shadowRoot: ShadowRoot) {
 		if (this.shadowObservers.has(shadowRoot)) {
 			if (this.store.isInitialized) {
-				findAllVideos(shadowRoot).forEach((v) =>
-					this.intersectionObserver?.observe(v),
-				);
+				findAllVideos(shadowRoot).forEach((v) => this.watchVideo(v));
 			}
 			return;
 		}
@@ -275,9 +314,7 @@ export class VideoTracker {
 		this.shadowObservers.set(shadowRoot, observer);
 
 		if (this.store.isInitialized) {
-			findAllVideos(shadowRoot).forEach((v) =>
-				this.intersectionObserver?.observe(v),
-			);
+			findAllVideos(shadowRoot).forEach((v) => this.watchVideo(v));
 			this.observeShadowRoots(shadowRoot);
 		} else {
 			if (findAllVideos(shadowRoot).length > 0) {

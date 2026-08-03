@@ -94,14 +94,32 @@ export function vibrate(ms = 10) {
 	}
 }
 
+/**
+ * Trailing-edge debounce with an optional ceiling on how long the call can be
+ * deferred. Without `maxWait`, a page that mutates continuously (ad reloads,
+ * live chat, YouTube) resets the timer forever and the callback never runs.
+ */
 export function debounce<T extends (...args: any[]) => void>(
 	func: T,
 	wait: number,
+	maxWait?: number,
 ): (...args: Parameters<T>) => void {
 	let timeout: ReturnType<typeof setTimeout> | undefined;
+	let firstCallAt = 0;
 	return (...args: Parameters<T>) => {
+		const now = Date.now();
+		if (!timeout) firstCallAt = now;
+		if (maxWait !== undefined && now - firstCallAt >= maxWait) {
+			clearTimeout(timeout);
+			timeout = undefined;
+			func(...args);
+			return;
+		}
 		clearTimeout(timeout);
-		timeout = setTimeout(() => func(...args), wait);
+		timeout = setTimeout(() => {
+			timeout = undefined;
+			func(...args);
+		}, wait);
 	};
 }
 

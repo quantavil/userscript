@@ -7,7 +7,8 @@ export interface Settings {
 	skipSeconds: number;
 	defaultSpeed: number;
 	lastRate: number;
-	transform: { ratio: string; zoom: number };
+	theme: string;
+	transform: { ratio: string; zoom: number; rot: number };
 	gesturesEnabled: boolean;
 	scrollCompatibility: boolean;
 	rememberPlayback: boolean;
@@ -17,7 +18,7 @@ export interface Settings {
 }
 
 export interface VideoMetadata {
-	transform?: { ratio: string; zoom: number };
+	transform?: { ratio: string; zoom: number; rot: number };
 	videoId?: string;
 	videoIdSrc?: string;
 	lastRate?: number;
@@ -206,7 +207,8 @@ export class StateStore {
 				MVC_CONFIG.SPEED_DEFAULT,
 			),
 			lastRate: savedRate,
-			transform: { ratio: "fit", zoom: 1 },
+			theme: this.storageGet(this.getStorageKey("theme"), "halo"),
+			transform: { ratio: "fit", zoom: 1, rot: 0 },
 			gesturesEnabled: this.storageGet(
 				this.getStorageKey("gesturesEnabled"),
 				true,

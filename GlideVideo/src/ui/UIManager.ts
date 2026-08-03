@@ -12,6 +12,7 @@ import { ProgressBar } from "./components/ProgressBar";
 import { getSvgIcon, type IconName } from "./icons";
 import { SettingsSheet } from "./panels/SettingsSheet";
 import { SpeedStepper } from "./panels/SpeedStepper";
+import { applyTheme } from "./styles/css";
 
 export class UIManager {
 	public wrap: HTMLDivElement | null = null;
@@ -22,6 +23,7 @@ export class UIManager {
 	public lockBtn: HTMLButtonElement | null = null;
 	public ratioBtn: HTMLButtonElement | null = null;
 	public lockShield: HTMLDivElement | null = null;
+	public frameEl: HTMLDivElement | null = null;
 	public settingsSheet: SettingsSheet | null = null;
 	public backdrop: HTMLDivElement | null = null;
 	public toast: HTMLDivElement | null = null;
@@ -57,8 +59,10 @@ export class UIManager {
 	}
 
 	public init() {
+		applyTheme(this.store.settings.theme);
 		this.createMainUI();
 		this.attachGlobalListeners();
+		this.updateRotationUI();
 	}
 
 	private setupSubscriptions() {
@@ -89,12 +93,16 @@ export class UIManager {
 				this.updateBrightnessOverlayPosition();
 			}
 		});
-		this.eventBus.on("settings:changed", ({ key }) => {
-			if (key !== "transform") {
+		this.eventBus.on("settings:changed", ({ key, val }) => {
+			if (key === "theme") {
+				applyTheme(val);
+				if (this.settingsSheet) this.settingsSheet.update();
+			} else if (key !== "transform") {
 				if (this.settingsSheet) this.settingsSheet.update();
 			} else {
 				this.updateSettingsTransformUI();
 				this.updateBrightnessOverlayPosition();
+				this.updateRotationUI();
 			}
 		});
 		this.eventBus.on("video:double-tap-skipped", ({ side, x, y, seconds }) => {
@@ -267,6 +275,12 @@ export class UIManager {
 		preventPropagation(this.settingsBtn);
 
 		// Lock Shield
+		// Camera-gate corner brackets (only visible in the Frame theme)
+		const frameEl = this.createEl("div", "mvc-frame");
+		for (let i = 0; i < 4; i++) frameEl.appendChild(this.createEl("i"));
+		container.appendChild(frameEl);
+		this.frameEl = frameEl;
+
 		const lockShield = this.createEl("div", "mvc-lock-shield");
 		lockShield.style.display = "none";
 		const blk = (e: Event) => {
@@ -304,16 +318,17 @@ export class UIManager {
 		};
 		preventPropagation(this.lockBtn);
 
-		// Aspect Ratio Button
+		// Aspect Ratio Button — tap cycles ratio, long-press rotates
 		this.ratioBtn = document.createElement("button");
 		this.ratioBtn.className = "mvc-ratio-btn";
-		this.ratioBtn.setAttribute("aria-label", "Aspect Ratio");
+		this.ratioBtn.setAttribute("aria-label", "Aspect ratio — hold to rotate");
 		this.ratioBtn.style.pointerEvents = "auto";
 		this.ratioBtn.appendChild(this.getIcon("ratio"));
 		this.ratioBtn.onclick = (e) => {
 			e.stopPropagation();
 			this.resetCollapseTimer();
-			vibrate(10);
+			if (this.consumeRotateLongPress()) return;
+			vibrate(MVC_CONFIG.HAPTIC_VIBRATION_MS);
 			const ratios = ["fit", "fill", "stretch"];
 			const currentRatio = this.store.settings.transform.ratio || "fit";
 			const nextIndex = (ratios.indexOf(currentRatio) + 1) % ratios.length;
@@ -322,8 +337,9 @@ export class UIManager {
 			this.store.settings.transform.ratio = nextRatio;
 			this.store.saveSetting("transform", this.store.settings.transform);
 			this.eventBus.emit("video:transform-need-update", undefined);
-			this.showToast(`Aspect Ratio: ${nextRatio.toUpperCase()}`);
+			this.showToast(`Aspect ratio: ${nextRatio.toUpperCase()}`);
 		};
+		this.attachRotateLongPress(this.ratioBtn);
 		preventPropagation(this.ratioBtn);
 
 		// Create collapsible controls group at the top right
@@ -410,6 +426,49 @@ export class UIManager {
 		if (this.stepper) {
 			this.stepper.update();
 		}
+	}
+
+	// ── Rotation (long-press on the ratio button) ───────────────────────────
+	private rotateTimer?: ReturnType<typeof setTimeout>;
+	private rotateFired = false;
+
+	/** Swallows the click that follows a long-press so ratio doesn't also cycle. */
+	private consumeRotateLongPress(): boolean {
+		if (!this.rotateFired) return false;
+		this.rotateFired = false;
+		return true;
+	}
+
+	private attachRotateLongPress(btn: HTMLButtonElement) {
+		const start = () => {
+			clearTimeout(this.rotateTimer);
+			this.rotateFired = false;
+			this.rotateTimer = setTimeout(() => {
+				this.rotateFired = true;
+				this.cycleRotation();
+			}, MVC_CONFIG.LONG_PRESS_DURATION_MS);
+		};
+		const cancel = () => clearTimeout(this.rotateTimer);
+		btn.addEventListener("pointerdown", start);
+		["pointerup", "pointerleave", "pointercancel"].forEach((ev) =>
+			btn.addEventListener(ev, cancel),
+		);
+	}
+
+	public cycleRotation() {
+		const t = this.store.settings.transform;
+		t.rot = ((t.rot || 0) + 90) % 360;
+		this.store.saveSetting("transform", t);
+		this.eventBus.emit("video:transform-need-update", undefined);
+		this.updateRotationUI();
+		vibrate(MVC_CONFIG.LONG_PRESS_VIBRATE_MS);
+		this.showToast(t.rot === 0 ? "Rotation reset" : `Rotated ${t.rot}°`);
+	}
+
+	public updateRotationUI() {
+		if (!this.ratioBtn) return;
+		const rot = this.store.settings.transform?.rot || 0;
+		this.ratioBtn.setAttribute("data-rot", String(rot));
 	}
 
 	public toggleMenu(menuEl: HTMLElement, anchorEl: HTMLElement) {
@@ -723,14 +782,14 @@ export class UIManager {
 				height: `${rect.height}px`,
 			});
 		}
-		if (this.lockShield) {
-			Object.assign(this.lockShield.style, {
-				top: `${rect.top}px`,
-				left: `${rect.left}px`,
-				width: `${rect.width}px`,
-				height: `${rect.height}px`,
-			});
-		}
+		const box = {
+			top: `${rect.top}px`,
+			left: `${rect.left}px`,
+			width: `${rect.width}px`,
+			height: `${rect.height}px`,
+		};
+		if (this.lockShield) Object.assign(this.lockShield.style, box);
+		if (this.frameEl) Object.assign(this.frameEl.style, box);
 	}
 
 	public expandControlsRow() {
