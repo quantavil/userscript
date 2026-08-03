@@ -1,0 +1,20 @@
+{
+  "name": "better-alternativeto",
+  "version": "1.1.0",
+  "description": "Card links, a pinned compact filter bar and a real dark-mode button for AlternativeTo.",
+  "type": "module",
+  "author": "quantavil",
+  "license": "MIT",
+  "scripts": {
+    "build": "bunx vite build",
+    "dev": "bunx vite",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.0",
+    "vite-plugin-monkey": "^8.1.0"
+  }
+}

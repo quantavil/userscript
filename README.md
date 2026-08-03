@@ -27,6 +27,7 @@ A curated collection of modern, production-ready userscripts, browser extensions
 * **[github-filter](./github-filter)** — Glassmorphism advanced search builder for GitHub with release detection and presets.
 * **[greasey-fork-filter](./greasey-fork-filter)** — Native Greasy Fork keyword filter sync and blocking.
 * **[reddit-join](./reddit-join)** — Grid layout view with instant Join/Joined status management for Reddit communities.
+* **[better-alternativeto](./better-alternativeto)** — Website/GitHub/app-store links on AlternativeTo cards, a pinned compact filter bar with likes range, and dark mode in the header.
 
 ### 🛠️ Productivity & Site Tools
 * **[codebase-uploader](./codebase-uploader)** — Power-user codebase packager & uploader for LLM chat windows with ignore filters.
