@@ -1,7 +1,7 @@
 import { MVC_CONFIG } from "../config";
 import type { EventBus } from "../events/EventBus";
 import { GestureCoordinator } from "../gestures/GestureCoordinator";
-import { findAllVideos, isPointOnUI, shouldBlockGestures } from "../utils";
+import { isPointOnUI, shouldBlockGestures } from "../utils";
 
 export interface Settings {
 	skipSeconds: number;

@@ -3,7 +3,7 @@ import type { StateStore } from "../core/StateStore";
 // src/video/VideoTracker.ts
 import type { EventBus } from "../events/EventBus";
 import { debounce, findAllVideos, isPlaying } from "../utils";
-import { type VideoAdapter, getVideoAdapter } from "./VideoAdapter";
+import { getVideoAdapter, type VideoAdapter } from "./VideoAdapter";
 
 export class VideoTracker {
 	public intersectionObserver?: IntersectionObserver;

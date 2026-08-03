@@ -2,10 +2,10 @@ import { MVC_CONFIG } from "../../config";
 import type { StateStore } from "../../core/StateStore";
 import type { EventBus } from "../../events/EventBus";
 import { clamp, vibrate } from "../../utils";
-import { UIComponent } from "../UIComponent";
-import type { UIManager } from "../UIManager";
 import { Stepper } from "../components/Stepper";
 import { Switch } from "../components/Switch";
+import { UIComponent } from "../UIComponent";
+import type { UIManager } from "../UIManager";
 
 export class SettingsSheet extends UIComponent {
 	public defaultSpeedStepper!: Stepper;

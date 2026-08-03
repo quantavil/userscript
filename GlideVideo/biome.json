@@ -1,31 +1,35 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "organizeImports": {
-    "enabled": true
-  },
-  "linter": {
-    "enabled": true,
-    "rules": {
-      "recommended": true,
-      "suspicious": {
-        "noExplicitAny": "off",
-        "noDoubleEquals": "off",
-        "noGlobalIsNan": "off",
-        "noConfusingVoidType": "off"
-      },
-      "complexity": {
-        "noForEach": "off",
-        "useOptionalChain": "off"
-      },
-      "style": {
-        "useConst": "off",
-        "noNonNullAssertion": "off",
-        "useTemplate": "off",
-        "noUselessElse": "off"
-      }
-    }
-  },
-  "formatter": {
-    "enabled": false
-  }
+	"$schema": "https://biomejs.dev/schemas/2.5.6/schema.json",
+	"assist": { "actions": { "source": { "organizeImports": "on" } } },
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"suspicious": {
+				"noExplicitAny": "off",
+				"noDoubleEquals": "off",
+				"noGlobalIsNan": "off",
+				"noGlobalIsFinite": "off",
+				"noConfusingVoidType": "off",
+				"useIterableCallbackReturn": "off"
+			},
+			"correctness": {
+				"noUnusedVariables": "off",
+				"noUnusedFunctionParameters": "off"
+			},
+			"complexity": {
+				"noForEach": "off",
+				"useOptionalChain": "off"
+			},
+			"style": {
+				"useConst": "off",
+				"noNonNullAssertion": "off",
+				"useTemplate": "off",
+				"noUselessElse": "off"
+			}
+		}
+	},
+	"formatter": {
+		"enabled": false
+	}
 }

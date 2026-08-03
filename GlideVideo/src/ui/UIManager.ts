@@ -8,10 +8,10 @@ import {
 	preventPropagation,
 	vibrate,
 } from "../utils";
-import { type IconName, getSvgIcon } from "./icons";
+import { ProgressBar } from "./components/ProgressBar";
+import { getSvgIcon, type IconName } from "./icons";
 import { SettingsSheet } from "./panels/SettingsSheet";
 import { SpeedStepper } from "./panels/SpeedStepper";
-import { ProgressBar } from "./components/ProgressBar";
 
 export class UIManager {
 	public wrap: HTMLDivElement | null = null;

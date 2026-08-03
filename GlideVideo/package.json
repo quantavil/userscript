@@ -1,7 +1,7 @@
 {
   "name": "glidevideo",
   "private": true,
-  "version": "7.4.0",
+  "version": "8.0.0",
   "author": "quantavil (https://github.com/quantavil)",
   "homepage": "https://github.com/quantavil/userscript",
   "description": "Makes mobile web video actually usable — control playback, volume, and zoom without fumbling for tiny buttons, all through natural touch gestures. Works on any browser that support extension like Edge, Firefox, Cromite etc.",
@@ -15,13 +15,13 @@
     "lint:fix": "biome check --write src/"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
+    "@biomejs/biome": "^2.5.6",
     "@types/greasemonkey": "^4.0.7",
-    "@types/node": "^25.9.5",
+    "@types/node": "^26.1.2",
     "happy-dom": "^20.11.1",
-    "typescript": "~5.8.3",
-    "vite": "^7.3.6",
-    "vite-plugin-monkey": "^5.0.9",
-    "vitest": "^3.2.7"
+    "typescript": "~7.0.2",
+    "vite": "^8.2.0",
+    "vite-plugin-monkey": "^8.1.0",
+    "vitest": "^4.1.10"
   }
 }
