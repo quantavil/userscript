@@ -24,7 +24,7 @@ A curated collection of modern, production-ready userscripts, browser extensions
 ### 🔍 Search & Filtering
 * **[better-search](./better-search)** — Highlight or block domain results across Google, Bing, DuckDuckGo, Brave, and Yandex.
 * **[search-switcher](./search-switcher)** — Floating quick switcher to jump between multiple search engines instantly.
-* **[github-filter](./github-filter)** — Glassmorphism advanced search builder for GitHub with release detection and presets.
+* **[github-filter](./github-filter)** — GitHub search query builder with saved presets and a whole-word result filter, styled with GitHub's own Primer tokens.
 * **[greasey-fork-filter](./greasey-fork-filter)** — Native Greasy Fork keyword filter sync and blocking.
 * **[reddit-join](./reddit-join)** — Grid layout view with instant Join/Joined status management for Reddit communities.
 * **[better-alternativeto](./better-alternativeto)** — Website/GitHub/app-store links on AlternativeTo cards, a pinned compact filter bar with likes range, and dark mode in the header.
