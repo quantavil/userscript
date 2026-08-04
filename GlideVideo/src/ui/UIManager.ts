@@ -60,9 +60,23 @@ export class UIManager {
 
 	public init() {
 		applyTheme(this.store.settings.theme);
+		this.applyLeftHandModeUI();
 		this.createMainUI();
 		this.attachGlobalListeners();
 		this.updateRotationUI();
+	}
+
+	public applyLeftHandModeUI() {
+		const isLeft = !!this.store.settings.leftHandMode;
+		if (
+			document.documentElement &&
+			typeof document.documentElement.setAttribute === "function"
+		) {
+			document.documentElement.setAttribute(
+				"data-mvc-left-hand",
+				isLeft ? "true" : "false",
+			);
+		}
 	}
 
 	private setupSubscriptions() {
@@ -95,6 +109,9 @@ export class UIManager {
 		this.eventBus.on("settings:changed", ({ key, val }) => {
 			if (key === "theme") {
 				applyTheme(val);
+				if (this.settingsSheet) this.settingsSheet.update();
+			} else if (key === "leftHandMode") {
+				this.applyLeftHandModeUI();
 				if (this.settingsSheet) this.settingsSheet.update();
 			} else if (key !== "transform") {
 				if (this.settingsSheet) this.settingsSheet.update();
@@ -400,11 +417,18 @@ export class UIManager {
 			MVC_CONFIG.SIDEBAR_MAX_HEIGHT,
 		);
 		const top = rect.top + (rect.height - barH) / 2;
+		const effectiveSide = this.store.settings.leftHandMode
+			? side === "right"
+				? "left"
+				: "right"
+			: side;
 		const styles: Record<string, string> = {
 			top: `${top}px`,
 			height: `${barH}px`,
+			left: "auto",
+			right: "auto",
 		};
-		if (side === "right") {
+		if (effectiveSide === "right") {
 			styles.right = `${window.innerWidth - rect.right + 14}px`;
 		} else {
 			styles.left = `${rect.left + 14}px`;

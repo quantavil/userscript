@@ -128,6 +128,10 @@ export class SwipeDetector {
 						const needsScrollComp =
 							this.store.settings.scrollCompatibility && shouldBlockGestures();
 
+						const isLeftHand = !!this.store.settings.leftHandMode;
+						const volumeSide = isLeftHand ? "left" : "right";
+						const brightnessSide = isLeftHand ? "right" : "left";
+
 						if (absDx > absDy * 1.5) {
 							// Horizontal dominant → seek
 							if (!this.store.gestureCoordinator.acquire("swipe_seek")) {
@@ -135,23 +139,23 @@ export class SwipeDetector {
 								return;
 							}
 							mode = "seek";
-						} else if (absDy > absDx * 1.5 && startSide === "right") {
+						} else if (absDy > absDx * 1.5 && startSide === volumeSide) {
 							if (needsScrollComp) {
 								onTouchEnd();
 								return;
 							}
-							// Vertical dominant on RIGHT side → volume
+							// Vertical dominant on volume side → volume
 							if (!this.store.gestureCoordinator.acquire("volume_control")) {
 								onTouchEnd();
 								return;
 							}
 							mode = "volume";
-						} else if (absDy > absDx * 1.5 && startSide === "left") {
+						} else if (absDy > absDx * 1.5 && startSide === brightnessSide) {
 							if (needsScrollComp) {
 								onTouchEnd();
 								return;
 							}
-							// Vertical dominant on LEFT side → brightness
+							// Vertical dominant on brightness side → brightness
 							if (
 								!this.store.gestureCoordinator.acquire("brightness_control")
 							) {

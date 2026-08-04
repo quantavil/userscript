@@ -11,6 +11,7 @@ import type { UIManager } from "../UIManager";
 /** Toggles, in sheet order. Labels stay short — two share a line. */
 const TOGGLES: Array<{ label: string; key: string; def: boolean }> = [
 	{ label: "Speed FAB", key: "minimalSpeedFab", def: false },
+	{ label: "Left hand", key: "leftHandMode", def: false },
 	{ label: "Progress bar", key: "progressBarEnabled", def: true },
 	{ label: "Gestures", key: "gesturesEnabled", def: true },
 	{ label: "Remember", key: "rememberPlayback", def: true },

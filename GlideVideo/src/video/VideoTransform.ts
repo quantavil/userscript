@@ -277,10 +277,6 @@ export class VideoTransform implements EventListenerObject {
 
 		setTimeout(() => {
 			if (this.ui.wrap) this.ui.wrap.style.visibility = "visible";
-			this.eventBus.emit("control:visibility-requested", {
-				visible: true,
-				force: true,
-			});
 		}, 50);
 
 		VIDEO_LISTENED_EVENTS.forEach((ev) => {
@@ -368,17 +364,21 @@ export class VideoTransform implements EventListenerObject {
 					}
 
 					if (currentRate !== meta.lastRate) {
-						if (this.store._rateOverrideCount < 3) {
-							this.store._rateOverrideCount++;
-							this._setRate(meta.lastRate, false);
+						if (!video.paused) {
+							if (this.store._rateOverrideCount < 3) {
+								this.store._rateOverrideCount++;
+								this._setRate(meta.lastRate, false);
+							} else {
+								console.warn(
+									"[MVC] Stopped rate override loop. Site is enforcing speed:",
+									currentRate,
+								);
+								this.eventBus.emit("ui:toast", {
+									message: "Playback rate overridden by website",
+								});
+							}
 						} else {
-							console.warn(
-								"[MVC] Stopped rate override loop. Site is enforcing speed:",
-								currentRate,
-							);
-							this.eventBus.emit("ui:toast", {
-								message: "Playback rate overridden by website",
-							});
+							meta.lastRate = currentRate;
 						}
 					} else {
 						this.store._rateOverrideCount = 0;

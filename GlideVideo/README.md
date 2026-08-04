@@ -79,6 +79,7 @@ Prefer something smaller? **Minimal Speed FAB** swaps the speed pill for a singl
 | **Default speed** | Fallback speed for new videos |
 | **Skip duration** | Seconds per double-tap skip, 5–300 |
 | **Speed FAB** | Compact speed badge instead of the pill |
+| **Left hand** | Mirrors controls and swaps volume/brightness rails for left thumb use |
 | **Progress bar** | Show or hide the scrubber |
 | **Gestures** | Master switch |
 | **Remember** | Restores position and speed when you come back |

@@ -402,13 +402,22 @@ describe('VideoTransform', () => {
         transform.handleEvent({ type: 'ratechange' } as any);
         expect(store._rateOverrideCount).toBe(0);
         
-        // 2. External rate change (does not match lastRate in metadata)
+        // 2. External rate change while playing (does not match lastRate in metadata)
+        mockVideo.paused = false;
         mockVideo.playbackRate = 1.0; // website changed it
         const setRateSpy = vi.spyOn(transform, '_setRate');
         transform.handleEvent({ type: 'ratechange' } as any);
         
         expect(store._rateOverrideCount).toBe(1);
         expect(setRateSpy).toHaveBeenCalledWith(1.5, false);
+
+        // 3. External rate change while paused (should NOT override rate to prevent unpausing video)
+        setRateSpy.mockClear();
+        mockVideo.paused = true;
+        mockVideo.playbackRate = 1.0;
+        store.updateVideoMetadata(mockVideo, { lastRate: 1.5 });
+        transform.handleEvent({ type: 'ratechange' } as any);
+        expect(setRateSpy).not.toHaveBeenCalled();
     });
 });
 

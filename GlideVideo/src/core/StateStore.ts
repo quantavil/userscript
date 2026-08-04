@@ -14,6 +14,7 @@ export interface Settings {
 	rememberPlayback: boolean;
 	progressBarEnabled: boolean;
 	minimalSpeedFab: boolean;
+	leftHandMode: boolean;
 	[key: string]: any;
 }
 
@@ -227,6 +228,10 @@ export class StateStore {
 			),
 			minimalSpeedFab: this.storageGet(
 				this.getStorageKey("minimalSpeedFab"),
+				false,
+			),
+			leftHandMode: this.storageGet(
+				this.getStorageKey("leftHandMode"),
 				false,
 			),
 		};

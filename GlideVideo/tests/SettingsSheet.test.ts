@@ -32,7 +32,7 @@ describe("SettingsSheet", () => {
 		const half = rows().filter((r) => r.classList.contains("half"));
 		const full = rows().filter((r) => !r.classList.contains("half"));
 
-		expect(half).toHaveLength(5);
+		expect(half).toHaveLength(6);
 		expect(full).toHaveLength(4);
 		for (const r of half) expect(r.querySelector(".mvc-switch")).toBeTruthy();
 		for (const r of full) expect(r.querySelector(".mvc-stepper")).toBeTruthy();
@@ -44,6 +44,7 @@ describe("SettingsSheet", () => {
 			.map((r) => r.querySelector(".mvc-settings-label")!.textContent!);
 		expect(labels).toEqual([
 			"Speed FAB",
+			"Left hand",
 			"Progress bar",
 			"Gestures",
 			"Remember",
@@ -55,6 +56,7 @@ describe("SettingsSheet", () => {
 	it("reset restores every toggle and re-syncs the switches", () => {
 		store.saveSetting("gesturesEnabled", false);
 		store.saveSetting("minimalSpeedFab", true);
+		store.saveSetting("leftHandMode", true);
 		store.saveSetting("theme", "frame");
 		store.settings.transform.rot = 90;
 
@@ -62,11 +64,12 @@ describe("SettingsSheet", () => {
 
 		expect(store.settings.gesturesEnabled).toBe(true);
 		expect(store.settings.minimalSpeedFab).toBe(false);
+		expect(store.settings.leftHandMode).toBe(false);
 		expect(store.settings.theme).toBe("halo");
 		expect(store.settings.transform.rot).toBe(0);
 
 		const checked = sheet().querySelectorAll(".mvc-switch.checked");
-		// Every toggle but minimalSpeedFab defaults to on
+		// Every toggle but minimalSpeedFab and leftHandMode defaults to on (4 total)
 		expect(checked).toHaveLength(4);
 	});
 

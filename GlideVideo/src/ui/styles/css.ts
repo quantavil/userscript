@@ -129,6 +129,20 @@ ${THEMES}
             filter: var(--mvc-glyph-shadow);
         }
 
+        /* Left-Hand Mode (Reverse Layout) */
+        :root[data-mvc-left-hand="true"] .mvc-top-bar {
+            flex-direction: row-reverse;
+        }
+        :root[data-mvc-left-hand="true"] .mvc-controls-group {
+            margin-left: 0;
+            margin-right: auto;
+        }
+        :root[data-mvc-left-hand="true"] .mvc-controls-group.expanded .mvc-collapse-btn svg {
+            transform: rotate(-180deg);
+        }
+        :root[data-mvc-left-hand="true"] .mvc-volume-bar { transform: scale(0.88) translateX(-6px); }
+        :root[data-mvc-left-hand="true"] .mvc-brightness-bar { transform: scale(0.88) translateX(6px); }
+
         /* Camera-gate corner brackets — invisible unless a theme colours them.
            They fade with the rest of the chrome; left on permanently they just
            sit on the picture and distract. */
