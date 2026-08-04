@@ -241,13 +241,15 @@ ${P} .ghf-empty strong { display: block; margin-bottom: 2px; color: var(--ghf-fg
 /* ---------- launcher ---------- */
 
 ${F} {
-  position: fixed; right: 16px; bottom: 16px;
+  position: fixed;
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   display: flex; align-items: center; justify-content: center;
   width: 40px; height: 40px; padding: 0;
   border: 1px solid var(--ghf-border); border-radius: 50%;
   background: var(--ghf-canvas); color: var(--ghf-fg-muted);
   box-shadow: var(--ghf-shadow); cursor: pointer;
-  z-index: 100;
+  z-index: 9999;
   transition: color .12s ease, border-color .12s ease, transform .12s cubic-bezier(.2, 0, 0, 1);
 }
 ${F} svg { fill: currentColor; }

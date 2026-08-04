@@ -300,7 +300,8 @@ export function openPanel() {
  */
 export function syncLauncher() {
   const existing = document.getElementById(IDS.fab);
-  if (location.pathname !== SEARCH_PATH) {
+  const isSearchPage = location.pathname === SEARCH_PATH || location.pathname.startsWith('/search/');
+  if (!isSearchPage) {
     existing?.remove();
     return;
   }

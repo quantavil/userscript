@@ -1,7 +1,7 @@
 {
   "name": "github-filter",
   "private": true,
-  "version": "8.0.0",
+  "version": "8.1.0",
   "author": "quantavil (https://github.com/quantavil)",
   "homepage": "https://github.com/quantavil/userscript",
   "description": "Build GitHub search queries without memorising qualifier syntax, save them as presets, and hide results you never want to see.",
