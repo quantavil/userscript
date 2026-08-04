@@ -293,18 +293,11 @@ export function openPanel() {
 }
 
 /**
- * The launcher lives on search pages only. Fixed to the bottom-right corner it lands
- * on top of GitHub's own Copilot button, and there is nothing to build a search from
- * on a settings or PR page anyway — the userscript menu command opens the panel
- * everywhere. Re-checked on Turbo navigation, which has no document load.
+ * The launcher lives on all GitHub pages. Fixed to the bottom-right corner with high z-index
+ * and safe-area spacing. Re-checked on Turbo navigation, which has no document load.
  */
 export function syncLauncher() {
   const existing = document.getElementById(IDS.fab);
-  const isSearchPage = location.pathname === SEARCH_PATH || location.pathname.startsWith('/search/');
-  if (!isSearchPage) {
-    existing?.remove();
-    return;
-  }
   if (existing) return;
 
   const btn = el('button', {

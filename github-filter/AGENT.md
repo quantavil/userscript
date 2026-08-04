@@ -31,7 +31,7 @@ src/
 - **Row text is walked, not read from `textContent`.** `textContent` concatenates adjacent nodes with no separator, so `<a>acme/repo</a><p>wontfix…</p>` reads as "repowontfix" and a whole-word match fails at element boundaries. `rowText()` walks text nodes and joins with a space; `innerText` would be correct too but forces layout on every pass.
 - **`<dialog>` + `showModal()`** provides the focus trap, `Esc` handling, inert background and top-layer stacking. Do not reintroduce a hand-rolled overlay or a z-index above 100.
 - **No `backdrop-filter`.** A 400px full-height blurred surface repainted on every scroll frame was most of v7's jank.
-- **The launcher is search-page only.** Fixed bottom-right on `/search` and `/search/*` routes with `z-index: 9999` and `safe-area-inset` spacing so it stays visible above GitHub mobile UI and Copilot; `syncLauncher()` adds and removes it on Turbo navigation.
+- **The launcher is present on all GitHub pages.** Fixed bottom-right with `z-index: 9999` and `safe-area-inset` spacing so it stays visible above GitHub UI and Copilot; `syncLauncher()` ensures it stays present across Turbo navigations.
 
 ## Removed
 Release badges (a per-result "latest tag" badge, backed by `releases.atom` fetching with a cache, fetch pool and rate-limit handling) were removed at the user's request — a request per result row is not worth the rate limiting. `migrateLegacyStorage` clears the leftover `gh-rel-*`, `ghf:scan` and `ghf:releases` keys. Do not reintroduce without asking.
