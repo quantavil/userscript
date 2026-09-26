@@ -102,11 +102,16 @@ const FACET_LABELS: Record<string, string> = {
   category: 'Category',
   platform: 'Platform',
   license: 'License',
+  'license-opensource': 'Licensing',
+  cost: 'Cost',
   feature: 'Feature',
+  'feature-app-types': 'App Type',
+  'feature-properties': 'Property',
   property: 'Property',
   origin: 'Origin',
   tag: 'Tag',
   sort: 'Sort',
+  other: 'Other',
   q: 'Search',
 };
 
@@ -133,5 +138,6 @@ export function urlWithoutFacet(href: string, key: string, value: string): strin
   );
   url.search = new URLSearchParams(kept).toString();
   url.searchParams.delete('p');
+  url.searchParams.delete('page');
   return url.toString();
 }

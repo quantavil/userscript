@@ -38,9 +38,19 @@ function panelExists(): boolean {
 }
 
 function expandSitePanel(): void {
-  const items = document.querySelectorAll<HTMLElement>('[data-testid="popular-filters"] ul > li');
-  const chevron = items[items.length - 1]?.querySelector<HTMLElement>('span');
-  chevron?.click();
+  const btn =
+    document.querySelector<HTMLElement>('[data-testid="popular-filters"] button[aria-label="Show all filters"]') ??
+    document.querySelector<HTMLElement>('[data-testid="popular-filters"] button') ??
+    document.querySelector<HTMLElement>('button[aria-label="Show all filters"]');
+  if (btn) {
+    btn.click();
+    return;
+  }
+  // Fallback: the app count span also toggles the filter panel in AlternativeTo
+  const countSpan = document.querySelector<HTMLElement>(
+    '[data-testid="app-filter-bar-wrapper"] span.cursor-pointer',
+  );
+  countSpan?.click();
 }
 
 /**
@@ -71,16 +81,31 @@ function saveFilter(filter: FilterState): void {
 /* The bar is remounted on every navigation, so these are registered once at
    module scope: per-mount listeners piled up and kept dead bars alive. */
 let currentBar: HTMLElement | null = null;
+let currentFiltersBtn: HTMLButtonElement | null = null;
 
 function closePanel(): void {
   document.documentElement.classList.remove('bat-panel-open');
+  currentFiltersBtn?.setAttribute('aria-expanded', 'false');
 }
 
 document.addEventListener('click', (event) => {
   if (!document.documentElement.classList.contains('bat-panel-open')) return;
   const target = event.target as Node;
   if (currentBar?.contains(target)) return;
-  if (document.querySelector('[data-testid="app-filter-bar"]')?.contains(target)) return;
+  const nav = document
+    .querySelector('[data-testid="app-filter-bar-wrapper"]')
+    ?.closest<HTMLElement>('nav');
+  if (nav?.contains(target)) {
+    // If the click is on the site's own collapse button / chevron, sync close state
+    if (
+      (target as Element).closest?.(
+        'button[aria-label="Hide all filters"], [role="button"][aria-label="Hide all filters"], span.cursor-pointer',
+      )
+    ) {
+      closePanel();
+    }
+    return;
+  }
   closePanel();
 });
 document.addEventListener('keydown', (event) => {
@@ -119,6 +144,9 @@ export function mountFilterBar(nav: HTMLElement, hooks: BarHooks): FilterBar {
   siteToggle.setAttribute('aria-pressed', String(filter.needsOfficial));
 
   const filtersBtn = el('button', { type: 'button', className: 'bat-filters-btn', textContent: 'Filters' });
+  filtersBtn.setAttribute('aria-expanded', 'false');
+  filtersBtn.setAttribute('aria-label', 'Toggle site filters panel');
+  currentFiltersBtn = filtersBtn;
   const reset = el('button', { type: 'button', className: 'bat-reset', textContent: 'Reset', hidden: true });
   const count = el('span', { className: 'bat-count' });
   const chips = el('div', { className: 'bat-chips' });
@@ -189,14 +217,19 @@ export function mountFilterBar(nav: HTMLElement, hooks: BarHooks): FilterBar {
    */
   function revealPanel(): void {
     document.documentElement.classList.add('bat-panel-open');
-    const panel = document.querySelector('[data-testid="app-filter-bar"]');
+    filtersBtn.setAttribute('aria-expanded', 'true');
+    const panel = document.querySelector<HTMLElement>('[data-testid="app-filter-bar"]');
     if (!panel) return;
-    panel.scrollIntoView({ block: 'start' });
     const top =
       Number.parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue('--bat-top'),
       ) || 0;
-    window.scrollBy(0, -(top + bar.offsetHeight + 10));
+    const offset = top + bar.offsetHeight + 10;
+    const rect = panel.getBoundingClientRect();
+    if (rect.top < offset || rect.top > window.innerHeight) {
+      panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      window.scrollBy({ top: -offset, behavior: 'smooth' });
+    }
   }
 
   filtersBtn.addEventListener('click', (event) => {
@@ -205,7 +238,7 @@ export function mountFilterBar(nav: HTMLElement, hooks: BarHooks): FilterBar {
     // The panel carries the site's own collapse chevron, which unmounts it and
     // would otherwise leave this class stale — so check the panel, not just it.
     if (root.classList.contains('bat-panel-open') && panelExists()) {
-      root.classList.remove('bat-panel-open');
+      closePanel();
       return;
     }
     if (panelExists()) {

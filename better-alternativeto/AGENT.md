@@ -16,16 +16,19 @@
 ## Site facts (Next.js app-router, React)
 - Cards: `li[data-testid="item-<slug>"]`; slug for fetching comes from the card's `a[href^="/software/"]`, not the testid (they differ, e.g. `item-recurred-subscription-manager` vs `/software/recurred/`)
 - Inside a card: `[data-testid="main-app-info"]` (title + description), `[data-testid="platform-row"]`, `#like-button-container` ("486 likes", id duplicated across cards — always scope the query)
-- Filter bar: `nav > [data-testid="app-filter-bar-wrapper"]`; the facet panel is `[data-testid="app-filter-bar"]`, mounted only after the chevron in `[data-testid="popular-filters"] ul > li:last-child` is clicked
+- Filter bar: `nav > [data-testid="app-filter-bar-wrapper"]`; the facet panel is `[data-testid="app-filter-bar"]`, mounted only after clicking `button[aria-label="Show all filters"]` (sibling of `ul` in `[data-testid="popular-filters"]`).
 - External links: `fetch('/software/<slug>/about/', {headers:{RSC:'1'}})` → flight text containing `"externalLinks":[{name,url,type}]`. Types: `Official` | `Social` | `Appstore` | `Source`. ~110KB vs ~430KB for the HTML page
 - Theme: `localStorage.theme` + `document.documentElement.dataset.theme`
-- URL facets: `category`, `platform`, `license`, `feature`, `property`, `origin`, `tag`, `sort`, page `p`. 25 apps per page, server-rendered pagination
+- URL facets: `category`, `platform`, `license`, `cost`, `license-opensource`, `feature`, `feature-app-types`, `feature-properties`, `property`, `origin`, `tag`, `sort`, page `p`/`page`. 25 apps per page, server-rendered pagination
 - The JSON-LD `SoftwareApplication` block on an app page has `url` and `sameAs` but **omits the GitHub link** — not a usable source for the chips
 
 ## Blunders
+- Expanded the site panel by querying `[data-testid="popular-filters"] ul > li:last-child span` — that was not a chevron, but the last filter chip (e.g. Free, Online, or a platform like Linux/Android). Clicking "Filters ▾" clicked the filter chip, adding platform filters one by one instead of opening the facet panel. Fixed by querying `button[aria-label="Show all filters"]` / `[data-testid="popular-filters"] button`.
+- Left the parent `<nav>` visible when the panel was closed: hiding only `app-filter-bar-wrapper` and `app-filter-bar` left the `<nav>`'s background, borders, and post-expansion footer/chevron visible as an empty strip. Fixed by setting `display: none !important` on `nav:has(> [data-testid="app-filter-bar-wrapper"])` when `:not(.bat-panel-open)`.
+- Outside click handler closed the panel when clicking inside the scroller padding or footer: `app-filter-bar` is wrapped in `<div data-filter-panel-scroller>`, so clicks on scrollbars or footer dismissed the panel. Fixed by guarding clicks inside the `<nav>` host.
 - Added `.bat-nav` / `.bat-panel-host` classes to site elements — React owns `className` and wiped them on its next render, silently killing the whole layout. Everything is now keyed off `data-testid` in CSS; no class is ever set on a React-owned node.
 - MutationObserver on `documentElement` with `subtree:true` also sees this script's own writes (link rows, count text, class toggles) — boot() re-ran on a 120ms loop forever. Fixed with the `needsWork()` guard.
-- App count read as "1353313533 apps": the site renders the total twice (a bare number for narrow screens, "13533  apps" for wide), and the parent span's textContent concatenates both. Fixed by only accepting leaf spans (`children.length === 0`).
+- App count read as "1353313533 apps": the site renders the total twice (a bare number for narrow screens, "13533  apps" for wide), and the parent span's textContent concatenates both. Also, with server filters active the site renders "25 / 150" without "apps". Handled with an expanded regex.
 - Opened the facet panel as `position: fixed` — it landed 111px low because an ancestor has `contain: paint layout`, which becomes the containing block for fixed positioning. Now an in-flow disclosure instead.
 - Scrolled back to the panel using `bar.getBoundingClientRect().top + scrollY` — the bar is `sticky`, so that returns its *stuck* position, not its flow offset, and the scroll never fired. Now `panel.scrollIntoView()` then `scrollBy` to clear the pinned chrome.
 - Capping `max-height` on the panel gave it a horizontal scrollbar: it is a CSS multi-column box, and constraining the height makes multicol spill into further columns sideways rather than scroll. Worked around with `columns: auto` + a grid, then dropped entirely — the whole idea was wrong. The panel is now shown untouched; only its visibility is controlled (`html.bat-on:not(.bat-panel-open)`).
@@ -34,6 +37,7 @@
 - **Paging reuses every card node.** Verified live: clicking page 2 keeps all 25 `li[data-testid^="item-"]` elements and re-renders a different app into each. A boolean `data-bat="1"` marker therefore survived onto the new page, so `scanCards` skipped all 25, `needsWork`'s `:not([data-bat])` never fired, the `cards` array stayed empty after `teardown()` and the previous app's link chips stayed glued to the node. That one cause produced both "wrong links on the card after next page" and "changing the likes filter hides nothing". The marker now holds the **slug**, and stale nodes have their `.bat-links` row dropped and are re-observed.
 - Cards were hidden with `classList.toggle('bat-hidden')` — the same React-owns-className trap as above. Hiding is now `toggleAttribute('data-bat-hide')`.
 - `mountFilterBar` registered `document` click/keydown and `window` resize listeners per mount, and it remounts on every navigation — they piled up, each holding a dead bar. They live at module scope now, with a module-level `currentBar`.
+
 
 ## Key Decisions
 - The site's facets stay in charge of server-side filtering — their counts, `+N more` expanders and soft navigation are all live data that a hand-rolled bar would have to mirror out of their DOM anyway. Only the *presentation* is replaced.

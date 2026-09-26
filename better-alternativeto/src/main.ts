@@ -183,7 +183,10 @@ function siteCount(): string {
     // reads "1353313533  apps" and would match just as happily.
     if (span.children.length) continue;
     const text = span.textContent?.trim() ?? '';
-    if (/^\d[\d,]*\s+apps?$/.test(text)) return text.replace(/\s+/g, ' ');
+    const m = /^(\d[\d,]*(\s*\/\s*\d[\d,]*)*)(\s+apps?)?$/.exec(text);
+    if (m) {
+      return m[3] ? text.replace(/\s+/g, ' ') : `${m[1]} apps`;
+    }
   }
   return '';
 }

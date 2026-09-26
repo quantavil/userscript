@@ -71,9 +71,13 @@ export const CSS = `
    Everything below is keyed off the site's own data-testid attributes rather
    than classes added from JS: React owns className on these nodes and wipes
    anything this script adds on its next re-render. */
-html.bat-on nav:has(> [data-testid="app-filter-bar-wrapper"]) {
+html.bat-on:not(.bat-panel-open) nav:has(> [data-testid="app-filter-bar-wrapper"]) {
+  display: none !important;
+}
+html.bat-on.bat-panel-open nav:has(> [data-testid="app-filter-bar-wrapper"]) {
   position: static !important;
   z-index: auto !important;
+  margin-bottom: 12px;
 }
 html.bat-on [data-testid="app-filter-bar-wrapper"] { display: none !important; }
 

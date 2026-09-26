@@ -142,4 +142,17 @@ describe('facet chips', () => {
       'https://alternativeto.net/browse/all/?platform=linux',
     );
   });
+
+  test('maps AlternativeTo specific facet keys like cost and license-opensource', () => {
+    expect(activeFacets('?cost=free&license-opensource=opensource&page=2')).toEqual([
+      { key: 'cost', value: 'free', label: 'Cost' },
+      { key: 'license-opensource', value: 'opensource', label: 'Licensing' },
+    ]);
+  });
+
+  test('removing a facet resets page query parameter as well as p', () => {
+    const url = 'https://alternativeto.net/browse/all/?cost=free&page=3';
+    expect(urlWithoutFacet(url, 'cost', 'free')).toBe('https://alternativeto.net/browse/all/');
+  });
 });
+
