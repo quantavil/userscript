@@ -326,3 +326,50 @@ export function parseCurrentUrlFilters(urlStr: string): Partial<FilterState> {
   }
 }
 
+export interface KvsParameters {
+  fromParam: number | null;
+  sortBy: string | null;
+  query: string | null;
+  tagIds: string | null;
+  raw: Record<string, string>;
+}
+
+/**
+ * Parses KVS CMS data-parameters attribute strings (e.g. 'q:overwatch;sort_by:post_date;from_videos+from_albums:2').
+ */
+export function parseKvsParameters(dataParams: string): KvsParameters {
+  const raw: Record<string, string> = {};
+  if (!dataParams) {
+    return { fromParam: null, sortBy: null, query: null, tagIds: null, raw };
+  }
+
+  const parts = dataParams.split(';');
+  for (const part of parts) {
+    const colonIdx = part.indexOf(':');
+    if (colonIdx !== -1) {
+      const key = part.slice(0, colonIdx).trim();
+      const val = part.slice(colonIdx + 1).trim();
+      if (key) {
+        raw[key] = val;
+      }
+    }
+  }
+
+  let fromParam: number | null = null;
+  for (const k of Object.keys(raw)) {
+    if (/(?:from_videos(?:\+| )from_albums|from_videos|from_albums|from)/i.test(k)) {
+      const parsed = parseInt(raw[k], 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        fromParam = parsed;
+        break;
+      }
+    }
+  }
+
+  const sortBy = raw['sort_by'] !== undefined && raw['sort_by'] !== '' ? raw['sort_by'] : null;
+  const query = raw['q'] !== undefined && raw['q'] !== '' ? raw['q'] : null;
+  const tagIds = raw['tag_ids'] !== undefined && raw['tag_ids'] !== '' ? raw['tag_ids'] : null;
+
+  return { fromParam, sortBy, query, tagIds, raw };
+}
+

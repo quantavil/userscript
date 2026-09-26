@@ -7,16 +7,17 @@
 - Test: `bun test` (pure logic in `tests/parse.test.ts` + `tests/features.test.ts` + `tests/routes.test.ts` + `tests/nativefilter.test.ts`), `bun run typecheck` (`tsc --noEmit`)
 
 ## Structure
-- `src/main.ts`: Bootloader, DOM mutation observer, card registry, client filter coordinator, new-tab + bookmark-dock wiring, own-watched overlay.
+- `src/main.ts`: Bootloader, DOM mutation observer, card registry, client filter coordinator, new-tab + bookmark-dock wiring, own-watched overlay, AJAX sort/filter reload handler.
 - `src/filterbar.ts`: Floating Action Button (FAB) bottom-right `[ CTRL ]` (dot, no icon), telemetry modal, 4 tactile sliders (rating, views, duration, year) with debounced commits, 4 quick toggles (sound, hd, futa, unwatched), reset-to-defaults (persisted), localStorage persistence (query intentionally ephemeral).
-- `src/autopager.ts`: Auto next page infinite scroll engine, listing-page guard (skips `/video/` watch pages), shared `parseNextLink` helper, dual triggers (scroll listener + IntersectionObserver), DOMParser, card deduplication, lazy-load fixer, new-tab hardening on appended anchors, `[ PAGE N ]` separators, `getPagesLoaded` / `getCurrentPageUrl` for bookmarks.
+- `src/autopager.ts`: Auto next page infinite scroll engine, listing-page guard (skips `/video/` watch pages), shared `parseNextLink` and `computeNextPageUrl` helpers preserving active `sort_by`, dual triggers (scroll listener + IntersectionObserver), DOMParser, card deduplication, lazy-load fixer, new-tab hardening on appended anchors, `[ PAGE N ]` separators, `reset()` lifecycle on AJAX sort/filter reloads.
 - `src/routes.ts`: Shared listing-route helpers (`isPaginationKey`, `stripPageSegment`, `pageNumberFromPath`, `appendPageToPath`) — single source of truth for entity/catalog page shapes used by autopager + bookmarks.
 - `src/newtab.ts`: Plain-left-click delegated handler opening `/video/` links via `window.open(_blank, noopener)` + `target/rel` hardening; own watched-id history (powers UNWATCHED when site classes absent).
-- `src/bookmark.ts`: Manual per-listing bookmark (`canonicalListKey` strips page params): click saves `{page, url}`, click again jumps to saved URL same-tab, right-click clears. Icon-only SVG button docked left of CTRL.
+- `src/bookmark.ts`: EROS multi-bookmark data layer: multi-sector checkpoints, video bookmarks (watch later), schema v2 with v1 auto-migration, import/export.
+- `src/bookmark-ui.ts`: EROS Archive Console (tabs for Sectors & Saved Videos, instant filter search, jump/delete buttons, JSON export/import), video card bookmark ribbon, bottom-center micro-toast, dock button with total count badge.
 - `src/adcleaner.ts`: Targeted ad selector and inline ad card purger (tight selectors, void return).
-- `src/parse.ts`: Pure unit-tested parsers: duration, views, ratings, submittedYear, relative pagination URL resolver (drops `from*`/`page`/`p` offsets, keeps filters), client filter matcher.
+- `src/parse.ts`: Pure unit-tested parsers: duration, views, ratings, submittedYear, relative pagination URL resolver, `parseKvsParameters` (extracts `from`, `sort_by`, `q`, `tag_ids`), client filter matcher.
 - `src/nativefilter.ts`: Collapsible native `.filters-panel` — default collapsed (persisted), wires the site toggle or injects a matching one.
-- `src/styles.ts`: Industrial Brutalist + Erotic Latex aesthetic: `#08060a` carbon substrate, scanlines, `#ff0055` neon magenta hazard glow, custom range slider styling, site-wide theming.
+- `src/styles.ts`: Industrial Brutalist + Erotic Latex aesthetic: `#08060a` carbon substrate, scanlines, `#ff0055` neon magenta hazard glow, custom range slider styling, site-wide theming, archive console, card bookmark ribbons, micro-toasts.
 - `src/types.ts`: Type definitions for FilterState, CardData, FutaOption.
 - `tests/parse.test.ts`: Bun unit tests for pure parsing and filter routines.
 
@@ -48,3 +49,5 @@
 - `resolveNextPageUrl` merged every query param including stale `from_videos` offsets into next-page fetches; now strips pagination keys via shared `isPaginationKey` (filters still merge).
 - Watched-id checks re-parsed localStorage per card per scan; now cached in-module with sync-on-mark (`invalidateWatchedCache` escape hatch).
 - Native `.filters-panel` had retheme CSS but no collapse wiring and no collapsed-state rule; added `src/nativefilter.ts` (default collapsed, persisted) + `.br34-collapsed` CSS.
+- KVS CMS changes sort/filters asynchronously in-page without reloading; `parseNextLink` discarded `sort_by` from `data-parameters`, and `AutoPager` was never notified of sort changes, causing infiscrolling to fetch Page 2 of the previous sort (e.g. Most Relevant). Fixed by extracting `sort_by` in `parseKvsParameters`, syncing `sort_by` to browser address bar via `history.replaceState`, and adding `autoPager.reset()` with deduplication and separator clearing.
+- Single bookmark limitation: Bookmarks previously allowed only 1 entry per listing with no UI or video saving. Upgraded to EROS Cyber-Archive Console supporting multiple sector checkpoints per listing, watch later video bookmark ribbons on card thumbnails, micro-toasts, and JSON export/import.

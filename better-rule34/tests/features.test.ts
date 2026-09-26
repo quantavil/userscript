@@ -2,7 +2,19 @@ import { describe, expect, it } from 'bun:test';
 import {
   canonicalListKey,
   clearBookmark,
+  deleteSector,
+  deleteVideo,
+  exportArchiveJson,
+  findSector,
+  formatSectorTitleFromUrl,
   getBookmark,
+  getSectors,
+  getTotalBookmarkCount,
+  getVideos,
+  importArchiveJson,
+  isVideoSaved,
+  saveSector,
+  saveVideo,
   setBookmark,
   type BookmarkStore,
 } from '../src/bookmark';
@@ -91,5 +103,132 @@ describe('bookmark store', () => {
     setBookmark('/x/', { page: 2, url: '' }, store);
     setBookmark('', { page: 2, url: `${origin}/x/` }, store);
     expect(getBookmark('/x/', store)).toBeNull();
+  });
+});
+
+describe('multi-sector bookmarks', () => {
+  it('supports multiple page bookmarks per listing and across listings', () => {
+    const store = memStore();
+    saveSector(
+      {
+        listKey: '/tags/futa/',
+        title: 'TAG // FUTA',
+        url: `${origin}/tags/futa/4/`,
+        page: 4,
+      },
+      store,
+    );
+    saveSector(
+      {
+        listKey: '/tags/futa/',
+        title: 'TAG // FUTA',
+        url: `${origin}/tags/futa/18/`,
+        page: 18,
+      },
+      store,
+    );
+    saveSector(
+      {
+        listKey: '/search/?q=overwatch',
+        title: 'SEARCH // OVERWATCH [POST_DATE]',
+        url: `${origin}/search/overwatch/?sort_by=post_date&from_videos=2`,
+        page: 2,
+        sortBy: 'post_date',
+      },
+      store,
+    );
+
+    const sectors = getSectors(store);
+    expect(sectors.length).toBe(3);
+    expect(findSector('/tags/futa/', 4, store)).not.toBeNull();
+    expect(findSector('/tags/futa/', 18, store)).not.toBeNull();
+    expect(findSector('/tags/futa/', 99, store)).toBeNull();
+
+    const targetId = findSector('/tags/futa/', 4, store)!.id;
+    deleteSector(targetId, store);
+    expect(getSectors(store).length).toBe(2);
+    expect(findSector('/tags/futa/', 4, store)).toBeNull();
+  });
+});
+
+describe('video bookmarks (watch later)', () => {
+  it('saves, checks, deletes, and counts video bookmarks', () => {
+    const store = memStore();
+    expect(isVideoSaved('12345', store)).toBe(false);
+
+    saveVideo(
+      {
+        id: '12345',
+        title: 'Overwatch SFM Animation',
+        url: `${origin}/video/12345/overwatch/`,
+        thumbUrl: 'https://thumb.jpg',
+        durationFormatted: '5:30',
+        ratingPercent: 96,
+        viewsFormatted: '25K',
+      },
+      store,
+    );
+
+    expect(isVideoSaved('12345', store)).toBe(true);
+    expect(getVideos(store).length).toBe(1);
+    expect(getTotalBookmarkCount(store)).toBe(1);
+
+    deleteVideo('12345', store);
+    expect(isVideoSaved('12345', store)).toBe(false);
+    expect(getVideos(store).length).toBe(0);
+    expect(getTotalBookmarkCount(store)).toBe(0);
+  });
+});
+
+describe('formatSectorTitleFromUrl', () => {
+  it('formats human-readable cyber badges', () => {
+    expect(formatSectorTitleFromUrl(`${origin}/`)).toBe('FEED // LATEST');
+    expect(formatSectorTitleFromUrl(`${origin}/latest-updates/`)).toBe('FEED // LATEST');
+    expect(formatSectorTitleFromUrl(`${origin}/tags/futa/`)).toBe('TAG // FUTA');
+    expect(formatSectorTitleFromUrl(`${origin}/categories/3d/`)).toBe('CATEGORY // 3D');
+    expect(formatSectorTitleFromUrl(`${origin}/search/overwatch/?sort_by=post_date`)).toBe(
+      'SEARCH // OVERWATCH [POST_DATE]',
+    );
+  });
+});
+
+describe('archive export and import', () => {
+  it('exports and imports archive JSON without duplicate ids', () => {
+    const store = memStore();
+    saveSector(
+      {
+        listKey: '/tags/futa/',
+        title: 'TAG // FUTA',
+        url: `${origin}/tags/futa/2/`,
+        page: 2,
+      },
+      store,
+    );
+    saveVideo(
+      {
+        id: '999',
+        title: 'Test Video',
+        url: `${origin}/video/999/test/`,
+        thumbUrl: '',
+        durationFormatted: '1:00',
+        ratingPercent: 90,
+        viewsFormatted: '1K',
+      },
+      store,
+    );
+
+    const exported = exportArchiveJson(store);
+    const store2 = memStore();
+    const result = importArchiveJson(exported, store2);
+    expect(result.success).toBe(true);
+    expect(result.sectorsAdded).toBe(1);
+    expect(result.videosAdded).toBe(1);
+    expect(getSectors(store2).length).toBe(1);
+    expect(getVideos(store2).length).toBe(1);
+
+    // Importing again skips duplicates
+    const result2 = importArchiveJson(exported, store2);
+    expect(result2.sectorsAdded).toBe(0);
+    expect(result2.videosAdded).toBe(0);
   });
 });

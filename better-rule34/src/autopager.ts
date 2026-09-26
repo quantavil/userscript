@@ -1,7 +1,7 @@
 import { cleanAds } from './adcleaner';
-import { isAdCard, resolveNextPageUrl } from './parse';
+import { isAdCard, parseKvsParameters, resolveNextPageUrl } from './parse';
 import { hardenAnchor } from './newtab';
-import { appendPageToPath, pageNumberFromPath } from './routes';
+import { appendPageToPath, isPaginationKey, pageNumberFromPath } from './routes';
 
 export interface AutoPagerOptions {
   onNewCards: (elements: HTMLElement[]) => void;
@@ -42,32 +42,104 @@ export function unclipBodyOverflow(): void {
 }
 
 /**
+ * Reads the active sort value from KVS filter chips if rendered.
+ * Returns null for the site default ("Most Relevant" or unspecified).
+ */
+export function readActiveSort(root: Document | Element = document): string | null {
+  const activeBtn = root.querySelector<HTMLElement>(
+    '.filters-panel__section--sort .btn.active, .filters-panel .btn.active[data-parameters*="sort_by"]',
+  );
+  if (activeBtn) {
+    const dataParams = activeBtn.getAttribute('data-parameters') || '';
+    const match = /(?:^|;)sort_by:([^;]*)(?:;|$)/.exec(dataParams);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  return null;
+}
+
+/**
+ * Builds the next page URL preserving the listing base, query filters, and active sort.
+ */
+export function computeNextPageUrl(
+  currentUrlStr: string,
+  nextPageNum: number,
+  sortBy?: string | null,
+): string | null {
+  try {
+    const url = new URL(currentUrlStr);
+    const pathname = url.pathname;
+
+    if (sortBy !== undefined) {
+      if (sortBy) {
+        url.searchParams.set('sort_by', sortBy);
+      } else {
+        url.searchParams.delete('sort_by');
+      }
+    }
+
+    // If on search route, KVS uses query parameter ?from_videos=N
+    if (pathname.includes('/search/')) {
+      url.searchParams.set('from_videos', String(nextPageNum));
+      url.searchParams.delete('from_videos+from_albums');
+      url.searchParams.delete('from_videos from_albums');
+      return url.toString();
+    }
+
+    // Path paging for root, entity, and catalog routes (shared helper).
+    url.pathname = appendPageToPath(pathname, nextPageNum);
+    for (const k of [...url.searchParams.keys()]) {
+      if (isPaginationKey(k)) {
+        url.searchParams.delete(k);
+      }
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export interface ParsedNextLinkResult {
+  url: string | null;
+  fromParam: number | null;
+  sortBy: string | null;
+}
+
+/**
  * Single source of truth for "next page" resolution from a fetched/native
  * document. Returns null when the server offers no continuation (last page).
- * data-parameters (KVS async paging) wins over raw href; no fabrication here.
+ * data-parameters (KVS async paging) wins over raw href and carries active sort.
  */
 export function parseNextLink(
   root: Document | Element,
   baseUrl: string,
-): { url: string | null; fromParam: number | null } {
+  fallbackSortBy?: string | null,
+): ParsedNextLinkResult {
   const nextLink = root.querySelector<HTMLAnchorElement>(
     '.pagination .item.pager.next a, .pagination .item.active + .item a, .pagination a.next',
   );
-  if (!nextLink) return { url: null, fromParam: null };
+  if (!nextLink) return { url: null, fromParam: null, sortBy: null };
 
   const raw = nextLink.getAttribute('href') || '';
   const dataParams = nextLink.getAttribute('data-parameters') || '';
   if (raw && !raw.startsWith('#') && !raw.startsWith('javascript:')) {
     const resolved = resolveNextPageUrl(baseUrl, raw);
-    return { url: resolved || null, fromParam: null };
+    return { url: resolved || null, fromParam: null, sortBy: null };
   }
   if (dataParams) {
-    const match = /(?:from_videos(?:\+| )from_albums|from_videos|from_albums|from):(\d+)/i.exec(dataParams);
-    if (match) {
-      return { url: null, fromParam: parseInt(match[1], 10) };
+    const parsed = parseKvsParameters(dataParams);
+    const effectiveSort = parsed.sortBy !== null ? parsed.sortBy : (fallbackSortBy ?? null);
+    if (parsed.fromParam !== null && !isNaN(parsed.fromParam)) {
+      const computed = computeNextPageUrl(baseUrl, parsed.fromParam, effectiveSort);
+      return {
+        url: computed,
+        fromParam: parsed.fromParam,
+        sortBy: effectiveSort,
+      };
     }
   }
-  return { url: null, fromParam: null };
+  return { url: null, fromParam: null, sortBy: null };
 }
 
 export class AutoPager {
@@ -171,13 +243,54 @@ export class AutoPager {
     return 1;
   }
 
+  /**
+   * Resets the AutoPager state when the catalog list is reloaded via AJAX
+   * (e.g. sort change or native filter submit).
+   */
+  public reset(nextUrl?: string | null, newPageNumber = 1): void {
+    if (this.container) {
+      for (const sep of this.container.querySelectorAll('.br34-page-sep')) {
+        sep.remove();
+      }
+    }
+    this.seenCardIds.clear();
+    this.container = findVideosContainer();
+    if (this.container) {
+      const currentCards = this.container.querySelectorAll<HTMLElement>('.item.thumb');
+      for (const card of currentCards) {
+        if (isAdCard(card)) {
+          card.remove();
+          continue;
+        }
+        const id = card.dataset.videoCardId || card.querySelector('a[href*="/video/"]')?.getAttribute('href');
+        if (id) this.seenCardIds.add(id);
+      }
+    }
+
+    this.currentPage = newPageNumber;
+    this.initialPage = newPageNumber;
+    this.lastPageUrl = window.location.href;
+    this.isLoading = false;
+    this.isAppending = false;
+
+    if (nextUrl !== undefined) {
+      this.nextUrl = nextUrl;
+    } else {
+      this.detectNextPageUrl(document);
+    }
+
+    this.mountStatusElements();
+    this.setupObserver();
+  }
+
   private detectNextPageUrl(root: Document): void {
-    const { url, fromParam } = parseNextLink(root, window.location.href);
+    const activeSort = readActiveSort(root);
+    const { url, fromParam, sortBy } = parseNextLink(root, window.location.href, activeSort);
     this.nextUrl = null;
     if (url) {
       this.nextUrl = url;
     } else if (fromParam !== null && !isNaN(fromParam)) {
-      this.nextUrl = this.computeNextPageUrlFromCurrent(window.location.href, fromParam);
+      this.nextUrl = computeNextPageUrl(window.location.href, fromParam, sortBy || activeSort);
     }
 
     if (!this.nextUrl) {
@@ -187,7 +300,7 @@ export class AutoPager {
       try {
         const pathname = new URL(window.location.href).pathname;
         if (!pathname.includes('/search/')) {
-          this.nextUrl = this.computeNextPageUrlFromCurrent(window.location.href, this.currentPage + 1);
+          this.nextUrl = computeNextPageUrl(window.location.href, this.currentPage + 1, activeSort);
         }
       } catch {
         this.nextUrl = null;
@@ -198,27 +311,6 @@ export class AutoPager {
     const nativePagination = document.querySelector<HTMLElement>('.pagination');
     if (nativePagination) {
       nativePagination.style.display = 'none';
-    }
-  }
-
-  private computeNextPageUrlFromCurrent(currentUrlStr: string, nextPageNum: number): string | null {
-    try {
-      const url = new URL(currentUrlStr);
-      const pathname = url.pathname;
-
-      // If on search route, KVS uses query parameter ?from_videos=N
-      if (pathname.includes('/search/')) {
-        url.searchParams.set('from_videos', String(nextPageNum));
-        url.searchParams.delete('from_videos+from_albums');
-        url.searchParams.delete('from_videos from_albums');
-        return url.toString();
-      }
-
-      // Path paging for root, entity, and catalog routes (shared helper).
-      url.pathname = appendPageToPath(pathname, nextPageNum);
-      return url.toString();
-    } catch {
-      return null;
     }
   }
 
@@ -403,12 +495,13 @@ export class AutoPager {
       this.onPageLoaded?.(this.currentPage);
 
       // Update next page URL from fetched page pagination (shared helper)
-      const parsed = parseNextLink(doc, fetchUrl);
+      const activeSort = readActiveSort(document);
+      const parsed = parseNextLink(doc, fetchUrl, activeSort);
       this.nextUrl = null;
       if (parsed.url) {
         this.nextUrl = parsed.url;
       } else if (parsed.fromParam !== null && !isNaN(parsed.fromParam)) {
-        this.nextUrl = this.computeNextPageUrlFromCurrent(fetchUrl, parsed.fromParam);
+        this.nextUrl = computeNextPageUrl(fetchUrl, parsed.fromParam, parsed.sortBy || activeSort);
       }
 
       if (!this.nextUrl && cardsToAppend.length > 0) {
@@ -416,7 +509,7 @@ export class AutoPager {
         // offset is opaque — a missing link means stop, not fabricate.
         try {
           if (!new URL(fetchUrl).pathname.includes('/search/')) {
-            this.nextUrl = this.computeNextPageUrlFromCurrent(fetchUrl, this.currentPage + 1);
+            this.nextUrl = computeNextPageUrl(fetchUrl, this.currentPage + 1, activeSort);
           }
         } catch {
           this.nextUrl = null;

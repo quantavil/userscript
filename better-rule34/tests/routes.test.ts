@@ -6,6 +6,7 @@ import {
   stripPageSegment,
 } from '../src/routes';
 import { resolveNextPageUrl } from '../src/parse';
+import { computeNextPageUrl } from '../src/autopager';
 
 describe('isPaginationKey', () => {
   it('matches offset/page keys but never filter keys', () => {
@@ -61,5 +62,19 @@ describe('resolveNextPageUrl pagination hygiene', () => {
         '/latest-updates/2/',
       ),
     ).toBe('https://rule34video.com/latest-updates/2/?post_date_from=2026-01-01');
+  });
+});
+
+describe('computeNextPageUrl', () => {
+  it('injects sort_by and page correctly for search and entity routes', () => {
+    expect(computeNextPageUrl('https://rule34video.com/search/overwatch/', 2, 'post_date')).toBe(
+      'https://rule34video.com/search/overwatch/?sort_by=post_date&from_videos=2',
+    );
+    expect(computeNextPageUrl('https://rule34video.com/tags/futa/', 3, 'video_viewed')).toBe(
+      'https://rule34video.com/tags/futa/3/?sort_by=video_viewed',
+    );
+    expect(computeNextPageUrl('https://rule34video.com/latest-updates/?sort_by=post_date', 4, '')).toBe(
+      'https://rule34video.com/latest-updates/4/',
+    );
   });
 });

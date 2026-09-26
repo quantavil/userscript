@@ -29,15 +29,38 @@ describe('parsers', () => {
     );
   });
 
-  it('parses next link from DOM or data-parameters with various from prefixes', () => {
+  it('parses next link from DOM or data-parameters with various from prefixes and preserves sort_by', () => {
     const el1 = {
       querySelector: () => ({
         getAttribute: (attr: string) => (attr === 'data-parameters' ? 'q:overwatch;sort_by:;from_videos+from_albums:33' : '#search'),
       }),
     } as unknown as Element;
     expect(parseNextLink(el1, 'https://rule34video.com/search/overwatch/')).toEqual({
-      url: null,
+      url: 'https://rule34video.com/search/overwatch/?from_videos=33',
       fromParam: 33,
+      sortBy: null,
+    });
+
+    const elSort = {
+      querySelector: () => ({
+        getAttribute: (attr: string) => (attr === 'data-parameters' ? 'q:overwatch;sort_by:post_date;from_videos+from_albums:2' : '#search'),
+      }),
+    } as unknown as Element;
+    expect(parseNextLink(elSort, 'https://rule34video.com/search/overwatch/')).toEqual({
+      url: 'https://rule34video.com/search/overwatch/?sort_by=post_date&from_videos=2',
+      fromParam: 2,
+      sortBy: 'post_date',
+    });
+
+    const elTag = {
+      querySelector: () => ({
+        getAttribute: (attr: string) => (attr === 'data-parameters' ? 'sort_by:video_viewed;from:2' : '#videos'),
+      }),
+    } as unknown as Element;
+    expect(parseNextLink(elTag, 'https://rule34video.com/tags/overwatch/')).toEqual({
+      url: 'https://rule34video.com/tags/overwatch/2/?sort_by=video_viewed',
+      fromParam: 2,
+      sortBy: 'video_viewed',
     });
 
     const el2 = {
@@ -48,6 +71,7 @@ describe('parsers', () => {
     expect(parseNextLink(el2, 'https://rule34video.com/latest-updates/32/')).toEqual({
       url: 'https://rule34video.com/latest-updates/33/',
       fromParam: null,
+      sortBy: null,
     });
   });
 });

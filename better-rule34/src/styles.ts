@@ -962,6 +962,461 @@ ins.adsbyjuicy,
   fill: currentColor;
 }
 
+/* Card Bookmark Ribbon */
+.br34-card-bookmark {
+  position: absolute !important;
+  top: 6px !important;
+  right: 6px !important;
+  z-index: 15 !important;
+  width: 26px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  background: rgba(10, 7, 14, 0.85) !important;
+  border: 1px solid rgba(255, 0, 85, 0.45) !important;
+  border-radius: 4px !important;
+  color: #ff0055 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  opacity: 0 !important;
+  transform: scale(0.9) !important;
+  transition: all 0.15s ease !important;
+  outline: none !important;
+}
+
+.item.thumb:hover .br34-card-bookmark {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+}
+
+.br34-card-bookmark:hover {
+  background: #ff0055 !important;
+  color: #000000 !important;
+  box-shadow: 0 0 10px rgba(255, 0, 85, 0.8) !important;
+}
+
+.br34-card-bookmark.saved {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+  background: #ff0055 !important;
+  color: #000000 !important;
+  box-shadow: 0 0 10px rgba(255, 0, 85, 0.6) !important;
+}
+
+.br34-card-bookmark.saved svg {
+  fill: currentColor !important;
+}
+
+/* Dock Bookmark Badge */
+.br34-bookmark-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ff0055;
+  color: #000000;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 900;
+  padding: 1px 5px;
+  border-radius: 4px;
+  box-shadow: 0 0 8px rgba(255, 0, 85, 0.7);
+  line-height: 1.1;
+}
+
+/* Micro Toast */
+.br34-toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  z-index: 2147483647;
+  background: rgba(10, 7, 14, 0.96);
+  border: 1px solid #ff0055;
+  border-radius: 6px;
+  color: #ffffff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 8px 18px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9), 0 0 16px rgba(255, 0, 85, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  text-transform: uppercase;
+}
+
+.br34-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* EROS Archive Modal */
+.br34-archive-modal {
+  position: fixed;
+  bottom: 74px;
+  right: 24px;
+  z-index: 2147483646;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 90px);
+  background: rgba(10, 7, 14, 0.97);
+  border: 1px solid rgba(255, 0, 85, 0.45);
+  border-radius: 8px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.95), 0 0 25px rgba(255, 0, 85, 0.22);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  display: flex;
+  flex-direction: column;
+  color: #e5e5eb;
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.br34-archive-modal.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.br34-archive-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: rgba(16, 10, 22, 0.95);
+  border-bottom: 1px solid rgba(255, 0, 85, 0.25);
+}
+
+.br34-archive-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #9c97a8;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.br34-archive-tab:hover {
+  color: #ffffff;
+  background: rgba(255, 0, 85, 0.08);
+}
+
+.br34-archive-tab.active {
+  color: #ff0055;
+  border-bottom-color: #ff0055;
+  background: rgba(255, 0, 85, 0.12);
+}
+
+.br34-archive-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+}
+
+.br34-archive-toolbar {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.br34-btn-mark-sector {
+  width: 100%;
+  background: rgba(18, 12, 24, 0.9);
+  border: 1px solid rgba(255, 0, 85, 0.45);
+  border-radius: 5px;
+  color: #ff0055;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.br34-btn-mark-sector:hover {
+  background: #ff0055;
+  color: #000000;
+  box-shadow: 0 0 12px rgba(255, 0, 85, 0.6);
+}
+
+.br34-btn-mark-sector.saved {
+  background: rgba(255, 0, 85, 0.2);
+  border-color: #ff0055;
+  color: #ffffff;
+}
+
+.br34-archive-empty {
+  text-align: center;
+  padding: 30px 15px;
+  color: #7d798a;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.br34-archive-empty-title {
+  color: #ff0055;
+  font-weight: 800;
+  margin-bottom: 6px;
+  letter-spacing: 0.08em;
+}
+
+.br34-archive-empty-sub {
+  font-size: 9.5px;
+}
+
+.br34-archive-list,
+.br34-video-archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.br34-archive-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0e0a14;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 3px solid #ff0055;
+  border-radius: 4px;
+  padding: 7px 10px;
+  gap: 8px;
+  transition: border-color 0.15s ease;
+}
+
+.br34-archive-item:hover {
+  border-color: rgba(255, 0, 85, 0.4);
+  border-left-color: #ff0055;
+}
+
+.br34-archive-item.is-current {
+  border-color: #ff0055;
+  background: rgba(255, 0, 85, 0.08);
+}
+
+.br34-archive-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.br34-archive-item-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: #f1f1f5;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.br34-archive-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9.5px;
+  color: #8c8998;
+}
+
+.br34-tag-page {
+  color: #ff0055;
+  font-weight: 800;
+}
+
+.br34-archive-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.br34-btn-jump {
+  background: #ff0055;
+  border: 1px solid #ff0055;
+  border-radius: 3px;
+  color: #000000;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 900;
+  padding: 3px 8px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.br34-btn-jump:hover {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #000000;
+}
+
+.br34-btn-del {
+  background: transparent;
+  border: 1px solid rgba(255, 0, 85, 0.3);
+  border-radius: 3px;
+  color: #ff0055;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 3px 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.br34-btn-del:hover {
+  background: #ff0055;
+  color: #000000;
+}
+
+.br34-video-archive-card {
+  display: flex;
+  align-items: center;
+  background: #0e0a14;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 6px;
+  gap: 8px;
+  transition: border-color 0.15s ease;
+}
+
+.br34-video-archive-card:hover {
+  border-color: rgba(255, 0, 85, 0.45);
+}
+
+.br34-video-archive-thumb-wrap {
+  position: relative;
+  width: 58px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background: #050307;
+}
+
+.br34-video-archive-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.br34-video-archive-dur {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  background: rgba(0, 0, 0, 0.85);
+  color: #ffffff;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 3px;
+  border-radius: 2px;
+  line-height: 1;
+}
+
+.br34-video-archive-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.br34-video-archive-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #e5e5eb;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.br34-video-archive-title:hover {
+  color: #ff0055;
+}
+
+.br34-video-archive-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: #8c8998;
+}
+
+.br34-video-archive-rating {
+  color: #00e676;
+  font-weight: 700;
+}
+
+.br34-video-archive-views {
+  color: #a5a2b3;
+}
+
+.br34-video-archive-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.br34-archive-footer {
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255, 0, 85, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  background: rgba(16, 10, 22, 0.95);
+}
+
+.br34-archive-action-btn {
+  flex: 1;
+  background: rgba(18, 12, 24, 0.9);
+  border: 1px solid rgba(255, 0, 85, 0.35);
+  border-radius: 4px;
+  color: #e5e5eb;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 5px 4px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.br34-archive-action-btn:hover {
+  background: #ff0055;
+  color: #000000;
+}
+
+.br34-archive-action-btn.danger {
+  border-color: rgba(255, 0, 85, 0.6);
+  color: #ff0055;
+}
+
+.br34-archive-action-btn.danger:hover {
+  background: #ff0055;
+  color: #000000;
+}
+
 /* ==========================================================================
     Mobile Specific
     ========================================================================== */
@@ -984,18 +1439,20 @@ ins.adsbyjuicy,
     font-size: 11px;
   }
 
-  .br34-panel {
+  .br34-panel,
+  .br34-archive-modal {
     right: 10px;
     bottom: 60px;
     width: calc(100vw - 20px);
-    max-width: 300px;
+    max-width: 340px;
   }
 
   .br34-panel-header {
     padding: 8px 12px;
   }
 
-  .br34-panel-body {
+  .br34-panel-body,
+  .br34-archive-body {
     padding: 10px 12px;
     gap: 10px;
   }
@@ -1009,7 +1466,8 @@ ins.adsbyjuicy,
     padding: 6px 2px;
   }
 
-  .br34-panel-footer {
+  .br34-panel-footer,
+  .br34-archive-footer {
     padding: 8px 12px;
   }
 }

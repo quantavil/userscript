@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better Rule34Video
 // @namespace    https://github.com/quantavil/userscript/
-// @version      1.4.0
+// @version      1.5.0
 // @author       quantavil
 // @description  Streamlined filter bar, instant client search & filtering, ad cleaner, and seamless auto next page infinite scroll for Rule34Video.
 // @license      MIT
@@ -253,6 +253,43 @@
 			return {};
 		}
 	}
+	function parseKvsParameters(dataParams) {
+		const raw = {};
+		if (!dataParams) return {
+			fromParam: null,
+			sortBy: null,
+			query: null,
+			tagIds: null,
+			raw
+		};
+		const parts = dataParams.split(";");
+		for (const part of parts) {
+			const colonIdx = part.indexOf(":");
+			if (colonIdx !== -1) {
+				const key = part.slice(0, colonIdx).trim();
+				const val = part.slice(colonIdx + 1).trim();
+				if (key) raw[key] = val;
+			}
+		}
+		let fromParam = null;
+		for (const k of Object.keys(raw)) if (/(?:from_videos(?:\+| )from_albums|from_videos|from_albums|from)/i.test(k)) {
+			const parsed = parseInt(raw[k], 10);
+			if (!isNaN(parsed) && parsed > 0) {
+				fromParam = parsed;
+				break;
+			}
+		}
+		const sortBy = raw["sort_by"] !== void 0 && raw["sort_by"] !== "" ? raw["sort_by"] : null;
+		const query = raw["q"] !== void 0 && raw["q"] !== "" ? raw["q"] : null;
+		const tagIds = raw["tag_ids"] !== void 0 && raw["tag_ids"] !== "" ? raw["tag_ids"] : null;
+		return {
+			fromParam,
+			sortBy,
+			query,
+			tagIds,
+			raw
+		};
+	}
 	var AD_SELECTORS = [
 		".spot-thumb",
 		".spots",
@@ -389,28 +426,63 @@
 		const wrappers = document.querySelectorAll("body > div");
 		for (const w of wrappers) if (w.style.overflow === "hidden") w.style.overflow = "visible";
 	}
-	function parseNextLink(root, baseUrl) {
+	function readActiveSort(root = document) {
+		const activeBtn = root.querySelector(".filters-panel__section--sort .btn.active, .filters-panel .btn.active[data-parameters*=\"sort_by\"]");
+		if (activeBtn) {
+			const dataParams = activeBtn.getAttribute("data-parameters") || "";
+			const match = /(?:^|;)sort_by:([^;]*)(?:;|$)/.exec(dataParams);
+			if (match && match[1]) return match[1];
+		}
+		return null;
+	}
+	function computeNextPageUrl(currentUrlStr, nextPageNum, sortBy) {
+		try {
+			const url = new URL(currentUrlStr);
+			const pathname = url.pathname;
+			if (sortBy !== void 0) {
+				if (sortBy) url.searchParams.set("sort_by", sortBy);
+				else url.searchParams.delete("sort_by");
+			}
+			if (pathname.includes("/search/")) {
+				url.searchParams.set("from_videos", String(nextPageNum));
+				url.searchParams.delete("from_videos+from_albums");
+				url.searchParams.delete("from_videos from_albums");
+				return url.toString();
+			}
+			url.pathname = appendPageToPath(pathname, nextPageNum);
+			for (const k of [...url.searchParams.keys()]) if (isPaginationKey(k)) url.searchParams.delete(k);
+			return url.toString();
+		} catch {
+			return null;
+		}
+	}
+	function parseNextLink(root, baseUrl, fallbackSortBy) {
 		const nextLink = root.querySelector(".pagination .item.pager.next a, .pagination .item.active + .item a, .pagination a.next");
 		if (!nextLink) return {
 			url: null,
-			fromParam: null
+			fromParam: null,
+			sortBy: null
 		};
 		const raw = nextLink.getAttribute("href") || "";
 		const dataParams = nextLink.getAttribute("data-parameters") || "";
 		if (raw && !raw.startsWith("#") && !raw.startsWith("javascript:")) return {
 			url: resolveNextPageUrl(baseUrl, raw) || null,
-			fromParam: null
+			fromParam: null,
+			sortBy: null
 		};
 		if (dataParams) {
-			const match = /(?:from_videos(?:\+| )from_albums|from_videos|from_albums|from):(\d+)/i.exec(dataParams);
-			if (match) return {
-				url: null,
-				fromParam: parseInt(match[1], 10)
+			const parsed = parseKvsParameters(dataParams);
+			const effectiveSort = parsed.sortBy !== null ? parsed.sortBy : fallbackSortBy ?? null;
+			if (parsed.fromParam !== null && !isNaN(parsed.fromParam)) return {
+				url: computeNextPageUrl(baseUrl, parsed.fromParam, effectiveSort),
+				fromParam: parsed.fromParam,
+				sortBy: effectiveSort
 			};
 		}
 		return {
 			url: null,
-			fromParam: null
+			fromParam: null,
+			sortBy: null
 		};
 	}
 	var AutoPager = class {
@@ -485,34 +557,44 @@
 			} catch {}
 			return 1;
 		}
+		reset(nextUrl, newPageNumber = 1) {
+			if (this.container) for (const sep of this.container.querySelectorAll(".br34-page-sep")) sep.remove();
+			this.seenCardIds.clear();
+			this.container = findVideosContainer();
+			if (this.container) {
+				const currentCards = this.container.querySelectorAll(".item.thumb");
+				for (const card of currentCards) {
+					if (isAdCard(card)) {
+						card.remove();
+						continue;
+					}
+					const id = card.dataset.videoCardId || card.querySelector("a[href*=\"/video/\"]")?.getAttribute("href");
+					if (id) this.seenCardIds.add(id);
+				}
+			}
+			this.currentPage = newPageNumber;
+			this.initialPage = newPageNumber;
+			this.lastPageUrl = window.location.href;
+			this.isLoading = false;
+			this.isAppending = false;
+			if (nextUrl !== void 0) this.nextUrl = nextUrl;
+			else this.detectNextPageUrl(document);
+			this.mountStatusElements();
+			this.setupObserver();
+		}
 		detectNextPageUrl(root) {
-			const { url, fromParam } = parseNextLink(root, window.location.href);
+			const activeSort = readActiveSort(root);
+			const { url, fromParam, sortBy } = parseNextLink(root, window.location.href, activeSort);
 			this.nextUrl = null;
 			if (url) this.nextUrl = url;
-			else if (fromParam !== null && !isNaN(fromParam)) this.nextUrl = this.computeNextPageUrlFromCurrent(window.location.href, fromParam);
+			else if (fromParam !== null && !isNaN(fromParam)) this.nextUrl = computeNextPageUrl(window.location.href, fromParam, sortBy || activeSort);
 			if (!this.nextUrl) try {
-				if (!new URL(window.location.href).pathname.includes("/search/")) this.nextUrl = this.computeNextPageUrlFromCurrent(window.location.href, this.currentPage + 1);
+				if (!new URL(window.location.href).pathname.includes("/search/")) this.nextUrl = computeNextPageUrl(window.location.href, this.currentPage + 1, activeSort);
 			} catch {
 				this.nextUrl = null;
 			}
 			const nativePagination = document.querySelector(".pagination");
 			if (nativePagination) nativePagination.style.display = "none";
-		}
-		computeNextPageUrlFromCurrent(currentUrlStr, nextPageNum) {
-			try {
-				const url = new URL(currentUrlStr);
-				const pathname = url.pathname;
-				if (pathname.includes("/search/")) {
-					url.searchParams.set("from_videos", String(nextPageNum));
-					url.searchParams.delete("from_videos+from_albums");
-					url.searchParams.delete("from_videos from_albums");
-					return url.toString();
-				}
-				url.pathname = appendPageToPath(pathname, nextPageNum);
-				return url.toString();
-			} catch {
-				return null;
-			}
 		}
 		mountStatusElements() {
 			if (!this.container) return;
@@ -636,12 +718,13 @@
 				this.currentPage++;
 				this.lastPageUrl = fetchUrl;
 				this.onPageLoaded?.(this.currentPage);
-				const parsed = parseNextLink(doc, fetchUrl);
+				const activeSort = readActiveSort(document);
+				const parsed = parseNextLink(doc, fetchUrl, activeSort);
 				this.nextUrl = null;
 				if (parsed.url) this.nextUrl = parsed.url;
-				else if (parsed.fromParam !== null && !isNaN(parsed.fromParam)) this.nextUrl = this.computeNextPageUrlFromCurrent(fetchUrl, parsed.fromParam);
+				else if (parsed.fromParam !== null && !isNaN(parsed.fromParam)) this.nextUrl = computeNextPageUrl(fetchUrl, parsed.fromParam, parsed.sortBy || activeSort);
 				if (!this.nextUrl && cardsToAppend.length > 0) try {
-					if (!new URL(fetchUrl).pathname.includes("/search/")) this.nextUrl = this.computeNextPageUrlFromCurrent(fetchUrl, this.currentPage + 1);
+					if (!new URL(fetchUrl).pathname.includes("/search/")) this.nextUrl = computeNextPageUrl(fetchUrl, this.currentPage + 1, activeSort);
 				} catch {
 					this.nextUrl = null;
 				}
@@ -679,7 +762,8 @@
 			this.sentinel = null;
 		}
 	};
-	var BOOKMARK_KEY = "better_rule34_bookmarks_v1";
+	var BOOKMARK_ARCHIVE_KEY = "better_rule34_bookmarks_v2";
+	var LEGACY_BOOKMARK_KEY = "better_rule34_bookmarks_v1";
 	function canonicalListKey(urlStr) {
 		try {
 			const url = new URL(urlStr);
@@ -694,6 +778,27 @@
 			return urlStr;
 		}
 	}
+	function formatSectorTitleFromUrl(urlStr) {
+		try {
+			const url = new URL(urlStr);
+			const parts = url.pathname.split("/").filter(Boolean);
+			const sortBy = url.searchParams.get("sort_by");
+			const sortSuffix = sortBy ? ` [${sortBy.toUpperCase()}]` : "";
+			if (parts.length === 0 || parts.length === 1 && parts[0] === "latest-updates") return `FEED // LATEST${sortSuffix}`;
+			if (parts[0] === "search") {
+				const q = parts[1] || url.searchParams.get("q") || "ALL";
+				return `SEARCH // ${decodeURIComponent(q).toUpperCase()}${sortSuffix}`;
+			}
+			if (parts[0] === "tags" && parts[1]) return `TAG // ${decodeURIComponent(parts[1]).replace(/-/g, " ").toUpperCase()}${sortSuffix}`;
+			if (parts[0] === "categories" && parts[1]) return `CATEGORY // ${decodeURIComponent(parts[1]).replace(/-/g, " ").toUpperCase()}${sortSuffix}`;
+			if (parts[0] === "models" && parts[1]) return `MODEL // ${decodeURIComponent(parts[1]).replace(/-/g, " ").toUpperCase()}${sortSuffix}`;
+			if (parts[0] === "channels" && parts[1]) return `CHANNEL // ${decodeURIComponent(parts[1]).replace(/-/g, " ").toUpperCase()}${sortSuffix}`;
+			if (parts[0] === "playlists" && parts[1]) return `PLAYLIST // ${decodeURIComponent(parts[1]).replace(/-/g, " ").toUpperCase()}${sortSuffix}`;
+			return `SECTOR // ${parts.slice(0, 2).join(" / ").toUpperCase()}${sortSuffix}`;
+		} catch {
+			return "SECTOR // ARCHIVE";
+		}
+	}
 	function resolveStore$1(store) {
 		if (store) return store;
 		try {
@@ -701,56 +806,516 @@
 		} catch {}
 		return null;
 	}
-	function readAll(store) {
+	function readArchive(store) {
 		const s = resolveStore$1(store);
-		if (!s) return {};
+		if (!s) return {
+			version: 2,
+			sectors: [],
+			videos: []
+		};
 		try {
-			const raw = s.getItem(BOOKMARK_KEY);
-			if (!raw) return {};
-			const parsed = JSON.parse(raw);
-			if (!parsed || typeof parsed !== "object") return {};
-			return parsed;
-		} catch {
-			return {};
-		}
-	}
-	function getBookmark(key, store) {
-		if (!key) return null;
-		const bm = readAll(store)[key];
-		if (!bm || typeof bm.page !== "number" || typeof bm.url !== "string" || !bm.url) return null;
-		return bm;
-	}
-	function setBookmark(key, bm, store) {
-		const s = resolveStore$1(store);
-		if (!s || !key || !bm.url || bm.page < 1) return;
-		try {
-			const all = readAll(store);
-			all[key] = {
-				page: bm.page,
-				url: bm.url
-			};
-			s.setItem(BOOKMARK_KEY, JSON.stringify(all));
-		} catch {}
-	}
-	function clearBookmark(key, store) {
-		const s = resolveStore$1(store);
-		if (!s || !key) return;
-		try {
-			const all = readAll(store);
-			if (all[key]) {
-				delete all[key];
-				s.setItem(BOOKMARK_KEY, JSON.stringify(all));
+			const rawV2 = s.getItem(BOOKMARK_ARCHIVE_KEY);
+			if (rawV2) {
+				const parsed = JSON.parse(rawV2);
+				if (parsed && parsed.version === 2 && Array.isArray(parsed.sectors) && Array.isArray(parsed.videos)) return parsed;
+			}
+			const rawV1 = s.getItem(LEGACY_BOOKMARK_KEY);
+			if (rawV1) {
+				const legacy = JSON.parse(rawV1);
+				if (legacy && typeof legacy === "object") {
+					const sectors = [];
+					let i = 0;
+					for (const [key, val] of Object.entries(legacy)) if (val && typeof val.page === "number" && typeof val.url === "string") sectors.push({
+						id: `sec_legacy_${Date.now()}_${i++}`,
+						listKey: key,
+						title: formatSectorTitleFromUrl(val.url),
+						url: val.url,
+						page: val.page,
+						createdAt: Date.now()
+					});
+					const data = {
+						version: 2,
+						sectors,
+						videos: []
+					};
+					s.setItem(BOOKMARK_ARCHIVE_KEY, JSON.stringify(data));
+					return data;
+				}
 			}
 		} catch {}
+		return {
+			version: 2,
+			sectors: [],
+			videos: []
+		};
 	}
-	var BOOKMARK_SVG = `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 2h8v12l-4-3-4 3z"/></svg>`;
-	function refreshButton(btn, bm, curPage = 1) {
-		btn.classList.toggle("saved", Boolean(bm));
-		if (!bm) btn.title = `Bookmark page ${curPage} — click: save`;
-		else if (curPage < bm.page) btn.title = `Bookmark at p.${bm.page} — click: jump to p.${bm.page}, right-click: remove`;
-		else if (curPage > bm.page) btn.title = `Current p.${curPage} (saved p.${bm.page}) — click: update to p.${curPage}, right-click: remove`;
-		else btn.title = `Bookmarked at p.${bm.page} — click: remove, right-click: remove`;
-		btn.setAttribute("aria-label", btn.title);
+	function writeArchive(data, store) {
+		const s = resolveStore$1(store);
+		if (!s) return;
+		try {
+			s.setItem(BOOKMARK_ARCHIVE_KEY, JSON.stringify(data));
+		} catch {}
+	}
+	function getSectors(store) {
+		return readArchive(store).sectors;
+	}
+	function findSector(listKey, page, store) {
+		if (!listKey) return null;
+		return getSectors(store).find((s) => s.listKey === listKey && s.page === page) || null;
+	}
+	function saveSector(bm, store) {
+		const archive = readArchive(store);
+		const existingIdx = archive.sectors.findIndex((s) => s.listKey === bm.listKey && s.page === bm.page);
+		const now = Date.now();
+		if (existingIdx !== -1) {
+			archive.sectors[existingIdx] = {
+				...archive.sectors[existingIdx],
+				...bm,
+				createdAt: now
+			};
+			writeArchive(archive, store);
+			return archive.sectors[existingIdx];
+		}
+		const created = {
+			...bm,
+			id: `sec_${now}_${Math.random().toString(36).slice(2, 7)}`,
+			createdAt: now
+		};
+		archive.sectors.unshift(created);
+		writeArchive(archive, store);
+		return created;
+	}
+	function deleteSector(id, store) {
+		if (!id) return;
+		const archive = readArchive(store);
+		archive.sectors = archive.sectors.filter((s) => s.id !== id);
+		writeArchive(archive, store);
+	}
+	function clearAllSectors(store) {
+		const archive = readArchive(store);
+		archive.sectors = [];
+		writeArchive(archive, store);
+	}
+	function getVideos(store) {
+		return readArchive(store).videos;
+	}
+	function isVideoSaved(id, store) {
+		if (!id) return false;
+		return getVideos(store).some((v) => v.id === id);
+	}
+	function saveVideo(video, store) {
+		const archive = readArchive(store);
+		const existingIdx = archive.videos.findIndex((v) => v.id === video.id);
+		const now = Date.now();
+		if (existingIdx !== -1) {
+			archive.videos[existingIdx] = {
+				...archive.videos[existingIdx],
+				...video,
+				createdAt: now
+			};
+			writeArchive(archive, store);
+			return archive.videos[existingIdx];
+		}
+		const created = {
+			...video,
+			createdAt: now
+		};
+		archive.videos.unshift(created);
+		writeArchive(archive, store);
+		return created;
+	}
+	function deleteVideo(id, store) {
+		if (!id) return;
+		const archive = readArchive(store);
+		archive.videos = archive.videos.filter((v) => v.id !== id);
+		writeArchive(archive, store);
+	}
+	function clearAllVideos(store) {
+		const archive = readArchive(store);
+		archive.videos = [];
+		writeArchive(archive, store);
+	}
+	function getTotalBookmarkCount(store) {
+		const archive = readArchive(store);
+		return archive.sectors.length + archive.videos.length;
+	}
+	function exportArchiveJson(store) {
+		const archive = readArchive(store);
+		return JSON.stringify(archive, null, 2);
+	}
+	function importArchiveJson(jsonStr, store) {
+		try {
+			const parsed = JSON.parse(jsonStr);
+			if (!parsed || typeof parsed !== "object") return {
+				success: false,
+				sectorsAdded: 0,
+				videosAdded: 0
+			};
+			const archive = readArchive(store);
+			let sectorsAdded = 0;
+			let videosAdded = 0;
+			if (Array.isArray(parsed.sectors)) {
+				for (const s of parsed.sectors) if (s && typeof s.listKey === "string" && typeof s.page === "number" && typeof s.url === "string") {
+					if (!archive.sectors.some((item) => item.listKey === s.listKey && item.page === s.page)) {
+						archive.sectors.push({
+							id: s.id || `sec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+							listKey: s.listKey,
+							title: s.title || formatSectorTitleFromUrl(s.url),
+							url: s.url,
+							page: s.page,
+							sortBy: s.sortBy || null,
+							createdAt: s.createdAt || Date.now()
+						});
+						sectorsAdded++;
+					}
+				}
+			}
+			if (Array.isArray(parsed.videos)) {
+				for (const v of parsed.videos) if (v && typeof v.id === "string" && typeof v.url === "string") {
+					if (!archive.videos.some((item) => item.id === v.id)) {
+						archive.videos.push({
+							id: v.id,
+							title: v.title || "Untitled Video",
+							url: v.url,
+							thumbUrl: v.thumbUrl || "",
+							durationFormatted: v.durationFormatted || "",
+							ratingPercent: v.ratingPercent || 0,
+							viewsFormatted: v.viewsFormatted || "",
+							createdAt: v.createdAt || Date.now()
+						});
+						videosAdded++;
+					}
+				}
+			}
+			writeArchive(archive, store);
+			return {
+				success: true,
+				sectorsAdded,
+				videosAdded
+			};
+		} catch {
+			return {
+				success: false,
+				sectorsAdded: 0,
+				videosAdded: 0
+			};
+		}
+	}
+	var RIBBON_SVG = `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 2h8v12l-4-3-4 3z"/></svg>`;
+	function escapeHtml(str) {
+		return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+	}
+	function showToast(message) {
+		let toast = document.querySelector(".br34-toast");
+		if (!toast) {
+			toast = document.createElement("div");
+			toast.className = "br34-toast";
+			document.body.append(toast);
+		}
+		toast.textContent = message;
+		toast.classList.add("visible");
+		window.clearTimeout(toast._timer);
+		toast._timer = window.setTimeout(() => {
+			toast?.classList.remove("visible");
+		}, 2200);
+	}
+	var ArchiveModal = class {
+		modal;
+		activeTab = "sectors";
+		isOpen = false;
+		videoSearchQuery = "";
+		getPage;
+		getUrl;
+		getListKey;
+		onDataChanged;
+		constructor(opts) {
+			this.getPage = opts.getPage;
+			this.getUrl = opts.getUrl;
+			this.getListKey = opts.getListKey;
+			this.onDataChanged = opts.onDataChanged;
+			this.modal = this.buildModal();
+			document.body.append(this.modal);
+			this.bindEvents();
+		}
+		toggle(open) {
+			this.isOpen = open !== void 0 ? open : !this.isOpen;
+			this.modal.classList.toggle("open", this.isOpen);
+			if (this.isOpen) this.render();
+		}
+		getIsOpen() {
+			return this.isOpen;
+		}
+		buildModal() {
+			const el = document.createElement("div");
+			el.className = "br34-archive-modal";
+			el.innerHTML = `
+      <div class="br34-panel-header">
+        <div class="br34-title-row">
+          <span class="br34-title">[ EROS // ARCHIVE ]</span>
+          <span class="br34-title-sub" id="br34-archive-counter">INDEX: 0 UNITS</span>
+        </div>
+        <button type="button" class="br34-panel-close" id="br34-archive-close" title="Close" aria-label="Close">[ X ]</button>
+      </div>
+
+      <div class="br34-archive-tabs">
+        <button type="button" class="br34-archive-tab active" data-tab="sectors">SECTORS (0)</button>
+        <button type="button" class="br34-archive-tab" data-tab="videos">SAVED VIDEOS (0)</button>
+      </div>
+
+      <div class="br34-archive-body" id="br34-archive-body">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <div class="br34-archive-footer">
+        <button type="button" class="br34-archive-action-btn" id="br34-archive-export">EXPORT JSON</button>
+        <button type="button" class="br34-archive-action-btn" id="br34-archive-import">IMPORT JSON</button>
+        <button type="button" class="br34-archive-action-btn danger" id="br34-archive-clear">CLEAR TAB</button>
+        <input type="file" id="br34-archive-file-input" accept=".json,application/json" style="display:none;" />
+      </div>
+    `;
+			return el;
+		}
+		bindEvents() {
+			this.modal.querySelector("#br34-archive-close")?.addEventListener("click", () => {
+				this.toggle(false);
+			});
+			const tabBtns = this.modal.querySelectorAll(".br34-archive-tab");
+			for (const btn of tabBtns) btn.addEventListener("click", () => {
+				const tab = btn.dataset.tab;
+				if (tab && tab !== this.activeTab) {
+					this.activeTab = tab;
+					for (const b of tabBtns) b.classList.toggle("active", b.dataset.tab === tab);
+					this.render();
+				}
+			});
+			this.modal.querySelector("#br34-archive-export")?.addEventListener("click", () => {
+				const json = exportArchiveJson();
+				const blob = new Blob([json], { type: "application/json" });
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement("a");
+				a.href = url;
+				a.download = `eros-archive-${new Date().toISOString().slice(0, 10)}.json`;
+				a.click();
+				URL.revokeObjectURL(url);
+				showToast("[ ARCHIVE EXPORTED ]");
+			});
+			const fileInput = this.modal.querySelector("#br34-archive-file-input");
+			this.modal.querySelector("#br34-archive-import")?.addEventListener("click", () => {
+				fileInput?.click();
+			});
+			fileInput?.addEventListener("change", () => {
+				const file = fileInput.files?.[0];
+				if (!file) return;
+				const reader = new FileReader();
+				reader.onload = (e) => {
+					const res = importArchiveJson(String(e.target?.result || ""));
+					if (res.success) {
+						showToast(`[ IMPORTED: ${res.sectorsAdded} SECTORS, ${res.videosAdded} VIDEOS ]`);
+						this.render();
+						this.onDataChanged?.();
+					} else showToast("[ ERROR: INVALID ARCHIVE JSON ]");
+				};
+				reader.readAsText(file);
+				fileInput.value = "";
+			});
+			this.modal.querySelector("#br34-archive-clear")?.addEventListener("click", () => {
+				if (this.activeTab === "sectors") {
+					clearAllSectors();
+					showToast("[ ALL SECTORS CLEARED ]");
+				} else {
+					clearAllVideos();
+					showToast("[ ALL SAVED VIDEOS CLEARED ]");
+				}
+				this.render();
+				this.onDataChanged?.();
+			});
+		}
+		render() {
+			const sectors = getSectors();
+			const videos = getVideos();
+			const total = sectors.length + videos.length;
+			const counter = this.modal.querySelector("#br34-archive-counter");
+			if (counter) counter.textContent = `INDEX: ${total} UNITS`;
+			const sectorsTab = this.modal.querySelector("[data-tab=\"sectors\"]");
+			if (sectorsTab) sectorsTab.textContent = `SECTORS (${sectors.length})`;
+			const videosTab = this.modal.querySelector("[data-tab=\"videos\"]");
+			if (videosTab) videosTab.textContent = `SAVED VIDEOS (${videos.length})`;
+			const body = this.modal.querySelector("#br34-archive-body");
+			if (!body) return;
+			if (this.activeTab === "sectors") this.renderSectors(body, sectors);
+			else this.renderVideos(body, videos);
+		}
+		renderSectors(container, sectors) {
+			const curPage = this.getPage();
+			const curUrl = this.getUrl();
+			const listKey = this.getListKey();
+			const isCurrentSaved = Boolean(findSector(listKey, curPage));
+			let html = `
+      <div class="br34-archive-toolbar">
+        <button type="button" class="br34-btn-mark-sector ${isCurrentSaved ? "saved" : ""}" id="br34-mark-sector-btn">
+          ${isCurrentSaved ? `[ ✓ SECTOR P.${curPage} SAVED (CLICK TO REMOVE) ]` : `[ + BOOKMARK CURRENT SECTOR // P.${curPage} ]`}
+        </button>
+      </div>
+    `;
+			if (sectors.length === 0) html += `
+        <div class="br34-archive-empty">
+          <div class="br34-archive-empty-title">[ NO SECTORS ARCHIVED ]</div>
+          <div class="br34-archive-empty-sub">Browse any catalog, tag, or search and click '+ Bookmark Current Sector'.</div>
+        </div>
+      `;
+			else {
+				html += `<div class="br34-archive-list">`;
+				for (const s of sectors) {
+					const isThisCurrent = s.listKey === listKey && s.page === curPage;
+					html += `
+          <div class="br34-archive-item ${isThisCurrent ? "is-current" : ""}">
+            <div class="br34-archive-item-main">
+              <div class="br34-archive-item-title">${escapeHtml(s.title || "SECTOR")}</div>
+              <div class="br34-archive-item-meta">
+                <span class="br34-tag-page">PAGE ${s.page}</span>
+                <span class="br34-tag-date">${new Date(s.createdAt).toLocaleDateString()}</span>
+              </div>
+            </div>
+            <div class="br34-archive-item-actions">
+              <a href="${escapeHtml(s.url)}" class="br34-btn-jump" title="Jump to page depth">[ JUMP ]</a>
+              <button type="button" class="br34-btn-del" data-del-sector="${escapeHtml(s.id)}" title="Delete sector" aria-label="Delete sector">[ ✕ ]</button>
+            </div>
+          </div>
+        `;
+				}
+				html += `</div>`;
+			}
+			container.innerHTML = html;
+			container.querySelector("#br34-mark-sector-btn")?.addEventListener("click", () => {
+				const existing = findSector(listKey, curPage);
+				if (existing) {
+					deleteSector(existing.id);
+					showToast(`[ REMOVED SECTOR // P.${curPage} ]`);
+				} else {
+					saveSector({
+						listKey,
+						title: formatSectorTitleFromUrl(curUrl),
+						url: curUrl,
+						page: curPage
+					});
+					showToast(`[ SAVED SECTOR // P.${curPage} ]`);
+				}
+				this.render();
+				this.onDataChanged?.();
+			});
+			const delBtns = container.querySelectorAll("[data-del-sector]");
+			for (const btn of delBtns) btn.addEventListener("click", () => {
+				const id = btn.dataset.delSector;
+				if (id) {
+					deleteSector(id);
+					this.render();
+					this.onDataChanged?.();
+				}
+			});
+		}
+		renderVideos(container, videos) {
+			const filtered = this.videoSearchQuery.trim() ? videos.filter((v) => v.title.toLowerCase().includes(this.videoSearchQuery.toLowerCase())) : videos;
+			let html = `
+      <div class="br34-archive-toolbar">
+        <input type="text" class="br34-search-input" id="br34-archive-video-search" placeholder="SEARCH SAVED VIDEOS..." value="${escapeHtml(this.videoSearchQuery)}" />
+      </div>
+    `;
+			if (videos.length === 0) html += `
+        <div class="br34-archive-empty">
+          <div class="br34-archive-empty-title">[ ARCHIVE EMPTY ]</div>
+          <div class="br34-archive-empty-sub">Hover any video thumbnail and click the ribbon icon to save videos for later.</div>
+        </div>
+      `;
+			else if (filtered.length === 0) html += `
+        <div class="br34-archive-empty">
+          <div class="br34-archive-empty-title">[ NO MATCHING VIDEOS ]</div>
+        </div>
+      `;
+			else {
+				html += `<div class="br34-video-archive-list">`;
+				for (const v of filtered) html += `
+          <div class="br34-video-archive-card">
+            ${v.thumbUrl ? `<div class="br34-video-archive-thumb-wrap">
+                    <img class="br34-video-archive-thumb" src="${escapeHtml(v.thumbUrl)}" alt="" loading="lazy" />
+                    ${v.durationFormatted ? `<span class="br34-video-archive-dur">${escapeHtml(v.durationFormatted)}</span>` : ""}
+                   </div>` : ""}
+            <div class="br34-video-archive-info">
+              <a href="${escapeHtml(v.url)}" target="_blank" rel="noopener" class="br34-video-archive-title">${escapeHtml(v.title || "Untitled Video")}</a>
+              <div class="br34-video-archive-meta">
+                ${v.ratingPercent > 0 ? `<span class="br34-video-archive-rating">${v.ratingPercent}%</span>` : ""}
+                ${v.viewsFormatted ? `<span class="br34-video-archive-views">${escapeHtml(v.viewsFormatted)}</span>` : ""}
+              </div>
+            </div>
+            <div class="br34-video-archive-actions">
+              <a href="${escapeHtml(v.url)}" target="_blank" rel="noopener" class="br34-btn-jump">[ WATCH ]</a>
+              <button type="button" class="br34-btn-del" data-del-video="${escapeHtml(v.id)}" title="Remove" aria-label="Remove">[ ✕ ]</button>
+            </div>
+          </div>
+        `;
+				html += `</div>`;
+			}
+			container.innerHTML = html;
+			const searchInput = container.querySelector("#br34-archive-video-search");
+			searchInput?.addEventListener("input", () => {
+				this.videoSearchQuery = searchInput.value;
+				this.render();
+			});
+			const delBtns = container.querySelectorAll("[data-del-video]");
+			for (const btn of delBtns) btn.addEventListener("click", () => {
+				const id = btn.dataset.delVideo;
+				if (id) {
+					deleteVideo(id);
+					this.render();
+					this.onDataChanged?.();
+				}
+			});
+		}
+		destroy() {
+			this.modal.remove();
+		}
+	};
+	function attachCardBookmarkButtons(cards, onUpdate) {
+		for (const card of cards) {
+			if (card.dataset.br34BmWired === "true") continue;
+			card.dataset.br34BmWired = "true";
+			const wrap = card.querySelector(".wrap_image, .img.wrap_image");
+			if (!wrap) continue;
+			const data = extractCardData(card);
+			if (!data || !data.id) continue;
+			const ribbon = document.createElement("button");
+			ribbon.type = "button";
+			ribbon.className = `br34-card-bookmark ${isVideoSaved(data.id) ? "saved" : ""}`;
+			ribbon.title = isVideoSaved(data.id) ? "Saved in Archive (Click to remove)" : "Save to Archive";
+			ribbon.setAttribute("aria-label", ribbon.title);
+			ribbon.innerHTML = RIBBON_SVG;
+			ribbon.addEventListener("click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				if (isVideoSaved(data.id)) {
+					deleteVideo(data.id);
+					ribbon.classList.remove("saved");
+					ribbon.title = "Save to Archive";
+					ribbon.setAttribute("aria-label", ribbon.title);
+					showToast("[ REMOVED FROM ARCHIVE ]");
+				} else {
+					saveVideo({
+						id: data.id,
+						title: data.title,
+						url: data.url,
+						thumbUrl: data.thumbUrl,
+						durationFormatted: data.durationFormatted,
+						ratingPercent: data.ratingPercent,
+						viewsFormatted: data.viewsFormatted
+					});
+					ribbon.classList.add("saved");
+					ribbon.title = "Saved in Archive (Click to remove)";
+					ribbon.setAttribute("aria-label", ribbon.title);
+					showToast("[ SAVED TO ARCHIVE ]");
+				}
+				onUpdate?.();
+			});
+			wrap.append(ribbon);
+		}
 	}
 	function mountBookmarkButton(opts) {
 		let dock = document.querySelector(".br34-dock");
@@ -765,59 +1330,56 @@
 			btn = document.createElement("button");
 			btn.type = "button";
 			btn.className = "br34-bookmark-btn";
-			btn.innerHTML = BOOKMARK_SVG;
+			btn.innerHTML = `${RIBBON_SVG}<span class="br34-bookmark-badge">0</span>`;
 			dock.prepend(btn);
 		}
 		const button = btn;
-		const updateState = () => {
-			refreshButton(button, getBookmark(opts.listKey), opts.getPage());
-		};
-		updateState();
-		if (button.dataset.br34Wired === "true") return {
-			cleanup: () => {},
-			refresh: updateState
-		};
-		button.dataset.br34Wired = "true";
-		const onClick = () => {
-			const existing = getBookmark(opts.listKey);
-			const curPage = opts.getPage();
-			const curUrl = opts.getUrl();
-			if (!existing) {
-				setBookmark(opts.listKey, {
-					page: curPage,
-					url: curUrl
-				});
-				updateState();
-				return;
+		const modal = new ArchiveModal({
+			getPage: opts.getPage,
+			getUrl: opts.getUrl,
+			getListKey: () => opts.listKey,
+			onDataChanged: () => {
+				updateBadge();
 			}
-			if (curPage < existing.page) window.location.href = existing.url;
-			else if (curPage > existing.page) {
-				setBookmark(opts.listKey, {
-					page: curPage,
-					url: curUrl
-				});
-				updateState();
-			} else {
-				clearBookmark(opts.listKey);
-				updateState();
-			}
+		});
+		const updateBadge = () => {
+			const count = getTotalBookmarkCount();
+			const isCurrentSectorSaved = Boolean(findSector(opts.listKey, opts.getPage()));
+			button.classList.toggle("saved", isCurrentSectorSaved || count > 0);
+			let badge = button.querySelector(".br34-bookmark-badge");
+			if (count > 0) {
+				if (!badge) {
+					badge = document.createElement("span");
+					badge.className = "br34-bookmark-badge";
+					button.append(badge);
+				}
+				badge.textContent = String(count);
+			} else badge?.remove();
+			button.title = `EROS Archive (${count} saved items) — Click to open`;
+			button.setAttribute("aria-label", button.title);
 		};
-		const onContextMenu = (e) => {
-			e.preventDefault();
-			clearBookmark(opts.listKey);
-			updateState();
+		updateBadge();
+		if (button.dataset.br34Wired !== "true") {
+			button.dataset.br34Wired = "true";
+			button.addEventListener("click", (e) => {
+				e.stopPropagation();
+				modal.toggle();
+			});
+		}
+		const outsideClickListener = (e) => {
+			if (modal.getIsOpen() && !modal["modal"].contains(e.target) && !button.contains(e.target)) modal.toggle(false);
 		};
-		button.addEventListener("click", onClick);
-		button.addEventListener("contextmenu", onContextMenu);
-		const cleanup = () => {
-			button.removeEventListener("click", onClick);
-			button.removeEventListener("contextmenu", onContextMenu);
-			button.remove();
-			delete button.dataset.br34Wired;
-		};
+		document.addEventListener("click", outsideClickListener);
 		return {
-			cleanup,
-			refresh: updateState
+			cleanup: () => {
+				document.removeEventListener("click", outsideClickListener);
+				modal.destroy();
+				button.remove();
+			},
+			refresh: () => {
+				updateBadge();
+				if (modal.getIsOpen()) modal.render();
+			}
 		};
 	}
 	var STORAGE_KEY = "better_rule34_settings";
@@ -2213,6 +2775,461 @@ ins.adsbyjuicy,
   fill: currentColor;
 }
 
+/* Card Bookmark Ribbon */
+.br34-card-bookmark {
+  position: absolute !important;
+  top: 6px !important;
+  right: 6px !important;
+  z-index: 15 !important;
+  width: 26px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  background: rgba(10, 7, 14, 0.85) !important;
+  border: 1px solid rgba(255, 0, 85, 0.45) !important;
+  border-radius: 4px !important;
+  color: #ff0055 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  opacity: 0 !important;
+  transform: scale(0.9) !important;
+  transition: all 0.15s ease !important;
+  outline: none !important;
+}
+
+.item.thumb:hover .br34-card-bookmark {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+}
+
+.br34-card-bookmark:hover {
+  background: #ff0055 !important;
+  color: #000000 !important;
+  box-shadow: 0 0 10px rgba(255, 0, 85, 0.8) !important;
+}
+
+.br34-card-bookmark.saved {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+  background: #ff0055 !important;
+  color: #000000 !important;
+  box-shadow: 0 0 10px rgba(255, 0, 85, 0.6) !important;
+}
+
+.br34-card-bookmark.saved svg {
+  fill: currentColor !important;
+}
+
+/* Dock Bookmark Badge */
+.br34-bookmark-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ff0055;
+  color: #000000;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 900;
+  padding: 1px 5px;
+  border-radius: 4px;
+  box-shadow: 0 0 8px rgba(255, 0, 85, 0.7);
+  line-height: 1.1;
+}
+
+/* Micro Toast */
+.br34-toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  z-index: 2147483647;
+  background: rgba(10, 7, 14, 0.96);
+  border: 1px solid #ff0055;
+  border-radius: 6px;
+  color: #ffffff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 8px 18px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9), 0 0 16px rgba(255, 0, 85, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  text-transform: uppercase;
+}
+
+.br34-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* EROS Archive Modal */
+.br34-archive-modal {
+  position: fixed;
+  bottom: 74px;
+  right: 24px;
+  z-index: 2147483646;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 90px);
+  background: rgba(10, 7, 14, 0.97);
+  border: 1px solid rgba(255, 0, 85, 0.45);
+  border-radius: 8px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.95), 0 0 25px rgba(255, 0, 85, 0.22);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  display: flex;
+  flex-direction: column;
+  color: #e5e5eb;
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.br34-archive-modal.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.br34-archive-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: rgba(16, 10, 22, 0.95);
+  border-bottom: 1px solid rgba(255, 0, 85, 0.25);
+}
+
+.br34-archive-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #9c97a8;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.br34-archive-tab:hover {
+  color: #ffffff;
+  background: rgba(255, 0, 85, 0.08);
+}
+
+.br34-archive-tab.active {
+  color: #ff0055;
+  border-bottom-color: #ff0055;
+  background: rgba(255, 0, 85, 0.12);
+}
+
+.br34-archive-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+}
+
+.br34-archive-toolbar {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.br34-btn-mark-sector {
+  width: 100%;
+  background: rgba(18, 12, 24, 0.9);
+  border: 1px solid rgba(255, 0, 85, 0.45);
+  border-radius: 5px;
+  color: #ff0055;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.br34-btn-mark-sector:hover {
+  background: #ff0055;
+  color: #000000;
+  box-shadow: 0 0 12px rgba(255, 0, 85, 0.6);
+}
+
+.br34-btn-mark-sector.saved {
+  background: rgba(255, 0, 85, 0.2);
+  border-color: #ff0055;
+  color: #ffffff;
+}
+
+.br34-archive-empty {
+  text-align: center;
+  padding: 30px 15px;
+  color: #7d798a;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.br34-archive-empty-title {
+  color: #ff0055;
+  font-weight: 800;
+  margin-bottom: 6px;
+  letter-spacing: 0.08em;
+}
+
+.br34-archive-empty-sub {
+  font-size: 9.5px;
+}
+
+.br34-archive-list,
+.br34-video-archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.br34-archive-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0e0a14;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 3px solid #ff0055;
+  border-radius: 4px;
+  padding: 7px 10px;
+  gap: 8px;
+  transition: border-color 0.15s ease;
+}
+
+.br34-archive-item:hover {
+  border-color: rgba(255, 0, 85, 0.4);
+  border-left-color: #ff0055;
+}
+
+.br34-archive-item.is-current {
+  border-color: #ff0055;
+  background: rgba(255, 0, 85, 0.08);
+}
+
+.br34-archive-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.br34-archive-item-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: #f1f1f5;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.br34-archive-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9.5px;
+  color: #8c8998;
+}
+
+.br34-tag-page {
+  color: #ff0055;
+  font-weight: 800;
+}
+
+.br34-archive-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.br34-btn-jump {
+  background: #ff0055;
+  border: 1px solid #ff0055;
+  border-radius: 3px;
+  color: #000000;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 900;
+  padding: 3px 8px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.br34-btn-jump:hover {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #000000;
+}
+
+.br34-btn-del {
+  background: transparent;
+  border: 1px solid rgba(255, 0, 85, 0.3);
+  border-radius: 3px;
+  color: #ff0055;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 3px 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.br34-btn-del:hover {
+  background: #ff0055;
+  color: #000000;
+}
+
+.br34-video-archive-card {
+  display: flex;
+  align-items: center;
+  background: #0e0a14;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 6px;
+  gap: 8px;
+  transition: border-color 0.15s ease;
+}
+
+.br34-video-archive-card:hover {
+  border-color: rgba(255, 0, 85, 0.45);
+}
+
+.br34-video-archive-thumb-wrap {
+  position: relative;
+  width: 58px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background: #050307;
+}
+
+.br34-video-archive-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.br34-video-archive-dur {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  background: rgba(0, 0, 0, 0.85);
+  color: #ffffff;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 3px;
+  border-radius: 2px;
+  line-height: 1;
+}
+
+.br34-video-archive-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.br34-video-archive-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #e5e5eb;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.br34-video-archive-title:hover {
+  color: #ff0055;
+}
+
+.br34-video-archive-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: #8c8998;
+}
+
+.br34-video-archive-rating {
+  color: #00e676;
+  font-weight: 700;
+}
+
+.br34-video-archive-views {
+  color: #a5a2b3;
+}
+
+.br34-video-archive-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.br34-archive-footer {
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255, 0, 85, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  background: rgba(16, 10, 22, 0.95);
+}
+
+.br34-archive-action-btn {
+  flex: 1;
+  background: rgba(18, 12, 24, 0.9);
+  border: 1px solid rgba(255, 0, 85, 0.35);
+  border-radius: 4px;
+  color: #e5e5eb;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 5px 4px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.br34-archive-action-btn:hover {
+  background: #ff0055;
+  color: #000000;
+}
+
+.br34-archive-action-btn.danger {
+  border-color: rgba(255, 0, 85, 0.6);
+  color: #ff0055;
+}
+
+.br34-archive-action-btn.danger:hover {
+  background: #ff0055;
+  color: #000000;
+}
+
 /* ==========================================================================
     Mobile Specific
     ========================================================================== */
@@ -2235,18 +3252,20 @@ ins.adsbyjuicy,
     font-size: 11px;
   }
 
-  .br34-panel {
+  .br34-panel,
+  .br34-archive-modal {
     right: 10px;
     bottom: 60px;
     width: calc(100vw - 20px);
-    max-width: 300px;
+    max-width: 340px;
   }
 
   .br34-panel-header {
     padding: 8px 12px;
   }
 
-  .br34-panel-body {
+  .br34-panel-body,
+  .br34-archive-body {
     padding: 10px 12px;
     gap: 10px;
   }
@@ -2260,7 +3279,8 @@ ins.adsbyjuicy,
     padding: 6px 2px;
   }
 
-  .br34-panel-footer {
+  .br34-panel-footer,
+  .br34-archive-footer {
     padding: 8px 12px;
   }
 }
@@ -2270,6 +3290,8 @@ ins.adsbyjuicy,
 	var autoPager = null;
 	var currentFilter = null;
 	var bookmarkHandle = null;
+	var lastActiveSort = null;
+	var awaitingAjaxReload = false;
 	function injectStyles() {
 		if (document.getElementById("br34-styles")) return;
 		const style = document.createElement("style");
@@ -2290,7 +3312,10 @@ ins.adsbyjuicy,
 		const existingMap = new Map();
 		for (const c of managedCards) existingMap.set(c.el, c);
 		const updatedCards = [];
-		const cardElements = container.querySelectorAll(".item.thumb");
+		const cardElements = Array.from(container.querySelectorAll(".item.thumb"));
+		attachCardBookmarkButtons(cardElements, () => {
+			bookmarkHandle?.refresh();
+		});
 		for (const el of cardElements) {
 			if (isAdCard(el)) {
 				el.remove();
@@ -2323,15 +3348,55 @@ ins.adsbyjuicy,
 		}
 		filterBar?.setCount(visibleCount, managedCards.length);
 	}
+	function syncUrlSort(sortBy) {
+		try {
+			const url = new URL(window.location.href);
+			if (sortBy) url.searchParams.set("sort_by", sortBy);
+			else url.searchParams.delete("sort_by");
+			for (const k of [...url.searchParams.keys()]) if (isPaginationKey(k)) url.searchParams.delete(k);
+			url.pathname = stripPageSegment(url.pathname);
+			window.history.replaceState(window.history.state, "", url.toString());
+		} catch {}
+	}
+	function handleSortOrFilterReload() {
+		const currentSort = readActiveSort(document);
+		syncUrlSort(currentSort);
+		lastActiveSort = currentSort;
+		unclipBodyOverflow();
+		cleanAds();
+		initNativeFilterPanel();
+		managedCards = [];
+		scanCards();
+		applyFilter();
+		autoPager?.reset();
+		bookmarkHandle?.refresh();
+	}
 	function boot() {
 		injectStyles();
 		unclipBodyOverflow();
 		cleanAds();
 		hardenAnchorsIn(document);
 		initNewTab(document);
-		if (!isListingPage()) return;
+		if (!isListingPage()) {
+			let dock = document.querySelector(".br34-dock");
+			if (!dock) {
+				dock = document.createElement("div");
+				dock.className = "br34-dock";
+				document.body.append(dock);
+			}
+			const dummyFab = document.createElement("div");
+			dummyFab.style.display = "none";
+			bookmarkHandle = mountBookmarkButton({
+				fab: dummyFab,
+				listKey: canonicalListKey(window.location.href),
+				getPage: () => 1,
+				getUrl: () => window.location.href
+			});
+			return;
+		}
 		if (!findVideosContainer()) return;
 		initNativeFilterPanel();
+		lastActiveSort = readActiveSort(document);
 		const listKey = canonicalListKey(window.location.href);
 		if (!filterBar || !filterBar.fabElement.isConnected) {
 			filterBar?.destroy();
@@ -2345,6 +3410,9 @@ ins.adsbyjuicy,
 		if (!autoPager) {
 			autoPager = new AutoPager({
 				onNewCards: (newEls) => {
+					attachCardBookmarkButtons(newEls, () => {
+						bookmarkHandle?.refresh();
+					});
 					for (const el of newEls) {
 						for (const a of el.querySelectorAll("a[href*=\"/video/\"]")) hardenAnchor(a);
 						const data = extractCardData(el);
@@ -2382,13 +3450,24 @@ ins.adsbyjuicy,
 	function scheduleScan() {
 		window.clearTimeout(scheduledTimer);
 		scheduledTimer = window.setTimeout(() => {
+			const sortChanged = readActiveSort(document) !== lastActiveSort;
+			if (awaitingAjaxReload || sortChanged) {
+				awaitingAjaxReload = false;
+				handleSortOrFilterReload();
+				return;
+			}
 			unclipBodyOverflow();
 			cleanAds();
 			initNativeFilterPanel();
 			scanCards();
 			applyFilter();
-		}, 200);
+		}, 100);
 	}
+	document.addEventListener("click", (e) => {
+		const target = e.target;
+		if (!target) return;
+		if (target.closest(".filters-panel a[data-action=\"ajax\"], .filters-panel .duration-filter__apply, [data-container-id*=\"sort_list\"], #js-ajax_sort, #js-ajax_sort_custom")) awaitingAjaxReload = true;
+	}, true);
 	if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => {
 		boot();
 	});

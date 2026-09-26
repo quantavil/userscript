@@ -1,16 +1,45 @@
 /**
- * Manual page bookmark: user saves the current catalog page, later jumps
- * straight back to its URL (same tab, native pagination — safe at any depth,
- * no re-fetching). One bookmark per listing.
+ * EROS Archive & Bookmarking Engine.
+ * Supports multiple sector checkpoints (page depths per listing/tag/search)
+ * and saved video cards (watch later), with v1 migration and JSON export/import.
  */
 import { isPaginationKey, stripPageSegment } from './routes';
 
-export interface Bookmark {
-  page: number;
+export interface SectorBookmark {
+  id: string;
+  listKey: string;
+  title: string;
   url: string;
+  page: number;
+  sortBy?: string | null;
+  createdAt: number;
 }
 
-const BOOKMARK_KEY = 'better_rule34_bookmarks_v1';
+export interface VideoBookmark {
+  id: string; // numeric video ID
+  title: string;
+  url: string;
+  thumbUrl: string;
+  durationFormatted: string;
+  ratingPercent: number;
+  viewsFormatted: string;
+  createdAt: number;
+}
+
+export interface BookmarkArchiveData {
+  version: 2;
+  sectors: SectorBookmark[];
+  videos: VideoBookmark[];
+}
+
+export interface BookmarkStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+export const BOOKMARK_ARCHIVE_KEY = 'better_rule34_bookmarks_v2';
+export const LEGACY_BOOKMARK_KEY = 'better_rule34_bookmarks_v1';
 
 /**
  * Canonical key for a listing URL: pathname + sorted search minus page
@@ -47,11 +76,47 @@ export function canonicalListKey(urlStr: string): string {
   }
 }
 
+/** Formats a human-readable Cyberpunk badge title from a listing URL. */
+export function formatSectorTitleFromUrl(urlStr: string): string {
+  try {
+    const url = new URL(urlStr);
+    const parts = url.pathname.split('/').filter(Boolean);
+    const sortBy = url.searchParams.get('sort_by');
+    const sortSuffix = sortBy ? ` [${sortBy.toUpperCase()}]` : '';
 
-export interface BookmarkStore {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
+    if (parts.length === 0 || (parts.length === 1 && parts[0] === 'latest-updates')) {
+      return `FEED // LATEST${sortSuffix}`;
+    }
+
+    if (parts[0] === 'search') {
+      const q = parts[1] || url.searchParams.get('q') || 'ALL';
+      return `SEARCH // ${decodeURIComponent(q).toUpperCase()}${sortSuffix}`;
+    }
+
+    if (parts[0] === 'tags' && parts[1]) {
+      return `TAG // ${decodeURIComponent(parts[1]).replace(/-/g, ' ').toUpperCase()}${sortSuffix}`;
+    }
+
+    if (parts[0] === 'categories' && parts[1]) {
+      return `CATEGORY // ${decodeURIComponent(parts[1]).replace(/-/g, ' ').toUpperCase()}${sortSuffix}`;
+    }
+
+    if (parts[0] === 'models' && parts[1]) {
+      return `MODEL // ${decodeURIComponent(parts[1]).replace(/-/g, ' ').toUpperCase()}${sortSuffix}`;
+    }
+
+    if (parts[0] === 'channels' && parts[1]) {
+      return `CHANNEL // ${decodeURIComponent(parts[1]).replace(/-/g, ' ').toUpperCase()}${sortSuffix}`;
+    }
+
+    if (parts[0] === 'playlists' && parts[1]) {
+      return `PLAYLIST // ${decodeURIComponent(parts[1]).replace(/-/g, ' ').toUpperCase()}${sortSuffix}`;
+    }
+
+    return `SECTOR // ${parts.slice(0, 2).join(' / ').toUpperCase()}${sortSuffix}`;
+  } catch {
+    return 'SECTOR // ARCHIVE';
+  }
 }
 
 function resolveStore(store?: BookmarkStore): BookmarkStore | null {
@@ -64,167 +129,277 @@ function resolveStore(store?: BookmarkStore): BookmarkStore | null {
   return null;
 }
 
-function readAll(store?: BookmarkStore): Record<string, Bookmark> {
+/** Reads entire archive, auto-migrating v1 data if present. */
+export function readArchive(store?: BookmarkStore): BookmarkArchiveData {
   const s = resolveStore(store);
-  if (!s) return {};
+  if (!s) return { version: 2, sectors: [], videos: [] };
+
   try {
-    const raw = s.getItem(BOOKMARK_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return {};
-    return parsed as Record<string, Bookmark>;
+    const rawV2 = s.getItem(BOOKMARK_ARCHIVE_KEY);
+    if (rawV2) {
+      const parsed = JSON.parse(rawV2) as BookmarkArchiveData;
+      if (parsed && parsed.version === 2 && Array.isArray(parsed.sectors) && Array.isArray(parsed.videos)) {
+        return parsed;
+      }
+    }
+
+    // Auto-migrate legacy v1 format
+    const rawV1 = s.getItem(LEGACY_BOOKMARK_KEY);
+    if (rawV1) {
+      const legacy = JSON.parse(rawV1) as Record<string, { page: number; url: string }>;
+      if (legacy && typeof legacy === 'object') {
+        const sectors: SectorBookmark[] = [];
+        let i = 0;
+        for (const [key, val] of Object.entries(legacy)) {
+          if (val && typeof val.page === 'number' && typeof val.url === 'string') {
+            sectors.push({
+              id: `sec_legacy_${Date.now()}_${i++}`,
+              listKey: key,
+              title: formatSectorTitleFromUrl(val.url),
+              url: val.url,
+              page: val.page,
+              createdAt: Date.now(),
+            });
+          }
+        }
+        const data: BookmarkArchiveData = { version: 2, sectors, videos: [] };
+        s.setItem(BOOKMARK_ARCHIVE_KEY, JSON.stringify(data));
+        return data;
+      }
+    }
   } catch {
-    return {};
+    // Fallback on parse failure
   }
+
+  return { version: 2, sectors: [], videos: [] };
+}
+
+export function writeArchive(data: BookmarkArchiveData, store?: BookmarkStore): void {
+  const s = resolveStore(store);
+  if (!s) return;
+  try {
+    s.setItem(BOOKMARK_ARCHIVE_KEY, JSON.stringify(data));
+  } catch {
+    // Ignore
+  }
+}
+
+/* ==========================================================================
+   Sectors API (Multiple Bookmarks per Listing)
+   ========================================================================== */
+
+export function getSectors(store?: BookmarkStore): SectorBookmark[] {
+  return readArchive(store).sectors;
+}
+
+export function findSector(listKey: string, page: number, store?: BookmarkStore): SectorBookmark | null {
+  if (!listKey) return null;
+  const sectors = getSectors(store);
+  return sectors.find((s) => s.listKey === listKey && s.page === page) || null;
+}
+
+export function saveSector(
+  bm: Omit<SectorBookmark, 'id' | 'createdAt'>,
+  store?: BookmarkStore,
+): SectorBookmark {
+  const archive = readArchive(store);
+  // If identical sector bookmark exists, update timestamp and URL
+  const existingIdx = archive.sectors.findIndex((s) => s.listKey === bm.listKey && s.page === bm.page);
+  const now = Date.now();
+  if (existingIdx !== -1) {
+    archive.sectors[existingIdx] = {
+      ...archive.sectors[existingIdx],
+      ...bm,
+      createdAt: now,
+    };
+    writeArchive(archive, store);
+    return archive.sectors[existingIdx];
+  }
+
+  const created: SectorBookmark = {
+    ...bm,
+    id: `sec_${now}_${Math.random().toString(36).slice(2, 7)}`,
+    createdAt: now,
+  };
+  archive.sectors.unshift(created);
+  writeArchive(archive, store);
+  return created;
+}
+
+export function deleteSector(id: string, store?: BookmarkStore): void {
+  if (!id) return;
+  const archive = readArchive(store);
+  archive.sectors = archive.sectors.filter((s) => s.id !== id);
+  writeArchive(archive, store);
+}
+
+export function clearAllSectors(store?: BookmarkStore): void {
+  const archive = readArchive(store);
+  archive.sectors = [];
+  writeArchive(archive, store);
+}
+
+/* ==========================================================================
+   Saved Videos API (Watch Later)
+   ========================================================================== */
+
+export function getVideos(store?: BookmarkStore): VideoBookmark[] {
+  return readArchive(store).videos;
+}
+
+export function isVideoSaved(id: string, store?: BookmarkStore): boolean {
+  if (!id) return false;
+  return getVideos(store).some((v) => v.id === id);
+}
+
+export function saveVideo(
+  video: Omit<VideoBookmark, 'createdAt'>,
+  store?: BookmarkStore,
+): VideoBookmark {
+  const archive = readArchive(store);
+  const existingIdx = archive.videos.findIndex((v) => v.id === video.id);
+  const now = Date.now();
+  if (existingIdx !== -1) {
+    archive.videos[existingIdx] = {
+      ...archive.videos[existingIdx],
+      ...video,
+      createdAt: now,
+    };
+    writeArchive(archive, store);
+    return archive.videos[existingIdx];
+  }
+
+  const created: VideoBookmark = {
+    ...video,
+    createdAt: now,
+  };
+  archive.videos.unshift(created);
+  writeArchive(archive, store);
+  return created;
+}
+
+export function deleteVideo(id: string, store?: BookmarkStore): void {
+  if (!id) return;
+  const archive = readArchive(store);
+  archive.videos = archive.videos.filter((v) => v.id !== id);
+  writeArchive(archive, store);
+}
+
+export function clearAllVideos(store?: BookmarkStore): void {
+  const archive = readArchive(store);
+  archive.videos = [];
+  writeArchive(archive, store);
+}
+
+export function getTotalBookmarkCount(store?: BookmarkStore): number {
+  const archive = readArchive(store);
+  return archive.sectors.length + archive.videos.length;
+}
+
+/* ==========================================================================
+   JSON Export / Import
+   ========================================================================== */
+
+export function exportArchiveJson(store?: BookmarkStore): string {
+  const archive = readArchive(store);
+  return JSON.stringify(archive, null, 2);
+}
+
+export function importArchiveJson(
+  jsonStr: string,
+  store?: BookmarkStore,
+): { success: boolean; sectorsAdded: number; videosAdded: number } {
+  try {
+    const parsed = JSON.parse(jsonStr) as Partial<BookmarkArchiveData>;
+    if (!parsed || typeof parsed !== 'object') {
+      return { success: false, sectorsAdded: 0, videosAdded: 0 };
+    }
+
+    const archive = readArchive(store);
+    let sectorsAdded = 0;
+    let videosAdded = 0;
+
+    if (Array.isArray(parsed.sectors)) {
+      for (const s of parsed.sectors) {
+        if (s && typeof s.listKey === 'string' && typeof s.page === 'number' && typeof s.url === 'string') {
+          const exists = archive.sectors.some((item) => item.listKey === s.listKey && item.page === s.page);
+          if (!exists) {
+            archive.sectors.push({
+              id: s.id || `sec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              listKey: s.listKey,
+              title: s.title || formatSectorTitleFromUrl(s.url),
+              url: s.url,
+              page: s.page,
+              sortBy: s.sortBy || null,
+              createdAt: s.createdAt || Date.now(),
+            });
+            sectorsAdded++;
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(parsed.videos)) {
+      for (const v of parsed.videos) {
+        if (v && typeof v.id === 'string' && typeof v.url === 'string') {
+          const exists = archive.videos.some((item) => item.id === v.id);
+          if (!exists) {
+            archive.videos.push({
+              id: v.id,
+              title: v.title || 'Untitled Video',
+              url: v.url,
+              thumbUrl: v.thumbUrl || '',
+              durationFormatted: v.durationFormatted || '',
+              ratingPercent: v.ratingPercent || 0,
+              viewsFormatted: v.viewsFormatted || '',
+              createdAt: v.createdAt || Date.now(),
+            });
+            videosAdded++;
+          }
+        }
+      }
+    }
+
+    writeArchive(archive, store);
+    return { success: true, sectorsAdded, videosAdded };
+  } catch {
+    return { success: false, sectorsAdded: 0, videosAdded: 0 };
+  }
+}
+
+/* ==========================================================================
+   Backward Compatibility API (Legacy single-bookmark per key)
+   ========================================================================== */
+
+export interface Bookmark {
+  page: number;
+  url: string;
 }
 
 export function getBookmark(key: string, store?: BookmarkStore): Bookmark | null {
   if (!key) return null;
-  const bm = readAll(store)[key];
-  if (!bm || typeof bm.page !== 'number' || typeof bm.url !== 'string' || !bm.url) return null;
-  return bm;
+  const sectors = getSectors(store);
+  const found = sectors.find((s) => s.listKey === key);
+  if (!found || found.page < 1 || !found.url) return null;
+  return { page: found.page, url: found.url };
 }
 
 export function setBookmark(key: string, bm: Bookmark, store?: BookmarkStore): void {
-  const s = resolveStore(store);
-  if (!s || !key || !bm.url || bm.page < 1) return;
-  try {
-    const all = readAll(store);
-    all[key] = { page: bm.page, url: bm.url };
-    s.setItem(BOOKMARK_KEY, JSON.stringify(all));
-  } catch {
-    // Ignore
-  }
+  if (!key || !bm.url || bm.page < 1) return;
+  saveSector(
+    {
+      listKey: key,
+      title: formatSectorTitleFromUrl(bm.url),
+      url: bm.url,
+      page: bm.page,
+    },
+    store,
+  );
 }
 
 export function clearBookmark(key: string, store?: BookmarkStore): void {
-  const s = resolveStore(store);
-  if (!s || !key) return;
-  try {
-    const all = readAll(store);
-    if (all[key]) {
-      delete all[key];
-      s.setItem(BOOKMARK_KEY, JSON.stringify(all));
-    }
-  } catch {
-    // Ignore
-  }
+  if (!key) return;
+  const archive = readArchive(store);
+  archive.sectors = archive.sectors.filter((s) => s.listKey !== key);
+  writeArchive(archive, store);
 }
-
-export interface BookmarkButtonOptions {
-  /** The filter FAB element — adopted into the shared dock next to the button. */
-  fab: HTMLElement;
-  listKey: string;
-  getPage: () => number;
-  getUrl: () => string;
-}
-
-const BOOKMARK_SVG = `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 2h8v12l-4-3-4 3z"/></svg>`;
-
-function refreshButton(btn: HTMLButtonElement, bm: Bookmark | null, curPage = 1): void {
-  btn.classList.toggle('saved', Boolean(bm));
-  if (!bm) {
-    btn.title = `Bookmark page ${curPage} — click: save`;
-  } else if (curPage < bm.page) {
-    btn.title = `Bookmark at p.${bm.page} — click: jump to p.${bm.page}, right-click: remove`;
-  } else if (curPage > bm.page) {
-    btn.title = `Current p.${curPage} (saved p.${bm.page}) — click: update to p.${curPage}, right-click: remove`;
-  } else {
-    btn.title = `Bookmarked at p.${bm.page} — click: remove, right-click: remove`;
-  }
-  btn.setAttribute('aria-label', btn.title);
-}
-
-export interface BookmarkHandle {
-  cleanup: () => void;
-  refresh: () => void;
-}
-
-/**
- * Mounts the bookmark button in a fixed dock with the CTRL fab.
- * Click: save current page, or update if further, or jump if earlier, or toggle remove.
- * Right-click: remove.
- * Idempotent across repeat boots.
- */
-export function mountBookmarkButton(opts: BookmarkButtonOptions): BookmarkHandle {
-  let dock = document.querySelector<HTMLElement>('.br34-dock');
-  if (!dock) {
-    dock = document.createElement('div');
-    dock.className = 'br34-dock';
-    document.body.append(dock);
-  }
-  // Adopt the FAB into the dock (moves the node, listeners survive).
-  dock.append(opts.fab);
-
-  let btn = dock.querySelector<HTMLButtonElement>('.br34-bookmark-btn');
-  if (!btn) {
-    btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'br34-bookmark-btn';
-    btn.innerHTML = BOOKMARK_SVG;
-    dock.prepend(btn);
-  }
-  const button = btn;
-
-  const updateState = () => {
-    refreshButton(button, getBookmark(opts.listKey), opts.getPage());
-  };
-
-  updateState();
-
-  // Guard against duplicate listener binding on re-boot
-  if (button.dataset.br34Wired === 'true') {
-    return {
-      cleanup: () => {},
-      refresh: updateState,
-    };
-  }
-  button.dataset.br34Wired = 'true';
-
-  const onClick = () => {
-    const existing = getBookmark(opts.listKey);
-    const curPage = opts.getPage();
-    const curUrl = opts.getUrl();
-
-    if (!existing) {
-      setBookmark(opts.listKey, { page: curPage, url: curUrl });
-      updateState();
-      return;
-    }
-
-    if (curPage < existing.page) {
-      // User is earlier in catalog than bookmark -> jump to saved bookmark
-      window.location.href = existing.url;
-    } else if (curPage > existing.page) {
-      // User progressed deeper in catalog -> update bookmark to current page
-      setBookmark(opts.listKey, { page: curPage, url: curUrl });
-      updateState();
-    } else {
-      // User is on bookmarked page and clicks again -> toggle remove
-      clearBookmark(opts.listKey);
-      updateState();
-    }
-  };
-
-  const onContextMenu = (e: MouseEvent) => {
-    e.preventDefault();
-    clearBookmark(opts.listKey);
-    updateState();
-  };
-
-  button.addEventListener('click', onClick);
-  button.addEventListener('contextmenu', onContextMenu);
-
-  const cleanup = () => {
-    button.removeEventListener('click', onClick);
-    button.removeEventListener('contextmenu', onContextMenu);
-    button.remove();
-    delete button.dataset.br34Wired;
-  };
-
-  return {
-    cleanup,
-    refresh: updateState,
-  };
-}
-
