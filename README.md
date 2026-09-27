@@ -30,7 +30,7 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 | **[StreamGrabber](./StreamGrabber)** | High-performance HLS (`.m3u8`) and fMP4 stream downloader with AES-128 decryption, adaptive quality selection, and direct blob extraction. |
 | **[youtube-filter](./youtube-filter)** | Advanced YouTube filtering by view count, upload date, video duration, keywords, and channels, with watched video dimming and customizable preset profiles. |
 | **[telegram-bot](./telegram-bot)** | Media downloader for Telegram Web (`/k/`, `/a/`, `webz`) that enables downloads from private/restricted channels with chunked progress tracking. |
-| **[wallhaven-enhancer](./wallhaven-enhancer)** | Wallhaven browsing suite featuring a resizable metadata sidebar, instant lightbox overlay, grid keyboard navigation, and full-resolution downloads. |
+| **[better-wallhaven](./better-wallhaven)** | Wallhaven browsing suite featuring a resizable metadata sidebar, instant lightbox overlay, grid keyboard navigation, and full-resolution downloads. |
 | **[imdb-torrent](./imdb-torrent)** | Injects IMDb ratings, metascores, cast, and plot metadata directly into torrent index listings with direct magnet integration. |
 
 ---
@@ -79,7 +79,6 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 | **[floating-stopwatch](./floating-stopwatch)** | High-performance, tab-isolated floating stopwatch overlay with millisecond precision that persists seamlessly across page reloads. |
 | **[chess-bot](./chess-bot)** | Tournament-grade bullet and blitz chess analysis and move helper for Chess.com. |
 | **[semursh-bot](./semursh-bot)** | SEMrush rankings tracker widget displaying domain ranking data and traffic metrics in a sleek AMOLED dark overlay. |
-| **[obsidian-script](./obsidian-script)** | Datacore JSX study scripts for Obsidian visualizing daily study streaks, subject breakdowns, and review sessions. |
 
 ---
 
