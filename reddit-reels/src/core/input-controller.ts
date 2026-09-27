@@ -8,6 +8,7 @@ import type { ReelPost } from '../extractor/types';
 import { audioManager, unlockAudio, applyAudioState } from '../media';
 import { proxyUpvote } from '../extractor/vote-proxy';
 import { showPlayPulse, showScalePulse, showVotePulse, showVolumePulse } from '../ui/pulse';
+import { isCommentsDrawerOpen, closeCommentsDrawer } from '../ui/comments-drawer';
 
 export const POST_SELECTORS = 'shreddit-post, article, [data-testid="post-container"], .Post';
 export const VOLUME_STEP = 0.1;
@@ -18,6 +19,7 @@ export interface InputControllerOptions {
   isReelModeActive: () => boolean;
   getActivePost: () => HTMLElement | null;
   getActiveReelPost?: () => ReelPost | null;
+  onDoubleTap?: (tappedPost: HTMLElement) => void;
   onExit: () => void;
   onToggleMute: () => void;
   onVolumeChange?: (level: number, muted: boolean) => void;
@@ -98,34 +100,11 @@ export class InputController {
 
   private fireSingleTap(post: HTMLElement): void {
     if (!this.options.isReelModeActive()) return;
-    const video = audioManager.findVideo(post);
-    if (video) {
-      const wasPaused = video.paused;
-      if (wasPaused) {
-        applyAudioState(post, audioManager.isMuted, audioManager.volume);
-        video.play().catch(() => {});
-      } else {
-        video.pause();
-      }
-
-      // Show pulse animation
-      showPlayPulse(wasPaused);
-    } else if (post.querySelector('iframe')) {
-      // RedGifs/iframe posts have no <video> to pause; audible state was
-      // already re-asserted on tap in handleTap, nothing deferred to do.
-    }
+    const isPlaying = audioManager.togglePlayback(post);
+    showPlayPulse(isPlaying);
   }
 
-  private fireDoubleTapUpvote(): void {
-    if (!this.options.isReelModeActive()) return;
-    const getPost = this.options.getActiveReelPost;
-    const reel = getPost ? getPost() : null;
-    if (!reel) return;
-    const ok = proxyUpvote(reel);
-    showVotePulse(ok ? !!reel.isUpvoted : false);
-  }
-
-  private toggleFitFill(post: HTMLElement): void {
+  public toggleFitFill(post: HTMLElement): void {
     const isCurrentlyContain = post.classList.contains('rr-fit-contain');
     if (isCurrentlyContain) {
       post.classList.remove('rr-fit-contain');
@@ -142,12 +121,15 @@ export class InputController {
     if (!this.options.isReelModeActive()) return;
 
     const target = e.target as HTMLElement;
-    // Ignore clicks on action rail, info links, link cards, text cards, or buttons
+    // Allow clicks on reel controls, comments drawer, link cards, text card links, author/sub badges, gallery nav
     if (
       target.closest(
-        '.rr-action-rail, .rr-post-info, .rr-top-bar, .rr-link-card-container, .rr-text-card-container, button, a, shreddit-post-action-row, [slot="action-row"], [slot="vote"]'
+        '.rr-action-rail, .rr-post-info, .rr-top-bar, .rr-link-card-container, .rr-comments-drawer, .rr-comments-backdrop, .rr-sub-badge, .rr-author, .rr-link-card-btn, button[slot="previous-button"], button[slot="next-button"], .prev-btn, .next-btn'
       )
     ) {
+      return;
+    }
+    if (target.closest('.rr-text-card-body a')) {
       return;
     }
 
@@ -169,8 +151,7 @@ export class InputController {
     unlockAudio();
     audioManager.reassertActiveIframeUnmute();
 
-    // Double-tap upvotes (triple-tap toggles Fit/Fill manual action).
-    // Single-tap play/pause is deferred so a double-tap does not also fire it.
+    // Double-tap toggles Fit/Fill scaling (contain/cover)
     const now = Date.now();
     const samePost = this.lastTapPost === post;
     const inWindow = now - this.lastTapTimestamp < TAP_WINDOW_MS;
@@ -187,18 +168,12 @@ export class InputController {
         clearTimeout(this.singleTapTimer);
         this.singleTapTimer = null;
       }
-      this.fireDoubleTapUpvote();
-      // Keep window open briefly for triple-tap Fit/Fill.
-      return;
-    }
-
-    if (this.tapCount === 3) {
-      if (this.singleTapTimer) {
-        clearTimeout(this.singleTapTimer);
-        this.singleTapTimer = null;
-      }
       this.resetTapState();
-      this.toggleFitFill(post);
+      if (this.options.onDoubleTap) {
+        this.options.onDoubleTap(post);
+      } else {
+        this.toggleFitFill(post);
+      }
       return;
     }
 
@@ -234,6 +209,10 @@ export class InputController {
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
 
     if (e.key === 'Escape') {
+      if (isCommentsDrawerOpen()) {
+        closeCommentsDrawer();
+        return;
+      }
       this.options.onExit();
     } else if (e.key === 'm' || e.key === 'M') {
       this.options.onToggleMute();

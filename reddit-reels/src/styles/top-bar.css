@@ -4,7 +4,7 @@
 
 .rr-top-bar {
   position: fixed !important;
-  top: env(safe-area-inset-top, 16px) !important;
+  top: calc(16px + env(safe-area-inset-top, 0px)) !important;
   left: 16px !important;
   right: 16px !important;
   display: flex !important;

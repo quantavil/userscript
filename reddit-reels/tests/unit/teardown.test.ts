@@ -180,4 +180,161 @@ describe('Teardown and Audit Bug Fixes', () => {
     expect(slide2Img.getAttribute('loading')).toBe('eager');
     expect(slide2Img.getAttribute('fetchpriority')).toBe('high');
   });
+
+  it('Audit Fix: restorePost restores native iframes that were blanked during playback', () => {
+    const postEl = document.createElement('shreddit-post');
+    const ifr = document.createElement('iframe');
+    ifr.src = 'about:blank';
+    ifr.dataset.rrSrc = 'https://www.youtube.com/embed/test123';
+    postEl.appendChild(ifr);
+
+    const feedManager = new FeedManager({ isReelModeActive: () => true });
+    feedManager.restorePost(postEl);
+
+    expect(ifr.src).toBe('https://www.youtube.com/embed/test123');
+    expect(ifr.dataset.rrSrc).toBeUndefined();
+  });
+
+  it('Gallery Navigation: wireGalleryCarousel scrolls container on arrow button clicks', () => {
+    const { wireGalleryCarousel, restorePostMedia } = require('../../src/core/unconstrainer');
+
+    const carousel = document.createElement('gallery-carousel');
+    carousel.innerHTML = `
+      <ul slot="items" class="carousel-items">
+        <li style="width: 500px;">Slide 1</li>
+        <li style="width: 500px;">Slide 2</li>
+      </ul>
+      <button slot="previous-button" class="prev-btn">&lt;</button>
+      <button slot="next-button" class="next-btn">&gt;</button>
+    `;
+    document.body.appendChild(carousel);
+
+    const ul = carousel.querySelector<HTMLElement>('ul')!;
+    Object.defineProperty(ul, 'clientWidth', { value: 500, configurable: true });
+    Object.defineProperty(ul, 'scrollWidth', { value: 1000, configurable: true });
+
+    let scrollByCalls: any[] = [];
+    ul.scrollBy = (opts: any) => {
+      scrollByCalls.push(opts);
+      ul.scrollLeft += opts.left || 0;
+    };
+
+    wireGalleryCarousel(carousel);
+
+    const nextBtn = carousel.querySelector<HTMLButtonElement>('[slot="next-button"]')!;
+    nextBtn.click();
+
+    expect(scrollByCalls.length).toBe(1);
+    expect(scrollByCalls[0].left).toBe(500);
+    expect(scrollByCalls[0].behavior).toBe('smooth');
+
+    const prevBtn = carousel.querySelector<HTMLButtonElement>('[slot="previous-button"]')!;
+    prevBtn.click();
+
+    expect(scrollByCalls.length).toBe(2);
+    expect(scrollByCalls[1].left).toBe(-500);
+
+    // Teardown
+    const postContainer = document.createElement('shreddit-post');
+    postContainer.appendChild(carousel);
+    restorePostMedia(postContainer);
+    expect((carousel as any)._rrAbortController).toBeUndefined();
+  });
+
+  it('Comments Feature: openCommentsDrawer opens same-origin drawer and closes cleanly', () => {
+    const { openCommentsDrawer, closeCommentsDrawer, isCommentsDrawerOpen } = require('../../src/ui/comments-drawer');
+
+    let beforeOpenCalled = false;
+    let closeCalled = false;
+
+    const post = {
+      id: 't3_comments1',
+      title: 'Exciting Discussion',
+      author: 'redditor1',
+      subreddit: 'r/askreddit',
+      score: 1200,
+      commentCount: 450,
+      permalink: '/r/askreddit/comments/comments1/exciting_discussion/',
+      postType: 'text' as const,
+    };
+
+    const drawer = openCommentsDrawer(post, {
+      onBeforeOpen: () => { beforeOpenCalled = true; },
+      onClose: () => { closeCalled = true; },
+    });
+
+    expect(beforeOpenCalled).toBe(true);
+    expect(isCommentsDrawerOpen()).toBe(true);
+    expect(document.querySelector('.rr-comments-drawer')).not.toBeNull();
+    expect(document.querySelector('.rr-comments-backdrop')).not.toBeNull();
+
+    const iframe = drawer.querySelector<HTMLIFrameElement>('.rr-drawer-iframe')!;
+    expect(iframe.src).toContain('https://www.reddit.com/r/askreddit/comments/comments1/exciting_discussion/');
+    expect(iframe.src).toContain('embedded=true');
+
+    // Title and comment count
+    const titleEl = drawer.querySelector('.rr-drawer-title');
+    expect(titleEl?.textContent).toBe('Exciting Discussion');
+    const subtitleEl = drawer.querySelector('.rr-drawer-subtitle');
+    expect(subtitleEl?.textContent).toContain('450 comments');
+
+    // Close drawer
+    closeCommentsDrawer();
+    expect(closeCalled).toBe(true);
+  });
+
+  it('Shadow DOM Helper: shadowContains correctly detects elements in shadow trees', () => {
+    const { shadowContains } = require('../../src/media/audio-manager');
+
+    const container = document.createElement('div');
+    const customEl = document.createElement('div');
+    const shadow = customEl.attachShadow({ mode: 'open' });
+    const innerVideo = document.createElement('video');
+    shadow.appendChild(innerVideo);
+    container.appendChild(customEl);
+
+    // Standard Node.contains returns false for shadow-rooted elements
+    expect(container.contains(innerVideo)).toBe(false);
+
+    // shadowContains returns true
+    expect(shadowContains(container, innerVideo)).toBe(true);
+    expect(shadowContains(container, null)).toBe(false);
+
+    const outsideEl = document.createElement('span');
+    expect(shadowContains(container, outsideEl)).toBe(false);
+  });
+
+  it('Media Resolver: resolves Streamable and direct MP4 video URLs', () => {
+    const { resolveMedia } = require('../../src/media');
+
+    const streamablePost = {
+      id: 't3_st1',
+      title: 'Streamable Video',
+      author: 'u1',
+      subreddit: 'r/videos',
+      score: 10,
+      commentCount: 1,
+      permalink: '/r/videos/comments/st1/',
+      contentHref: 'https://streamable.com/moo123',
+      postType: 'video' as const,
+    };
+    const streamableMedia = resolveMedia(streamablePost);
+    expect(streamableMedia.type).toBe('iframe');
+    expect(streamableMedia.src).toContain('https://streamable.com/e/moo123?autoplay=1');
+
+    const mp4Post = {
+      id: 't3_mp1',
+      title: 'Direct Video',
+      author: 'u2',
+      subreddit: 'r/videos',
+      score: 15,
+      commentCount: 2,
+      permalink: '/r/videos/comments/mp1/',
+      contentHref: 'https://files.catbox.moe/abc1234.mp4',
+      postType: 'video' as const,
+    };
+    const mp4Media = resolveMedia(mp4Post);
+    expect(mp4Media.type).toBe('video');
+    expect(mp4Media.src).toBe('https://files.catbox.moe/abc1234.mp4');
+  });
 });

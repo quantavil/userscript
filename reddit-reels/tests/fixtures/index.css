@@ -336,9 +336,26 @@ html.rr-active.rr-hide-captions ::cue, html.rr-active shreddit-post.rr-hide-capt
   opacity: 0 !important;
 }
 
-html.rr-active shreddit-post [slot="credit-bar"], html.rr-active shreddit-post [slot="post-credit-bar"], html.rr-active shreddit-post [slot="title-and-metadata"], html.rr-active shreddit-post [slot="title"], html.rr-active shreddit-post [slot="action-row"], html.rr-active shreddit-post [slot="text-body"], html.rr-active shreddit-post [slot="vote"], html.rr-active shreddit-post [slot="vote-button"], html.rr-active shreddit-post shreddit-post-action-row, html.rr-active shreddit-post feed-post-action-row, html.rr-active shreddit-post shreddit-post-credit-bar, html.rr-active shreddit-post shreddit-action-bar, html.rr-active shreddit-post rpl-action-bar, html.rr-active shreddit-post shreddit-interaction-container, html.rr-active shreddit-post faceplate-tracker, html.rr-active .rr-native-suppressed {
+html.rr-active shreddit-post [slot="credit-bar"], html.rr-active shreddit-post [slot="post-credit-bar"], html.rr-active shreddit-post [slot="title-and-metadata"], html.rr-active shreddit-post [slot="title"], html.rr-active shreddit-post [slot="action-row"], html.rr-active shreddit-post [slot="text-body"], html.rr-active shreddit-post shreddit-post-action-row, html.rr-active shreddit-post feed-post-action-row, html.rr-active shreddit-post shreddit-post-credit-bar, html.rr-active shreddit-post shreddit-action-bar, html.rr-active shreddit-post rpl-action-bar, html.rr-active shreddit-post shreddit-interaction-container, html.rr-active shreddit-post faceplate-tracker, html.rr-active .rr-native-suppressed {
   display: none !important;
   visibility: hidden !important;
+}
+
+html.rr-active shreddit-post [slot="vote"], html.rr-active shreddit-post [slot="vote-button"], html.rr-active shreddit-post shreddit-post-vote-control, html.rr-active shreddit-post [data-testid="post-vote-control"], html.rr-active .rr-native-offscreen {
+  position: absolute !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+}
+
+html.rr-active shreddit-post a[data-click-id="body"], html.rr-active shreddit-post a[slot="full-post-link"], html.rr-active shreddit-post [slot="post-media-container"] a:not(.rr-sub-badge):not(.rr-author), html.rr-active shreddit-post shreddit-media-lightbox-listener a {
+  pointer-events: none !important;
+}
+
+html.rr-active .rr-post-overlay a, html.rr-active .rr-link-card-container a, html.rr-active .rr-text-card-container a {
+  pointer-events: auto !important;
 }
 
 html.rr-active shreddit-post.rr-filtered-out, html.rr-active .rr-feed-container > article.rr-filtered-out, html.rr-active .rr-feed-container > div.rr-filtered-out, .rr-embedded-iframe {

@@ -42,13 +42,16 @@
   __export(exports_src, {
     AudioManager: () => AudioManager,
     DOWNVOTE_SELECTORS: () => DOWNVOTE_SELECTORS,
+    REDGIFS_MESSAGE_SOURCE: () => REDGIFS_MESSAGE_SOURCE,
     UPVOTE_SELECTORS: () => UPVOTE_SELECTORS,
     applyAudioState: () => applyAudioState,
     audioManager: () => audioManager,
+    blurIframes: () => blurIframes,
     checkIsDownvoted: () => checkIsDownvoted,
     checkIsUpvoted: () => checkIsUpvoted,
     deepFindMediaElements: () => deepFindMediaElements,
     determinePostType: () => determinePostType,
+    ensureAutoplayAttrs: () => ensureAutoplayAttrs,
     extractAuthor: () => extractAuthor,
     extractContentHref: () => extractContentHref,
     extractPermalink: () => extractPermalink,
@@ -56,6 +59,11 @@
     extractPosts: () => extractPosts,
     extractSubreddit: () => extractSubreddit,
     extractTitle: () => extractTitle,
+    hydrateVideoFromPlayer: () => hydrateVideoFromPlayer,
+    initRedGifsBridge: () => initRedGifsBridge,
+    isRedGifsFrame: () => isRedGifsFrame,
+    listenForRedGifsReady: () => listenForRedGifsReady,
+    normalizeIframeSrc: () => normalizeIframeSrc,
     observeNewPosts: () => observeNewPosts,
     parseCommentCount: () => parseCommentCount,
     parsePostElement: () => parsePostElement,
@@ -64,6 +72,7 @@
     proxyUpvote: () => proxyUpvote,
     queryDeep: () => queryDeep,
     resolveMedia: () => resolveMedia,
+    sendIframePlay: () => sendIframePlay,
     unconstrainPostMedia: () => unconstrainPostMedia,
     unlockAudio: () => unlockAudio
   });
@@ -222,18 +231,11 @@
   function determinePostType(element, contentHref) {
     const rawType = element.getAttribute("post-type")?.toLowerCase();
     const domain = element.getAttribute("domain")?.toLowerCase() || "";
-    const isVideoHost = /(redgifs\.com|streamable\.com|gfycat\.com)/i.test(domain) || /(redgifs\.com|streamable\.com|gfycat\.com)/i.test(contentHref);
-    if (isVideoHost) {
-      return "video";
-    }
-    if (rawType === "video" || rawType === "image" || rawType === "gallery" || rawType === "link" || rawType === "text") {
-      return rawType;
-    }
     if (rawType === "crosspost") {
       if (element.querySelector('shreddit-gallery, gallery-carousel, faceplate-carousel, [data-testid="media-gallery"], shreddit-async-loader[bundlename*="gallery"]') !== null) {
         return "gallery";
       }
-      if (element.querySelector('shreddit-player-2, video, [data-testid="shreddit-player"]') !== null || /(\.mp4|\.webm|\.m3u8|v\.redd\.it|redgifs\.com|streamable\.com|youtube\.com|youtu\.be)/i.test(contentHref)) {
+      if (element.querySelector('shreddit-player-2, video, [data-testid="shreddit-player"]') !== null || /(\.mp4|\.webm|\.m3u8|v\.redd\.it|redgifs\.com|streamable\.com|youtube\.com|youtu\.be|tiktok\.com|vimeo\.com)/i.test(contentHref)) {
         return "video";
       }
       const crosspostImg = element.querySelector('img#post-image, [data-post-media-primary], shreddit-aspect-ratio:not(:has(video)) img:not(.shreddit-subreddit-icon__icon), [data-testid="post-image"] img, img.preview-img, img.media-lightbox-img:not(.post-background-image-filter), [slot="post-media-container"] img:not(.shreddit-subreddit-icon__icon):not(.post-background-image-filter)');
@@ -245,29 +247,35 @@
       }
       return "link";
     }
-    if (element.querySelector('shreddit-gallery, gallery-carousel, faceplate-carousel, [data-testid="media-gallery"], shreddit-async-loader[bundlename*="gallery"]') !== null) {
-      return "gallery";
-    }
-    const isVideo = rawType === "video" || element.querySelector('shreddit-player-2, video, [data-testid="shreddit-player"]') !== null || /(\.mp4|\.webm|\.m3u8|v\.redd\.it|redgifs\.com|streamable\.com|youtube\.com|youtu\.be)/i.test(contentHref);
+    const isVideoHost = /(redgifs\.com|streamable\.com|gfycat\.com)/i.test(domain) || /(redgifs\.com|streamable\.com|gfycat\.com)/i.test(contentHref);
+    const isVideo = rawType === "video" || isVideoHost || element.querySelector('shreddit-player-2, video, [data-testid="shreddit-player"]') !== null || /(\.mp4|\.webm|\.m3u8|v\.redd\.it|redgifs\.com|streamable\.com|youtube\.com|youtu\.be|tiktok\.com|vimeo\.com)/i.test(contentHref);
     if (isVideo) {
       return "video";
     }
-    const primaryImgEl = element.querySelector('img#post-image, [data-post-media-primary], shreddit-aspect-ratio:not(:has(video)) img:not(.shreddit-subreddit-icon__icon), [data-testid="post-image"] img, img.preview-img, img.media-lightbox-img:not(.post-background-image-filter), [slot="post-media-container"] img:not(.shreddit-subreddit-icon__icon):not(.post-background-image-filter)');
-    const isImageHref = /(\.jpg|\.jpeg|\.png|\.webp|\.gif|i\.redd\.it|i\.imgur\.com)/i.test(contentHref) || domain === "i.redd.it" || domain === "i.imgur.com";
-    const isImage = rawType === "image" || primaryImgEl !== null || isImageHref;
-    const hasTextBody = element.querySelector('[slot="text-body"], shreddit-post-text-body, .usertext-body, [data-testid="post-content"] .md, [data-click-id="text"]') !== null;
-    if (rawType === "text" || domain.startsWith("self.") || !isImage && hasTextBody) {
-      return "text";
+    if (rawType === "gallery" || element.querySelector('shreddit-gallery, gallery-carousel, faceplate-carousel, [data-testid="media-gallery"], shreddit-async-loader[bundlename*="gallery"]') !== null) {
+      return "gallery";
     }
-    if (isImage) {
+    if (rawType === "link") {
+      return "link";
+    }
+    if (rawType === "image") {
       return "image";
     }
-    const isExternalLink = rawType === "link" || contentHref && /^https?:\/\//i.test(contentHref) && !/(v\.redd\.it|i\.redd\.it|preview\.redd\.it|i\.imgur\.com|\.mp4|\.webm|\.m3u8|\.jpg|\.jpeg|\.png|\.webp|\.gif)/i.test(contentHref) && !/\/comments\//i.test(contentHref);
-    if (isExternalLink) {
-      return "link";
+    const hasTextBody = element.querySelector('[slot="text-body"], shreddit-post-text-body, .usertext-body, [data-testid="post-content"] .md, [data-click-id="text"]') !== null;
+    if (rawType === "text" || domain.startsWith("self.")) {
+      return "text";
+    }
+    const primaryImgEl = element.querySelector('img#post-image, [data-post-media-primary], shreddit-aspect-ratio:not(:has(video)) img:not(.shreddit-subreddit-icon__icon), [data-testid="post-image"] img, img.preview-img, img.media-lightbox-img:not(.post-background-image-filter), [slot="post-media-container"] img:not(.shreddit-subreddit-icon__icon):not(.post-background-image-filter)');
+    const isImageHref = /(\.jpg|\.jpeg|\.png|\.webp|\.gif|i\.redd\.it|i\.imgur\.com)/i.test(contentHref) || domain === "i.redd.it" || domain === "i.imgur.com";
+    if (primaryImgEl !== null || isImageHref) {
+      return "image";
     }
     if (hasTextBody) {
       return "text";
+    }
+    const isExternalLink = contentHref && /^https?:\/\//i.test(contentHref) && !/(v\.redd\.it|i\.redd\.it|preview\.redd\.it|i\.imgur\.com|\.mp4|\.webm|\.m3u8|\.jpg|\.jpeg|\.png|\.webp|\.gif)/i.test(contentHref) && !/\/comments\//i.test(contentHref);
+    if (isExternalLink) {
+      return "link";
     }
     if (!contentHref || /\/comments\//i.test(contentHref) || /reddit\.com/i.test(contentHref)) {
       return "text";
@@ -275,60 +283,106 @@
     return "link";
   }
   var UPVOTE_SELECTORS = [
-    'button[data-action-bar-action="upvote"]',
-    "button[upvote]",
     '[data-action-bar-action="upvote"]',
+    "button[upvote]",
     'button[aria-label*="upvote" i]',
     'button[name="upvote"]',
-    '[slot="upvote-button"]',
     '[slot="upvote-button"] button',
+    '[slot="upvote-button"]',
     'button[data-click-id="upvote"]',
     'button[id*="upvote" i]',
     'faceplate-tracker[action="upvote"] button',
-    'faceplate-tracker[source="post"][action="upvote"] button',
     'shreddit-post-action-row button[aria-label*="upvote" i]',
     '[data-testid="upvote-button"]',
     ".arrow.up",
     ".arrow.upmod"
   ];
   var DOWNVOTE_SELECTORS = [
-    'button[data-action-bar-action="downvote"]',
-    "button[downvote]",
     '[data-action-bar-action="downvote"]',
+    "button[downvote]",
     'button[aria-label*="downvote" i]',
     'button[name="downvote"]',
-    '[slot="downvote-button"]',
     '[slot="downvote-button"] button',
+    '[slot="downvote-button"]',
     'button[data-click-id="downvote"]',
     'button[id*="downvote" i]',
     'faceplate-tracker[action="downvote"] button',
-    'faceplate-tracker[source="post"][action="downvote"] button',
     'shreddit-post-action-row button[aria-label*="downvote" i]',
     '[data-testid="downvote-button"]',
     ".arrow.down",
     ".arrow.downmod"
   ];
   function queryDeep(root, selectors) {
+    const isHidden = (el) => {
+      try {
+        if (el.hidden)
+          return true;
+        const style = el.getAttribute("style") || "";
+        if (/display\s*:\s*none/i.test(style))
+          return true;
+        if (el.classList?.contains("rr-native-suppressed"))
+          return true;
+      } catch {}
+      return false;
+    };
+    const collect = (node, out) => {
+      if (!node)
+        return;
+      const HTMLElementCtor = globalThis.HTMLElement;
+      const isElement = HTMLElementCtor ? node instanceof HTMLElementCtor : node?.nodeType === 1;
+      if (isElement) {
+        const el = node;
+        for (const selector of selectors) {
+          try {
+            if (el.matches?.(selector))
+              out.push(el);
+          } catch {}
+        }
+        const sr = el.shadowRoot;
+        if (sr) {
+          for (let i = 0;i < sr.childNodes.length; i++)
+            collect(sr.childNodes[i], out);
+        }
+      } else if (node?.nodeType === 11) {
+        const frag = node;
+        for (let i = 0;i < frag.childNodes.length; i++)
+          collect(frag.childNodes[i], out);
+        return;
+      }
+      const children = node.childNodes;
+      if (children) {
+        for (let i = 0;i < children.length; i++) {
+          collect(children[i], out);
+        }
+      }
+    };
     for (const selector of selectors) {
-      const found = root.querySelector(selector);
-      if (found)
-        return found;
+      try {
+        const found = root.querySelector(selector);
+        if (found && !isHidden(found)) {
+          if (found.tagName.toLowerCase() === "button")
+            return found;
+        }
+      } catch {}
     }
     if (root.shadowRoot) {
       for (const selector of selectors) {
-        const found = root.shadowRoot.querySelector(selector);
-        if (found)
-          return found;
+        try {
+          const found = root.shadowRoot.querySelector(selector);
+          if (found && !isHidden(found)) {
+            if (found.tagName.toLowerCase() === "button")
+              return found;
+          }
+        } catch {}
       }
     }
-    for (const child of Array.from(root.children)) {
-      if (child.shadowRoot) {
-        const found = queryDeep(child, selectors);
-        if (found)
-          return found;
-      }
-    }
-    return null;
+    const all = [];
+    collect(root, all);
+    const visible = all.filter((el) => !isHidden(el));
+    const btn = visible.find((el) => el.tagName.toLowerCase() === "button");
+    if (btn)
+      return btn;
+    return visible[0] || null;
   }
   function checkIsUpvoted(element) {
     const voteState = element.getAttribute("vote-state") || element.getAttribute("score-state");
@@ -392,7 +446,7 @@
       }
       score = parseScore(scoreAttr);
     } else {
-      const scoreElem = element.querySelector('[slot="credit-bar"], faceplate-number, [data-test-id="post-score"], .score') || element.shadowRoot?.querySelector('faceplate-number, [data-testid="action-row"] faceplate-number');
+      const scoreElem = element.querySelector('shreddit-post-vote-control [slot="score"], faceplate-number, [data-test-id="post-score"], .score, [slot="credit-bar"]') || element.shadowRoot?.querySelector('faceplate-number, [data-testid="action-row"] faceplate-number');
       if (scoreElem) {
         const trimmed = scoreElem.textContent?.trim() || "";
         if (trimmed === "•" || trimmed.toLowerCase() === "vote") {
@@ -557,8 +611,35 @@
   }
 
   // src/extractor/vote-proxy.ts
+  function deepInnerButton(element) {
+    if (element.tagName.toLowerCase() === "button")
+      return element;
+    try {
+      const direct = element.querySelector("button");
+      if (direct)
+        return direct;
+    } catch {}
+    try {
+      const sr = element.shadowRoot;
+      const inner = sr?.querySelector("button");
+      if (inner)
+        return inner;
+    } catch {}
+    try {
+      const nested = element.querySelectorAll("*");
+      for (let i = 0;i < nested.length; i++) {
+        const el = nested[i];
+        try {
+          const btn = el.shadowRoot?.querySelector("button");
+          if (btn)
+            return btn;
+        } catch {}
+      }
+    } catch {}
+    return element;
+  }
   function clickButton(element) {
-    const target = element.tagName.toLowerCase() === "button" ? element : element.querySelector("button") ?? element;
+    const target = deepInnerButton(element);
     try {
       target.click();
       return true;
@@ -575,37 +656,119 @@
       }
     }
   }
-  function proxyUpvote(post) {
+  function proxyUpvote(post, onSync) {
     if (!post || !post.element)
       return false;
     const button = queryDeep(post.element, UPVOTE_SELECTORS);
     if (!button)
       return false;
+    const wasUpvoted = !!post.isUpvoted;
+    const wasDownvoted = !!post.isDownvoted;
     const success = clickButton(button);
     if (success && post.element) {
-      post.isUpvoted = checkIsUpvoted(post.element);
-      const downBtn = queryDeep(post.element, DOWNVOTE_SELECTORS);
-      if (downBtn) {
-        post.isDownvoted = checkIsDownvoted(post.element);
+      if (wasUpvoted) {
+        post.isUpvoted = false;
+      } else {
+        post.isUpvoted = true;
+        post.isDownvoted = false;
       }
+      const liveUp = checkIsUpvoted(post.element);
+      const liveDown = checkIsDownvoted(post.element);
+      if (liveUp !== wasUpvoted || liveDown !== wasDownvoted) {
+        post.isUpvoted = liveUp;
+        post.isDownvoted = liveDown;
+      }
+      setTimeout(() => {
+        if (post.element) {
+          post.isUpvoted = checkIsUpvoted(post.element);
+          post.isDownvoted = checkIsDownvoted(post.element);
+        }
+        onSync?.();
+      }, 50);
     }
     return success;
   }
-  function proxyDownvote(post) {
+  function proxyDownvote(post, onSync) {
     if (!post || !post.element)
       return false;
     const button = queryDeep(post.element, DOWNVOTE_SELECTORS);
     if (!button)
       return false;
+    const wasUpvoted = !!post.isUpvoted;
+    const wasDownvoted = !!post.isDownvoted;
     const success = clickButton(button);
     if (success && post.element) {
-      post.isDownvoted = checkIsDownvoted(post.element);
-      const upBtn = queryDeep(post.element, UPVOTE_SELECTORS);
-      if (upBtn) {
-        post.isUpvoted = checkIsUpvoted(post.element);
+      if (wasDownvoted) {
+        post.isDownvoted = false;
+      } else {
+        post.isDownvoted = true;
+        post.isUpvoted = false;
       }
+      const liveUp = checkIsUpvoted(post.element);
+      const liveDown = checkIsDownvoted(post.element);
+      if (liveUp !== wasUpvoted || liveDown !== wasDownvoted) {
+        post.isUpvoted = liveUp;
+        post.isDownvoted = liveDown;
+      }
+      setTimeout(() => {
+        if (post.element) {
+          post.isUpvoted = checkIsUpvoted(post.element);
+          post.isDownvoted = checkIsDownvoted(post.element);
+        }
+        onSync?.();
+      }, 50);
     }
     return success;
+  }
+
+  // src/media/video-hydrator.ts
+  function readPlayerSrc(player) {
+    try {
+      const direct = player.getAttribute("stream-url") || player.getAttribute("src");
+      if (direct)
+        return direct;
+      const packed = player.getAttribute("packaged-media-json");
+      if (packed) {
+        try {
+          const json = JSON.parse(packed);
+          const url = json?.playbackMp4Url || json?.playback_url || json?.hlsUrl;
+          if (typeof url === "string" && url)
+            return url;
+        } catch {}
+      }
+    } catch {}
+    return "";
+  }
+  function hydrateVideoFromPlayer(container, video) {
+    try {
+      if (video.currentSrc)
+        return true;
+      if (video.readyState > 0 && video.src)
+        return true;
+      const player = video.closest?.("shreddit-player-2") || container.querySelector?.("shreddit-player-2");
+      if (!player)
+        return !!video.src;
+      const src = readPlayerSrc(player);
+      if (!src)
+        return !!video.src;
+      video.src = src;
+      video.preload = "auto";
+      video.setAttribute("muted", "");
+      video.muted = true;
+      try {
+        video.load();
+      } catch {}
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  function ensureAutoplayAttrs(video) {
+    try {
+      video.playsInline = true;
+      video.setAttribute("playsinline", "");
+      video.preload = "auto";
+    } catch {}
   }
 
   // src/media/audio-manager.ts
@@ -639,6 +802,84 @@
       if (typeof localStorage !== "undefined") {
         localStorage.setItem(STORAGE_KEY, String(muted));
       }
+    } catch {}
+  }
+  var VOLUME_KEY = "reddit_reels_volume";
+  function getInitialVolume() {
+    try {
+      if (typeof GM_getValue === "function") {
+        const gmVal = GM_getValue(VOLUME_KEY, null);
+        if (typeof gmVal === "number" && gmVal >= 0 && gmVal <= 1)
+          return gmVal;
+      }
+    } catch {}
+    try {
+      if (typeof localStorage !== "undefined") {
+        const raw = localStorage.getItem(VOLUME_KEY);
+        if (raw !== null) {
+          const n = parseFloat(raw);
+          if (!Number.isNaN(n) && n >= 0 && n <= 1)
+            return n;
+        }
+      }
+    } catch {}
+    return 1;
+  }
+  function persistVolume(volume) {
+    try {
+      if (typeof GM_setValue === "function") {
+        GM_setValue(VOLUME_KEY, volume);
+      }
+    } catch {}
+    try {
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(VOLUME_KEY, String(volume));
+      }
+    } catch {}
+  }
+  function normalizeIframeSrc(src, isMuted) {
+    if (!src || src === "about:blank")
+      return src;
+    const target = isMuted ? "muted=1" : "muted=0";
+    if (/[?&]muted=[01]/.test(src)) {
+      return src.replace(/([?&]muted=)[01]/g, `$1${isMuted ? "1" : "0"}`);
+    }
+    const sep = src.includes("?") ? "&" : "?";
+    return `${src}${sep}${target}`;
+  }
+  function sendIframePlay(ifr) {
+    try {
+      if (!ifr.src || ifr.src === "about:blank")
+        return;
+      ifr.contentWindow?.postMessage({ source: "reddit-reels", type: "PLAY" }, "*");
+      ifr.contentWindow?.postMessage({ action: "play", type: "play" }, "*");
+    } catch {}
+  }
+  function listenForRedGifsReady(getState) {
+    const handler = (event) => {
+      try {
+        const data = event.data;
+        if (!data || data.source !== "redgifs-bridge" || data.type !== "READY")
+          return;
+        const src = event.source;
+        if (!src || typeof src.postMessage !== "function")
+          return;
+        const { muted, volume } = getState();
+        src.postMessage({ source: "reddit-reels", type: "SET_AUDIO", muted, volume }, "*");
+        src.postMessage({ source: "reddit-reels", type: "PLAY" }, "*");
+      } catch {}
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }
+  function blurIframes(container) {
+    try {
+      container.querySelectorAll("iframe").forEach((ifr) => {
+        try {
+          ifr.tabIndex = -1;
+          ifr.blur();
+        } catch {}
+      });
     } catch {}
   }
   var sharedAudioCtx = null;
@@ -690,14 +931,15 @@
     traverse(root);
     return { videos, audios, players };
   }
-  function applyAudioState(container, isMuted) {
+  function applyAudioState(container, isMuted, volume = 1) {
     if (!container)
       return;
+    const level = isMuted ? 0 : volume;
     const { videos, audios, players } = deepFindMediaElements(container);
     for (const video of videos) {
       try {
         video.muted = isMuted;
-        video.volume = 1;
+        video.volume = level;
         if (!isMuted && video.paused) {
           video.play().catch(() => {});
         }
@@ -706,7 +948,7 @@
     for (const audio of audios) {
       try {
         audio.muted = isMuted;
-        audio.volume = 1;
+        audio.volume = level;
         if (!isMuted && audio.paused) {
           audio.play().catch(() => {});
         }
@@ -720,33 +962,40 @@
         } else {
           player.removeAttribute("muted");
           player.muted = false;
-          player.volume = 1;
+          player.volume = level;
         }
       } catch {}
     }
     const iframes = container.querySelectorAll("iframe");
     for (const ifr of iframes) {
       try {
+        if (!ifr.src || ifr.src === "about:blank")
+          continue;
+        ifr.contentWindow?.postMessage({
+          source: "reddit-reels",
+          type: "SET_AUDIO",
+          muted: isMuted,
+          volume: level
+        }, "*");
         ifr.contentWindow?.postMessage({
           action: isMuted ? "mute" : "unmute",
           type: isMuted ? "mute" : "unmute",
           muted: isMuted,
-          volume: isMuted ? 0 : 1
+          volume: level
         }, "*");
-        if (!isMuted && ifr.src && ifr.src.includes("muted=1")) {
-          ifr.src = ifr.src.replace(/muted=1/g, "muted=0");
-        }
       } catch {}
     }
   }
 
   class AudioManager {
     _isMuted;
+    _volume;
     activeContainer = null;
     activeVideo = null;
     videoCache = new WeakMap;
-    constructor(initialMuted) {
+    constructor(initialMuted, initialVolume) {
       this._isMuted = initialMuted !== undefined ? initialMuted : getInitialMuteState();
+      this._volume = initialVolume !== undefined ? initialVolume : getInitialVolume();
     }
     get isMuted() {
       return this._isMuted;
@@ -755,6 +1004,29 @@
       this._isMuted = value;
       persistMuteState(this._isMuted);
       this.syncActiveMute();
+    }
+    get volume() {
+      return this._volume;
+    }
+    setVolume(level, container) {
+      const clamped = Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 1;
+      this._volume = clamped;
+      persistVolume(clamped);
+      if (clamped === 0 && !this._isMuted) {
+        this._isMuted = true;
+        persistMuteState(true);
+      } else if (clamped > 0 && this._isMuted) {
+        this._isMuted = false;
+        persistMuteState(false);
+      }
+      const target = container || this.activeContainer;
+      if (target)
+        applyAudioState(target, this._isMuted, this._volume);
+      this.syncActiveMute();
+      return this._volume;
+    }
+    adjustVolume(delta, container) {
+      return this.setVolume(this._volume + delta, container);
     }
     getActiveVideo() {
       return this.activeVideo;
@@ -819,19 +1091,43 @@
         });
       }
       if (targetContainer) {
-        applyAudioState(targetContainer, this._isMuted);
         const iframes = targetContainer.querySelectorAll("iframe");
         iframes.forEach((ifr) => {
-          if (ifr.dataset.rrSrc && ifr.src === "about:blank") {
-            ifr.src = ifr.dataset.rrSrc;
-          }
+          try {
+            const stored = ifr.dataset.rrSrc;
+            if (ifr.src === "about:blank" && stored) {
+              ifr.src = normalizeIframeSrc(stored, this._isMuted);
+            }
+            ifr.tabIndex = -1;
+          } catch {}
         });
+        applyAudioState(targetContainer, this._isMuted, this._volume);
+        iframes.forEach((ifr) => sendIframePlay(ifr));
+        blurIframes(targetContainer);
       }
       if (targetVideo) {
+        if (targetContainer && targetContainer === this.activeContainer && !targetVideo.paused && targetVideo.currentSrc) {
+          applyAudioState(targetContainer, this._isMuted, this._volume);
+          return;
+        }
+        ensureAutoplayAttrs(targetVideo);
+        if (targetContainer && (!targetVideo.currentSrc || targetVideo.readyState === 0)) {
+          hydrateVideoFromPlayer(targetContainer, targetVideo);
+        }
         targetVideo.muted = this._isMuted;
-        targetVideo.playsInline = true;
+        targetVideo.volume = this._isMuted ? 0 : this._volume;
         targetVideo.play().catch((err) => {
-          if (!targetVideo.muted && (err.name === "NotAllowedError" || err.name === "AbortError")) {
+          if (!targetVideo)
+            return;
+          const name = err && err.name || "";
+          if (name === "NotSupportedError") {
+            if (targetContainer)
+              hydrateVideoFromPlayer(targetContainer, targetVideo);
+            targetVideo.muted = true;
+            targetVideo.play().catch(() => {});
+            return;
+          }
+          if (!targetVideo.muted && (name === "NotAllowedError" || name === "AbortError")) {
             targetVideo.muted = true;
             targetVideo.play().catch(() => {});
           }
@@ -867,17 +1163,35 @@
       persistMuteState(this._isMuted);
       const target = container || this.activeContainer;
       if (target) {
-        applyAudioState(target, this._isMuted);
+        applyAudioState(target, this._isMuted, this._volume);
       }
       this.syncActiveMute();
       return this._isMuted;
     }
+    reassertActiveIframeUnmute() {
+      if (this._isMuted || !this.activeContainer)
+        return;
+      try {
+        const iframes = this.activeContainer.querySelectorAll("iframe");
+        iframes.forEach((ifr) => {
+          try {
+            const stored = ifr.dataset.rrSrc;
+            if (ifr.src === "about:blank" && stored) {
+              ifr.src = normalizeIframeSrc(stored, false);
+            }
+          } catch {}
+        });
+        applyAudioState(this.activeContainer, false, this._volume);
+        iframes.forEach((ifr) => sendIframePlay(ifr));
+      } catch {}
+    }
     syncActiveMute() {
       if (this.activeContainer) {
-        applyAudioState(this.activeContainer, this._isMuted);
+        applyAudioState(this.activeContainer, this._isMuted, this._volume);
       } else if (this.activeVideo) {
         try {
           this.activeVideo.muted = this._isMuted;
+          this.activeVideo.volume = this._isMuted ? 0 : this._volume;
           if (!this._isMuted && this.activeVideo.paused) {
             this.activeVideo.play().catch(() => {});
           }
@@ -919,6 +1233,7 @@
         const allIframes = document.querySelectorAll("iframe");
         allIframes.forEach((ifr) => {
           try {
+            ifr.contentWindow?.postMessage({ source: "reddit-reels", type: "PAUSE", muted: true }, "*");
             ifr.contentWindow?.postMessage({ action: "pause", muted: true }, "*");
           } catch {}
         });
@@ -926,6 +1241,120 @@
     }
   }
   var audioManager = new AudioManager;
+  // src/media/redgifs-bridge.ts
+  var REDGIFS_MESSAGE_SOURCE = "reddit-reels";
+  function isRedGifsFrame() {
+    if (typeof window === "undefined")
+      return false;
+    return /redgifs\.com/i.test(window.location.hostname);
+  }
+  function getStoredMute() {
+    try {
+      if (typeof GM_getValue === "function") {
+        const gm = GM_getValue("reddit_reels_muted", null);
+        if (typeof gm === "boolean")
+          return gm;
+      }
+    } catch {}
+    return false;
+  }
+  function getStoredVolume() {
+    try {
+      if (typeof GM_getValue === "function") {
+        const gm = GM_getValue("reddit_reels_volume", null);
+        if (typeof gm === "number" && gm >= 0 && gm <= 1)
+          return gm;
+      }
+    } catch {}
+    return 1;
+  }
+  function initRedGifsBridge() {
+    if (!isRedGifsFrame())
+      return () => {};
+    let currentMuted = getStoredMute();
+    let currentVolume = getStoredVolume();
+    const applyToVideo = (video) => {
+      try {
+        video.muted = currentMuted;
+        video.volume = currentVolume;
+        if (!currentMuted && video.paused) {
+          video.play().catch(() => {
+            try {
+              video.muted = true;
+              video.play().catch(() => {});
+            } catch {}
+          });
+        } else if (currentMuted && video.paused) {
+          video.play().catch(() => {});
+        }
+      } catch {}
+    };
+    const syncActiveVideo = () => {
+      const video = document.querySelector("video");
+      if (video)
+        applyToVideo(video);
+    };
+    const handleMessage = (event) => {
+      const data = event.data;
+      if (!data || data.source !== REDGIFS_MESSAGE_SOURCE)
+        return;
+      const video = document.querySelector("video");
+      if (data.type === "SET_AUDIO" || data.type === "SET_MUTE") {
+        if (typeof data.muted === "boolean") {
+          currentMuted = data.muted;
+        }
+        if (typeof data.volume === "number") {
+          currentVolume = Math.min(1, Math.max(0, data.volume));
+        }
+        if (video)
+          applyToVideo(video);
+      } else if (data.type === "PAUSE") {
+        if (video && !video.paused) {
+          video.pause();
+          video.muted = true;
+        }
+      } else if (data.type === "PLAY") {
+        if (video) {
+          applyToVideo(video);
+          video.play().catch(() => {});
+        }
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    const observer = new MutationObserver(() => {
+      const video = document.querySelector("video");
+      if (video) {
+        applyToVideo(video);
+        if (!video.dataset.rrBridgeWired) {
+          video.dataset.rrBridgeWired = "1";
+          video.addEventListener("play", () => applyToVideo(video), { once: true });
+        }
+      }
+    });
+    if (document.body || document.documentElement) {
+      observer.observe(document.body || document.documentElement, {
+        childList: true,
+        subtree: true
+      });
+    }
+    syncActiveVideo();
+    const handleUserGesture = () => {
+      syncActiveVideo();
+    };
+    window.addEventListener("click", handleUserGesture, true);
+    window.addEventListener("pointerdown", handleUserGesture, true);
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ source: "redgifs-bridge", type: "READY" }, "*");
+      }
+    } catch {}
+    return () => {
+      window.removeEventListener("message", handleMessage);
+      window.removeEventListener("click", handleUserGesture, true);
+      window.removeEventListener("pointerdown", handleUserGesture, true);
+      observer.disconnect();
+    };
+  }
 
   // src/media/index.ts
   function resolveMedia(post) {
@@ -952,9 +1381,13 @@
     }
     const iframe = el.querySelector("iframe");
     if (iframe && iframe.src) {
+      let src = normalizeIframeSrc(iframe.src, audioManager.isMuted);
+      if (/redgifs\.com|streamable\.com|gfycat\.com/i.test(src) && !/[?&]autoplay=/.test(src)) {
+        src += (src.includes("?") ? "&" : "?") + "autoplay=1";
+      }
       return {
         type: "iframe",
-        src: iframe.src,
+        src,
         hasAudio: true,
         element: iframe
       };
@@ -973,7 +1406,7 @@
       }
       return {
         type: "iframe",
-        src: `https://www.redgifs.com/ifr/${match[1]}?autoplay=1&muted=0`,
+        src: normalizeIframeSrc(`https://www.redgifs.com/ifr/${match[1]}?autoplay=1&muted=1`, audioManager.isMuted),
         hasAudio: true
       };
     }
@@ -1382,6 +1815,27 @@
     document.body.appendChild(pulse);
     setTimeout(() => pulse.remove(), 650);
   }
+  function showVotePulse(upvoted) {
+    const existing = document.querySelector(".rr-play-pulse");
+    if (existing)
+      existing.remove();
+    const pulse = document.createElement("div");
+    pulse.className = "rr-play-pulse";
+    pulse.innerHTML = upvoted ? `<svg width="44" height="44" viewBox="0 0 24 24" fill="#ff4500"><path d="M12 21s-7.5-4.9-10-9.5C.4 8.6 2.4 5 5.8 5c2 0 3.4 1.1 4.2 2.3h4C14.8 6.1 16.2 5 18.2 5c3.4 0 5.4 3.6 3.8 6.5C19.5 16.1 12 21 12 21z" transform="scale(0.9) translate(1.3,1.3)"></path></svg>` : `<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#7193ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+    document.body.appendChild(pulse);
+    setTimeout(() => pulse.remove(), 550);
+  }
+  function showVolumePulse(level, muted) {
+    const existing = document.querySelector(".rr-scale-pulse");
+    if (existing)
+      existing.remove();
+    const pct = Math.round(level * 100);
+    const pulse = document.createElement("div");
+    pulse.className = "rr-scale-pulse";
+    pulse.textContent = muted || pct === 0 ? "Muted" : `Volume ${pct}%`;
+    document.body.appendChild(pulse);
+    setTimeout(() => pulse.remove(), 650);
+  }
   // src/ui/top-bar.ts
   function getSoundIconSvg(isMuted) {
     return isMuted ? `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>` : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
@@ -1496,7 +1950,7 @@
   function getDownvoteIconSvg(isDownvoted) {
     return `<svg width="26" height="26" viewBox="0 0 24 24" fill="${isDownvoted ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
   }
-  function getCcIconSvg(enabled) {
+  function getCcIconSvg(_enabled) {
     return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
     <rect x="2" y="4" width="20" height="16" rx="3" ry="3"></rect>
     <path d="M7 15h0a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1"></path>
@@ -1597,40 +2051,33 @@
     if (upvoteBtn) {
       upvoteBtn.onclick = (e) => {
         e.stopPropagation();
-        proxyUpvote(post);
-        const isUp = !!post.isUpvoted;
-        const isDown = !!post.isDownvoted;
-        upvoteBtn.classList.toggle("is-active-up", isUp);
-        upvoteBtn.innerHTML = getUpvoteIconSvg(isUp);
-        if (downvoteBtn) {
-          downvoteBtn.classList.toggle("is-active-down", isDown);
-          downvoteBtn.innerHTML = getDownvoteIconSvg(isDown);
-        }
-        if (scoreLabel) {
-          const curVal = isUp ? 1 : isDown ? -1 : 0;
-          const newScore = baseScore + (curVal - initialVoteVal);
-          scoreLabel.textContent = formatScoreDisplay(newScore, isUp || isDown);
-        }
+        const ok = proxyUpvote(post, () => syncVoteUI());
+        syncVoteUI(!ok);
       };
     }
     if (downvoteBtn) {
       downvoteBtn.onclick = (e) => {
         e.stopPropagation();
-        proxyDownvote(post);
-        const isUp = !!post.isUpvoted;
-        const isDown = !!post.isDownvoted;
+        const ok = proxyDownvote(post, () => syncVoteUI());
+        syncVoteUI(!ok);
+      };
+    }
+    function syncVoteUI(revert = false) {
+      const isUp = revert ? initialVoteVal === 1 : !!post.isUpvoted;
+      const isDown = revert ? initialVoteVal === -1 : !!post.isDownvoted;
+      if (upvoteBtn) {
+        upvoteBtn.classList.toggle("is-active-up", isUp);
+        upvoteBtn.innerHTML = getUpvoteIconSvg(isUp);
+      }
+      if (downvoteBtn) {
         downvoteBtn.classList.toggle("is-active-down", isDown);
         downvoteBtn.innerHTML = getDownvoteIconSvg(isDown);
-        if (upvoteBtn) {
-          upvoteBtn.classList.toggle("is-active-up", isUp);
-          upvoteBtn.innerHTML = getUpvoteIconSvg(isUp);
-        }
-        if (scoreLabel) {
-          const curVal = isDown ? -1 : isUp ? 1 : 0;
-          const newScore = baseScore + (curVal - initialVoteVal);
-          scoreLabel.textContent = formatScoreDisplay(newScore, isUp || isDown);
-        }
-      };
+      }
+      if (scoreLabel) {
+        const curVal = isUp ? 1 : isDown ? -1 : 0;
+        const newScore = baseScore + (curVal - initialVoteVal);
+        scoreLabel.textContent = formatScoreDisplay(newScore, isUp || isDown);
+      }
     }
     if (commentBtn) {
       commentBtn.onclick = (e) => {
@@ -1832,13 +2279,7 @@
         :host(.rr-hide-captions) shreddit-player-captions,
         :host(.rr-hide-captions) .caption-wrapper,
         :host(.rr-hide-captions) .caption-container,
-        :host(.rr-hide-captions) [part="captions"],
-        :host-context(.rr-hide-captions) ::cue,
-        :host-context(.rr-hide-captions) .captions-display,
-        :host-context(.rr-hide-captions) [data-testid="captions"],
-        :host-context(.rr-hide-captions) shreddit-player-captions,
-        :host-context(.rr-hide-captions) .caption-wrapper,
-        :host-context(.rr-hide-captions) [part="captions"] {
+        :host(.rr-hide-captions) [part="captions"] {
           display: none !important;
           visibility: hidden !important;
           opacity: 0 !important;
@@ -1984,14 +2425,22 @@
   }
   // src/core/input-controller.ts
   var POST_SELECTORS = 'shreddit-post, article, [data-testid="post-container"], .Post';
+  var VOLUME_STEP = 0.1;
+  var TAP_WINDOW_MS = 320;
+  var SWIPE_CANCEL_PX = 10;
 
   class InputController {
     options;
     lastTapTimestamp = 0;
     lastTapPost = null;
+    tapCount = 0;
     singleTapTimer = null;
     clickListener = null;
     keydownListener = null;
+    pointerListener = null;
+    downX = 0;
+    downY = 0;
+    downActive = false;
     constructor(options) {
       this.options = options;
     }
@@ -2002,7 +2451,20 @@
       }
       if (!this.keydownListener) {
         this.keydownListener = (e) => this.handleKeyDown(e);
-        window.addEventListener("keydown", this.keydownListener);
+        window.addEventListener("keydown", this.keydownListener, true);
+      }
+      if (!this.pointerListener) {
+        this.pointerListener = (e) => {
+          if (e.type === "pointerdown") {
+            this.downX = e.clientX;
+            this.downY = e.clientY;
+            this.downActive = true;
+          } else {
+            this.downActive = false;
+          }
+        };
+        document.addEventListener("pointerdown", this.pointerListener, true);
+        document.addEventListener("pointerup", this.pointerListener, true);
       }
     }
     detach() {
@@ -2011,11 +2473,18 @@
         this.clickListener = null;
       }
       if (this.keydownListener) {
-        window.removeEventListener("keydown", this.keydownListener);
+        window.removeEventListener("keydown", this.keydownListener, true);
         this.keydownListener = null;
+      }
+      if (this.pointerListener) {
+        document.removeEventListener("pointerdown", this.pointerListener, true);
+        document.removeEventListener("pointerup", this.pointerListener, true);
+        this.pointerListener = null;
       }
       this.lastTapTimestamp = 0;
       this.lastTapPost = null;
+      this.tapCount = 0;
+      this.downActive = false;
       if (this.singleTapTimer) {
         clearTimeout(this.singleTapTimer);
         this.singleTapTimer = null;
@@ -2028,12 +2497,34 @@
       if (video) {
         const wasPaused = video.paused;
         if (wasPaused) {
-          applyAudioState(post, audioManager.isMuted);
+          applyAudioState(post, audioManager.isMuted, audioManager.volume);
           video.play().catch(() => {});
         } else {
           video.pause();
         }
         showPlayPulse(wasPaused);
+      } else if (post.querySelector("iframe")) {}
+    }
+    fireDoubleTapUpvote() {
+      if (!this.options.isReelModeActive())
+        return;
+      const getPost = this.options.getActiveReelPost;
+      const reel = getPost ? getPost() : null;
+      if (!reel)
+        return;
+      const ok = proxyUpvote(reel);
+      showVotePulse(ok ? !!reel.isUpvoted : false);
+    }
+    toggleFitFill(post) {
+      const isCurrentlyContain = post.classList.contains("rr-fit-contain");
+      if (isCurrentlyContain) {
+        post.classList.remove("rr-fit-contain");
+        post.classList.add("rr-fit-cover");
+        showScalePulse("Fill (Full Bleed)");
+      } else {
+        post.classList.remove("rr-fit-cover");
+        post.classList.add("rr-fit-contain");
+        showScalePulse("Fit (Original)");
       }
     }
     handleTap(e) {
@@ -2046,51 +2537,101 @@
       const post = target.closest(POST_SELECTORS);
       if (!post)
         return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (this.wasSwipe(e)) {
+        this.resetTapState();
+        return;
+      }
       unlockAudio();
+      audioManager.reassertActiveIframeUnmute();
       const now = Date.now();
-      if (now - this.lastTapTimestamp < 320 && this.lastTapPost === post) {
+      const samePost = this.lastTapPost === post;
+      const inWindow = now - this.lastTapTimestamp < TAP_WINDOW_MS;
+      if (inWindow && samePost) {
+        this.tapCount += 1;
+      } else {
+        this.tapCount = 1;
+      }
+      this.lastTapTimestamp = now;
+      this.lastTapPost = post;
+      if (this.tapCount === 2) {
         if (this.singleTapTimer) {
           clearTimeout(this.singleTapTimer);
           this.singleTapTimer = null;
         }
-        this.lastTapTimestamp = 0;
-        this.lastTapPost = null;
-        const isCurrentlyContain = post.classList.contains("rr-fit-contain");
-        if (isCurrentlyContain) {
-          post.classList.remove("rr-fit-contain");
-          post.classList.add("rr-fit-cover");
-          showScalePulse("Fill (Full Bleed)");
-        } else {
-          post.classList.remove("rr-fit-cover");
-          post.classList.add("rr-fit-contain");
-          showScalePulse("Fit (Original)");
-        }
+        this.fireDoubleTapUpvote();
         return;
       }
-      this.lastTapTimestamp = now;
-      this.lastTapPost = post;
+      if (this.tapCount === 3) {
+        if (this.singleTapTimer) {
+          clearTimeout(this.singleTapTimer);
+          this.singleTapTimer = null;
+        }
+        this.resetTapState();
+        this.toggleFitFill(post);
+        return;
+      }
       if (this.singleTapTimer) {
         clearTimeout(this.singleTapTimer);
       }
       this.singleTapTimer = setTimeout(() => {
         this.singleTapTimer = null;
+        this.resetTapState();
         this.fireSingleTap(post);
-      }, 320);
+      }, TAP_WINDOW_MS);
+    }
+    wasSwipe(e) {
+      try {
+        const dx = e.clientX - this.downX;
+        const dy = e.clientY - this.downY;
+        return Math.hypot(dx, dy) > SWIPE_CANCEL_PX;
+      } catch {
+        return false;
+      }
+    }
+    resetTapState() {
+      this.lastTapTimestamp = 0;
+      this.lastTapPost = null;
+      this.tapCount = 0;
     }
     handleKeyDown(e) {
       if (!this.options.isReelModeActive())
+        return;
+      const target = e.target;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable))
         return;
       if (e.key === "Escape") {
         this.options.onExit();
       } else if (e.key === "m" || e.key === "M") {
         this.options.onToggleMute();
+      } else if (e.key === "f" || e.key === "F") {
+        const post = this.options.getActivePost();
+        if (post)
+          this.toggleFitFill(post);
+      } else if (e.key === "+" || e.key === "=" || e.shiftKey && e.key === "ArrowUp") {
+        e.preventDefault();
+        this.changeVolume(VOLUME_STEP);
+      } else if (e.key === "-" || e.key === "_" || e.shiftKey && e.key === "ArrowDown") {
+        e.preventDefault();
+        this.changeVolume(-VOLUME_STEP);
       } else if (e.key === "c" || e.key === "C") {
         this.options.onToggleSubtitles?.();
-      } else if (e.key === "j" || e.key === "J" || e.key === "ArrowDown") {
+      } else if (e.key === "j" || e.key === "J" || !e.shiftKey && e.key === "ArrowDown") {
+        e.preventDefault();
         this.options.onNextPost?.();
-      } else if (e.key === "k" || e.key === "K" || e.key === "ArrowUp") {
+      } else if (e.key === "k" || e.key === "K" || !e.shiftKey && e.key === "ArrowUp") {
+        e.preventDefault();
         this.options.onPrevPost?.();
       }
+    }
+    changeVolume(delta) {
+      unlockAudio();
+      const post = this.options.getActivePost();
+      const level = audioManager.adjustVolume(delta, post || undefined);
+      audioManager.reassertActiveIframeUnmute();
+      showVolumePulse(level, audioManager.isMuted);
+      this.options.onVolumeChange?.(level, audioManager.isMuted);
     }
   }
   // src/cards/text-card.ts
@@ -2354,15 +2895,22 @@
           feed-post-action-row,
           [data-testid="action-row"],
           [data-testid="post-vote-control"],
-          shreddit-post-vote-control,
           shreddit-vote-animations,
           slot[name="share-button"],
           slot[name="credit-bar"],
-          slot[name="action-row"],
-          slot[name="vote"],
-          slot[name="vote-button"] {
+          slot[name="action-row"] {
             display: none !important;
             visibility: hidden !important;
+          }
+          shreddit-post-vote-control,
+          slot[name="vote"],
+          slot[name="vote-button"] {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            overflow: hidden !important;
           }
         `;
           postEl.shadowRoot.appendChild(shadowStyle);
@@ -2380,21 +2928,18 @@
           if (media.type === "iframe" && media.src) {
             const container = postEl.querySelector('[slot="post-media-container"]') || postEl.querySelector(".media-container") || postEl;
             const iframe = document.createElement("iframe");
-            let src = media.src;
-            try {
-              if (audioManager.isMuted && /muted=0/.test(src)) {
-                src = src.replace(/muted=0/g, "muted=1");
-              } else if (!audioManager.isMuted && /muted=1/.test(src)) {
-                src = src.replace(/muted=1/g, "muted=0");
-              }
-            } catch {}
+            const src = normalizeIframeSrc(media.src, audioManager.isMuted);
             iframe.src = src;
             iframe.className = "rr-embedded-iframe";
+            iframe.tabIndex = -1;
             iframe.setAttribute("loading", "eager");
             iframe.setAttribute("frameborder", "0");
             iframe.setAttribute("allowfullscreen", "true");
             iframe.setAttribute("allow", "autoplay; fullscreen; encrypted-media; picture-in-picture");
             container.appendChild(iframe);
+            try {
+              iframe.blur();
+            } catch {}
             audioManager.invalidateVideoCache(postEl);
           }
         }
@@ -2407,14 +2952,19 @@
         postEl.classList.remove("rr-filtered-out");
       }
       postEl.style.removeProperty("display");
+      const NATIVE_SUPPRESSION_SELECTORS = '[slot="credit-bar"], [slot="post-credit-bar"], [slot="title-and-metadata"], [slot="title"], [slot="action-row"], [slot="text-body"], shreddit-post-action-row, feed-post-action-row, shreddit-action-bar, rpl-action-bar, shreddit-post-credit-bar, faceplate-tracker, shreddit-interaction-container';
+      const VOTE_OFFSCREEN_SELECTORS = '[slot="vote"], [slot="vote-button"], shreddit-post-vote-control, [data-testid="post-vote-control"]';
       Array.from(postEl.children).forEach((child) => {
         const el = child;
         if (el.classList?.contains("rr-post-overlay") || el.classList?.contains("rr-link-card-container") || el.classList?.contains("rr-text-card-container")) {
           return;
         }
-        const isActionOrMeta = el.matches?.('[slot="credit-bar"], [slot="post-credit-bar"], [slot="title-and-metadata"], [slot="title"], [slot="action-row"], [slot="text-body"], [slot="vote"], [slot="vote-button"], shreddit-post-action-row, feed-post-action-row, shreddit-action-bar, rpl-action-bar, shreddit-post-credit-bar, faceplate-tracker, shreddit-interaction-container');
-        if (isActionOrMeta) {
+        if (el.matches?.(NATIVE_SUPPRESSION_SELECTORS)) {
           el.classList.add("rr-native-suppressed");
+          return;
+        }
+        if (el.matches?.(VOTE_OFFSCREEN_SELECTORS)) {
+          el.classList.add("rr-native-offscreen");
           return;
         }
         if (!isLinkPost && !isTextPost && (el.matches?.('[slot="post-media-container"], shreddit-player-2, .media-container, gallery-carousel, faceplate-carousel, shreddit-aspect-ratio, shreddit-async-loader') || el.querySelector("video, img:not(.shreddit-subreddit-icon__icon), iframe, gallery-carousel, faceplate-carousel, shreddit-player-2") !== null)) {
@@ -2422,8 +2972,11 @@
         }
         el.classList.add("rr-native-suppressed");
       });
-      postEl.querySelectorAll('[slot="credit-bar"], [slot="post-credit-bar"], [slot="title-and-metadata"], [slot="title"], [slot="action-row"], [slot="text-body"], [slot="vote"], [slot="vote-button"], shreddit-post-action-row, feed-post-action-row, shreddit-action-bar, rpl-action-bar, shreddit-post-credit-bar, faceplate-tracker, shreddit-interaction-container').forEach((el) => {
+      postEl.querySelectorAll(NATIVE_SUPPRESSION_SELECTORS).forEach((el) => {
         el.classList.add("rr-native-suppressed");
+      });
+      postEl.querySelectorAll(VOTE_OFFSCREEN_SELECTORS).forEach((el) => {
+        el.classList.add("rr-native-offscreen");
       });
       renderReelOverlay(postEl, post, {
         hasVideo,
@@ -2444,15 +2997,17 @@
           el.style.removeProperty("display");
         });
       }
-      postEl.querySelectorAll(".rr-native-suppressed").forEach((el) => {
-        el.classList.remove("rr-native-suppressed");
+      postEl.querySelectorAll(".rr-native-suppressed, .rr-native-offscreen").forEach((el) => {
+        el.classList.remove("rr-native-suppressed", "rr-native-offscreen");
         el.style.removeProperty("display");
       });
-      Array.from(postEl.children).forEach((child) => {
-        const el = child;
-        el.classList?.remove("rr-native-suppressed");
+      for (let i = 0;i < postEl.children.length; i++) {
+        const el = postEl.children[i];
+        if (el.classList?.contains("rr-native-suppressed") || el.classList?.contains("rr-native-offscreen")) {
+          el.classList.remove("rr-native-suppressed", "rr-native-offscreen");
+        }
         el.style?.removeProperty("display");
-      });
+      }
       restorePostMedia(postEl);
       postEl.classList.remove("rr-filtered-out", "rr-is-link", "rr-is-text");
       postEl.style.removeProperty("display");
@@ -2497,7 +3052,6 @@
                 if (!video.paused)
                   video.pause();
                 video.muted = true;
-                video.currentTime = 0;
               } catch {}
             }
           }
@@ -2586,16 +3140,18 @@
   // src/main.tsx
   var isReelModeActive = false;
   var topBarElement = null;
+  var stopRedgifsReady = null;
   function syncTopBarSound() {
     syncTopBarState(topBarElement, audioManager.isMuted, feedManager.isVideosOnly);
   }
   function handleToggleMute() {
     unlockAudio();
     const activePost = getClosestPostToViewport();
-    const nextMuted = audioManager.toggleMute(activePost || undefined);
-    if (activePost) {
-      applyAudioState(activePost, nextMuted);
-    }
+    audioManager.toggleMute(activePost || undefined);
+    audioManager.reassertActiveIframeUnmute();
+    syncTopBarSound();
+  }
+  function handleVolumeChange() {
     syncTopBarSound();
   }
   var feedManager = new FeedManager({
@@ -2604,8 +3160,19 @@
   var inputController = new InputController({
     isReelModeActive: () => isReelModeActive,
     getActivePost: () => getClosestPostToViewport(),
+    getActiveReelPost: () => {
+      const el = getClosestPostToViewport();
+      if (!el)
+        return null;
+      try {
+        return parsePostElement(el);
+      } catch {
+        return null;
+      }
+    },
     onExit: () => toggleReelMode(false),
     onToggleMute: handleToggleMute,
+    onVolumeChange: handleVolumeChange,
     onToggleSubtitles: () => feedManager.toggleSubtitles(),
     onNextPost: () => feedManager.scrollToNext(),
     onPrevPost: () => feedManager.scrollToPrev()
@@ -2642,6 +3209,12 @@
       document.body.appendChild(topBarElement);
       feedManager.startObservers();
       inputController.attach();
+      if (!stopRedgifsReady) {
+        stopRedgifsReady = listenForRedGifsReady(() => ({
+          muted: audioManager.isMuted,
+          volume: audioManager.volume
+        }));
+      }
     } else {
       document.documentElement.classList.remove("rr-active");
       feedContainer?.classList.remove("rr-feed-container");
@@ -2656,6 +3229,9 @@
     }
   }
   function init() {
+    if (typeof window !== "undefined" && /redgifs\.com/i.test(window.location.hostname)) {
+      return;
+    }
     const fabContainerId = "rr-fab-container";
     let fabContainer = document.getElementById(fabContainerId);
     if (!fabContainer) {
@@ -2674,7 +3250,11 @@
       init();
     }
   }
+
   // src/index.ts
+  if (typeof window !== "undefined" && isRedGifsFrame()) {
+    initRedGifsBridge();
+  }
   if (typeof window !== "undefined") {
     window.extractPosts = extractPosts;
     window.observeNewPosts = observeNewPosts;

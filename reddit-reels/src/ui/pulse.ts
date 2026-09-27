@@ -28,9 +28,19 @@ export function showScalePulse(mode: string): void {
   setTimeout(() => pulse.remove(), 650);
 }
 
-export function showVotePulse(upvoted: boolean): void {
+export function showVotePulse(upvoted: boolean | null): void {
   const existing = document.querySelector('.rr-play-pulse');
   if (existing) existing.remove();
+
+  if (upvoted === null) {
+    // Vote cleared / removed: show neutral un-voted outline pulse
+    const pulse = document.createElement('div');
+    pulse.className = 'rr-play-pulse';
+    pulse.innerHTML = `<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7.5-4.9-10-9.5C.4 8.6 2.4 5 5.8 5c2 0 3.4 1.1 4.2 2.3h4C14.8 6.1 16.2 5 18.2 5c3.4 0 5.4 3.6 3.8 6.5C19.5 16.1 12 21 12 21z" transform="scale(0.9) translate(1.3,1.3)"></path></svg>`;
+    document.body.appendChild(pulse);
+    setTimeout(() => pulse.remove(), 550);
+    return;
+  }
 
   const pulse = document.createElement('div');
   pulse.className = 'rr-play-pulse';

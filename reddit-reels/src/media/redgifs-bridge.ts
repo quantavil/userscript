@@ -64,6 +64,10 @@ export function initRedGifsBridge(): () => void {
   };
 
   const handleMessage = (event: MessageEvent) => {
+    const origin = event.origin || '';
+    if (origin && !/https:\/\/(?:[a-zA-Z0-9-]+\.)?reddit\.com$/i.test(origin) && origin !== window.location.origin) {
+      return;
+    }
     const data = event.data;
     if (!data || data.source !== REDGIFS_MESSAGE_SOURCE) return;
 

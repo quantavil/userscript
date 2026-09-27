@@ -20,7 +20,7 @@ export function getFilterIconSvg(): string {
 }
 
 export function getFilterLabelHtml(videosOnly: boolean): string {
-  return `<span class="rr-filter-icon">${getFilterIconSvg()}</span><span>${videosOnly ? 'Videos Only' : 'All Reels'}</span>`;
+  return `<span class="rr-filter-icon">${getFilterIconSvg()}</span><span>${videosOnly ? 'Videos only' : 'All posts'}</span>`;
 }
 
 export function createTopBar(

@@ -39,12 +39,37 @@ export function extractDomain(url?: string): string {
 }
 
 /**
+ * Validates that a URL uses safe web schemes (http or https).
+ * Prevents javascript:, data:, or other scheme injection.
+ */
+export function isSafeUrl(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  try {
+    const base = typeof location !== 'undefined' ? location.origin : 'https://www.reddit.com';
+    const parsed = new URL(trimmed, base);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sanitizes a URL string, returning fallback if invalid or unsafe.
+ */
+export function sanitizeUrl(url?: string | null, fallback = ''): string {
+  return isSafeUrl(url) ? url!.trim() : fallback;
+}
+
+/**
  * Safely opens a URL in a new window/tab, falling back to current location
  */
 export function openUrl(url?: string): void {
-  if (!url) return;
-  const opened = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!url || !isSafeUrl(url)) return;
+  const safe = sanitizeUrl(url);
+  const opened = window.open(safe, '_blank', 'noopener,noreferrer');
   if (!opened) {
-    window.location.href = url;
+    window.location.href = safe;
   }
 }

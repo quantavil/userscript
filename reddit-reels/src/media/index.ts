@@ -12,9 +12,62 @@ export * from './video-hydrator';
  * Inspects Reddit's already-rendered post element and extracts the active media source
  * with zero external network requests or rate limits.
  */
+function resolveExternalVideo(post: ReelPost): ResolvedMedia | null {
+  const href = post.contentHref || post.mediaUrl || '';
+  if (!href) return null;
+
+  if (/redgifs\.com/i.test(href)) {
+    const match = href.match(/redgifs\.com\/(?:watch|ifr|v)\/([a-zA-Z0-9_-]+)/i);
+    if (match) {
+      return {
+        type: 'iframe',
+        src: normalizeIframeSrc(`https://www.redgifs.com/ifr/${match[1]}?autoplay=1&muted=1`, audioManager.isMuted),
+        hasAudio: true,
+      };
+    }
+  } else if (/streamable\.com/i.test(href)) {
+    const match = href.match(/streamable\.com\/([a-zA-Z0-9_-]+)/i);
+    if (match) {
+      return {
+        type: 'iframe',
+        src: `https://streamable.com/e/${match[1]}?autoplay=1${audioManager.isMuted ? '&muted=1' : ''}`,
+        hasAudio: true,
+      };
+    }
+  } else if (/gfycat\.com/i.test(href)) {
+    const match = href.match(/gfycat\.com\/(?:ifr\/)?([a-zA-Z0-9_-]+)/i);
+    if (match) {
+      return {
+        type: 'iframe',
+        src: `https://gfycat.com/ifr/${match[1]}?autoplay=1`,
+        hasAudio: true,
+      };
+    }
+  } else if (/youtube\.com|youtu\.be/i.test(href)) {
+    const ytMatch = href.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+    if (ytMatch) {
+      return {
+        type: 'iframe',
+        src: `https://www.youtube-nocookie.com/embed/${ytMatch[1]}?autoplay=1&enablejsapi=1`,
+        hasAudio: true,
+      };
+    }
+  } else if (/\.(mp4|webm)(\?|$)/i.test(href)) {
+    return {
+      type: 'video',
+      src: href,
+      poster: post.mediaUrl !== href ? post.mediaUrl || '' : '',
+      hasAudio: true,
+    };
+  }
+  return null;
+}
+
 export function resolveMedia(post: ReelPost): ResolvedMedia {
   const el = post.element;
   if (!el) {
+    const external = resolveExternalVideo(post);
+    if (external) return external;
     return {
       type: 'image',
       src: post.mediaUrl || post.contentHref || '',
@@ -65,29 +118,9 @@ export function resolveMedia(post: ReelPost): ResolvedMedia {
     };
   }
 
-  // 3. Fallback: Check if post links to RedGifs
-  if (post.contentHref && /redgifs\.com/i.test(post.contentHref)) {
-    const match = post.contentHref.match(/redgifs\.com\/(?:watch|ifr|v)\/([a-zA-Z0-9_-]+)/i);
-    if (!match) {
-      // Unknown RedGifs URL shape — degrade to an image/link card instead of
-      // inserting a broken iframe with an empty ID.
-      const imgFallback = el.querySelector<HTMLImageElement>('img');
-      const fallbackSrc = imgFallback?.src || post.mediaUrl || post.contentHref || '';
-      return {
-        type: 'image',
-        src: fallbackSrc,
-        poster: fallbackSrc,
-        hasAudio: false,
-      };
-    }
-    // Boot muted so browser autoplay policy lets the reel start immediately.
-    // Audible state is restored after a user gesture via SET_AUDIO + PLAY.
-    return {
-      type: 'iframe',
-      src: normalizeIframeSrc(`https://www.redgifs.com/ifr/${match[1]}?autoplay=1&muted=1`, audioManager.isMuted),
-      hasAudio: true,
-    };
-  }
+  // 3. Fallback: Check if post links to external video host or direct video
+  const external = resolveExternalVideo(post);
+  if (external) return external;
 
   // 4. Image or gallery
   const img = el.querySelector<HTMLImageElement>(

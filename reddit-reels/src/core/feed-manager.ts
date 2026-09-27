@@ -9,6 +9,7 @@ import { audioManager, applyAudioState, normalizeIframeSrc, resolveMedia } from 
 import { renderLinkCard, renderTextCard } from '../cards';
 import { renderReelOverlay, syncOverlaySubtitlesButtons } from '../ui/overlay';
 import { unconstrainPostMedia, restorePostMedia, applySubtitlesState } from './unconstrainer';
+import { POST_SELECTORS, VIDEO_IFRAME_HOSTS_REGEX } from './selectors';
 
 declare function GM_getValue<T>(key: string, defaultValue?: T): T;
 declare function GM_setValue(key: string, value: unknown): void;
@@ -41,6 +42,17 @@ function writePref(key: string, value: boolean): void {
   } catch {}
 }
 
+function hasVideoIframe(postEl: HTMLElement): boolean {
+  const iframes = postEl.querySelectorAll<HTMLIFrameElement>('iframe');
+  for (const ifr of iframes) {
+    const src = ifr.src || ifr.dataset.rrSrc || '';
+    if (VIDEO_IFRAME_HOSTS_REGEX.test(src)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Single source of truth for "does this post have playable video".
  * Uses the fully-resolved postType (which reclassifies RedGifs/Streamable/
@@ -55,13 +67,13 @@ export function hasVideoContent(postEl: HTMLElement, postType?: string): boolean
     const domain = postEl.getAttribute('domain') || '';
     const contentHref = postEl.getAttribute('content-href') || '';
     if (/(redgifs\.com|streamable\.com|gfycat\.com)/i.test(domain + ' ' + contentHref)) return true;
-    if (postEl.querySelector('iframe')) return true;
+    if (hasVideoIframe(postEl)) return true;
     try {
       const parsed = parsePostElement(postEl);
       if (parsed.postType === 'video') return true;
     } catch {}
   }
-  return !!audioManager.findVideo(postEl) || !!postEl.querySelector('iframe');
+  return !!audioManager.findVideo(postEl) || hasVideoIframe(postEl);
 }
 
 export function getPostElements(): HTMLElement[] {
@@ -109,6 +121,7 @@ export class FeedManager {
   private mutationDebounce: ReturnType<typeof setTimeout> | null = null;
   private videosOnlyMode = false;
   private subtitlesEnabled = false;
+  private enhancedPosts = new WeakSet<HTMLElement>();
 
   constructor(options: FeedManagerOptions) {
     this.options = options;
@@ -198,17 +211,15 @@ export class FeedManager {
       renderTextCard(postEl, post);
     } else {
       // Video, Image, or Gallery
-      // If it's a video post without native video or iframe (e.g. RedGifs / Streamable), embed iframe
+      // If it's a video post without native video or iframe (e.g. RedGifs / Streamable), embed iframe or video
       if (post.postType === 'video' && !postEl.querySelector('video, iframe')) {
         const media = resolveMedia(post);
+        const container =
+          postEl.querySelector<HTMLElement>('[slot="post-media-container"]') ||
+          postEl.querySelector<HTMLElement>('.media-container') ||
+          postEl;
         if (media.type === 'iframe' && media.src) {
-          const container =
-            postEl.querySelector<HTMLElement>('[slot="post-media-container"]') ||
-            postEl.querySelector<HTMLElement>('.media-container') ||
-            postEl;
           const iframe = document.createElement('iframe');
-          // Honor the global mute state from the start so a RedGifs embed
-          // boots unmuted by default (audio on) and muted when global is muted.
           const src = normalizeIframeSrc(media.src, audioManager.isMuted);
           iframe.src = src;
           iframe.className = 'rr-embedded-iframe';
@@ -219,6 +230,17 @@ export class FeedManager {
           iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
           container.appendChild(iframe);
           try { iframe.blur(); } catch {}
+          audioManager.invalidateVideoCache(postEl);
+        } else if (media.type === 'video' && media.src) {
+          const vid = document.createElement('video');
+          vid.src = media.src;
+          vid.className = 'rr-embedded-video';
+          vid.playsInline = true;
+          vid.setAttribute('playsinline', '');
+          vid.setAttribute('loop', '');
+          vid.muted = audioManager.isMuted;
+          vid.autoplay = true;
+          container.appendChild(vid);
           audioManager.invalidateVideoCache(postEl);
         }
       }
@@ -247,7 +269,8 @@ export class FeedManager {
       if (
         el.classList?.contains('rr-post-overlay') ||
         el.classList?.contains('rr-link-card-container') ||
-        el.classList?.contains('rr-text-card-container')
+        el.classList?.contains('rr-text-card-container') ||
+        el.classList?.contains('rr-comments-drawer')
       ) {
         return;
       }
@@ -263,9 +286,9 @@ export class FeedManager {
         !isLinkPost &&
         !isTextPost &&
         (el.matches?.(
-          '[slot="post-media-container"], shreddit-player-2, .media-container, gallery-carousel, faceplate-carousel, shreddit-aspect-ratio, shreddit-async-loader'
+          '[slot="post-media-container"], shreddit-player-2, .media-container, gallery-carousel, faceplate-carousel, shreddit-aspect-ratio, shreddit-async-loader, shreddit-player-captions, [slot="captions"]'
         ) ||
-          el.querySelector('video, img:not(.shreddit-subreddit-icon__icon), iframe, gallery-carousel, faceplate-carousel, shreddit-player-2') !== null)
+          el.querySelector('video, img:not(.shreddit-subreddit-icon__icon), iframe, gallery-carousel, faceplate-carousel, shreddit-player-2, shreddit-player-captions') !== null)
       ) {
         return;
       }
@@ -285,7 +308,18 @@ export class FeedManager {
       hasVideo,
       isSubtitlesEnabled: () => this.subtitlesEnabled,
       onToggleSubtitles: () => this.toggleSubtitles(),
+      onToggleFitFill: () => {
+        const isContain = postEl.classList.contains('rr-fit-contain');
+        if (isContain) {
+          postEl.classList.remove('rr-fit-contain');
+          postEl.classList.add('rr-fit-cover');
+        } else {
+          postEl.classList.remove('rr-fit-cover');
+          postEl.classList.add('rr-fit-contain');
+        }
+      },
     });
+    this.enhancedPosts.add(postEl);
   }
 
   /**
@@ -297,9 +331,20 @@ export class FeedManager {
       '.rr-post-overlay, .rr-text-card-container, .rr-link-card-container'
     ).forEach((el) => el.remove());
 
-    // 2. Remove injected iframe embeds
+    // 2. Remove injected iframe and video embeds
     postEl.querySelectorAll<HTMLIFrameElement>('iframe.rr-embedded-iframe').forEach((ifr) => {
       ifr.remove();
+    });
+    postEl.querySelectorAll<HTMLVideoElement>('video.rr-embedded-video').forEach((vid) => {
+      vid.remove();
+    });
+
+    // 2b. Restore native iframes that were blanked during playback
+    postEl.querySelectorAll<HTMLIFrameElement>('iframe').forEach((ifr) => {
+      if (ifr.dataset.rrSrc) {
+        ifr.src = ifr.dataset.rrSrc;
+        delete ifr.dataset.rrSrc;
+      }
     });
 
     // 3. Remove shadowRoot cleanup styles and clear inline styles
@@ -338,6 +383,13 @@ export class FeedManager {
   public teardownAllPosts(): void {
     const posts = getPostElements();
     posts.forEach((p) => this.restorePost(p));
+    document.querySelector('.rr-empty-feed')?.remove();
+    if (typeof document !== 'undefined') {
+      document.querySelectorAll<HTMLIFrameElement>('iframe[data-rr-src]').forEach((ifr) => {
+        ifr.src = ifr.dataset.rrSrc!;
+        delete ifr.dataset.rrSrc;
+      });
+    }
   }
 
   public enhanceAllPosts(): void {
@@ -347,14 +399,33 @@ export class FeedManager {
 
   public applyVideosOnlyFilter(): void {
     const posts = getPostElements();
+    let visibleCount = 0;
     for (const postEl of posts) {
       const hasVideo = hasVideoContent(postEl, postEl.dataset?.rrPostType);
       if (this.videosOnlyMode && !hasVideo) {
         postEl.classList.add('rr-filtered-out');
       } else {
         postEl.classList.remove('rr-filtered-out');
+        visibleCount++;
       }
       postEl.style.removeProperty('display');
+    }
+
+    const existingEmpty = document.querySelector('.rr-empty-feed');
+    if (this.videosOnlyMode && posts.length > 0 && visibleCount === 0) {
+      if (!existingEmpty) {
+        const emptyEl = document.createElement('div');
+        emptyEl.className = 'rr-empty-feed';
+        emptyEl.innerHTML = `
+          <div class="rr-empty-title">No videos found</div>
+          <div class="rr-empty-subtitle">Tap here to view all posts</div>
+        `;
+        emptyEl.onclick = () => this.toggleVideosOnly();
+        const feedContainer = document.querySelector('.rr-feed-container') || document.body;
+        feedContainer.appendChild(emptyEl);
+      }
+    } else {
+      existingEmpty?.remove();
     }
   }
 
@@ -375,9 +446,6 @@ export class FeedManager {
             audioManager.requestPlayback(post);
           } else if (!entry.isIntersecting || entry.intersectionRatio < 0.2) {
             // Inactive post: pause + mute immediately (zero bleed).
-            // Progress reset is handled by requestPlayback when a new slide
-            // becomes active; resetting here causes play/reset thrash during
-            // snap-scroll settle (ratios oscillate around thresholds).
             applyAudioState(post, true);
             const video = audioManager.findVideo(post);
             if (video) {
@@ -400,35 +468,45 @@ export class FeedManager {
     this.mutationObserver = new MutationObserver((mutations) => {
       if (!this.options.isReelModeActive()) return;
 
-      let hasRelevantChanges = false;
+      const addedElements: HTMLElement[] = [];
       for (const mutation of mutations) {
-        if (mutation.type !== 'childList' || mutation.addedNodes.length === 0) continue;
+        if (mutation.type !== 'childList') continue;
         for (let i = 0; i < mutation.addedNodes.length; i++) {
           const node = mutation.addedNodes[i];
-          if (node.nodeType !== Node.ELEMENT_NODE) continue;
-          const el = node as HTMLElement;
-          if (
-            el.matches?.('shreddit-post, article, [data-testid="post-container"], .Post') ||
-            el.querySelector?.('shreddit-post, article, [data-testid="post-container"], .Post')
-          ) {
-            hasRelevantChanges = true;
-            break;
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node as HTMLElement;
+            if (el.matches?.(POST_SELECTORS)) {
+              addedElements.push(el);
+            } else if (el.querySelectorAll) {
+              const inner = el.querySelectorAll<HTMLElement>(POST_SELECTORS);
+              inner.forEach((p) => addedElements.push(p));
+            }
           }
         }
-        if (hasRelevantChanges) break;
+        for (let i = 0; i < mutation.removedNodes.length; i++) {
+          const node = mutation.removedNodes[i];
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node as HTMLElement;
+            if (el.matches?.(POST_SELECTORS)) {
+              this.feedObserver?.unobserve(el);
+            }
+          }
+        }
       }
-      if (!hasRelevantChanges) return;
+
+      if (addedElements.length === 0) return;
 
       if (this.mutationDebounce) clearTimeout(this.mutationDebounce);
       this.mutationDebounce = setTimeout(() => {
         this.mutationDebounce = null;
         if (!this.options.isReelModeActive()) return;
-        this.enhanceAllPosts();
-        this.applyVideosOnlyFilter();
-        if (this.feedObserver) {
-          const currentPosts = getPostElements();
-          currentPosts.forEach((p) => this.feedObserver?.observe(p));
+        for (const p of addedElements) {
+          if (!this.enhancedPosts.has(p)) {
+            this.enhancePost(p);
+            this.feedObserver?.observe(p);
+          }
         }
+        this.applyVideosOnlyFilter();
       }, 150);
     });
 

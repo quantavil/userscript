@@ -9,6 +9,7 @@ html.rr-active body {
   margin: 0 !important;
   padding: 0 !important;
   width: 100vw !important;
+  height: 100vh !important;
   height: 100dvh !important;
   background: #000000 !important;
   color: #ffffff !important;
@@ -53,6 +54,7 @@ html.rr-active .main-container,
 html.rr-active #posts-container,
 html.rr-active [data-testid="posts-list"],
 html.rr-active .rr-feed-container {
+  height: 100vh !important;
   height: 100dvh !important;
   width: 100vw !important;
   max-width: 100vw !important;
@@ -74,13 +76,17 @@ html.rr-active .rr-feed-container::-webkit-scrollbar {
   display: none !important;
 }
 
-/* Single Reel Slide (shreddit-post or article) */
+/* Single Reel Slide (shreddit-post, article, div containers) */
 html.rr-active shreddit-post,
 html.rr-active .rr-feed-container > article,
-html.rr-active .rr-feed-container > div[data-testid="post-container"] {
+html.rr-active .rr-feed-container > div[data-testid="post-container"],
+html.rr-active .rr-feed-container > .Post {
+  height: 100vh !important;
   height: 100dvh !important;
   width: 100vw !important;
+  min-height: 100vh !important;
   min-height: 100dvh !important;
+  max-height: 100vh !important;
   max-height: 100dvh !important;
   min-width: 100vw !important;
   max-width: 100vw !important;
@@ -105,9 +111,12 @@ html.rr-active shreddit-post shreddit-player-2 {
   position: absolute !important;
   inset: 0 !important;
   width: 100vw !important;
+  height: 100vh !important;
   height: 100dvh !important;
   max-width: 100vw !important;
+  max-height: 100vh !important;
   max-height: 100dvh !important;
+  min-height: 100vh !important;
   min-height: 100dvh !important;
   --max-height: 100dvh !important;
   --max-width: 100vw !important;
@@ -126,15 +135,16 @@ html.rr-active shreddit-post shreddit-player-2 {
 html.rr-active shreddit-post video,
 html.rr-active shreddit-post iframe,
 html.rr-active shreddit-post .rr-embedded-iframe,
-html.rr-active shreddit-post:not(.rr-is-link):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb):not(.shreddit-subreddit-icon__icon):not(.post-background-image-filter),
+html.rr-active shreddit-post:not(.rr-is-link):not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb):not(.shreddit-subreddit-icon__icon):not(.post-background-image-filter),
 html.rr-active .rr-feed-container video,
 html.rr-active .rr-feed-container iframe,
-html.rr-active .rr-feed-container > article:not(.rr-is-link):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb) {
+html.rr-active .rr-feed-container > article:not(.rr-is-link):not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb) {
   position: absolute !important;
   inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
   max-width: 100vw !important;
+  max-height: 100vh !important;
   max-height: 100dvh !important;
   object-fit: contain !important;
   background: transparent !important;
@@ -143,13 +153,14 @@ html.rr-active .rr-feed-container > article:not(.rr-is-link):not(:has(gallery-ca
 }
 
 /* Unconstrain nested media containers and aspect-ratio wrappers inside shreddit-post (Excluding Carousels) */
-html.rr-active shreddit-post:not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container],
-html.rr-active shreddit-post:not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container] > div,
-html.rr-active shreddit-post:not(:has(gallery-carousel, faceplate-carousel)) shreddit-media-lightbox-listener,
-html.rr-active shreddit-post:not(:has(gallery-carousel, faceplate-carousel)) .media-lightbox-img {
+html.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container],
+html.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container] > div,
+html.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) shreddit-media-lightbox-listener,
+html.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) .media-lightbox-img {
   width: 100% !important;
   height: 100% !important;
   max-width: 100vw !important;
+  max-height: 100vh !important;
   max-height: 100dvh !important;
   aspect-ratio: unset !important;
   position: absolute !important;
@@ -181,13 +192,19 @@ html.rr-active shreddit-post[data-vertical-video="true"] video {
   object-fit: cover !important;
 }
 
-/* User toggle overrides (Video and Single Image) */
+/* User toggle overrides (Video and Single Image) - Supports all post containers */
+html.rr-active .rr-fit-contain video,
+html.rr-active .rr-fit-contain iframe,
+html.rr-active .rr-fit-contain img,
 html.rr-active shreddit-post.rr-fit-contain video,
 html.rr-active shreddit-post.rr-fit-contain iframe,
 html.rr-active shreddit-post.rr-fit-contain img {
   object-fit: contain !important;
 }
 
+html.rr-active .rr-fit-cover video,
+html.rr-active .rr-fit-cover iframe,
+html.rr-active .rr-fit-cover img,
 html.rr-active shreddit-post.rr-fit-cover video,
 html.rr-active shreddit-post.rr-fit-cover iframe,
 html.rr-active shreddit-post.rr-fit-cover img {
@@ -248,16 +265,19 @@ html.rr-active .rr-native-offscreen {
 }
 
 /* Bare media taps must not navigate: only explicit overlay/card buttons open URLs */
+html.rr-active shreddit-post a:not(.rr-sub-badge):not(.rr-author):not(.rr-link-card-btn):not(.rr-text-card-body a):not(.rr-comments-drawer a):not(.rr-drawer-btn),
 html.rr-active shreddit-post a[data-click-id="body"],
 html.rr-active shreddit-post a[slot="full-post-link"],
-html.rr-active shreddit-post [slot="post-media-container"] a:not(.rr-sub-badge):not(.rr-author),
+html.rr-active shreddit-post a[href*="/comments/"],
+html.rr-active shreddit-post [slot="post-media-container"] a,
 html.rr-active shreddit-post shreddit-media-lightbox-listener a {
   pointer-events: none !important;
 }
 
 html.rr-active .rr-post-overlay a,
 html.rr-active .rr-link-card-container a,
-html.rr-active .rr-text-card-container a {
+html.rr-active .rr-text-card-container a,
+html.rr-active .rr-comments-drawer a {
   pointer-events: auto !important;
 }
 
@@ -268,12 +288,41 @@ html.rr-active .rr-feed-container > div.rr-filtered-out {
   display: none !important;
 }
 
-/* Hide any injected iframes when Reel Mode is inactive */
-.rr-embedded-iframe {
+/* Hide any injected iframes or videos when Reel Mode is inactive */
+.rr-embedded-iframe,
+.rr-embedded-video {
   display: none !important;
+}
+
+html.rr-active .rr-embedded-video {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  object-fit: contain !important;
+  background: #000000 !important;
 }
 
 html.rr-active .rr-embedded-iframe {
   display: block !important;
+}
+
+/* Empty feed state */
+html.rr-active .rr-empty-feed {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh !important;
+  height: 100dvh !important;
+  width: 100vw !important;
+  color: #a0a0a0;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: center;
+  padding: 24px;
+  box-sizing: border-box;
 }
 

@@ -2,7 +2,7 @@ import { extractPosts, observeNewPosts } from './extractor/dom-extractor';
 import { proxyUpvote, proxyDownvote } from './extractor/vote-proxy';
 import { AudioManager, audioManager } from './media/audio-manager';
 import { resolveMedia, initRedGifsBridge, isRedGifsFrame } from './media';
-import { unconstrainPostMedia } from './main';
+import { unconstrainPostMedia } from './core/unconstrainer';
 import './main';
 
 // Auto-initialize RedGifs bridge if running in RedGifs iframe context

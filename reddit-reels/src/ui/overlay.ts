@@ -6,6 +6,8 @@
 
 import { ReelPost, proxyUpvote, proxyDownvote } from '../extractor';
 import { escapeHtml, formatCount, openUrl } from '../utils';
+import { openCommentsDrawer } from './comments-drawer';
+import { audioManager } from '../media';
 
 export function getUpvoteIconSvg(isUpvoted: boolean): string {
   return `<svg width="26" height="26" viewBox="0 0 24 24" fill="${isUpvoted ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>`;
@@ -15,11 +17,20 @@ export function getDownvoteIconSvg(isDownvoted: boolean): string {
   return `<svg width="26" height="26" viewBox="0 0 24 24" fill="${isDownvoted ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
 }
 
-export function getCcIconSvg(_enabled: boolean): string {
-  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+export function getCcIconSvg(enabled: boolean = false): string {
+  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${enabled ? '2.4' : '2.2'}" stroke-linecap="round" stroke-linejoin="round" data-enabled="${enabled}">
     <rect x="2" y="4" width="20" height="16" rx="3" ry="3"></rect>
     <path d="M7 15h0a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1"></path>
     <path d="M15 15h0a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1"></path>
+  </svg>`;
+}
+
+export function getFitFillIconSvg(): string {
+  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="15 3 21 3 21 9"></polyline>
+    <polyline points="9 21 3 21 3 15"></polyline>
+    <line x1="21" y1="3" x2="14" y2="10"></line>
+    <line x1="3" y1="21" x2="10" y2="14"></line>
   </svg>`;
 }
 
@@ -33,6 +44,7 @@ export interface OverlayOptions {
   hasVideo: boolean;
   isSubtitlesEnabled?: () => boolean;
   onToggleSubtitles?: () => void;
+  onToggleFitFill?: () => void;
 }
 
 export function renderReelOverlay(
@@ -55,8 +67,8 @@ export function renderReelOverlay(
   const baseScore = post.score;
   const isHiddenScore = !!post.isScoreHidden;
 
-  const formatScoreDisplay = (currentScore: number, hasVoted: boolean): string => {
-    if (isHiddenScore && !hasVoted) return 'Vote';
+  const formatScoreDisplay = (currentScore: number): string => {
+    if (isHiddenScore) return 'Vote';
     return formatCount(currentScore);
   };
 
@@ -84,6 +96,7 @@ export function renderReelOverlay(
               type="button"
               class="rr-action-btn rr-cc-btn ${isSubtitles ? 'is-active-cc' : ''}"
               aria-label="${isSubtitles ? 'Disable Subtitles' : 'Enable Subtitles'}"
+              aria-pressed="${isSubtitles}"
               title="${isSubtitles ? 'Disable Subtitles' : 'Enable Subtitles'}"
             >
               ${getCcIconSvg(isSubtitles)}
@@ -93,28 +106,42 @@ export function renderReelOverlay(
           : ''
       }
 
-      <!-- 2. Vote Cluster (Upvote, Score, Downvote) -->
+      <!-- 2. Fit/Fill Mode Toggle -->
+      <div class="rr-action-item">
+        <button
+          type="button"
+          class="rr-action-btn rr-fit-btn"
+          aria-label="Toggle Fit or Fill scaling"
+          title="Toggle Fit / Fill (Original vs Full Bleed)"
+        >
+          ${getFitFillIconSvg()}
+        </button>
+      </div>
+
+      <!-- 3. Vote Cluster (Upvote, Score, Downvote) -->
       <div class="rr-action-item rr-vote-group">
         <button
           type="button"
           class="rr-action-btn rr-upvote-btn ${isUpvoted ? 'is-active-up' : ''}"
           aria-label="Upvote"
+          aria-pressed="${isUpvoted}"
           title="Upvote"
         >
           ${getUpvoteIconSvg(isUpvoted)}
         </button>
-        <span class="rr-action-label rr-score-label">${formatScoreDisplay(post.score, isUpvoted || isDownvoted)}</span>
+        <span class="rr-action-label rr-score-label" aria-live="polite">${formatScoreDisplay(post.score)}</span>
         <button
           type="button"
           class="rr-action-btn rr-downvote-btn ${isDownvoted ? 'is-active-down' : ''}"
           aria-label="Downvote"
+          aria-pressed="${isDownvoted}"
           title="Downvote"
         >
           ${getDownvoteIconSvg(isDownvoted)}
         </button>
       </div>
 
-      <!-- 3. Reddit Comments (Directly opens Reddit comments) -->
+      <!-- 4. Reddit Comments (Directly opens in-reel comments drawer) -->
       <div class="rr-action-item">
         <button
           type="button"
@@ -132,11 +159,19 @@ export function renderReelOverlay(
   // Attach event handlers
   const upvoteBtn = overlay.querySelector<HTMLButtonElement>('.rr-upvote-btn');
   const downvoteBtn = overlay.querySelector<HTMLButtonElement>('.rr-downvote-btn');
+  const fitBtn = overlay.querySelector<HTMLButtonElement>('.rr-fit-btn');
   const commentBtn = overlay.querySelector<HTMLButtonElement>('.rr-comment-btn');
   const ccBtn = overlay.querySelector<HTMLButtonElement>('.rr-cc-btn');
   const scoreLabel = overlay.querySelector<HTMLElement>('.rr-score-label');
   const subBadge = overlay.querySelector<HTMLAnchorElement>('.rr-sub-badge');
   const authorBadge = overlay.querySelector<HTMLAnchorElement>('.rr-author');
+
+  if (fitBtn && options.onToggleFitFill) {
+    fitBtn.onclick = (e) => {
+      e.stopPropagation();
+      options.onToggleFitFill!();
+    };
+  }
 
   if (upvoteBtn) {
     upvoteBtn.onclick = (e) => {
@@ -160,28 +195,39 @@ export function renderReelOverlay(
 
     if (upvoteBtn) {
       upvoteBtn.classList.toggle('is-active-up', isUp);
+      upvoteBtn.setAttribute('aria-pressed', String(isUp));
       upvoteBtn.innerHTML = getUpvoteIconSvg(isUp);
     }
     if (downvoteBtn) {
       downvoteBtn.classList.toggle('is-active-down', isDown);
+      downvoteBtn.setAttribute('aria-pressed', String(isDown));
       downvoteBtn.innerHTML = getDownvoteIconSvg(isDown);
     }
     if (scoreLabel) {
       const curVal = isUp ? 1 : isDown ? -1 : 0;
       const newScore = baseScore + (curVal - initialVoteVal);
-      scoreLabel.textContent = formatScoreDisplay(newScore, isUp || isDown);
+      scoreLabel.textContent = formatScoreDisplay(newScore);
     }
   }
 
   if (commentBtn) {
     commentBtn.onclick = (e) => {
       e.stopPropagation();
-      if (post.permalink) {
-        const url = post.permalink.startsWith('http')
-          ? post.permalink
-          : `https://www.reddit.com${post.permalink}`;
-        openUrl(url);
-      }
+      e.preventDefault();
+      const currentVideo = audioManager.findVideo(postEl);
+      const wasPlaying = currentVideo && !currentVideo.paused;
+      openCommentsDrawer(post, {
+        onBeforeOpen: () => {
+          if (currentVideo && !currentVideo.paused) {
+            try { currentVideo.pause(); } catch {}
+          }
+        },
+        onClose: () => {
+          if (wasPlaying && currentVideo) {
+            try { currentVideo.play().catch(() => {}); } catch {}
+          }
+        },
+      });
     };
   }
 

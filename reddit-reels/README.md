@@ -21,44 +21,51 @@ An immersive, high-performance Userscript for **Tampermonkey** and **Violentmonk
 ### 2. 📐 Smart Aspect Ratio & Containment (No Cropped Memes)
 - Vertical videos (aspect ratio `h / w >= 1.5`) scale to **full-bleed cover** (`100vw × 100dvh`).
 - Square (`1:1`) and `4:5` meme videos automatically use **letterboxed contain** so header titles, captions, and bottom punchlines are never cut off.
-- **Double-Tap Fit/Fill**: Double-tap any video or image to instantly toggle between `contain` (letterbox) and `cover` (full bleed) modes with animated visual indicator feedback.
+- **Fit/Fill Mode**: Easily toggle between `contain` (letterbox) and `cover` (full bleed) modes at any time via the action rail button or the `F` keyboard shortcut.
 
-### 3. 💬 Subtitles & Closed Captions Toggle
+### 3. 👆 Intuitive Touch & Tap Gestures
+- **Single Tap**: Toggle video Play / Pause with a visual pulse indicator.
+- **Double Tap**: Instantly upvote the tapped reel post with an animated vote pulse.
+- **Horizontal Swipe**: Smooth snap-scrolling through multi-image galleries.
+- **Vertical Swipe**: Snap-scrolling to the next/previous reel.
+
+### 4. 💬 Subtitles & Closed Captions Toggle
 - Floating `CC` button on the overlay and `C` keyboard hotkey allow toggling Reddit video subtitles on and off.
 - Subtitle preference is remembered and persisted in `localStorage`.
 
-### 4. 🖼️ Multi-Image Gallery Carousels
+### 5. 🖼️ Multi-Image Gallery Carousels
 - Reddit image galleries render with dedicated horizontal swipe snapping (`scroll-snap-type: x mandatory`).
 - Includes floating next/previous navigation buttons and image lightbox containment so high-resolution photos are crisp and fully visible.
 
-### 5. 📄 Editorial Discussion & Rich Link Cards
+### 6. 📄 Editorial Discussion & Rich Link Cards
 - **Discussion Posts**: Render inside clean, distraction-free Vanguard cards with isolated vertical scrolling, metadata pills, and direct Reddit thread links.
-- **Link Posts**: Render rich preview cards with domain chips, clamped titles, high-resolution thumbnails, and a prominent "Read Article" action button.
+- **Link Posts**: Render rich preview cards with domain chips, clamped titles, high-resolution thumbnails, and an accessible "Read Article" action button.
 - **Crossposts**: Stripped of nested duplicate headers and banners for a clean presentation.
 
-### 6. 🎬 Native RedGifs & Streamable Video Support
+### 7. 🎬 Native RedGifs & Streamable Video Support
 - Embedded video hosts (`redgifs.com`, `streamable.com`, `gfycat.com`) are automatically classified as video posts and mounted as responsive iframes rather than static link cards.
 - The `redgifs-bridge` subsystem runs inside matched `redgifs.com/ifr/*` iframes, providing direct DOM audio and playback control without destructive reloads.
 - Iframes stay keyboard-focus-free (`tabindex=-1` + blur) so hotkeys keep working. Volume keys and mute controls seamlessly sync via the bridge protocol.
 
-### 7. ⌨️ Desktop Keyboard Navigation
+### 8. ⌨️ Desktop Keyboard Navigation
 - `J` / `ArrowDown` — Navigate to next reel
 - `K` / `ArrowUp` — Navigate to previous reel
 - `M` — Toggle mute / unmute
+- `F` — Toggle Fit / Fill (contain vs cover)
 - `+` / `=` or `Shift+ArrowUp` — Volume up
 - `-` / `_` or `Shift+ArrowDown` — Volume down
 - `C` — Toggle closed captions / subtitles
 - `Esc` — Exit Reel Mode back to standard Reddit
 
-### 8. 🛡️ Zero Rate-Limit Architecture
+### 9. 🛡️ Zero Rate-Limit Architecture
 - Does **not** query external unauthenticated `.json` APIs that trigger Reddit 429 rate limits or Cloudflare Turnstile barriers.
-- Ingests posts directly from the active DOM (`<shreddit-post>`) using an optimized `MutationObserver` pipeline that dynamically extracts incoming posts as you scroll.
+- Ingests posts directly from the active DOM (`<shreddit-post>`) using an optimized incremental `MutationObserver` pipeline that dynamically extracts incoming posts as you scroll.
 
-### 9. 🗳️ True Reddit Vote Synchronization
+### 10. 🗳️ True Reddit Vote Synchronization
 - Upvoting and downvoting in Reel Mode delegates clicks directly to native Reddit voting elements behind the scenes.
 - Preserves native CSRF tokens, session authentication, and karma updates with zero risk of account flags.
 
-### 10. 🌓 Flat Minimalist AMOLED Aesthetic
+### 11. 🌓 Flat Minimalist AMOLED Aesthetic
 - Engineered with a high-contrast dark theme (`#000000` true black, `#141518` card surfaces, `#ff4500` Reddit accent).
 - No fuzzy glassmorphism blur, no sluggish filters, and zero visual clutter.
 
@@ -80,7 +87,7 @@ An immersive, high-performance Userscript for **Tampermonkey** and **Violentmonk
 
 The codebase is modularized by domain (cards, core, extractor, media, styles, ui).
 Core extraction/playback modules are intentionally larger (`dom-extractor.ts` ~650,
-`audio-manager.ts` ~560, `feed-manager.ts` ~320) because Reddit DOM parsing and the
+`audio-manager.ts` ~560, `feed-manager.ts` ~340) because Reddit DOM parsing and the
 audio mutex cannot be split without creating leaky abstractions; new UI/styles
 helpers should stay small and focused (< 150 lines where practical).
 
@@ -99,7 +106,9 @@ reddit-reels/
 │   │   └── index.ts
 │   ├── core/                   # Feed orchestration & event controls
 │   │   ├── feed-manager.ts     # In-place DOM container transformation & scroll snap
-│   │   ├── input-controller.ts # Touch gestures, double-tap zoom & keyboard hotkeys
+│   │   ├── input-controller.ts # Touch gestures, single/double-tap & keyboard hotkeys
+│   │   ├── selectors.ts        # Centralized typed selector registry
+│   │   ├── teardown-store.ts   # Per-element original DOM attribute & style cache
 │   │   ├── unconstrainer.ts    # Aspect-ratio resolution & subtitle management
 │   │   └── index.ts
 │   ├── extractor/              # Post extraction & voting proxy
@@ -108,6 +117,8 @@ reddit-reels/
 │   │   └── types.ts            # Extracted post data interfaces
 │   ├── media/                  # Audio & playback controllers
 │   │   ├── audio-manager.ts    # Single-media focus mutex
+│   │   ├── gallery-media.ts    # Active carousel slide tracking & media focus
+│   │   ├── redgifs-bridge.ts   # RedGifs iframe synchronization bridge
 │   │   ├── index.ts            # Direct DOM media resolver (native video, iframe embeds, image fallback)
 │   │   └── types.ts            # ResolvedMedia interface
 │   ├── styles/                 # Domain-decomposed CSS
@@ -119,17 +130,19 @@ reddit-reels/
 │   │   ├── top-bar.css         # Exit button, video filter & sound buttons
 │   │   └── index.css           # Bundled stylesheet entry
 │   └── ui/                     # UI components & interactive overlays
+│       ├── comments-drawer.ts  # Inline slide-up comments sheet
 │       ├── overlay.ts          # Slide action rail, vote pill, and author badges
 │       ├── top-bar.ts          # Top navigation bar & video filter toggle
 │       ├── pulse.ts            # Play/pause and fit/fill pulse animations
 │       └── index.ts
 └── tests/
     ├── fixtures/               # Mock Reddit DOM, fixture bundles & test server
-    ├── unit/                   # Fast unit tests (Bun test runner, 42 tests)
+    ├── unit/                   # Fast unit tests (Bun test runner, 58 tests)
     │   ├── extractor.test.ts   # DOM extractor & voting proxy tests
     │   ├── media.test.ts       # Audio mutex & media resolver tests
     │   ├── teardown.test.ts    # Feed restoration, teardown, carousel & audit tests
-    │   └── redgifs-bridge.test.ts # RedGifs bridge & message protocol tests
+    │   ├── redgifs-bridge.test.ts # RedGifs bridge & message protocol tests
+    │   └── audit-fixes.test.ts # Comprehensive audit & robustness tests
     ├── fab.spec.ts             # Playwright: FAB launcher visibility/behavior
     ├── dom-extractor.spec.ts   # Playwright: DOM extraction on mock Reddit
     ├── voting-proxy.spec.ts    # Playwright: native vote delegation
@@ -148,7 +161,7 @@ reddit-reels/
 bun install
 ```
 
-### 2. Run Unit Tests (42 Tests)
+### 2. Run Unit Tests (58 Tests)
 ```bash
 bun test tests/unit
 ```

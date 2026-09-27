@@ -8,6 +8,7 @@ declare function GM_getValue<T>(key: string, defaultValue?: T): T;
 declare function GM_setValue<T>(key: string, value: T): void;
 
 import { hydrateVideoFromPlayer, ensureAutoplayAttrs } from './video-hydrator';
+import { findActiveSlideVideo } from './gallery-media';
 
 const STORAGE_KEY = 'reddit_reels_muted';
 
@@ -108,15 +109,32 @@ export function sendIframePlay(ifr: HTMLIFrameElement): void {
   } catch {}
 }
 
-/** Listen for RedGifs bridge READY and reply with current audio + PLAY. */
-export function listenForRedGifsReady(getState: () => { muted: boolean; volume: number }): () => void {
+/** Listen for RedGifs bridge READY and reply with current audio + PLAY only for active slide. */
+export function listenForRedGifsReady(
+  getState: () => { muted: boolean; volume: number; activeContainer?: HTMLElement | null }
+): () => void {
   const handler = (event: MessageEvent) => {
     try {
+      const origin = event.origin || '';
+      if (!/https:\/\/(?:[a-zA-Z0-9-]+\.)?redgifs\.com$/i.test(origin) && origin !== window.location.origin) {
+        return;
+      }
       const data = event.data as any;
       if (!data || data.source !== 'redgifs-bridge' || data.type !== 'READY') return;
       const src = event.source as Window | null;
       if (!src || typeof src.postMessage !== 'function') return;
-      const { muted, volume } = getState();
+      const state = getState();
+      const active = state.activeContainer;
+      if (active) {
+        const activeIframes = Array.from(active.querySelectorAll<HTMLIFrameElement>('iframe'));
+        const isFromActive = activeIframes.some((ifr) => ifr.contentWindow === src);
+        if (!isFromActive) {
+          src.postMessage({ source: 'reddit-reels', type: 'SET_AUDIO', muted: true, volume: 0 }, '*');
+          src.postMessage({ source: 'reddit-reels', type: 'PAUSE' }, '*');
+          return;
+        }
+      }
+      const { muted, volume } = state;
       src.postMessage({ source: 'reddit-reels', type: 'SET_AUDIO', muted, volume }, '*');
       src.postMessage({ source: 'reddit-reels', type: 'PLAY' }, '*');
     } catch {}
@@ -217,23 +235,48 @@ export function deepFindMediaElements(root: Node): {
   return { videos, audios, players };
 }
 
+export function shadowContains(container: HTMLElement, target: Node | null): boolean {
+  if (!container || !target) return false;
+  let curr: Node | null = target;
+  while (curr) {
+    if (curr === container) return true;
+    curr = curr.parentNode || (curr as ShadowRoot).host || null;
+  }
+  return false;
+}
+
 /**
  * Forcefully applies muted or unmuted state across all media elements, shadow roots,
  * custom player elements, and iframes in a container.
  */
-export function applyAudioState(container: HTMLElement, isMuted: boolean, volume = 1.0): void {
+export function applyAudioState(
+  container: HTMLElement,
+  isMuted: boolean,
+  volume = 1.0,
+  activeTargetVideo?: HTMLVideoElement | null
+): void {
   if (!container) return;
 
   const level = isMuted ? 0 : volume;
   const { videos, audios, players } = deepFindMediaElements(container);
 
-  // 1. Unmute/mute all video elements
+  // 1. Unmute/mute all video elements, but ONLY play the active target video
   for (const video of videos) {
     try {
+      const isTarget =
+        activeTargetVideo !== undefined
+          ? video === activeTargetVideo
+          : (videos.length === 1 || video === videos[0]);
       video.muted = isMuted;
       video.volume = level;
-      if (!isMuted && video.paused) {
-        video.play().catch(() => {});
+      if (isTarget) {
+        if (!isMuted && video.paused) {
+          video.play().catch(() => {});
+        }
+      } else {
+        if (!video.paused) {
+          video.pause();
+        }
       }
     } catch {}
   }
@@ -441,7 +484,7 @@ export class AudioManager {
         } catch {}
       });
 
-      applyAudioState(targetContainer, this._isMuted, this._volume);
+      applyAudioState(targetContainer, this._isMuted, this._volume, targetVideo);
       iframes.forEach((ifr) => sendIframePlay(ifr));
       blurIframes(targetContainer);
     }
@@ -489,14 +532,22 @@ export class AudioManager {
     if (
       container === this.activeContainer &&
       this.activeVideo &&
-      container.contains(this.activeVideo)
+      shadowContains(container, this.activeVideo)
     ) {
       return this.activeVideo;
     }
 
     const cached = this.videoCache.get(container);
-    if (cached && Date.now() - cached.time < 1000 && (cached.video === null || container.contains(cached.video))) {
+    if (cached && Date.now() - cached.time < 1000 && (cached.video === null || shadowContains(container, cached.video))) {
       return cached.video;
+    }
+
+    const activeSlideVid = findActiveSlideVideo(container);
+    if (activeSlideVid) {
+      try {
+        this.videoCache.set(container, { video: activeSlideVid, time: Date.now() });
+      } catch {}
+      return activeSlideVid;
     }
 
     const { videos } = deepFindMediaElements(container);
@@ -505,6 +556,50 @@ export class AudioManager {
       this.videoCache.set(container, { video: found, time: Date.now() });
     } catch {}
     return found;
+  }
+
+  /**
+   * Centralized playback toggle for single-tap gestures.
+   * Routes playback strictly through the mutex and halts background media.
+   */
+  public togglePlayback(target: HTMLElement): boolean {
+    if (!target) return false;
+
+    // If target is not the active container, switch focus to it
+    if (this.activeContainer !== target) {
+      this.requestPlayback(target);
+      return true;
+    }
+
+    const video = this.activeVideo || this.findVideo(target);
+    if (video) {
+      if (video.paused) {
+        applyAudioState(target, this._isMuted, this._volume, video);
+        video.play().catch(() => {});
+        return true;
+      } else {
+        video.pause();
+        return false;
+      }
+    }
+
+    // If iframe embed (e.g. RedGifs), toggle via bridge postMessage
+    const ifr = target.querySelector<HTMLIFrameElement>('iframe');
+    if (ifr && ifr.src && ifr.src !== 'about:blank') {
+      const isPaused = ifr.dataset.rrPaused === '1';
+      if (isPaused) {
+        ifr.dataset.rrPaused = '0';
+        sendIframePlay(ifr);
+        return true;
+      } else {
+        ifr.dataset.rrPaused = '1';
+        ifr.contentWindow?.postMessage({ source: 'reddit-reels', type: 'PAUSE' }, '*');
+        ifr.contentWindow?.postMessage({ action: 'pause', type: 'pause' }, '*');
+        return false;
+      }
+    }
+
+    return false;
   }
 
   public invalidateVideoCache(container?: HTMLElement | null): void {
@@ -539,6 +634,7 @@ export class AudioManager {
     if (this._isMuted || !this.activeContainer) return;
     try {
       const iframes = this.activeContainer.querySelectorAll<HTMLIFrameElement>('iframe');
+      if (iframes.length === 0) return;
       iframes.forEach((ifr) => {
         try {
           const stored = ifr.dataset.rrSrc;
@@ -547,8 +643,12 @@ export class AudioManager {
           }
         } catch {}
       });
-      applyAudioState(this.activeContainer, false, this._volume);
-      iframes.forEach((ifr) => sendIframePlay(ifr));
+      iframes.forEach((ifr) => {
+        try {
+          ifr.contentWindow?.postMessage({ source: 'reddit-reels', type: 'SET_AUDIO', muted: false, volume: this._volume }, '*');
+          sendIframePlay(ifr);
+        } catch {}
+      });
     } catch {}
   }
 

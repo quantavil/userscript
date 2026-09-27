@@ -1,5 +1,5 @@
 import { ReelPost } from '../extractor/types';
-import { escapeHtml, extractDomain, openUrl } from '../utils';
+import { escapeHtml, extractDomain, openUrl, sanitizeUrl } from '../utils';
 
 /**
  * Locate best thumbnail preview image for an article/link post
@@ -29,11 +29,13 @@ export function renderLinkCard(postEl: HTMLElement, post: ReelPost): void {
     post.contentHref ||
     (post.permalink.startsWith('http') ? post.permalink : `https://www.reddit.com${post.permalink}`);
 
+  const safeTarget = sanitizeUrl(targetUrl);
+
   const container = document.createElement('div');
   container.className = 'rr-link-card-container';
 
   container.innerHTML = `
-    <div class="rr-link-card" tabindex="0" role="link" aria-label="Open ${escapeHtml(post.title)} on ${escapeHtml(domain)}">
+    <div class="rr-link-card" role="region" aria-label="Article: ${escapeHtml(post.title)}">
       ${
         thumbUrl
           ? `<div class="rr-link-card-thumb-wrap">
@@ -54,14 +56,16 @@ export function renderLinkCard(postEl: HTMLElement, post: ReelPost): void {
                </div>`
             : ''
         }
-        <h3 class="rr-link-card-title">${escapeHtml(post.title)}</h3>
-        <button type="button" class="rr-link-card-cta">
+        <h3 class="rr-link-card-title">
+          <a href="${escapeHtml(safeTarget)}" target="_blank" rel="noopener noreferrer" class="rr-link-card-title-link">${escapeHtml(post.title)}</a>
+        </h3>
+        <a href="${escapeHtml(safeTarget)}" target="_blank" rel="noopener noreferrer" class="rr-link-card-cta" title="Open article in new tab">
           <span>Read Article</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"></line>
             <polyline points="12 5 19 12 12 19"></polyline>
           </svg>
-        </button>
+        </a>
       </div>
     </div>
   `;
@@ -71,9 +75,8 @@ export function renderLinkCard(postEl: HTMLElement, post: ReelPost): void {
 
   const openLink = (e: Event) => {
     e.stopPropagation();
-    e.preventDefault();
-    if (targetUrl) {
-      openUrl(targetUrl);
+    if (safeTarget) {
+      openUrl(safeTarget);
     }
   };
 

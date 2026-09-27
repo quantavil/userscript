@@ -1,6 +1,6 @@
 {
   "name": "reddit-reels",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Swipe Reddit feeds like reels: unmuted playback, galleries, and native voting.",
   "author": "quantavil",
   "license": "MIT",
@@ -19,10 +19,10 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@types/node": "^22.20.4",
+    "@types/node": "^26.6.3",
     "happy-dom": "^20.14.5",
-    "typescript": "^5.9.3",
-    "vite": "^6.4.3",
-    "vite-plugin-monkey": "^5.0.9"
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vite-plugin-monkey": "^8.1.1"
   }
 }

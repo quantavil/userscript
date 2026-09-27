@@ -4,6 +4,7 @@
 
 html.rr-active shreddit-post gallery-carousel,
 html.rr-active shreddit-post faceplate-carousel,
+html.rr-active shreddit-post.rr-has-gallery shreddit-async-loader,
 html.rr-active shreddit-post shreddit-async-loader:has(gallery-carousel, faceplate-carousel),
 html.rr-active shreddit-post [data-testid="media-gallery"] {
   position: absolute !important;

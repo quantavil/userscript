@@ -5,20 +5,29 @@ import {
   FabButton,
   createTopBar,
   syncTopBarState,
+  closeCommentsDrawer,
 } from './ui';
 import {
   FeedManager,
   InputController,
   getClosestPostToViewport,
-  unconstrainPostMedia,
 } from './core';
-import { parsePostElement } from './extractor';
-
-export { unconstrainPostMedia };
+import { parsePostElement, proxyUpvote } from './extractor';
+import { showVotePulse } from './ui/pulse';
 
 let isReelModeActive = false;
 let topBarElement: HTMLElement | null = null;
 let stopRedgifsReady: (() => void) | null = null;
+let savedScrollY = 0;
+
+function isFeedRoute(): boolean {
+  if (typeof window === 'undefined') return true;
+  const path = window.location.pathname;
+  if (/^\/(?:settings|message|chat|notifications|mod\/|premium)/i.test(path)) {
+    return false;
+  }
+  return true;
+}
 
 function syncTopBarSound(): void {
   // Single global mute control lives in the top bar.
@@ -55,6 +64,17 @@ const inputController = new InputController({
       return null;
     }
   },
+  onDoubleTap: (tappedPost: HTMLElement) => {
+    try {
+      const reel = parsePostElement(tappedPost);
+      if (reel) {
+        const isUp = !!reel.isUpvoted;
+        const willBeUp = !isUp;
+        proxyUpvote(reel);
+        showVotePulse(willBeUp ? true : null);
+      }
+    } catch {}
+  },
   onExit: () => toggleReelMode(false),
   onToggleMute: handleToggleMute,
   onVolumeChange: handleVolumeChange,
@@ -76,6 +96,7 @@ export function toggleReelMode(forceState?: boolean): void {
     document.body;
 
   if (isReelModeActive) {
+    savedScrollY = typeof window !== 'undefined' ? window.scrollY : 0;
     unlockAudio();
     document.documentElement.classList.add('rr-active');
     feedContainer?.classList.add('rr-feed-container');
@@ -110,6 +131,7 @@ export function toggleReelMode(forceState?: boolean): void {
       stopRedgifsReady = listenForRedGifsReady(() => ({
         muted: audioManager.isMuted,
         volume: audioManager.volume,
+        activeContainer: getClosestPostToViewport(),
       }));
     }
   } else {
@@ -122,9 +144,20 @@ export function toggleReelMode(forceState?: boolean): void {
       topBarElement = null;
     }
 
+    if (stopRedgifsReady) {
+      stopRedgifsReady();
+      stopRedgifsReady = null;
+    }
+
+    closeCommentsDrawer();
+
     feedManager.stopObservers();
     inputController.detach();
     feedManager.teardownAllPosts();
+
+    if (typeof window !== 'undefined' && savedScrollY > 0) {
+      window.scrollTo({ top: savedScrollY, behavior: 'instant' as ScrollBehavior });
+    }
   }
 }
 
@@ -143,6 +176,20 @@ function init(): void {
   }
 
   render(<FabButton onClick={() => toggleReelMode()} />, fabContainer);
+
+  const updateRoute = () => {
+    const isFeed = isFeedRoute();
+    if (!isFeed && isReelModeActive) {
+      toggleReelMode(false);
+    }
+    const fc = document.getElementById(fabContainerId);
+    if (fc) {
+      fc.style.display = isFeed ? '' : 'none';
+    }
+  };
+
+  updateRoute();
+  window.addEventListener('popstate', updateRoute);
 }
 
 if (typeof document !== 'undefined') {

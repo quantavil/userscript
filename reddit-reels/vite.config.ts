@@ -16,7 +16,7 @@ export default defineConfig({
         ],
         description: 'Swipe Reddit feeds like reels: unmuted playback, galleries, and native voting.',
         author: 'quantavil',
-        version: '1.3.0',
+        version: '1.4.0',
         license: 'MIT',
         'run-at': 'document-end',
         homepage: 'https://github.com/quantavil/userscript/tree/main/reddit-reels',

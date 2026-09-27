@@ -1,5 +1,5 @@
 import { ReelPost } from '../extractor/types';
-import { escapeHtml, openUrl } from '../utils';
+import { escapeHtml, openUrl, sanitizeUrl } from '../utils';
 
 /**
  * Renders a clean, scrollable discussion card for text-only Reddit posts
@@ -7,11 +7,12 @@ import { escapeHtml, openUrl } from '../utils';
 export function renderTextCard(postEl: HTMLElement, post: ReelPost): void {
   if (postEl.querySelector('.rr-text-card-container')) return;
 
-  const targetUrl = post.permalink
+  const rawTargetUrl = post.permalink
     ? post.permalink.startsWith('http')
       ? post.permalink
       : `https://www.reddit.com${post.permalink}`
     : post.contentHref || '';
+  const targetUrl = sanitizeUrl(rawTargetUrl);
 
   const container = document.createElement('div');
   container.className = 'rr-text-card-container';
@@ -64,7 +65,9 @@ export function renderTextCard(postEl: HTMLElement, post: ReelPost): void {
             : ''
         }
       </div>
-      <h2 class="rr-text-card-title">${escapeHtml(post.title)}</h2>
+      <h2 class="rr-text-card-title">
+        ${targetUrl ? `<a href="${escapeHtml(targetUrl)}" target="_blank" rel="noopener noreferrer" class="rr-text-title-link">${escapeHtml(post.title)}</a>` : escapeHtml(post.title)}
+      </h2>
       ${
         formattedBodyHtml
           ? `<div class="rr-text-card-body">${formattedBodyHtml}</div>`
@@ -89,15 +92,6 @@ export function renderTextCard(postEl: HTMLElement, post: ReelPost): void {
     cardBody.addEventListener('touchmove', (e) => {
       e.stopPropagation();
     }, { passive: true });
-  }
-
-  const titleEl = container.querySelector<HTMLElement>('.rr-text-card-title');
-  if (titleEl && targetUrl) {
-    titleEl.style.cursor = 'pointer';
-    titleEl.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openUrl(targetUrl);
-    });
   }
 
   postEl.appendChild(container);

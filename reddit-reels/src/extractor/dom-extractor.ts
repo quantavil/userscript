@@ -257,7 +257,7 @@ export function determinePostType(element: HTMLElement, contentHref: string): Po
     rawType === 'video' ||
     isVideoHost ||
     element.querySelector('shreddit-player-2, video, [data-testid="shreddit-player"]') !== null ||
-    /(\.mp4|\.webm|\.m3u8|v\.redd\.it|redgifs\.com|streamable\.com|youtube\.com|youtu\.be|tiktok\.com|vimeo\.com)/i.test(contentHref);
+    /(\.mp4|\.webm|\.m3u8|v\.redd\.it|redgifs\.com|streamable\.com|gfycat\.com|youtube\.com|youtu\.be)/i.test(contentHref);
 
   if (isVideo) {
     return 'video';
@@ -372,6 +372,15 @@ export function queryDeep(root: HTMLElement, selectors: string[]): HTMLElement |
       const style = el.getAttribute('style') || '';
       if (/display\s*:\s*none/i.test(style)) return true;
       if (el.classList?.contains('rr-native-suppressed')) return true;
+
+      // Check ancestor chain up to root
+      let curr: HTMLElement | null = el.parentElement;
+      while (curr && curr !== root) {
+        if (curr.hidden || curr.classList?.contains('rr-native-suppressed')) return true;
+        const parentStyle = curr.getAttribute('style') || '';
+        if (/display\s*:\s*none/i.test(parentStyle)) return true;
+        curr = curr.parentElement;
+      }
     } catch {}
     return false;
   };
