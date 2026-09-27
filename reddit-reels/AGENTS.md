@@ -14,6 +14,7 @@ Guidance for agentic development on the **Reddit Reel Mode** userscript (`reddit
   - `src/styles/`: Domain-specific stylesheets (`base`, `feed`, `cards`, `comments`, `gallery`, `overlay`, `top-bar`).
   - `src/ui/`: Floating controls, overlay actions, author badges, inline comments drawer (`comments-drawer.ts`), and pulse animations.
 - **No Inline Styles**: Avoid sprawling inline `element.style` modifications; prefer dedicated scoped CSS classes prefixed with `.rr-`.
+- **Zero Runtime Dependencies**: The runtime bundle is 100% vanilla TypeScript / browser DOM without virtual DOM frameworks (no React/Preact) or heavy utilities. All UI elements are created directly via `document.createElement`.
 - **Clean Teardown Contract**: Exiting Reel Mode must cleanly reverse all injected DOM (`.rr-post-overlay`, card containers, embedded iframes) and restore original dimensions/attributes bit-for-bit via `teardown-store.ts` without leaving native feeds collapsed or overlapped. All `rr` dataset flags must be deleted on exit.
 - **Security & URL Protocol**: All outgoing URLs opened or assigned to anchors must pass `isSafeUrl()` / `sanitizeUrl()` allowing only `http:` and `https:`. All cross-frame `postMessage` listeners must validate `event.origin`.
 

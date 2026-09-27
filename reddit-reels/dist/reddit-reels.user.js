@@ -19,10 +19,10 @@
 
 (function() {
 	"use strict";
-	var s$1 = new Set();
+	var s = new Set();
 	var _css = async (t) => {
-		if (s$1.has(t)) return;
-		s$1.add(t);
+		if (s.has(t)) return;
+		s.add(t);
 		((c) => {
 			if (typeof GM_addStyle === "function") GM_addStyle(c);
 			else (document.head || document.documentElement).appendChild(document.createElement("style")).append(c);
@@ -61,7 +61,7 @@
 		const permalinkMatch = permalink.match(/(?:comments|post)\/([a-z0-9]+)/i);
 		if (permalinkMatch) return `t3_${permalinkMatch[1]}`;
 		if (element.dataset.reelPostId) return element.dataset.reelPostId;
-		const generatedId = `t3_gen_${Math.random().toString(36).slice(2, 10)}`;
+		const generatedId = `t3_gen_${typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID().replace(/-/g, "").slice(0, 10) : Math.random().toString(36).slice(2, 10)}`;
 		element.dataset.reelPostId = generatedId;
 		return generatedId;
 	}
@@ -1703,333 +1703,37 @@
 		delete postEl.dataset.rrCaptions;
 		delete postEl.dataset.rrUnconstrained;
 	}
-	var n;
-	var l;
-	var u$1;
-	var i$1;
-	var r;
-	var o;
-	var e;
-	var f$1;
-	var c;
-	var a;
-	var s;
-	var h;
-	var p;
-	var v;
-	var d = {};
-	var w = [];
-	var _ = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i;
-	var g = Array.isArray;
-	function m(n, l) {
-		for (var u in l) n[u] = l[u];
-		return n;
-	}
-	function b(n) {
-		n && n.parentNode && n.parentNode.removeChild(n);
-	}
-	function k(l, u, t) {
-		var i, r, o, e = {};
-		for (o in u) "key" == o ? i = u[o] : "ref" == o ? r = u[o] : e[o] = u[o];
-		if (arguments.length > 2 && (e.children = arguments.length > 3 ? n.call(arguments, 2) : t), "function" == typeof l && null != l.defaultProps) for (o in l.defaultProps) void 0 === e[o] && (e[o] = l.defaultProps[o]);
-		return x(l, e, i, r, null);
-	}
-	function x(n, t, i, r, o) {
-		var e = {
-			type: n,
-			props: t,
-			key: i,
-			ref: r,
-			__k: null,
-			__: null,
-			__b: 0,
-			__e: null,
-			__c: null,
-			constructor: void 0,
-			__v: null == o ? ++u$1 : o,
-			__i: -1,
-			__u: 0
-		};
-		return null == o && null != l.vnode && l.vnode(e), e;
-	}
-	function S(n) {
-		return n.children;
-	}
-	function C(n, l) {
-		this.props = n, this.context = l;
-	}
-	function $(n, l) {
-		if (null == l) return n.__ ? $(n.__, n.__i + 1) : null;
-		for (var u; l < n.__k.length; l++) if (null != (u = n.__k[l]) && null != u.__e) return u.__e;
-		return "function" == typeof n.type ? $(n) : null;
-	}
-	function I(n) {
-		if (n.__P && n.__d) {
-			var u = n.__v, t = u.__e, i = [], r = [], o = m({}, u);
-			o.__v = u.__v + 1, l.vnode && l.vnode(o), q(n.__P, o, u, n.__n, n.__P.namespaceURI, 32 & u.__u ? [t] : null, i, null == t ? $(u) : t, !!(32 & u.__u), r), o.__v = u.__v, o.__.__k[o.__i] = o, D(i, o, r), u.__e = u.__ = null, o.__e != t && P(o);
-		}
-	}
-	function P(n) {
-		if (null != (n = n.__) && null != n.__c) return n.__e = n.__c.base = null, n.__k.some(function(l) {
-			if (null != l && null != l.__e) return n.__e = n.__c.base = l.__e;
-		}), P(n);
-	}
-	function A(n) {
-		(!n.__d && (n.__d = !0) && i$1.push(n) && !H.__r++ || r != l.debounceRendering) && ((r = l.debounceRendering) || o)(H);
-	}
-	function H() {
-		try {
-			for (var n, l = 1; i$1.length;) i$1.length > l && i$1.sort(e), n = i$1.shift(), l = i$1.length, I(n);
-		} finally {
-			i$1.length = H.__r = 0;
-		}
-	}
-	function L(n, l, u, t, i, r, o, e, f, c, a) {
-		var s, h, p, v, y, _, g = t && t.__k || w, m = l.length;
-		for (f = T(u, l, g, f, m), s = 0; s < m; s++) null != (p = u.__k[s]) && (h = -1 != p.__i && g[p.__i] || d, p.__i = s, _ = q(n, p, h, i, r, o, e, f, c, a), v = p.__e, p.ref && h.ref != p.ref && (h.ref && J(h.ref, null, p), a.push(p.ref, p.__c || v, p)), null == y && null != v && (y = v), 4 & p.__u ? (f = j(p, f, n), h.__e && (h.__e = null)) : "function" == typeof p.type && void 0 !== _ ? f = _ : v && (f = v.nextSibling), p.__u &= -7);
-		return u.__e = y, f;
-	}
-	function T(n, l, u, t, i) {
-		var r, o, e, f, c, a = u.length, s = a, h = 0;
-		for (n.__k = new Array(i), r = 0; r < i; r++) null != (o = l[r]) && "boolean" != typeof o && "function" != typeof o ? ("string" == typeof o || "number" == typeof o || "bigint" == typeof o || o.constructor == String ? o = n.__k[r] = x(null, o, null, null, null) : g(o) ? o = n.__k[r] = x(S, { children: o }, null, null, null) : void 0 === o.constructor && o.__b > 0 ? o = n.__k[r] = x(o.type, o.props, o.key, o.ref ? o.ref : null, o.__v) : n.__k[r] = o, f = r + h, o.__ = n, o.__b = n.__b + 1, e = null, -1 != (c = o.__i = O(o, u, f, s)) && (s--, (e = u[c]) && (e.__u |= 2)), null == e || null == e.__v ? (-1 == c && (i > a ? h-- : i < a && h++), "function" != typeof o.type && (o.__u |= 4)) : c != f && (c == f - 1 ? h-- : c == f + 1 ? h++ : (c > f ? h-- : h++, o.__u |= 4))) : n.__k[r] = null;
-		if (s) for (r = 0; r < a; r++) null != (e = u[r]) && 0 == (2 & e.__u) && (e.__e == t && (t = $(e)), K(e, e));
-		return t;
-	}
-	function j(n, l, u) {
-		var t, i;
-		if ("function" == typeof n.type) {
-			for (t = n.__k, i = 0; t && i < t.length; i++) t[i] && (t[i].__ = n, l = j(t[i], l, u));
-			return l;
-		}
-		n.__e != l && (l && n.type && !l.parentNode && (l = $(n)), l = u.insertBefore(n.__e, l || null));
-		do
-			l = l && l.nextSibling;
-		while (null != l && 8 == l.nodeType);
-		return l;
-	}
-	function O(n, l, u, t) {
-		var i, r, o, e = n.key, f = n.type, c = l[u], a = null != c && 0 == (2 & c.__u);
-		if (null === c && null == e || a && e == c.key && f == c.type) return u;
-		if (t > (a ? 1 : 0)) {
-			for (i = u - 1, r = u + 1; i >= 0 || r < l.length;) if (null != (c = l[o = i >= 0 ? i-- : r++]) && 0 == (2 & c.__u) && e == c.key && f == c.type) return o;
-		}
-		return -1;
-	}
-	function z(n, l, u) {
-		"-" == l[0] ? n.setProperty(l, null == u ? "" : u) : n[l] = null == u ? "" : "number" != typeof u || _.test(l) ? u : u + "px";
-	}
-	function N(n, l, u, t, i) {
-		var r, o;
-		n: if ("style" == l) if ("string" == typeof u) n.style.cssText = u;
-		else {
-			if ("string" == typeof t && (n.style.cssText = t = ""), t) for (l in t) u && l in u || z(n.style, l, "");
-			if (u) for (l in u) t && u[l] == t[l] || z(n.style, l, u[l]);
-		}
-		else if ("o" == l[0] && "n" == l[1]) r = l != (l = l.replace(s, "$1")), o = l.toLowerCase(), l = o in n || "onFocusOut" == l || "onFocusIn" == l ? o.slice(2) : l.slice(2), n.l || (n.l = {}), n.l[l + r] = u, u ? t ? u[a] = t[a] : (u[a] = h, n.addEventListener(l, r ? v : p, r)) : n.removeEventListener(l, r ? v : p, r);
-		else {
-			if ("http://www.w3.org/2000/svg" == i) l = l.replace(/xlink(H|:h)/, "h").replace(/sName$/, "s");
-			else if ("width" != l && "height" != l && "href" != l && "list" != l && "form" != l && "tabIndex" != l && "download" != l && "rowSpan" != l && "colSpan" != l && "role" != l && "popover" != l && l in n) try {
-				n[l] = null == u ? "" : u;
-				break n;
-			} catch (n) {}
-			"function" == typeof u || (null == u || !1 === u && "-" != l[4] ? n.removeAttribute(l) : n.setAttribute(l, "popover" == l && 1 == u ? "" : u));
-		}
-	}
-	function V(n) {
-		return function(u) {
-			if (this.l) {
-				var t = this.l[u.type + n];
-				if (null == u[c]) u[c] = h++;
-				else if (u[c] < t[a]) return;
-				return t(l.event ? l.event(u) : u);
-			}
-		};
-	}
-	function q(n, u, t, i, r, o, e, f, c, a) {
-		var s, h, p, v, y, d, _, k, x, M, I, P, A, H, T, j, F = u.type;
-		if (void 0 !== u.constructor) return null;
-		128 & t.__u && (c = !!(32 & t.__u), o = [f = u.__e = t.__e]), (s = l.__b) && s(u);
-		n: if ("function" == typeof F) {
-			h = e.length;
-			try {
-				if (x = u.props, M = F.prototype && F.prototype.render, I = (s = F.contextType) && i[s.__c], P = s ? I ? I.props.value : s.__ : i, t.__c ? k = (p = u.__c = t.__c).__ = p.__E : (M ? u.__c = p = new F(x, P) : (u.__c = p = new C(x, P), p.constructor = F, p.render = Q), I && I.sub(p), p.state || (p.state = {}), p.__n = i, v = p.__d = !0, p.__h = [], p._sb = []), M && null == p.__s && (p.__s = p.state), M && null != F.getDerivedStateFromProps && (p.__s == p.state && (p.__s = m({}, p.__s)), m(p.__s, F.getDerivedStateFromProps(x, p.__s))), y = p.props, d = p.state, p.__v = u, v) M && null == F.getDerivedStateFromProps && null != p.componentWillMount && p.componentWillMount(), M && null != p.componentDidMount && p.__h.push(p.componentDidMount);
-				else {
-					if (M && null == F.getDerivedStateFromProps && x !== y && null != p.componentWillReceiveProps && p.componentWillReceiveProps(x, P), u.__v == t.__v || !p.__e && null != p.shouldComponentUpdate && !1 === p.shouldComponentUpdate(x, p.__s, P)) {
-						u.__v != t.__v && (p.props = x, p.state = p.__s, p.__d = !1), u.__e = t.__e, u.__k = t.__k, u.__k.some(function(n) {
-							n && (n.__ = u);
-						}), w.push.apply(p.__h, p._sb), p._sb = [], p.__h.length && e.push(p), f = $(t);
-						break n;
-					}
-					null != p.componentWillUpdate && p.componentWillUpdate(x, p.__s, P), M && null != p.componentDidUpdate && p.__h.push(function() {
-						p.componentDidUpdate(y, d, _);
-					});
-				}
-				if (p.context = P, p.props = x, p.__P = n, p.__e = !1, A = l.__r, H = 0, M) p.state = p.__s, p.__d = !1, A && A(u), s = p.render(p.props, p.state, p.context), w.push.apply(p.__h, p._sb), p._sb = [];
-				else do
-					p.__d = !1, A && A(u), s = p.render(p.props, p.state, p.context), p.state = p.__s;
-				while (p.__d && ++H < 25);
-				p.state = p.__s, null != p.getChildContext && (i = m(m({}, i), p.getChildContext())), M && !v && null != p.getSnapshotBeforeUpdate && (_ = p.getSnapshotBeforeUpdate(y, d)), T = null != s && s.type === S && null == s.key ? E(s.props.children) : s, f = L(n, g(T) ? T : [T], u, t, i, r, o, e, f, c, a), p.base = u.__e, u.__u &= -161, p.__h.length && e.push(p), k && (p.__E = p.__ = null);
-			} catch (n) {
-				if (e.length = h, u.__v = null, c || null != o) {
-					if (n.then) {
-						for (u.__u |= c ? 160 : 128; f && 8 == f.nodeType && f.nextSibling;) f = f.nextSibling;
-						null != o && (o[o.indexOf(f)] = null), u.__e = f;
-					} else if (null != o) for (j = o.length; j--;) b(o[j]);
-				} else u.__e = t.__e;
-				u.__k ??= t.__k || [], n.then || B(u), l.__e(n, u, t);
-			}
-		} else null == o && u.__v == t.__v ? (u.__k = t.__k, u.__e = t.__e) : f = u.__e = G(t.__e, u, t, i, r, o, e, c, a);
-		return (s = l.diffed) && s(u), 128 & u.__u ? void 0 : f;
-	}
-	function B(n) {
-		n && (n.__c && (n.__c.__e = !0), n.__k && n.__k.some(B));
-	}
-	function D(n, u, t) {
-		for (var i = 0; i < t.length; i++) J(t[i], t[++i], t[++i]);
-		l.__c && l.__c(u, n), n.some(function(u) {
-			try {
-				n = u.__h, u.__h = [], n.some(function(n) {
-					n.call(u);
-				});
-			} catch (n) {
-				l.__e(n, u.__v);
-			}
-		});
-	}
-	function E(n) {
-		return "object" != typeof n || null == n || n.__b > 0 ? n : g(n) ? n.map(E) : void 0 !== n.constructor ? null : m({}, n);
-	}
-	function G(u, t, i, r, o, e, f, c, a) {
-		var s, h, p, v, y, w, _, m = i.props || d, k = t.props, x = t.type;
-		if ("svg" == x ? o = "http://www.w3.org/2000/svg" : "math" == x ? o = "http://www.w3.org/1998/Math/MathML" : o || (o = "http://www.w3.org/1999/xhtml"), null != e) {
-			for (s = 0; s < e.length; s++) if ((y = e[s]) && "setAttribute" in y == !!x && (x ? y.localName == x : 3 == y.nodeType)) {
-				u = y, e[s] = null;
-				break;
-			}
-		}
-		if (null == u) {
-			if (null == x) return document.createTextNode(k);
-			u = document.createElementNS(o, x, k.is && k), c && (l.__m && l.__m(t, e), c = !1), e = null;
-		}
-		if (null == x) m === k || c && u.data == k || (u.data = k);
-		else {
-			if (e = "textarea" == x && null != k.defaultValue ? null : e && n.call(u.childNodes), !c && null != e) for (m = {}, s = 0; s < u.attributes.length; s++) m[(y = u.attributes[s]).name] = y.value;
-			for (s in m) y = m[s], "dangerouslySetInnerHTML" == s ? p = y : "children" == s || s in k || "value" == s && "defaultValue" in k || "checked" == s && "defaultChecked" in k || N(u, s, null, y, o);
-			for (s in k) y = k[s], "children" == s ? v = y : "dangerouslySetInnerHTML" == s ? h = y : "value" == s ? w = y : "checked" == s ? _ = y : c && "function" != typeof y || m[s] === y || N(u, s, y, m[s], o);
-			if (h) c || p && (h.__html == p.__html || h.__html == u.innerHTML) || (u.innerHTML = h.__html), t.__k = [];
-			else if (p && (u.innerHTML = ""), L("template" == t.type ? u.content : u, g(v) ? v : [v], t, i, r, "foreignObject" == x ? "http://www.w3.org/1999/xhtml" : o, e, f, e ? e[0] : i.__k && $(i, 0), c, a), null != e) for (s = e.length; s--;) b(e[s]);
-			c && "textarea" != x || (s = "value", "progress" == x && null == w ? u.removeAttribute("value") : null != w && (w !== u[s] || "progress" == x && !w || "option" == x && w != m[s]) && N(u, s, w, m[s], o), s = "checked", null != _ && _ != u[s] && N(u, s, _, m[s], o));
-		}
-		return u;
-	}
-	function J(n, u, t) {
-		try {
-			if ("function" == typeof n) {
-				var i = "function" == typeof n.__u;
-				i && n.__u(), i && null == u || (n.__u = n(u));
-			} else n.current = u;
-		} catch (n) {
-			l.__e(n, t);
-		}
-	}
-	function K(n, u, t) {
-		var i, r;
-		if (l.unmount && l.unmount(n), (i = n.ref) && (i.current && i.current != n.__e || J(i, null, u)), null != (i = n.__c)) {
-			if (i.componentWillUnmount) try {
-				i.componentWillUnmount();
-			} catch (n) {
-				l.__e(n, u);
-			}
-			i.base = i.__P = i.__n = null;
-		}
-		if (i = n.__k) for (r = 0; r < i.length; r++) i[r] && K(i[r], u, t || "function" != typeof n.type);
-		t || b(n.__e), n.__c = n.__ = n.__e = void 0;
-	}
-	function Q(n, l, u) {
-		return this.constructor(n, u);
-	}
-	function R(u, t, i) {
-		var r, o, e, f;
-		t == document && (t = document.documentElement), l.__ && l.__(u, t), o = (r = "function" == typeof i) ? null : i && i.__k || t.__k, e = [], f = [], q(t, u = (!r && i || t).__k = k(S, null, [u]), o || d, d, t.namespaceURI, !r && i ? [i] : o ? null : t.firstChild ? n.call(t.childNodes) : null, e, !r && i ? i : o ? o.__e : t.firstChild, r, f), D(e, u, f), u.props.children = null;
-	}
-	n = w.slice, l = { __e: function(n, l, u, t) {
-		for (var i, r, o; l = l.__;) if ((i = l.__c) && !i.__) try {
-			if ((r = i.constructor) && null != r.getDerivedStateFromError && (i.setState(r.getDerivedStateFromError(n)), o = i.__d), null != i.componentDidCatch && (i.componentDidCatch(n, t || {}), o = i.__d), o) return i.__E = i;
-		} catch (l) {
-			n = l;
-		}
-		throw n;
-	} }, u$1 = 0, C.prototype.setState = function(n, l) {
-		var u = null != this.__s && this.__s != this.state ? this.__s : this.__s = m({}, this.state);
-		"function" == typeof n && (n = n(m({}, u), this.props)), n && m(u, n), null != n && this.__v && (l && this._sb.push(l), A(this));
-	}, C.prototype.forceUpdate = function(n) {
-		this.__v && (this.__e = !0, n && this.__h.push(n), A(this));
-	}, C.prototype.render = S, i$1 = [], o = "function" == typeof Promise ? Promise.prototype.then.bind(Promise.resolve()) : setTimeout, e = function(n, l) {
-		return n.__v.__b - l.__v.__b;
-	}, H.__r = 0, f$1 = Math.random().toString(8), c = "__d" + f$1, a = "__a" + f$1, s = /(PointerCapture)$|Capture$/i, h = 0, p = V(!1), v = V(!0);
 	_css(":root {\n  --rr-z-fab: 99999;\n  --rr-z-reels: 2147483640;\n  --rr-z-overlay: 2147483645;\n  --rr-font-stack: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;\n  --rr-primary: #ff4500;\n  --rr-surface-glass: rgba(18, 22, 30, 0.72);\n  --rr-border-glass: rgba(255, 255, 255, 0.12);\n  --rr-highlight-glass: rgba(255, 255, 255, 0.22);\n}\n\n/* =========================================================\n   Floating Action Button (Launcher)\n   ========================================================= */\n\n#rr-fab,\n.rr-fab,\n#reddit-reels-fab {\n  position: fixed !important;\n  bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;\n  right: calc(20px + env(safe-area-inset-right, 0px)) !important;\n  z-index: var(--rr-z-fab) !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  width: 54px !important;\n  height: 54px !important;\n  border-radius: 9999px !important;\n  background: #ff4500 !important;\n  color: #ffffff !important;\n  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;\n  cursor: pointer !important;\n  border: none !important;\n  outline: none !important;\n  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease !important;\n  user-select: none !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n#rr-fab:hover,\n.rr-fab:hover,\n#reddit-reels-fab:hover {\n  transform: scale(1.06) !important;\n  background: #e03d00 !important;\n  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45) !important;\n}\n\n#rr-fab:active,\n.rr-fab:active,\n#reddit-reels-fab:active {\n  transform: scale(0.95) !important;\n}\n\n#rr-fab svg,\n.rr-fab svg,\n.rr-fab-icon,\n#reddit-reels-fab svg {\n  width: 26px !important;\n  height: 26px !important;\n  fill: none !important;\n  stroke: currentColor !important;\n  stroke-width: 2.2 !important;\n  stroke-linecap: round !important;\n  stroke-linejoin: round !important;\n}\n\n/* Hide FAB when Reels mode is active */\nhtml.rr-active #rr-fab-container,\nhtml.rr-active #rr-fab,\nhtml.rr-active .rr-fab,\nhtml.rr-active #reddit-reels-fab {\n  display: none !important;\n}\n\n/* =========================================================\n   Feedback Pulses (Play/Pause, Fit/Fill)\n   ========================================================= */\n\n.rr-play-pulse {\n  position: fixed !important;\n  top: 50% !important;\n  left: 50% !important;\n  transform: translate(-50%, -50%) !important;\n  width: 76px !important;\n  height: 76px !important;\n  border-radius: 9999px !important;\n  background: rgba(18, 22, 30, 0.8) !important;\n  border: 1px solid rgba(255, 255, 255, 0.15) !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  color: #ffffff !important;\n  pointer-events: none !important;\n  z-index: 2147483646 !important;\n  animation: rr-pulse-fade 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;\n}\n\n.rr-play-pulse svg {\n  width: 36px !important;\n  height: 36px !important;\n  fill: currentColor !important;\n}\n\n.rr-scale-pulse {\n  position: fixed !important;\n  top: 50% !important;\n  left: 50% !important;\n  transform: translate(-50%, -50%) !important;\n  padding: 10px 20px !important;\n  border-radius: 9999px !important;\n  background: #181a1f !important;\n  border: 1px solid #30323a !important;\n  color: #ffffff !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 13px !important;\n  font-weight: 700 !important;\n  letter-spacing: 0.3px !important;\n  pointer-events: none !important;\n  z-index: 2147483646 !important;\n  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;\n  animation: rr-pulse-fade 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;\n}\n\n@keyframes rr-pulse-fade {\n  0% {\n    opacity: 0;\n    transform: translate(-50%, -50%) scale(0.65);\n  }\n  35% {\n    opacity: 1;\n    transform: translate(-50%, -50%) scale(1.08);\n  }\n  100% {\n    opacity: 0;\n    transform: translate(-50%, -50%) scale(1.15);\n  }\n}\n\n/* =========================================================\n   Fullscreen Reels Feed & Snap-Scroll Rules\n   ========================================================= */\n\n/* Root Lock */\nhtml.rr-active,\nhtml.rr-active body {\n  overflow: hidden !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  width: 100vw !important;\n  height: 100vh !important;\n  height: 100dvh !important;\n  background: #000000 !important;\n  color: #ffffff !important;\n  touch-action: pan-y !important;\n  -webkit-user-select: none;\n  user-select: none;\n}\n\n/* Suppress all Reddit outer framing in Reel Mode */\nhtml.rr-active header,\nhtml.rr-active nav,\nhtml.rr-active aside,\nhtml.rr-active footer,\nhtml.rr-active .bottom-nav,\nhtml.rr-active [slot=\"header\"],\nhtml.rr-active reddit-header-large,\nhtml.rr-active reddit-header-small,\nhtml.rr-active shreddit-async-loader[bundlename=\"bottom_bar\"],\nhtml.rr-active shreddit-async-loader[bundlename=\"header\"],\nhtml.rr-active shreddit-async-loader[bundlename=\"subgrid\"],\nhtml.rr-active shreddit-comment-jump-button,\nhtml.rr-active reddit-comment-jump-button,\nhtml.rr-active .comment-jump-button,\nhtml.rr-active shreddit-async-loader[bundlename*=\"comment_jump\"],\nhtml.rr-active shreddit-async-loader[bundlename*=\"floating\"],\nhtml.rr-active shreddit-floating-action-bar,\nhtml.rr-active floating-action-bar,\nhtml.rr-active [data-testid*=\"floating\" i],\nhtml.rr-active [data-testid*=\"comment-jump\" i],\nhtml.rr-active shreddit-back-to-top-button,\nhtml.rr-active back-to-top-button,\nhtml.rr-active faceplate-tracker[source=\"floating_action_bar\"],\nhtml.rr-active [slot=\"floating-action-bar\"] {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Post Container / Scroll Track */\nhtml.rr-active #subgrid-container,\nhtml.rr-active main,\nhtml.rr-active .main-container,\nhtml.rr-active #posts-container,\nhtml.rr-active [data-testid=\"posts-list\"],\nhtml.rr-active .rr-feed-container {\n  height: 100vh !important;\n  height: 100dvh !important;\n  width: 100vw !important;\n  max-width: 100vw !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  overflow-y: scroll !important;\n  overflow-x: hidden !important;\n  scroll-snap-type: y mandatory !important;\n  overscroll-behavior-y: contain !important;\n  scrollbar-width: none !important; /* Firefox */\n  background: #000000 !important;\n  display: block !important;\n}\n\nhtml.rr-active #subgrid-container::-webkit-scrollbar,\nhtml.rr-active main::-webkit-scrollbar,\nhtml.rr-active #posts-container::-webkit-scrollbar,\nhtml.rr-active .rr-feed-container::-webkit-scrollbar {\n  display: none !important;\n}\n\n/* Single Reel Slide (shreddit-post, article, div containers) */\nhtml.rr-active shreddit-post,\nhtml.rr-active .rr-feed-container > article,\nhtml.rr-active .rr-feed-container > div[data-testid=\"post-container\"],\nhtml.rr-active .rr-feed-container > .Post {\n  height: 100vh !important;\n  height: 100dvh !important;\n  width: 100vw !important;\n  min-height: 100vh !important;\n  min-height: 100dvh !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  min-width: 100vw !important;\n  max-width: 100vw !important;\n  scroll-snap-align: start !important;\n  scroll-snap-stop: always !important;\n  position: relative !important;\n  overflow: hidden !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: none !important;\n  border-radius: 0 !important;\n  background: #000000 !important;\n  box-sizing: border-box !important;\n}\n\n/* Ensure post media wrapper fills viewport */\nhtml.rr-active shreddit-post [slot=\"post-media-container\"],\nhtml.rr-active shreddit-post .media-container,\nhtml.rr-active .rr-feed-container .media-container,\nhtml.rr-active shreddit-post shreddit-aspect-ratio,\nhtml.rr-active shreddit-post shreddit-player-2 {\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100vw !important;\n  height: 100vh !important;\n  height: 100dvh !important;\n  max-width: 100vw !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  min-height: 100vh !important;\n  min-height: 100dvh !important;\n  --max-height: 100dvh !important;\n  --max-width: 100vw !important;\n  aspect-ratio: unset !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border-radius: 0 !important;\n  background: transparent !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  z-index: 5 !important;\n}\n\n/* Standalone Video, Iframe, and Single Image Sizing (Excluding Carousels) */\nhtml.rr-active shreddit-post video,\nhtml.rr-active shreddit-post iframe,\nhtml.rr-active shreddit-post .rr-embedded-iframe,\nhtml.rr-active shreddit-post:not(.rr-is-link):not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb):not(.shreddit-subreddit-icon__icon):not(.post-background-image-filter),\nhtml.rr-active .rr-feed-container video,\nhtml.rr-active .rr-feed-container iframe,\nhtml.rr-active .rr-feed-container > article:not(.rr-is-link):not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb) {\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100vw !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  object-fit: contain !important;\n  background: transparent !important;\n  border: none !important;\n  z-index: 10 !important;\n}\n\n/* Unconstrain nested media containers and aspect-ratio wrappers inside shreddit-post (Excluding Carousels) */\nhtml.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container],\nhtml.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container] > div,\nhtml.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) shreddit-media-lightbox-listener,\nhtml.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) .media-lightbox-img {\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100vw !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  aspect-ratio: unset !important;\n  position: absolute !important;\n  inset: 0 !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: none !important;\n  background: transparent !important;\n}\n\n/* Suppress crosspost leakages inside post-media-container */\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] .crosspost-credit-bar,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] .crosspost-title,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] .post-background-image-filter,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] .text-secondary-plain-weak,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] div:has(> .text-secondary-plain-weak),\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] > div > .crosspost-credit-bar,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] > div:not(:has(img, video, gallery-carousel, faceplate-carousel, shreddit-aspect-ratio, [data-aspect-ratio-container])),\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] > .pointer-events-none.border-sm {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Vertical video full-bleed scaling: fills 100% width and height without letterbox bars */\nhtml.rr-active shreddit-post.rr-has-vertical-video video,\nhtml.rr-active shreddit-post video.rr-vertical-video,\nhtml.rr-active .rr-feed-container video.rr-vertical-video,\nhtml.rr-active shreddit-post[data-vertical-video=\"true\"] video {\n  object-fit: cover !important;\n}\n\n/* User toggle overrides (Video and Single Image) - Supports all post containers */\nhtml.rr-active .rr-fit-contain video,\nhtml.rr-active .rr-fit-contain iframe,\nhtml.rr-active .rr-fit-contain img,\nhtml.rr-active shreddit-post.rr-fit-contain video,\nhtml.rr-active shreddit-post.rr-fit-contain iframe,\nhtml.rr-active shreddit-post.rr-fit-contain img {\n  object-fit: contain !important;\n}\n\nhtml.rr-active .rr-fit-cover video,\nhtml.rr-active .rr-fit-cover iframe,\nhtml.rr-active .rr-fit-cover img,\nhtml.rr-active shreddit-post.rr-fit-cover video,\nhtml.rr-active shreddit-post.rr-fit-cover iframe,\nhtml.rr-active shreddit-post.rr-fit-cover img {\n  object-fit: cover !important;\n}\n\n/* Subtitles / Closed Captions Suppression when disabled */\nhtml.rr-active.rr-hide-captions ::cue,\nhtml.rr-active shreddit-post.rr-hide-captions ::cue,\nhtml.rr-active.rr-hide-captions .captions-display,\nhtml.rr-active.rr-hide-captions [data-testid=\"captions\"],\nhtml.rr-active.rr-hide-captions shreddit-player-captions,\nhtml.rr-active.rr-hide-captions .caption-wrapper,\nhtml.rr-active.rr-hide-captions .caption-container,\nhtml.rr-active.rr-hide-captions [part=\"captions\"],\nhtml.rr-active shreddit-post.rr-hide-captions .captions-display,\nhtml.rr-active shreddit-post.rr-hide-captions [data-testid=\"captions\"],\nhtml.rr-active shreddit-post.rr-hide-captions shreddit-player-captions,\nhtml.rr-active shreddit-post.rr-hide-captions .caption-wrapper,\nhtml.rr-active shreddit-post.rr-hide-captions .caption-container,\nhtml.rr-active shreddit-post.rr-hide-captions [part=\"captions\"] {\n  display: none !important;\n  visibility: hidden !important;\n  opacity: 0 !important;\n}\n\n/* Suppress native Reddit UI in slides (vote slots use off-screen hiding so proxy clicks work) */\nhtml.rr-active shreddit-post [slot=\"credit-bar\"],\nhtml.rr-active shreddit-post [slot=\"post-credit-bar\"],\nhtml.rr-active shreddit-post [slot=\"title-and-metadata\"],\nhtml.rr-active shreddit-post [slot=\"title\"],\nhtml.rr-active shreddit-post [slot=\"action-row\"],\nhtml.rr-active shreddit-post [slot=\"text-body\"],\nhtml.rr-active shreddit-post shreddit-post-action-row,\nhtml.rr-active shreddit-post feed-post-action-row,\nhtml.rr-active shreddit-post shreddit-post-credit-bar,\nhtml.rr-active shreddit-post shreddit-action-bar,\nhtml.rr-active shreddit-post rpl-action-bar,\nhtml.rr-active shreddit-post shreddit-interaction-container,\nhtml.rr-active shreddit-post faceplate-tracker,\nhtml.rr-active .rr-native-suppressed {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Vote targets stay in DOM and clickable via proxy (off-screen, not display:none) */\nhtml.rr-active shreddit-post [slot=\"vote\"],\nhtml.rr-active shreddit-post [slot=\"vote-button\"],\nhtml.rr-active shreddit-post shreddit-post-vote-control,\nhtml.rr-active shreddit-post [data-testid=\"post-vote-control\"],\nhtml.rr-active .rr-native-offscreen {\n  position: absolute !important;\n  width: 1px !important;\n  height: 1px !important;\n  opacity: 0 !important;\n  pointer-events: none !important;\n  overflow: hidden !important;\n}\n\n/* Bare media taps must not navigate: only explicit overlay/card buttons open URLs */\nhtml.rr-active shreddit-post a:not(.rr-sub-badge):not(.rr-author):not(.rr-link-card-btn):not(.rr-text-card-body a):not(.rr-comments-drawer a):not(.rr-drawer-btn),\nhtml.rr-active shreddit-post a[data-click-id=\"body\"],\nhtml.rr-active shreddit-post a[slot=\"full-post-link\"],\nhtml.rr-active shreddit-post a[href*=\"/comments/\"],\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] a,\nhtml.rr-active shreddit-post shreddit-media-lightbox-listener a {\n  pointer-events: none !important;\n}\n\nhtml.rr-active .rr-post-overlay a,\nhtml.rr-active .rr-link-card-container a,\nhtml.rr-active .rr-text-card-container a,\nhtml.rr-active .rr-comments-drawer a {\n  pointer-events: auto !important;\n}\n\n/* Videos-only filter: scoped under html.rr-active so exit automatically restores visibility */\nhtml.rr-active shreddit-post.rr-filtered-out,\nhtml.rr-active .rr-feed-container > article.rr-filtered-out,\nhtml.rr-active .rr-feed-container > div.rr-filtered-out {\n  display: none !important;\n}\n\n/* Hide any injected iframes or videos when Reel Mode is inactive */\n.rr-embedded-iframe,\n.rr-embedded-video {\n  display: none !important;\n}\n\nhtml.rr-active .rr-embedded-video {\n  display: block !important;\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100vw !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  object-fit: contain !important;\n  background: #000000 !important;\n}\n\nhtml.rr-active .rr-embedded-iframe {\n  display: block !important;\n}\n\n/* Empty feed state */\nhtml.rr-active .rr-empty-feed {\n  display: flex !important;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  height: 100vh !important;\n  height: 100dvh !important;\n  width: 100vw !important;\n  color: #a0a0a0;\n  font-size: 16px;\n  font-weight: 500;\n  text-align: center;\n  padding: 24px;\n  box-sizing: border-box;\n}\n/* =========================================================\n   Multiple-Image Gallery & Carousel Fullscreen Layout\n   ========================================================= */\n\nhtml.rr-active shreddit-post gallery-carousel,\nhtml.rr-active shreddit-post faceplate-carousel,\nhtml.rr-active shreddit-post.rr-has-gallery shreddit-async-loader,\nhtml.rr-active shreddit-post shreddit-async-loader:has(gallery-carousel, faceplate-carousel),\nhtml.rr-active shreddit-post [data-testid=\"media-gallery\"] {\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100% !important;\n  max-height: 100% !important;\n  --gallery-initial-height: 100% !important;\n  display: block !important;\n  overflow: hidden !important;\n  z-index: 6 !important;\n  background: #000000 !important;\n  touch-action: pan-x pan-y !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel ul[slot=\"items\"],\nhtml.rr-active shreddit-post faceplate-carousel ul[slot=\"items\"],\nhtml.rr-active shreddit-post gallery-carousel .carousel-items,\nhtml.rr-active shreddit-post faceplate-carousel .carousel-items {\n  display: flex !important;\n  flex-direction: row !important;\n  flex-wrap: nowrap !important;\n  height: 100% !important;\n  width: 100% !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  align-items: center !important;\n  list-style: none !important;\n  overflow-x: auto !important;\n  overflow-y: hidden !important;\n  scroll-snap-type: x mandatory !important;\n  scroll-behavior: smooth !important;\n  scrollbar-width: none !important;\n  touch-action: pan-x pan-y !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel ul::-webkit-scrollbar,\nhtml.rr-active shreddit-post faceplate-carousel ul::-webkit-scrollbar {\n  display: none !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel ul[slot=\"items\"] > li,\nhtml.rr-active shreddit-post faceplate-carousel ul[slot=\"items\"] > li,\nhtml.rr-active shreddit-post gallery-carousel .carousel-item,\nhtml.rr-active shreddit-post faceplate-carousel .carousel-item {\n  flex: 0 0 100% !important;\n  flex-shrink: 0 !important;\n  width: 100% !important;\n  min-width: 100% !important;\n  max-width: 100% !important;\n  height: 100% !important;\n  max-height: 100% !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  position: relative !important;\n  scroll-snap-align: center !important;\n  scroll-snap-stop: always !important;\n  overflow: hidden !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  box-sizing: border-box !important;\n  touch-action: pan-x pan-y !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel figure,\nhtml.rr-active shreddit-post faceplate-carousel figure,\nhtml.rr-active shreddit-post gallery-carousel [data-aspect-ratio-container],\nhtml.rr-active shreddit-post faceplate-carousel [data-aspect-ratio-container] {\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100% !important;\n  max-height: 100% !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  position: relative !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel img:not(.post-background-image-filter):not(.shreddit-subreddit-icon__icon),\nhtml.rr-active shreddit-post faceplate-carousel img:not(.post-background-image-filter):not(.shreddit-subreddit-icon__icon),\nhtml.rr-active shreddit-post gallery-carousel .media-lightbox-img,\nhtml.rr-active shreddit-post faceplate-carousel .media-lightbox-img {\n  position: relative !important;\n  inset: auto !important;\n  max-width: 100% !important;\n  max-height: 100% !important;\n  width: auto !important;\n  height: auto !important;\n  object-fit: contain !important;\n  display: block !important;\n  margin: auto !important;\n  visibility: visible !important;\n  opacity: 1 !important;\n}\n\n/* Blurred backdrop copies must never cover the real slide (black-screen cause) */\nhtml.rr-active shreddit-post gallery-carousel img.post-background-image-filter,\nhtml.rr-active shreddit-post faceplate-carousel img.post-background-image-filter,\nhtml.rr-active shreddit-post gallery-carousel [class*=\"background-image-filter\"],\nhtml.rr-active shreddit-post faceplate-carousel [class*=\"background-image-filter\"] {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Gallery image alt-text / caption badges (\"[Image 1]\") are always suppressed\n   in Reel Mode. They are image metadata, NOT video subtitles, so the CC toggle\n   must never unhide them. Scoped to carousels (and away from video slides) so\n   real video caption layers elsewhere are unaffected. */\nhtml.rr-active shreddit-post gallery-carousel figcaption,\nhtml.rr-active shreddit-post faceplate-carousel figcaption,\nhtml.rr-active shreddit-post gallery-carousel [slot=\"caption\"],\nhtml.rr-active shreddit-post faceplate-carousel [slot=\"caption\"],\nhtml.rr-active shreddit-post gallery-carousel .gallery-caption,\nhtml.rr-active shreddit-post faceplate-carousel .gallery-caption,\nhtml.rr-active shreddit-post gallery-carousel .image-caption,\nhtml.rr-active shreddit-post faceplate-carousel .image-caption,\nhtml.rr-active shreddit-post gallery-carousel [data-testid*=\"alt-text\" i],\nhtml.rr-active shreddit-post faceplate-carousel [data-testid*=\"alt-text\" i],\nhtml.rr-active shreddit-post gallery-carousel li:not(:has(video)) [data-testid*=\"caption\" i],\nhtml.rr-active shreddit-post faceplate-carousel li:not(:has(video)) [data-testid*=\"caption\" i] {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Horizontal slide buttons for gallery */\nhtml.rr-active shreddit-post gallery-carousel button[slot=\"previous-button\"],\nhtml.rr-active shreddit-post gallery-carousel button[slot=\"next-button\"],\nhtml.rr-active shreddit-post faceplate-carousel button[slot=\"previous-button\"],\nhtml.rr-active shreddit-post faceplate-carousel button[slot=\"next-button\"],\nhtml.rr-active shreddit-post button.prev-btn,\nhtml.rr-active shreddit-post button.next-btn {\n  position: absolute !important;\n  top: 50% !important;\n  transform: translateY(-50%) !important;\n  z-index: 25 !important;\n  background: rgba(18, 22, 30, 0.65) !important;\n  border: 1px solid rgba(255, 255, 255, 0.15) !important;\n  color: #ffffff !important;\n  width: 44px !important;\n  height: 44px !important;\n  border-radius: 9999px !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  cursor: pointer !important;\n  opacity: 0.8 !important;\n  transition: opacity 0.15s ease, background 0.15s ease !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel button[slot=\"previous-button\"]:hover,\nhtml.rr-active shreddit-post gallery-carousel button[slot=\"next-button\"]:hover,\nhtml.rr-active shreddit-post faceplate-carousel button[slot=\"previous-button\"]:hover,\nhtml.rr-active shreddit-post faceplate-carousel button[slot=\"next-button\"]:hover,\nhtml.rr-active shreddit-post button.prev-btn:hover,\nhtml.rr-active shreddit-post button.next-btn:hover {\n  opacity: 1 !important;\n  background: rgba(18, 22, 30, 0.9) !important;\n}\n\n/* Hide disabled navigation buttons at carousel boundaries */\nhtml.rr-active shreddit-post gallery-carousel button[disabled],\nhtml.rr-active shreddit-post faceplate-carousel button[disabled],\nhtml.rr-active shreddit-post gallery-carousel button[aria-disabled=\"true\"],\nhtml.rr-active shreddit-post faceplate-carousel button[aria-disabled=\"true\"],\nhtml.rr-active shreddit-post button.prev-btn[disabled],\nhtml.rr-active shreddit-post button.next-btn[disabled] {\n  display: none !important;\n  opacity: 0 !important;\n  pointer-events: none !important;\n}\n\nhtml.rr-active shreddit-post button[slot=\"previous-button\"],\nhtml.rr-active shreddit-post button.prev-btn {\n  left: 16px !important;\n}\n\nhtml.rr-active shreddit-post button[slot=\"next-button\"],\nhtml.rr-active shreddit-post button.next-btn {\n  right: 16px !important;\n}\n\n/* Pagination dots indicators */\nhtml.rr-active shreddit-post gallery-carousel [slot=\"indicators\"],\nhtml.rr-active shreddit-post faceplate-carousel [slot=\"indicators\"],\nhtml.rr-active shreddit-post gallery-carousel [slot=\"dots\"],\nhtml.rr-active shreddit-post faceplate-carousel [slot=\"dots\"],\nhtml.rr-active shreddit-post gallery-carousel [part=\"indicators\"],\nhtml.rr-active shreddit-post faceplate-carousel [part=\"indicators\"],\nhtml.rr-active shreddit-post gallery-carousel .carousel-indicators,\nhtml.rr-active shreddit-post faceplate-carousel .carousel-indicators {\n  position: absolute !important;\n  bottom: calc(85px + env(safe-area-inset-bottom, 0px)) !important;\n  left: 50% !important;\n  transform: translateX(-50%) !important;\n  z-index: 22 !important;\n  display: flex !important;\n  justify-content: center !important;\n  align-items: center !important;\n  pointer-events: auto !important;\n}\n/* =========================================================\n   Post Overlay (Metadata & Action Rail)\n   ========================================================= */\n\n/* Ensure overlay is completely hidden by default when Reel Mode is inactive */\n.rr-post-overlay {\n  display: none !important;\n  visibility: hidden !important;\n}\n\nhtml.rr-active .rr-post-overlay {\n  position: absolute !important;\n  inset: 0 !important;\n  z-index: 20 !important;\n  pointer-events: none !important;\n  display: flex !important;\n  visibility: visible !important;\n  flex-direction: column !important;\n  justify-content: space-between !important;\n  padding: 16px !important;\n  box-sizing: border-box !important;\n  background: linear-gradient(\n    to bottom,\n    rgba(0, 0, 0, 0.3) 0%,\n    transparent 15%,\n    transparent 70%,\n    rgba(0, 0, 0, 0.55) 100%\n  ) !important;\n}\n\n/* Bottom Left: Post Metadata */\n.rr-post-info {\n  position: absolute !important;\n  bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;\n  left: 16px !important;\n  right: 76px !important;\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 6px !important;\n  pointer-events: auto !important;\n  z-index: 25 !important;\n}\n\n.rr-post-meta {\n  display: flex !important;\n  flex-direction: row !important;\n  align-items: center !important;\n  gap: 6px !important;\n  min-width: 0 !important;\n  max-width: 100% !important;\n  flex-wrap: nowrap !important;\n}\n\n.rr-sub-badge {\n  display: inline-flex !important;\n  align-items: center !important;\n  flex-shrink: 0 !important;\n  background: #202126 !important;\n  border: 1px solid #30323a !important;\n  border-radius: 9999px !important;\n  padding: 3px 9px !important;\n  color: #ff6b35 !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  letter-spacing: 0.2px !important;\n  cursor: pointer !important;\n  user-select: none !important;\n  transition: background 0.15s ease, border-color 0.15s ease !important;\n}\n\n.rr-sub-badge:hover {\n  background: #2c2e35 !important;\n  border-color: #444752 !important;\n}\n\n.rr-dot {\n  flex-shrink: 0 !important;\n  color: rgba(255, 255, 255, 0.5) !important;\n  font-weight: 700 !important;\n  font-size: 11px !important;\n  user-select: none !important;\n}\n\n/* Author Username: clickable link, single-line with ellipsis */\n.rr-author {\n  display: inline-block !important;\n  flex-shrink: 1 !important;\n  min-width: 0 !important;\n  white-space: nowrap !important;\n  overflow: hidden !important;\n  text-overflow: ellipsis !important;\n  color: rgba(255, 255, 255, 0.78) !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 12px !important;\n  font-weight: 500 !important;\n  pointer-events: auto !important;\n  cursor: pointer !important;\n  user-select: text !important;\n  text-decoration: none !important;\n  transition: color 0.15s ease, text-decoration 0.15s ease !important;\n}\n\n.rr-author:hover {\n  color: #ffffff !important;\n  text-decoration: underline !important;\n}\n\n/* Post Title */\n.rr-post-title {\n  color: #ffffff !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 15px !important;\n  font-weight: 600 !important;\n  line-height: 1.4 !important;\n  letter-spacing: -0.015em !important;\n  display: -webkit-box !important;\n  -webkit-line-clamp: 2 !important;\n  -webkit-box-orient: vertical !important;\n  overflow: hidden !important;\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7) !important;\n}\n\n/* Bottom Right: Vertical Action Rail */\n.rr-action-rail {\n  position: absolute !important;\n  bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;\n  right: 14px !important;\n  display: flex !important;\n  flex-direction: column !important;\n  align-items: center !important;\n  gap: 14px !important;\n  pointer-events: auto !important;\n  z-index: 25 !important;\n}\n\n.rr-action-item {\n  display: flex !important;\n  flex-direction: column !important;\n  align-items: center !important;\n  gap: 3px !important;\n}\n\n.rr-action-btn {\n  width: 44px !important;\n  height: 44px !important;\n  border-radius: 9999px !important;\n  background: #1c1d22 !important;\n  border: 1px solid #30323a !important;\n  color: #ffffff !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  cursor: pointer !important;\n  padding: 0 !important;\n  outline: none !important;\n  transition: background 0.15s ease, transform 0.12s ease !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-action-btn:hover {\n  background: #282a32 !important;\n}\n\n.rr-action-btn:active {\n  transform: scale(0.92) !important;\n}\n\n.rr-action-label {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;\n  user-select: none !important;\n}\n\n/* Integrated Vote Group Cluster */\n.rr-vote-group {\n  display: flex !important;\n  flex-direction: column !important;\n  align-items: center !important;\n  background: #181a1f !important;\n  border: 1px solid #282a32 !important;\n  border-radius: 9999px !important;\n  padding: 4px !important;\n  gap: 2px !important;\n}\n\n.rr-vote-group .rr-action-btn {\n  background: transparent !important;\n  border: none !important;\n  box-shadow: none !important;\n  width: 44px !important;\n  height: 44px !important;\n  min-width: 44px !important;\n  min-height: 44px !important;\n  color: #9a9ca6 !important;\n}\n\n.rr-vote-group .rr-action-btn:hover {\n  color: #ffffff !important;\n  background: rgba(255, 255, 255, 0.08) !important;\n}\n\n.rr-vote-group .rr-score-label {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 12px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  padding: 1px 0 !important;\n  line-height: 1 !important;\n}\n\n.rr-upvote-btn.is-active-up {\n  color: #ff4500 !important;\n}\n\n.rr-downvote-btn.is-active-down {\n  color: #7193ff !important;\n}\n\n/* CC on (enabled): plain white icon on the standard dark pill.\n   CC off (disabled): dimmed grey icon. No accent color. */\n.rr-action-btn.rr-cc-btn.is-active-cc {\n  background: #1c1d22 !important;\n  border-color: #565a66 !important;\n  color: #ffffff !important;\n}\n\n.rr-action-btn.rr-cc-btn:not(.is-active-cc) {\n  color: #888d99 !important;\n}\n\n/* =========================================================\n   Top Bar Navigation & Filter Buttons\n   ========================================================= */\n\n.rr-top-bar {\n  position: fixed !important;\n  top: calc(16px + env(safe-area-inset-top, 0px)) !important;\n  left: 16px !important;\n  right: 16px !important;\n  display: flex !important;\n  justify-content: space-between !important;\n  align-items: center !important;\n  z-index: var(--rr-z-overlay) !important;\n  pointer-events: none !important;\n}\n\n.rr-exit-btn,\n.rr-sound-btn-top {\n  width: 44px !important;\n  height: 44px !important;\n  border-radius: 9999px !important;\n  background: #1c1d22 !important;\n  border: 1px solid #30323a !important;\n  color: #ffffff !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  cursor: pointer !important;\n  pointer-events: auto !important;\n  outline: none !important;\n  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;\n  transition: background 0.15s ease, transform 0.12s ease !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-exit-btn:hover,\n.rr-sound-btn-top:hover {\n  background: #282a32 !important;\n}\n\n.rr-exit-btn:active,\n.rr-sound-btn-top:active {\n  transform: scale(0.92) !important;\n}\n\n/* Muted (disabled): dimmed grey icon. Unmuted (enabled): plain white icon. */\n.rr-sound-btn-top.is-muted {\n  color: #888d99 !important;\n}\n\n.rr-top-controls {\n  display: flex !important;\n  align-items: center !important;\n  gap: 10px !important;\n  pointer-events: auto !important;\n}\n\n.rr-filter-btn-top {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 6px !important;\n  padding: 8px 14px !important;\n  border-radius: 9999px !important;\n  background: #1c1d22 !important;\n  border: 1px solid #30323a !important;\n  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;\n  color: #ffffff !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 12px !important;\n  font-weight: 700 !important;\n  letter-spacing: 0.2px !important;\n  cursor: pointer !important;\n  transition: all 0.15s ease !important;\n  user-select: none !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-filter-btn-top:hover {\n  background: #282a32 !important;\n}\n\n.rr-filter-btn-top.is-active {\n  background: #2c1a16 !important;\n  border-color: #ff4500 !important;\n  color: #ff6b35 !important;\n}\n\n.rr-filter-btn-top .rr-filter-icon {\n  display: inline-flex !important;\n  align-items: center !important;\n}\n\n/* By default, card containers are hidden when Reel Mode is inactive */\n.rr-text-card-container,\n.rr-link-card-container {\n  display: none !important;\n}\n\n/* When Reel Mode is active, display as full-bleed centered overlay */\nhtml.rr-active .rr-text-card-container {\n  display: flex !important;\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100% !important;\n  height: 100% !important;\n  align-items: center !important;\n  justify-content: center !important;\n  z-index: 15 !important;\n  overflow: hidden !important;\n  pointer-events: auto !important;\n  box-sizing: border-box !important;\n  padding: 16px !important;\n}\n\n@media (min-width: 769px) {\n  html.rr-active .rr-text-card-container {\n    padding: 32px !important;\n  }\n}\n\nhtml.rr-active .rr-text-card {\n  position: relative !important;\n  z-index: 2 !important;\n  width: 100% !important;\n  max-width: 480px !important;\n  max-height: calc(100dvh - 120px) !important;\n  background: #141518 !important;\n  border: 1px solid #28292e !important;\n  border-radius: 16px !important;\n  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6) !important;\n  overflow: hidden !important;\n  display: flex !important;\n  flex-direction: column !important;\n  cursor: default !important;\n  transition: border-color 0.15s ease !important;\n  padding: 20px !important;\n  gap: 12px !important;\n  margin: 0 auto !important;\n  box-sizing: border-box !important;\n  user-select: text !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-text-card:hover {\n  border-color: #383a42 !important;\n}\n\n.rr-text-card-header {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  gap: 8px !important;\n}\n\n.rr-text-pill {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 6px !important;\n  background: #202126 !important;\n  border: 1px solid #30323a !important;\n  border-radius: 9999px !important;\n  padding: 3px 9px !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  color: #9a9ca6 !important;\n  letter-spacing: 0.3px !important;\n  text-transform: uppercase !important;\n}\n\n.rr-text-open-btn {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 5px !important;\n  background: #202126 !important;\n  border: 1px solid #30323a !important;\n  border-radius: 9999px !important;\n  padding: 3px 10px !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 11px !important;\n  font-weight: 600 !important;\n  color: #c5c7d0 !important;\n  text-decoration: none !important;\n  cursor: pointer !important;\n  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease !important;\n}\n\n.rr-text-open-btn:hover {\n  background: #2c2e35 !important;\n  color: #ffffff !important;\n  border-color: #444752 !important;\n}\n\n.rr-text-card-title {\n  margin: 0 !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 17px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  line-height: 1.35 !important;\n  letter-spacing: -0.015em !important;\n}\n\n.rr-text-card-body {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 14px !important;\n  line-height: 1.65 !important;\n  color: #c5c7d0 !important;\n  overflow-y: auto !important;\n  max-height: calc(100dvh - 220px) !important;\n  padding-right: 6px !important;\n  scrollbar-width: thin !important;\n  scrollbar-color: #383a42 transparent !important;\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 10px !important;\n  overscroll-behavior: contain !important;\n  -webkit-overflow-scrolling: touch !important;\n  touch-action: pan-y !important;\n}\n\n.rr-text-card-body p {\n  margin: 0 !important;\n}\n\n/* =========================================================\n   External Web Link Card\n   ========================================================= */\n\nhtml.rr-active .rr-link-card-container {\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100% !important;\n  height: 100% !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  z-index: 15 !important;\n  overflow: hidden !important;\n  pointer-events: auto !important;\n  box-sizing: border-box !important;\n  padding: 16px !important;\n}\n\n@media (min-width: 769px) {\n  html.rr-active .rr-link-card-container {\n    padding: 32px !important;\n  }\n}\n\nhtml.rr-active .rr-link-card {\n  position: relative !important;\n  z-index: 2 !important;\n  width: 100% !important;\n  max-width: 440px !important;\n  background: #141518 !important;\n  border: 1px solid #28292e !important;\n  border-radius: 16px !important;\n  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6) !important;\n  overflow: hidden !important;\n  display: flex !important;\n  flex-direction: column !important;\n  cursor: pointer !important;\n  transition: transform 0.15s ease, border-color 0.15s ease !important;\n  padding: 16px !important;\n  gap: 12px !important;\n  margin: 0 auto !important;\n  box-sizing: border-box !important;\n  user-select: none !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-link-card:hover {\n  transform: translateY(-2px) !important;\n  border-color: #383a42 !important;\n}\n\n.rr-link-card:active {\n  transform: scale(0.98) !important;\n}\n\n.rr-link-card-thumb-wrap {\n  width: 100% !important;\n  height: 190px !important;\n  border-radius: 10px !important;\n  overflow: hidden !important;\n  position: relative !important;\n  background: #1c1d22 !important;\n}\n\n.rr-link-card-thumb {\n  width: 100% !important;\n  height: 100% !important;\n  object-fit: cover !important;\n  display: block !important;\n}\n\n.rr-link-card-body {\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 8px !important;\n}\n\n.rr-link-card-domain {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 6px !important;\n  background: #202126 !important;\n  border: 1px solid #30323a !important;\n  border-radius: 9999px !important;\n  padding: 3px 9px !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  color: #ff6b35 !important;\n  letter-spacing: 0.3px !important;\n  text-transform: lowercase !important;\n}\n\n.rr-link-card-title {\n  margin: 0 !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 15px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  line-height: 1.35 !important;\n  letter-spacing: -0.015em !important;\n  display: -webkit-box !important;\n  -webkit-line-clamp: 3 !important;\n  -webkit-box-orient: vertical !important;\n  overflow: hidden !important;\n}\n\n.rr-link-card-cta {\n  display: inline-flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  gap: 8px !important;\n  width: 100% !important;\n  padding: 10px 16px !important;\n  margin-top: 4px !important;\n  border-radius: 10px !important;\n  background: #ff4500 !important;\n  color: #ffffff !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 13px !important;\n  font-weight: 700 !important;\n  border: none !important;\n  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;\n  cursor: pointer !important;\n  transition: opacity 0.15s ease !important;\n}\n\n.rr-link-card-cta:hover {\n  opacity: 0.9 !important;\n}\n\n.rr-link-card-cta:active {\n  transform: scale(0.97) !important;\n}\n\n/* =========================================================\n   In-Reel Comments Drawer & Backdrop\n   ========================================================= */\n\n.rr-comments-backdrop {\n  position: fixed !important;\n  inset: 0 !important;\n  background: rgba(0, 0, 0, 0.65) !important;\n  z-index: 2147483646 !important;\n  backdrop-filter: blur(4px) !important;\n  -webkit-backdrop-filter: blur(4px) !important;\n  opacity: 0;\n  transition: opacity 0.2s ease !important;\n}\n\n.rr-comments-backdrop.is-visible {\n  opacity: 1 !important;\n}\n\n.rr-comments-drawer {\n  position: fixed !important;\n  bottom: 0 !important;\n  left: 0 !important;\n  right: 0 !important;\n  height: 80vh !important;\n  max-height: 85vh !important;\n  background: #141518 !important;\n  border-top: 1px solid rgba(255, 255, 255, 0.12) !important;\n  border-radius: 16px 16px 0 0 !important;\n  z-index: 2147483647 !important;\n  display: flex !important;\n  flex-direction: column !important;\n  overflow: hidden !important;\n  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.75) !important;\n  transform: translateY(100%) !important;\n  transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1) !important;\n}\n\n.rr-comments-drawer.is-open {\n  transform: translateY(0%) !important;\n}\n\n/* Desktop layout: slide-over panel on the right side */\n@media (min-width: 768px) {\n  .rr-comments-drawer {\n    top: 0 !important;\n    bottom: 0 !important;\n    right: 0 !important;\n    left: auto !important;\n    width: 480px !important;\n    height: 100vh !important;\n    max-height: 100vh !important;\n    border-radius: 16px 0 0 16px !important;\n    border-top: none !important;\n    border-left: 1px solid rgba(255, 255, 255, 0.12) !important;\n    transform: translateX(100%) !important;\n    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.75) !important;\n  }\n\n  .rr-comments-drawer.is-open {\n    transform: translateX(0%) !important;\n  }\n}\n\n.rr-drawer-header {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  padding: 12px 16px !important;\n  background: #181a1f !important;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;\n  gap: 12px !important;\n  flex-shrink: 0 !important;\n}\n\n.rr-drawer-title-group {\n  display: flex !important;\n  flex-direction: column !important;\n  min-width: 0 !important;\n  flex: 1 !important;\n}\n\n.rr-drawer-title {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 14px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  white-space: nowrap !important;\n  overflow: hidden !important;\n  text-overflow: ellipsis !important;\n}\n\n.rr-drawer-subtitle {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 12px !important;\n  color: #8b8d98 !important;\n  white-space: nowrap !important;\n  overflow: hidden !important;\n  text-overflow: ellipsis !important;\n}\n\n.rr-drawer-actions {\n  display: flex !important;\n  align-items: center !important;\n  gap: 8px !important;\n  flex-shrink: 0 !important;\n}\n\n.rr-drawer-btn {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  width: 36px !important;\n  height: 36px !important;\n  border-radius: 9999px !important;\n  background: rgba(255, 255, 255, 0.08) !important;\n  border: 1px solid rgba(255, 255, 255, 0.08) !important;\n  color: #d7dadc !important;\n  cursor: pointer !important;\n  text-decoration: none !important;\n  transition: background 0.15s ease, color 0.15s ease !important;\n}\n\n.rr-drawer-btn:hover {\n  background: rgba(255, 255, 255, 0.16) !important;\n  color: #ffffff !important;\n}\n\n.rr-drawer-btn svg {\n  width: 18px !important;\n  height: 18px !important;\n  stroke: currentColor !important;\n  fill: none !important;\n  stroke-width: 2 !important;\n}\n\n.rr-drawer-body {\n  position: relative !important;\n  flex: 1 !important;\n  display: flex !important;\n  flex-direction: column !important;\n  overflow: hidden !important;\n  background: #0e1113 !important;\n}\n\n.rr-drawer-iframe {\n  flex: 1 !important;\n  width: 100% !important;\n  height: 100% !important;\n  border: none !important;\n  background: #0e1113 !important;\n  color-scheme: dark !important;\n}\n\n.rr-drawer-spinner {\n  position: absolute !important;\n  inset: 0 !important;\n  display: flex !important;\n  flex-direction: column !important;\n  align-items: center !important;\n  justify-content: center !important;\n  gap: 12px !important;\n  background: #0e1113 !important;\n  color: #8b8d98 !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 13px !important;\n  z-index: 5 !important;\n  transition: opacity 0.2s ease !important;\n}\n\n.rr-drawer-spinner.is-hidden {\n  opacity: 0 !important;\n  pointer-events: none !important;\n}\n\n.rr-spinner-circle {\n  width: 28px !important;\n  height: 28px !important;\n  border: 2.5px solid rgba(255, 255, 255, 0.12) !important;\n  border-top-color: #ff4500 !important;\n  border-radius: 50% !important;\n  animation: rr-spin 0.75s linear infinite !important;\n}\n\n@keyframes rr-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n");
-	var f = 0;
-	Array.isArray;
-	function u(e, t, n, o, i, u) {
-		t || (t = {});
-		var a, c, p = t;
-		if ("ref" in p) for (c in p = {}, t) "ref" == c ? a = t[c] : p[c] = t[c];
-		var l$1 = {
-			type: e,
-			props: p,
-			key: n,
-			ref: a,
-			__k: null,
-			__: null,
-			__b: 0,
-			__e: null,
-			__c: null,
-			constructor: void 0,
-			__v: --f,
-			__i: -1,
-			__u: 0,
-			__source: i,
-			__self: u
+	function createFabButton(onClick) {
+		const btn = document.createElement("button");
+		btn.type = "button";
+		btn.id = "rr-fab";
+		btn.className = "rr-fab";
+		btn.setAttribute("aria-label", "Open Reddit Reel Mode");
+		btn.title = "Open Reddit Reel Mode";
+		btn.innerHTML = `
+    <svg
+      class="rr-fab-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <rect x="2.5" y="2.5" width="19" height="19" rx="4.5"></rect>
+      <path d="M2.5 8.5h19"></path>
+      <path d="m6.5 2.5 3 6"></path>
+      <path d="m11.5 2.5 3 6"></path>
+      <path d="m16.5 2.5 3 6"></path>
+      <polygon points="10 11.5 15.5 14.75 10 18 10 11.5" fill="currentColor" stroke="none"></polygon>
+    </svg>
+  `;
+		btn.onclick = (e) => {
+			e.stopPropagation();
+			onClick();
 		};
-		if ("function" == typeof e && (a = e.defaultProps)) for (c in a) void 0 === p[c] && (p[c] = a[c]);
-		return l.vnode && l.vnode(l$1), l$1;
-	}
-	function FabButton({ onClick }) {
-		return u("button", {
-			type: "button",
-			id: "rr-fab",
-			class: "rr-fab",
-			onClick,
-			"aria-label": "Open Reddit Reel Mode",
-			title: "Open Reddit Reel Mode",
-			children: u("svg", {
-				class: "rr-fab-icon",
-				viewBox: "0 0 24 24",
-				fill: "none",
-				stroke: "currentColor",
-				strokeWidth: 2,
-				strokeLinecap: "round",
-				strokeLinejoin: "round",
-				children: [
-					u("rect", {
-						x: "2.5",
-						y: "2.5",
-						width: "19",
-						height: "19",
-						rx: "4.5"
-					}),
-					u("path", { d: "M2.5 8.5h19" }),
-					u("path", { d: "m6.5 2.5 3 6" }),
-					u("path", { d: "m11.5 2.5 3 6" }),
-					u("path", { d: "m16.5 2.5 3 6" }),
-					u("polygon", {
-						points: "10 11.5 15.5 14.75 10 18 10 11.5",
-						fill: "currentColor",
-						stroke: "none"
-					})
-				]
-			})
-		});
+		return btn;
 	}
 	function showPlayPulse(isPlaying) {
 		const existing = document.querySelector(".rr-play-pulse");
@@ -3248,9 +2952,9 @@
 		if (!fabContainer) {
 			fabContainer = document.createElement("div");
 			fabContainer.id = fabContainerId;
+			fabContainer.appendChild(createFabButton(() => toggleReelMode()));
 			document.body.appendChild(fabContainer);
 		}
-		R(u(FabButton, { onClick: () => toggleReelMode() }), fabContainer);
 		const updateRoute = () => {
 			const isFeed = isFeedRoute();
 			if (!isFeed && isReelModeActive) toggleReelMode(false);

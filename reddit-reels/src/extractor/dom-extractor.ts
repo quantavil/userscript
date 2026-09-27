@@ -61,7 +61,11 @@ export function extractPostId(element: HTMLElement, permalink: string): string {
   if (element.dataset.reelPostId) {
     return element.dataset.reelPostId;
   }
-  const generatedId = `t3_gen_${Math.random().toString(36).slice(2, 10)}`;
+  const rand =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().replace(/-/g, '').slice(0, 10)
+      : Math.random().toString(36).slice(2, 10);
+  const generatedId = `t3_gen_${rand}`;
   element.dataset.reelPostId = generatedId;
   return generatedId;
 }

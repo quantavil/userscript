@@ -1,28 +1,29 @@
 {
   "name": "reddit-reels",
   "version": "1.4.0",
-  "description": "Swipe Reddit feeds like reels: unmuted playback, galleries, and native voting.",
   "author": "quantavil",
-  "license": "MIT",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "test:unit": "bun test tests/unit",
-    "test:e2e": "playwright test",
-    "test": "bun run test:unit && bun run test:e2e"
-  },
-  "dependencies": {
-    "preact": "^10.29.8"
-  },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.3",
+    "@types/tampermonkey": "^5.5.0",
     "happy-dom": "^20.14.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "vite-plugin-monkey": "^8.1.1"
-  }
+  },
+  "description": "Swipe Reddit feeds like reels: unmuted playback, galleries, and native voting.",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test:unit": "bun test tests/unit",
+    "test:e2e": "playwright test",
+    "test": "bun run test:unit && bun run test:e2e"
+  },
+  "type": "module"
 }

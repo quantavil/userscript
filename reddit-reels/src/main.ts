@@ -1,8 +1,7 @@
-import { render } from 'preact';
 import './style.css';
 import { audioManager, unlockAudio, listenForRedGifsReady } from './media';
 import {
-  FabButton,
+  createFabButton,
   createTopBar,
   syncTopBarState,
   closeCommentsDrawer,
@@ -172,10 +171,9 @@ function init(): void {
   if (!fabContainer) {
     fabContainer = document.createElement('div');
     fabContainer.id = fabContainerId;
+    fabContainer.appendChild(createFabButton(() => toggleReelMode()));
     document.body.appendChild(fabContainer);
   }
-
-  render(<FabButton onClick={() => toggleReelMode()} />, fabContainer);
 
   const updateRoute = () => {
     const isFeed = isFeedRoute();

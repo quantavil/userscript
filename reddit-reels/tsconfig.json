@@ -14,9 +14,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
-    "skipLibCheck": true,
-    "jsx": "react-jsx",
-    "jsxImportSource": "preact"
+    "skipLibCheck": true
   },
   "include": ["src"]
 }

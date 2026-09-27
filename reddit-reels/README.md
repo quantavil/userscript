@@ -95,10 +95,11 @@ helpers should stay small and focused (< 150 lines where practical).
 reddit-reels/
 ├── LICENSE                     # MIT License
 ├── README.md                   # Project documentation
+├── biome.json                  # Biome linting and formatting configuration
 ├── package.json                # Dependencies & scripts
 ├── vite.config.ts              # Monkey userscript builder configuration
 ├── src/
-│   ├── main.tsx                # Bootstrap, initialization & lifecycle orchestration
+│   ├── main.ts                 # Bootstrap, initialization & lifecycle orchestration (Zero-dependency vanilla DOM)
 │   ├── utils.ts                # Score formatting & shared utility helpers
 │   ├── cards/                  # Content card components
 │   │   ├── text-card.ts        # Editorial discussion text card
@@ -123,6 +124,7 @@ reddit-reels/
 │   │   └── types.ts            # ResolvedMedia interface
 │   ├── styles/                 # Domain-decomposed CSS
 │   │   ├── base.css            # CSS variables & floating action button
+│   │   ├── comments.css        # Slide-up comments drawer styling
 │   │   ├── feed.css            # Snapping container & post media layout
 │   │   ├── cards.css           # Text discussion & link preview styling
 │   │   ├── gallery.css         # Multi-image horizontal carousel
@@ -130,6 +132,7 @@ reddit-reels/
 │   │   ├── top-bar.css         # Exit button, video filter & sound buttons
 │   │   └── index.css           # Bundled stylesheet entry
 │   └── ui/                     # UI components & interactive overlays
+│       ├── FabButton.ts        # Floating Action Button launcher (Vanilla DOM)
 │       ├── comments-drawer.ts  # Inline slide-up comments sheet
 │       ├── overlay.ts          # Slide action rail, vote pill, and author badges
 │       ├── top-bar.ts          # Top navigation bar & video filter toggle
