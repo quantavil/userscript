@@ -5,6 +5,8 @@ export interface VideoSource {
   mp4: string[];
   /** HLS playlist (Reddit v.redd.it), used when no mp4 exists. */
   hls: string;
+  /** Silent looping clip (Reddit "gif" posts are served as mp4). */
+  gif?: boolean;
   poster: string;
   captions: string;
   width: number;
@@ -30,6 +32,8 @@ export interface Post {
   embedUrl?: string;
   images?: string[];
   text?: string;
+  /** Sanitized HTML of a text post's body (paragraphs, lists, links, quotes). */
+  html?: string;
   linkUrl?: string;
   thumbnail?: string;
 }

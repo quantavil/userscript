@@ -19,10 +19,13 @@ The reel is its **own full-screen view** (shadow DOM, own CSS), not a restyle of
 | Posts | Read from Reddit's rendered `<shreddit-post>` attributes (title, author, score, media). |
 | More posts | Same HTML endpoint Reddit's feed uses (`faceplate-partial[slot=load-after]`, e.g. `/svc/shreddit/community-more-posts/…?after=`). New pages are inserted into Reddit's real feed, so they are live posts. No `.json` API, no rate-limit traps. |
 | Reddit video | Direct `packaged-media.redd.it` mp4 (has audio) when Reddit provides one (re-read when the slide opens, since Reddit fills it in late); otherwise the HLS stream through the full `hls.js` build (Reddit keeps audio in a separate playlist, which the light build can't play). Native HLS is only a last resort: Chrome claims support but fails Reddit's streams. If a source fails, the next one is tried. |
+| Reddit "gifs" | Served as a silent mp4 (`preview.redd.it/…gif?format=mp4`), played directly. (Before 3.2 they went to the HLS player and failed, e.g. all of r/gifs.) |
 | RedGifs | RedGifs API → mp4 → blob. Requests go through `GM_xmlhttpRequest` because Reddit's CSP blocks redgifs hosts and RedGifs blocks Reddit referrers. If that fails, the slide falls back to RedGifs' own player iframe. |
 | YouTube / Streamable | Their embed player, mounted only while the slide is on screen. |
 | Audio | **One shared `<video>`** moved into the active slide. Only one stream can exist, so no audio bleed. Once your first tap has played it, mobile browsers keep allowing sound on later slides. |
 | Voting | Clicks Reddit's own vote buttons inside the post, so auth and CSRF stay Reddit's. Logged out → a "log in" toast. |
+| Text posts | Full-height story: the title is sized by length, the body keeps Reddit's formatting (paragraphs, lists, quotes, links, spoilers) through an allow-list sanitizer. Long bodies fade out; **Read more** (or tapping the text) opens a scrollable reader sheet. Back or `Esc` closes it. The body never scrolls inside the slide, so a swipe always goes to the next post. |
+| App nags | Mobile Reddit points post, user and subreddit links at `applink.reddit.com`, an App Link that launches the Reddit app. They are rewritten to `www.reddit.com` (tracking params dropped), and the header **Open App** button is hidden. |
 | Comments | Opens Reddit's post page (new Reddit) in a new tab, so the reel keeps its place. |
 | Memory | Only the active slide and its neighbours hold images/iframes; far slides are emptied. |
 | Swiping | The slide switches only after the scroll settles, and live UI (seek bar, spinner, pulses) sits in a fixed layer above the track. Changing layout inside a scroll-snap track mid-swipe makes browsers snap back, which felt like "swipe twice". |
@@ -34,6 +37,7 @@ The reel is its **own full-screen view** (shadow DOM, own CSS), not a restyle of
 | Swipe up / down, `J` `K`, `↓` `↑` | Next / previous |
 | Tap | Play / pause (first tap after a blocked autoplay turns sound on; a ▶ shows when the browser blocked autoplay entirely) |
 | Double tap | Upvote |
+| Tap a long text post / **Read more** | Reader sheet (Back / `Esc` / ✕ closes it) |
 | Drag the bottom bar | Seek |
 | `←` `→` | Gallery image, or seek ±5 s |
 | Space | Play / pause |
@@ -65,6 +69,7 @@ src/
 ├── core/route.ts         # Feed-route matcher + client-side navigation watcher
 ├── feed/
 │   ├── extract.ts        # <shreddit-post> → Post (video/redgifs/embed/gallery/image/text/link)
+│   ├── sanitize.ts       # Allow-list copy of a text post's markdown HTML
 │   ├── source.ts         # Posts in the page + next pages via Reddit's load-after partial
 │   ├── vote.ts           # Native vote buttons
 │   └── types.ts
@@ -76,11 +81,13 @@ src/
 │   ├── slide.ts          # Slide shell + mount/unmount of heavy content
 │   ├── reel.css          # Shadow-root styles (mobile first, phone column on desktop)
 │   └── icons.ts
+├── page/declutter.ts     # App links → www.reddit.com, hide "Open App"
 ├── ui/fab.ts             # Floating Reels button (own shadow root)
 └── utils.ts
 tests/
 ├── fixtures/feed.html    # Real Reddit feed markup (video+mp4, video HLS-only, gallery, image, text, link)
-├── fixtures/server.ts    # Serves it + build + a fake load-after endpoint
+├── fixtures/extras.html  # Real "gif" post (r/gifs) and formatted text post (r/tifu)
+├── fixtures/server.ts    # Serves them + build + a fake load-after endpoint
 ├── unit/                 # Extractor, feed paging, routes, RedGifs/API retry, source choice
 └── reel.spec.ts          # Playwright (Pixel 7): open, swipe, unmount, paging, Back, comments tab, keys
 ```
@@ -99,7 +106,8 @@ The Playwright Chromium has no H.264 decoder, so e2e tests check sources, slides
 ## Known limits
 
 - RedGifs tokens are tied to the requesting network. Very flaky networks can make lookups fail; the slide then uses RedGifs' iframe player.
-- Logged-out Reddit hides NSFW feeds and asks to log in for votes.
+- Logged-out Reddit hides NSFW feeds and asks to log in for votes. The script does not bypass Reddit's age/NSFW gates: confirm once with Reddit's own "Yes, I'm over 18" button, or log in with NSFW enabled in your Reddit settings.
+- Text bodies come from the feed's preview markup; very long posts may be cut where Reddit cuts the preview. **Comments** opens the full post.
 - The reel reads what Reddit renders; if Reddit renames `<shreddit-post>` attributes, `feed/extract.ts` is the one place to update.
 
 ## License

@@ -1,5 +1,5 @@
 /**
- * Serves real Reddit feed markup (tests/fixtures/feed.html) at a feed URL, plus
+ * Serves real Reddit feed markup (tests/fixtures/feed.html; extras.html at /r/extras/) at a feed URL, plus
  * hls.js and the built userscript, so the reel can be tested without reddit.com.
  */
 import { existsSync, readFileSync } from 'node:fs';
@@ -7,12 +7,15 @@ import { join } from 'node:path';
 
 const ROOT = join(import.meta.dir, '../..');
 const feed = readFileSync(join(import.meta.dir, 'feed.html'), 'utf8');
-const page = `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+const extras = readFileSync(join(import.meta.dir, 'extras.html'), 'utf8');
+const shell = (body: string) => `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>/* stand-in for Reddit's own CSS: keep media inside the viewport */
 body{margin:0;font-family:sans-serif} img,video,svg,iframe{max-width:100%;height:auto} svg{width:16px;height:16px}
 article{display:block;overflow:hidden;border-bottom:1px solid #ccc;padding:8px}</style></head>
-<body><header id="reddit-header">reddit</header><main>${feed}</main>
+<body><header id="reddit-header">reddit</header><main>${body}</main>
 <script src="/hls.min.js"></script><script src="/reddit-reels.user.js"></script></body></html>`;
+const page = shell(feed);
+const extrasPage = shell(extras);
 
 Bun.serve({
   port: 3000,
@@ -33,6 +36,8 @@ Bun.serve({
       return new Response(`<!DOCTYPE html><html><body>${posts}${next}</body></html>`, { headers: { 'content-type': 'text/html' } });
     }
     if (pathname.includes('/comments/')) return new Response('<!DOCTYPE html><html><body><h1>Post page</h1></body></html>', { headers: { 'content-type': 'text/html' } });
+    if (pathname.startsWith('/r/extras/'))
+      return new Response(extrasPage, { headers: { 'content-type': 'text/html; charset=utf-8' } });
     return new Response(page, { headers: { 'content-type': 'text/html; charset=utf-8' } });
   },
 });

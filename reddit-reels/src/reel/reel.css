@@ -184,66 +184,152 @@ a:focus-visible {
   pointer-events: none;
 }
 
-/* Text / link cards */
+/* ---------- Text / link posts: full-height story ----------
+   No inner scrolling (it would swallow the swipe); long bodies fade out and
+   "Read more" opens the reader sheet, which lives outside the track. */
+.slide.kind-text,
+.slide.kind-link {
+  background:
+    radial-gradient(120% 70% at 0% 0%, hsl(var(--hue, 16) 60% 24% / 0.9) 0%, transparent 62%),
+    radial-gradient(90% 60% at 100% 100%, hsl(calc(var(--hue, 16) + 40) 50% 18% / 0.8) 0%, transparent 60%), #08090a;
+}
+
 .card {
   position: absolute;
-  /* Symmetric gutters so the card is centered; the rail floats over the right gutter. */
-  inset: calc(70px + env(safe-area-inset-top, 0px)) 64px calc(150px + env(safe-area-inset-bottom, 0px));
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  left: 20px;
+  /* The action rail floats on the right. */
+  right: 72px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  align-items: center;
+}
+
+/* A title-only post sits mid-screen, clear of the rail: center it on the screen. */
+.card.solo {
+  right: 20px;
 }
 
 .card-inner {
-  width: 100%;
-  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   max-height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 20px;
-  border-radius: 16px;
-  background: #16171b;
-  border: 1px solid #2a2c33;
-  user-select: text;
-  -webkit-user-select: text;
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.card-inner.solo {
+  text-align: center;
 }
 
 .card h2 {
-  margin: 0 0 12px;
-  font-size: 20px;
-  line-height: 1.3;
-}
-
-.card p {
-  margin: 0;
-  color: #d7dadc;
-  white-space: pre-wrap;
+  margin: 0 0 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.22;
   word-break: break-word;
+  text-wrap: balance;
+  flex: 0 0 auto;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.35);
 }
 
-.card img {
+.card h2.t-xl {
+  font-size: 30px;
+}
+
+.card h2.t-l {
+  font-size: 24px;
+}
+
+.card h2.t-m {
+  font-size: 20px;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card .body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  font-size: 16px;
+  line-height: 1.55;
+  color: #e4e6e9;
+}
+
+.card.overflowing .body {
+  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent);
+  mask-image: linear-gradient(to bottom, #000 72%, transparent);
+}
+
+.card .more {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 12px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 14px;
+  font-weight: 700;
+  /* Space is always reserved; showing it must not move anything. */
+  visibility: hidden;
+}
+
+.card.overflowing .more {
+  visibility: visible;
+}
+
+.card-inner.solo .more {
+  display: none;
+}
+
+/* Link posts */
+.card .thumb {
   width: 100%;
   /* Fixed box: an image finishing its load must not change layout inside the snap track. */
   aspect-ratio: 16 / 9;
-  height: auto;
-  max-height: 40vh;
+  max-height: 34vh;
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  flex: 0 0 auto;
+}
+
+.card .thumb img {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  border-radius: 10px;
-  margin-bottom: 12px;
+  display: block;
 }
 
 .card .domain {
-  color: #9aa0a6;
-  font-size: 13px;
-  margin-bottom: 14px;
-}
-
-.card a.cta {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 16px;
+  color: #b9bec6;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.card .domain svg {
+  width: 14px;
+  height: 14px;
+}
+
+.card a.cta {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 11px 18px;
   border-radius: 999px;
   background: #ff4500;
   color: #fff;
@@ -254,6 +340,187 @@ a:focus-visible {
 .card a.cta svg {
   width: 18px;
   height: 18px;
+}
+
+/* Rendered markdown (story preview and reader) */
+.md p {
+  margin: 0 0 0.75em;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md h3,
+.md h4,
+.md h5 {
+  margin: 0.9em 0 0.4em;
+  font-size: 1.1em;
+}
+
+.md ul,
+.md ol {
+  margin: 0 0 0.75em;
+  padding-left: 1.3em;
+}
+
+.md li {
+  margin: 0.2em 0;
+}
+
+.md blockquote {
+  margin: 0 0 0.75em;
+  padding-left: 12px;
+  border-left: 3px solid rgba(255, 255, 255, 0.3);
+  color: #b9bec6;
+}
+
+.md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.md pre {
+  margin: 0 0 0.75em;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.md pre code {
+  padding: 0;
+  background: none;
+}
+
+.md hr {
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  margin: 1em 0;
+}
+
+.md a {
+  color: #ff8b60;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-word;
+}
+
+.md .spoiler {
+  border-radius: 4px;
+  background: #4a4d55;
+  color: transparent;
+  cursor: pointer;
+}
+
+.md .spoiler.shown {
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+}
+
+/* ---------- Reader sheet (outside the track) ---------- */
+.reader {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(120% 50% at 0% 0%, hsl(var(--hue, 16) 55% 18% / 0.9) 0%, transparent 60%), #0b0c0e;
+  transform: translateY(100%);
+  visibility: hidden;
+  transition:
+    transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s linear 0.26s;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.reader.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.reader-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 8px 8px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  color: #b9bec6;
+}
+
+.reader-bar .who {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-bar .who b {
+  color: #fff;
+}
+
+.reader-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 18px 20px 28px;
+}
+
+.reader-scroll > * {
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.reader h2 {
+  margin: 0 auto 16px;
+  font-size: 24px;
+  line-height: 1.25;
+  font-weight: 800;
+  word-break: break-word;
+}
+
+.reader .md {
+  font-size: 17px;
+  line-height: 1.6;
+  color: #e4e6e9;
+}
+
+.reader-actions {
+  display: flex;
+  gap: 10px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.reader-actions button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font-weight: 700;
+}
+
+.reader-actions button.primary {
+  background: #ff4500;
+}
+
+.reader-actions svg {
+  width: 20px;
+  height: 20px;
 }
 
 /* ---------- Chrome ---------- */
@@ -595,7 +862,7 @@ a:focus-visible {
   height: 18px;
 }
 
-.reel.autoplay-muted.has-video .unmute-hint {
+.reel.autoplay-muted.has-video:not(.gif) .unmute-hint {
   display: inline-flex;
 }
 
@@ -664,8 +931,8 @@ a:focus-visible {
   }
 
   .card {
-    left: 16px;
-    right: 16px;
+    left: 24px;
+    right: 24px;
   }
 }
 

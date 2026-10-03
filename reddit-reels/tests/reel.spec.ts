@@ -10,6 +10,13 @@ async function openReel(page: Page) {
   await expect(inReel(page, '.slide.active')).toBeVisible();
 }
 
+/** The extras fixture has no Reddit CSS, so its text can overlap the FAB: click it directly. */
+async function openReelAt(page: Page, url: string) {
+  await page.goto(url);
+  await page.locator('#rr-fab-host button').dispatchEvent('click');
+  await expect(inReel(page, '.slide.active')).toBeVisible();
+}
+
 async function swipe(page: Page, slides: number) {
   await page.evaluate((n) => {
     const t = document.querySelector('#rr-reel-host')!.shadowRoot!.querySelector('.track') as HTMLElement;
@@ -135,4 +142,59 @@ test('link and text posts render as cards with safe links', async ({ page }) => 
   await expect(link).toHaveClass(/active/);
   await expect(link.locator('a.cta')).toHaveAttribute('href', /^https:\/\//);
   await expect(link.locator('a.cta')).toHaveAttribute('rel', /noopener/);
+});
+
+test('mobile app links in the page are rewritten to www.reddit.com', async ({ page }) => {
+  await page.goto(FEED);
+  await expect(page.locator('#rr-fab-host button')).toBeVisible();
+  expect(await page.locator('a[href*="applink.reddit.com"]').count()).toBe(0);
+  const href = await page.locator('shreddit-post a[slot="full-post-link"]').first().getAttribute('href');
+  expect(href).toMatch(/^https:\/\/www\.reddit\.com\/r\/[^?]+\/comments\//);
+  expect(href).not.toContain('app_first_navigation');
+});
+
+test('"gif" posts load their mp4 directly (no hls.js)', async ({ page }) => {
+  await openReelAt(page, '/r/extras/');
+  await expect(inReel(page, '.reel')).toHaveClass(/gif/);
+  const src = await page.evaluate(
+    () => (document.querySelector('#rr-reel-host')!.shadowRoot!.querySelector('.slide.active video') as HTMLVideoElement).src,
+  );
+  expect(src).toContain('format=mp4');
+});
+
+test('long text posts fade out; Read more opens a reader that Back and Esc close', async ({ page }) => {
+  await openReelAt(page, '/r/extras/');
+  await swipe(page, 1);
+  const slide = inReel(page, '.slide[data-index="1"]');
+  await expect(slide).toHaveClass(/active/);
+  await expect(slide.locator('.card')).toHaveClass(/overflowing/);
+  await expect(slide.locator('.card .body strong').first()).toBeVisible();
+
+  const reader = inReel(page, '.reader');
+  await slide.locator('.more').click();
+  await expect(reader).toHaveClass(/open/);
+  await expect(reader.locator('.md strong').first()).toBeVisible();
+  expect(await page.evaluate(() => history.state?.rrReader)).toBe(true);
+
+  // Phone Back: closes the reader only.
+  await page.goBack();
+  await expect(reader).not.toHaveClass(/open/);
+  await expect(inReel(page, '.slide.active')).toBeVisible();
+  expect(await page.evaluate(() => history.state?.rrReel)).toBe(true);
+
+  // Esc: closes the reader only.
+  await slide.locator('.more').click();
+  await expect(reader).toHaveClass(/open/);
+  await page.keyboard.press('Escape');
+  await expect(reader).not.toHaveClass(/open/);
+  await expect(inReel(page, '.slide.active')).toBeVisible();
+
+  // Closing the whole reel with the reader open unwinds both history entries.
+  await slide.locator('.more').click();
+  await expect(reader).toHaveClass(/open/);
+  await page.evaluate(() => {
+    (document.querySelector('#rr-reel-host')!.shadowRoot!.querySelector('[data-action="close"]') as HTMLElement).click();
+  });
+  await expect(reel(page)).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => !!history.state?.rrReel || !!history.state?.rrReader)).toBe(false);
 });

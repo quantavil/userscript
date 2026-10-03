@@ -57,11 +57,18 @@ export class Reel {
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private votes = new Map<string, 1 | 0 | -1>();
+  private readerEl!: HTMLElement;
+  private readerPost: Post | null = null;
 
   constructor(private opts: ReelOptions) {
     this.host = document.createElement('div');
     this.host.id = 'rr-reel-host';
     this.shadow = this.host.attachShadow({ mode: 'open' });
+  }
+
+  /** True while the reader sheet owns a history entry (closing the reel must pop it too). */
+  get readerInHistory(): boolean {
+    return !!this.readerPost && !!history.state?.rrReader;
   }
 
   get activePost(): Post | null {
@@ -90,6 +97,16 @@ export class Reel {
         <span class="feed-name"></span>
         <button type="button" class="icon-btn" data-action="sound" aria-label="Mute"></button>
       </div>
+      <div class="reader" role="dialog" aria-label="Post" aria-hidden="true">
+        <div class="reader-bar">
+          <span class="who"></span>
+          <button type="button" class="icon-btn" data-action="reader-close" aria-label="Close post">${ICONS.close}</button>
+        </div>
+        <div class="reader-scroll"><h2></h2><div class="md"></div></div>
+        <div class="reader-actions">
+          <button type="button" data-action="reader-comments" class="primary">${ICONS.comments}<span>Comments</span></button>
+        </div>
+      </div>
       <div class="toast" role="status" aria-live="polite"></div>
     `;
     this.shadow.append(style, this.el);
@@ -104,6 +121,7 @@ export class Reel {
     this.errorEl = q('.error');
     this.toastEl = q('.toast');
     this.soundBtn = q('[data-action="sound"]');
+    this.readerEl = q('.reader');
     q('.feed-name').textContent = this.opts.feedName;
     document.documentElement.appendChild(this.host);
 
@@ -205,11 +223,13 @@ export class Reel {
 
     const video = isVideoKind(post);
     this.el.classList.toggle('has-video', video);
+    this.el.classList.toggle('gif', !!post.video?.gif);
     this.updateSeek(true);
     if (post.kind === 'video' && post.el?.isConnected) {
       // Reddit fills in the direct mp4 (packaged-media-json) a while after render; re-read it.
       const fresh = extractPost(post.el);
       if (fresh?.video) post.video = fresh.video;
+      this.el.classList.toggle('gif', !!post.video?.gif);
     }
     if (video) {
       // Move the one shared <video> into this slide, then load it.
@@ -236,7 +256,10 @@ export class Reel {
 
   private go(delta: number): void {
     const next = Math.max(0, Math.min(this.slides.length - 1, this.currentIndex() + delta));
-    this.track.scrollTo({ top: next * this.track.clientHeight, behavior: 'smooth' });
+    this.track.scrollTo({
+      top: next * this.track.clientHeight,
+      behavior: 'smooth',
+    });
   }
 
   // ---------- HUD state (outside the scroll track) ----------
@@ -255,8 +278,17 @@ export class Reel {
   private wireEvents(): void {
     this.el.addEventListener('click', (e) => this.onClick(e as MouseEvent));
 
-    this.track.addEventListener('scroll', () => this.onScroll(), { passive: true });
+    this.track.addEventListener('scroll', () => this.onScroll(), {
+      passive: true,
+    });
     this.track.addEventListener('scrollend', () => this.settle());
+
+    // Phone Back closes the reader sheet first.
+    const onPop = () => {
+      if (this.readerPost && !history.state?.rrReader) this.closeReader(true);
+    };
+    window.addEventListener('popstate', onPop);
+    this.cleanup.push(() => window.removeEventListener('popstate', onPop));
 
     const onKey = (e: KeyboardEvent) => this.onKey(e);
     window.addEventListener('keydown', onKey, true);
@@ -269,7 +301,7 @@ export class Reel {
         if (ev === 'blocked') this.setState({ loading: false, blocked: true });
         if (ev === 'error') this.onPlayerError();
         if (ev === 'muted' || ev === 'autoplay-muted') this.syncSound();
-      })
+      }),
     );
 
     const v = this.player.video;
@@ -292,7 +324,19 @@ export class Reel {
       this.runAction(btn.dataset.action || '', btn);
       return;
     }
-    if (target.closest?.('a, .card-inner, .seek, .gallery .count, .top')) return;
+    const spoiler = target.closest?.('.spoiler');
+    if (spoiler) {
+      spoiler.classList.add('shown');
+      return;
+    }
+    if (target.closest?.('.reader')) return;
+    // Tapping a cut-off text post opens the reader.
+    const card = target.closest?.('.card');
+    if (card && !target.closest('a')) {
+      if (card.classList.contains('overflowing') && this.activePost) this.openReader(this.activePost);
+      return;
+    }
+    if (target.closest?.('a, .seek, .gallery .count, .top')) return;
     if (target.closest?.('.title')) {
       target.closest('.title')?.classList.toggle('open');
       return;
@@ -348,6 +392,15 @@ export class Reel {
       case 'comments':
         if (post) this.opts.onOpenComments(post);
         break;
+      case 'read':
+        if (post) this.openReader(post);
+        break;
+      case 'reader-close':
+        this.closeReader(false);
+        break;
+      case 'reader-comments':
+        if (this.readerPost) this.opts.onOpenComments(this.readerPost);
+        break;
       case 'captions': {
         const on = this.player.toggleCaptions();
         btn.classList.toggle('on', on);
@@ -365,6 +418,15 @@ export class Reel {
     const t = e.composedPath()[0] as HTMLElement;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     const k = e.key;
+    if (this.readerPost) {
+      // The reader scrolls natively; only Esc is ours.
+      if (k === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeReader(false);
+      }
+      return;
+    }
     let handled = true;
     if (k === 'ArrowDown' || k === 'j' || k === 'J' || k === 'PageDown') this.go(1);
     else if (k === 'ArrowUp' || k === 'k' || k === 'K' || k === 'PageUp') this.go(-1);
@@ -377,7 +439,11 @@ export class Reel {
     } else if (k === 'Escape') this.opts.onClose(this.activePost);
     else if (k === 'ArrowRight' || k === 'ArrowLeft') {
       const strip = this.slides[this.active]?.media.querySelector<HTMLElement>('.gallery');
-      if (strip) strip.scrollBy({ left: (k === 'ArrowRight' ? 1 : -1) * strip.clientWidth, behavior: 'smooth' });
+      if (strip)
+        strip.scrollBy({
+          left: (k === 'ArrowRight' ? 1 : -1) * strip.clientWidth,
+          behavior: 'smooth',
+        });
       else if (this.activePost && isVideoKind(this.activePost)) {
         this.player.video.currentTime += k === 'ArrowRight' ? 5 : -5;
       }
@@ -386,6 +452,39 @@ export class Reel {
       e.preventDefault();
       e.stopPropagation();
     }
+  }
+
+  // ---------- reader sheet (outside the track) ----------
+
+  private openReader(post: Post): void {
+    if (post.kind !== 'text') return;
+    this.readerPost = post;
+    const r = this.readerEl;
+    r.style.setProperty('--hue', this.slides[this.active]?.root.style.getPropertyValue('--hue') || '16');
+    const who = r.querySelector('.who') as HTMLElement;
+    who.innerHTML = `<b>${escapeHtml(post.subreddit)}</b>${post.author ? ` · u/${escapeHtml(post.author)}` : ''}`;
+    (r.querySelector('.reader-scroll h2') as HTMLElement).textContent = post.title;
+    const md = r.querySelector('.reader-scroll .md') as HTMLElement;
+    // post.html comes from our allow-list sanitizer.
+    if (post.html) md.innerHTML = post.html;
+    else md.textContent = post.text || '';
+    (r.querySelector('.reader-scroll') as HTMLElement).scrollTop = 0;
+    r.classList.add('open');
+    r.setAttribute('aria-hidden', 'false');
+    if (!history.state?.rrReader) history.pushState({ ...(history.state || {}), rrReader: true }, '');
+    (r.querySelector('[data-action="reader-close"]') as HTMLElement).focus({
+      preventScroll: true,
+    });
+  }
+
+  /** fromHistory: Back already popped the reader's entry. */
+  private closeReader(fromHistory: boolean): void {
+    if (!this.readerPost) return;
+    this.readerPost = null;
+    this.readerEl.classList.remove('open');
+    this.readerEl.setAttribute('aria-hidden', 'true');
+    if (!fromHistory && history.state?.rrReader) history.back();
+    this.track.focus({ preventScroll: true });
   }
 
   // ---------- voting ----------

@@ -40,6 +40,7 @@ export function buildSlide(post: Post, index: number): SlideRefs {
   root.dataset.index = String(index);
   root.dataset.id = post.id;
   if (post.video && post.video.height / Math.max(1, post.video.width) >= 1.5) root.classList.add('portrait');
+  if (post.kind === 'text' || post.kind === 'link') root.style.setProperty('--hue', String(hueOf(post.subreddit)));
 
   const sub = escapeHtml(post.subreddit);
   const subHref = post.subreddit ? `${REDDIT}/${encodeURI(post.subreddit)}/` : '';
@@ -142,7 +143,9 @@ export function mountSlide(refs: SlideRefs, post: Post, active: boolean): void {
   } else if (post.kind === 'video' && post.video?.poster) {
     refs.media.appendChild(img(post.video.poster, 'main poster'));
   } else if (post.kind === 'text' || post.kind === 'link') {
-    refs.media.appendChild(buildCard(post));
+    const card = buildCard(post);
+    refs.media.appendChild(card);
+    if (post.kind === 'text') markOverflow(card);
   } else if (post.kind === 'embed') {
     syncEmbed(refs, post, active);
   }
@@ -163,6 +166,26 @@ function syncEmbed(refs: SlideRefs, post: Post, active: boolean): void {
   }
 }
 
+/** Stable hue per subreddit, so text slides from one community share a tint. */
+export function hueOf(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+/** Title size steps by length: a one-line question reads like a poster, an essay title doesn't. */
+export function titleSize(title: string, hasBody: boolean): 'xl' | 'l' | 'm' {
+  const n = title.length;
+  if (!hasBody && n <= 90) return 'xl';
+  if (n <= 70) return 'l';
+  return 'm';
+}
+
+/**
+ * Text and link posts: a full-height "story" instead of a small card. The body
+ * never scrolls inside the slide (a nested scroller would swallow the swipe to
+ * the next post); long posts fade out and "Read more" opens the reader sheet.
+ */
 function buildCard(post: Post): HTMLElement {
   const card = document.createElement('div');
   card.className = 'card';
@@ -171,21 +194,48 @@ function buildCard(post: Post): HTMLElement {
   if (post.kind === 'link') {
     const href = post.linkUrl && isSafeUrl(post.linkUrl) ? post.linkUrl : '';
     inner.innerHTML = `
-      ${post.thumbnail ? '<img class="thumb" alt="">' : ''}
-      <div class="domain">${escapeHtml(extractDomain(href))}</div>
-      <h2>${escapeHtml(post.title)}</h2>
+      ${post.thumbnail ? '<div class="thumb"><img alt=""></div>' : ''}
+      <div class="domain">${ICONS.external}<span>${escapeHtml(extractDomain(href))}</span></div>
+      <h2 class="t-${titleSize(post.title, true)}">${escapeHtml(post.title)}</h2>
       ${href ? `<a class="cta" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">Open link ${ICONS.external}</a>` : ''}
     `;
-    const thumb = inner.querySelector<HTMLImageElement>('img.thumb');
+    const thumb = inner.querySelector<HTMLImageElement>('.thumb img');
     if (thumb && post.thumbnail) {
       thumb.referrerPolicy = 'no-referrer';
       thumb.src = post.thumbnail;
     }
   } else {
-    inner.innerHTML = `<h2>${escapeHtml(post.title)}</h2>${post.text ? `<p>${escapeHtml(post.text)}</p>` : ''}`;
+    const hasBody = !!(post.html || post.text);
+    inner.innerHTML = `
+      <h2 class="t-${titleSize(post.title, hasBody)}">${escapeHtml(post.title)}</h2>
+      ${hasBody ? '<div class="body md"></div>' : ''}
+      <button type="button" class="more" data-action="read" tabindex="-1">Read more</button>
+    `;
+    if (!hasBody) {
+      inner.classList.add('solo');
+      card.classList.add('solo');
+    }
+    const body = inner.querySelector<HTMLElement>('.body');
+    // post.html is built by our allow-list sanitizer from Reddit's own markup.
+    if (body) {
+      if (post.html) body.innerHTML = post.html;
+      else body.textContent = post.text || '';
+    }
   }
   card.appendChild(inner);
   return card;
+}
+
+/**
+ * Show "Read more" only when the body is cut off. Runs when the slide mounts
+ * (after the scroll settled) and only toggles visibility, so nothing moves.
+ */
+function markOverflow(card: HTMLElement): void {
+  requestAnimationFrame(() => {
+    const body = card.querySelector<HTMLElement>('.body');
+    const cut = !!body && body.scrollHeight > body.clientHeight + 4;
+    card.classList.toggle('overflowing', cut);
+  });
 }
 
 export function unmountSlide(refs: SlideRefs): void {

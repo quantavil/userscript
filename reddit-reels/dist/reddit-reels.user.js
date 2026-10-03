@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Reels
 // @namespace    https://github.com/quantavil/userscript/tree/main/reddit-reels
-// @version      3.1.0
+// @version      3.2.0
 // @author       quantavil
 // @description  Mobile-first full-screen reels for Reddit feeds: swipe, one stream with sound, Reddit video and RedGifs, native voting.
 // @license      MIT
@@ -96,6 +96,134 @@
 			if (timer) clearTimeout(timer);
 		};
 	}
+	function formatCount(num) {
+		if (!num || Number.isNaN(num)) return "0";
+		if (Math.abs(num) >= 1e6) return (num / 1e6).toFixed(1).replace(/\.0$/, "") + "m";
+		if (Math.abs(num) >= 1e3) return (num / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
+		return num.toString();
+	}
+	function escapeHtml(str) {
+		if (!str) return "";
+		return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+	}
+	function extractDomain(url) {
+		if (!url) return "";
+		try {
+			return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./, "");
+		} catch {
+			return url.replace(/^https?:\/\//, "").split("/")[0];
+		}
+	}
+	function isSafeUrl(url) {
+		if (!url || typeof url !== "string") return false;
+		const trimmed = url.trim();
+		if (!trimmed) return false;
+		try {
+			const base = typeof location !== "undefined" ? location.origin : "https://www.reddit.com";
+			const parsed = new URL(trimmed, base);
+			return parsed.protocol === "http:" || parsed.protocol === "https:";
+		} catch {
+			return false;
+		}
+	}
+	function formatTime(sec) {
+		if (!Number.isFinite(sec) || sec < 0) return "0:00";
+		return `${Math.floor(sec / 60)}:${Math.floor(sec % 60).toString().padStart(2, "0")}`;
+	}
+	var KEEP = new Set([
+		"P",
+		"BR",
+		"STRONG",
+		"B",
+		"EM",
+		"I",
+		"DEL",
+		"S",
+		"SUP",
+		"SUB",
+		"CODE",
+		"PRE",
+		"BLOCKQUOTE",
+		"UL",
+		"OL",
+		"LI",
+		"HR",
+		"H1",
+		"H2",
+		"H3",
+		"H4",
+		"H5",
+		"H6"
+	]);
+	var HEADINGS = {
+		H1: "H3",
+		H2: "H3",
+		H3: "H4",
+		H4: "H4",
+		H5: "H5",
+		H6: "H5"
+	};
+	var MAX_NODES = 4e3;
+	function copy(src, out, budget) {
+		for (const child of Array.from(src.childNodes)) {
+			if (--budget.n < 0) return;
+			if (child.nodeType === Node.TEXT_NODE) {
+				out.appendChild(document.createTextNode(child.textContent || ""));
+				continue;
+			}
+			if (child.nodeType !== Node.ELEMENT_NODE) continue;
+			const el = child;
+			const tag = el.tagName;
+			if (tag === "SCRIPT" || tag === "STYLE" || tag === "TEMPLATE" || tag === "SVG" || tag === "svg") continue;
+			if (tag === "A") {
+				const raw = el.getAttribute("href") || "";
+				let href = "";
+				try {
+					href = new URL(raw, "https://www.reddit.com").href;
+				} catch {}
+				if (href && isSafeUrl(href)) {
+					const a = document.createElement("a");
+					a.href = href;
+					a.target = "_blank";
+					a.rel = "noopener noreferrer";
+					copy(el, a, budget);
+					out.appendChild(a);
+				} else copy(el, out, budget);
+				continue;
+			}
+			if (tag === "IMG") {
+				const src = el.getAttribute("src") || "";
+				if (src && isSafeUrl(src)) {
+					const a = document.createElement("a");
+					a.href = src;
+					a.target = "_blank";
+					a.rel = "noopener noreferrer";
+					a.textContent = "[image]";
+					out.appendChild(a);
+				}
+				continue;
+			}
+			if (el.classList.contains("md-spoiler-text") || tag === "SPOILER-TEXT") {
+				const s = document.createElement("span");
+				s.className = "spoiler";
+				copy(el, s, budget);
+				out.appendChild(s);
+				continue;
+			}
+			if (KEEP.has(tag)) {
+				const node = document.createElement(HEADINGS[tag] || tag);
+				copy(el, node, budget);
+				out.appendChild(node);
+				continue;
+			}
+			copy(el, out, budget);
+		}
+	}
+	function sanitizeMarkdownHtml(root) {
+		const box = document.createElement("div");
+		copy(root, box, { n: MAX_NODES });
+		return box.innerHTML.trim();
+	}
 	var REDGIFS_RE = /redgifs\.com\/(?:watch|ifr|i)\/([a-z0-9]+)/i;
 	var YOUTUBE_RE = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/i;
 	var STREAMABLE_RE = /streamable\.com\/(?:e\/)?([a-z0-9]+)/i;
@@ -131,11 +259,20 @@
 			}
 		} catch {}
 		mp4.sort((a, b) => b.h - a.h);
-		const hls = player.getAttribute("src") || "";
+		const src = player.getAttribute("src") || "";
+		const isHls = /\.m3u8(\?|$)/i.test(src) || /v\.redd\.it\/.+\/HLSPlaylist/i.test(src);
+		let hls = "";
+		if (isHls) hls = src;
+		else if (src && !mp4.some((m) => m.url === src)) mp4.push({
+			url: src,
+			h: 0,
+			w: 0
+		});
 		if (!mp4.length && !hls) return void 0;
 		return {
 			mp4: mp4.map((m) => m.url),
 			hls,
+			gif: player.hasAttribute("gif") || /\.gif$/i.test(src.split("?")[0]),
 			poster: player.getAttribute("poster") || "",
 			captions: player.getAttribute("caption-url") || "",
 			width: mp4[0]?.w || 0,
@@ -211,7 +348,9 @@
 		}
 		if (!kind && (type === "text" || type === "self")) {
 			kind = "text";
-			post.text = (el.querySelector("[slot=\"text-body\"]")?.textContent || "").trim().slice(0, 4e3);
+			const body = el.querySelector("shreddit-post-text-body .md") || el.querySelector("[slot=\"text-body\"] .md") || el.querySelector("shreddit-post-text-body");
+			post.text = (body?.textContent || "").replace(/\s+\n/g, "\n").trim().slice(0, 6e3);
+			if (body) post.html = sanitizeMarkdownHtml(body);
 		}
 		if (!kind) {
 			kind = "link";
@@ -329,6 +468,72 @@
 			this.exhausted = false;
 		}
 	};
+	var TRACKING_PARAMS = [
+		"utm_source",
+		"utm_medium",
+		"utm_name",
+		"utm_term",
+		"utm_content",
+		"mweb_loid",
+		"ext-referrer"
+	];
+	var CSS$1 = `
+#xpromo-small-header, #open-app-header-cta,
+a[name="app-link"][href*="onelink.me"] { display: none !important; }
+`;
+	function webUrlFor(href) {
+		let url;
+		try {
+			url = new URL(href, location.href);
+		} catch {
+			return null;
+		}
+		if (url.hostname !== "applink.reddit.com") return null;
+		url.protocol = "https:";
+		url.hostname = "www.reddit.com";
+		for (const p of TRACKING_PARAMS) url.searchParams.delete(p);
+		return url.href;
+	}
+	function fixAnchor(a) {
+		const href = a.getAttribute("href");
+		if (!href?.includes("applink.")) return;
+		const web = webUrlFor(href);
+		if (web) a.setAttribute("href", web);
+	}
+	function fixTree(root) {
+		root.querySelectorAll("a[href*=\"applink.reddit.com\"]").forEach(fixAnchor);
+	}
+	var started = false;
+	function startDeclutter() {
+		if (started) return;
+		started = true;
+		const style = document.createElement("style");
+		style.textContent = CSS$1;
+		(document.head || document.documentElement).appendChild(style);
+		const onActivate = (e) => {
+			for (const node of e.composedPath()) if (node instanceof Element && node.tagName === "A") {
+				fixAnchor(node);
+				break;
+			}
+		};
+		window.addEventListener("click", onActivate, true);
+		window.addEventListener("auxclick", onActivate, true);
+		window.addEventListener("contextmenu", onActivate, true);
+		fixTree(document);
+		let pending = false;
+		new MutationObserver((records) => {
+			if (pending) return;
+			if (!records.some((r) => r.addedNodes.length)) return;
+			pending = true;
+			requestAnimationFrame(() => {
+				pending = false;
+				fixTree(document);
+			});
+		}).observe(document.documentElement, {
+			childList: true,
+			subtree: true
+		});
+	}
 	function voteButton(el, dir) {
 		const label = dir === "up" ? "upvote" : "downvote";
 		const roots = [];
@@ -773,40 +978,6 @@
 			this.video.remove();
 		}
 	};
-	function formatCount(num) {
-		if (!num || Number.isNaN(num)) return "0";
-		if (Math.abs(num) >= 1e6) return (num / 1e6).toFixed(1).replace(/\.0$/, "") + "m";
-		if (Math.abs(num) >= 1e3) return (num / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
-		return num.toString();
-	}
-	function escapeHtml(str) {
-		if (!str) return "";
-		return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-	}
-	function extractDomain(url) {
-		if (!url) return "";
-		try {
-			return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./, "");
-		} catch {
-			return url.replace(/^https?:\/\//, "").split("/")[0];
-		}
-	}
-	function isSafeUrl(url) {
-		if (!url || typeof url !== "string") return false;
-		const trimmed = url.trim();
-		if (!trimmed) return false;
-		try {
-			const base = typeof location !== "undefined" ? location.origin : "https://www.reddit.com";
-			const parsed = new URL(trimmed, base);
-			return parsed.protocol === "http:" || parsed.protocol === "https:";
-		} catch {
-			return false;
-		}
-	}
-	function formatTime(sec) {
-		if (!Number.isFinite(sec) || sec < 0) return "0:00";
-		return `${Math.floor(sec / 60)}:${Math.floor(sec % 60).toString().padStart(2, "0")}`;
-	}
 	var svg = (body, fill = "none") => `<svg viewBox="0 0 24 24" width="26" height="26" fill="${fill}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 	var ICONS = {
 		close: svg("<line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"/><line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"/>"),
@@ -823,7 +994,7 @@
 		heart: svg("<path d=\"M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z\"/>", "currentColor"),
 		reel: svg("<rect x=\"5\" y=\"2\" width=\"14\" height=\"20\" rx=\"3\"/><polygon points=\"10 9 15 12 10 15 10 9\" fill=\"currentColor\"/>")
 	};
-	var reel_default = "/* Reel overlay. Lives in a shadow root: Reddit's CSS can't reach in, ours can't leak out. */\n:host {\n  all: initial;\n}\n\n* {\n  box-sizing: border-box;\n}\n\n.reel {\n  position: fixed;\n  inset: 0;\n  z-index: 2147483646;\n  background: #000;\n  color: #fff;\n  font:\n    15px / 1.35 -apple-system,\n    BlinkMacSystemFont,\n    \"Segoe UI\",\n    Roboto,\n    Helvetica,\n    Arial,\n    sans-serif;\n  -webkit-font-smoothing: antialiased;\n  -webkit-tap-highlight-color: transparent;\n  user-select: none;\n  -webkit-user-select: none;\n}\n\nbutton {\n  font: inherit;\n  color: inherit;\n  background: none;\n  border: 0;\n  padding: 0;\n  margin: 0;\n  cursor: pointer;\n  -webkit-tap-highlight-color: transparent;\n}\n\nbutton:focus-visible,\na:focus-visible {\n  outline: 2px solid #ff4500;\n  outline-offset: 2px;\n}\n\n/* ---------- Vertical track ---------- */\n.track {\n  position: absolute;\n  inset: 0;\n  overflow-y: auto;\n  overflow-x: hidden;\n  scroll-snap-type: y mandatory;\n  overscroll-behavior: contain;\n  scrollbar-width: none;\n}\n\n.track::-webkit-scrollbar {\n  display: none;\n}\n\n.slide {\n  position: relative;\n  height: 100%;\n  width: 100%;\n  overflow: hidden;\n  scroll-snap-align: start;\n  scroll-snap-stop: always;\n  contain: strict;\n  background: #000;\n}\n\n.slide.end {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  color: #9aa0a6;\n  font-size: 14px;\n}\n\n/* ---------- Media ---------- */\n.backdrop {\n  position: absolute;\n  inset: -40px;\n  width: calc(100% + 80px);\n  height: calc(100% + 80px);\n  object-fit: cover;\n  filter: blur(28px) brightness(0.45);\n  transform: translateZ(0);\n  pointer-events: none;\n}\n\n.media {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n.media > video,\n.media > img.main {\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n  background: transparent;\n  display: block;\n}\n\n.reel.fill .media > video,\n.reel.fill .media > img.main,\n.slide.portrait .media > video {\n  object-fit: cover;\n}\n\n.media > iframe {\n  width: 100%;\n  height: min(100%, 56.25vw);\n  border: 0;\n  background: #000;\n}\n\n.slide.vertical-embed .media > iframe {\n  height: 100%;\n}\n\n.shade {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  height: 45%;\n  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));\n  pointer-events: none;\n}\n\n.shade.top {\n  top: 0;\n  bottom: auto;\n  height: 120px;\n  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));\n}\n\n/* Gallery: native-feeling horizontal swipe */\n.gallery {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  overflow-x: auto;\n  overflow-y: hidden;\n  scroll-snap-type: x mandatory;\n  overscroll-behavior-x: contain;\n  scrollbar-width: none;\n}\n\n.gallery::-webkit-scrollbar {\n  display: none;\n}\n\n.gallery > div {\n  flex: 0 0 100%;\n  height: 100%;\n  scroll-snap-align: center;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n.gallery img {\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n}\n\n.count {\n  position: absolute;\n  top: calc(64px + env(safe-area-inset-top, 0px));\n  right: 14px;\n  padding: 4px 10px;\n  border-radius: 999px;\n  background: rgba(0, 0, 0, 0.55);\n  font-size: 12px;\n  font-weight: 700;\n  pointer-events: none;\n}\n\n/* Text / link cards */\n.card {\n  position: absolute;\n  /* Symmetric gutters so the card is centered; the rail floats over the right gutter. */\n  inset: calc(70px + env(safe-area-inset-top, 0px)) 64px calc(150px + env(safe-area-inset-bottom, 0px));\n  display: flex;\n  flex-direction: column;\n  justify-content: center;\n  align-items: center;\n}\n\n.card-inner {\n  width: 100%;\n  max-width: 560px;\n  max-height: 100%;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n  padding: 20px;\n  border-radius: 16px;\n  background: #16171b;\n  border: 1px solid #2a2c33;\n  user-select: text;\n  -webkit-user-select: text;\n}\n\n.card h2 {\n  margin: 0 0 12px;\n  font-size: 20px;\n  line-height: 1.3;\n}\n\n.card p {\n  margin: 0;\n  color: #d7dadc;\n  white-space: pre-wrap;\n  word-break: break-word;\n}\n\n.card img {\n  width: 100%;\n  /* Fixed box: an image finishing its load must not change layout inside the snap track. */\n  aspect-ratio: 16 / 9;\n  height: auto;\n  max-height: 40vh;\n  object-fit: cover;\n  border-radius: 10px;\n  margin-bottom: 12px;\n}\n\n.card .domain {\n  color: #9aa0a6;\n  font-size: 13px;\n  margin-bottom: 14px;\n}\n\n.card a.cta {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  padding: 10px 16px;\n  border-radius: 999px;\n  background: #ff4500;\n  color: #fff;\n  font-weight: 700;\n  text-decoration: none;\n}\n\n.card a.cta svg {\n  width: 18px;\n  height: 18px;\n}\n\n/* ---------- Chrome ---------- */\n.top {\n  position: absolute;\n  top: 0;\n  left: 0;\n  right: 0;\n  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 0;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  z-index: 5;\n  pointer-events: none;\n}\n\n.top button {\n  pointer-events: auto;\n}\n\n.icon-btn {\n  width: 44px;\n  height: 44px;\n  border-radius: 999px;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  background: rgba(0, 0, 0, 0.35);\n  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));\n}\n\n.icon-btn svg {\n  width: 24px;\n  height: 24px;\n}\n\n.feed-name {\n  font-weight: 700;\n  font-size: 15px;\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);\n  max-width: 50vw;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.info {\n  position: absolute;\n  left: 14px;\n  right: 78px;\n  bottom: calc(22px + env(safe-area-inset-bottom, 0px));\n  z-index: 3;\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);\n}\n\n.meta {\n  display: flex;\n  gap: 6px;\n  align-items: center;\n  font-size: 13px;\n  margin-bottom: 6px;\n  flex-wrap: wrap;\n}\n\n.meta a {\n  color: #fff;\n  text-decoration: none;\n  font-weight: 700;\n}\n\n.meta .author {\n  color: #d7dadc;\n  font-weight: 500;\n}\n\n.nsfw {\n  padding: 1px 6px;\n  border-radius: 4px;\n  background: #d93a00;\n  font-size: 11px;\n  font-weight: 800;\n}\n\n.title {\n  margin: 0;\n  font-size: 15px;\n  font-weight: 600;\n  display: -webkit-box;\n  -webkit-line-clamp: 3;\n  -webkit-box-orient: vertical;\n  overflow: hidden;\n  word-break: break-word;\n}\n\n.title.open {\n  -webkit-line-clamp: unset;\n  max-height: 40vh;\n  overflow-y: auto;\n}\n\n.rail {\n  position: absolute;\n  right: 8px;\n  bottom: calc(22px + env(safe-area-inset-bottom, 0px));\n  z-index: 4;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 14px;\n}\n\n.rail .item {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 2px;\n  font-size: 12px;\n  font-weight: 700;\n  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);\n}\n\n.rail button {\n  width: 48px;\n  height: 48px;\n  border-radius: 999px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7));\n}\n\n.rail button:active {\n  transform: scale(0.9);\n}\n\n.rail .up.on {\n  color: #ff4500;\n}\n\n.rail .down.on {\n  color: #7193ff;\n}\n\n.rail .cc.on {\n  color: #ff4500;\n}\n\n.slide.has-video .info,\n.slide.has-video .rail {\n  bottom: calc(34px + env(safe-area-inset-bottom, 0px));\n}\n\n/* ---------- HUD: fixed layer above the track ----------\n   Everything that changes while you watch lives here, never inside a slide:\n   layout changes inside a scroll-snap track during a swipe make the browser\n   snap back to the old slide. */\n.hud {\n  pointer-events: none;\n  z-index: 4;\n}\n\n.reel:not(.has-video) .seek,\n.reel:not(.has-video) .time {\n  display: none;\n}\n\n.seek {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: env(safe-area-inset-bottom, 0px);\n  height: 24px;\n  display: flex;\n  align-items: flex-end;\n  touch-action: none;\n  cursor: pointer;\n  pointer-events: auto;\n}\n\n.seek .rail-line {\n  position: relative;\n  width: 100%;\n  height: 3px;\n  background: rgba(255, 255, 255, 0.25);\n  overflow: hidden;\n}\n\n.seek.dragging .rail-line,\n.seek:hover .rail-line {\n  height: 6px;\n}\n\n.seek .fill,\n.seek .buffer {\n  position: absolute;\n  inset: 0;\n  transform-origin: left center;\n  transform: scaleX(0);\n  will-change: transform;\n}\n\n.seek .fill {\n  background: #fff;\n}\n\n.seek .buffer {\n  background: rgba(255, 255, 255, 0.35);\n}\n\n.time {\n  position: absolute;\n  bottom: calc(30px + env(safe-area-inset-bottom, 0px));\n  left: 50%;\n  transform: translateX(-50%);\n  padding: 4px 10px;\n  border-radius: 999px;\n  background: rgba(0, 0, 0, 0.6);\n  font-size: 13px;\n  font-weight: 700;\n  font-variant-numeric: tabular-nums;\n  display: none;\n}\n\n.seek.dragging + .time {\n  display: block;\n}\n\n.spinner {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  width: 44px;\n  height: 44px;\n  margin: -22px 0 0 -22px;\n  border-radius: 50%;\n  border: 3px solid rgba(255, 255, 255, 0.25);\n  border-top-color: #fff;\n  animation: spin 0.8s linear infinite;\n  display: none;\n}\n\n.reel.loading .spinner {\n  display: block;\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.tap-play {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  width: 76px;\n  height: 76px;\n  margin: -38px 0 0 -38px;\n  border-radius: 50%;\n  background: rgba(0, 0, 0, 0.5);\n  display: none;\n  align-items: center;\n  justify-content: center;\n}\n\n.tap-play svg {\n  width: 34px;\n  height: 34px;\n  margin-left: 4px;\n}\n\n.reel.blocked .tap-play {\n  display: flex;\n}\n\n.pulse {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  width: 84px;\n  height: 84px;\n  margin: -42px 0 0 -42px;\n  border-radius: 50%;\n  background: rgba(0, 0, 0, 0.45);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  animation: pulse 0.6s ease-out forwards;\n}\n\n.pulse.heart {\n  background: none;\n  color: #ff4500;\n}\n\n.pulse svg {\n  width: 40px;\n  height: 40px;\n}\n\n.pulse.heart svg {\n  width: 90px;\n  height: 90px;\n  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));\n}\n\n@keyframes pulse {\n  0% {\n    opacity: 0;\n    transform: scale(0.6);\n  }\n  30% {\n    opacity: 1;\n    transform: scale(1.05);\n  }\n  100% {\n    opacity: 0;\n    transform: scale(1.2);\n  }\n}\n\n.unmute-hint {\n  position: absolute;\n  top: calc(64px + env(safe-area-inset-top, 0px));\n  left: 50%;\n  transform: translateX(-50%);\n  padding: 8px 14px;\n  border-radius: 999px;\n  background: rgba(0, 0, 0, 0.7);\n  font-size: 13px;\n  font-weight: 700;\n  display: none;\n  align-items: center;\n  gap: 6px;\n}\n\n.unmute-hint svg {\n  width: 18px;\n  height: 18px;\n}\n\n.reel.autoplay-muted.has-video .unmute-hint {\n  display: inline-flex;\n}\n\n.error {\n  position: absolute;\n  left: 16px;\n  right: 16px;\n  top: 50%;\n  transform: translateY(-50%);\n  text-align: center;\n  color: #d7dadc;\n  font-size: 14px;\n  display: none;\n  pointer-events: auto;\n}\n\n.reel.errored .error {\n  display: block;\n}\n\n.error a {\n  color: #ff4500;\n}\n\n.toast {\n  position: absolute;\n  left: 50%;\n  bottom: calc(110px + env(safe-area-inset-bottom, 0px));\n  transform: translateX(-50%);\n  padding: 10px 16px;\n  border-radius: 12px;\n  background: rgba(30, 31, 36, 0.95);\n  font-size: 14px;\n  z-index: 9;\n  max-width: 86vw;\n  text-align: center;\n  pointer-events: none;\n  opacity: 0;\n  transition: opacity 0.2s ease;\n}\n\n.toast.show {\n  opacity: 1;\n}\n\n/* ---------- Wider screens: keep the reel a phone-shaped column ---------- */\n@media (min-width: 900px) and (pointer: fine) {\n  .slide-inner,\n  .hud {\n    position: absolute;\n    top: 0;\n    bottom: 0;\n    left: 50%;\n    width: min(100vw, calc(100vh * 9 / 16));\n    /* biome-ignore lint/suspicious/noDuplicateProperties: vh fallback for browsers without dvh */\n    width: min(100vw, calc(100dvh * 9 / 16));\n    transform: translateX(-50%);\n  }\n\n  .rail {\n    right: -68px;\n  }\n\n  .info {\n    right: 14px;\n  }\n\n  .card {\n    left: 16px;\n    right: 16px;\n  }\n}\n\n@media (max-width: 899px), (pointer: coarse) {\n  .slide-inner,\n  .hud {\n    position: absolute;\n    inset: 0;\n  }\n}\n\n/* Text / link cards already show the title */\n.slide.kind-text .info .title,\n.slide.kind-link .info .title {\n  display: none;\n}\n";
+	var reel_default = "/* Reel overlay. Lives in a shadow root: Reddit's CSS can't reach in, ours can't leak out. */\n:host {\n  all: initial;\n}\n\n* {\n  box-sizing: border-box;\n}\n\n.reel {\n  position: fixed;\n  inset: 0;\n  z-index: 2147483646;\n  background: #000;\n  color: #fff;\n  font:\n    15px / 1.35 -apple-system,\n    BlinkMacSystemFont,\n    \"Segoe UI\",\n    Roboto,\n    Helvetica,\n    Arial,\n    sans-serif;\n  -webkit-font-smoothing: antialiased;\n  -webkit-tap-highlight-color: transparent;\n  user-select: none;\n  -webkit-user-select: none;\n}\n\nbutton {\n  font: inherit;\n  color: inherit;\n  background: none;\n  border: 0;\n  padding: 0;\n  margin: 0;\n  cursor: pointer;\n  -webkit-tap-highlight-color: transparent;\n}\n\nbutton:focus-visible,\na:focus-visible {\n  outline: 2px solid #ff4500;\n  outline-offset: 2px;\n}\n\n/* ---------- Vertical track ---------- */\n.track {\n  position: absolute;\n  inset: 0;\n  overflow-y: auto;\n  overflow-x: hidden;\n  scroll-snap-type: y mandatory;\n  overscroll-behavior: contain;\n  scrollbar-width: none;\n}\n\n.track::-webkit-scrollbar {\n  display: none;\n}\n\n.slide {\n  position: relative;\n  height: 100%;\n  width: 100%;\n  overflow: hidden;\n  scroll-snap-align: start;\n  scroll-snap-stop: always;\n  contain: strict;\n  background: #000;\n}\n\n.slide.end {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  color: #9aa0a6;\n  font-size: 14px;\n}\n\n/* ---------- Media ---------- */\n.backdrop {\n  position: absolute;\n  inset: -40px;\n  width: calc(100% + 80px);\n  height: calc(100% + 80px);\n  object-fit: cover;\n  filter: blur(28px) brightness(0.45);\n  transform: translateZ(0);\n  pointer-events: none;\n}\n\n.media {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n.media > video,\n.media > img.main {\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n  background: transparent;\n  display: block;\n}\n\n.reel.fill .media > video,\n.reel.fill .media > img.main,\n.slide.portrait .media > video {\n  object-fit: cover;\n}\n\n.media > iframe {\n  width: 100%;\n  height: min(100%, 56.25vw);\n  border: 0;\n  background: #000;\n}\n\n.slide.vertical-embed .media > iframe {\n  height: 100%;\n}\n\n.shade {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  height: 45%;\n  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));\n  pointer-events: none;\n}\n\n.shade.top {\n  top: 0;\n  bottom: auto;\n  height: 120px;\n  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));\n}\n\n/* Gallery: native-feeling horizontal swipe */\n.gallery {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  overflow-x: auto;\n  overflow-y: hidden;\n  scroll-snap-type: x mandatory;\n  overscroll-behavior-x: contain;\n  scrollbar-width: none;\n}\n\n.gallery::-webkit-scrollbar {\n  display: none;\n}\n\n.gallery > div {\n  flex: 0 0 100%;\n  height: 100%;\n  scroll-snap-align: center;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n.gallery img {\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n}\n\n.count {\n  position: absolute;\n  top: calc(64px + env(safe-area-inset-top, 0px));\n  right: 14px;\n  padding: 4px 10px;\n  border-radius: 999px;\n  background: rgba(0, 0, 0, 0.55);\n  font-size: 12px;\n  font-weight: 700;\n  pointer-events: none;\n}\n\n/* ---------- Text / link posts: full-height story ----------\n   No inner scrolling (it would swallow the swipe); long bodies fade out and\n   \"Read more\" opens the reader sheet, which lives outside the track. */\n.slide.kind-text,\n.slide.kind-link {\n  background:\n    radial-gradient(120% 70% at 0% 0%, hsl(var(--hue, 16) 60% 24% / 0.9) 0%, transparent 62%),\n    radial-gradient(90% 60% at 100% 100%, hsl(calc(var(--hue, 16) + 40) 50% 18% / 0.8) 0%, transparent 60%), #08090a;\n}\n\n.card {\n  position: absolute;\n  top: calc(64px + env(safe-area-inset-top, 0px));\n  bottom: calc(64px + env(safe-area-inset-bottom, 0px));\n  left: 20px;\n  /* The action rail floats on the right. */\n  right: 72px;\n  display: flex;\n  flex-direction: column;\n  justify-content: center;\n}\n\n/* A title-only post sits mid-screen, clear of the rail: center it on the screen. */\n.card.solo {\n  right: 20px;\n}\n\n.card-inner {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n  max-height: 100%;\n  width: 100%;\n  max-width: 620px;\n  margin: 0 auto;\n}\n\n.card-inner.solo {\n  text-align: center;\n}\n\n.card h2 {\n  margin: 0 0 14px;\n  font-weight: 800;\n  letter-spacing: -0.01em;\n  line-height: 1.22;\n  word-break: break-word;\n  text-wrap: balance;\n  flex: 0 0 auto;\n  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.35);\n}\n\n.card h2.t-xl {\n  font-size: 30px;\n}\n\n.card h2.t-l {\n  font-size: 24px;\n}\n\n.card h2.t-m {\n  font-size: 20px;\n  display: -webkit-box;\n  -webkit-line-clamp: 6;\n  -webkit-box-orient: vertical;\n  overflow: hidden;\n}\n\n.card .body {\n  flex: 0 1 auto;\n  min-height: 0;\n  overflow: hidden;\n  font-size: 16px;\n  line-height: 1.55;\n  color: #e4e6e9;\n}\n\n.card.overflowing .body {\n  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent);\n  mask-image: linear-gradient(to bottom, #000 72%, transparent);\n}\n\n.card .more {\n  flex: 0 0 auto;\n  align-self: flex-start;\n  margin-top: 12px;\n  padding: 9px 16px;\n  border-radius: 999px;\n  background: rgba(255, 255, 255, 0.14);\n  border: 1px solid rgba(255, 255, 255, 0.18);\n  font-size: 14px;\n  font-weight: 700;\n  /* Space is always reserved; showing it must not move anything. */\n  visibility: hidden;\n}\n\n.card.overflowing .more {\n  visibility: visible;\n}\n\n.card-inner.solo .more {\n  display: none;\n}\n\n/* Link posts */\n.card .thumb {\n  width: 100%;\n  /* Fixed box: an image finishing its load must not change layout inside the snap track. */\n  aspect-ratio: 16 / 9;\n  max-height: 34vh;\n  border-radius: 14px;\n  overflow: hidden;\n  margin-bottom: 16px;\n  background: rgba(255, 255, 255, 0.06);\n  flex: 0 0 auto;\n}\n\n.card .thumb img {\n  width: 100%;\n  height: 100%;\n  object-fit: cover;\n  display: block;\n}\n\n.card .domain {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  color: #b9bec6;\n  font-size: 13px;\n  font-weight: 600;\n  margin-bottom: 10px;\n}\n\n.card .domain svg {\n  width: 14px;\n  height: 14px;\n}\n\n.card a.cta {\n  align-self: flex-start;\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  margin-top: 4px;\n  padding: 11px 18px;\n  border-radius: 999px;\n  background: #ff4500;\n  color: #fff;\n  font-weight: 700;\n  text-decoration: none;\n}\n\n.card a.cta svg {\n  width: 18px;\n  height: 18px;\n}\n\n/* Rendered markdown (story preview and reader) */\n.md p {\n  margin: 0 0 0.75em;\n}\n\n.md > :last-child {\n  margin-bottom: 0;\n}\n\n.md h3,\n.md h4,\n.md h5 {\n  margin: 0.9em 0 0.4em;\n  font-size: 1.1em;\n}\n\n.md ul,\n.md ol {\n  margin: 0 0 0.75em;\n  padding-left: 1.3em;\n}\n\n.md li {\n  margin: 0.2em 0;\n}\n\n.md blockquote {\n  margin: 0 0 0.75em;\n  padding-left: 12px;\n  border-left: 3px solid rgba(255, 255, 255, 0.3);\n  color: #b9bec6;\n}\n\n.md code {\n  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;\n  font-size: 0.9em;\n  padding: 1px 5px;\n  border-radius: 5px;\n  background: rgba(255, 255, 255, 0.1);\n}\n\n.md pre {\n  margin: 0 0 0.75em;\n  padding: 10px 12px;\n  border-radius: 10px;\n  background: rgba(255, 255, 255, 0.07);\n  overflow-x: auto;\n  white-space: pre;\n}\n\n.md pre code {\n  padding: 0;\n  background: none;\n}\n\n.md hr {\n  border: 0;\n  border-top: 1px solid rgba(255, 255, 255, 0.2);\n  margin: 1em 0;\n}\n\n.md a {\n  color: #ff8b60;\n  text-decoration: underline;\n  text-underline-offset: 2px;\n  word-break: break-word;\n}\n\n.md .spoiler {\n  border-radius: 4px;\n  background: #4a4d55;\n  color: transparent;\n  cursor: pointer;\n}\n\n.md .spoiler.shown {\n  background: rgba(255, 255, 255, 0.1);\n  color: inherit;\n}\n\n/* ---------- Reader sheet (outside the track) ---------- */\n.reader {\n  position: absolute;\n  inset: 0;\n  z-index: 8;\n  display: flex;\n  flex-direction: column;\n  background: radial-gradient(120% 50% at 0% 0%, hsl(var(--hue, 16) 55% 18% / 0.9) 0%, transparent 60%), #0b0c0e;\n  transform: translateY(100%);\n  visibility: hidden;\n  transition:\n    transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1),\n    visibility 0s linear 0.26s;\n  user-select: text;\n  -webkit-user-select: text;\n}\n\n.reader.open {\n  transform: none;\n  visibility: visible;\n  transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);\n}\n\n.reader-bar {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: calc(8px + env(safe-area-inset-top, 0px)) 8px 8px 16px;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.08);\n  font-size: 13px;\n  color: #b9bec6;\n}\n\n.reader-bar .who {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.reader-bar .who b {\n  color: #fff;\n}\n\n.reader-scroll {\n  flex: 1;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n  -webkit-overflow-scrolling: touch;\n  padding: 18px 20px 28px;\n}\n\n.reader-scroll > * {\n  max-width: 680px;\n  margin-left: auto;\n  margin-right: auto;\n}\n\n.reader h2 {\n  margin: 0 auto 16px;\n  font-size: 24px;\n  line-height: 1.25;\n  font-weight: 800;\n  word-break: break-word;\n}\n\n.reader .md {\n  font-size: 17px;\n  line-height: 1.6;\n  color: #e4e6e9;\n}\n\n.reader-actions {\n  display: flex;\n  gap: 10px;\n  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));\n  border-top: 1px solid rgba(255, 255, 255, 0.08);\n}\n\n.reader-actions button {\n  flex: 1;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  height: 44px;\n  border-radius: 999px;\n  background: rgba(255, 255, 255, 0.1);\n  font-weight: 700;\n}\n\n.reader-actions button.primary {\n  background: #ff4500;\n}\n\n.reader-actions svg {\n  width: 20px;\n  height: 20px;\n}\n\n/* ---------- Chrome ---------- */\n.top {\n  position: absolute;\n  top: 0;\n  left: 0;\n  right: 0;\n  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 0;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  z-index: 5;\n  pointer-events: none;\n}\n\n.top button {\n  pointer-events: auto;\n}\n\n.icon-btn {\n  width: 44px;\n  height: 44px;\n  border-radius: 999px;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  background: rgba(0, 0, 0, 0.35);\n  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));\n}\n\n.icon-btn svg {\n  width: 24px;\n  height: 24px;\n}\n\n.feed-name {\n  font-weight: 700;\n  font-size: 15px;\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);\n  max-width: 50vw;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.info {\n  position: absolute;\n  left: 14px;\n  right: 78px;\n  bottom: calc(22px + env(safe-area-inset-bottom, 0px));\n  z-index: 3;\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);\n}\n\n.meta {\n  display: flex;\n  gap: 6px;\n  align-items: center;\n  font-size: 13px;\n  margin-bottom: 6px;\n  flex-wrap: wrap;\n}\n\n.meta a {\n  color: #fff;\n  text-decoration: none;\n  font-weight: 700;\n}\n\n.meta .author {\n  color: #d7dadc;\n  font-weight: 500;\n}\n\n.nsfw {\n  padding: 1px 6px;\n  border-radius: 4px;\n  background: #d93a00;\n  font-size: 11px;\n  font-weight: 800;\n}\n\n.title {\n  margin: 0;\n  font-size: 15px;\n  font-weight: 600;\n  display: -webkit-box;\n  -webkit-line-clamp: 3;\n  -webkit-box-orient: vertical;\n  overflow: hidden;\n  word-break: break-word;\n}\n\n.title.open {\n  -webkit-line-clamp: unset;\n  max-height: 40vh;\n  overflow-y: auto;\n}\n\n.rail {\n  position: absolute;\n  right: 8px;\n  bottom: calc(22px + env(safe-area-inset-bottom, 0px));\n  z-index: 4;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 14px;\n}\n\n.rail .item {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 2px;\n  font-size: 12px;\n  font-weight: 700;\n  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);\n}\n\n.rail button {\n  width: 48px;\n  height: 48px;\n  border-radius: 999px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7));\n}\n\n.rail button:active {\n  transform: scale(0.9);\n}\n\n.rail .up.on {\n  color: #ff4500;\n}\n\n.rail .down.on {\n  color: #7193ff;\n}\n\n.rail .cc.on {\n  color: #ff4500;\n}\n\n.slide.has-video .info,\n.slide.has-video .rail {\n  bottom: calc(34px + env(safe-area-inset-bottom, 0px));\n}\n\n/* ---------- HUD: fixed layer above the track ----------\n   Everything that changes while you watch lives here, never inside a slide:\n   layout changes inside a scroll-snap track during a swipe make the browser\n   snap back to the old slide. */\n.hud {\n  pointer-events: none;\n  z-index: 4;\n}\n\n.reel:not(.has-video) .seek,\n.reel:not(.has-video) .time {\n  display: none;\n}\n\n.seek {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: env(safe-area-inset-bottom, 0px);\n  height: 24px;\n  display: flex;\n  align-items: flex-end;\n  touch-action: none;\n  cursor: pointer;\n  pointer-events: auto;\n}\n\n.seek .rail-line {\n  position: relative;\n  width: 100%;\n  height: 3px;\n  background: rgba(255, 255, 255, 0.25);\n  overflow: hidden;\n}\n\n.seek.dragging .rail-line,\n.seek:hover .rail-line {\n  height: 6px;\n}\n\n.seek .fill,\n.seek .buffer {\n  position: absolute;\n  inset: 0;\n  transform-origin: left center;\n  transform: scaleX(0);\n  will-change: transform;\n}\n\n.seek .fill {\n  background: #fff;\n}\n\n.seek .buffer {\n  background: rgba(255, 255, 255, 0.35);\n}\n\n.time {\n  position: absolute;\n  bottom: calc(30px + env(safe-area-inset-bottom, 0px));\n  left: 50%;\n  transform: translateX(-50%);\n  padding: 4px 10px;\n  border-radius: 999px;\n  background: rgba(0, 0, 0, 0.6);\n  font-size: 13px;\n  font-weight: 700;\n  font-variant-numeric: tabular-nums;\n  display: none;\n}\n\n.seek.dragging + .time {\n  display: block;\n}\n\n.spinner {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  width: 44px;\n  height: 44px;\n  margin: -22px 0 0 -22px;\n  border-radius: 50%;\n  border: 3px solid rgba(255, 255, 255, 0.25);\n  border-top-color: #fff;\n  animation: spin 0.8s linear infinite;\n  display: none;\n}\n\n.reel.loading .spinner {\n  display: block;\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.tap-play {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  width: 76px;\n  height: 76px;\n  margin: -38px 0 0 -38px;\n  border-radius: 50%;\n  background: rgba(0, 0, 0, 0.5);\n  display: none;\n  align-items: center;\n  justify-content: center;\n}\n\n.tap-play svg {\n  width: 34px;\n  height: 34px;\n  margin-left: 4px;\n}\n\n.reel.blocked .tap-play {\n  display: flex;\n}\n\n.pulse {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  width: 84px;\n  height: 84px;\n  margin: -42px 0 0 -42px;\n  border-radius: 50%;\n  background: rgba(0, 0, 0, 0.45);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  animation: pulse 0.6s ease-out forwards;\n}\n\n.pulse.heart {\n  background: none;\n  color: #ff4500;\n}\n\n.pulse svg {\n  width: 40px;\n  height: 40px;\n}\n\n.pulse.heart svg {\n  width: 90px;\n  height: 90px;\n  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));\n}\n\n@keyframes pulse {\n  0% {\n    opacity: 0;\n    transform: scale(0.6);\n  }\n  30% {\n    opacity: 1;\n    transform: scale(1.05);\n  }\n  100% {\n    opacity: 0;\n    transform: scale(1.2);\n  }\n}\n\n.unmute-hint {\n  position: absolute;\n  top: calc(64px + env(safe-area-inset-top, 0px));\n  left: 50%;\n  transform: translateX(-50%);\n  padding: 8px 14px;\n  border-radius: 999px;\n  background: rgba(0, 0, 0, 0.7);\n  font-size: 13px;\n  font-weight: 700;\n  display: none;\n  align-items: center;\n  gap: 6px;\n}\n\n.unmute-hint svg {\n  width: 18px;\n  height: 18px;\n}\n\n.reel.autoplay-muted.has-video:not(.gif) .unmute-hint {\n  display: inline-flex;\n}\n\n.error {\n  position: absolute;\n  left: 16px;\n  right: 16px;\n  top: 50%;\n  transform: translateY(-50%);\n  text-align: center;\n  color: #d7dadc;\n  font-size: 14px;\n  display: none;\n  pointer-events: auto;\n}\n\n.reel.errored .error {\n  display: block;\n}\n\n.error a {\n  color: #ff4500;\n}\n\n.toast {\n  position: absolute;\n  left: 50%;\n  bottom: calc(110px + env(safe-area-inset-bottom, 0px));\n  transform: translateX(-50%);\n  padding: 10px 16px;\n  border-radius: 12px;\n  background: rgba(30, 31, 36, 0.95);\n  font-size: 14px;\n  z-index: 9;\n  max-width: 86vw;\n  text-align: center;\n  pointer-events: none;\n  opacity: 0;\n  transition: opacity 0.2s ease;\n}\n\n.toast.show {\n  opacity: 1;\n}\n\n/* ---------- Wider screens: keep the reel a phone-shaped column ---------- */\n@media (min-width: 900px) and (pointer: fine) {\n  .slide-inner,\n  .hud {\n    position: absolute;\n    top: 0;\n    bottom: 0;\n    left: 50%;\n    width: min(100vw, calc(100vh * 9 / 16));\n    /* biome-ignore lint/suspicious/noDuplicateProperties: vh fallback for browsers without dvh */\n    width: min(100vw, calc(100dvh * 9 / 16));\n    transform: translateX(-50%);\n  }\n\n  .rail {\n    right: -68px;\n  }\n\n  .info {\n    right: 14px;\n  }\n\n  .card {\n    left: 24px;\n    right: 24px;\n  }\n}\n\n@media (max-width: 899px), (pointer: coarse) {\n  .slide-inner,\n  .hud {\n    position: absolute;\n    inset: 0;\n  }\n}\n\n/* Text / link cards already show the title */\n.slide.kind-text .info .title,\n.slide.kind-link .info .title {\n  display: none;\n}\n";
 	var REDDIT = "https://www.reddit.com";
 	function postUrl(post) {
 		if (post.permalink.startsWith("http")) return post.permalink;
@@ -843,6 +1014,7 @@
 		root.dataset.index = String(index);
 		root.dataset.id = post.id;
 		if (post.video && post.video.height / Math.max(1, post.video.width) >= 1.5) root.classList.add("portrait");
+		if (post.kind === "text" || post.kind === "link") root.style.setProperty("--hue", String(hueOf(post.subreddit)));
 		const sub = escapeHtml(post.subreddit);
 		const subHref = post.subreddit ? `${REDDIT}/${encodeURI(post.subreddit)}/` : "";
 		const author = escapeHtml(post.author);
@@ -923,8 +1095,11 @@
 			}, { passive: true });
 			refs.media.append(strip, count);
 		} else if (post.kind === "video" && post.video?.poster) refs.media.appendChild(img(post.video.poster, "main poster"));
-		else if (post.kind === "text" || post.kind === "link") refs.media.appendChild(buildCard(post));
-		else if (post.kind === "embed") syncEmbed(refs, post, active);
+		else if (post.kind === "text" || post.kind === "link") {
+			const card = buildCard(post);
+			refs.media.appendChild(card);
+			if (post.kind === "text") markOverflow(card);
+		} else if (post.kind === "embed") syncEmbed(refs, post, active);
 	}
 	function syncEmbed(refs, post, active) {
 		const existing = refs.media.querySelector("iframe");
@@ -938,6 +1113,17 @@
 			if (/shorts\/|streamable/i.test(post.linkUrl || post.embedUrl)) refs.root.classList.add("vertical-embed");
 		} else if (!active && existing) existing.remove();
 	}
+	function hueOf(name) {
+		let h = 0;
+		for (let i = 0; i < name.length; i++) h = h * 31 + name.charCodeAt(i) >>> 0;
+		return h % 360;
+	}
+	function titleSize(title, hasBody) {
+		const n = title.length;
+		if (!hasBody && n <= 90) return "xl";
+		if (n <= 70) return "l";
+		return "m";
+	}
 	function buildCard(post) {
 		const card = document.createElement("div");
 		card.className = "card";
@@ -946,19 +1132,42 @@
 		if (post.kind === "link") {
 			const href = post.linkUrl && isSafeUrl(post.linkUrl) ? post.linkUrl : "";
 			inner.innerHTML = `
-      ${post.thumbnail ? "<img class=\"thumb\" alt=\"\">" : ""}
-      <div class="domain">${escapeHtml(extractDomain(href))}</div>
-      <h2>${escapeHtml(post.title)}</h2>
+      ${post.thumbnail ? "<div class=\"thumb\"><img alt=\"\"></div>" : ""}
+      <div class="domain">${ICONS.external}<span>${escapeHtml(extractDomain(href))}</span></div>
+      <h2 class="t-${titleSize(post.title, true)}">${escapeHtml(post.title)}</h2>
       ${href ? `<a class="cta" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">Open link ${ICONS.external}</a>` : ""}
     `;
-			const thumb = inner.querySelector("img.thumb");
+			const thumb = inner.querySelector(".thumb img");
 			if (thumb && post.thumbnail) {
 				thumb.referrerPolicy = "no-referrer";
 				thumb.src = post.thumbnail;
 			}
-		} else inner.innerHTML = `<h2>${escapeHtml(post.title)}</h2>${post.text ? `<p>${escapeHtml(post.text)}</p>` : ""}`;
+		} else {
+			const hasBody = !!(post.html || post.text);
+			inner.innerHTML = `
+      <h2 class="t-${titleSize(post.title, hasBody)}">${escapeHtml(post.title)}</h2>
+      ${hasBody ? "<div class=\"body md\"></div>" : ""}
+      <button type="button" class="more" data-action="read" tabindex="-1">Read more</button>
+    `;
+			if (!hasBody) {
+				inner.classList.add("solo");
+				card.classList.add("solo");
+			}
+			const body = inner.querySelector(".body");
+			if (body) {
+				if (post.html) body.innerHTML = post.html;
+				else body.textContent = post.text || "";
+			}
+		}
 		card.appendChild(inner);
 		return card;
+	}
+	function markOverflow(card) {
+		requestAnimationFrame(() => {
+			const body = card.querySelector(".body");
+			const cut = !!body && body.scrollHeight > body.clientHeight + 4;
+			card.classList.toggle("overflowing", cut);
+		});
 	}
 	function unmountSlide(refs) {
 		if (!refs.mounted) return;
@@ -1015,11 +1224,16 @@
 		settleTimer = null;
 		toastTimer = null;
 		votes = new Map();
+		readerEl;
+		readerPost = null;
 		constructor(opts) {
 			this.opts = opts;
 			this.host = document.createElement("div");
 			this.host.id = "rr-reel-host";
 			this.shadow = this.host.attachShadow({ mode: "open" });
+		}
+		get readerInHistory() {
+			return !!this.readerPost && !!history.state?.rrReader;
 		}
 		get activePost() {
 			return this.opts.source.posts[this.active] || null;
@@ -1046,6 +1260,16 @@
         <span class="feed-name"></span>
         <button type="button" class="icon-btn" data-action="sound" aria-label="Mute"></button>
       </div>
+      <div class="reader" role="dialog" aria-label="Post" aria-hidden="true">
+        <div class="reader-bar">
+          <span class="who"></span>
+          <button type="button" class="icon-btn" data-action="reader-close" aria-label="Close post">${ICONS.close}</button>
+        </div>
+        <div class="reader-scroll"><h2></h2><div class="md"></div></div>
+        <div class="reader-actions">
+          <button type="button" data-action="reader-comments" class="primary">${ICONS.comments}<span>Comments</span></button>
+        </div>
+      </div>
       <div class="toast" role="status" aria-live="polite"></div>
     `;
 			this.shadow.append(style, this.el);
@@ -1060,6 +1284,7 @@
 			this.errorEl = q(".error");
 			this.toastEl = q(".toast");
 			this.soundBtn = q("[data-action=\"sound\"]");
+			this.readerEl = q(".reader");
 			q(".feed-name").textContent = this.opts.feedName;
 			document.documentElement.appendChild(this.host);
 			this.appendSlides(this.opts.source.posts);
@@ -1145,10 +1370,12 @@
 			});
 			const video = isVideoKind(post);
 			this.el.classList.toggle("has-video", video);
+			this.el.classList.toggle("gif", !!post.video?.gif);
 			this.updateSeek(true);
 			if (post.kind === "video" && post.el?.isConnected) {
 				const fresh = extractPost(post.el);
 				if (fresh?.video) post.video = fresh.video;
+				this.el.classList.toggle("gif", !!post.video?.gif);
 			}
 			if (video) {
 				refs.media.querySelector("img.poster")?.remove();
@@ -1185,6 +1412,11 @@
 			this.el.addEventListener("click", (e) => this.onClick(e));
 			this.track.addEventListener("scroll", () => this.onScroll(), { passive: true });
 			this.track.addEventListener("scrollend", () => this.settle());
+			const onPop = () => {
+				if (this.readerPost && !history.state?.rrReader) this.closeReader(true);
+			};
+			window.addEventListener("popstate", onPop);
+			this.cleanup.push(() => window.removeEventListener("popstate", onPop));
 			const onKey = (e) => this.onKey(e);
 			window.addEventListener("keydown", onKey, true);
 			this.cleanup.push(() => window.removeEventListener("keydown", onKey, true));
@@ -1218,7 +1450,18 @@
 				this.runAction(btn.dataset.action || "", btn);
 				return;
 			}
-			if (target.closest?.("a, .card-inner, .seek, .gallery .count, .top")) return;
+			const spoiler = target.closest?.(".spoiler");
+			if (spoiler) {
+				spoiler.classList.add("shown");
+				return;
+			}
+			if (target.closest?.(".reader")) return;
+			const card = target.closest?.(".card");
+			if (card && !target.closest("a")) {
+				if (card.classList.contains("overflowing") && this.activePost) this.openReader(this.activePost);
+				return;
+			}
+			if (target.closest?.("a, .seek, .gallery .count, .top")) return;
 			if (target.closest?.(".title")) {
 				target.closest(".title")?.classList.toggle("open");
 				return;
@@ -1268,6 +1511,15 @@
 				case "comments":
 					if (post) this.opts.onOpenComments(post);
 					break;
+				case "read":
+					if (post) this.openReader(post);
+					break;
+				case "reader-close":
+					this.closeReader(false);
+					break;
+				case "reader-comments":
+					if (this.readerPost) this.opts.onOpenComments(this.readerPost);
+					break;
 				case "captions": {
 					const on = this.player.toggleCaptions();
 					btn.classList.toggle("on", on);
@@ -1283,6 +1535,14 @@
 			const t = e.composedPath()[0];
 			if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
 			const k = e.key;
+			if (this.readerPost) {
+				if (k === "Escape") {
+					e.preventDefault();
+					e.stopPropagation();
+					this.closeReader(false);
+				}
+				return;
+			}
 			let handled = true;
 			if (k === "ArrowDown" || k === "j" || k === "J" || k === "PageDown") this.go(1);
 			else if (k === "ArrowUp" || k === "k" || k === "K" || k === "PageUp") this.go(-1);
@@ -1305,6 +1565,34 @@
 				e.preventDefault();
 				e.stopPropagation();
 			}
+		}
+		openReader(post) {
+			if (post.kind !== "text") return;
+			this.readerPost = post;
+			const r = this.readerEl;
+			r.style.setProperty("--hue", this.slides[this.active]?.root.style.getPropertyValue("--hue") || "16");
+			const who = r.querySelector(".who");
+			who.innerHTML = `<b>${escapeHtml(post.subreddit)}</b>${post.author ? ` · u/${escapeHtml(post.author)}` : ""}`;
+			r.querySelector(".reader-scroll h2").textContent = post.title;
+			const md = r.querySelector(".reader-scroll .md");
+			if (post.html) md.innerHTML = post.html;
+			else md.textContent = post.text || "";
+			r.querySelector(".reader-scroll").scrollTop = 0;
+			r.classList.add("open");
+			r.setAttribute("aria-hidden", "false");
+			if (!history.state?.rrReader) history.pushState({
+				...history.state || {},
+				rrReader: true
+			}, "");
+			r.querySelector("[data-action=\"reader-close\"]").focus({ preventScroll: true });
+		}
+		closeReader(fromHistory) {
+			if (!this.readerPost) return;
+			this.readerPost = null;
+			this.readerEl.classList.remove("open");
+			this.readerEl.setAttribute("aria-hidden", "true");
+			if (!fromHistory && history.state?.rrReader) history.back();
+			this.track.focus({ preventScroll: true });
 		}
 		doVote(post, dir) {
 			if (!post.el?.isConnected) {
@@ -1543,11 +1831,12 @@ html.rr-open body { display: none !important; }
 	function closeReel(fromHistory) {
 		if (!reel) return;
 		const last = reel.activePost;
+		const entries = reel.readerInHistory ? 2 : 1;
 		reel.close();
 		reel = null;
 		source.disconnect();
 		document.documentElement.classList.remove("rr-open");
-		if (!fromHistory && history.state?.rrReel) history.back();
+		if (!fromHistory && history.state?.rrReel) history.go(-entries);
 		const land = () => {
 			if (last?.el?.isConnected) last.el.scrollIntoView({ block: "center" });
 		};
@@ -1576,6 +1865,7 @@ html.rr-open body { display: none !important; }
 		const style = document.createElement("style");
 		style.textContent = PAGE_CSS;
 		(document.head || document.documentElement).appendChild(style);
+		startDeclutter();
 		syncFab();
 		watchRoute(() => {
 			if (reel) closeReel(true);

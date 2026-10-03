@@ -3,6 +3,7 @@
  * attributes Reddit already rendered: no network, no shadow-DOM digging.
  */
 
+import { sanitizeMarkdownHtml } from './sanitize';
 import type { Post, PostKind, VideoSource } from './types';
 
 const REDGIFS_RE = /redgifs\.com\/(?:watch|ifr|i)\/([a-z0-9]+)/i;
@@ -38,17 +39,28 @@ function readVideo(el: HTMLElement): VideoSource | undefined {
       for (const p of perms) {
         const url = p?.source?.url;
         if (typeof url === 'string') {
-          mp4.push({ url, h: p.source.dimensions?.height || 0, w: p.source.dimensions?.width || 0 });
+          mp4.push({
+            url,
+            h: p.source.dimensions?.height || 0,
+            w: p.source.dimensions?.width || 0,
+          });
         }
       }
     } catch {}
   }
   mp4.sort((a, b) => b.h - a.h);
-  const hls = player.getAttribute('src') || '';
+  // `src` is an HLS playlist for real videos, but a plain mp4 for "gif" posts
+  // (preview.redd.it/…gif?format=mp4): feeding that to hls.js fails.
+  const src = player.getAttribute('src') || '';
+  const isHls = /\.m3u8(\?|$)/i.test(src) || /v\.redd\.it\/.+\/HLSPlaylist/i.test(src);
+  let hls = '';
+  if (isHls) hls = src;
+  else if (src && !mp4.some((m) => m.url === src)) mp4.push({ url: src, h: 0, w: 0 });
   if (!mp4.length && !hls) return undefined;
   return {
     mp4: mp4.map((m) => m.url),
     hls,
+    gif: player.hasAttribute('gif') || /\.gif$/i.test(src.split('?')[0]),
     poster: player.getAttribute('poster') || '',
     captions: player.getAttribute('caption-url') || '',
     width: mp4[0]?.w || 0,
@@ -131,7 +143,14 @@ export function extractPost(el: HTMLElement): Post | null {
   }
   if (!kind && (type === 'text' || type === 'self')) {
     kind = 'text';
-    post.text = (el.querySelector('[slot="text-body"]')?.textContent || '').trim().slice(0, 4000);
+    // One at a time: a selector list matches in document order, and the outer
+    // element wraps the body in a link to the post.
+    const body =
+      el.querySelector<HTMLElement>('shreddit-post-text-body .md') ||
+      el.querySelector<HTMLElement>('[slot="text-body"] .md') ||
+      el.querySelector<HTMLElement>('shreddit-post-text-body');
+    post.text = (body?.textContent || '').replace(/\s+\n/g, '\n').trim().slice(0, 6000);
+    if (body) post.html = sanitizeMarkdownHtml(body);
   }
   if (!kind) {
     kind = 'link';

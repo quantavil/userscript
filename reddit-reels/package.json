@@ -1,6 +1,6 @@
 {
   "name": "reddit-reels",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "author": "quantavil",
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",

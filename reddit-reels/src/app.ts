@@ -6,6 +6,7 @@
 import { isReelRoute, watchRoute } from './core/route';
 import { FeedSource } from './feed/source';
 import type { Post } from './feed/types';
+import { startDeclutter } from './page/declutter';
 import { Reel } from './reel/reel';
 import { postUrl } from './reel/slide';
 import { createFab } from './ui/fab';
@@ -96,11 +97,12 @@ export function openReel(): void {
 export function closeReel(fromHistory: boolean): void {
   if (!reel) return;
   const last = reel.activePost;
+  const entries = reel.readerInHistory ? 2 : 1;
   reel.close();
   reel = null;
   source.disconnect();
   document.documentElement.classList.remove('rr-open');
-  if (!fromHistory && history.state?.rrReel) history.back();
+  if (!fromHistory && history.state?.rrReel) history.go(-entries);
   // Land on the post you were watching in Reddit's list (after Back settles).
   const land = () => {
     if (last?.el?.isConnected) last.el.scrollIntoView({ block: 'center' });
@@ -137,6 +139,7 @@ export function init(): void {
   const style = document.createElement('style');
   style.textContent = PAGE_CSS;
   (document.head || document.documentElement).appendChild(style);
+  startDeclutter();
 
   syncFab();
   watchRoute(() => {

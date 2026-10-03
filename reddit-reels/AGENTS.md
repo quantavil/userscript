@@ -9,13 +9,17 @@ Guidance for work on **Reddit Reels** (`reddit-reels`). Read README.md first for
 - **One `<video>`.** `media/player.ts` owns a single shared video element that moves into the active slide. Do not create per-slide videos: it reintroduces audio bleed and breaks the iOS "first gesture unlocks sound" behaviour. The only other media element is the muted, never-attached preloader.
 - **Iframes only on the active slide.** YouTube/Streamable embeds and the RedGifs fallback can't be paused reliably; they are mounted for the active slide only and removed on leave.
 - **Mount radius.** Only slides within `MOUNT_RADIUS` of the active one keep images/iframes/backdrops. Keep it small; phones run out of memory.
+- **Text slides don't scroll.** A nested scroller swallows the swipe to the next post. Long bodies fade out; the reader sheet (outside the track, own history entry `rrReader`) shows the full text. Closing the reel with the reader open pops both entries.
 - **Nothing changes inside the track mid-swipe.** Measured with real touch flicks: any layout change inside the scroll-snap track during a swipe makes Chrome re-snap to the old slide ("swipe twice", "same post again"). Live UI (seek bar, time, spinner, ▶, pulses, errors, unmute hint) lives in the fixed `.hud`; the seek bar animates with `transform` only; slide activation runs on scroll settle (`scrollend` + 120 ms fallback), not on IntersectionObserver. Images inside slides need fixed boxes.
 
 ## Data
 
 - Posts come from `<shreddit-post>` attributes (`post-title`, `author`, `score`, `comment-count`, `permalink`, `post-type`, `content-href`, `domain`) and the inner `<shreddit-player>` (`packaged-media-json`, `src` HLS, `poster`, `caption-url`). The player tag is `shreddit-player` (not `-2`).
 - Pagination uses Reddit's own `faceplate-partial[slot="load-after"]` URL. Fetched posts are inserted into Reddit's live feed before the partial, and the partial is replaced by the next one. Never call Reddit's `.json` API.
-- Mobile `a[slot="full-post-link"]` points at `applink.reddit.com` (opens the app). Build post URLs from `permalink` (`postUrl()`).
+- Mobile `a[slot="full-post-link"]` points at `applink.reddit.com` (opens the app). Build post URLs from `permalink` (`postUrl()`). `page/declutter.ts` rewrites those links in Reddit's page to `www.reddit.com`.
+- `post-type="gif"` players have `src` = a plain mp4 (`preview.redd.it/…gif?format=mp4`, `gif` attribute), not HLS. Only `.m3u8` sources go to hls.js.
+- Text bodies: take `shreddit-post-text-body .md` (query each selector separately; the outer element wraps the body in a link to the post) and pass it through `feed/sanitize.ts`. Never insert Reddit's HTML unsanitized.
+- Don't add code that circumvents Reddit's age/NSFW gates (`xpromo-nsfw-blocking-container`, `shreddit-blurred-container`, the mature-content dialog). Hiding app promos is fine; gates are out of scope.
 
 ## Network constraints (measured on live reddit.com)
 
