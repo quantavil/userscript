@@ -32,37 +32,53 @@ export function parseGeminiReply(body: string): string {
 
 type Media = { mime_type: string; data: string };
 
+/** Grid replies: Gemini's structured output guarantees parseable `{"tiles":[int…]}`. */
+const TILES_SCHEMA = {
+  type: 'OBJECT',
+  properties: { tiles: { type: 'ARRAY', items: { type: 'INTEGER' } } },
+  required: ['tiles'],
+};
+
 async function generate(
   http: Http,
   cfg: { apiKey: string; model: string },
   prompt: string,
   media: Media,
   signal?: AbortSignal,
+  json = false,
 ): Promise<string> {
   const model = cfg.model.replace(/^models\//, '');
-  const body = (withThinking: boolean) =>
+  const opts = { thinking: true, json };
+  const body = () =>
     JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }, { inline_data: media }] }],
-      generationConfig: { temperature: 0, maxOutputTokens: 256, ...(withThinking ? thinkingConfigFor(model) : {}) },
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 256,
+        ...(opts.thinking ? thinkingConfigFor(model) : {}),
+        ...(opts.json ? { responseMimeType: 'application/json', responseSchema: TILES_SCHEMA } : {}),
+      },
     });
   // Key goes in a header, never in the URL (URLs end up in logs and referrers).
-  const call = (b: string) =>
+  const call = () =>
     http({
       method: 'POST',
       url: `${BASE}/models/${encodeURIComponent(model)}:generateContent`,
       headers: { 'content-type': 'application/json', 'x-goog-api-key': cfg.apiKey },
-      body: b,
+      body: body(),
       timeout: 20_000,
       signal,
     });
-  try {
-    return parseGeminiReply((await call(body(true))).text);
-  } catch (e) {
-    // Some models reject thinkingConfig; retry once without it.
-    if (e instanceof HttpError && e.status === 400 && /thinking/i.test(e.message)) {
-      return parseGeminiReply((await call(body(false))).text);
+  for (;;) {
+    try {
+      return parseGeminiReply((await call()).text);
+    } catch (e) {
+      // Some models reject thinkingConfig or JSON mode; drop the offending option and retry.
+      const msg = e instanceof HttpError && e.status === 400 ? e.message : '';
+      if (opts.thinking && /thinking/i.test(msg)) opts.thinking = false;
+      else if (opts.json && /schema|mime|json/i.test(msg)) opts.json = false;
+      else throw e;
     }
-    throw e;
   }
 }
 
@@ -79,8 +95,8 @@ export const createGemini = (http: Http = gmHttp): Provider => ({
   defaultAudioModel: '',
   suggestedAudioModels: [],
 
-  complete(cfg, { image, prompt, signal }) {
-    return generate(http, cfg, prompt, { mime_type: image.mime, data: image.base64 }, signal);
+  complete(cfg, { image, prompt, json, signal }) {
+    return generate(http, cfg, prompt, { mime_type: image.mime, data: image.base64 }, signal, json);
   },
 
   async transcribe(cfg, { audio, signal }) {

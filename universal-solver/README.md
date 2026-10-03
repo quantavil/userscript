@@ -57,7 +57,9 @@ One **Provider** dropdown: Google Gemini (default `gemini-3.5-flash-lite`), Groq
 | OpenRouter | pick one | `openai/whisper-large-v3` |
 | Custom | pick one | `whisper-1` (`/audio/transcriptions`) |
 
-Audio needs a **speech-to-text** (transcription) model, not text-to-speech. **Fetch list** loads the vision models your account can use; **Other…** lets you type any id.
+Audio needs a **speech-to-text** (transcription) model, not text-to-speech. **Fetch list** loads the vision models your account can use (OpenRouter's text-only models are left out); **Other…** lets you type any id.
+
+Grid answers are requested as JSON the API enforces where it can (Gemini structured output, OpenAI-style `response_format`). An endpoint that rejects that gets one plain retry, and the plain request is used for that model from then on.
 
 ## Features
 - Two-click setup with a live selector preview, match counter, and ↑/↓ to widen/narrow the target

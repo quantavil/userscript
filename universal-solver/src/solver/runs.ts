@@ -100,7 +100,7 @@ export async function runGrid(ctx: RunContext, el: Element): Promise<RunResult> 
 
   const ask = async (image: Awaited<ReturnType<typeof captureTiles>>) => {
     ctx.onRequest();
-    const raw = await withRetry(() => provider.complete(cfg, { image, prompt, signal }), { signal });
+    const raw = await withRetry(() => provider.complete(cfg, { image, prompt, json: true, signal }), { signal });
     check();
     return parseGridAnswer(raw, total);
   };

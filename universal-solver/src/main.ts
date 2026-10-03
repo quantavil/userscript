@@ -7,6 +7,14 @@ import { configureCurrentPage, configureGridPage } from './flows/setup.ts';
 import { mountUI } from './ui/mount.tsx';
 import { settingsTab, toast } from './ui/state.ts';
 
+/** Manual solve, with a reason instead of silence when there is nothing to solve here. */
+function solveNow(): void {
+  const m = controller.match.value;
+  if (!m) toast('No captcha rule for this site yet. Use “Configure this page” first', 'error');
+  else if (!m.rule.enabled) toast('The solver is turned off for this site. Enable it in Settings → Sites', 'error');
+  else void controller.solve('manual');
+}
+
 /** Boots the solver. Callers provide the GM_* APIs: a userscript manager, or the extension shim. */
 export function main(): void {
   const migrated = migrateV1(gmKV);
@@ -35,11 +43,7 @@ export function main(): void {
       open(() => void configureGridPage()),
       'g',
     );
-    GM_registerMenuCommand(
-      '▶ Solve now',
-      open(() => void controller.solve('manual')),
-      'r',
-    );
+    GM_registerMenuCommand('▶ Solve now', open(solveNow), 'r');
   }
 
   // Keep every open tab in sync when settings or rules change elsewhere.
@@ -49,7 +53,7 @@ export function main(): void {
 
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
-    if (e.code === 'KeyS') open(() => void controller.solve('manual'))();
+    if (e.code === 'KeyS') open(solveNow)();
     else if (e.code === 'KeyC') open(() => void configureCurrentPage())();
     else if (e.code === 'KeyG') open(() => void configureGridPage())();
     else return;

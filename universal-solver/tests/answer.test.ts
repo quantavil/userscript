@@ -12,6 +12,10 @@ describe('normalizeAnswer', () => {
   test('takes the last non-empty line when the model explains itself', () => {
     expect(normalizeAnswer('The captcha reads:\nX7Q2\n', rule())).toBe('X7Q2');
   });
+  test('takes the part after a colon when the preface is on the same line', () => {
+    expect(normalizeAnswer('The answer is: K3PZ', rule())).toBe('K3PZ');
+    expect(normalizeAnswer('Answer: 12', rule({ kind: 'math' }))).toBe('12');
+  });
   test('removes closed <think> blocks (reasoning models)', () => {
     expect(normalizeAnswer('<think>hmm 1234?</think>\nK3PZ', rule())).toBe('K3PZ');
   });

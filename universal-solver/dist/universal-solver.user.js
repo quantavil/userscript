@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Universal Captcha Solver
 // @namespace    https://github.com/quantavil/userscript
-// @version      2.4.1
+// @version      2.5.0
 // @description  Solve text, math, image-grid and audio captchas on any site using AI vision and speech-to-text models
 // @author       quantavil
 // @license      GPL-3.0-or-later
@@ -25,7 +25,7 @@
 // @connect      127.0.0.1
 // ==/UserScript==
 
-// Universal Captcha Solver 2.4.1. Copyright (C) quantavil.
+// Universal Captcha Solver 2.5.0. Copyright (C) quantavil.
 // Licensed under GPL-3.0-or-later: https://github.com/quantavil/userscript/blob/main/universal-solver/LICENSE
 // This program comes with ABSOLUTELY NO WARRANTY.
 (() => {
@@ -378,6 +378,10 @@
   function A2(n2, u3) {
     var i3 = y2(t2++, 3);
     !a2.__s && E2(i3.__H, u3) && (i3.__P = true, i3.__ = n2, i3.u = u3, r2.__H.__h.push(i3));
+  }
+  function F2(n2, u3) {
+    var i3 = y2(t2++, 4);
+    !a2.__s && E2(i3.__H, u3) && (i3.__P = false, i3.__ = n2, i3.u = u3, r2.__h.push(i3));
   }
   function T2(n2) {
     return f2 = 5, b2(function() {
@@ -946,7 +950,7 @@
       }), e5 = g3(function() {
         return !Array.isArray(o4.value) && !i(o4.value);
       }), a5 = j2(function() {
-        this.N = F2;
+        this.N = F3;
         if (e5.value) {
           var n4 = o4.value;
           if (i5.__v && i5.__v.__e && i5.__v.__e.nodeType === 3)
@@ -1057,7 +1061,7 @@
       f4.value = i5;
       t4 = n4;
     }, d: j2(function() {
-      this.N = F2;
+      this.N = F3;
       var r5 = f4.value.value;
       if (t4[n3] !== r5) {
         t4[n3] = r5;
@@ -1152,7 +1156,7 @@
         l4.call(i4);
     });
   }
-  function F2() {
+  function F3() {
     if (_3.push(this) === 1)
       (n.requestAnimationFrame || q2)(x3);
   }
@@ -2029,7 +2033,7 @@
     text = text.replace(/```[a-z]*/gi, "").trim();
     const lines = text.split(`
 `).map((l5) => l5.trim()).filter(Boolean);
-    const last = lines.at(-1) ?? "";
+    const last = (lines.at(-1) ?? "").split(/[:：]/).at(-1)?.trim() ?? "";
     if (!last)
       throw new AnswerError("Empty answer");
     if (rule.kind === "math") {
@@ -2085,27 +2089,43 @@
     }
     return text;
   }
-  async function generate(http, cfg, prompt, media, signal) {
+  var TILES_SCHEMA = {
+    type: "OBJECT",
+    properties: { tiles: { type: "ARRAY", items: { type: "INTEGER" } } },
+    required: ["tiles"]
+  };
+  async function generate(http, cfg, prompt, media, signal, json = false) {
     const model = cfg.model.replace(/^models\//, "");
-    const body = (withThinking) => JSON.stringify({
+    const opts = { thinking: true, json };
+    const body = () => JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: media }] }],
-      generationConfig: { temperature: 0, maxOutputTokens: 256, ...withThinking ? thinkingConfigFor(model) : {} }
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 256,
+        ...opts.thinking ? thinkingConfigFor(model) : {},
+        ...opts.json ? { responseMimeType: "application/json", responseSchema: TILES_SCHEMA } : {}
+      }
     });
-    const call = (b5) => http({
+    const call = () => http({
       method: "POST",
       url: `${BASE}/models/${encodeURIComponent(model)}:generateContent`,
       headers: { "content-type": "application/json", "x-goog-api-key": cfg.apiKey },
-      body: b5,
+      body: body(),
       timeout: 20000,
       signal
     });
-    try {
-      return parseGeminiReply((await call(body(true))).text);
-    } catch (e4) {
-      if (e4 instanceof HttpError && e4.status === 400 && /thinking/i.test(e4.message)) {
-        return parseGeminiReply((await call(body(false))).text);
+    for (;; ) {
+      try {
+        return parseGeminiReply((await call()).text);
+      } catch (e4) {
+        const msg = e4 instanceof HttpError && e4.status === 400 ? e4.message : "";
+        if (opts.thinking && /thinking/i.test(msg))
+          opts.thinking = false;
+        else if (opts.json && /schema|mime|json/i.test(msg))
+          opts.json = false;
+        else
+          throw e4;
       }
-      throw e4;
     }
   }
   var NOT_CHAT = /embedding|image|tts|live|audio|robotics|veo|imagen|aqa|computer-use|deep-research/;
@@ -2118,8 +2138,8 @@
     defaultBaseUrl: BASE,
     defaultAudioModel: "",
     suggestedAudioModels: [],
-    complete(cfg, { image, prompt, signal }) {
-      return generate(http, cfg, prompt, { mime_type: image.mime, data: image.base64 }, signal);
+    complete(cfg, { image, prompt, json, signal }) {
+      return generate(http, cfg, prompt, { mime_type: image.mime, data: image.base64 }, signal, json);
     },
     async transcribe(cfg, { audio, signal }) {
       return generate(http, cfg, AUDIO_PROMPT, { mime_type: audio.mime, data: audio.base64 }, signal);
@@ -2164,6 +2184,7 @@
     return text;
   }
   var createOpenAICompat = (opts) => (http = gmHttp) => {
+    const working = new Map;
     const root = (baseUrl) => (baseUrl || opts.defaultBaseUrl).replace(/\/+$/, "");
     const auth = (key) => key ? { authorization: `Bearer ${key}` } : {};
     return {
@@ -2200,9 +2221,11 @@
         const res = await http({ method: "POST", url, headers: auth(cfg.apiKey), body: form, timeout: 30000, signal });
         return parseTranscription(res.text);
       },
-      async complete(cfg, { image, prompt, signal }) {
+      async complete(cfg, { image, prompt, json, signal }) {
         const extras = opts.extraBody?.(cfg.model) ?? {};
-        const call = (withExtras) => http({
+        const levels = [json ? { ...extras, response_format: { type: "json_object" } } : extras, extras, {}].filter((v4, i4, all) => i4 === 0 || Object.keys(v4).length < Object.keys(all[i4 - 1] ?? {}).length);
+        const memo = `${root(cfg.baseUrl)} ${cfg.model} ${json ? "json" : "text"}`;
+        const call = (fields) => http({
           method: "POST",
           url: `${root(cfg.baseUrl)}/chat/completions`,
           headers: { "content-type": "application/json", ...auth(cfg.apiKey) },
@@ -2219,18 +2242,21 @@
                 ]
               }
             ],
-            ...withExtras ? extras : {}
+            ...fields
           }),
           timeout: 25000,
           signal
         });
-        try {
-          return parseChatReply((await call(true)).text);
-        } catch (e4) {
-          const rejected = e4 instanceof HttpError && (e4.status === 400 || e4.status === 422);
-          if (rejected && Object.keys(extras).length > 0)
-            return parseChatReply((await call(false)).text);
-          throw e4;
+        for (let i4 = Math.min(working.get(memo) ?? 0, levels.length - 1);; i4++) {
+          try {
+            const reply = parseChatReply((await call(levels[i4] ?? {})).text);
+            working.set(memo, i4);
+            return reply;
+          } catch (e4) {
+            const rejected = e4 instanceof HttpError && (e4.status === 400 || e4.status === 422);
+            if (!rejected || i4 >= levels.length - 1)
+              throw e4;
+          }
         }
       },
       async listModels(cfg, signal) {
@@ -2242,7 +2268,11 @@
         });
         const data = JSON.parse(res.text);
         const keep = opts.keepModel ?? (() => true);
-        return (data.data ?? []).map((m3) => m3.id).filter(keep).sort();
+        const sees = (m3) => {
+          const mods = m3.architecture?.input_modalities;
+          return !Array.isArray(mods) || mods.includes("image");
+        };
+        return (data.data ?? []).filter(sees).map((m3) => m3.id).filter(keep).sort();
       }
     };
   };
@@ -3401,7 +3431,7 @@
     const prompt = buildGridPrompt(size, instruction, rule.hint);
     const ask = async (image) => {
       ctx.onRequest();
-      const raw = await withRetry(() => provider.complete(cfg, { image, prompt, signal }), { signal });
+      const raw = await withRetry(() => provider.complete(cfg, { image, prompt, json: true, signal }), { signal });
       check2();
       return parseGridAnswer(raw, total);
     };
@@ -4963,7 +4993,7 @@
       if (!parsed.success || !patternOk)
         return;
       store.saveSite(pattern.trim(), parsed.output, state.original);
-      toast("Saved. Solving now…");
+      toast(matchesHere ? "Saved. Active on this page" : "Saved");
       close();
     };
     const selectorField = (key, label, help) => /* @__PURE__ */ u4("div", {
@@ -5519,11 +5549,22 @@ details[open] summary { margin-bottom: 10px; }
     const ref = T2(null);
     const drag = T2(null);
     const match = controller.match.value;
-    if (!match || IN_FRAME && !controller.present.value)
+    const ui = store.widgetUi(IN_FRAME);
+    const hidden = !match || IN_FRAME && !controller.present.value;
+    F2(() => {
+      const el = ref.current;
+      if (!el || ui.x === undefined)
+        return;
+      const r4 = el.getBoundingClientRect();
+      const x4 = clamp(r4.left, 4, innerWidth - r4.width - 4);
+      const y5 = clamp(r4.top, 4, innerHeight - r4.height - 4);
+      if (x4 !== r4.left || y5 !== r4.top)
+        Object.assign(el.style, { left: `${x4}px`, top: `${y5}px` });
+    });
+    if (hidden)
       return null;
     const { status } = controller;
     const st = status.value;
-    const ui = store.widgetUi(IN_FRAME);
     const patchUi = (patch) => store.patchWidgetUi(IN_FRAME, patch);
     const { rule } = match;
     const disabled = !rule.enabled;
@@ -5706,6 +5747,15 @@ details[open] summary { margin-bottom: 10px; }
   }
 
   // src/main.ts
+  function solveNow() {
+    const m3 = controller.match.value;
+    if (!m3)
+      toast("No captcha rule for this site yet. Use “Configure this page” first", "error");
+    else if (!m3.rule.enabled)
+      toast("The solver is turned off for this site. Enable it in Settings → Sites", "error");
+    else
+      controller.solve("manual");
+  }
   function main() {
     const migrated = migrateV1(gmKV);
     const movedToOpenRouter = migrateOpenRouter(gmKV);
@@ -5719,7 +5769,7 @@ details[open] summary { margin-bottom: 10px; }
       GM_registerMenuCommand("⚙ Settings", open(() => settingsTab.value = "provider"), "s");
       GM_registerMenuCommand("\uD83C\uDFAF Configure captcha on this page", open(() => void configureCurrentPage()), "c");
       GM_registerMenuCommand("\uD83E\uDDE9 Configure image-grid captcha on this page", open(() => void configureGridPage()), "g");
-      GM_registerMenuCommand("▶ Solve now", open(() => void controller.solve("manual")), "r");
+      GM_registerMenuCommand("▶ Solve now", open(solveNow), "r");
     }
     for (const key of [KEYS.settings, KEYS.sites, KEYS.stats]) {
       GM_addValueChangeListener(key, (_name, _old, _new, remote) => remote && store.reload());
@@ -5728,7 +5778,7 @@ details[open] summary { margin-bottom: 10px; }
       if (!e4.altKey || !e4.shiftKey || e4.ctrlKey || e4.metaKey)
         return;
       if (e4.code === "KeyS")
-        open(() => void controller.solve("manual"))();
+        open(solveNow)();
       else if (e4.code === "KeyC")
         open(() => void configureCurrentPage())();
       else if (e4.code === "KeyG")

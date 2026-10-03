@@ -1,4 +1,4 @@
-import { useRef } from 'preact/hooks';
+import { useLayoutEffect, useRef } from 'preact/hooks';
 import { controller, store } from '../app.ts';
 import { IN_FRAME } from '../dom/frame.ts';
 import { Icon } from './icons.tsx';
@@ -11,11 +11,24 @@ export function Widget() {
   const drag = useRef<{ dx: number; dy: number; moved: boolean } | null>(null);
 
   const match = controller.match.value;
-  if (!match || (IN_FRAME && !controller.present.value)) return null;
+  const ui = store.widgetUi(IN_FRAME);
+  const hidden = !match || (IN_FRAME && !controller.present.value);
+
+  // A position saved while minimised (a dot) can push the expanded bar past the edge, which is
+  // easy in a 400px challenge frame: nudge it back inside after every render.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || ui.x === undefined) return;
+    const r = el.getBoundingClientRect();
+    const x = clamp(r.left, 4, innerWidth - r.width - 4);
+    const y = clamp(r.top, 4, innerHeight - r.height - 4);
+    if (x !== r.left || y !== r.top) Object.assign(el.style, { left: `${x}px`, top: `${y}px` });
+  });
+
+  if (hidden) return null;
   const { status } = controller;
   const st = status.value;
-  // Inside a challenge iframe the widget keeps its own position and starts minimised.
-  const ui = store.widgetUi(IN_FRAME);
+  // Inside a challenge iframe the widget keeps its own position (`ui`) and starts minimised.
   const patchUi = (patch: Parameters<typeof store.patchWidgetUi>[1]) => store.patchWidgetUi(IN_FRAME, patch);
   const { rule } = match;
   const disabled = !rule.enabled;

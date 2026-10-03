@@ -68,7 +68,7 @@ function EditorBody({
     errors.value = next;
     if (!parsed.success || !patternOk) return;
     store.saveSite(pattern.trim(), parsed.output, state.original);
-    toast('Saved. Solving now…');
+    toast(matchesHere ? 'Saved. Active on this page' : 'Saved');
     close();
   };
 
