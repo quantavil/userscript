@@ -21,15 +21,10 @@ A generic userscript to solve captchas on Icegate websites using Gemini AI.
 3. Save the script.
 
 ## Configuration
-The script uses a hardcoded API key for demonstration purposes. To use your own:
-1. Get an API key from [Google AI Studio](https://aistudio.google.com/).
-2. Edit the `CONFIG` object in the script:
-   ```javascript
-   const CONFIG = {
-       apiKey: 'YOUR_API_KEY_HERE',
-       model: 'gemma-3-27b-it', // or gemini-3.0-flash
-   };
-   ```
+1. Obtain an API key from [Google AI Studio](https://aistudio.google.com/).
+2. On any supported Icegate portal, open your userscript manager menu (Tampermonkey/Violentmonkey icon).
+3. Select **"⚙️ Configure Gemini API Key"** and paste your key.
+   *(Alternatively, on first run when solving, the script will prompt you for your key and save it securely in local storage).*
 
 ## Usage
 - The script automatically activates on supported Icegate pages.

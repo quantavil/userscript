@@ -9,6 +9,9 @@
 // @match        https://foservices.icegate.gov.in/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
 // ==/UserScript==
 
 (function () {
@@ -16,7 +19,6 @@
 
     // --- Configuration ---
     const CONFIG = {
-        apiKey: 'AIzaSyDp4Ldwi-Pr4E3dfQiT2lyRa0-S57W0b5E',
         model: 'gemma-3-27b-it',
         timeouts: {
             imageLoad: 5000,
@@ -28,6 +30,33 @@
             afterSrcChange: 50 
         }
     };
+
+    function getApiKey() {
+        let key = (typeof GM_getValue !== 'undefined' ? (GM_getValue('ICEGATE_GEMINI_API_KEY', '') || GM_getValue('GEMINI_API_KEY', '')) : '');
+        if (!key) {
+            key = prompt('Please enter your Google Gemini API key:');
+            if (key) {
+                key = key.trim();
+                if (typeof GM_setValue !== 'undefined') {
+                    GM_setValue('ICEGATE_GEMINI_API_KEY', key);
+                }
+            }
+        }
+        return key || '';
+    }
+
+    if (typeof GM_registerMenuCommand !== 'undefined') {
+        GM_registerMenuCommand('⚙️ Configure Gemini API Key', () => {
+            const current = (typeof GM_getValue !== 'undefined' ? (GM_getValue('ICEGATE_GEMINI_API_KEY', '') || GM_getValue('GEMINI_API_KEY', '')) : '');
+            const input = prompt('Enter your Google Gemini API key:', current);
+            if (input !== null) {
+                if (typeof GM_setValue !== 'undefined') {
+                    GM_setValue('ICEGATE_GEMINI_API_KEY', input.trim());
+                }
+                alert('API key saved!');
+            }
+        });
+    }
 
     const SITES = [
         {
@@ -236,8 +265,13 @@
         }
 
         async solveWithGemini(base64Image) {
+            const apiKey = getApiKey();
+            if (!apiKey) {
+                throw new Error('No Gemini API key configured. Click Tampermonkey menu -> Configure Gemini API Key');
+            }
+
             return new Promise((resolve, reject) => {
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.model}:generateContent?key=${CONFIG.apiKey}`;
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.model}:generateContent`;
                 const payload = {
                     contents: [{
                         parts: [
@@ -250,7 +284,10 @@
                 GM_xmlhttpRequest({
                     method: "POST",
                     url: apiUrl,
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": apiKey
+                    },
                     data: JSON.stringify(payload),
                     timeout: CONFIG.timeouts.api, // Fix: No API Request Timeout
                     ontimeout: () => reject("Request timed out"),
