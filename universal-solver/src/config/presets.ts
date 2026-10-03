@@ -40,6 +40,8 @@ const hcaptcha = v.parse(SiteRuleSchema, {
 export interface Preset {
   id: string;
   label: string;
+  /** Selectors not verified against the live widget; shown with a "beta" tag. */
+  experimental?: boolean;
   sites: Record<string, SiteRule>;
 }
 
@@ -51,7 +53,8 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'hcaptcha',
-    label: 'hCaptcha grid (experimental)',
+    label: 'hCaptcha',
+    experimental: true,
     sites: { 'newassets.hcaptcha.com': hcaptcha },
   },
 ];

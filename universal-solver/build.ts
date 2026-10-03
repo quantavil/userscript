@@ -123,6 +123,10 @@ async function buildExtension(): Promise<void> {
   rmSync(tmp, { force: true });
   const zip = spawnSync('zip', ['-X', '-q', '-D', `../${tmp.split('/').pop()}`, ...files], { cwd: EXT });
   const zipped = !zip.error && zip.status === 0;
+  // Back to real timestamps: with a fixed mtime and an unchanged size (2.4.0 -> 2.4.1), git's
+  // stat cache would treat a rebuilt file as unmodified and never commit it.
+  const now = new Date();
+  for (const f of files) utimesSync(`${EXT}/${f}`, now, now);
   if (zipped) renameSync(tmp, ZIP);
   else console.warn(`kept the old ${ZIP}: building it needs the zip command`);
   console.log(`built ${EXT}/ (${files.length} files)${zipped ? ` and ${ZIP}` : ''}`);

@@ -1,4 +1,4 @@
-// Universal Captcha Solver 2.4.0. Copyright (C) quantavil.
+// Universal Captcha Solver 2.5.0. Copyright (C) quantavil.
 // Licensed under GPL-3.0-or-later: https://github.com/quantavil/userscript/blob/main/universal-solver/LICENSE
 // This program comes with ABSOLUTELY NO WARRANTY.
 (() => {

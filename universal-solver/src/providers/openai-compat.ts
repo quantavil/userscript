@@ -43,6 +43,8 @@ export function parseTranscription(body: string): string {
 export const createOpenAICompat =
   (opts: CompatOptions) =>
   (http: Http = gmHttp): Provider => {
+    /** Endpoint + model + mode -> the optional-fields level that last worked (see `complete`). */
+    const working = new Map<string, number>();
     const root = (baseUrl: string) => (baseUrl || opts.defaultBaseUrl).replace(/\/+$/, '');
     // No Authorization header at all without a key: some local servers reject "Bearer ".
     const auth = (key: string): Record<string, string> => (key ? { authorization: `Bearer ${key}` } : {});
@@ -82,9 +84,15 @@ export const createOpenAICompat =
         return parseTranscription(res.text);
       },
 
-      async complete(cfg, { image, prompt, signal }) {
+      async complete(cfg, { image, prompt, json, signal }) {
+        // Optional body fields, most to least: JSON mode + provider extras, extras only, none.
+        // A 400/422 steps down one level; the level that worked is remembered per endpoint+model.
         const extras = opts.extraBody?.(cfg.model) ?? {};
-        const call = (withExtras: boolean) =>
+        const levels = [json ? { ...extras, response_format: { type: 'json_object' } } : extras, extras, {}].filter(
+          (v, i, all) => i === 0 || Object.keys(v).length < Object.keys(all[i - 1] ?? {}).length,
+        );
+        const memo = `${root(cfg.baseUrl)} ${cfg.model} ${json ? 'json' : 'text'}`;
+        const call = (fields: Record<string, unknown>) =>
           http({
             method: 'POST',
             url: `${root(cfg.baseUrl)}/chat/completions`,
@@ -102,17 +110,20 @@ export const createOpenAICompat =
                   ],
                 },
               ],
-              ...(withExtras ? extras : {}),
+              ...fields,
             }),
             timeout: 25_000,
             signal,
           });
-        try {
-          return parseChatReply((await call(true)).text);
-        } catch (e) {
-          const rejected = e instanceof HttpError && (e.status === 400 || e.status === 422);
-          if (rejected && Object.keys(extras).length > 0) return parseChatReply((await call(false)).text);
-          throw e;
+        for (let i = Math.min(working.get(memo) ?? 0, levels.length - 1); ; i++) {
+          try {
+            const reply = parseChatReply((await call(levels[i] ?? {})).text);
+            working.set(memo, i);
+            return reply;
+          } catch (e) {
+            const rejected = e instanceof HttpError && (e.status === 400 || e.status === 422);
+            if (!rejected || i >= levels.length - 1) throw e;
+          }
         }
       },
 
@@ -123,9 +134,17 @@ export const createOpenAICompat =
           headers: auth(cfg.apiKey),
           signal,
         });
-        const data = JSON.parse(res.text) as { data?: { id: string }[] };
+        const data = JSON.parse(res.text) as {
+          data?: { id: string; architecture?: { input_modalities?: unknown } }[];
+        };
         const keep = opts.keepModel ?? (() => true);
+        // OpenRouter lists hundreds of models and says which take images; drop the text-only ones.
+        const sees = (m: { architecture?: { input_modalities?: unknown } }) => {
+          const mods = m.architecture?.input_modalities;
+          return !Array.isArray(mods) || mods.includes('image');
+        };
         return (data.data ?? [])
+          .filter(sees)
           .map((m) => m.id)
           .filter(keep)
           .sort();

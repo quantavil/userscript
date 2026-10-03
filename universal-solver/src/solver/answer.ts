@@ -54,7 +54,8 @@ export function normalizeAnswer(raw: string, rule: Shape): string {
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean);
-  const last = lines.at(-1) ?? '';
+  // …or on the same line: "The answer is: K3PZ". The part after the last colon is the answer.
+  const last = (lines.at(-1) ?? '').split(/[:：]/).at(-1)?.trim() ?? '';
   if (!last) throw new AnswerError('Empty answer');
 
   if (rule.kind === 'math') {

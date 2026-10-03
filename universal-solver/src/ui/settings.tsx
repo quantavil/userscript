@@ -218,7 +218,7 @@ function SitesTab() {
 
   return (
     <>
-      <div class="row">
+      <div class="row wrap">
         <button type="button" class="btn primary" onClick={() => void configureCurrentPage()}>
           <Icon name="target" /> Configure this page
         </button>
@@ -232,44 +232,53 @@ function SitesTab() {
           <Icon name="plus" /> Add manually
         </button>
       </div>
-      <div class="row">
-        {PRESETS.map((p) => {
-          const state = presetState(p, store.sites.value);
-          return (
-            <button
-              key={p.id}
-              type="button"
-              class="btn"
-              disabled={state === 'current'}
-              title={
-                state === 'outdated' ? 'Newer selectors available; your on/off, auto and audio choices are kept' : ''
-              }
-              onClick={() => {
-                store.mergeSites(presetRules(p, store.sites.value));
-                toast(
+      <section class="group" aria-labelledby="ucs-presets">
+        <h3 id="ucs-presets" class="sub">
+          Image-grid captchas
+        </h3>
+        <div class="row wrap">
+          {PRESETS.map((p) => {
+            const state = presetState(p, store.sites.value);
+            return (
+              <button
+                key={p.id}
+                type="button"
+                class="btn sm"
+                disabled={state === 'current'}
+                title={
                   state === 'outdated'
-                    ? `Updated ${p.label}`
-                    : `Added ${p.label}. Tick the checkbox yourself; the challenge is solved for you`,
-                );
-              }}
-            >
-              <Icon name="plus" />{' '}
-              {state === 'current' ? `${p.label} added` : state === 'outdated' ? `Update ${p.label}` : p.label}
-            </button>
-          );
-        })}
-        <button type="button" class="btn" onClick={() => void configureGridPage()}>
-          <Icon name="target" /> Other image grid
-        </button>
-      </div>
+                    ? 'Newer selectors available; your on/off, auto and audio choices are kept'
+                    : p.experimental
+                      ? 'Selectors not yet verified against the live widget'
+                      : ''
+                }
+                onClick={() => {
+                  store.mergeSites(presetRules(p, store.sites.value));
+                  toast(
+                    state === 'outdated'
+                      ? `Updated ${p.label}`
+                      : `Added ${p.label}. Tick the checkbox yourself; the challenge is solved for you`,
+                  );
+                }}
+              >
+                <Icon name={state === 'current' ? 'check' : 'plus'} />
+                {state === 'outdated' ? `Update ${p.label}` : p.label}
+                {p.experimental && <span class="chip warn">beta</span>}
+              </button>
+            );
+          })}
+          <button type="button" class="btn sm" onClick={() => void configureGridPage()}>
+            <Icon name="target" /> Other grid…
+          </button>
+        </div>
+      </section>
       <p class="hint">
-        Solves distorted-text, math and image-grid captchas. Not Turnstile, invisible reCAPTCHA scoring, sliders or
-        audio.
+        Solves distorted-text, math, image-grid and audio captchas. Not Turnstile, invisible reCAPTCHA scoring, sliders
+        or puzzles.
       </p>
       {sites.length === 0 ? (
         <p class="empty">
-          No sites yet. On a page with a text captcha choose “Configure this page” (two clicks), or add the reCAPTCHA
-          preset above.
+          No sites yet. For a text captcha, open its page and choose “Configure this page”. For reCAPTCHA, add it above.
         </p>
       ) : (
         sites.map(([pattern, rule]) => (

@@ -47,6 +47,27 @@ describe('gemini', () => {
     expect(JSON.parse(String(calls[1]?.body ?? '{}')).generationConfig.thinkingConfig).toBeUndefined();
   });
 
+  test('grid requests use structured JSON output, dropped if the model rejects it', async () => {
+    const { http, calls } = fakeHttp(new HttpError('response_schema is not supported for this model', 400), ok);
+    await createProviders(http).gemini.complete(cfg({ model: 'gemini-3.5-flash-lite' }), {
+      image,
+      prompt: 'p',
+      json: true,
+    });
+    const first = JSON.parse(String(calls[0]?.body ?? '{}')).generationConfig;
+    expect(first.responseMimeType).toBe('application/json');
+    expect(first.responseSchema.properties.tiles.items.type).toBe('INTEGER');
+    const second = JSON.parse(String(calls[1]?.body ?? '{}')).generationConfig;
+    expect(second.responseMimeType).toBeUndefined();
+    expect(second.thinkingConfig).toEqual({ thinkingLevel: 'minimal' }); // only the rejected option goes
+  });
+
+  test('text captchas are not forced into JSON', async () => {
+    const { http, calls } = fakeHttp(ok);
+    await createProviders(http).gemini.complete(cfg(), { image, prompt: 'p' });
+    expect(JSON.parse(String(calls[0]?.body ?? '{}')).generationConfig.responseMimeType).toBeUndefined();
+  });
+
   test('ignores thought parts and surfaces safety blocks', async () => {
     const thoughts = JSON.stringify({
       candidates: [{ content: { parts: [{ text: 'hmm', thought: true }, { text: 'Z9' }] } }],
@@ -100,6 +121,22 @@ describe('groq (OpenAI-compatible)', () => {
     expect(JSON.parse(String(calls[1]?.body ?? '{}')).reasoning_effort).toBeUndefined();
   });
 
+  test('grid requests ask for JSON mode; a rejection drops it first and keeps reasoning off', async () => {
+    const { http, calls } = fakeHttp(new HttpError('response_format json_object not supported', 400), ok);
+    const groq = createProviders(http).groq;
+    const c = cfg({ model: 'qwen/qwen3.8-27b' });
+    await groq.complete(c, { image, prompt: 'p', json: true });
+    const body = (i: number) => JSON.parse(String(calls[i]?.body ?? '{}'));
+    expect(body(0).response_format).toEqual({ type: 'json_object' });
+    expect(body(1).response_format).toBeUndefined();
+    expect(body(1).reasoning_effort).toBe('none');
+
+    // Remembered: the next grid goes straight to the level that worked.
+    await groq.complete(c, { image, prompt: 'p', json: true });
+    expect(calls).toHaveLength(3);
+    expect(body(2).response_format).toBeUndefined();
+  });
+
   test('does not send reasoning_effort to non-Qwen models', async () => {
     const { http, calls } = fakeHttp(ok);
     await createProviders(http).groq.complete(cfg({ model: 'openai/gpt-oss-120b' }), { image, prompt: 'p' });
@@ -150,6 +187,18 @@ describe('groq (OpenAI-compatible)', () => {
     expect(p.keyOptional).toBe(true);
     await p.complete(cfg({ apiKey: '', baseUrl: 'http://localhost:1234/v1' }), { image, prompt: 'p' });
     expect(calls[0]?.headers?.authorization).toBeUndefined();
+  });
+
+  test('model lists drop entries the API marks as text-only (OpenRouter)', async () => {
+    const list = JSON.stringify({
+      data: [
+        { id: 'a/vision', architecture: { input_modalities: ['text', 'image'] } },
+        { id: 'b/text-only', architecture: { input_modalities: ['text'] } },
+        { id: 'c/unknown' },
+      ],
+    });
+    const { http } = fakeHttp(list);
+    expect(await createProviders(http).openrouter.listModels(cfg())).toEqual(['a/vision', 'c/unknown']);
   });
 
   test('OpenRouter is its own provider with a fixed URL', async () => {

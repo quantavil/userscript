@@ -1,6 +1,8 @@
 # <img src="icon.svg" width="32" height="32" alt=""> Universal Captcha Solver
 
-Solves text, math, image-grid and audio captchas on any site using AI vision and speech-to-text models. Ships as a **userscript** and as a **Firefox extension** (same code). Supports any AI vision endpoint (Google Gemini, Groq, OpenRouter, OpenAI, Ollama, LM Studio, or local OpenAI-compatible APIs).
+[![GitHub](https://img.shields.io/badge/GitHub-quantavil%2Fuserscript-181717?logo=github&logoColor=white)](https://github.com/quantavil/userscript)
+
+Solves text, math, image-grid and audio captchas on any site using AI vision and speech-to-text models. Supports any AI vision endpoint (Google Gemini, Groq, OpenRouter, OpenAI, Ollama, LM Studio, or local OpenAI-compatible APIs).
 
 > [!IMPORTANT]
 > **Scope**
@@ -55,7 +57,9 @@ One **Provider** dropdown: Google Gemini (default `gemini-3.5-flash-lite`), Groq
 | OpenRouter | pick one | `openai/whisper-large-v3` |
 | Custom | pick one | `whisper-1` (`/audio/transcriptions`) |
 
-Audio needs a **speech-to-text** (transcription) model, not text-to-speech. **Fetch list** loads the vision models your account can use; **Other…** lets you type any id.
+Audio needs a **speech-to-text** (transcription) model, not text-to-speech. **Fetch list** loads the vision models your account can use (OpenRouter's text-only models are left out); **Other…** lets you type any id.
+
+Grid answers are requested as JSON the API enforces where it can (Gemini structured output, OpenAI-style `response_format`). An endpoint that rejects that gets one plain retry, and the plain request is used for that model from then on.
 
 ## Features
 - Two-click setup with a live selector preview, match counter, and ↑/↓ to widen/narrow the target

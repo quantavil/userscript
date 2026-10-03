@@ -33,4 +33,5 @@ tests/          unit + e2e against the built bundle
 - All persisted data goes through `config/schema.ts` (valibot). Never `GM_setValue` elsewhere.
 - Network and storage are injected (`Http`, `KV`) so everything is testable without a browser.
 - Keep the bundle unminified (script catalogs reject minified userscripts). Commit `dist/` (users install from it); rebuild before every commit.
+- **Optional request fields** (`extraBody`, grid `json: true`): never required for correctness. Gemini drops a rejected `thinkingConfig` or `responseSchema` one at a time; OpenAI-compatible steps down JSON mode → extras → none on 400/422 and remembers the working level per endpoint+model+mode. JSON mode is dropped before `reasoning_effort: 'none'` so a rejection doesn't turn Qwen thinking back on.
 - Model IDs rot. Don't hard-code behaviour on a model name except via `thinkingConfigFor` / `extraBody`, which must degrade gracefully (they auto-retry without the extra field).

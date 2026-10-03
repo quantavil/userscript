@@ -15,6 +15,8 @@ export interface TranscribeInput {
 export interface CompleteInput {
   image: { mime: string; base64: string };
   prompt: string;
+  /** The prompt asks for `{"tiles":[…]}`: request JSON output where the API can enforce it. */
+  json?: boolean;
   signal?: AbortSignal;
 }
 
