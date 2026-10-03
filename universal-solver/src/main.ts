@@ -7,7 +7,8 @@ import { configureCurrentPage, configureGridPage } from './flows/setup.ts';
 import { mountUI } from './ui/mount.tsx';
 import { settingsTab, toast } from './ui/state.ts';
 
-function main(): void {
+/** Boots the solver. Callers provide the GM_* APIs: a userscript manager, or the extension shim. */
+export function main(): void {
   const migrated = migrateV1(gmKV);
   const movedToOpenRouter = migrateOpenRouter(gmKV);
   if (migrated.sites || migrated.apiKey || movedToOpenRouter) store.reload();
@@ -67,5 +68,3 @@ function main(): void {
     toast(`Upgraded from v1: imported ${migrated.sites} site rule(s). Pick a model in Settings.`);
   }
 }
-
-main();

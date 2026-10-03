@@ -1,10 +1,10 @@
 {
   "name": "universal-captcha-solver",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Solve text, math, image-grid and audio captchas on any site using AI vision and speech-to-text models",
   "type": "module",
   "private": true,
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "scripts": {
     "dev": "bun run build.ts --watch",
     "build": "bun run build.ts",

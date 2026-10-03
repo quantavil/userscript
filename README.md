@@ -41,7 +41,7 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 | :--- | :--- |
 | **[form-genie](./form-genie)** | Privacy-first auto form filler for desktop & mobile (IBPS, NTA, SSC, UPSC) with teach-mode rules and optional Gemini AI profile parsing. |
 | **[texpander-ai](./texpander-ai)** | Neo Zen-styled text expander featuring global abbreviation palettes (`Alt+P`) and inline AI text transformation menus (`Alt+G` via Gemini 2.5 Flash Lite). |
-| **[universal-solver](./universal-solver)** | Point-and-click universal captcha solver powered by AI vision and speech-to-text models: text, math, image-grid (incl. reCAPTCHA v2) and audio captchas. |
+| **[universal-solver](./universal-solver)** | Point-and-click universal captcha solver powered by AI vision and speech-to-text models: text, math, image-grid (incl. reCAPTCHA v2) and audio captchas. Also a Firefox extension. GPL-3.0. |
 | **[captcha-ai](./captcha-ai)** | Dedicated automated captcha solver tailored for Icegate portal authentication workflows using Gemini AI. |
 | **[ai-wishlist](./ai-wishlist)** | Cross-origin shopping assistant that unifies, parses, and syncs wishlists and technical specs across Amazon and Flipkart for AI evaluation. |
 | **[google-ai-brave](./google-ai-brave)** | Injects Google's AI Overview / AI Mode search results directly into the Brave Search sidebar for unified multi-engine answers. |
@@ -127,4 +127,4 @@ bun run build
 
 ## 📄 License
 
-This repository and all included userscripts are open source and licensed under the [MIT License](LICENSE).
+This repository and the included userscripts are open source and licensed under the [MIT License](LICENSE), except [universal-solver](./universal-solver), which is licensed under [GPL-3.0-or-later](./universal-solver/LICENSE).

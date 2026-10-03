@@ -1,6 +1,6 @@
-# Universal Captcha Solver
+# <img src="icon.svg" width="32" height="32" alt=""> Universal Captcha Solver
 
-Solves text, math and image-grid captchas on any site using AI vision models. Supports any AI vision endpoint (Google Gemini, Groq, OpenRouter, OpenAI, Ollama, LM Studio, or local OpenAI-compatible APIs).
+Solves text, math, image-grid and audio captchas on any site using AI vision and speech-to-text models. Ships as a **userscript** and as a **Firefox extension** (same code). Supports any AI vision endpoint (Google Gemini, Groq, OpenRouter, OpenAI, Ollama, LM Studio, or local OpenAI-compatible APIs).
 
 > [!IMPORTANT]
 > **Scope**
@@ -13,10 +13,17 @@ Solves text, math and image-grid captchas on any site using AI vision models. Su
 > **Honestly:** every click and keystroke is a synthetic DOM event (a userscript cannot move the real mouse), so `isTrusted` is false. The human-like pacing (curved cursor path, press hold, uneven typing) removes the obvious tells, not that one. Sites may still reject a correct answer, or refuse audio, based on their own risk score.
 
 ## Install
-1. Install a userscript manager (Tampermonkey / Violentmonkey).
-2. Open `dist/universal-solver.user.js` (raw) and confirm.
-3. Settings → **AI provider** → paste a key → **Test with a sample captcha**.
-4. On a page with a text captcha: **Configure this page** → click the image, then the answer box. Done.
+**Userscript** (any browser): install Tampermonkey or Violentmonkey, then open `dist/universal-solver.user.js` (raw) and confirm. Updates arrive automatically from `main`.
+
+**Firefox extension** (Firefox 140+, desktop; 142+ on Android): no userscript manager needed. The toolbar button replaces the manager menu.
+- **Try it now:** `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on…* → pick `dist/firefox/manifest.json`. Firefox removes temporary add-ons when it restarts.
+- **Keep it installed:** release Firefox only installs add-ons **signed by Mozilla**. Upload `dist/universal-solver-firefox.zip` to [addons.mozilla.org](https://addons.mozilla.org/developers/) as *On your own* (unlisted: signed automatically, no public listing) and install the `.xpi` it gives back. AMO asks for the source too, since the scripts are bundled: upload the repository's `universal-solver/` folder; `bun install && bun run build` reproduces `dist/`. Firefox Developer Edition, Nightly and ESR can instead set `xpinstall.signatures.required` to `false` in `about:config` and install the zip directly.
+- Settings and rules are kept by the extension, separate from the userscript's. Move them with Backup → Export / Import (API keys are not exported).
+- If the toolbar popup shows **Allow access to websites**, Firefox's per-site permission was turned off (about:addons → the add-on → Permissions); the solver cannot see captchas without it.
+
+Then:
+1. Settings → **AI provider** → paste a key → **Test with a sample captcha**.
+2. On a page with a text captcha: **Configure this page** → click the image, then the answer box. Done.
 
 ### reCAPTCHA v2 (one click)
 Settings → **Sites** → **reCAPTCHA v2**. Then on any site:
@@ -65,6 +72,9 @@ Audio needs a **speech-to-text** (transcription) model, not text-to-speech. **Fe
 bun install
 bun run dev      # rebuild on change
 bun run check    # tsc + biome + tests
-bun run build    # -> dist/universal-solver.user.js
+bun run build    # -> dist/universal-solver.user.js, dist/firefox/, dist/universal-solver-firefox.zip
 ```
 Stack: Bun · TypeScript (strict) · Preact + signals · Valibot · @medv/finder · Biome. See `AGENTS.md` for architecture.
+
+## License
+Copyright (C) quantavil. [GPL-3.0-or-later](LICENSE): you may use, change and share it, and anything you distribute that is built on it must be under the same license with its source available. Versions up to 2.3.0 were released under MIT and stay MIT for anyone who already has them.

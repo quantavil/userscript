@@ -126,3 +126,24 @@ describe.skipIf(!existsSync(DIST))('built userscript (e2e)', () => {
     expect(shadow()?.querySelector('.status')?.textContent).toMatch(/API key rejected/);
   });
 });
+
+describe.skipIf(!existsSync('dist/firefox/manifest.json'))('built Firefox extension', () => {
+  const manifest = JSON.parse(readFileSync('dist/firefox/manifest.json', 'utf8'));
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+
+  test('loads the GM shim before the solver, in every frame', () => {
+    const [cs] = manifest.content_scripts;
+    expect(cs.js).toEqual(['gm-shim.js', 'content.js']);
+    expect(cs.all_frames).toBe(true);
+    expect(cs.matches).toEqual(['<all_urls>']);
+  });
+
+  test('version and license follow package.json; every referenced file exists', () => {
+    expect(manifest.version).toBe(pkg.version);
+    expect(manifest.browser_specific_settings.gecko.id).toBe('universal-captcha-solver@quantavil');
+    expect(readFileSync('dist/universal-solver.user.js', 'utf8')).toContain(`@license      ${pkg.license}`);
+    for (const f of [...manifest.content_scripts[0].js, ...manifest.background.scripts, 'popup.html', 'icon.svg']) {
+      expect(existsSync(`dist/firefox/${f}`)).toBe(true);
+    }
+  });
+});

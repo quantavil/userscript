@@ -1,30 +1,3 @@
-// ==UserScript==
-// @name         Universal Captcha Solver
-// @namespace    https://github.com/quantavil/userscript
-// @version      2.4.0
-// @description  Solve text, math, image-grid and audio captchas on any site using AI vision and speech-to-text models
-// @author       quantavil
-// @license      GPL-3.0-or-later
-// @icon         data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjNjM2NmYxIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMzczMGEzIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjEyOCIgaGVpZ2h0PSIxMjgiIHJ4PSIyOCIgZmlsbD0idXJsKCNiZykiLz48ZyBmaWxsPSIjZmZmIiBmaWxsLW9wYWNpdHk9Ii45MiI+PHJlY3QgeD0iMTciIHk9IjE3IiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHJ4PSI2Ii8+PHJlY3QgeD0iNTEiIHk9IjE3IiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHJ4PSI2Ii8+PHJlY3QgeD0iMTciIHk9IjUxIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHJ4PSI2Ii8+PHJlY3QgeD0iODUiIHk9IjUxIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHJ4PSI2Ii8+PHJlY3QgeD0iNTEiIHk9Ijg1IiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHJ4PSI2Ii8+PHJlY3QgeD0iODUiIHk9Ijg1IiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHJ4PSI2Ii8+PC9nPjxnIGZpbGw9IiMyMmM1NWUiPjxyZWN0IHg9Ijg1IiB5PSIxNyIgd2lkdGg9IjI2IiBoZWlnaHQ9IjI2IiByeD0iNiIvPjxyZWN0IHg9IjUxIiB5PSI1MSIgd2lkdGg9IjI2IiBoZWlnaHQ9IjI2IiByeD0iNiIvPjxyZWN0IHg9IjE3IiB5PSI4NSIgd2lkdGg9IjI2IiBoZWlnaHQ9IjI2IiByeD0iNiIvPjwvZz48ZyBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNOTIgMzAuNWw0LjUgNC41IDgtOSIvPjxwYXRoIGQ9Ik01OCA2NC41bDQuNSA0LjUgOC05Ii8+PHBhdGggZD0iTTI0IDk4LjVsNC41IDQuNSA4LTkiLz48L2c+PC9zdmc+
-// @homepageURL  https://github.com/quantavil/userscript/tree/main/universal-solver
-// @downloadURL  https://github.com/quantavil/userscript/raw/main/universal-solver/dist/universal-solver.user.js
-// @updateURL    https://github.com/quantavil/userscript/raw/main/universal-solver/dist/universal-solver.user.js
-// @match        *://*/*
-// @run-at       document-idle
-// @grant        GM_xmlhttpRequest
-// @grant        GM_getValue
-// @grant        GM_setValue
-// @grant        GM_listValues
-// @grant        GM_registerMenuCommand
-// @grant        GM_addValueChangeListener
-// @connect      generativelanguage.googleapis.com
-// @connect      api.groq.com
-// @connect      openrouter.ai
-// @connect      hcaptcha.com
-// @connect      localhost
-// @connect      127.0.0.1
-// ==/UserScript==
-
 // Universal Captcha Solver 2.4.0. Copyright (C) quantavil.
 // Licensed under GPL-3.0-or-later: https://github.com/quantavil/userscript/blob/main/universal-solver/LICENSE
 // This program comes with ABSOLUTELY NO WARRANTY.
@@ -5729,6 +5702,10 @@ details[open] summary { margin-bottom: 10px; }
     }
   }
 
-  // src/userscript.ts
-  main();
+  // src/ext/content.ts
+  var ready = globalThis.__ucsReady;
+  (ready ?? Promise.reject(new Error("[ucs] gm-shim.js did not load"))).then(() => {
+    store.reload();
+    main();
+  });
 })();

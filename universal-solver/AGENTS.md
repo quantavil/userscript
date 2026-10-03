@@ -10,6 +10,9 @@ src/image/      capture (img/canvas/svg/background), captureTiles (grid from on-
 src/dom/        watch (MutationObserver), picker, fill (framework-safe), click (human-paced pointer/keys), tiles, frame
 src/ui/         Preact in a shadow root; native <dialog>/popover
 src/flows/      setup (picker -> editor), data (import/export)
+src/ext/        Firefox extension: gm-shim (GM_* on browser.storage / background fetch / popup menu),
+                content + background + popup entries, api (hand-typed WebExtension surface, base64 wire format)
+src/userscript.ts  userscript entry; both builds call main()
 tests/          unit + e2e against the built bundle
 ```
 
@@ -24,7 +27,10 @@ tests/          unit + e2e against the built bundle
 - **Providers**: `gemini`, `groq`, `openrouter`, `openai` (= custom endpoint, `keyOptional`, URL from `openaiBaseUrl`). `configProblem()` is the single check for missing URL/key/model. `migrateOpenRouter` moves v2.0 users whose generic provider pointed at OpenRouter.
 - **Frames**: the script runs in every frame (no `@noframes`; grid challenges live in iframes). In a frame (`IN_FRAME`): register no menu commands, mount the UI only when the captcha element is present (`controller.present`), and use `settings.ui.frame` for the widget's position (starts minimised). Keep it that way; ad frames are everywhere.
 - **Add a provider** = a `createOpenAICompat({...})` config, or a new file implementing `Provider`. Never put keys in URLs.
+- **Two builds, one solver**: `build.ts` writes the userscript and `dist/firefox/` (MV3, `background.scripts`, `strict_min_version` 140) plus a reproducible zip. The extension gets its GM_* from `src/ext/gm-shim.ts`, loaded as a *separate* content script before `content.js` (Biome sorts imports, so in-bundle ordering can't be relied on); `content.js` waits for `__ucsReady` (storage preloaded into memory) then `store.reload()` + `main()`. Solver code must keep using only the GM_* subset the shim implements: `GM_getValue/SetValue/ListValues/AddValueChangeListener/RegisterMenuCommand/xmlhttpRequest` (method, url, headers, string or FormData body, `responseType: 'blob'`, timeout, onload/onerror/ontimeout/onabort). Adding a GM API means adding it to the shim and `tests/ext.test.ts`.
+- **Extension network**: content scripts obey the page's CORS, so every request goes over a `ucs-http` port to `background.ts`, which fetches with the host permission. Bodies and blobs cross as base64 (`WireFile`); disconnecting the port aborts. Run `bunx web-ext lint -s dist/firefox` after manifest changes (one known warning: Preact's internal `innerHTML`).
+- **License**: GPL-3.0-or-later (`LICENSE`, `package.json`, `@license`, the notice `build.ts` prepends to every shipped script). Dependencies are MIT, which is compatible.
 - All persisted data goes through `config/schema.ts` (valibot). Never `GM_setValue` elsewhere.
 - Network and storage are injected (`Http`, `KV`) so everything is testable without a browser.
-- Keep the bundle unminified (script catalogs reject minified userscripts). Commit `dist/` — CI fails if it is stale.
+- Keep the bundle unminified (script catalogs reject minified userscripts). Commit `dist/` (users install from it); rebuild before every commit.
 - Model IDs rot. Don't hard-code behaviour on a model name except via `thinkingConfigFor` / `extraBody`, which must degrade gracefully (they auto-retry without the extra field).
