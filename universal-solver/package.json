@@ -1,0 +1,31 @@
+{
+  "name": "universal-captcha-solver",
+  "version": "2.0.0",
+  "description": "Solve text captchas on any site using AI vision models (text captchas only)",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "build": "bun run build.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "fix": "biome check --write .",
+    "test": "bun test",
+    "check": "bun run typecheck && bun run lint && bun test"
+  },
+  "dependencies": {
+    "@medv/finder": "^4.0.2",
+    "@preact/signals": "^2.11.3",
+    "preact": "^11.0.0",
+    "valibot": "^1.5.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@happy-dom/global-registrator": "^20.14.5",
+    "@types/bun": "^1.4.2",
+    "@types/tampermonkey": "^5.5.0",
+    "happy-dom": "^20.14.5",
+    "typescript": "^7.0.2"
+  }
+}

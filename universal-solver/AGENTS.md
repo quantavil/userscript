@@ -1,19 +1,20 @@
-# AGENTS — Universal Captcha Solver
+# Architecture
 
-## Overview
-A universal text and distorted alphanumeric captcha solver userscript powered by Google Gemini Vision models (e.g. `gemma-3-27b-it` / `gemini-1.5-flash`). It offers a point-and-click selector configuration workflow to pair any arbitrary captcha image with its target input field on any domain.
-
-## Structure
 ```
-universal-solver/
-├── main.js        # Self-contained userscript bundle (DOM picker, image capture, Gemini API, UI)
-├── README.md      # Configuration instructions and key setup guide
-└── AGENTS.md      # Subproject architectural constraints and conventions
+src/config/     schema (valibot), matching, store (signals + KV), v1 migration
+src/net/        GM_xmlhttpRequest -> Promise, AbortSignal, typed HttpError
+src/providers/  gemini.ts, openai-compat.ts (+ groq.ts as config), registry
+src/solver/     answer (prompt + normalise), controller (state machine), guard, errors, selftest
+src/image/      capture (img/canvas/svg/background), downscale, white-fill
+src/dom/        watch (MutationObserver), picker, fill (framework-safe)
+src/ui/         Preact in a shadow root; native <dialog>/popover
+src/flows/      setup (picker -> editor), data (import/export)
+tests/          unit + e2e against the built bundle
 ```
 
-## Conventions & Critical Information
-- **Universal Point-and-Click Selector**: Allows users to interactively click any image and corresponding text input element on the page, saving stable CSS selectors into `GM_setValue` per hostname.
-- **Canvas Image Extraction**: Extracts images via offscreen HTML5 `<canvas>` rendering (`ctx.drawImage`) or direct `GM_xmlhttpRequest` binary fetching when CORS blocks standard canvas `toDataURL()` reads.
-- **Gemini Vision Pipeline**: Preprocesses and downscales large images before encoding to base64 JPEG, sending requests via `GM_xmlhttpRequest` to Google's Generative Language API.
-- **Non-Intrusive Floating Widget**: Provides a collapsible floating status pill with auto-solve indications, retry actions, and manual solve triggers.
-- **Input Dispatching**: Dispatches standard `input` and `change` bubbling events to ensure auto-filled captcha solutions properly trigger reactive form validation in modern frameworks.
+- **Scope**: Exclusively targets visual text and math captchas (`img`, `canvas`, `svg`). Out of scope: Turnstile, reCAPTCHA v2/v3, puzzle grids, slider or audio captchas.
+- **Add a provider** = a `createOpenAICompat({...})` config, or a new file implementing `Provider`. Never put keys in URLs.
+- All persisted data goes through `config/schema.ts` (valibot). Never `GM_setValue` elsewhere.
+- Network and storage are injected (`Http`, `KV`) so everything is testable without a browser.
+- Keep the bundle unminified (script catalogs reject minified userscripts). Commit `dist/` — CI fails if it is stale.
+- Model IDs rot. Don't hard-code behaviour on a model name except via `thinkingConfigFor` / `extraBody`, which must degrade gracefully (they auto-retry without the extra field).

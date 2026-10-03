@@ -1,57 +1,41 @@
-# Universal Captcha Solver Userscript
+# Universal Captcha Solver
 
-[![GitHub](https://img.shields.io/badge/GitHub-quantavil%2Fuserscript-181717?logo=github&logoColor=white)](https://github.com/quantavil/userscript)
+Solves text-based and math captchas on any site using AI vision models. Supports any AI vision endpoint (Google Gemini, Groq, OpenRouter, OpenAI, Ollama, LM Studio, or local OpenAI-compatible APIs).
 
-A powerful, universal captcha solver userscript that uses the Google Gemini API to solve text-based captchas on any website. It features a modern, aesthetic UI and a point-and-click configuration system.
+> [!IMPORTANT]
+> **Scope Notice (Text Captchas Only)**:
+> This userscript currently **only solves visual text and math captchas** (alphanumeric text, distorted characters, or arithmetic equations rendered in `<img>`, `<canvas>`, or `<svg>` elements).
+>
+> It does **NOT** solve interactive puzzle/token captchas:
+> - ❌ Cloudflare Turnstile
+> - ❌ Google reCAPTCHA v2 / v3 (checkbox, image grids, behavioral tokens)
+> - ❌ hCaptcha puzzle challenges
+> - ❌ GeeTest (slider, rotation, jigsaw puzzles)
+> - ❌ Arkose Labs / FunCAPTCHA
+> - ❌ Audio captchas
+
+## Install
+1. Install a userscript manager (Tampermonkey / Violentmonkey).
+2. Open `dist/universal-solver.user.js` (raw) and confirm.
+3. Settings → **AI provider** → paste a key → **Test with a sample captcha**.
+4. On a page with a text captcha: **Configure this page** → click the image, then the answer box. Done.
+
+Upgrading from v1: rules and your API keys are preserved and migrated automatically.
 
 ## Features
+- Two-click setup with a live selector preview, match counter, and ↑/↓ to widen/narrow the target
+- Per-site options: submit button, charset, case, length, math mode, extra hint
+- Pattern scoping: `site.com`, `*.site.com`, `site.com/login`, `site.com/app/*` (most specific wins)
+- Auto-solve with a circuit breaker; retries 429/5xx; clear error messages ("model retired", "key rejected")
+- Draggable, dark-mode, keyboard-accessible widget; click the answer to copy
+- Shortcuts: `Alt+Shift+S` solve, `Alt+Shift+C` configure
+- Export/import rules (API keys never exported); synced across tabs
 
--   **Universal Compatibility**: Works on any website with a captcha image and input field.
--   **Gemini AI Powered**: Uses Google's Gemini Vision models (default: `gemma-3-27b-it`) for high-accuracy solving.
--   **Point-and-Click Setup**: Easily configure new sites by clicking the captcha image and the input box.
--   **Auto-Solve**: Automatically detects and attempts to solve captchas on page load or when the image updates.
--   **Smart Optimization**: Automatically scales down large images to ensuring fast API responses and low latency.
--   **Robust & Secure**: Handles cross-origin images, prevents memory leaks, and manages concurrency safely.
--   **Aesthetic UI**: A beautiful, non-intrusive widget that can be minimized.
-
-## Installation
-
-1.  **Install a Userscript Manager**:
-    -   [Violentmonkey](https://violentmonkey.github.io/) (Recommended)
-    -   [Tampermonkey](https://www.tampermonkey.net/)
-
-2.  **Install the Script**:
-    -   Create a new script in your manager.
-    -   Copy and paste the contents of `main.js` into the editor.
-    -   Save the script.
-
-## Configuration
-
-### Setting the API Key
-
-1.  Go to any website.
-2.  Open your Userscript Manager menu (usually the extension icon).
-3.  Select **"⚙️ Settings"**.
-4.  Enter your Google Gemini API Key. You can get one for free at [Google AI Studio](https://aistudio.google.com/).
-5.  (Optional) Enter a custom model name (e.g., `gemini-1.5-flash`).
-6.  Click **"Save"**.
-
-### Configuring a Website
-
-1.  Navigate to a page with a captcha.
-2.  Open the Userscript Manager menu.
-3.  Select **"🎯 Configure Captcha"**.
-4.  **Step 1**: Click on the **Captcha Image**.
-5.  **Step 2**: Click on the **Answer Input Field**.
-6.  The page will reload, and the solver will activate automatically.
-
-## Usage
-
--   **Auto-Solve**: The widget will show "Solving..." automatically when a configured captcha is detected.
--   **Manual Solve**: Click the "Solve" button on the widget to trigger a new attempt.
--   **Reset**: Use the Userscript menu to reset configuration for the current site or globally.
-
-## Troubleshooting
-
--   **"Image extraction failed"**: The image might be protected by strict CORS headers that prevent canvas access. The script attempts to bypass this but may fail on some strictly secured sites.
--   **"API Error"**: Check your API key and ensure you have quota available.
+## Develop
+```sh
+bun install
+bun run dev      # rebuild on change
+bun run check    # tsc + biome + tests
+bun run build    # -> dist/universal-solver.user.js
+```
+Stack: Bun · TypeScript (strict) · Preact + signals · Valibot · @medv/finder · Biome. See `AUDIT.md` for what changed and why, `AGENTS.md` for architecture.
