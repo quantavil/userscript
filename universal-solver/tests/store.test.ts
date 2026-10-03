@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+import * as v from 'valibot';
 import { findBestRule } from '../src/config/match.ts';
 import { migrateOpenRouter, migrateV1 } from '../src/config/migrate.ts';
-import { PRESETS } from '../src/config/presets.ts';
+import { PRESETS, presetRules, presetState } from '../src/config/presets.ts';
+import { SiteRuleSchema } from '../src/config/schema.ts';
 import { createStore, KEYS, type KV } from '../src/config/store.ts';
 
 const memoryKV = (seed: Record<string, unknown> = {}): KV & { data: Map<string, unknown> } => {
@@ -37,22 +39,7 @@ describe('store', () => {
 
   test('renaming a rule removes the old pattern', () => {
     const s = createStore(memoryKV());
-    const rule = {
-      captcha: '#a',
-      input: '#b',
-      submit: '',
-      kind: 'text',
-      tiles: '',
-      instruction: '',
-      gridSize: 0,
-      charset: 'alnum',
-      caseMode: 'keep',
-      minLength: 3,
-      maxLength: 0,
-      hint: '',
-      auto: true,
-      enabled: true,
-    } as const;
+    const rule = v.parse(SiteRuleSchema, { captcha: '#a', input: '#b' });
     s.saveSite('old.com', rule);
     s.saveSite('new.com', rule, 'old.com');
     expect(Object.keys(s.sites.value)).toEqual(['new.com']);
@@ -138,5 +125,34 @@ describe('reCAPTCHA v2 preset', () => {
   test('needs no answer box and auto-sizes the grid', () => {
     const rule = sites['www.google.com/recaptcha/*'];
     expect(rule).toMatchObject({ input: '', gridSize: 0, submit: '#recaptcha-verify-button' });
+  });
+});
+
+describe('preset updates', () => {
+  const preset = PRESETS[0] as (typeof PRESETS)[number];
+  test('an older copy is "outdated"; updating keeps the user\'s own choices', () => {
+    const key = 'www.google.com/recaptcha/*';
+    const old = {
+      ...preset.sites[key],
+      audioSource: '',
+      solveBy: 'image',
+      autoCheckbox: true,
+      enabled: false,
+    } as never;
+    const sites = { ...preset.sites, [key]: old };
+    expect(presetState(preset, {})).toBe('missing');
+    expect(presetState(preset, sites)).toBe('outdated');
+    const next = presetRules(preset, sites);
+    expect(next[key]).toMatchObject({ audioSource: '#audio-source', autoCheckbox: true, enabled: false });
+    expect(presetState(preset, { ...sites, ...next })).toBe('current');
+  });
+  test('reCAPTCHA preset ships audio and checkbox selectors, with auto-tick off', () => {
+    expect(preset.sites['www.google.com/recaptcha/*']).toMatchObject({
+      audioButton: '#recaptcha-audio-button',
+      audioInput: '#audio-response',
+      checkbox: '#recaptcha-anchor',
+      autoCheckbox: false,
+      solveBy: 'image',
+    });
   });
 });

@@ -41,7 +41,7 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 | :--- | :--- |
 | **[form-genie](./form-genie)** | Privacy-first auto form filler for desktop & mobile (IBPS, NTA, SSC, UPSC) with teach-mode rules and optional Gemini AI profile parsing. |
 | **[texpander-ai](./texpander-ai)** | Neo Zen-styled text expander featuring global abbreviation palettes (`Alt+P`) and inline AI text transformation menus (`Alt+G` via Gemini 2.5 Flash Lite). |
-| **[universal-solver](./universal-solver)** | Point-and-click universal captcha solver powered by AI vision models: text, math and image-grid (click the matching tiles) captchas. |
+| **[universal-solver](./universal-solver)** | Point-and-click universal captcha solver powered by AI vision and speech-to-text models: text, math, image-grid (incl. reCAPTCHA v2) and audio captchas. |
 | **[captcha-ai](./captcha-ai)** | Dedicated automated captcha solver tailored for Icegate portal authentication workflows using Gemini AI. |
 | **[ai-wishlist](./ai-wishlist)** | Cross-origin shopping assistant that unifies, parses, and syncs wishlists and technical specs across Amazon and Flipkart for AI evaluation. |
 | **[google-ai-brave](./google-ai-brave)** | Injects Google's AI Overview / AI Mode search results directly into the Brave Search sidebar for unified multi-engine answers. |

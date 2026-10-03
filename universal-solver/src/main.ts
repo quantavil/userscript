@@ -42,7 +42,7 @@ function main(): void {
   }
 
   // Keep every open tab in sync when settings or rules change elsewhere.
-  for (const key of [KEYS.settings, KEYS.sites]) {
+  for (const key of [KEYS.settings, KEYS.sites, KEYS.stats]) {
     GM_addValueChangeListener(key, (_name, _old, _new, remote) => remote && store.reload());
   }
 

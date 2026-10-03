@@ -13,6 +13,8 @@ export const createGroq = createOpenAICompat({
   defaultModel: 'qwen/qwen3.8-27b',
   suggestedModels: ['qwen/qwen3.8-27b'],
   defaultBaseUrl: 'https://api.groq.com/openai/v1',
+  defaultAudioModel: 'whisper-large-v3-turbo',
+  suggestedAudioModels: ['whisper-large-v3-turbo', 'whisper-large-v3'],
   // Qwen3.x on Groq has a thinking mode; disabling it cuts latency for simple OCR.
   extraBody: (model) => (/^qwen\//.test(model) ? { reasoning_effort: 'none' } : {}),
   keepModel: (id) => !NON_VISION.test(id),

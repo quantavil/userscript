@@ -3,6 +3,7 @@ import * as v from 'valibot';
 import { SiteRuleSchema } from '../src/config/schema.ts';
 import { pointIn } from '../src/dom/click.ts';
 import { AnswerError } from '../src/solver/answer.ts';
+import { normalizeSpoken } from '../src/solver/audio.ts';
 import { buildGridPrompt, parseGridAnswer, resolveGridSize } from '../src/solver/grid.ts';
 
 describe('parseGridAnswer', () => {
@@ -61,5 +62,14 @@ describe('grid rules', () => {
   test('old rules keep parsing, with grid fields defaulted', () => {
     const out = v.parse(SiteRuleSchema, { captcha: 'img', input: 'input' });
     expect(out).toMatchObject({ kind: 'text', tiles: '', instruction: '', gridSize: 0 });
+  });
+});
+
+describe('normalizeSpoken', () => {
+  test('lowercase words, no punctuation, single spaces', () => {
+    expect(normalizeSpoken('  "Hello,   World!" ')).toBe('hello world');
+  });
+  test('empty transcription is an error, not an empty answer', () => {
+    expect(() => normalizeSpoken('...')).toThrow(AnswerError);
   });
 });

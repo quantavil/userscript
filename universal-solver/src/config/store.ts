@@ -7,12 +7,18 @@ import {
   SettingsSchema,
   type SiteRule,
   SiteRuleSchema,
+  type Stat,
+  StatSchema,
+  type Stats,
+  StatsSchema,
+  type WidgetUi,
 } from './schema.ts';
 
 export const KEYS = {
   settings: 'ucs:v2:settings',
   sites: 'ucs:v2:sites',
   migrated: 'ucs:v2:migrated-v1',
+  stats: 'ucs:v2:stats',
 } as const;
 
 /** Minimal storage surface so the store can be unit-tested without GM_*. */
@@ -46,9 +52,17 @@ export function parseSites(raw: unknown): Record<string, SiteRule> {
   return out;
 }
 
+export function parseStats(raw: unknown): Stats {
+  const res = v.safeParse(StatsSchema, raw ?? {});
+  return res.success ? res.output : {};
+}
+
+export type StatEvent = 'try' | 'answered' | 'error' | 'pass';
+
 export function createStore(kv: KV) {
   const settings = signal<Settings>(parseSettings(kv.get(KEYS.settings, null)));
   const sites = signal<Record<string, SiteRule>>(parseSites(kv.get(KEYS.sites, null)));
+  const stats = signal<Stats>(parseStats(kv.get(KEYS.stats, null)));
 
   const persistSites = (next: Record<string, SiteRule>) => {
     kv.set(KEYS.sites, next);
@@ -59,6 +73,7 @@ export function createStore(kv: KV) {
     kv,
     settings,
     sites,
+    stats,
 
     patchSettings(patch: Partial<Settings>) {
       const next = { ...settings.value, ...patch };
@@ -71,8 +86,45 @@ export function createStore(kv: KV) {
     setModel(provider: ProviderId, model: string) {
       this.patchSettings({ models: { ...settings.value.models, [provider]: model.trim() } });
     },
+    setAudioModel(provider: ProviderId, model: string) {
+      this.patchSettings({ audioModels: { ...settings.value.audioModels, [provider]: model.trim() } });
+    },
     patchUi(patch: Partial<Settings['ui']>) {
       this.patchSettings({ ui: { ...settings.value.ui, ...patch } });
+    },
+    /** The widget's own state: the page's, or the separate one used inside iframes. */
+    widgetUi(inFrame: boolean): WidgetUi {
+      return inFrame ? settings.value.ui.frame : settings.value.ui;
+    },
+    patchWidgetUi(inFrame: boolean, patch: Partial<WidgetUi>) {
+      if (inFrame) this.patchUi({ frame: { ...settings.value.ui.frame, ...patch } });
+      else this.patchUi(patch);
+    },
+
+    /**
+     * Counts one event per rule and model. Re-reads storage first: the challenge frame and the
+     * checkbox frame write to the same key, and a stale copy would drop the other's counts.
+     */
+    recordStat(pattern: string, model: string, event: StatEvent, ms = 0) {
+      const all = parseStats(kv.get(KEYS.stats, null));
+      const perModel = { ...all[pattern] };
+      const key = model || '?';
+      const s: Stat = { ...v.parse(StatSchema, {}), ...perModel[key] };
+      if (event === 'try') s.tries++;
+      else if (event === 'answered') {
+        s.answered++;
+        s.ms += ms;
+      } else if (event === 'error') s.errors++;
+      else s.passes++;
+      perModel[key] = s;
+      const next = { ...all, [pattern]: perModel };
+      kv.set(KEYS.stats, next);
+      stats.value = next;
+    },
+    resetStats(pattern: string) {
+      const { [pattern]: _gone, ...rest } = parseStats(kv.get(KEYS.stats, null));
+      kv.set(KEYS.stats, rest);
+      stats.value = rest;
     },
 
     /** Saves a rule; if `replaces` differs from `pattern` the old entry is removed (rename). */
@@ -93,6 +145,7 @@ export function createStore(kv: KV) {
     reload() {
       settings.value = parseSettings(kv.get(KEYS.settings, null));
       sites.value = parseSites(kv.get(KEYS.sites, null));
+      stats.value = parseStats(kv.get(KEYS.stats, null));
     },
   };
 }

@@ -13,7 +13,8 @@ export interface HttpRequest {
   method: 'GET' | 'POST';
   url: string;
   headers?: Record<string, string>;
-  body?: string;
+  /** FormData is sent as multipart (the manager sets the boundary). */
+  body?: string | FormData;
   responseType?: 'text' | 'blob';
   timeout?: number;
   signal?: AbortSignal;

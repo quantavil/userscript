@@ -1,4 +1,5 @@
 import { gmHttp, type Http, HttpError } from '../net/http.ts';
+import { audioFormat } from '../solver/audio.ts';
 import type { Provider } from './types.ts';
 
 export interface CompatOptions {
@@ -9,6 +10,13 @@ export interface CompatOptions {
   suggestedModels: readonly string[];
   defaultBaseUrl: string;
   keyOptional?: boolean;
+  defaultAudioModel?: string;
+  suggestedAudioModels?: readonly string[];
+  /**
+   * How /audio/transcriptions takes the file: OpenAI/Groq-style multipart upload, or
+   * OpenRouter's JSON `{ input_audio: { data, format } }` with base64 audio.
+   */
+  sttBody?: 'multipart' | 'json';
   /** Provider-specific body fields (e.g. disable reasoning). Dropped automatically if the API rejects them. */
   extraBody?: (model: string) => Record<string, unknown>;
   /** Filters /models output down to plausible chat models. */
@@ -26,6 +34,12 @@ export function parseChatReply(body: string): string {
   return text;
 }
 
+export function parseTranscription(body: string): string {
+  const text = (JSON.parse(body) as { text?: string }).text ?? '';
+  if (!text.trim()) throw new Error('Empty transcription');
+  return text;
+}
+
 export const createOpenAICompat =
   (opts: CompatOptions) =>
   (http: Http = gmHttp): Provider => {
@@ -40,6 +54,33 @@ export const createOpenAICompat =
       suggestedModels: opts.suggestedModels,
       defaultBaseUrl: opts.defaultBaseUrl,
       keyOptional: opts.keyOptional,
+      defaultAudioModel: opts.defaultAudioModel ?? '',
+      suggestedAudioModels: opts.suggestedAudioModels ?? [],
+
+      async transcribe(cfg, { audio, signal }) {
+        const url = `${root(cfg.baseUrl)}/audio/transcriptions`;
+        if (opts.sttBody === 'json') {
+          const res = await http({
+            method: 'POST',
+            url,
+            headers: { 'content-type': 'application/json', ...auth(cfg.apiKey) },
+            body: JSON.stringify({
+              model: cfg.model,
+              input_audio: { data: audio.base64, format: audioFormat(audio.mime) },
+            }),
+            timeout: 30_000,
+            signal,
+          });
+          return parseTranscription(res.text);
+        }
+        const form = new FormData();
+        form.append('file', audio.blob, `captcha.${audioFormat(audio.mime)}`);
+        form.append('model', cfg.model);
+        form.append('response_format', 'json');
+        form.append('temperature', '0');
+        const res = await http({ method: 'POST', url, headers: auth(cfg.apiKey), body: form, timeout: 30_000, signal });
+        return parseTranscription(res.text);
+      },
 
       async complete(cfg, { image, prompt, signal }) {
         const extras = opts.extraBody?.(cfg.model) ?? {};

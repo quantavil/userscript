@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import type { SiteRule } from '../src/config/schema.ts';
+import * as v from 'valibot';
+import { type SiteRule, SiteRuleSchema } from '../src/config/schema.ts';
 import { createStore, type KV } from '../src/config/store.ts';
 import { fillInput } from '../src/dom/fill.ts';
 import { fitWithin } from '../src/image/capture.ts';
@@ -112,22 +113,7 @@ describe('controller', () => {
       '<img id="cap" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="><input id="ans"><button id="go"></button>';
     const store = createStore(memoryKV());
     store.setApiKey('gemini', 'K');
-    store.saveSite('example.com', {
-      captcha: '#cap',
-      input: '#ans',
-      submit: '',
-      kind: 'text',
-      tiles: '',
-      instruction: '',
-      gridSize: 0,
-      charset: 'alnum',
-      caseMode: 'keep',
-      minLength: 3,
-      maxLength: 0,
-      hint: '',
-      auto: true,
-      enabled: true,
-    });
+    store.saveSite('example.com', v.parse(SiteRuleSchema, { captcha: '#cap', input: '#ans' }));
     const registry = createProviders();
     let i = 0;
     const calls: { prompt: string; grid?: number }[] = [];
@@ -135,6 +121,10 @@ describe('controller', () => {
       ...registry.gemini,
       complete: (_cfg, input) => {
         calls.push({ prompt: input.prompt });
+        return (replies[i++] ?? (replies.at(-1) as () => Promise<string>))();
+      },
+      transcribe: (cfg, input) => {
+        calls.push({ prompt: `audio:${cfg.model}:${input.audio.mime}` });
         return (replies[i++] ?? (replies.at(-1) as () => Promise<string>))();
       },
     };
@@ -147,6 +137,11 @@ describe('controller', () => {
         calls.push({ prompt: '', grid: opts?.grid });
         return { mime: 'image/png', base64: 'AAAA', width: 1, height: 1, refetched: false };
       },
+      captureTiles: async (tiles) => {
+        calls.push({ prompt: '', grid: -tiles.length }); // negative = composed from tiles
+        return { mime: 'image/png', base64: 'AAAA', width: 1, height: 1, refetched: false };
+      },
+      captureAudio: async () => ({ mime: 'audio/mpeg', base64: 'SUQz', blob: new Blob(['x']) }),
     });
     controllers.push(ctl);
     ctl.rematch();
@@ -235,14 +230,58 @@ describe('controller', () => {
       expect(ctl.status.value).toMatchObject({ phase: 'solved', answer: 'No matching tiles' });
     });
 
-    test('auto mode gives up after 3 rounds of the same challenge; a manual Solve continues', async () => {
+    test('auto mode gives up after 3 chained rounds; a manual Solve continues', async () => {
       const { ctl, clicks } = grid('{"tiles":[1]}');
-      for (let i = 0; i < 4; i++) await ctl.solve('auto');
+      const img = document.querySelector('#cap') as HTMLImageElement;
+      for (let i = 0; i < 4; i++) {
+        img.src = `data:image/gif;base64,R0lGODlhAQABAAAAACw=#round${i}`; // each round is a new picture
+        await ctl.solve('auto');
+      }
       expect(ctl.status.value).toMatchObject({ phase: 'paused' });
       expect(ctl.status.value.text).toMatch(/Gave up after 3 rounds/);
       expect(clicks.filter((c) => c === 'verify')).toHaveLength(3);
       await ctl.solve('manual');
       expect(ctl.status.value.phase).toBe('solved');
+    });
+
+    test('an unchanged challenge is not re-solved automatically (our own clicks mutate the DOM)', async () => {
+      const { ctl, calls } = grid('{"tiles":[2]}');
+      await ctl.solve('auto');
+      await ctl.solve('auto');
+      expect(calls.filter((c) => c.prompt)).toHaveLength(1);
+    });
+
+    test('"click until none left": re-checks replaced tiles until the model finds none, then Verify', async () => {
+      const { ctl, store } = setup([
+        async () => '{"tiles":[2,4]}',
+        async () => '{"tiles":[4]}',
+        async () => '{"tiles":[]}',
+      ]);
+      document.body.innerHTML = `<p id="task">Select all images with cars. Click verify once there are none left.</p>
+        <div id="grid">${Array.from({ length: 9 }, (_, i) => `<div class="tile" data-n="${i + 1}"><img src="https://x.test/${i + 1}-0.jpg"></div>`).join('')}</div>
+        <button id="verify"></button>`;
+      const clicks: string[] = [];
+      document.addEventListener('click', (e) => {
+        const t = (e.target as HTMLElement).closest('[data-n],#verify') as HTMLElement | null;
+        if (!t) return;
+        clicks.push(t.dataset.n ?? t.id);
+        // A dynamic grid swaps the clicked tile's picture for a new one.
+        const img = t.querySelector('img');
+        if (img) img.src = img.src.replace(/-(\d+)\.jpg$/, (_, k) => `-${Number(k) + 1}.jpg`);
+      });
+      store.saveSite('example.com', {
+        ...(store.sites.value['example.com'] as SiteRule),
+        auto: false,
+        kind: 'grid',
+        captcha: '#grid img',
+        tiles: '.tile',
+        instruction: '#task',
+        submit: '#verify',
+      });
+      ctl.rematch();
+      await ctl.solve('manual');
+      expect(clicks).toEqual(['2', '4', '4', 'verify']);
+      expect(ctl.status.value.answer).toBe('Tiles 2, 4 (3 passes)');
     });
 
     test('a tile count that does not fit the grid is an error, nothing is clicked', async () => {
@@ -258,6 +297,103 @@ describe('controller', () => {
       expect(ctl.status.value.phase).toBe('error');
       expect(clicks).toEqual([]);
     });
+  });
+
+  describe('audio mode (user choice)', () => {
+    function audio(reply: string) {
+      const { ctl, store, calls } = setup([async () => reply]);
+      document.body.innerHTML = `<img id="cap" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
+        <button id="audio-btn"></button><div id="audio-view"></div><button id="verify"></button>`;
+      const clicks: string[] = [];
+      document.addEventListener('click', (e) => clicks.push((e.target as HTMLElement).id));
+      // Like reCAPTCHA: the audio button swaps the challenge to an <audio> clip and a text box.
+      document.querySelector('#audio-btn')?.addEventListener('click', () => {
+        (document.querySelector('#audio-view') as HTMLElement).innerHTML =
+          '<audio id="audio-source" src="https://x.test/clip.mp3"></audio><input id="audio-response">';
+      });
+      store.saveSite('example.com', {
+        ...(store.sites.value['example.com'] as SiteRule),
+        auto: false,
+        kind: 'grid',
+        input: '',
+        solveBy: 'audio',
+        audioButton: '#audio-btn',
+        audioSource: '#audio-source',
+        audioInput: '#audio-response',
+        submit: '#verify',
+      });
+      ctl.rematch();
+      return { ctl, store, calls, clicks };
+    }
+
+    test('switches to audio, transcribes, types what was heard key by key, then Verify', async () => {
+      const { ctl, calls, clicks } = audio('Hello, World.');
+      const keys: string[] = [];
+      document.addEventListener('keydown', (e) => keys.push(e.key));
+      await ctl.solve('manual');
+      expect(calls.map((c) => c.prompt)).toEqual(['audio:gemini-3.5-flash-lite:audio/mpeg']); // Gemini hears audio itself
+      expect((document.querySelector('#audio-response') as HTMLInputElement).value).toBe('hello world');
+      expect(keys.join('')).toBe('hello world');
+      expect(clicks).toEqual(['audio-btn', 'audio-response', 'verify']);
+      expect(ctl.status.value).toMatchObject({ phase: 'solved', answer: 'hello world' });
+    });
+
+    test('uses the provider speech-to-text model when one is set', async () => {
+      const { ctl, store, calls } = audio('seven');
+      store.patchSettings({ audioModels: { gemini: 'my-stt' } });
+      await ctl.solve('manual');
+      expect(calls[0]?.prompt).toBe('audio:my-stt:audio/mpeg');
+    });
+  });
+
+  test('stats count tries and answers per rule and model', async () => {
+    const { ctl, store } = setup([async () => 'ab-12', async () => 'x']);
+    await ctl.solve('manual');
+    await ctl.solve('manual');
+    expect(store.stats.value['example.com']?.['gemini-3.5-flash-lite']).toMatchObject({
+      tries: 2,
+      answered: 1,
+      errors: 1,
+    });
+  });
+
+  test('checkbox: opt-in auto tick once, pass counted when it turns checked, no widget for it', async () => {
+    const { ctl, store } = setup([async () => '{"tiles":[]}']);
+    document.body.innerHTML = '<span id="anchor" role="checkbox" aria-checked="false"></span>';
+    const anchor = document.querySelector('#anchor') as HTMLElement;
+    let ticks = 0;
+    anchor.addEventListener('click', () => {
+      ticks++;
+      anchor.setAttribute('aria-checked', 'true');
+    });
+    store.saveSite('example.com', {
+      ...(store.sites.value['example.com'] as SiteRule),
+      kind: 'grid',
+      captcha: '#grid-img',
+      checkbox: '#anchor',
+      autoCheckbox: true,
+    });
+    ctl.rematch();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(ticks).toBe(1);
+    expect(store.stats.value['example.com']?.['gemini-3.5-flash-lite']?.passes).toBe(1);
+    expect(ctl.present.value).toBe(false);
+  });
+
+  test('checkbox is left alone unless auto-tick is switched on', async () => {
+    const { ctl, store } = setup([async () => '{"tiles":[]}']);
+    document.body.innerHTML = '<span id="anchor" role="checkbox" aria-checked="false"></span>';
+    let ticks = 0;
+    document.querySelector('#anchor')?.addEventListener('click', () => ticks++);
+    store.saveSite('example.com', {
+      ...(store.sites.value['example.com'] as SiteRule),
+      kind: 'grid',
+      captcha: '#grid-img',
+      checkbox: '#anchor',
+    });
+    ctl.rematch();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(ticks).toBe(0);
   });
 
   test('bad model output surfaces as an error and leaves the field untouched', async () => {

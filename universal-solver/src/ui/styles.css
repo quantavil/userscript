@@ -31,6 +31,8 @@ a { color: var(--accent); }
   border-radius: 999px; box-shadow: var(--shadow); user-select: none; touch-action: none;
 }
 .widget.min { padding: 6px; }
+/* Challenge popups are small and keep their buttons at the bottom: start in the top-right corner. */
+.widget.framed { top: 6px; right: 6px; bottom: auto; }
 .grip { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: none; cursor: grab; }
 .grip:active { cursor: grabbing; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--fg-dim); transition: background .2s; }
@@ -112,3 +114,7 @@ details[open] summary { margin-bottom: 10px; }
 .toast { pointer-events: auto; display: flex; align-items: center; gap: 10px; max-width: min(92vw, 380px); padding: 9px 14px; border-radius: 10px; background: #1c1917; color: #fafaf9; box-shadow: var(--shadow); }
 .toast.error { background: var(--err); color: #fff; }
 .toast button { border: 0; background: none; color: #93c5fd; font-weight: 600; padding: 0; }
+
+.stats { font-size: 11.5px; color: var(--fg-dim); display: grid; gap: 2px; grid-column: 1 / -1; }
+.stats .mono { font-family: var(--mono); }
+.link { border: 0; background: none; padding: 0; color: var(--accent); font-size: 11.5px; cursor: pointer; justify-self: start; }

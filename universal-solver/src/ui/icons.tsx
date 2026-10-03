@@ -7,6 +7,9 @@ const PATHS = {
   trash: 'M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2',
   target: 'M22 12h-4M6 12H2M12 6V2M12 22v-4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
   grip: 'M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01',
+  image:
+    'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM21 15l-5-5L5 21M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
+  audio: 'M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14',
 } as const;
 
 export function Icon({ name, size = 16 }: { name: keyof typeof PATHS; size?: number }) {

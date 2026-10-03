@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Universal Captcha Solver
 // @namespace    https://github.com/quantavil/userscript
-// @version      2.2.0
-// @description  Solve text, math and image-grid captchas on any site using AI vision models
+// @version      2.3.0
+// @description  Solve text, math, image-grid and audio captchas on any site using AI vision and speech-to-text models
 // @author       quantavil
 // @license      MIT
 // @homepageURL  https://github.com/quantavil/userscript/tree/main/universal-solver
@@ -19,6 +19,7 @@
 // @connect      generativelanguage.googleapis.com
 // @connect      api.groq.com
 // @connect      openrouter.ai
+// @connect      hcaptcha.com
 // @connect      localhost
 // @connect      127.0.0.1
 // ==/UserScript==
@@ -1746,6 +1747,14 @@
     tiles: optionalSelector,
     instruction: optionalSelector,
     gridSize: optional(pipe(number(), integer(), minValue(0), maxValue(8)), 0),
+    compose: optional(boolean(), false),
+    solveBy: optional(picklist(["image", "audio"]), "image"),
+    audioButton: optionalSelector,
+    imageButton: optionalSelector,
+    audioSource: optionalSelector,
+    audioInput: optionalSelector,
+    checkbox: optionalSelector,
+    autoCheckbox: optional(boolean(), false),
     charset: optional(picklist(["alnum", "alpha", "digits", "any"]), "alnum"),
     caseMode: optional(picklist(["keep", "upper", "lower"]), "keep"),
     minLength: optional(pipe(number(), integer(), minValue(1), maxValue(32)), 3),
@@ -1753,18 +1762,23 @@
     hint: optional(pipe(string(), maxLength(200)), ""),
     auto: optional(boolean(), true),
     enabled: optional(boolean(), true)
-  }), forward(partialCheck([["kind"], ["input"]], (r4) => r4.kind === "grid" || Boolean(r4.input), "Required"), ["input"]));
+  }), forward(partialCheck([["kind"], ["input"]], (r4) => r4.kind === "grid" || Boolean(r4.input), "Required"), ["input"]), forward(partialCheck([["kind"], ["solveBy"], ["audioSource"]], (r4) => r4.kind !== "grid" || r4.solveBy !== "audio" || Boolean(r4.audioSource), "Required for audio"), ["audioSource"]), forward(partialCheck([["kind"], ["solveBy"], ["audioInput"]], (r4) => r4.kind !== "grid" || r4.solveBy !== "audio" || Boolean(r4.audioInput), "Required for audio"), ["audioInput"]));
   var providerId = picklist(PROVIDER_IDS);
+  var position = {
+    x: optional(number()),
+    y: optional(number())
+  };
   var SettingsSchema = object({
     provider: optional(providerId, "gemini"),
     keys: optional(record(providerId, string()), {}),
     models: optional(record(providerId, string()), {}),
+    audioModels: optional(record(providerId, string()), {}),
     openaiBaseUrl: optional(string(), ""),
     autoSolve: optional(boolean(), true),
     ui: optional(object({
       minimized: optional(boolean(), false),
-      x: optional(number()),
-      y: optional(number())
+      ...position,
+      frame: optional(object({ minimized: optional(boolean(), true), ...position }), {})
     }), {})
   });
   var ExportSchema = object({
@@ -1773,12 +1787,22 @@
     sites: record(string(), unknown())
   });
   var defaultSettings = () => parse(SettingsSchema, {});
+  var count = optional(pipe(number(), minValue(0)), 0);
+  var StatSchema = object({
+    tries: count,
+    answered: count,
+    errors: count,
+    passes: count,
+    ms: count
+  });
+  var StatsSchema = record(string(), record(string(), StatSchema));
 
   // src/config/store.ts
   var KEYS = {
     settings: "ucs:v2:settings",
     sites: "ucs:v2:sites",
-    migrated: "ucs:v2:migrated-v1"
+    migrated: "ucs:v2:migrated-v1",
+    stats: "ucs:v2:stats"
   };
   var gmKV = {
     get: (key, fallback) => GM_getValue(key, fallback),
@@ -1802,9 +1826,14 @@
     }
     return out;
   }
+  function parseStats(raw) {
+    const res = safeParse(StatsSchema, raw ?? {});
+    return res.success ? res.output : {};
+  }
   function createStore(kv) {
     const settings = y3(parseSettings(kv.get(KEYS.settings, null)));
     const sites = y3(parseSites(kv.get(KEYS.sites, null)));
+    const stats = y3(parseStats(kv.get(KEYS.stats, null)));
     const persistSites = (next) => {
       kv.set(KEYS.sites, next);
       sites.value = next;
@@ -1813,6 +1842,7 @@
       kv,
       settings,
       sites,
+      stats,
       patchSettings(patch) {
         const next = { ...settings.value, ...patch };
         kv.set(KEYS.settings, next);
@@ -1824,8 +1854,44 @@
       setModel(provider, model) {
         this.patchSettings({ models: { ...settings.value.models, [provider]: model.trim() } });
       },
+      setAudioModel(provider, model) {
+        this.patchSettings({ audioModels: { ...settings.value.audioModels, [provider]: model.trim() } });
+      },
       patchUi(patch) {
         this.patchSettings({ ui: { ...settings.value.ui, ...patch } });
+      },
+      widgetUi(inFrame) {
+        return inFrame ? settings.value.ui.frame : settings.value.ui;
+      },
+      patchWidgetUi(inFrame, patch) {
+        if (inFrame)
+          this.patchUi({ frame: { ...settings.value.ui.frame, ...patch } });
+        else
+          this.patchUi(patch);
+      },
+      recordStat(pattern, model, event, ms = 0) {
+        const all = parseStats(kv.get(KEYS.stats, null));
+        const perModel = { ...all[pattern] };
+        const key = model || "?";
+        const s4 = { ...parse(StatSchema, {}), ...perModel[key] };
+        if (event === "try")
+          s4.tries++;
+        else if (event === "answered") {
+          s4.answered++;
+          s4.ms += ms;
+        } else if (event === "error")
+          s4.errors++;
+        else
+          s4.passes++;
+        perModel[key] = s4;
+        const next = { ...all, [pattern]: perModel };
+        kv.set(KEYS.stats, next);
+        stats.value = next;
+      },
+      resetStats(pattern) {
+        const { [pattern]: _gone, ...rest } = parseStats(kv.get(KEYS.stats, null));
+        kv.set(KEYS.stats, rest);
+        stats.value = rest;
       },
       saveSite(pattern, rule, replaces) {
         const next = { ...sites.value, [pattern]: rule };
@@ -1843,6 +1909,7 @@
       reload() {
         settings.value = parseSettings(kv.get(KEYS.settings, null));
         sites.value = parseSites(kv.get(KEYS.sites, null));
+        stats.value = parseStats(kv.get(KEYS.stats, null));
       }
     };
   }
@@ -1913,6 +1980,91 @@
     req.signal?.addEventListener("abort", onAbort, { once: true });
   });
 
+  // src/solver/answer.ts
+  class AnswerError extends Error {
+    name = "AnswerError";
+  }
+  var CHARSET_NAME = {
+    alnum: "letters and digits only",
+    alpha: "letters only",
+    digits: "digits only",
+    any: ""
+  };
+  function buildPrompt(rule) {
+    if (rule.kind === "math") {
+      return [
+        "The image shows a simple arithmetic CAPTCHA.",
+        "Compute it and reply with ONLY the final number: no words, no equals sign, no explanation.",
+        rule.hint
+      ].filter(Boolean).join(" ");
+    }
+    const parts = [
+      "You are an OCR engine reading a distorted-text CAPTCHA.",
+      "Transcribe the characters exactly as they appear. Reply with ONLY those characters: no spaces, quotes, punctuation or explanation."
+    ];
+    if (CHARSET_NAME[rule.charset])
+      parts.push(`The answer contains ${CHARSET_NAME[rule.charset]}.`);
+    if (rule.maxLength && rule.maxLength === rule.minLength)
+      parts.push(`It is exactly ${rule.maxLength} characters long.`);
+    else if (rule.maxLength)
+      parts.push(`It is ${rule.minLength} to ${rule.maxLength} characters long.`);
+    if (rule.hint)
+      parts.push(rule.hint);
+    return parts.join(" ");
+  }
+  var ALLOWED = {
+    alnum: /[^A-Za-z0-9]/g,
+    alpha: /[^A-Za-z]/g,
+    digits: /[^0-9]/g,
+    any: /\s/g
+  };
+  function normalizeAnswer(raw, rule) {
+    let text = raw.replace(/<think>[\s\S]*?<\/think>/gi, "");
+    if (/<think>/i.test(text))
+      throw new AnswerError("Model returned reasoning instead of an answer");
+    text = text.replace(/```[a-z]*/gi, "").trim();
+    const lines = text.split(`
+`).map((l5) => l5.trim()).filter(Boolean);
+    const last = lines.at(-1) ?? "";
+    if (!last)
+      throw new AnswerError("Empty answer");
+    if (rule.kind === "math") {
+      const nums = last.match(/-?\d+(?:\.\d+)?/g);
+      const n3 = nums?.at(-1);
+      if (!n3)
+        throw new AnswerError(`Could not read a number from "${last.slice(0, 40)}"`);
+      return n3;
+    }
+    let answer = last.replace(ALLOWED[rule.charset], "");
+    if (rule.caseMode === "upper")
+      answer = answer.toUpperCase();
+    else if (rule.caseMode === "lower")
+      answer = answer.toLowerCase();
+    if (answer.length < rule.minLength) {
+      throw new AnswerError(`Answer "${answer}" is shorter than ${rule.minLength} characters`);
+    }
+    if (rule.maxLength && answer.length > rule.maxLength) {
+      throw new AnswerError(`Answer "${answer}" is longer than ${rule.maxLength} characters`);
+    }
+    return answer;
+  }
+
+  // src/solver/audio.ts
+  var AUDIO_PROMPT = "This is an audio CAPTCHA. Transcribe exactly the words or digits that are spoken. " + "Reply with ONLY those words in lowercase: no punctuation, quotes or explanation.";
+  function normalizeSpoken(raw) {
+    let text = raw.replace(/<think>[\s\S]*?<\/think>/gi, "");
+    if (/<think>/i.test(text))
+      throw new AnswerError("Model returned reasoning instead of an answer");
+    text = text.replace(/```[a-z]*/gi, "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+    if (!text)
+      throw new AnswerError("Nothing was heard in the audio");
+    return text;
+  }
+  function audioFormat(mime) {
+    const sub = (mime.split("/")[1] ?? "").split(";")[0] ?? "";
+    return { mpeg: "mp3", "x-wav": "wav", wave: "wav", "x-m4a": "m4a", mp4: "m4a" }[sub] ?? (sub || "mp3");
+  }
+
   // src/providers/gemini.ts
   var BASE = "https://generativelanguage.googleapis.com/v1beta";
   function thinkingConfigFor(model) {
@@ -1929,6 +2081,29 @@
     }
     return text;
   }
+  async function generate(http, cfg, prompt, media, signal) {
+    const model = cfg.model.replace(/^models\//, "");
+    const body = (withThinking) => JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: media }] }],
+      generationConfig: { temperature: 0, maxOutputTokens: 256, ...withThinking ? thinkingConfigFor(model) : {} }
+    });
+    const call = (b5) => http({
+      method: "POST",
+      url: `${BASE}/models/${encodeURIComponent(model)}:generateContent`,
+      headers: { "content-type": "application/json", "x-goog-api-key": cfg.apiKey },
+      body: b5,
+      timeout: 20000,
+      signal
+    });
+    try {
+      return parseGeminiReply((await call(body(true))).text);
+    } catch (e4) {
+      if (e4 instanceof HttpError && e4.status === 400 && /thinking/i.test(e4.message)) {
+        return parseGeminiReply((await call(body(false))).text);
+      }
+      throw e4;
+    }
+  }
   var NOT_CHAT = /embedding|image|tts|live|audio|robotics|veo|imagen|aqa|computer-use|deep-research/;
   var createGemini = (http = gmHttp) => ({
     id: "gemini",
@@ -1937,30 +2112,13 @@
     defaultModel: "gemini-3.5-flash-lite",
     suggestedModels: ["gemini-3.5-flash-lite", "gemini-3.5-flash"],
     defaultBaseUrl: BASE,
-    async complete(cfg, { image, prompt, signal }) {
-      const model = cfg.model.replace(/^models\//, "");
-      const body = (withThinking) => JSON.stringify({
-        contents: [
-          { role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: image.mime, data: image.base64 } }] }
-        ],
-        generationConfig: { temperature: 0, maxOutputTokens: 256, ...withThinking ? thinkingConfigFor(model) : {} }
-      });
-      const call = (b5) => http({
-        method: "POST",
-        url: `${BASE}/models/${encodeURIComponent(model)}:generateContent`,
-        headers: { "content-type": "application/json", "x-goog-api-key": cfg.apiKey },
-        body: b5,
-        timeout: 20000,
-        signal
-      });
-      try {
-        return parseGeminiReply((await call(body(true))).text);
-      } catch (e4) {
-        if (e4 instanceof HttpError && e4.status === 400 && /thinking/i.test(e4.message)) {
-          return parseGeminiReply((await call(body(false))).text);
-        }
-        throw e4;
-      }
+    defaultAudioModel: "",
+    suggestedAudioModels: [],
+    complete(cfg, { image, prompt, signal }) {
+      return generate(http, cfg, prompt, { mime_type: image.mime, data: image.base64 }, signal);
+    },
+    async transcribe(cfg, { audio, signal }) {
+      return generate(http, cfg, AUDIO_PROMPT, { mime_type: audio.mime, data: audio.base64 }, signal);
     },
     async listModels(cfg, signal) {
       const out = [];
@@ -1995,6 +2153,12 @@
       throw new Error("Empty response from model");
     return text;
   }
+  function parseTranscription(body) {
+    const text = JSON.parse(body).text ?? "";
+    if (!text.trim())
+      throw new Error("Empty transcription");
+    return text;
+  }
   var createOpenAICompat = (opts) => (http = gmHttp) => {
     const root = (baseUrl) => (baseUrl || opts.defaultBaseUrl).replace(/\/+$/, "");
     const auth = (key) => key ? { authorization: `Bearer ${key}` } : {};
@@ -2006,6 +2170,32 @@
       suggestedModels: opts.suggestedModels,
       defaultBaseUrl: opts.defaultBaseUrl,
       keyOptional: opts.keyOptional,
+      defaultAudioModel: opts.defaultAudioModel ?? "",
+      suggestedAudioModels: opts.suggestedAudioModels ?? [],
+      async transcribe(cfg, { audio, signal }) {
+        const url = `${root(cfg.baseUrl)}/audio/transcriptions`;
+        if (opts.sttBody === "json") {
+          const res2 = await http({
+            method: "POST",
+            url,
+            headers: { "content-type": "application/json", ...auth(cfg.apiKey) },
+            body: JSON.stringify({
+              model: cfg.model,
+              input_audio: { data: audio.base64, format: audioFormat(audio.mime) }
+            }),
+            timeout: 30000,
+            signal
+          });
+          return parseTranscription(res2.text);
+        }
+        const form = new FormData;
+        form.append("file", audio.blob, `captcha.${audioFormat(audio.mime)}`);
+        form.append("model", cfg.model);
+        form.append("response_format", "json");
+        form.append("temperature", "0");
+        const res = await http({ method: "POST", url, headers: auth(cfg.apiKey), body: form, timeout: 30000, signal });
+        return parseTranscription(res.text);
+      },
       async complete(cfg, { image, prompt, signal }) {
         const extras = opts.extraBody?.(cfg.model) ?? {};
         const call = (withExtras) => http({
@@ -2062,6 +2252,8 @@
     defaultModel: "qwen/qwen3.8-27b",
     suggestedModels: ["qwen/qwen3.8-27b"],
     defaultBaseUrl: "https://api.groq.com/openai/v1",
+    defaultAudioModel: "whisper-large-v3-turbo",
+    suggestedAudioModels: ["whisper-large-v3-turbo", "whisper-large-v3"],
     extraBody: (model) => /^qwen\//.test(model) ? { reasoning_effort: "none" } : {},
     keepModel: (id) => !NON_VISION.test(id)
   });
@@ -2073,7 +2265,10 @@
     keyHelpUrl: "https://openrouter.ai/keys",
     defaultModel: "",
     suggestedModels: [],
-    defaultBaseUrl: "https://openrouter.ai/api/v1"
+    defaultBaseUrl: "https://openrouter.ai/api/v1",
+    defaultAudioModel: "openai/whisper-large-v3",
+    suggestedAudioModels: ["openai/whisper-large-v3", "openai/whisper-1"],
+    sttBody: "json"
   });
   var createCustomEndpoint = createOpenAICompat({
     id: "openai",
@@ -2082,7 +2277,9 @@
     defaultModel: "",
     suggestedModels: [],
     defaultBaseUrl: "",
-    keyOptional: true
+    keyOptional: true,
+    defaultAudioModel: "whisper-1",
+    suggestedAudioModels: ["whisper-1", "gpt-4o-mini-transcribe"]
   });
   function createProviders(http) {
     return {
@@ -2149,6 +2346,55 @@
     return best ? { pattern: best.pattern, rule: best.rule } : null;
   }
 
+  // src/solver/errors.ts
+  function explainError(e4) {
+    if (e4 instanceof HttpError) {
+      switch (e4.status) {
+        case 0:
+          return e4.message === "Request timed out" ? "Request timed out" : "Network error. Check your connection";
+        case 400:
+          return `Bad request: ${e4.message}`;
+        case 401:
+        case 403:
+          return "API key rejected. Check it in Settings";
+        case 404:
+          return "Model not found; it may have been retired. Pick another in Settings";
+        case 429:
+          return "Rate limited. Wait a moment and retry";
+        default:
+          return e4.status >= 500 ? `Provider error (${e4.status}). Try again` : e4.message;
+      }
+    }
+    if (e4 instanceof AnswerError)
+      return e4.message;
+    if (e4 instanceof SyntaxError)
+      return "Unexpected response from provider";
+    return e4 instanceof Error ? e4.message : String(e4);
+  }
+  var retryable = (e4) => e4 instanceof HttpError && (e4.status === 0 || e4.status === 429 || e4.status >= 500);
+  var sleep = (ms, signal) => new Promise((resolve, reject) => {
+    if (signal?.aborted)
+      return reject(new DOMException("Aborted", "AbortError"));
+    const t4 = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(t4);
+      reject(new DOMException("Aborted", "AbortError"));
+    }, { once: true });
+  });
+  async function withRetry(fn, opts = {}) {
+    const { retries = 2, baseMs = 500, signal } = opts;
+    for (let attempt = 0;; attempt++) {
+      try {
+        return await fn();
+      } catch (e4) {
+        if (isAbort(e4) || attempt >= retries || !retryable(e4))
+          throw e4;
+        const wait = e4 instanceof HttpError && e4.retryAfterMs ? e4.retryAfterMs : baseMs * 2 ** attempt;
+        await sleep(Math.min(wait, 4000), signal);
+      }
+    }
+  }
+
   // node_modules/@medv/finder/finder.js
   var acceptedAttrNames = new Set(["role", "name", "aria-label", "rel", "href"]);
   function attr(name, value) {
@@ -2189,17 +2435,17 @@
     const config = { ...defaults, ...options };
     const rootDocument = findRootDocument(config.root, defaults);
     let foundPath;
-    let count = 0;
+    let count2 = 0;
     for (const candidate of search(input, config, rootDocument)) {
       const elapsedTimeMs = new Date().getTime() - startTime.getTime();
-      if (elapsedTimeMs > config.timeoutMs || count >= config.maxNumberOfPathChecks) {
+      if (elapsedTimeMs > config.timeoutMs || count2 >= config.maxNumberOfPathChecks) {
         const fPath = fallback(input, rootDocument);
         if (!fPath) {
           throw new Error(`Timeout: Can't find a unique selector after ${config.timeoutMs}ms`);
         }
         return selector2(fPath);
       }
-      count++;
+      count2++;
       if (unique(candidate, rootDocument)) {
         foundPath = candidate;
         break;
@@ -2561,31 +2807,159 @@
   }
 
   // src/dom/click.ts
-  function pointIn(r4, rand = Math.random) {
-    const j3 = () => (rand() - 0.5) * 0.4;
+  var timing = { scale: 1 };
+  var rand = (lo, hi) => lo + Math.random() * (hi - lo);
+  var wait = (ms, signal) => timing.scale ? sleep(ms * timing.scale, signal) : Promise.resolve();
+  function pointIn(r4, rnd = Math.random) {
+    const j3 = () => (rnd() - 0.5) * 0.4;
     return { x: r4.left + r4.width * (0.5 + j3()), y: r4.top + r4.height * (0.5 + j3()) };
   }
   function pageElementAt({ x: x4, y: y5 }) {
     const all = document.elementsFromPoint?.(x4, y5) ?? [document.elementFromPoint(x4, y5)];
     return all.find((el) => el && el.localName !== UI_HOST_TAG) ?? null;
   }
-  function simulateClick(target, at = pointIn(target.getBoundingClientRect())) {
-    const base = { bubbles: true, cancelable: true, composed: true, clientX: at.x, clientY: at.y, button: 0 };
-    const hasPointer = typeof PointerEvent === "function";
-    const pointer = (type, buttons) => hasPointer && target.dispatchEvent(new PointerEvent(type, { ...base, buttons, pointerId: 1, pointerType: "mouse", isPrimary: true }));
-    const mouse = (type, buttons) => target.dispatchEvent(new MouseEvent(type, { ...base, buttons }));
-    pointer("pointerover", 0);
-    mouse("mouseover", 0);
-    pointer("pointermove", 0);
-    mouse("mousemove", 0);
-    pointer("pointerdown", 1);
-    mouse("mousedown", 1);
+  var cursor = null;
+  function entryPoint() {
+    const w4 = innerWidth || 300;
+    const h5 = innerHeight || 300;
+    const side = Math.floor(Math.random() * 4);
+    if (side === 0)
+      return { x: rand(0, w4), y: 0 };
+    if (side === 1)
+      return { x: w4 - 1, y: rand(0, h5) };
+    if (side === 2)
+      return { x: rand(0, w4), y: h5 - 1 };
+    return { x: 0, y: rand(0, h5) };
+  }
+  function pathBetween(from, to, rnd = Math.random) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.hypot(dx, dy);
+    const steps = Math.max(6, Math.min(30, Math.round(dist / 14)));
+    const bow = (rnd() - 0.5) * Math.min(dist * 0.35, 80);
+    const cx = (from.x + to.x) / 2 - dy / (dist || 1) * bow;
+    const cy = (from.y + to.y) / 2 + dx / (dist || 1) * bow;
+    const pts = [];
+    for (let i4 = 1;i4 <= steps; i4++) {
+      const lin = i4 / steps;
+      const t4 = lin < 0.5 ? 2 * lin * lin : 1 - (-2 * lin + 2) ** 2 / 2;
+      const u4 = 1 - t4;
+      pts.push({ x: u4 * u4 * from.x + 2 * u4 * t4 * cx + t4 * t4 * to.x, y: u4 * u4 * from.y + 2 * u4 * t4 * cy + t4 * t4 * to.y });
+    }
+    return pts;
+  }
+  function fire(target, type, at, buttons) {
+    const init = { bubbles: true, cancelable: true, composed: true, clientX: at.x, clientY: at.y, button: 0, buttons };
+    if (type.startsWith("pointer")) {
+      if (typeof PointerEvent !== "function")
+        return;
+      target.dispatchEvent(new PointerEvent(type, { ...init, pointerId: 1, pointerType: "mouse", isPrimary: true }));
+    } else {
+      target.dispatchEvent(new MouseEvent(type, init));
+    }
+  }
+  async function moveTo(to, fallback2, signal) {
+    const from = cursor ?? entryPoint();
+    let over = null;
+    for (const p5 of pathBetween(from, to)) {
+      const el = (timing.scale ? pageElementAt(p5) : null) ?? fallback2;
+      if (el !== over) {
+        if (over) {
+          fire(over, "pointerout", p5, 0);
+          fire(over, "mouseout", p5, 0);
+        }
+        fire(el, "pointerover", p5, 0);
+        fire(el, "mouseover", p5, 0);
+        over = el;
+      }
+      fire(el, "pointermove", p5, 0);
+      fire(el, "mousemove", p5, 0);
+      cursor = p5;
+      await wait(rand(6, 16), signal);
+    }
+    cursor = to;
+  }
+  async function humanClick(target, opts = {}) {
+    const at = opts.at ?? pointIn(target.getBoundingClientRect());
+    await moveTo(at, target, opts.signal);
+    await wait(rand(40, 140), opts.signal);
+    fire(target, "pointerdown", at, 1);
+    fire(target, "mousedown", at, 1);
     if (target instanceof HTMLElement)
       target.focus({ preventScroll: true });
-    pointer("pointerup", 0);
-    mouse("mouseup", 0);
-    mouse("click", 0);
+    await wait(rand(55, 130), opts.signal);
+    fire(target, "pointerup", at, 0);
+    fire(target, "mouseup", at, 0);
+    fire(target, "click", at, 0);
   }
+  async function typeInto(field, text, signal) {
+    const proto = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setValue = (value2) => {
+      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      if (setter)
+        setter.call(field, value2);
+      else
+        field.value = value2;
+    };
+    await humanClick(field, { signal });
+    setValue("");
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+    let value = "";
+    for (const ch of text) {
+      const key = { key: ch, bubbles: true, cancelable: true, composed: true };
+      field.dispatchEvent(new KeyboardEvent("keydown", key));
+      field.dispatchEvent(new KeyboardEvent("keypress", key));
+      value += ch;
+      setValue(value);
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: ch }));
+      field.dispatchEvent(new KeyboardEvent("keyup", key));
+      await wait(ch === " " ? rand(120, 260) : rand(45, 150), signal);
+    }
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  async function waitFor(fn, ms, signal, step = 100) {
+    const end = performance.now() + ms * timing.scale;
+    for (;; ) {
+      const v4 = fn();
+      if (v4)
+        return v4;
+      if (performance.now() >= end)
+        return null;
+      await sleep(step, signal);
+    }
+  }
+  function whenOnScreen(el, signal, ratio = 0.6) {
+    return new Promise((resolve, reject) => {
+      if (typeof IntersectionObserver !== "function" || !timing.scale)
+        return resolve();
+      let inView = false;
+      const check2 = () => {
+        if (inView && document.visibilityState === "visible")
+          done();
+      };
+      const io = new IntersectionObserver((entries) => {
+        inView = entries.some((e4) => e4.intersectionRatio >= ratio);
+        check2();
+      }, { threshold: [0, ratio, 1] });
+      const onAbort = () => {
+        cleanup();
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      function cleanup() {
+        io.disconnect();
+        document.removeEventListener("visibilitychange", check2);
+        signal?.removeEventListener("abort", onAbort);
+      }
+      function done() {
+        cleanup();
+        resolve();
+      }
+      io.observe(el);
+      document.addEventListener("visibilitychange", check2);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+  var pause = (lo, hi, signal) => wait(rand(lo, hi), signal);
 
   // src/dom/fill.ts
   var isTextField = (el) => el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement && !["checkbox", "radio", "button", "submit", "file", "image", "hidden"].includes(el.type);
@@ -2607,9 +2981,43 @@
     return true;
   }
 
+  // src/dom/tiles.ts
+  var bgUrl = (el) => {
+    const m3 = getComputedStyle(el).backgroundImage.match(/url\(["']?(.*?)["']?\)/);
+    return m3?.[1] ? new URL(m3[1], location.href).href : null;
+  };
+  function tileSources(tile) {
+    const out = [];
+    for (const el of [tile, ...tile.querySelectorAll("*")]) {
+      if (el instanceof HTMLImageElement) {
+        const url2 = el.currentSrc || el.src;
+        if (url2)
+          out.push({ el, url: url2, kind: "img" });
+        continue;
+      }
+      const url = bgUrl(el);
+      if (url)
+        out.push({ el, url, kind: "bg" });
+    }
+    return out;
+  }
+  var tileSignature = (tile) => tileSources(tile).map((s4) => s4.url).join("|");
+  function tileOpacity(tile) {
+    let min = 1;
+    for (const { el } of tileSources(tile)) {
+      for (let n3 = el;n3 && n3 !== tile.parentElement; n3 = n3.parentElement) {
+        const o4 = Number.parseFloat(getComputedStyle(n3).opacity);
+        if (!Number.isNaN(o4))
+          min = Math.min(min, o4);
+      }
+    }
+    return min;
+  }
+  var tilesLoaded = (tiles) => tiles.every((t4) => tileSources(t4).every(({ el }) => !(el instanceof HTMLImageElement) || el.complete && el.naturalWidth > 0));
+
   // src/dom/watch.ts
-  var signature = (el) => [el.localName, el.getAttribute("src"), el.currentSrc, el.width].join("|");
-  function watchCaptcha(getSelector, onChange, debounceMs = 120) {
+  var elementSignature = (el) => [el.localName, el.getAttribute("src"), el.currentSrc, el.width].join("|");
+  function watchCaptcha(getSelector, onChange, debounceMs = 120, signature = elementSignature) {
     let current = null;
     let lastSig = "";
     let timer;
@@ -2647,7 +3055,7 @@
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["src", "srcset"]
+      attributeFilter: ["src", "srcset", "style"]
     });
     const onLoad = (e4) => {
       if (e4.target === current)
@@ -2684,34 +3092,34 @@
     const scale = Math.min(1, max / Math.max(w4, h5));
     return { width: Math.max(1, Math.round(w4 * scale)), height: Math.max(1, Math.round(h5 * scale)) };
   }
-  function annotateGrid(ctx, width, height, size) {
-    const cw = width / size;
-    const ch = height / size;
-    const font = Math.max(10, Math.round(Math.min(cw, ch) * 0.16));
+  var uniformCells = (width, height, size) => Array.from({ length: size * size }, (_4, n3) => ({
+    x: n3 % size * (width / size),
+    y: Math.floor(n3 / size) * (height / size),
+    w: width / size,
+    h: height / size
+  }));
+  function annotateCells(ctx, cells) {
+    const side = Math.min(...cells.map((c4) => Math.min(c4.w, c4.h)));
+    const font = Math.max(10, Math.round(side * 0.16));
     ctx.save();
     ctx.lineWidth = Math.max(1, Math.round(font / 8));
     ctx.strokeStyle = "#fff";
-    for (let i4 = 1;i4 < size; i4++) {
-      ctx.beginPath();
-      ctx.moveTo(i4 * cw, 0);
-      ctx.lineTo(i4 * cw, height);
-      ctx.moveTo(0, i4 * ch);
-      ctx.lineTo(width, i4 * ch);
-      ctx.stroke();
-    }
     ctx.font = `bold ${font}px sans-serif`;
     ctx.textBaseline = "top";
-    for (let n3 = 0;n3 < size * size; n3++) {
-      const x4 = n3 % size * cw + 2;
-      const y5 = Math.floor(n3 / size) * ch + 2;
-      const label = String(n3 + 1);
+    cells.forEach((c4, i4) => {
+      ctx.strokeRect(c4.x, c4.y, c4.w, c4.h);
+      const label = String(i4 + 1);
       ctx.fillStyle = "#000c";
-      ctx.fillRect(x4, y5, ctx.measureText(label).width + font * 0.5, font * 1.2);
+      ctx.fillRect(c4.x + 2, c4.y + 2, ctx.measureText(label).width + font * 0.5, font * 1.2);
       ctx.fillStyle = "#fff";
-      ctx.fillText(label, x4 + font * 0.25, y5 + font * 0.1);
-    }
+      ctx.fillText(label, c4.x + 2 + font * 0.25, c4.y + 2 + font * 0.1);
+    });
     ctx.restore();
   }
+  var encode = (canvas) => {
+    const mime = canvas.width * canvas.height <= PNG_PIXEL_BUDGET ? "image/png" : "image/jpeg";
+    return { mime, base64: canvas.toDataURL(mime, 0.92).split(",")[1] ?? "" };
+  };
   function rasterize(source, srcW, srcH, grid = 0) {
     const { width, height } = fitWithin(srcW, srcH);
     const canvas = document.createElement("canvas");
@@ -2724,11 +3132,8 @@
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(source, 0, 0, width, height);
     if (grid > 1)
-      annotateGrid(ctx, width, height, grid);
-    const png = width * height <= PNG_PIXEL_BUDGET;
-    const mime = png ? "image/png" : "image/jpeg";
-    const base64 = canvas.toDataURL(mime, 0.92).split(",")[1] ?? "";
-    return { mime, base64, width, height };
+      annotateCells(ctx, uniformCells(width, height, grid));
+    return { ...encode(canvas), width, height };
   }
   async function imageReady(img, timeoutMs) {
     if (img.complete && img.naturalWidth > 0)
@@ -2738,17 +3143,16 @@
       new Promise((_4, rej) => setTimeout(() => rej(new Error("Captcha image did not load")), timeoutMs))
     ]);
   }
+  async function download(url, http, signal) {
+    if (url.startsWith("blob:") || url.startsWith("data:"))
+      return (await fetch(url, { signal })).blob();
+    const res = await http({ method: "GET", url, responseType: "blob", timeout: 1e4, signal });
+    if (!res.blob)
+      throw new Error("Download returned no data");
+    return res.blob;
+  }
   async function refetch(url, http, signal, grid = 0) {
-    let blob;
-    if (url.startsWith("blob:") || url.startsWith("data:")) {
-      blob = await (await fetch(url, { signal })).blob();
-    } else {
-      const res = await http({ method: "GET", url, responseType: "blob", timeout: 1e4, signal });
-      if (!res.blob)
-        throw new Error("Image download returned no data");
-      blob = res.blob;
-    }
-    const bmp = await createImageBitmap(blob);
+    const bmp = await createImageBitmap(await download(url, http, signal));
     try {
       return rasterize(bmp, bmp.width, bmp.height, grid);
     } finally {
@@ -2789,122 +3193,114 @@
       return { ...await refetch(bg, http, signal, grid), refetched: true };
     throw new Error(`Unsupported captcha element <${el.tagName.toLowerCase()}>. Pick an <img>, <canvas> or <svg>`);
   }
-
-  // src/solver/answer.ts
-  class AnswerError extends Error {
-    name = "AnswerError";
-  }
-  var CHARSET_NAME = {
-    alnum: "letters and digits only",
-    alpha: "letters only",
-    digits: "digits only",
-    any: ""
-  };
-  function buildPrompt(rule) {
-    if (rule.kind === "math") {
-      return [
-        "The image shows a simple arithmetic CAPTCHA.",
-        "Compute it and reply with ONLY the final number: no words, no equals sign, no explanation.",
-        rule.hint
-      ].filter(Boolean).join(" ");
-    }
-    const parts = [
-      "You are an OCR engine reading a distorted-text CAPTCHA.",
-      "Transcribe the characters exactly as they appear. Reply with ONLY those characters: no spaces, quotes, punctuation or explanation."
-    ];
-    if (CHARSET_NAME[rule.charset])
-      parts.push(`The answer contains ${CHARSET_NAME[rule.charset]}.`);
-    if (rule.maxLength && rule.maxLength === rule.minLength)
-      parts.push(`It is exactly ${rule.maxLength} characters long.`);
-    else if (rule.maxLength)
-      parts.push(`It is ${rule.minLength} to ${rule.maxLength} characters long.`);
-    if (rule.hint)
-      parts.push(rule.hint);
-    return parts.join(" ");
-  }
-  var ALLOWED = {
-    alnum: /[^A-Za-z0-9]/g,
-    alpha: /[^A-Za-z]/g,
-    digits: /[^0-9]/g,
-    any: /\s/g
-  };
-  function normalizeAnswer(raw, rule) {
-    let text = raw.replace(/<think>[\s\S]*?<\/think>/gi, "");
-    if (/<think>/i.test(text))
-      throw new AnswerError("Model returned reasoning instead of an answer");
-    text = text.replace(/```[a-z]*/gi, "").trim();
-    const lines = text.split(`
-`).map((l5) => l5.trim()).filter(Boolean);
-    const last = lines.at(-1) ?? "";
-    if (!last)
-      throw new AnswerError("Empty answer");
-    if (rule.kind === "math") {
-      const nums = last.match(/-?\d+(?:\.\d+)?/g);
-      const n3 = nums?.at(-1);
-      if (!n3)
-        throw new AnswerError(`Could not read a number from "${last.slice(0, 40)}"`);
-      return n3;
-    }
-    let answer = last.replace(ALLOWED[rule.charset], "");
-    if (rule.caseMode === "upper")
-      answer = answer.toUpperCase();
-    else if (rule.caseMode === "lower")
-      answer = answer.toLowerCase();
-    if (answer.length < rule.minLength) {
-      throw new AnswerError(`Answer "${answer}" is shorter than ${rule.minLength} characters`);
-    }
-    if (rule.maxLength && answer.length > rule.maxLength) {
-      throw new AnswerError(`Answer "${answer}" is longer than ${rule.maxLength} characters`);
-    }
-    return answer;
-  }
-
-  // src/solver/errors.ts
-  function explainError(e4) {
-    if (e4 instanceof HttpError) {
-      switch (e4.status) {
-        case 0:
-          return e4.message === "Request timed out" ? "Request timed out" : "Network error. Check your connection";
-        case 400:
-          return `Bad request: ${e4.message}`;
-        case 401:
-        case 403:
-          return "API key rejected. Check it in Settings";
-        case 404:
-          return "Model not found; it may have been retired. Pick another in Settings";
-        case 429:
-          return "Rate limited. Wait a moment and retry";
-        default:
-          return e4.status >= 500 ? `Provider error (${e4.status}). Try again` : e4.message;
+  var drawableInPlace = (url) => url.startsWith("data:") || url.startsWith("blob:") || new URL(url, location.href).origin === location.origin;
+  async function captureTiles(tiles, opts = {}) {
+    const { http = gmHttp, signal } = opts;
+    if (!tiles.length)
+      throw new Error("No tiles to capture");
+    const rects = tiles.map((t4) => t4.getBoundingClientRect());
+    const left = Math.min(...rects.map((r4) => r4.left));
+    const top = Math.min(...rects.map((r4) => r4.top));
+    const w4 = Math.max(...rects.map((r4) => r4.right)) - left || 1;
+    const h5 = Math.max(...rects.map((r4) => r4.bottom)) - top || 1;
+    const smallest = Math.min(...rects.map((r4) => Math.min(r4.width, r4.height))) || 1;
+    const scale = Math.max(1, Math.min(120 / smallest, MAX_SIDE / Math.max(w4, h5)));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(w4 * scale);
+    canvas.height = Math.round(h5 * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx)
+      throw new Error("Canvas unavailable");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const downloaded = new Map;
+    const sourceFor = async (url, el) => {
+      if (el instanceof HTMLImageElement && drawableInPlace(url))
+        return el;
+      let bmp = downloaded.get(url);
+      if (!bmp) {
+        bmp = download(url, http, signal).then((b5) => createImageBitmap(b5));
+        downloaded.set(url, bmp);
       }
-    }
-    if (e4 instanceof AnswerError)
-      return e4.message;
-    if (e4 instanceof SyntaxError)
-      return "Unexpected response from provider";
-    return e4 instanceof Error ? e4.message : String(e4);
-  }
-  var retryable = (e4) => e4 instanceof HttpError && (e4.status === 0 || e4.status === 429 || e4.status >= 500);
-  var sleep = (ms, signal) => new Promise((resolve, reject) => {
-    if (signal?.aborted)
-      return reject(new DOMException("Aborted", "AbortError"));
-    const t4 = setTimeout(resolve, ms);
-    signal?.addEventListener("abort", () => {
-      clearTimeout(t4);
-      reject(new DOMException("Aborted", "AbortError"));
-    }, { once: true });
-  });
-  async function withRetry(fn, opts = {}) {
-    const { retries = 2, baseMs = 500, signal } = opts;
-    for (let attempt = 0;; attempt++) {
-      try {
-        return await fn();
-      } catch (e4) {
-        if (isAbort(e4) || attempt >= retries || !retryable(e4))
-          throw e4;
-        const wait = e4 instanceof HttpError && e4.retryAfterMs ? e4.retryAfterMs : baseMs * 2 ** attempt;
-        await sleep(Math.min(wait, 4000), signal);
+      return bmp;
+    };
+    const cells = rects.map((r4) => ({
+      x: (r4.left - left) * scale,
+      y: (r4.top - top) * scale,
+      w: r4.width * scale,
+      h: r4.height * scale
+    }));
+    try {
+      for (const [i4, tile] of tiles.entries()) {
+        const cell = cells[i4];
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(cell.x, cell.y, cell.w, cell.h);
+        ctx.clip();
+        for (const { el, url } of tileSources(tile)) {
+          const r4 = el.getBoundingClientRect();
+          if (!r4.width || !r4.height)
+            continue;
+          ctx.drawImage(await sourceFor(url, el), (r4.left - left) * scale, (r4.top - top) * scale, r4.width * scale, r4.height * scale);
+        }
+        ctx.restore();
       }
+    } finally {
+      for (const p5 of downloaded.values())
+        p5.then((b5) => b5.close?.(), () => {});
+    }
+    annotateCells(ctx, cells);
+    return { ...encode(canvas), width: canvas.width, height: canvas.height, refetched: false };
+  }
+  async function captureAudio(url, opts = {}) {
+    const { http = gmHttp, signal } = opts;
+    let blob;
+    try {
+      if (!drawableInPlace(url))
+        throw new Error("cross-origin");
+      const res = await fetch(url, { signal, credentials: "include" });
+      if (!res.ok)
+        throw new Error(`HTTP ${res.status}`);
+      blob = await res.blob();
+    } catch (e4) {
+      if (signal?.aborted)
+        throw e4;
+      blob = await download(url, http, signal);
+    }
+    if (!blob.size)
+      throw new Error("Audio clip was empty");
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let bin = "";
+    for (let i4 = 0;i4 < bytes.length; i4 += 32768)
+      bin += String.fromCharCode(...bytes.subarray(i4, i4 + 32768));
+    return {
+      mime: blob.type && blob.type !== "application/octet-stream" ? blob.type : "audio/mpeg",
+      base64: btoa(bin),
+      blob
+    };
+  }
+
+  // src/solver/guard.ts
+  class RateGuard {
+    max;
+    windowMs;
+    now;
+    hits = [];
+    constructor(max, windowMs, now = Date.now) {
+      this.max = max;
+      this.windowMs = windowMs;
+      this.now = now;
+    }
+    allow() {
+      const t4 = this.now();
+      this.hits = this.hits.filter((h5) => t4 - h5 < this.windowMs);
+      if (this.hits.length >= this.max)
+        return false;
+      this.hits.push(t4);
+      return true;
+    }
+    reset() {
+      this.hits = [];
     }
   }
 
@@ -2955,28 +3351,156 @@
     return [...out].sort((a4, b5) => a4 - b5);
   }
 
-  // src/solver/guard.ts
-  class RateGuard {
-    max;
-    windowMs;
-    now;
-    hits = [];
-    constructor(max, windowMs, now = Date.now) {
-      this.max = max;
-      this.windowMs = windowMs;
-      this.now = now;
+  // src/solver/runs.ts
+  var MAX_DYNAMIC_PASSES = 6;
+  var DYNAMIC_WORDING = /none left|no more|until there are none/i;
+  var superseded = () => new DOMException("Superseded", "AbortError");
+  var q3 = (sel) => sel ? document.querySelector(sel) : null;
+  var textOf = (el) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+  async function pressSubmit(ctx) {
+    if (!ctx.rule.submit)
+      return;
+    await pause(250, 650, ctx.signal);
+    if (!ctx.current())
+      throw superseded();
+    const button = q3(ctx.rule.submit);
+    if (button)
+      await humanClick(button, { signal: ctx.signal });
+  }
+  async function waitForReplacement(clicked, before, expectDynamic, signal) {
+    const changed = (t4, i4) => !t4.isConnected || tileSignature(t4) !== before[i4];
+    const started = await waitFor(() => clicked.some((t4, i4) => changed(t4, i4) || t4.isConnected && tileOpacity(t4) < 0.95), expectDynamic ? 3000 : 1200, signal);
+    if (!started)
+      return false;
+    await waitFor(() => clicked.every((t4, i4) => changed(t4, i4)) && tilesLoaded(clicked.filter((t4) => t4.isConnected)) && clicked.every((t4) => !t4.isConnected || tileOpacity(t4) >= 0.95), 9000, signal);
+    await pause(250, 450, signal);
+    return true;
+  }
+  async function runGrid(ctx, el) {
+    const { rule, provider, cfg, signal } = ctx;
+    const check2 = () => {
+      if (!ctx.current())
+        throw superseded();
+    };
+    const queryTiles = () => rule.tiles ? [...document.querySelectorAll(rule.tiles)] : [];
+    let tiles = queryTiles();
+    const size = resolveGridSize(rule.gridSize, tiles.length);
+    const total = size * size;
+    if (rule.tiles && tiles.length !== total) {
+      throw new Error(`Found ${tiles.length} tiles, expected ${total} (${size}x${size}). Check the tiles selector`);
     }
-    allow() {
-      const t4 = this.now();
-      this.hits = this.hits.filter((h5) => t4 - h5 < this.windowMs);
-      if (this.hits.length >= this.max)
-        return false;
-      this.hits.push(t4);
-      return true;
+    if (rule.compose && !tiles.length)
+      throw new Error("Building the picture from tiles needs a tiles selector");
+    const instruction = textOf(q3(rule.instruction));
+    if (!instruction && !rule.hint)
+      throw new Error("No challenge text: set the instruction selector or a hint");
+    const prompt = buildGridPrompt(size, instruction, rule.hint);
+    const ask = async (image) => {
+      ctx.onRequest();
+      const raw = await withRetry(() => provider.complete(cfg, { image, prompt, signal }), { signal });
+      check2();
+      return parseGridAnswer(raw, total);
+    };
+    const first = rule.compose ? await ctx.captureTiles(tiles, { signal }) : await ctx.capture(el, { signal, grid: size });
+    let picks = await ask(first);
+    const cell = (n3) => {
+      const r4 = el.getBoundingClientRect();
+      const w4 = r4.width / size;
+      const h5 = r4.height / size;
+      return { left: r4.left + (n3 - 1) % size * w4, top: r4.top + Math.floor((n3 - 1) / size) * h5, width: w4, height: h5 };
+    };
+    const expectDynamic = DYNAMIC_WORDING.test(instruction);
+    const clickedAll = new Set;
+    let passes = 0;
+    await pause(300, 800, signal);
+    for (;; ) {
+      passes++;
+      const before = picks.map((n3) => tiles[n3 - 1] ? tileSignature(tiles[n3 - 1]) : "");
+      for (const [i4, n3] of picks.entries()) {
+        if (i4 > 0)
+          await pause(ctx.clickDelay(), ctx.clickDelay() * 1.4, signal);
+        check2();
+        const tile = tiles[n3 - 1];
+        if (tile) {
+          await humanClick(tile, { signal });
+        } else {
+          const at = pointIn(cell(n3));
+          const target = pageElementAt(at);
+          if (!target)
+            throw new Error(`Nothing clickable at tile ${n3}`);
+          await humanClick(target, { at, signal });
+        }
+        clickedAll.add(n3);
+      }
+      if (!picks.length || !tiles.length || passes >= MAX_DYNAMIC_PASSES)
+        break;
+      const clicked = picks.map((n3) => tiles[n3 - 1]);
+      if (!await waitForReplacement(clicked, before, expectDynamic, signal))
+        break;
+      check2();
+      tiles = queryTiles();
+      if (tiles.length !== total)
+        break;
+      picks = await ask(await ctx.captureTiles(tiles, { signal }));
     }
-    reset() {
-      this.hits = [];
+    await pressSubmit(ctx);
+    const list = [...clickedAll].sort((a4, b5) => a4 - b5);
+    const answer = list.length ? `Tiles ${list.join(", ")}` : "No matching tiles";
+    return {
+      answer: passes > 1 ? `${answer} (${passes} passes)` : answer,
+      warning: first.refetched ? "Image was re-downloaded; it may differ from the one shown" : undefined
+    };
+  }
+  function audioUrl(el) {
+    if (el instanceof HTMLAudioElement)
+      return el.currentSrc || el.src || el.querySelector("source")?.src || "";
+    if (el instanceof HTMLSourceElement)
+      return el.src;
+    if (el instanceof HTMLAnchorElement)
+      return el.href;
+    const raw = el.getAttribute("src") ?? el.getAttribute("href") ?? "";
+    return raw ? new URL(raw, location.href).href : "";
+  }
+  async function runAudio(ctx) {
+    const { rule, provider, cfg, signal } = ctx;
+    const findClip = () => {
+      const el = q3(rule.audioSource);
+      const url2 = el ? audioUrl(el) : "";
+      return url2 ? url2 : null;
+    };
+    let url = findClip();
+    if (!url) {
+      const button = q3(rule.audioButton);
+      if (!button)
+        throw new Error("Audio button not found. Check the audio button selector");
+      await pause(300, 800, signal);
+      await humanClick(button, { signal });
+      url = await waitFor(findClip, 8000, signal);
+      if (!url)
+        throw new Error("No audio challenge appeared. The site may be refusing audio for your network");
     }
+    if (!ctx.current())
+      throw superseded();
+    const audio = await ctx.captureAudio(url, { signal });
+    ctx.onRequest();
+    const raw = await withRetry(() => provider.transcribe(cfg, { audio, signal }), { signal });
+    if (!ctx.current())
+      throw superseded();
+    const answer = normalizeSpoken(raw);
+    const input = q3(rule.audioInput);
+    if (!isTextField(input))
+      throw new Error("Audio answer box not found");
+    await pause(400, 1100, signal);
+    await typeInto(input, answer, signal);
+    await pressSubmit(ctx);
+    return { answer };
+  }
+  async function switchToImages(rule, signal) {
+    const button = q3(rule.imageButton);
+    if (!button)
+      return null;
+    await humanClick(button, { signal });
+    return waitFor(() => q3(rule.captcha), 8000, signal);
   }
 
   // src/solver/controller.ts
@@ -2991,6 +3515,13 @@
       }
     };
   }
+  function resolveAudio(settings, registry) {
+    const { provider, cfg } = resolveProvider(settings, registry);
+    return {
+      provider,
+      cfg: { ...cfg, model: settings.audioModels[provider.id] || provider.defaultAudioModel || cfg.model }
+    };
+  }
   function configProblem(provider, cfg) {
     if (!cfg.baseUrl)
       return "Enter the endpoint URL";
@@ -3003,11 +3534,30 @@
   var MAX_GRID_ROUNDS = 3;
   var ROUND_GAP_MS = 30000;
   var humanDelay = () => 180 + Math.random() * 220;
-  var textOf = (el) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+  var isGrid = (rule) => rule.kind === "grid";
+  var isChecked = (el) => el.getAttribute("aria-checked") === "true" || el instanceof HTMLInputElement && el.checked;
+  var watchSelector = (rule) => isGrid(rule) && rule.solveBy === "audio" && rule.audioSource ? `${rule.captcha}, ${rule.audioSource}` : rule.captcha;
+  function challengeSignature(rule) {
+    const parts = [];
+    const el = document.querySelector(rule.captcha);
+    if (el)
+      parts.push(elementSignature(el));
+    if (rule.tiles)
+      for (const t4 of document.querySelectorAll(rule.tiles))
+        parts.push(tileSignature(t4));
+    if (rule.solveBy === "audio" && rule.audioSource) {
+      const a4 = document.querySelector(rule.audioSource);
+      if (a4)
+        parts.push(audioUrl(a4));
+    }
+    return parts.join("#");
+  }
   function createController({
     store,
     registry,
     capture = captureImage,
+    captureTiles: composeTiles = captureTiles,
+    captureAudio: fetchAudio = captureAudio,
     location: getLoc = () => window.location,
     clickDelay = humanDelay,
     now = Date.now
@@ -3019,19 +3569,34 @@
     let rounds = 0;
     let lastRound = 0;
     let runId = 0;
+    let busy = false;
+    let lastSolved = "";
     let abort = null;
     let watch = null;
+    let boxWatch = null;
+    let boxObserver = null;
+    let boxAbort = null;
     let watched = "";
     const set = (s4) => {
       status.value = s4;
+    };
+    const statModel = (rule) => {
+      const s4 = store.settings.value;
+      return (isGrid(rule) && rule.solveBy === "audio" ? resolveAudio(s4, registry) : resolveProvider(s4, registry)).cfg.model;
     };
     async function solve(trigger) {
       const current = match.value;
       if (!current?.rule.enabled)
         return;
-      const { rule } = current;
+      const { rule, pattern } = current;
+      const grid = isGrid(rule);
       if (trigger === "auto") {
-        if (rule.kind === "grid") {
+        if (grid) {
+          if (busy)
+            return;
+          const sig = challengeSignature(rule);
+          if (sig && sig === lastSolved)
+            return;
           const t4 = now();
           if (t4 - lastRound > ROUND_GAP_MS)
             rounds = 0;
@@ -3049,10 +3614,11 @@
         guard.reset();
         rounds = 0;
       }
-      const { provider, cfg } = resolveProvider(store.settings.value, registry);
+      const audio = grid && rule.solveBy === "audio";
+      const { provider, cfg } = (audio ? resolveAudio : resolveProvider)(store.settings.value, registry);
       const problem = configProblem(provider, cfg);
       if (problem) {
-        set({ phase: "error", text: problem, action: "settings" });
+        set({ phase: "error", text: audio ? `Audio: ${problem.toLowerCase()}` : problem, action: "settings" });
         return;
       }
       abort?.abort();
@@ -3060,114 +3626,137 @@
       abort = ac;
       const id = ++runId;
       const started = performance.now();
-      set({ phase: "solving", text: "Solving…" });
+      busy = grid;
+      set({ phase: "solving", text: audio ? "Listening…" : "Solving…" });
+      const stat = (event, ms = 0) => store.recordStat(pattern, cfg.model, event, ms);
       try {
-        const el = document.querySelector(rule.captcha);
-        if (!el) {
-          set({ phase: "missing", text: "Captcha not found on this page" });
-          return;
+        const ctx = {
+          rule,
+          provider,
+          cfg,
+          signal: ac.signal,
+          current: () => id === runId,
+          capture,
+          captureTiles: composeTiles,
+          captureAudio: fetchAudio,
+          clickDelay,
+          onRequest: () => stat("try")
+        };
+        let result;
+        if (audio) {
+          result = await runAudio(ctx);
+        } else {
+          let el = document.querySelector(rule.captcha);
+          if (!el && grid && rule.imageButton)
+            el = await switchToImages(rule, ac.signal);
+          if (!el) {
+            set({ phase: "missing", text: "Captcha not found on this page" });
+            return;
+          }
+          result = grid ? await runGrid(ctx, el) : await solveText(ctx, el);
         }
-        if (rule.kind === "grid") {
-          await solveGrid(rule, el, provider, cfg, ac.signal, () => id === runId, started);
-          return;
-        }
-        const image = await capture(el, { signal: ac.signal });
-        const raw = await withRetry(() => provider.complete(cfg, { image, prompt: buildPrompt(rule), signal: ac.signal }), { signal: ac.signal });
         if (id !== runId)
           return;
-        const answer = normalizeAnswer(raw, rule);
-        const input = document.querySelector(rule.input);
-        if (!isTextField(input))
-          throw new Error("Answer field not found");
-        fillInput(input, answer);
-        if (rule.submit)
-          setTimeout(() => clickElement(rule.submit), 80);
-        set({
-          phase: "solved",
-          text: answer,
-          answer,
-          ms: Math.round(performance.now() - started),
-          warning: image.refetched ? "Image was re-downloaded; it may differ from the one shown" : undefined
-        });
+        const ms = Math.round(performance.now() - started);
+        stat("answered", ms);
+        set({ phase: "solved", text: result.answer, answer: result.answer, ms, warning: result.warning });
       } catch (e4) {
         if (isAbort(e4) || id !== runId)
           return;
         console.warn("[ucs]", e4);
+        stat("error");
         set({ phase: "error", text: explainError(e4) });
-      }
-    }
-    async function solveGrid(rule, el, provider, cfg, signal, current, started) {
-      const tiles = rule.tiles ? [...document.querySelectorAll(rule.tiles)] : [];
-      const size = resolveGridSize(rule.gridSize, tiles.length);
-      const total = size * size;
-      if (rule.tiles && tiles.length !== total) {
-        throw new Error(`Found ${tiles.length} tiles, expected ${total} (${size}x${size}). Check the tiles selector`);
-      }
-      const instruction = rule.instruction ? textOf(document.querySelector(rule.instruction)) : "";
-      if (!instruction && !rule.hint)
-        throw new Error("No challenge text: set the instruction selector or a hint");
-      const image = await capture(el, { signal, grid: size });
-      const raw = await withRetry(() => provider.complete(cfg, { image, prompt: buildGridPrompt(size, instruction, rule.hint), signal }), { signal });
-      if (!current())
-        return;
-      const picks = parseGridAnswer(raw, total);
-      const cell = (n3) => {
-        const r4 = el.getBoundingClientRect();
-        const w4 = r4.width / size;
-        const h5 = r4.height / size;
-        return { left: r4.left + (n3 - 1) % size * w4, top: r4.top + Math.floor((n3 - 1) / size) * h5, width: w4, height: h5 };
-      };
-      for (const [i4, n3] of picks.entries()) {
-        if (i4 > 0)
-          await sleep(clickDelay(), signal);
-        if (!current())
-          return;
-        const tile = tiles[n3 - 1];
-        if (tile) {
-          simulateClick(tile);
-        } else {
-          const at = pointIn(cell(n3));
-          const target = pageElementAt(at);
-          if (!target)
-            throw new Error(`Nothing clickable at tile ${n3}`);
-          simulateClick(target, at);
+      } finally {
+        if (id === runId) {
+          busy = false;
+          if (grid)
+            lastSolved = challengeSignature(rule);
         }
       }
-      if (rule.submit) {
-        await sleep(clickDelay() + 200, signal);
-        if (!current())
-          return;
-        const button = document.querySelector(rule.submit);
-        if (button)
-          simulateClick(button);
-      }
-      const answer = picks.length ? `Tiles ${picks.join(", ")}` : "No matching tiles";
-      set({
-        phase: "solved",
-        text: answer,
-        answer,
-        ms: Math.round(performance.now() - started),
-        warning: image.refetched ? "Image was re-downloaded; it may differ from the one shown" : undefined
+    }
+    async function solveText(ctx, el) {
+      const { rule, provider, cfg, signal } = ctx;
+      const image = await capture(el, { signal });
+      ctx.onRequest();
+      const raw = await withRetry(() => provider.complete(cfg, { image, prompt: buildPrompt(rule), signal }), {
+        signal
       });
+      if (!ctx.current())
+        throw new DOMException("Superseded", "AbortError");
+      const answer = normalizeAnswer(raw, rule);
+      const input = document.querySelector(rule.input);
+      if (!isTextField(input))
+        throw new Error("Answer field not found");
+      fillInput(input, answer);
+      if (rule.submit)
+        setTimeout(() => clickElement(rule.submit), 80);
+      return {
+        answer,
+        warning: image.refetched ? "Image was re-downloaded; it may differ from the one shown" : undefined
+      };
+    }
+    function watchCheckbox(rule, pattern) {
+      const ticked = new WeakSet;
+      boxAbort = new AbortController;
+      const signal = boxAbort.signal;
+      boxWatch = watchCaptcha(() => rule.checkbox, (el) => {
+        boxObserver?.disconnect();
+        if (!el)
+          return;
+        let was = isChecked(el);
+        boxObserver = new MutationObserver(() => {
+          const now2 = isChecked(el);
+          if (now2 && !was)
+            store.recordStat(pattern, statModel(rule), "pass");
+          was = now2;
+        });
+        boxObserver.observe(el, { attributes: true, attributeFilter: ["aria-checked", "checked", "class"] });
+        const wanted = rule.autoCheckbox && rule.auto && store.settings.value.autoSolve;
+        if (!wanted || was || ticked.has(el))
+          return;
+        ticked.add(el);
+        (async () => {
+          await whenOnScreen(el, signal);
+          await pause(900, 2600, signal);
+          if (!el.isConnected || isChecked(el))
+            return;
+          await humanClick(el, { signal });
+        })().catch((e4) => {
+          if (!isAbort(e4))
+            console.warn("[ucs] checkbox", e4);
+        });
+      });
+    }
+    function stopCheckbox() {
+      boxAbort?.abort();
+      boxWatch?.stop();
+      boxObserver?.disconnect();
+      boxWatch = null;
+      boxObserver = null;
     }
     function rematch() {
       const next = findBestRule(store.sites.value, getLoc());
       match.value = next;
-      const active = next?.rule.enabled ? next.rule.captcha : "";
+      const rule = next?.rule.enabled ? next.rule : null;
+      const active = rule ? JSON.stringify([next?.pattern, rule]) : "";
       if (active === watched)
         return;
       watch?.stop();
       watch = null;
+      stopCheckbox();
       watched = active;
       present.value = false;
       rounds = 0;
+      lastSolved = "";
       abort?.abort();
-      if (!active) {
+      if (!rule || !next) {
         set({ phase: "idle", text: "Idle" });
         return;
       }
+      if (rule.checkbox)
+        watchCheckbox(rule, next.pattern);
       set({ phase: "idle", text: "Waiting for captcha…" });
-      watch = watchCaptcha(() => watched, (el) => {
+      watch = watchCaptcha(() => watchSelector(rule), (el) => {
         present.value = Boolean(el);
         if (!el) {
           rounds = 0;
@@ -3176,7 +3765,7 @@
         }
         if (match.value?.rule.auto && store.settings.value.autoSolve)
           solve("auto");
-      });
+      }, 120, isGrid(rule) ? () => challengeSignature(rule) : undefined);
     }
     const disposers = [];
     return {
@@ -3195,6 +3784,7 @@
         for (const d4 of disposers.splice(0))
           d4();
         watch?.stop();
+        stopCheckbox();
         abort?.abort();
       }
     };
@@ -3290,6 +3880,7 @@
 
   // src/flows/setup.ts
   var imageProblem = (el) => el instanceof HTMLImageElement || el instanceof HTMLCanvasElement || el instanceof SVGSVGElement || getComputedStyle(el).backgroundImage !== "none" ? null : "Pick the captcha picture itself (an image, canvas or svg). ↑ selects the parent";
+  var gridProblem = (el) => imageProblem(el) === null || tileSources(el).length > 0 ? null : "Pick the grid picture, or the box holding the tile pictures. ↑ selects the parent";
   var fieldProblem = (el) => isTextField(el) ? null : "Pick the text box where the answer is typed";
   async function configureCurrentPage() {
     settingsTab.value = null;
@@ -3318,7 +3909,7 @@
   }
   async function configureGridPage() {
     settingsTab.value = null;
-    const captcha = await pickElement("Step 1 of 4: click the grid image", imageProblem);
+    const captcha = await pickElement("Step 1 of 4: click the grid image", gridProblem);
     if (!captcha)
       return toast("Setup cancelled");
     const tile = await pickElement("Step 2 of 4: click any one tile (Esc: click by position instead)");
@@ -3329,6 +3920,7 @@
       rule: {
         kind: "grid",
         captcha: captcha.selector,
+        compose: imageProblem(captcha.el) !== null,
         input: "",
         tiles: tile ? tilesSelector(tile.el) : "",
         instruction: instruction?.selector ?? "",
@@ -3336,17 +3928,25 @@
       }
     };
   }
+  var audioProblem = (el) => el instanceof HTMLAudioElement || el instanceof HTMLSourceElement || el instanceof HTMLAnchorElement && Boolean(el.href) ? null : "Pick the <audio> element or the download link. ↑ selects the parent";
   async function repick(field) {
     const labels = {
       captcha: "Click the captcha image",
       input: "Click the answer box",
       submit: "Click the submit button",
       tiles: "Click any one tile",
-      instruction: "Click the challenge text"
+      instruction: "Click the challenge text",
+      audioButton: "Click the audio (headphones) button",
+      imageButton: "Click the back-to-pictures button",
+      audioSource: "Click the audio download link",
+      audioInput: "Click the audio answer box",
+      checkbox: "Click the checkbox (inside its frame)"
     };
     const checks = {
-      captcha: imageProblem,
+      captcha: editor.value?.rule.kind === "grid" ? gridProblem : imageProblem,
       input: fieldProblem,
+      audioInput: fieldProblem,
+      audioSource: audioProblem,
       instruction: textProblem
     };
     const picked = await pickElement(labels[field], checks[field]);
@@ -3469,18 +4069,57 @@
     tiles: "td.rc-imageselect-tile",
     instruction: ".rc-imageselect-desc-wrapper",
     submit: "#recaptcha-verify-button",
-    gridSize: 0
+    gridSize: 0,
+    audioButton: "#recaptcha-audio-button",
+    imageButton: "#recaptcha-image-button",
+    audioSource: "#audio-source",
+    audioInput: "#audio-response",
+    checkbox: "#recaptcha-anchor"
+  });
+  var hcaptcha = parse(SiteRuleSchema, {
+    kind: "grid",
+    captcha: ".task-grid",
+    tiles: ".task-image",
+    compose: true,
+    instruction: ".prompt-text",
+    submit: ".button-submit",
+    gridSize: 0,
+    checkbox: "#checkbox"
   });
   var PRESETS = [
     {
       id: "recaptcha-v2",
-      label: "reCAPTCHA v2 image grid",
-      sites: {
-        "www.google.com/recaptcha/*": recaptchaV2,
-        "www.recaptcha.net/recaptcha/*": recaptchaV2
-      }
+      label: "reCAPTCHA v2",
+      sites: { "www.google.com/recaptcha/*": recaptchaV2, "www.recaptcha.net/recaptcha/*": recaptchaV2 }
+    },
+    {
+      id: "hcaptcha",
+      label: "hCaptcha grid (experimental)",
+      sites: { "newassets.hcaptcha.com": hcaptcha }
     }
   ];
+  var USER_FIELDS = ["enabled", "auto", "solveBy", "autoCheckbox", "hint"];
+  var comparable = (r4) => {
+    const copy = { ...r4 };
+    for (const k2 of USER_FIELDS)
+      delete copy[k2];
+    return JSON.stringify(copy);
+  };
+  function presetState(preset, sites) {
+    const entries = Object.entries(preset.sites);
+    if (entries.some(([k2]) => !sites[k2]))
+      return "missing";
+    return entries.every(([k2, r4]) => comparable(sites[k2]) === comparable(r4)) ? "current" : "outdated";
+  }
+  function presetRules(preset, sites) {
+    const out = {};
+    for (const [k2, r4] of Object.entries(preset.sites)) {
+      const mine = sites[k2];
+      const kept = mine ? Object.fromEntries(USER_FIELDS.map((f4) => [f4, mine[f4]])) : {};
+      out[k2] = { ...r4, ...kept };
+    }
+    return out;
+  }
 
   // src/flows/data.ts
   function exportSites(store2) {
@@ -3504,11 +4143,11 @@
     if (!parsed.success)
       throw new Error("Not a Universal Captcha Solver export");
     const sites = parseSites(parsed.output.sites);
-    const count = Object.keys(sites).length;
-    if (!count)
+    const count2 = Object.keys(sites).length;
+    if (!count2)
       throw new Error("No valid rules found in file");
     store2.mergeSites(sites);
-    return count;
+    return count2;
   }
   function pickJsonFile() {
     return new Promise((resolve) => {
@@ -3586,7 +4225,9 @@
     pencil: "M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z",
     trash: "M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2",
     target: "M22 12h-4M6 12H2M12 6V2M12 22v-4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
-    grip: "M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01"
+    grip: "M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01",
+    image: "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM21 15l-5-5L5 21M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
+    audio: "M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"
   };
   function Icon({ name, size = 16 }) {
     return /* @__PURE__ */ u4("svg", {
@@ -3647,6 +4288,84 @@
     }, undefined, true, undefined, this);
   }
 
+  // src/ui/model-picker.tsx
+  var OTHER = "\x00other";
+  function ModelPicker(p5) {
+    const custom = useSignal(false);
+    A2(() => {
+      custom.value = false;
+    }, [p5.resetKey]);
+    const known = p5.value && !p5.options.includes(p5.value) ? [p5.value, ...p5.options] : [...p5.options];
+    const typing = custom.value || known.length === 0 && p5.emptyLabel === undefined;
+    return /* @__PURE__ */ u4("div", {
+      class: "field",
+      children: [
+        /* @__PURE__ */ u4("label", {
+          for: p5.id,
+          children: p5.label
+        }, undefined, false, undefined, this),
+        /* @__PURE__ */ u4("div", {
+          class: "row",
+          children: [
+            typing ? /* @__PURE__ */ u4("input", {
+              id: p5.id,
+              class: "grow mono",
+              type: "text",
+              autocomplete: "off",
+              spellcheck: false,
+              value: p5.value,
+              placeholder: p5.placeholder,
+              onInput: (e4) => p5.onChange(e4.currentTarget.value)
+            }, undefined, false, undefined, this) : /* @__PURE__ */ u4("select", {
+              id: p5.id,
+              class: "grow mono",
+              value: p5.value,
+              onChange: (e4) => {
+                const v4 = e4.currentTarget.value;
+                if (v4 === OTHER)
+                  custom.value = true;
+                else
+                  p5.onChange(v4);
+              },
+              children: [
+                p5.emptyLabel !== undefined && /* @__PURE__ */ u4("option", {
+                  value: "",
+                  children: p5.emptyLabel
+                }, undefined, false, undefined, this),
+                known.map((m3) => /* @__PURE__ */ u4("option", {
+                  value: m3,
+                  children: [
+                    m3,
+                    m3 === p5.defaultModel ? " (default)" : ""
+                  ]
+                }, m3, true, undefined, this)),
+                /* @__PURE__ */ u4("option", {
+                  value: OTHER,
+                  children: "Other…"
+                }, undefined, false, undefined, this)
+              ]
+            }, undefined, true, undefined, this),
+            p5.fetch && /* @__PURE__ */ u4("button", {
+              type: "button",
+              class: "btn sm",
+              disabled: p5.fetch.disabled || p5.fetch.busy,
+              title: p5.fetch.title,
+              onClick: () => {
+                custom.value = false;
+                p5.fetch?.run();
+              },
+              children: p5.fetch.busy ? "…" : "Fetch list"
+            }, undefined, false, undefined, this)
+          ]
+        }, undefined, true, undefined, this),
+        /* @__PURE__ */ u4("p", {
+          class: "hint",
+          children: p5.hint
+        }, undefined, false, undefined, this)
+      ]
+    }, undefined, true, undefined, this);
+  }
+
   // src/ui/settings.tsx
   var TABS = [
     ["provider", "AI provider"],
@@ -3692,11 +4411,9 @@
     const busy = useSignal("");
     const result = useSignal(null);
     const reveal = useSignal(false);
-    const custom = useSignal(false);
     A2(() => {
       models.value = [...provider.suggestedModels];
       result.value = null;
-      custom.value = false;
     }, [id]);
     const refreshModels = async () => {
       busy.value = "models";
@@ -3717,9 +4434,6 @@
       busy.value = "";
     };
     const canQuery = Boolean(cfg.baseUrl) && (Boolean(cfg.apiKey) || provider.keyOptional === true);
-    const options = models.value.includes(cfg.model) || !cfg.model ? models.value : [cfg.model, ...models.value];
-    const typing = custom.value || options.length === 0;
-    const OTHER = "\x00other";
     return /* @__PURE__ */ u4(x, {
       children: [
         /* @__PURE__ */ u4("div", {
@@ -3822,69 +4536,35 @@
             }, undefined, true, undefined, this)
           ]
         }, undefined, true, undefined, this),
-        /* @__PURE__ */ u4("div", {
-          class: "field",
-          children: [
-            /* @__PURE__ */ u4("label", {
-              for: "ucs-model",
-              children: "Model"
-            }, undefined, false, undefined, this),
-            /* @__PURE__ */ u4("div", {
-              class: "row",
-              children: [
-                typing ? /* @__PURE__ */ u4("input", {
-                  id: "ucs-model",
-                  class: "grow mono",
-                  type: "text",
-                  autocomplete: "off",
-                  spellcheck: false,
-                  value: cfg.model,
-                  placeholder: provider.defaultModel || "model id, e.g. gpt-4o-mini",
-                  onInput: (e4) => store.setModel(id, e4.currentTarget.value)
-                }, undefined, false, undefined, this) : /* @__PURE__ */ u4("select", {
-                  id: "ucs-model",
-                  class: "grow mono",
-                  value: cfg.model,
-                  onChange: (e4) => {
-                    const value = e4.currentTarget.value;
-                    if (value === OTHER)
-                      custom.value = true;
-                    else
-                      store.setModel(id, value);
-                  },
-                  children: [
-                    options.map((m3) => /* @__PURE__ */ u4("option", {
-                      value: m3,
-                      children: [
-                        m3,
-                        m3 === provider.defaultModel ? " (default)" : ""
-                      ]
-                    }, m3, true, undefined, this)),
-                    /* @__PURE__ */ u4("option", {
-                      value: OTHER,
-                      children: "Other…"
-                    }, undefined, false, undefined, this)
-                  ]
-                }, undefined, true, undefined, this),
-                /* @__PURE__ */ u4("button", {
-                  type: "button",
-                  class: "btn sm",
-                  disabled: !canQuery || busy.value !== "",
-                  title: canQuery ? "Load the models this account can use" : "Fill in the key / URL first",
-                  onClick: () => {
-                    custom.value = false;
-                    refreshModels();
-                  },
-                  children: busy.value === "models" ? "…" : "Fetch list"
-                }, undefined, false, undefined, this)
-              ]
-            }, undefined, true, undefined, this),
-            /* @__PURE__ */ u4("p", {
-              class: "hint",
-              children: "Pick a vision model. Providers retire models often: on “model not found”, fetch the list and choose another."
-            }, undefined, false, undefined, this)
-          ]
-        }, undefined, true, undefined, this),
+        /* @__PURE__ */ u4(ModelPicker, {
+          id: "ucs-model",
+          label: "Vision model",
+          value: cfg.model,
+          options: models.value,
+          defaultModel: provider.defaultModel,
+          placeholder: provider.defaultModel || "model id, e.g. gpt-4o-mini",
+          onChange: (m3) => store.setModel(id, m3),
+          resetKey: id,
+          fetch: {
+            run: () => void refreshModels(),
+            busy: busy.value === "models",
+            disabled: !canQuery || busy.value !== "",
+            title: canQuery ? "Load the models this account can use" : "Fill in the key / URL first"
+          },
+          hint: "Reads text captchas and picture grids. Providers retire models often: on “model not found”, fetch the list and choose another."
+        }, undefined, false, undefined, this),
+        /* @__PURE__ */ u4(ModelPicker, {
+          id: "ucs-audio-model",
+          label: "Speech-to-text model (audio captchas)",
+          value: settings.audioModels[id] ?? "",
+          options: provider.suggestedAudioModels.filter((m3) => m3 !== provider.defaultAudioModel),
+          defaultModel: "",
+          emptyLabel: provider.defaultAudioModel ? `${provider.defaultAudioModel} (default)` : "Same as the vision model",
+          placeholder: provider.defaultAudioModel || "e.g. whisper-1",
+          onChange: (m3) => store.setAudioModel(id, m3),
+          resetKey: id,
+          hint: id === "gemini" ? "Gemini listens to audio itself, so the vision model works here. Used only for rules set to solve by audio." : "A transcription model (Whisper-style), not text-to-speech. Used only for rules set to solve by audio."
+        }, undefined, false, undefined, this),
         /* @__PURE__ */ u4("div", {
           class: "row",
           children: /* @__PURE__ */ u4("button", {
@@ -3956,21 +4636,22 @@
           class: "row",
           children: [
             PRESETS.map((p5) => {
-              const added = Object.keys(p5.sites).every((k2) => (k2 in store.sites.value));
+              const state = presetState(p5, store.sites.value);
               return /* @__PURE__ */ u4("button", {
                 type: "button",
                 class: "btn",
-                disabled: added,
+                disabled: state === "current",
+                title: state === "outdated" ? "Newer selectors available; your on/off, auto and audio choices are kept" : "",
                 onClick: () => {
-                  store.mergeSites(p5.sites);
-                  toast(`Added ${p5.label}. Tick the checkbox yourself; the grid is solved for you`);
+                  store.mergeSites(presetRules(p5, store.sites.value));
+                  toast(state === "outdated" ? `Updated ${p5.label}` : `Added ${p5.label}. Tick the checkbox yourself; the challenge is solved for you`);
                 },
                 children: [
                   /* @__PURE__ */ u4(Icon, {
                     name: "plus"
                   }, undefined, false, undefined, this),
                   " ",
-                  added ? `${p5.label} added` : p5.label
+                  state === "current" ? `${p5.label} added` : state === "outdated" ? `Update ${p5.label}` : p5.label
                 ]
               }, p5.id, true, undefined, this);
             }),
@@ -4010,7 +4691,13 @@
             }, undefined, true, undefined, this),
             /* @__PURE__ */ u4("div", {
               class: "sel",
-              children: rule.kind === "grid" ? `grid: ${rule.captcha}${rule.tiles ? ` · tiles ${rule.tiles}` : ""}` : `${rule.captcha} → ${rule.input}`
+              children: [
+                rule.kind !== "grid" ? `${rule.captcha} → ${rule.input}` : rule.solveBy === "audio" ? `audio: ${rule.audioSource} → ${rule.audioInput}` : `grid: ${rule.captcha}${rule.tiles ? ` · tiles ${rule.tiles}` : ""}`,
+                rule.autoCheckbox && " · ticks the checkbox"
+              ]
+            }, undefined, true, undefined, this),
+            /* @__PURE__ */ u4(StatsLine, {
+              pattern
             }, undefined, false, undefined, this),
             /* @__PURE__ */ u4("div", {
               class: "acts",
@@ -4043,6 +4730,53 @@
             }, undefined, true, undefined, this)
           ]
         }, pattern, true, undefined, this))
+      ]
+    }, undefined, true, undefined, this);
+  }
+  function StatsLine({ pattern }) {
+    const perModel = store.stats.value[pattern];
+    if (!perModel || !Object.keys(perModel).length)
+      return null;
+    return /* @__PURE__ */ u4("div", {
+      class: "stats",
+      children: [
+        Object.entries(perModel).map(([model, s4]) => /* @__PURE__ */ u4("div", {
+          children: [
+            /* @__PURE__ */ u4("span", {
+              class: "mono",
+              children: model
+            }, undefined, false, undefined, this),
+            ": ",
+            s4.tries,
+            " tries · ",
+            s4.answered,
+            " answered · ",
+            s4.errors,
+            " errors",
+            s4.passes > 0 && /* @__PURE__ */ u4("span", {
+              title: "Checkbox turned green. Includes times Google passed you without a challenge",
+              children: [
+                " ",
+                "· ",
+                s4.passes,
+                " passes"
+              ]
+            }, undefined, true, undefined, this),
+            s4.answered > 0 && /* @__PURE__ */ u4(x, {
+              children: [
+                " · ",
+                (s4.ms / s4.answered / 1000).toFixed(1),
+                " s avg"
+              ]
+            }, undefined, true, undefined, this)
+          ]
+        }, model, true, undefined, this)),
+        /* @__PURE__ */ u4("button", {
+          type: "button",
+          class: "link",
+          onClick: () => store.resetStats(pattern),
+          children: "Reset stats"
+        }, undefined, false, undefined, this)
       ]
     }, undefined, true, undefined, this);
   }
@@ -4258,6 +4992,7 @@
     const n3 = (value) => value === "" ? Number.NaN : Number(value);
     const kind = rule.kind ?? "text";
     const grid = kind === "grid";
+    const audio = grid && rule.solveBy === "audio";
     return /* @__PURE__ */ u4("div", {
       class: "body",
       children: [
@@ -4335,10 +5070,98 @@
         }, undefined, true, undefined, this),
         grid ? /* @__PURE__ */ u4(x, {
           children: [
-            selectorField("captcha", "Grid image", "The whole picture sent to the model, with tile numbers drawn on."),
-            selectorField("tiles", "Tiles (optional)", "Pick one tile; it widens to all of them. Empty = click by position over the image."),
+            /* @__PURE__ */ u4("div", {
+              class: "field",
+              children: [
+                /* @__PURE__ */ u4("label", {
+                  for: "ucs-solveby",
+                  children: "Solve by"
+                }, undefined, false, undefined, this),
+                /* @__PURE__ */ u4("select", {
+                  id: "ucs-solveby",
+                  value: audio ? "audio" : "image",
+                  onChange: (e4) => set({ solveBy: e4.currentTarget.value }),
+                  children: [
+                    /* @__PURE__ */ u4("option", {
+                      value: "image",
+                      children: "Pictures: click the matching tiles"
+                    }, undefined, false, undefined, this),
+                    /* @__PURE__ */ u4("option", {
+                      value: "audio",
+                      children: "Audio: switch to the audio version, transcribe, type"
+                    }, undefined, false, undefined, this)
+                  ]
+                }, undefined, true, undefined, this),
+                /* @__PURE__ */ u4("p", {
+                  class: "hint",
+                  children: "Your choice per site; the widget has a one-click switch too."
+                }, undefined, false, undefined, this)
+              ]
+            }, undefined, true, undefined, this),
+            selectorField("captcha", "Grid image", "The picture sent to the model, with tile numbers drawn on."),
+            selectorField("tiles", "Tiles (optional)", 'Pick one tile; it widens to all of them. Needed for "click until none left" grids. Empty = click by position.'),
+            /* @__PURE__ */ u4("label", {
+              class: "check",
+              children: [
+                /* @__PURE__ */ u4("input", {
+                  type: "checkbox",
+                  checked: rule.compose ?? false,
+                  onChange: (e4) => set({ compose: e4.currentTarget.checked })
+                }, undefined, false, undefined, this),
+                "Each tile is its own picture (build the grid from the tiles, e.g. hCaptcha)"
+              ]
+            }, undefined, true, undefined, this),
             selectorField("instruction", "Challenge text", 'The "Select all images with…" text. Or put it in the hint.'),
-            selectorField("submit", "Verify button (optional)", "Clicked after the tiles. Leave empty to verify yourself."),
+            selectorField("submit", "Verify / Next button (optional)", "Clicked after the tiles or the typed audio answer. Leave empty to press it yourself."),
+            /* @__PURE__ */ u4("details", {
+              open: audio,
+              children: [
+                /* @__PURE__ */ u4("summary", {
+                  children: "Audio version"
+                }, undefined, false, undefined, this),
+                /* @__PURE__ */ u4("div", {
+                  class: "body",
+                  style: { padding: 0 },
+                  children: [
+                    selectorField("audioButton", "Audio button", "Switches the challenge to audio (headphones icon)."),
+                    selectorField("audioSource", "Audio clip", "The <audio> element or the download link."),
+                    selectorField("audioInput", "Audio answer box"),
+                    selectorField("imageButton", "Back-to-pictures button (optional)")
+                  ]
+                }, undefined, true, undefined, this)
+              ]
+            }, undefined, true, undefined, this),
+            /* @__PURE__ */ u4("details", {
+              open: Boolean(rule.autoCheckbox),
+              children: [
+                /* @__PURE__ */ u4("summary", {
+                  children: `"I'm not a robot" checkbox`
+                }, undefined, false, undefined, this),
+                /* @__PURE__ */ u4("div", {
+                  class: "body",
+                  style: { padding: 0 },
+                  children: [
+                    selectorField("checkbox", "Checkbox", "Used to count passes (it turns green). Lives in its own frame."),
+                    /* @__PURE__ */ u4("label", {
+                      class: "check",
+                      children: [
+                        /* @__PURE__ */ u4("input", {
+                          type: "checkbox",
+                          checked: rule.autoCheckbox ?? false,
+                          disabled: !rule.checkbox,
+                          onChange: (e4) => set({ autoCheckbox: e4.currentTarget.checked })
+                        }, undefined, false, undefined, this),
+                        "Tick it for me"
+                      ]
+                    }, undefined, true, undefined, this),
+                    /* @__PURE__ */ u4("p", {
+                      class: "hint",
+                      children: "Waits until the checkbox is on screen in a visible tab, pauses 1–2.5 s, then moves to it along a curve and presses. The click is still synthetic, so the site may serve more challenges than when you tick it yourself."
+                    }, undefined, false, undefined, this)
+                  ]
+                }, undefined, true, undefined, this)
+              ]
+            }, undefined, true, undefined, this),
             /* @__PURE__ */ u4("div", {
               class: "grid2",
               children: /* @__PURE__ */ u4("div", {
@@ -4578,6 +5401,8 @@ a { color: var(--accent); }
   border-radius: 999px; box-shadow: var(--shadow); user-select: none; touch-action: none;
 }
 .widget.min { padding: 6px; }
+/* Challenge popups are small and keep their buttons at the bottom: start in the top-right corner. */
+.widget.framed { top: 6px; right: 6px; bottom: auto; }
 .grip { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: none; cursor: grab; }
 .grip:active { cursor: grabbing; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--fg-dim); transition: background .2s; }
@@ -4659,6 +5484,10 @@ details[open] summary { margin-bottom: 10px; }
 .toast { pointer-events: auto; display: flex; align-items: center; gap: 10px; max-width: min(92vw, 380px); padding: 9px 14px; border-radius: 10px; background: #1c1917; color: #fafaf9; box-shadow: var(--shadow); }
 .toast.error { background: var(--err); color: #fff; }
 .toast button { border: 0; background: none; color: #93c5fd; font-weight: 600; padding: 0; }
+
+.stats { font-size: 11.5px; color: var(--fg-dim); display: grid; gap: 2px; grid-column: 1 / -1; }
+.stats .mono { font-family: var(--mono); }
+.link { border: 0; background: none; padding: 0; color: var(--accent); font-size: 11.5px; cursor: pointer; justify-self: start; }
 `;
 
   // src/ui/widget.tsx
@@ -4671,8 +5500,16 @@ details[open] summary { margin-bottom: 10px; }
       return null;
     const { status } = controller;
     const st = status.value;
-    const ui = store.settings.value.ui;
-    const disabled = !match.rule.enabled;
+    const ui = store.widgetUi(IN_FRAME);
+    const patchUi = (patch) => store.patchWidgetUi(IN_FRAME, patch);
+    const { rule } = match;
+    const disabled = !rule.enabled;
+    const canSwitch = rule.kind === "grid" && Boolean(rule.audioSource && rule.audioInput);
+    const switchMode = () => {
+      const solveBy = rule.solveBy === "audio" ? "image" : "audio";
+      store.saveSite(match.pattern, { ...rule, solveBy });
+      toast(solveBy === "audio" ? "Audio mode: the clip is transcribed and typed" : "Picture mode: tiles are clicked");
+    };
     const onDown = (e4) => {
       const r4 = ref.current?.getBoundingClientRect();
       if (!r4)
@@ -4698,9 +5535,9 @@ details[open] summary { margin-bottom: 10px; }
         return;
       if (d4.moved) {
         const r4 = el.getBoundingClientRect();
-        store.patchUi({ x: Math.round(r4.left), y: Math.round(r4.top) });
+        patchUi({ x: Math.round(r4.left), y: Math.round(r4.top) });
       } else if (ui.minimized) {
-        store.patchUi({ minimized: false });
+        patchUi({ minimized: false });
       }
     };
     const copy = () => st.answer && navigator.clipboard?.writeText(st.answer).then(() => toast("Copied"), () => toast("Copy failed", "error"));
@@ -4724,7 +5561,7 @@ details[open] summary { margin-bottom: 10px; }
     if (ui.minimized) {
       return /* @__PURE__ */ u4("div", {
         ref,
-        class: "widget min",
+        class: `widget min${IN_FRAME ? " framed" : ""}`,
         "data-phase": st.phase,
         style: pos,
         children: grip
@@ -4732,7 +5569,7 @@ details[open] summary { margin-bottom: 10px; }
     }
     return /* @__PURE__ */ u4("div", {
       ref,
-      class: "widget",
+      class: `widget${IN_FRAME ? " framed" : ""}`,
       "data-phase": disabled ? "idle" : st.phase,
       style: pos,
       children: [
@@ -4769,7 +5606,7 @@ details[open] summary { margin-bottom: 10px; }
         disabled ? /* @__PURE__ */ u4("button", {
           type: "button",
           class: "btn sm",
-          onClick: () => store.saveSite(match.pattern, { ...match.rule, enabled: true }),
+          onClick: () => store.saveSite(match.pattern, { ...rule, enabled: true }),
           children: "Enable"
         }, undefined, false, undefined, this) : st.action === "settings" ? /* @__PURE__ */ u4("button", {
           type: "button",
@@ -4782,6 +5619,16 @@ details[open] summary { margin-bottom: 10px; }
           disabled: st.phase === "solving",
           onClick: () => void controller.solve("manual"),
           children: st.phase === "error" || st.phase === "paused" ? "Retry" : "Solve"
+        }, undefined, false, undefined, this),
+        canSwitch && !disabled && /* @__PURE__ */ u4("button", {
+          type: "button",
+          class: "icon",
+          "aria-label": rule.solveBy === "audio" ? "Switch to solving by pictures" : "Switch to solving by audio",
+          title: rule.solveBy === "audio" ? "Solving by audio. Click for pictures" : "Solving by pictures. Click for audio",
+          onClick: switchMode,
+          children: /* @__PURE__ */ u4(Icon, {
+            name: rule.solveBy === "audio" ? "audio" : "image"
+          }, undefined, false, undefined, this)
         }, undefined, false, undefined, this),
         /* @__PURE__ */ u4("button", {
           type: "button",
@@ -4796,7 +5643,7 @@ details[open] summary { margin-bottom: 10px; }
           type: "button",
           class: "icon",
           "aria-label": "Minimize",
-          onClick: () => store.patchUi({ minimized: true }),
+          onClick: () => patchUi({ minimized: true }),
           children: /* @__PURE__ */ u4(Icon, {
             name: "minus"
           }, undefined, false, undefined, this)
@@ -4851,7 +5698,7 @@ details[open] summary { margin-bottom: 10px; }
       GM_registerMenuCommand("\uD83E\uDDE9 Configure image-grid captcha on this page", open(() => void configureGridPage()), "g");
       GM_registerMenuCommand("▶ Solve now", open(() => void controller.solve("manual")), "r");
     }
-    for (const key of [KEYS.settings, KEYS.sites]) {
+    for (const key of [KEYS.settings, KEYS.sites, KEYS.stats]) {
       GM_addValueChangeListener(key, (_name, _old, _new, remote) => remote && store.reload());
     }
     window.addEventListener("keydown", (e4) => {

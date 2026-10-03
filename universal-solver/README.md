@@ -5,11 +5,12 @@ Solves text, math and image-grid captchas on any site using AI vision models. Su
 > [!IMPORTANT]
 > **Scope**
 > - ✅ Distorted text and arithmetic captchas in `<img>`, `<canvas>` or `<svg>`: the answer is typed into a field.
-> - ✅ **Image grids** ("Select all images with buses", 3x3 / 4x4): the whole grid is sent to the model with tile numbers drawn on, the model replies `{"tiles":[2,6,9]}`, and those tiles are clicked, then Verify.
+> - ✅ **Image grids** ("Select all images with buses", 3x3 / 4x4), including **"click until there are none left"** rounds and grids where **each tile is its own picture** (hCaptcha-style).
+> - ✅ **Audio version** of a grid challenge, as a per-site *choice* (not a fallback): the clip is transcribed by a speech-to-text model and typed in.
 > - ❌ Token / behavioural captchas: Cloudflare Turnstile, reCAPTCHA v3, invisible scoring
-> - ❌ GeeTest sliders, rotation and jigsaw puzzles; Arkose / FunCAPTCHA; audio captchas
+> - ❌ GeeTest sliders, rotation and jigsaw puzzles; Arkose / FunCAPTCHA; hCaptcha's non-grid challenges (click a point, drag)
 >
-> **Image grids, honestly:** clicks are synthetic DOM events (a userscript cannot move the real mouse), so `isTrusted` is false. Most tile grids accept them; a vendor can choose not to. reCAPTCHA may still reject a correct answer based on its own risk score. "Click until none are left" rounds that swap single tiles are not handled; nor are grids where each tile is a separate image (only the picked image is sent).
+> **Honestly:** every click and keystroke is a synthetic DOM event (a userscript cannot move the real mouse), so `isTrusted` is false. The human-like pacing (curved cursor path, press hold, uneven typing) removes the obvious tells, not that one. Sites may still reject a correct answer, or refuse audio, based on their own risk score.
 
 ## Install
 1. Install a userscript manager (Tampermonkey / Violentmonkey).
@@ -17,25 +18,44 @@ Solves text, math and image-grid captchas on any site using AI vision models. Su
 3. Settings → **AI provider** → paste a key → **Test with a sample captcha**.
 4. On a page with a text captcha: **Configure this page** → click the image, then the answer box. Done.
 
-### reCAPTCHA v2 image grids (one click)
-Settings → **Sites** → **reCAPTCHA v2 image grid**. That's all. Then on any site:
-1. **You** tick "I'm not a robot". The checkbox stays with the human; it lives in a separate frame and is not the hard part.
-2. If Google opens a grid, the script (running inside that frame) reads "Select all images with…", sends the grid with tiles numbered, clicks the tiles the model returns, then the blue button. Its id is the same whether it reads Verify, Next or Skip.
-3. A new grid (wrong answer, or a "Next" round) is solved again automatically, **at most 3 rounds**; then it stops and says "finish by hand". Clicking Solve in the widget continues.
+### reCAPTCHA v2 (one click)
+Settings → **Sites** → **reCAPTCHA v2**. Then on any site:
+1. **You** tick "I'm not a robot" (or switch on auto-tick, below).
+2. If Google opens a challenge, the script, running inside that frame, solves it:
+   - **Pictures** (default): reads "Select all images with…", sends the grid with tiles numbered, clicks the tiles the model returns. In "click until none left" grids it waits for the replacement pictures, re-checks only what is on screen now, and repeats until the model finds none (max 6 passes). Then it presses the blue button (same id for Verify / Next / Skip).
+   - **Audio**: presses the headphones button, downloads the clip, transcribes it, types the words key by key, presses Verify.
+3. A new challenge (wrong answer, or "Next") is solved again automatically, **at most 3 rounds**; then it stops and says "finish by hand". Clicking Solve continues.
 
-The preset matches `www.google.com/recaptcha/*` and `www.recaptcha.net/recaptcha/*`, which covers the api2 and enterprise challenge frames. The checkbox frame matches too but has no grid, so nothing runs or shows there.
+**Pictures or audio:** the 🖼 / 🔊 button in the widget switches the site's rule; so does *Solve by* in the rule editor. Google sometimes refuses audio for a network ("automated queries"); switch back to pictures then.
+
+**Auto-tick the checkbox** (off by default): edit the rule → *"I'm not a robot" checkbox* → *Tick it for me*. It waits until the checkbox is on screen in a visible tab, pauses 1–2.5 s, glides to a random point inside it along a curve and presses for ~60–130 ms, once per appearance. It is still a synthetic click: Google may serve more challenges than when you tick it yourself.
+
+Already added the preset in 2.2? The button now reads **Update reCAPTCHA v2**; your on/off, auto, audio and auto-tick choices are kept.
+
+### hCaptcha grid (experimental)
+Settings → **Sites** → **hCaptcha grid (experimental)**. Each hCaptcha tile is a separate picture, so the grid is built from the tiles on screen. Its selectors are not verified against the live widget; if it says "Found 0 tiles" or "No challenge text", re-pick them in the editor. Only the 3x3 "click each image containing…" type is handled.
 
 ### Other image grids (iframes)
-The script runs in frames too (no `@noframes`). To keep ad frames quiet, frames register **no menu entries** and show the widget only once the captcha is present. Set up from inside the frame: click its header text once so the frame has focus, press **`Alt+Shift+G`**, then click the grid image → one tile (widens to all; Esc = click by position) → the "Select all…" text → the Verify button. Keep the pattern on the frame's own page.
+The script runs in frames too (no `@noframes`). Frames register **no menu entries** and show the widget (minimised, top-right, with its own position) only once the captcha is present. Set up from inside the frame: click its header text once so the frame has focus, press **`Alt+Shift+G`**, then click the grid image (or the box holding the tiles) → one tile (widens to all; Esc = click by position) → the "Select all…" text → the Verify button. Keep the pattern on the frame's own page. Audio and checkbox selectors are in the editor.
 
 ## AI providers
-One **Provider** dropdown: Google Gemini (default model `gemini-3.5-flash-lite`), Groq, OpenRouter, or **Custom endpoint**, meaning any OpenAI-compatible `/v1` URL (OpenAI, Ollama, LM Studio, vLLM). The key is optional for custom endpoints. The model is a dropdown of suggestions; **Fetch list** loads what your account can use, and **Other…** lets you type any id.
+One **Provider** dropdown: Google Gemini (default `gemini-3.5-flash-lite`), Groq, OpenRouter, or **Custom endpoint** (any OpenAI-compatible `/v1` URL: OpenAI, Ollama, LM Studio, vLLM; key optional).
+
+| Provider | Vision model | Speech-to-text (audio captchas) |
+|---|---|---|
+| Gemini | `gemini-3.5-flash-lite` | same model (Gemini hears audio) |
+| Groq | `qwen/qwen3.8-27b` | `whisper-large-v3-turbo` |
+| OpenRouter | pick one | `openai/whisper-large-v3` |
+| Custom | pick one | `whisper-1` (`/audio/transcriptions`) |
+
+Audio needs a **speech-to-text** (transcription) model, not text-to-speech. **Fetch list** loads the vision models your account can use; **Other…** lets you type any id.
 
 ## Features
 - Two-click setup with a live selector preview, match counter, and ↑/↓ to widen/narrow the target
 - Per-site options: submit button, charset, case, length, math mode, extra hint
 - Pattern scoping: `site.com`, `*.site.com`, `site.com/login`, `site.com/app/*` (most specific wins)
 - Auto-solve with a circuit breaker; retries 429/5xx; clear error messages ("model retired", "key rejected")
+- **Stats** per site and model in Settings → Sites: tries, answered, errors, passes (checkbox turned green; includes passes without a challenge), average time. Use them to compare models.
 - Draggable, dark-mode, keyboard-accessible widget; click the answer to copy
 - Shortcuts: `Alt+Shift+S` solve, `Alt+Shift+C` configure, `Alt+Shift+G` configure an image grid
 - Export/import rules (API keys never exported); synced across tabs

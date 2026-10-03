@@ -25,6 +25,7 @@ const header = `// ==UserScript==
 // @connect      generativelanguage.googleapis.com
 // @connect      api.groq.com
 // @connect      openrouter.ai
+// @connect      hcaptcha.com
 // @connect      localhost
 // @connect      127.0.0.1
 // ==/UserScript==

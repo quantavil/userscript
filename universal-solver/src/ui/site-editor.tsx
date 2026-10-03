@@ -2,9 +2,9 @@ import { useSignal } from '@preact/signals';
 import * as v from 'valibot';
 import { store } from '../app.ts';
 import { parsePattern, scorePattern } from '../config/match.ts';
-import { type CaptchaKind, type SiteRuleInput, SiteRuleSchema } from '../config/schema.ts';
+import { type CaptchaKind, type SiteRuleInput, SiteRuleSchema, type SolveBy } from '../config/schema.ts';
 import { pickerView } from '../dom/picker.ts';
-import { repick } from '../flows/setup.ts';
+import { type PickField, repick } from '../flows/setup.ts';
 import { Icon } from './icons.tsx';
 import { Modal } from './modal.tsx';
 import { type EditorState, editor, settingsTab, toast } from './state.ts';
@@ -72,11 +72,7 @@ function EditorBody({
     close();
   };
 
-  const selectorField = (
-    key: 'captcha' | 'input' | 'submit' | 'tiles' | 'instruction',
-    label: string,
-    help?: string,
-  ) => (
+  const selectorField = (key: PickField, label: string, help?: string) => (
     <div class="field">
       <label for={`ucs-${key}`}>
         {label} {matchChip(rule[key], key === 'tiles')}
@@ -102,6 +98,7 @@ function EditorBody({
   const n = (value: string) => (value === '' ? Number.NaN : Number(value));
   const kind = rule.kind ?? 'text';
   const grid = kind === 'grid';
+  const audio = grid && rule.solveBy === 'audio';
 
   return (
     <div class="body">
@@ -140,18 +137,67 @@ function EditorBody({
 
       {grid ? (
         <>
-          {selectorField('captcha', 'Grid image', 'The whole picture sent to the model, with tile numbers drawn on.')}
+          <div class="field">
+            <label for="ucs-solveby">Solve by</label>
+            <select
+              id="ucs-solveby"
+              value={audio ? 'audio' : 'image'}
+              onChange={(e) => set({ solveBy: e.currentTarget.value as SolveBy })}
+            >
+              <option value="image">Pictures: click the matching tiles</option>
+              <option value="audio">Audio: switch to the audio version, transcribe, type</option>
+            </select>
+            <p class="hint">Your choice per site; the widget has a one-click switch too.</p>
+          </div>
+          {selectorField('captcha', 'Grid image', 'The picture sent to the model, with tile numbers drawn on.')}
           {selectorField(
             'tiles',
             'Tiles (optional)',
-            'Pick one tile; it widens to all of them. Empty = click by position over the image.',
+            'Pick one tile; it widens to all of them. Needed for "click until none left" grids. Empty = click by position.',
           )}
+          <label class="check">
+            <input
+              type="checkbox"
+              checked={rule.compose ?? false}
+              onChange={(e) => set({ compose: e.currentTarget.checked })}
+            />
+            Each tile is its own picture (build the grid from the tiles, e.g. hCaptcha)
+          </label>
           {selectorField('instruction', 'Challenge text', 'The "Select all images with…" text. Or put it in the hint.')}
           {selectorField(
             'submit',
-            'Verify button (optional)',
-            'Clicked after the tiles. Leave empty to verify yourself.',
+            'Verify / Next button (optional)',
+            'Clicked after the tiles or the typed audio answer. Leave empty to press it yourself.',
           )}
+          <details open={audio}>
+            <summary>Audio version</summary>
+            <div class="body" style={{ padding: 0 }}>
+              {selectorField('audioButton', 'Audio button', 'Switches the challenge to audio (headphones icon).')}
+              {selectorField('audioSource', 'Audio clip', 'The <audio> element or the download link.')}
+              {selectorField('audioInput', 'Audio answer box')}
+              {selectorField('imageButton', 'Back-to-pictures button (optional)')}
+            </div>
+          </details>
+          <details open={Boolean(rule.autoCheckbox)}>
+            <summary>"I'm not a robot" checkbox</summary>
+            <div class="body" style={{ padding: 0 }}>
+              {selectorField('checkbox', 'Checkbox', 'Used to count passes (it turns green). Lives in its own frame.')}
+              <label class="check">
+                <input
+                  type="checkbox"
+                  checked={rule.autoCheckbox ?? false}
+                  disabled={!rule.checkbox}
+                  onChange={(e) => set({ autoCheckbox: e.currentTarget.checked })}
+                />
+                Tick it for me
+              </label>
+              <p class="hint">
+                Waits until the checkbox is on screen in a visible tab, pauses 1–2.5 s, then moves to it along a curve
+                and presses. The click is still synthetic, so the site may serve more challenges than when you tick it
+                yourself.
+              </p>
+            </div>
+          </details>
           <div class="grid2">
             <div class="field">
               <label for="ucs-grid">Tiles per side (0 = auto)</label>

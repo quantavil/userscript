@@ -3,7 +3,7 @@ export interface Watch {
   stop(): void;
 }
 
-const signature = (el: Element) =>
+export const elementSignature = (el: Element) =>
   [el.localName, el.getAttribute('src'), (el as HTMLImageElement).currentSrc, (el as HTMLCanvasElement).width].join(
     '|',
   );
@@ -17,6 +17,8 @@ export function watchCaptcha(
   getSelector: () => string,
   onChange: (el: Element | null, reason: WatchReason) => void,
   debounceMs = 120,
+  /** What counts as "changed" (default: the element's own src). Grids pass the whole challenge. */
+  signature: (el: Element) => string = elementSignature,
 ): Watch {
   let current: Element | null = null;
   let lastSig = '';
@@ -57,7 +59,8 @@ export function watchCaptcha(
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['src', 'srcset'],
+    // `style` catches tiles whose picture is a CSS background (hCaptcha); checks are debounced.
+    attributeFilter: ['src', 'srcset', 'style'],
   });
   // `load` doesn't bubble, but it can be captured: catches same-URL reloads that don't touch attributes.
   const onLoad = (e: Event) => {

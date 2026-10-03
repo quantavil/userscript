@@ -1,7 +1,7 @@
 {
   "name": "universal-captcha-solver",
-  "version": "2.2.0",
-  "description": "Solve text, math and image-grid captchas on any site using AI vision models",
+  "version": "2.3.0",
+  "description": "Solve text, math, image-grid and audio captchas on any site using AI vision and speech-to-text models",
   "type": "module",
   "private": true,
   "license": "MIT",

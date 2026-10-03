@@ -1,7 +1,7 @@
 import { useSignal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import { controller, providers, store } from '../app.ts';
-import { PRESETS } from '../config/presets.ts';
+import { PRESETS, presetRules, presetState } from '../config/presets.ts';
 import { PROVIDER_IDS, type ProviderId } from '../config/schema.ts';
 import { exportSites, importSites, pickJsonFile } from '../flows/data.ts';
 import { configureCurrentPage, configureGridPage } from '../flows/setup.ts';
@@ -10,6 +10,7 @@ import { explainError } from '../solver/errors.ts';
 import { testProvider } from '../solver/selftest.ts';
 import { Icon } from './icons.tsx';
 import { Modal } from './modal.tsx';
+import { ModelPicker } from './model-picker.tsx';
 import { editor, settingsTab, type Tab, toast } from './state.ts';
 
 const TABS: [Tab, string][] = [
@@ -54,13 +55,10 @@ function ProviderTab() {
   const busy = useSignal<'' | 'models' | 'test'>('');
   const result = useSignal<{ ok: boolean; text: string } | null>(null);
   const reveal = useSignal(false);
-  // "Other…" was chosen, or the saved model isn't in the list: show a free-text box.
-  const custom = useSignal(false);
 
   useEffect(() => {
     models.value = [...provider.suggestedModels];
     result.value = null;
-    custom.value = false;
   }, [id]);
 
   const refreshModels = async () => {
@@ -84,9 +82,6 @@ function ProviderTab() {
   };
 
   const canQuery = Boolean(cfg.baseUrl) && (Boolean(cfg.apiKey) || provider.keyOptional === true);
-  const options = models.value.includes(cfg.model) || !cfg.model ? models.value : [cfg.model, ...models.value];
-  const typing = custom.value || options.length === 0;
-  const OTHER = '\u0000other';
 
   return (
     <>
@@ -153,57 +148,40 @@ function ProviderTab() {
         </p>
       </div>
 
-      <div class="field">
-        <label for="ucs-model">Model</label>
-        <div class="row">
-          {typing ? (
-            <input
-              id="ucs-model"
-              class="grow mono"
-              type="text"
-              autocomplete="off"
-              spellcheck={false}
-              value={cfg.model}
-              placeholder={provider.defaultModel || 'model id, e.g. gpt-4o-mini'}
-              onInput={(e) => store.setModel(id, e.currentTarget.value)}
-            />
-          ) : (
-            <select
-              id="ucs-model"
-              class="grow mono"
-              value={cfg.model}
-              onChange={(e) => {
-                const value = e.currentTarget.value;
-                if (value === OTHER) custom.value = true;
-                else store.setModel(id, value);
-              }}
-            >
-              {options.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                  {m === provider.defaultModel ? ' (default)' : ''}
-                </option>
-              ))}
-              <option value={OTHER}>Other…</option>
-            </select>
-          )}
-          <button
-            type="button"
-            class="btn sm"
-            disabled={!canQuery || busy.value !== ''}
-            title={canQuery ? 'Load the models this account can use' : 'Fill in the key / URL first'}
-            onClick={() => {
-              custom.value = false;
-              void refreshModels();
-            }}
-          >
-            {busy.value === 'models' ? '…' : 'Fetch list'}
-          </button>
-        </div>
-        <p class="hint">
-          Pick a vision model. Providers retire models often: on “model not found”, fetch the list and choose another.
-        </p>
-      </div>
+      <ModelPicker
+        id="ucs-model"
+        label="Vision model"
+        value={cfg.model}
+        options={models.value}
+        defaultModel={provider.defaultModel}
+        placeholder={provider.defaultModel || 'model id, e.g. gpt-4o-mini'}
+        onChange={(m) => store.setModel(id, m)}
+        resetKey={id}
+        fetch={{
+          run: () => void refreshModels(),
+          busy: busy.value === 'models',
+          disabled: !canQuery || busy.value !== '',
+          title: canQuery ? 'Load the models this account can use' : 'Fill in the key / URL first',
+        }}
+        hint="Reads text captchas and picture grids. Providers retire models often: on “model not found”, fetch the list and choose another."
+      />
+
+      <ModelPicker
+        id="ucs-audio-model"
+        label="Speech-to-text model (audio captchas)"
+        value={settings.audioModels[id] ?? ''}
+        options={provider.suggestedAudioModels.filter((m) => m !== provider.defaultAudioModel)}
+        defaultModel=""
+        emptyLabel={provider.defaultAudioModel ? `${provider.defaultAudioModel} (default)` : 'Same as the vision model'}
+        placeholder={provider.defaultAudioModel || 'e.g. whisper-1'}
+        onChange={(m) => store.setAudioModel(id, m)}
+        resetKey={id}
+        hint={
+          id === 'gemini'
+            ? 'Gemini listens to audio itself, so the vision model works here. Used only for rules set to solve by audio.'
+            : 'A transcription model (Whisper-style), not text-to-speech. Used only for rules set to solve by audio.'
+        }
+      />
 
       <div class="row">
         <button type="button" class="btn primary" disabled={busy.value !== ''} onClick={() => void runTest()}>
@@ -256,19 +234,27 @@ function SitesTab() {
       </div>
       <div class="row">
         {PRESETS.map((p) => {
-          const added = Object.keys(p.sites).every((k) => k in store.sites.value);
+          const state = presetState(p, store.sites.value);
           return (
             <button
               key={p.id}
               type="button"
               class="btn"
-              disabled={added}
+              disabled={state === 'current'}
+              title={
+                state === 'outdated' ? 'Newer selectors available; your on/off, auto and audio choices are kept' : ''
+              }
               onClick={() => {
-                store.mergeSites(p.sites);
-                toast(`Added ${p.label}. Tick the checkbox yourself; the grid is solved for you`);
+                store.mergeSites(presetRules(p, store.sites.value));
+                toast(
+                  state === 'outdated'
+                    ? `Updated ${p.label}`
+                    : `Added ${p.label}. Tick the checkbox yourself; the challenge is solved for you`,
+                );
               }}
             >
-              <Icon name="plus" /> {added ? `${p.label} added` : p.label}
+              <Icon name="plus" />{' '}
+              {state === 'current' ? `${p.label} added` : state === 'outdated' ? `Update ${p.label}` : p.label}
             </button>
           );
         })}
@@ -292,10 +278,14 @@ function SitesTab() {
               {pattern} {pattern === here && <span class="chip ok">active here</span>}
             </div>
             <div class="sel">
-              {rule.kind === 'grid'
-                ? `grid: ${rule.captcha}${rule.tiles ? ` · tiles ${rule.tiles}` : ''}`
-                : `${rule.captcha} → ${rule.input}`}
+              {rule.kind !== 'grid'
+                ? `${rule.captcha} → ${rule.input}`
+                : rule.solveBy === 'audio'
+                  ? `audio: ${rule.audioSource} → ${rule.audioInput}`
+                  : `grid: ${rule.captcha}${rule.tiles ? ` · tiles ${rule.tiles}` : ''}`}
+              {rule.autoCheckbox && ' · ticks the checkbox'}
             </div>
+            <StatsLine pattern={pattern} />
             <div class="acts">
               <input
                 type="checkbox"
@@ -319,6 +309,31 @@ function SitesTab() {
         ))
       )}
     </>
+  );
+}
+
+/** "12 tries · 9 answered · 3 errors · 5 passes · 1.8 s avg" per model, with a reset. */
+function StatsLine({ pattern }: { pattern: string }) {
+  const perModel = store.stats.value[pattern];
+  if (!perModel || !Object.keys(perModel).length) return null;
+  return (
+    <div class="stats">
+      {Object.entries(perModel).map(([model, s]) => (
+        <div key={model}>
+          <span class="mono">{model}</span>: {s.tries} tries · {s.answered} answered · {s.errors} errors
+          {s.passes > 0 && (
+            <span title="Checkbox turned green. Includes times Google passed you without a challenge">
+              {' '}
+              · {s.passes} passes
+            </span>
+          )}
+          {s.answered > 0 && <> · {(s.ms / s.answered / 1000).toFixed(1)} s avg</>}
+        </div>
+      ))}
+      <button type="button" class="link" onClick={() => store.resetStats(pattern)}>
+        Reset stats
+      </button>
+    </div>
   );
 }
 

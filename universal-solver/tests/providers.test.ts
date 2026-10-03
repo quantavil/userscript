@@ -44,7 +44,7 @@ describe('gemini', () => {
     });
     expect(text).toBe('AB12');
     expect(calls).toHaveLength(2);
-    expect(JSON.parse(calls[1]?.body ?? '{}').generationConfig.thinkingConfig).toBeUndefined();
+    expect(JSON.parse(String(calls[1]?.body ?? '{}')).generationConfig.thinkingConfig).toBeUndefined();
   });
 
   test('ignores thought parts and surfaces safety blocks', async () => {
@@ -88,7 +88,7 @@ describe('groq (OpenAI-compatible)', () => {
     const req = calls[0] as HttpRequest;
     expect(req.url).toBe('https://api.groq.com/openai/v1/chat/completions');
     expect(req.headers?.authorization).toBe('Bearer KEY');
-    const body = JSON.parse(req.body ?? '{}');
+    const body = JSON.parse(String(req.body ?? '{}'));
     expect(body.messages[0].content[1].image_url.url).toBe('data:image/png;base64,AAAA');
     expect(body.reasoning_effort).toBe('none');
   });
@@ -97,13 +97,13 @@ describe('groq (OpenAI-compatible)', () => {
     const { http, calls } = fakeHttp(new HttpError('reasoning_effort is not supported', 400), ok);
     await createProviders(http).groq.complete(cfg({ model: 'qwen/qwen3.8-27b' }), { image, prompt: 'p' });
     expect(calls).toHaveLength(2);
-    expect(JSON.parse(calls[1]?.body ?? '{}').reasoning_effort).toBeUndefined();
+    expect(JSON.parse(String(calls[1]?.body ?? '{}')).reasoning_effort).toBeUndefined();
   });
 
   test('does not send reasoning_effort to non-Qwen models', async () => {
     const { http, calls } = fakeHttp(ok);
     await createProviders(http).groq.complete(cfg({ model: 'openai/gpt-oss-120b' }), { image, prompt: 'p' });
-    expect(JSON.parse(calls[0]?.body ?? '{}').reasoning_effort).toBeUndefined();
+    expect(JSON.parse(String(calls[0]?.body ?? '{}')).reasoning_effort).toBeUndefined();
   });
 
   test('accepts array-style content parts', async () => {
@@ -173,5 +173,49 @@ describe('configProblem', () => {
   });
   test('Gemini defaults to gemini-3.5-flash-lite', () => {
     expect(p.gemini.defaultModel).toBe('gemini-3.5-flash-lite');
+  });
+});
+
+describe('speech-to-text', () => {
+  const audio = { mime: 'audio/mpeg', base64: 'SUQz', blob: new Blob(['ID3'], { type: 'audio/mpeg' }) };
+  const said = JSON.stringify({ text: 'seven nine' });
+
+  test('Groq: multipart upload to /audio/transcriptions with the whisper model', async () => {
+    const { http, calls } = fakeHttp(said);
+    const p = createProviders(http).groq;
+    expect(p.defaultAudioModel).toBe('whisper-large-v3-turbo');
+    const out = await p.transcribe(
+      cfg({ model: 'whisper-large-v3-turbo', baseUrl: 'https://api.groq.com/openai/v1' }),
+      { audio },
+    );
+    expect(out).toBe('seven nine');
+    expect(calls[0]?.url).toBe('https://api.groq.com/openai/v1/audio/transcriptions');
+    const form = calls[0]?.body as FormData;
+    expect(form).toBeInstanceOf(FormData);
+    expect(form.get('model')).toBe('whisper-large-v3-turbo');
+    expect(calls[0]?.headers?.['content-type']).toBeUndefined(); // the manager sets the multipart boundary
+  });
+
+  test('OpenRouter: JSON body with base64 input_audio and a short format name', async () => {
+    const { http, calls } = fakeHttp(said);
+    await createProviders(http).openrouter.transcribe(
+      cfg({ model: 'openai/whisper-large-v3', baseUrl: 'https://openrouter.ai/api/v1' }),
+      { audio },
+    );
+    expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/audio/transcriptions');
+    expect(JSON.parse(String(calls[0]?.body))).toEqual({
+      model: 'openai/whisper-large-v3',
+      input_audio: { data: 'SUQz', format: 'mp3' },
+    });
+  });
+
+  test('Gemini: the audio goes inline to generateContent with a transcription prompt', async () => {
+    const { http, calls } = fakeHttp(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'seven' }] } }] }));
+    expect(await createProviders(http).gemini.transcribe(cfg({ model: 'gemini-3.5-flash-lite' }), { audio })).toBe(
+      'seven',
+    );
+    const body = JSON.parse(String(calls[0]?.body));
+    expect(body.contents[0].parts[1].inline_data).toEqual({ mime_type: 'audio/mpeg', data: 'SUQz' });
+    expect(body.contents[0].parts[0].text).toMatch(/audio CAPTCHA/);
   });
 });

@@ -14,8 +14,17 @@ export function Widget() {
   if (!match || (IN_FRAME && !controller.present.value)) return null;
   const { status } = controller;
   const st = status.value;
-  const ui = store.settings.value.ui;
-  const disabled = !match.rule.enabled;
+  // Inside a challenge iframe the widget keeps its own position and starts minimised.
+  const ui = store.widgetUi(IN_FRAME);
+  const patchUi = (patch: Parameters<typeof store.patchWidgetUi>[1]) => store.patchWidgetUi(IN_FRAME, patch);
+  const { rule } = match;
+  const disabled = !rule.enabled;
+  const canSwitch = rule.kind === 'grid' && Boolean(rule.audioSource && rule.audioInput);
+  const switchMode = () => {
+    const solveBy = rule.solveBy === 'audio' ? 'image' : 'audio';
+    store.saveSite(match.pattern, { ...rule, solveBy });
+    toast(solveBy === 'audio' ? 'Audio mode: the clip is transcribed and typed' : 'Picture mode: tiles are clicked');
+  };
 
   const onDown = (e: PointerEvent) => {
     const r = ref.current?.getBoundingClientRect();
@@ -39,9 +48,9 @@ export function Widget() {
     if (!el || !d) return;
     if (d.moved) {
       const r = el.getBoundingClientRect();
-      store.patchUi({ x: Math.round(r.left), y: Math.round(r.top) });
+      patchUi({ x: Math.round(r.left), y: Math.round(r.top) });
     } else if (ui.minimized) {
-      store.patchUi({ minimized: false });
+      patchUi({ minimized: false });
     }
   };
 
@@ -77,14 +86,14 @@ export function Widget() {
 
   if (ui.minimized) {
     return (
-      <div ref={ref} class="widget min" data-phase={st.phase} style={pos}>
+      <div ref={ref} class={`widget min${IN_FRAME ? ' framed' : ''}`} data-phase={st.phase} style={pos}>
         {grip}
       </div>
     );
   }
 
   return (
-    <div ref={ref} class="widget" data-phase={disabled ? 'idle' : st.phase} style={pos}>
+    <div ref={ref} class={`widget${IN_FRAME ? ' framed' : ''}`} data-phase={disabled ? 'idle' : st.phase} style={pos}>
       {grip}
       {disabled ? (
         <span class="status">Off on this site</span>
@@ -104,11 +113,7 @@ export function Widget() {
         </span>
       )}
       {disabled ? (
-        <button
-          type="button"
-          class="btn sm"
-          onClick={() => store.saveSite(match.pattern, { ...match.rule, enabled: true })}
-        >
+        <button type="button" class="btn sm" onClick={() => store.saveSite(match.pattern, { ...rule, enabled: true })}>
           Enable
         </button>
       ) : st.action === 'settings' ? (
@@ -125,10 +130,23 @@ export function Widget() {
           {st.phase === 'error' || st.phase === 'paused' ? 'Retry' : 'Solve'}
         </button>
       )}
+      {canSwitch && !disabled && (
+        <button
+          type="button"
+          class="icon"
+          aria-label={rule.solveBy === 'audio' ? 'Switch to solving by pictures' : 'Switch to solving by audio'}
+          title={
+            rule.solveBy === 'audio' ? 'Solving by audio. Click for pictures' : 'Solving by pictures. Click for audio'
+          }
+          onClick={switchMode}
+        >
+          <Icon name={rule.solveBy === 'audio' ? 'audio' : 'image'} />
+        </button>
+      )}
       <button type="button" class="icon" aria-label="Settings" onClick={() => (settingsTab.value = 'sites')}>
         <Icon name="sliders" />
       </button>
-      <button type="button" class="icon" aria-label="Minimize" onClick={() => store.patchUi({ minimized: true })}>
+      <button type="button" class="icon" aria-label="Minimize" onClick={() => patchUi({ minimized: true })}>
         <Icon name="minus" />
       </button>
     </div>

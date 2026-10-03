@@ -2,16 +2,17 @@ import { effect, signal, untracked } from '@preact/signals';
 import { findBestRule, type LocationLike, type RuleMatch } from '../config/match.ts';
 import type { ProviderId, Settings, SiteRule } from '../config/schema.ts';
 import type { Store } from '../config/store.ts';
-import { pageElementAt, pointIn, simulateClick } from '../dom/click.ts';
+import { humanClick, pause, whenOnScreen } from '../dom/click.ts';
 import { clickElement, fillInput, isTextField } from '../dom/fill.ts';
-import { onUrlChange, type Watch, watchCaptcha } from '../dom/watch.ts';
-import { captureImage } from '../image/capture.ts';
+import { tileSignature } from '../dom/tiles.ts';
+import { elementSignature, onUrlChange, type Watch, watchCaptcha } from '../dom/watch.ts';
+import { captureAudio, captureImage, captureTiles } from '../image/capture.ts';
 import { isAbort } from '../net/http.ts';
 import type { Provider, ProviderConfig } from '../providers/index.ts';
 import { buildPrompt, normalizeAnswer } from './answer.ts';
-import { explainError, sleep, withRetry } from './errors.ts';
-import { buildGridPrompt, parseGridAnswer, resolveGridSize } from './grid.ts';
+import { explainError, withRetry } from './errors.ts';
 import { RateGuard } from './guard.ts';
+import { audioUrl, type RunContext, type RunResult, runAudio, runGrid, switchToImages } from './runs.ts';
 
 export type Phase = 'idle' | 'solving' | 'solved' | 'error' | 'missing' | 'paused';
 export interface Status {
@@ -41,6 +42,18 @@ export function resolveProvider(
   };
 }
 
+/** Same provider and key, but the speech-to-text model (falls back to the vision model, e.g. Gemini). */
+export function resolveAudio(
+  settings: Settings,
+  registry: Record<ProviderId, Provider>,
+): { provider: Provider; cfg: ProviderConfig } {
+  const { provider, cfg } = resolveProvider(settings, registry);
+  return {
+    provider,
+    cfg: { ...cfg, model: settings.audioModels[provider.id] || provider.defaultAudioModel || cfg.model },
+  };
+}
+
 /** What's missing before a request can be made, or null. */
 export function configProblem(provider: Provider, cfg: ProviderConfig): string | null {
   if (!cfg.baseUrl) return 'Enter the endpoint URL';
@@ -53,6 +66,8 @@ export interface ControllerDeps {
   store: Store;
   registry: Record<ProviderId, Provider>;
   capture?: typeof captureImage;
+  captureTiles?: typeof captureTiles;
+  captureAudio?: typeof captureAudio;
   location?: () => LocationLike;
   /** Pause between synthetic tile clicks; randomised so it doesn't look scripted. */
   clickDelay?: () => number;
@@ -65,19 +80,40 @@ export const MAX_GRID_ROUNDS = 3;
 const ROUND_GAP_MS = 30_000;
 
 const humanDelay = () => 180 + Math.random() * 220;
-const textOf = (el: Element | null) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+const isGrid = (rule: SiteRule) => rule.kind === 'grid';
+const isChecked = (el: Element) =>
+  el.getAttribute('aria-checked') === 'true' || (el instanceof HTMLInputElement && el.checked);
+
+/** What the watcher looks for: the grid, or (in audio mode) the audio version of the challenge too. */
+const watchSelector = (rule: SiteRule) =>
+  isGrid(rule) && rule.solveBy === 'audio' && rule.audioSource ? `${rule.captcha}, ${rule.audioSource}` : rule.captcha;
+
+/** Fingerprint of the whole challenge; a new one means a new round worth solving. */
+function challengeSignature(rule: SiteRule): string {
+  const parts: string[] = [];
+  const el = document.querySelector(rule.captcha);
+  if (el) parts.push(elementSignature(el));
+  if (rule.tiles) for (const t of document.querySelectorAll(rule.tiles)) parts.push(tileSignature(t));
+  if (rule.solveBy === 'audio' && rule.audioSource) {
+    const a = document.querySelector(rule.audioSource);
+    if (a) parts.push(audioUrl(a));
+  }
+  return parts.join('#');
+}
 
 export function createController({
   store,
   registry,
   capture = captureImage,
+  captureTiles: composeTiles = captureTiles,
+  captureAudio: fetchAudio = captureAudio,
   location: getLoc = () => window.location,
   clickDelay = humanDelay,
   now = Date.now,
 }: ControllerDeps) {
   const status = signal<Status>({ phase: 'idle', text: 'Idle' });
   const match = signal<RuleMatch | null>(null);
-  /** Whether the captcha element is currently on the page. */
+  /** Whether the captcha (or its audio version) is currently on the page. */
   const present = signal(false);
   // 5 automatic attempts per minute; manual clicks reset the breaker.
   const guard = new RateGuard(5, 60_000);
@@ -85,21 +121,39 @@ export function createController({
   let rounds = 0;
   let lastRound = 0;
   let runId = 0;
+  let busy = false;
+  /** Challenge fingerprint after the last grid run: our own clicks must not trigger another. */
+  let lastSolved = '';
   let abort: AbortController | null = null;
   let watch: Watch | null = null;
+  let boxWatch: Watch | null = null;
+  let boxObserver: MutationObserver | null = null;
+  let boxAbort: AbortController | null = null;
   let watched = '';
 
   const set = (s: Status) => {
     status.value = s;
   };
 
+  /** Model name stats are filed under: the one that answers in this rule's mode. */
+  const statModel = (rule: SiteRule) => {
+    const s = store.settings.value;
+    return (isGrid(rule) && rule.solveBy === 'audio' ? resolveAudio(s, registry) : resolveProvider(s, registry)).cfg
+      .model;
+  };
+
   async function solve(trigger: 'auto' | 'manual'): Promise<void> {
     const current = match.value;
     if (!current?.rule.enabled) return;
-    const { rule } = current;
+    const { rule, pattern } = current;
+    const grid = isGrid(rule);
 
     if (trigger === 'auto') {
-      if (rule.kind === 'grid') {
+      if (grid) {
+        // Mutations from our own clicks (selection marks, swapped tiles) are not a new challenge.
+        if (busy) return;
+        const sig = challengeSignature(rule);
+        if (sig && sig === lastSolved) return;
         const t = now();
         if (t - lastRound > ROUND_GAP_MS) rounds = 0;
         lastRound = t;
@@ -117,10 +171,11 @@ export function createController({
       rounds = 0;
     }
 
-    const { provider, cfg } = resolveProvider(store.settings.value, registry);
+    const audio = grid && rule.solveBy === 'audio';
+    const { provider, cfg } = (audio ? resolveAudio : resolveProvider)(store.settings.value, registry);
     const problem = configProblem(provider, cfg);
     if (problem) {
-      set({ phase: 'error', text: problem, action: 'settings' });
+      set({ phase: 'error', text: audio ? `Audio: ${problem.toLowerCase()}` : problem, action: 'settings' });
       return;
     }
 
@@ -129,133 +184,141 @@ export function createController({
     abort = ac;
     const id = ++runId;
     const started = performance.now();
-    set({ phase: 'solving', text: 'Solving…' });
+    busy = grid;
+    set({ phase: 'solving', text: audio ? 'Listening…' : 'Solving…' });
+    const stat = (event: 'try' | 'answered' | 'error', ms = 0) => store.recordStat(pattern, cfg.model, event, ms);
 
     try {
-      const el = document.querySelector(rule.captcha);
-      if (!el) {
-        set({ phase: 'missing', text: 'Captcha not found on this page' });
-        return;
+      const ctx: RunContext = {
+        rule,
+        provider,
+        cfg,
+        signal: ac.signal,
+        current: () => id === runId,
+        capture,
+        captureTiles: composeTiles,
+        captureAudio: fetchAudio,
+        clickDelay,
+        onRequest: () => stat('try'),
+      };
+      let result: RunResult;
+      if (audio) {
+        result = await runAudio(ctx);
+      } else {
+        let el = document.querySelector(rule.captcha);
+        if (!el && grid && rule.imageButton) el = await switchToImages(rule, ac.signal);
+        if (!el) {
+          set({ phase: 'missing', text: 'Captcha not found on this page' });
+          return;
+        }
+        result = grid ? await runGrid(ctx, el) : await solveText(ctx, el);
       }
-
-      if (rule.kind === 'grid') {
-        await solveGrid(rule, el, provider, cfg, ac.signal, () => id === runId, started);
-        return;
-      }
-
-      const image = await capture(el, { signal: ac.signal });
-      const raw = await withRetry(
-        () => provider.complete(cfg, { image, prompt: buildPrompt(rule), signal: ac.signal }),
-        { signal: ac.signal },
-      );
-      if (id !== runId) return; // a newer run superseded this one
-
-      const answer = normalizeAnswer(raw, rule);
-      const input = document.querySelector(rule.input);
-      if (!isTextField(input)) throw new Error('Answer field not found');
-      fillInput(input, answer);
-      if (rule.submit) setTimeout(() => clickElement(rule.submit), 80);
-
-      set({
-        phase: 'solved',
-        text: answer,
-        answer,
-        ms: Math.round(performance.now() - started),
-        warning: image.refetched ? 'Image was re-downloaded; it may differ from the one shown' : undefined,
-      });
+      if (id !== runId) return;
+      const ms = Math.round(performance.now() - started);
+      stat('answered', ms);
+      set({ phase: 'solved', text: result.answer, answer: result.answer, ms, warning: result.warning });
     } catch (e) {
       if (isAbort(e) || id !== runId) return;
       console.warn('[ucs]', e);
+      stat('error');
       set({ phase: 'error', text: explainError(e) });
+    } finally {
+      if (id === runId) {
+        busy = false;
+        if (grid) lastSolved = challengeSignature(rule);
+      }
     }
   }
 
-  /**
-   * Image-grid flow: send the whole grid (tiles numbered on it) with the challenge text, get back
-   * {"tiles":[...]}, then click each tile with a short human-like pause and press Verify.
-   */
-  async function solveGrid(
-    rule: SiteRule,
-    el: Element,
-    provider: Provider,
-    cfg: ProviderConfig,
-    signal: AbortSignal,
-    current: () => boolean,
-    started: number,
-  ): Promise<void> {
-    const tiles = rule.tiles ? [...document.querySelectorAll(rule.tiles)] : [];
-    const size = resolveGridSize(rule.gridSize, tiles.length);
-    const total = size * size;
-    if (rule.tiles && tiles.length !== total) {
-      throw new Error(`Found ${tiles.length} tiles, expected ${total} (${size}x${size}). Check the tiles selector`);
-    }
-    const instruction = rule.instruction ? textOf(document.querySelector(rule.instruction)) : '';
-    if (!instruction && !rule.hint) throw new Error('No challenge text: set the instruction selector or a hint');
-
-    const image = await capture(el, { signal, grid: size });
-    const raw = await withRetry(
-      () => provider.complete(cfg, { image, prompt: buildGridPrompt(size, instruction, rule.hint), signal }),
-      { signal },
-    );
-    if (!current()) return;
-    const picks = parseGridAnswer(raw, total);
-
-    // Without a tiles selector, click the centre of each cell over the captcha image.
-    const cell = (n: number) => {
-      const r = el.getBoundingClientRect();
-      const w = r.width / size;
-      const h = r.height / size;
-      return { left: r.left + ((n - 1) % size) * w, top: r.top + Math.floor((n - 1) / size) * h, width: w, height: h };
-    };
-    for (const [i, n] of picks.entries()) {
-      if (i > 0) await sleep(clickDelay(), signal);
-      if (!current()) return;
-      const tile = tiles[n - 1];
-      if (tile) {
-        simulateClick(tile);
-      } else {
-        const at = pointIn(cell(n));
-        const target = pageElementAt(at);
-        if (!target) throw new Error(`Nothing clickable at tile ${n}`);
-        simulateClick(target, at);
-      }
-    }
-    if (rule.submit) {
-      await sleep(clickDelay() + 200, signal);
-      if (!current()) return;
-      const button = document.querySelector(rule.submit);
-      if (button) simulateClick(button);
-    }
-
-    const answer = picks.length ? `Tiles ${picks.join(', ')}` : 'No matching tiles';
-    set({
-      phase: 'solved',
-      text: answer,
-      answer,
-      ms: Math.round(performance.now() - started),
-      warning: image.refetched ? 'Image was re-downloaded; it may differ from the one shown' : undefined,
+  /** Text and math: read the picture, type the answer, optionally submit. */
+  async function solveText(ctx: RunContext, el: Element): Promise<RunResult> {
+    const { rule, provider, cfg, signal } = ctx;
+    const image = await capture(el, { signal });
+    ctx.onRequest();
+    const raw = await withRetry(() => provider.complete(cfg, { image, prompt: buildPrompt(rule), signal }), {
+      signal,
     });
+    if (!ctx.current()) throw new DOMException('Superseded', 'AbortError');
+    const answer = normalizeAnswer(raw, rule);
+    const input = document.querySelector(rule.input);
+    if (!isTextField(input)) throw new Error('Answer field not found');
+    fillInput(input, answer);
+    if (rule.submit) setTimeout(() => clickElement(rule.submit), 80);
+    return {
+      answer,
+      warning: image.refetched ? 'Image was re-downloaded; it may differ from the one shown' : undefined,
+    };
+  }
+
+  /**
+   * The "I'm not a robot" checkbox (its own frame). Always: count a pass when it turns checked.
+   * Opt-in: tick it once per appearance, only after it is on screen in a visible tab, after a
+   * human-ish delay, with a curved approach and a real press duration.
+   */
+  function watchCheckbox(rule: SiteRule, pattern: string): void {
+    const ticked = new WeakSet<Element>();
+    boxAbort = new AbortController();
+    const signal = boxAbort.signal;
+    boxWatch = watchCaptcha(
+      () => rule.checkbox,
+      (el) => {
+        boxObserver?.disconnect();
+        if (!el) return;
+        let was = isChecked(el);
+        boxObserver = new MutationObserver(() => {
+          const now = isChecked(el);
+          if (now && !was) store.recordStat(pattern, statModel(rule), 'pass');
+          was = now;
+        });
+        boxObserver.observe(el, { attributes: true, attributeFilter: ['aria-checked', 'checked', 'class'] });
+
+        const wanted = rule.autoCheckbox && rule.auto && store.settings.value.autoSolve;
+        if (!wanted || was || ticked.has(el)) return;
+        ticked.add(el);
+        void (async () => {
+          await whenOnScreen(el, signal);
+          await pause(900, 2600, signal);
+          if (!el.isConnected || isChecked(el)) return;
+          await humanClick(el, { signal });
+        })().catch((e) => {
+          if (!isAbort(e)) console.warn('[ucs] checkbox', e);
+        });
+      },
+    );
+  }
+
+  function stopCheckbox(): void {
+    boxAbort?.abort();
+    boxWatch?.stop();
+    boxObserver?.disconnect();
+    boxWatch = null;
+    boxObserver = null;
   }
 
   function rematch(): void {
     const next = findBestRule(store.sites.value, getLoc());
     match.value = next;
-    const active = next?.rule.enabled ? next.rule.captcha : '';
+    const rule = next?.rule.enabled ? next.rule : null;
+    // Watchers close over the rule, so any edit to it restarts them.
+    const active = rule ? JSON.stringify([next?.pattern, rule]) : '';
     if (active === watched) return;
     watch?.stop();
     watch = null;
+    stopCheckbox();
     watched = active;
     present.value = false;
     rounds = 0;
+    lastSolved = '';
     abort?.abort();
-    if (!active) {
+    if (!rule || !next) {
       set({ phase: 'idle', text: 'Idle' });
       return;
     }
 
+    if (rule.checkbox) watchCheckbox(rule, next.pattern);
     set({ phase: 'idle', text: 'Waiting for captcha…' });
     watch = watchCaptcha(
-      () => watched,
+      () => watchSelector(rule),
       (el) => {
         present.value = Boolean(el);
         if (!el) {
@@ -265,6 +328,8 @@ export function createController({
         }
         if (match.value?.rule.auto && store.settings.value.autoSolve) void solve('auto');
       },
+      120,
+      isGrid(rule) ? () => challengeSignature(rule) : undefined,
     );
   }
 
@@ -287,6 +352,7 @@ export function createController({
     stop() {
       for (const d of disposers.splice(0)) d();
       watch?.stop();
+      stopCheckbox();
       abort?.abort();
     },
   };
