@@ -25,7 +25,7 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 
 | Project | Description |
 | :--- | :--- |
-| **[reddit-reels](./reddit-reels)** | Turns Reddit feeds into a swipeable reel in place: one post per screen, single unmuted stream, RedGifs, native player controls and voting. |
+| **[reddit-reels](./reddit-reels)** | Mobile-first full-screen reels for Reddit feeds: swipe, one stream with sound, Reddit video and RedGifs, native voting. |
 | **[GlideVideo](./GlideVideo)** | Touch gesture controller for mobile web video (playback speed, volume, brightness, pinch-to-zoom, 3 themes). Available as both a userscript and a Firefox MV3 extension. |
 | **[StreamGrabber](./StreamGrabber)** | High-performance HLS (`.m3u8`) and fMP4 stream downloader with AES-128 decryption, adaptive quality selection, and direct blob extraction. |
 | **[youtube-filter](./youtube-filter)** | Advanced YouTube filtering by view count, upload date, video duration, keywords, and channels, with watched video dimming and customizable preset profiles. |

@@ -1,6 +1,6 @@
 {
   "name": "reddit-reels",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "author": "quantavil",
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
@@ -12,7 +12,7 @@
     "vite": "^8.3.1",
     "vite-plugin-monkey": "^8.1.1"
   },
-  "description": "Turns Reddit feeds into a swipeable reel in place: one post per screen, single unmuted stream, RedGifs, native player controls and voting.",
+  "description": "Mobile-first full-screen reels for Reddit feeds: swipe, one stream with sound, Reddit video and RedGifs, native voting.",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -25,5 +25,8 @@
     "test:e2e": "playwright test",
     "test": "bun run test:unit && bun run test:e2e"
   },
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "hls.js": "^1.7.3"
+  }
 }

@@ -6,7 +6,7 @@
  * Format score/comment numbers (e.g. 1542 -> "1.5k", 8930 -> "8.9k")
  */
 export function formatCount(num: number): string {
-  if (!num || isNaN(num)) return '0';
+  if (!num || Number.isNaN(num)) return '0';
   if (Math.abs(num) >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'm';
   if (Math.abs(num) >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
   return num.toString();
@@ -72,4 +72,12 @@ export function openUrl(url?: string): void {
   if (!opened) {
     window.location.href = safe;
   }
+}
+
+/** 75 -> "1:15" */
+export function formatTime(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }

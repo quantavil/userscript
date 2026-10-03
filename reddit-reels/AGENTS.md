@@ -1,93 +1,41 @@
 # AGENTS.md
 
-Guidance for agentic development on the **Reddit Reel Mode** userscript (`reddit-reels`).
+Guidance for work on **Reddit Reels** (`reddit-reels`). Read README.md first for the architecture.
 
----
+## Ground rules
 
-## 🏛️ Architecture & Modularity
+- **Separate overlay, not a restyle.** The reel renders its own DOM inside a shadow root (`#rr-reel-host`). Never restyle Reddit's feed into slides: Reddit's markup differs by device and that approach broke on mobile (v2). Reddit's page is only a data source, hidden with `html.rr-open body { display: none }` while the reel is open.
+- **Mobile first.** Design and test at phone size (Pixel 7 emulation) first; desktop gets a centered phone-shaped column.
+- **One `<video>`.** `media/player.ts` owns a single shared video element that moves into the active slide. Do not create per-slide videos: it reintroduces audio bleed and breaks the iOS "first gesture unlocks sound" behaviour. The only other media element is the muted, never-attached preloader.
+- **Iframes only on the active slide.** YouTube/Streamable embeds and the RedGifs fallback can't be paused reliably; they are mounted for the active slide only and removed on leave.
+- **Mount radius.** Only slides within `MOUNT_RADIUS` of the active one keep images/iframes/backdrops. Keep it small; phones run out of memory.
 
-- **File Size & Decomposition**: Keep source files focused and under 150 lines where practical. Never create monolithic orchestrators.
-  - `src/cards/`: Discussion text cards and external link preview cards (`text-card.ts`, `link-card.ts`).
-  - `src/core/`: Feed-route matching and client-side navigation watching (`route.ts`), feed transformation (`feed-manager.ts`), input/touch controllers (`input-controller.ts`), centralized selector registry (`selectors.ts`), DOM state backup and restoration (`teardown-store.ts`), unconstrainer logic (`unconstrainer.ts`).
-  - `src/extractor/`: `<shreddit-post>` DOM extraction, metadata parsing, and native vote proxying.
-  - `src/media/`: Single-media audio mutex (`AudioManager`), active carousel slide tracking (`gallery-media.ts`), RedGifs iframe bridge (`redgifs-bridge.ts`), and video resolvers (`media/index.ts`).
-  - `src/styles/`: Domain-specific stylesheets (`base`, `feed`, `cards`, `gallery`, `overlay`, `header`).
-  - `src/ui/`: Header reel/list toggle (`header-toggle.ts`), overlay actions and author badges (`overlay.ts`), and pulse animations.
-- **Work With Reddit, Not Against It**: The reel is Reddit's own feed restyled in place. There is no launcher button and no separate reel app.
-  - Reel layout activates automatically on feed routes (`isReelRoute`) while the persisted preference (`@reddit-reels/enabled`) is on. It never runs on post pages, tool pages, or inside iframes.
-  - Route changes come from `watchRoute` (Navigation API, wrapped `history.pushState/replaceState`, `popstate`, bfcache `pageshow`). Never rely on `popstate` alone; Reddit navigates with `pushState`.
-  - The **window** is the scroller (`html { scroll-snap-type: y mandatory }`). Never turn `main` or any feed wrapper into a nested scroll container: it breaks Reddit's infinite loader, scroll restoration and Back.
-  - Reddit's header stays visible (translucent, fixed). The reel/list toggle mounts into it next to `#expand-user-drawer-button` / `#login-button`, with a floating fallback.
-  - Comments open Reddit's own post page by clicking the post's native full-post link (client-side navigation). Never iframe Reddit pages: the `?embedded=true` route serves old Reddit, and the script would run again inside the frame.
-  - Reddit's native player control bar (seek, play, captions, fullscreen) must stay clickable; `InputController` lets taps on native controls through via `composedPath()`. Programmatic (`!isTrusted`) clicks are never intercepted.
-- **No Inline Styles**: Avoid sprawling inline `element.style` modifications; prefer dedicated scoped CSS classes prefixed with `.rr-`.
-- **Zero Runtime Dependencies**: The runtime bundle is 100% vanilla TypeScript / browser DOM without virtual DOM frameworks (no React/Preact) or heavy utilities. All UI elements are created directly via `document.createElement`.
-- **Clean Teardown Contract**: Exiting Reel Mode must cleanly reverse all injected DOM (`.rr-post-overlay`, card containers, embedded iframes) and restore original dimensions/attributes bit-for-bit via `teardown-store.ts` without leaving native feeds collapsed or overlapped. All `rr` dataset flags must be deleted on exit.
-- **Security & URL Protocol**: All outgoing URLs opened or assigned to anchors must pass `isSafeUrl()` / `sanitizeUrl()` allowing only `http:` and `https:`. All cross-frame `postMessage` listeners must validate `event.origin`.
+## Data
 
----
+- Posts come from `<shreddit-post>` attributes (`post-title`, `author`, `score`, `comment-count`, `permalink`, `post-type`, `content-href`, `domain`) and the inner `<shreddit-player>` (`packaged-media-json`, `src` HLS, `poster`, `caption-url`). The player tag is `shreddit-player` (not `-2`).
+- Pagination uses Reddit's own `faceplate-partial[slot="load-after"]` URL. Fetched posts are inserted into Reddit's live feed before the partial, and the partial is replaced by the next one. Never call Reddit's `.json` API.
+- Mobile `a[slot="full-post-link"]` points at `applink.reddit.com` (opens the app). Build post URLs from `permalink` (`postUrl()`).
 
-## 🔊 Audio & Playback Contract
+## Network constraints (measured on live reddit.com)
 
-- **Single-Media Focus Rule**: Reddit's player owns decoding, buffering and its controls; `AudioManager` only enforces that exactly one post plays, at the user's mute/volume. Never write to the player custom element's own attributes/properties (`muted`, `volume`) and never overwrite a video's `src` while Reddit is still loading it (`video-hydrator.ts` is a delayed last resort).
-- **Zero Audio Bleed**: Navigating between posts must immediately pause and mute all other media. Reddit's videos live in shadow roots that `document.querySelectorAll('video')` misses, so videos are tracked in a registry (`guardVideo`). A guarded non-active video that starts playing is paused again.
-- **Native Control Sync**: A mute/volume change on the active video within 1.5s of a user gesture is adopted as the global preference (and emitted via `onChange`). A change without a gesture is the player resetting itself, and is reverted (max 3 times per slide).
-- **Embed Parking**: Injected embeds start as `about:blank` with `data-rr-src` and load only when their post becomes active. Inactive embeds are paused through the RedGifs bridge when it reported `READY`, otherwise unloaded.
-- **Active Slide Targeting**: In multi-video galleries/carousels, playback and audio state must target only the currently visible slide (`gallery-media.ts`). Non-target videos in the same container must remain paused.
-- **Default State**: Audio begins unmuted by default unless explicitly toggled off by the user. Mute state persists across page reloads.
-- **RedGifs & External Iframe Protocol**: RedGifs embed iframes (`https://*.redgifs.com/ifr/*`) run the userscript directly in their context. The `redgifs-bridge` synchronizes mute, volume, and playback in real-time via `postMessage` (`SET_AUDIO`, `PAUSE`, `PLAY`) and shared `GM_getValue` storage without mutating `iframe.src` (which avoids destructive reloading).
+- Reddit CSP: `connect-src` and `media-src` allow only Reddit hosts plus `blob:`; `frame-src` allows youtube, youtube-nocookie, streamable and redgifs; `img-src` allows any https.
+- `media.redgifs.com` returns 403 for a reddit.com Referer.
+- So RedGifs API and media go through `GM_xmlhttpRequest` (`@connect` api/media.redgifs.com) and play from `blob:`. Temporary tokens are device/IP-bound: on 401, refetch the token (max 2 retries).
+- `v.redd.it` HLS sends `Access-Control-Allow-Origin: *`; `packaged-media.redd.it` mp4s include audio.
 
----
+## Navigation
 
-## 📐 Aspect Ratio & Media Sizing
+- Opening pushes a history entry (`{ ...state, rrReel: true }`); `popstate` without it closes the reel. `history.scrollRestoration` is `manual` while open, so closing can land on the last watched post.
+- Reddit may turn `location.assign(postUrl)` into an in-page navigation. The resume marker (`@reddit-reels/resume` in sessionStorage) survives that and reopens the reel when the user returns to the same feed path; navigating anywhere else clears it.
 
-- **Aspect Ratio Rule**: Use `(height / width) >= 1.5` as the threshold for vertical videos (`object-fit: cover`).
-- **Meme Letterboxing**: Square (`1:1`) and `4:5` videos MUST use `object-fit: contain` to ensure text, titles, and bottom punchlines are never cropped.
-- **Fit/Fill Toggle**: Allow users to toggle between contain and cover via the overlay action rail button or keyboard shortcut `F`.
-- **Multi-Image Galleries**: Preserve horizontal swipe snapping (`scroll-snap-type: x mandatory`) and contain lightbox images. Do not inject destructive scroll containers into Reddit's native carousel `shadowRoot`; promote lazy images eagerly for active and adjacent slides only.
-- **External Hosts**: RedGifs, Streamable, YouTube, and Gfycat must be classified as video embeds and rendered via responsive autoplaying iframes.
+## Code style
 
----
+- Vanilla TypeScript + DOM, no UI framework. Runtime dependency: `hls.js` only (external global via `@require`).
+- Escape everything put into `innerHTML` (`escapeHtml`) and pass URLs through `isSafeUrl` before using them in links or iframes.
+- Keep `@license MIT`, unminified output (`minify: false`) for GreasyFork.
 
-## 💬 Captions & Subtitles
+## Testing
 
-- Subtitles and closed captions must be toggleable via the overlay `CC` button and keyboard shortcut `C`.
-- State must persist in `localStorage` (`@reddit-reels/subtitles`) and be applied consistently across all video slides.
-
----
-
-## 🛡️ Anti-Rate-Limit & DOM Synchronization
-
-- **Zero External API Calls**: Do not make unauthenticated `.json` requests to Reddit endpoints (avoids 429 rate limits and Cloudflare challenges).
-- **DOM Streaming**: Use incremental `MutationObserver` on the native feed to passively stream newly appended `<shreddit-post>` elements without re-processing existing elements.
-- **Vote Delegation**: Proxy upvotes and downvotes directly to Reddit's native DOM buttons to preserve CSRF tokens, sessions, and karma safely. Sync state using retries to ensure optimistic vote states persist until native web components settle.
-
----
-
-## 🎨 UI & Design Principles
-
-- **Flat Minimalist AMOLED**: Maintain true black (`#000000`) and dark neutral surfaces (`#141518`, `#1c1d22`).
-- **Centered Card Layout**: Always use symmetric container padding (`padding: 16px` mobile, `32px` desktop) and `margin: 0 auto` on cards so discussion/link cards are centered horizontally and vertically.
-- **CSS Selector Scoping**: Never write `:not(html.rr-active) .selector` (ancestors like `body` override active styles due to specificity). Prefer default-hidden `.selector { display: none !important; }` and active `.rr-active .selector { display: flex !important; }`.
-- **Touch & Mobile Ergonomics**: Respect mobile safe areas (`env(safe-area-inset-*)`). Ensure all tap targets are at least `44x44px`.
-- **Gesture Controls**:
-  - Single tap: Play / Pause toggle routed through `AudioManager.togglePlayback(post)`.
-  - Double tap: Upvote the tapped reel post directly.
-  - Vertical swipe: Snap to next/previous reel slide.
-  - Horizontal swipe: Multi-image carousel navigation.
-
----
-
-## 🧪 Testing & Verification
-
-- **Test Directory**: All unit tests MUST live outside `src/`, in `tests/unit/`.
-- **Run Unit Tests**:
-  ```bash
-  bun test tests/unit
-  ```
-- **Build Verification**:
-  ```bash
-  bun run build
-  ```
-- **Build Output**: Ensure `dist/reddit-reels.user.js` builds cleanly with `// @license MIT` in the userscript header.
-- **GreasyFork Compliance & Formatting**: The userscript bundle must be completely unminified (`minify: false`, `cssMinify: false` in `vite.config.ts`) and unobfuscated to comply with GreasyFork transparency rules. Userscript metadata must specify a comprehensive `@description`, `@homepage`, `@supportURL`, and `@license MIT`.
+- `bun test tests/unit`: extractor tests run on **real Reddit markup** in `tests/fixtures/feed.html`. Refresh the fixture from a live page when Reddit's markup changes.
+- `bun run build && bun run test:e2e`: Playwright against the fixture server. Bundled Chromium can't decode H.264; assert sources and lifecycle, not playback.
+- Before claiming playback works, try the build on real Reddit (phone first).

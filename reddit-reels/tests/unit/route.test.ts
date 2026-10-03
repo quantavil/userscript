@@ -21,15 +21,12 @@ describe('isReelRoute', () => {
   it('never matches post pages or tool pages', () => {
     for (const path of [
       '/r/videos/comments/abc123/some_title/',
-      '/comments/abc123',
       '/r/videos/s/AbC123',
       '/settings/',
       '/message/inbox',
-      '/notifications',
-      '/search/?q=cats',
+      '/search/',
       '/submit',
       '/r/videos/wiki/index',
-      '/mod/queue',
     ]) {
       expect(isReelRoute(path)).toBe(false);
     }

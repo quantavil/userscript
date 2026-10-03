@@ -1,270 +1,61 @@
-import { describe, it, beforeEach, afterEach } from 'node:test';
-import assert from 'node:assert/strict';
-import { GlobalWindow } from 'happy-dom';
-import { AudioManager } from '../../src/media/audio-manager';
-import { resolveMedia } from '../../src/media';
-import { ReelPost } from '../../src/extractor/types';
+import { afterEach, describe, expect, it } from 'bun:test';
+import { pickMp4 } from '../../src/media/player';
+import { getRedgifs, pickRedgifsUrl } from '../../src/media/redgifs';
 
-// Mock for HTMLVideoElement
-class MockVideoElement {
-  public paused: boolean = true;
-  public muted: boolean = false;
-  public currentTime: number = 0;
-  public playsInline: boolean = false;
-  public src: string = '';
-  public poster: string = '';
+const source = {
+  mp4: [
+    'https://packaged-media.redd.it/x/pb/m2-res_1920p.mp4',
+    'https://packaged-media.redd.it/x/pb/m2-res_1280p.mp4',
+    'https://packaged-media.redd.it/x/pb/m2-res_720p.mp4',
+  ],
+  hls: '',
+  poster: '',
+  captions: '',
+  width: 1080,
+  height: 1920,
+};
 
-  public async play(): Promise<void> {
-    this.paused = false;
-  }
-
-  public pause(): void {
-    this.paused = true;
-  }
-
-  public closest(): HTMLElement | null {
-    return null;
-  }
-}
-
-describe('AudioManager (Playback Controller)', () => {
-  let manager: AudioManager;
-
-  beforeEach(() => {
-    manager = new AudioManager(false); // unmuted by default
+describe('source selection', () => {
+  it('desktop takes the best mp4, phones cap at 1280p', () => {
+    expect(pickMp4(source, false)).toContain('1920p');
+    expect(pickMp4(source, true)).toContain('1280p');
+    expect(pickMp4({ ...source, mp4: [] }, true)).toBe('');
   });
 
-  it('is unmuted by default', () => {
-    assert.equal(manager.isMuted, false);
-  });
-
-  it('enforces single-media mutex when switching videos (0 audio overlap)', () => {
-    const video1 = new MockVideoElement() as unknown as HTMLVideoElement;
-    const video2 = new MockVideoElement() as unknown as HTMLVideoElement;
-
-    // Start video 1
-    manager.requestPlayback(video1);
-    assert.equal(video1.paused, false);
-    assert.equal(video1.muted, false);
-
-    // Progress
-    video1.currentTime = 12.0;
-
-    // Request video 2 -> video 1 must pause, mute, and reset
-    manager.requestPlayback(video2);
-    assert.equal(video1.paused, true, 'Previous video must be paused');
-    assert.equal(video1.muted, true, 'Previous video must be muted');
-    assert.equal(video1.currentTime, 0, 'Previous video currentTime must be reset to 0');
-
-    assert.equal(video2.paused, false, 'New video must be playing');
-    assert.equal(video2.muted, false, 'New video must inherit unmuted state');
-  });
-
-  it('toggles global mute state and applies to active video', () => {
-    const video = new MockVideoElement() as unknown as HTMLVideoElement;
-    manager.requestPlayback(video);
-    assert.equal(manager.isMuted, false);
-    assert.equal(video.muted, false);
-
-    // Toggle to muted
-    const newMuted = manager.toggleMute();
-    assert.equal(newMuted, true);
-    assert.equal(manager.isMuted, true);
-    assert.equal(video.muted, true);
-
-    // Toggle back to unmuted
-    const unmuted = manager.toggleMute();
-    assert.equal(unmuted, false);
-    assert.equal(manager.isMuted, false);
-    assert.equal(video.muted, false);
-  });
-
-  it('stopAll pauses and mutes all playback', () => {
-    const video = new MockVideoElement() as unknown as HTMLVideoElement;
-    manager.requestPlayback(video);
-
-    manager.stopAll();
-    assert.equal(video.paused, true);
-    assert.equal(video.muted, true);
+  it('RedGifs: phones use the -mobile rendition', () => {
+    const info = { hd: 'hd.mp4', sd: 'sd.mp4', poster: '', hasAudio: true, width: 1, height: 1 };
+    expect(pickRedgifsUrl(info, true)).toBe('sd.mp4');
+    expect(pickRedgifsUrl(info, false)).toBe('hd.mp4');
   });
 });
 
-describe('Direct DOM resolveMedia', () => {
-  let window: GlobalWindow;
-  let document: Document;
-
-  beforeEach(() => {
-    window = new GlobalWindow();
-    document = window.document;
-    (globalThis as any).window = window;
-    (globalThis as any).document = document;
-    (globalThis as any).Event = window.Event;
-    (globalThis as any).Node = window.Node;
-    (globalThis as any).HTMLElement = window.HTMLElement;
-    (globalThis as any).HTMLVideoElement = window.HTMLVideoElement;
-  });
-
+describe('RedGifs API through GM_xmlhttpRequest (outside Reddit CSP)', () => {
   afterEach(() => {
-    delete (globalThis as any).window;
-    delete (globalThis as any).document;
-    delete (globalThis as any).Event;
-    delete (globalThis as any).Node;
-    delete (globalThis as any).HTMLElement;
-    delete (globalThis as any).HTMLVideoElement;
+    delete (globalThis as any).GM_xmlhttpRequest;
   });
 
-  it('resolves native video from element', () => {
-    const fakeEl = {
-      querySelector: (sel: string) => {
-        if (sel === 'video') return { src: 'https://v.redd.it/test/video.mp4', poster: 'test.jpg' };
-        return null;
-      },
-    } as unknown as HTMLElement;
-
-    const post: ReelPost = {
-      id: 't3_1',
-      title: 'Native Video',
-      author: 'user1',
-      subreddit: 'r/videos',
-      score: 100,
-      commentCount: 10,
-      permalink: '/r/videos/1',
-      contentHref: 'https://v.redd.it/test/video.mp4',
-      postType: 'video',
-      element: fakeEl,
+  it('gets a token, retries with a new one on 401 WrongSender, and reads urls', async () => {
+    const seen: string[] = [];
+    let gifCalls = 0;
+    (globalThis as any).sessionStorage = { getItem: () => null, setItem: () => {} };
+    (globalThis as any).GM_xmlhttpRequest = (d: any) => {
+      seen.push(`${d.url} ${d.headers?.Authorization || ''}`);
+      queueMicrotask(() => {
+        if (d.url.endsWith('/auth/temporary')) d.onload({ status: 200, response: { token: `tok${seen.length}` } });
+        else if (++gifCalls === 1) d.onload({ status: 401, response: { error: { code: 'WrongSender' } } });
+        else
+          d.onload({
+            status: 200,
+            response: {
+              gif: { urls: { hd: 'H.mp4', sd: 'S.mp4', poster: 'P.jpg' }, hasAudio: true, width: 720, height: 1280 },
+            },
+          });
+      });
     };
-
-    const res = resolveMedia(post);
-    assert.equal(res.type, 'video');
-    assert.equal(res.src, 'https://v.redd.it/test/video.mp4');
-    assert.equal(res.hasAudio, true);
-  });
-
-  it('resolves iframe embed from element (e.g. RedGifs)', () => {
-    const fakeEl = {
-      querySelector: (sel: string) => {
-        if (sel === 'iframe') return { src: 'https://www.redgifs.com/ifr/fancyjumpingfrog' };
-        return null;
-      },
-    } as unknown as HTMLElement;
-
-    const post: ReelPost = {
-      id: 't3_2',
-      title: 'RedGifs Embed',
-      author: 'user2',
-      subreddit: 'r/gifs',
-      score: 250,
-      commentCount: 15,
-      permalink: '/r/gifs/2',
-      contentHref: 'https://www.redgifs.com/watch/fancyjumpingfrog',
-      postType: 'video',
-      element: fakeEl,
-    };
-
-    const res = resolveMedia(post);
-    assert.equal(res.type, 'iframe');
-    assert.equal(res.src, 'https://www.redgifs.com/ifr/fancyjumpingfrog?muted=0&autoplay=1');
-    assert.equal(res.hasAudio, true);
-  });
-
-  it('normalizes RedGifs iframe muted param both directions', () => {
-    const { normalizeIframeSrc } = require('../../src/media/audio-manager');
-    assert.equal(
-      normalizeIframeSrc('https://www.redgifs.com/ifr/abc?autoplay=1&muted=1', false),
-      'https://www.redgifs.com/ifr/abc?autoplay=1&muted=0'
-    );
-    assert.equal(
-      normalizeIframeSrc('https://www.redgifs.com/ifr/abc?autoplay=1&muted=0', true),
-      'https://www.redgifs.com/ifr/abc?autoplay=1&muted=1'
-    );
-    assert.equal(
-      normalizeIframeSrc('https://www.redgifs.com/ifr/abc', false),
-      'https://www.redgifs.com/ifr/abc?muted=0'
-    );
-  });
-
-  it('volume level persists and drives mute state', () => {
-    const m = new AudioManager(false, 0.8);
-    assert.equal(m.volume, 0.8);
-    m.setVolume(0);
-    assert.equal(m.volume, 0);
-    assert.equal(m.isMuted, true);
-    m.setVolume(0.5);
-    assert.equal(m.volume, 0.5);
-    assert.equal(m.isMuted, false);
-    m.adjustVolume(0.2);
-    assert.equal(m.volume, 0.7);
-  });
-
-  it('resolves image from element', () => {
-    const fakeEl = {
-      querySelector: (sel: string) => {
-        if (sel.includes('img')) return { src: 'https://i.redd.it/sample.jpg' };
-        return null;
-      },
-    } as unknown as HTMLElement;
-
-    const post: ReelPost = {
-      id: 't3_3',
-      title: 'Image Post',
-      author: 'user3',
-      subreddit: 'r/pics',
-      score: 50,
-      commentCount: 5,
-      permalink: '/r/pics/3',
-      contentHref: 'https://i.redd.it/sample.jpg',
-      postType: 'image',
-      element: fakeEl,
-    };
-
-    const res = resolveMedia(post);
-    assert.equal(res.type, 'image');
-    assert.equal(res.src, 'https://i.redd.it/sample.jpg');
-    assert.equal(res.hasAudio, false);
-  });
-
-  it('preserves square / 4:5 meme videos as contain and vertical videos as cover', () => {
-    const { unconstrainPostMedia } = require('../../src/core/unconstrainer');
-
-    const postEl = document.createElement('div');
-    const video = document.createElement('video');
-    Object.defineProperty(video, 'videoWidth', { value: 1080, configurable: true });
-    Object.defineProperty(video, 'videoHeight', { value: 1080, configurable: true }); // 1:1 square
-    postEl.appendChild(video);
-
-    unconstrainPostMedia(postEl);
-    assert.equal(video.classList.contains('rr-vertical-video'), false);
-    assert.equal(video.style.objectFit, 'contain');
-    assert.equal(postEl.classList.contains('rr-has-vertical-video'), false);
-
-    // Now test true 9:16 vertical reel
-    Object.defineProperty(video, 'videoWidth', { value: 1080, configurable: true });
-    Object.defineProperty(video, 'videoHeight', { value: 1920, configurable: true }); // 16:9 vertical
-    video.dispatchEvent(new Event('loadedmetadata'));
-
-    assert.equal(video.classList.contains('rr-vertical-video'), true);
-    assert.equal(video.style.objectFit, 'cover');
-    assert.equal(postEl.classList.contains('rr-has-vertical-video'), true);
-  });
-
-  it('toggles subtitles state and tracks mode', () => {
-    const { applySubtitlesState } = require('../../src/core/unconstrainer');
-
-    const postEl = document.createElement('div');
-    const video = document.createElement('video');
-    const fakeTrack = { mode: 'showing' };
-    Object.defineProperty(video, 'textTracks', {
-      value: [fakeTrack],
-      configurable: true,
-    });
-    postEl.appendChild(video);
-
-    applySubtitlesState(postEl, false);
-    assert.equal(fakeTrack.mode, 'disabled');
-    assert.equal(postEl.classList.contains('rr-hide-captions'), true);
-
-    applySubtitlesState(postEl, true);
-    assert.equal(fakeTrack.mode, 'showing');
-    assert.equal(postEl.classList.contains('rr-hide-captions'), false);
+    const info = await getRedgifs('retrytest');
+    expect(info).toMatchObject({ hd: 'H.mp4', sd: 'S.mp4', poster: 'P.jpg', hasAudio: true });
+    expect(seen.filter((s) => s.includes('/auth/temporary')).length).toBe(2);
+    expect(seen.every((s) => !s.includes('/gifs/') || s.includes('Bearer tok'))).toBe(true);
+    delete (globalThis as any).sessionStorage;
   });
 });

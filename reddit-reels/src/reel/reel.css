@@ -1,0 +1,635 @@
+/* Reel overlay. Lives in a shadow root: Reddit's CSS can't reach in, ours can't leak out. */
+:host {
+  all: initial;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.reel {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  background: #000;
+  color: #fff;
+  font:
+    15px / 1.35 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid #ff4500;
+  outline-offset: 2px;
+}
+
+/* ---------- Vertical track ---------- */
+.track {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.track::-webkit-scrollbar {
+  display: none;
+}
+
+.slide {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  contain: strict;
+  background: #000;
+}
+
+.slide.end {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9aa0a6;
+  font-size: 14px;
+}
+
+/* ---------- Media ---------- */
+.backdrop {
+  position: absolute;
+  inset: -40px;
+  width: calc(100% + 80px);
+  height: calc(100% + 80px);
+  object-fit: cover;
+  filter: blur(28px) brightness(0.45);
+  transform: translateZ(0);
+  pointer-events: none;
+}
+
+.media {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.media > video,
+.media > img.main {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: transparent;
+  display: block;
+}
+
+.reel.fill .media > video,
+.reel.fill .media > img.main,
+.slide.portrait .media > video {
+  object-fit: cover;
+}
+
+.reel.fit .slide.portrait .media > video {
+  object-fit: contain;
+}
+
+.media > iframe {
+  width: 100%;
+  height: min(100%, 56.25vw);
+  border: 0;
+  background: #000;
+}
+
+.slide.vertical-embed .media > iframe {
+  height: 100%;
+}
+
+.shade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 45%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));
+  pointer-events: none;
+}
+
+.shade.top {
+  top: 0;
+  bottom: auto;
+  height: 120px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+}
+
+/* Gallery: native-feeling horizontal swipe */
+.gallery {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.gallery::-webkit-scrollbar {
+  display: none;
+}
+
+.gallery > div {
+  flex: 0 0 100%;
+  height: 100%;
+  scroll-snap-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gallery img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.count {
+  position: absolute;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  right: 14px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* Text / link cards */
+.card {
+  position: absolute;
+  inset: calc(70px + env(safe-area-inset-top, 0px)) 76px calc(150px + env(safe-area-inset-bottom, 0px)) 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.card-inner {
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+  border-radius: 16px;
+  background: #16171b;
+  border: 1px solid #2a2c33;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.card h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.card p {
+  margin: 0;
+  color: #d7dadc;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.card img {
+  width: 100%;
+  max-height: 40vh;
+  object-fit: cover;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+
+.card .domain {
+  color: #9aa0a6;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.card a.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #ff4500;
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.card a.cta svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---------- Chrome ---------- */
+.top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.top button {
+  pointer-events: auto;
+}
+
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+
+.icon-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+.feed-name {
+  font-weight: 700;
+  font-size: 15px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  max-width: 50vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info {
+  position: absolute;
+  left: 14px;
+  right: 78px;
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  z-index: 3;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.meta a {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.meta .author {
+  color: #d7dadc;
+  font-weight: 500;
+}
+
+.nsfw {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #d93a00;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.title.open {
+  -webkit-line-clamp: unset;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.rail {
+  position: absolute;
+  right: 8px;
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.rail .item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.rail button {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7));
+}
+
+.rail button:active {
+  transform: scale(0.9);
+}
+
+.rail .up.on {
+  color: #ff4500;
+}
+
+.rail .down.on {
+  color: #7193ff;
+}
+
+.rail .cc.on {
+  color: #ff4500;
+}
+
+.slide.has-video .info,
+.slide.has-video .rail {
+  bottom: calc(34px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Seek bar: thin, with a tall invisible touch target */
+.seek {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: env(safe-area-inset-bottom, 0px);
+  height: 24px;
+  z-index: 6;
+  display: flex;
+  align-items: flex-end;
+  touch-action: none;
+  cursor: pointer;
+}
+
+.seek .rail-line {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.25);
+  transition: height 0.12s ease;
+}
+
+.seek.dragging .rail-line,
+.seek:hover .rail-line {
+  height: 6px;
+}
+
+.seek .fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: #fff;
+}
+
+.seek .buffer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.time {
+  position: absolute;
+  bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: none;
+  z-index: 7;
+}
+
+.seek.dragging + .time {
+  display: block;
+}
+
+/* ---------- Feedback ---------- */
+.spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
+  display: none;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.slide.loading .spinner {
+  display: block;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 84px;
+  height: 84px;
+  margin: -42px 0 0 -42px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 8;
+  animation: pulse 0.6s ease-out forwards;
+}
+
+.pulse.heart {
+  background: none;
+  color: #ff4500;
+}
+
+.pulse svg {
+  width: 40px;
+  height: 40px;
+}
+
+.pulse.heart svg {
+  width: 90px;
+  height: 90px;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.2);
+  }
+}
+
+.unmute-hint {
+  position: absolute;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7);
+  font-size: 13px;
+  font-weight: 700;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  z-index: 6;
+}
+
+.unmute-hint svg {
+  width: 18px;
+  height: 18px;
+}
+
+.reel.autoplay-muted .slide.active .unmute-hint {
+  display: inline-flex;
+}
+
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(110px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(30, 31, 36, 0.95);
+  font-size: 14px;
+  z-index: 9;
+  max-width: 86vw;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.toast.show {
+  opacity: 1;
+}
+
+.error {
+  position: absolute;
+  inset: auto 0 50% 0;
+  text-align: center;
+  color: #d7dadc;
+  font-size: 14px;
+  z-index: 2;
+}
+
+.error a {
+  color: #ff4500;
+}
+
+/* ---------- Wider screens: keep the reel a phone-shaped column ---------- */
+@media (min-width: 900px) and (pointer: fine) {
+  .slide-inner {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: min(100vw, calc(100dvh * 9 / 16));
+    transform: translateX(-50%);
+  }
+
+  .rail {
+    right: -68px;
+  }
+
+  .info {
+    right: 14px;
+  }
+
+  .card {
+    right: 16px;
+  }
+}
+
+@media (max-width: 899px), (pointer: coarse) {
+  .slide-inner {
+    position: absolute;
+    inset: 0;
+  }
+}
+
+/* Text / link cards already show the title */
+.slide.kind-text .info .title,
+.slide.kind-link .info .title {
+  display: none;
+}

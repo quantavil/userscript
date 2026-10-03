@@ -4,140 +4,103 @@
 [![Runtime: Bun](https://img.shields.io/badge/Runtime-Bun-f472b6?logo=bun&logoColor=white)](https://bun.sh/)
 [![Build: Vite](https://img.shields.io/badge/Build-Vite%20%2B%20TypeScript-646cff?logo=vite&logoColor=white)](https://vitejs.dev/)
 
-A userscript for **Tampermonkey** / **Violentmonkey** (desktop, Firefox Android, Kiwi, Safari, Orion) that makes Reddit's own feed **behave like a vertical reel** (TikTok / Shorts style): one post per screen, snap scrolling, a single playing video with sound, RedGifs support, and native voting.
+A mobile-first userscript (**Violentmonkey** / **Tampermonkey**; Firefox Android, Kiwi, Safari/Orion, desktop) that turns any Reddit feed into a full-screen, swipeable reel: one post per screen, one stream with sound, Reddit video and RedGifs, native voting.
 
-There is no launcher button and no separate app layered over Reddit. The script restyles the real feed in place and lets Reddit keep doing what it already does well.
+Tap the **Reels** button on a feed. The reel opens over Reddit; the phone's Back button (or ✕ / `Esc`) closes it and leaves you on the post you were watching.
 
 ---
 
-## 🧭 How it works
+## How it works (and why)
 
-| Concern | Who does it |
+The reel is its **own full-screen view** (shadow DOM, own CSS), not a restyle of Reddit's page. Restyling Reddit's markup breaks whenever the markup differs per device, which is what happened in v2. Reddit's page stays underneath, hidden, as the **data source**.
+
+| Piece | How |
 |---|---|
-| Scrolling, infinite loading, Back/forward scroll position | **Reddit + the browser.** The window itself scrolls with CSS `scroll-snap`; nothing nested. |
-| Video decode, buffering, seek bar, play/pause, captions UI, fullscreen | **Reddit's native player** (`shreddit-player-2`), with its control bar left usable. |
-| Comments | **Reddit's own post page** (new Reddit). The comment button follows the post's native link, and Back returns to the same slide. |
-| Search, account menu, navigation | **Reddit's header**, kept as a translucent bar over the reel. |
-| Only one thing plays, at your volume | **This script** (focus rule in `AudioManager`). |
-| Title / sub / author, vote rail, sound, Fit/Fill, gestures, keys | **This script**, layered on top. Votes are clicked through to Reddit's buttons. |
+| Posts | Read from Reddit's rendered `<shreddit-post>` attributes (title, author, score, media). |
+| More posts | Same HTML endpoint Reddit's feed uses (`faceplate-partial[slot=load-after]`, e.g. `/svc/shreddit/community-more-posts/…?after=`). New pages are inserted into Reddit's real feed, so they are live posts. No `.json` API, no rate-limit traps. |
+| Reddit video | Direct `packaged-media.redd.it` mp4 (has audio) when Reddit provides one; otherwise the HLS stream, played natively (Safari, Android) or through `hls.js`. |
+| RedGifs | RedGifs API → mp4 → blob. Requests go through `GM_xmlhttpRequest` because Reddit's CSP blocks redgifs hosts and RedGifs blocks Reddit referrers. If that fails, the slide falls back to RedGifs' own player iframe. |
+| YouTube / Streamable | Their embed player, mounted only while the slide is on screen. |
+| Audio | **One shared `<video>`** moved into the active slide. Only one stream can exist, so no audio bleed. Once your first tap has played it, mobile browsers keep allowing sound on later slides. |
+| Voting | Clicks Reddit's own vote buttons inside the post, so auth and CSRF stay Reddit's. Logged out → a "log in" toast. |
+| Comments | Opens Reddit's post page (new Reddit, same tab on phones, new tab on desktop). Back reopens the reel on the same post. |
+| Memory | Only the active slide and its neighbours hold images/iframes; far slides are emptied. |
 
-### Activation
-- Turns on automatically on feed routes: home, `/best` `/hot` `/new` `/top` `/rising`, `/r/<sub>` (and its sort tabs), `/r/popular`, `/r/all`, `/user/<name>/submitted`.
-- Never runs on post pages, search, settings, chat, or inside iframes.
-- Reddit navigates client-side (`pushState`), so routes are watched through the Navigation API, wrapped `history` methods, `popstate` and bfcache restores. Opening a post stops the reel instantly; Back re-applies it and lands on the slide you left.
-- **Reel ⇄ list toggle** lives in Reddit's header, next to the user menu. It falls back to a small top-right pill if the header can't be found. `Esc` also switches to list view. The choice is remembered per device.
+## Controls
 
----
-
-## ✨ Features
-
-### 🔊 One stream at a time
-- Audio starts **unmuted** (falls back to muted only when the browser blocks audible autoplay; the next tap unmutes).
-- When a slide becomes active, every other video (including ones inside Reddit's shadow DOM) and every embed is paused and muted.
-- If Reddit's player autoplays a neighbouring video on its own, it is paused again immediately.
-- **Native and reel controls stay in sync.** Muting with Reddit's player button updates the reel's sound button and the stored preference. If the player flips mute by itself (no user gesture), the user's choice is restored.
-
-### 🎬 RedGifs, Streamable, YouTube
-- Link posts to RedGifs / Streamable / Gfycat / YouTube are shown as video slides.
-- Embeds are **parked** (`about:blank`) until their slide is active, so a feed full of RedGifs can't autoplay many streams at once.
-- Inside `redgifs.com/ifr/*` frames the script runs a small bridge (`SET_AUDIO`, `PLAY`, `PAUSE`) so RedGifs pauses and resumes without reloading. Embeds without a bridge are unloaded when you scroll away; that is the only reliable way to silence them.
-
-### 📐 Sizing
-- True vertical videos (`h / w ≥ 1.5`) fill the screen; square and 4:5 memes are letterboxed so captions are never cropped.
-- `F` or the rail button toggles Fit (contain) / Fill (cover).
-
-### 👆 Gestures
-- **Single tap** on the media: play / pause.
-- **Double tap**: upvote.
-- **Swipe** vertically: next / previous slide. Galleries keep Reddit's native horizontal carousel.
-- Taps on Reddit's native player controls go to the player untouched.
-
-### 🖼️ Galleries, text and link posts
-- Galleries keep Reddit's carousel; lazy slides next to the visible one are promoted eagerly.
-- Text posts render as readable cards; link posts as preview cards with a "Read article" action.
-
-### 🗳️ Native voting, zero API calls
-- Votes click Reddit's own buttons (CSRF, session and karma handled by Reddit).
-- Posts are read from the rendered DOM. No `.json` requests, so no 429s or Cloudflare challenges.
-
-### ⌨️ Keyboard
-| Key | Action |
+| Gesture / key | Action |
 |---|---|
-| `J` / `↓` | Next slide |
-| `K` / `↑` | Previous slide |
-| `M` | Mute / unmute |
-| `+` `=` / `Shift+↑` | Volume up |
-| `-` `_` / `Shift+↓` | Volume down |
-| `F` | Fit / Fill |
-| `C` | Captions |
-| `Esc` | Switch to list view |
+| Swipe up / down, `J` `K`, `↓` `↑` | Next / previous |
+| Tap | Play / pause (first tap after a blocked autoplay turns sound on) |
+| Double tap | Upvote |
+| Drag the bottom bar | Seek |
+| `←` `→` | Gallery image, or seek ±5 s |
+| Space | Play / pause |
+| `M` | Mute |
+| `C` | Captions (Reddit videos that have them) |
+| `F` / rail button | Fit ↔ fill screen |
+| Back, ✕, `Esc` | Close |
+
+Mute is remembered. Vertical videos fill the screen by default; others are letterboxed over a blurred backdrop.
 
 ---
 
-## 📥 Installation
+## Install
 
-1. Install [Violentmonkey](https://violentmonkey.github.io/) *(recommended)* or [Tampermonkey](https://www.tampermonkey.net/).
+1. Install [Violentmonkey](https://violentmonkey.github.io/) (recommended) or [Tampermonkey](https://www.tampermonkey.net/).
 2. Open [`dist/reddit-reels.user.js`](./dist/reddit-reels.user.js) and click **Install**.
-3. Open any feed on `https://www.reddit.com/`. It is already a reel. Use the header toggle to switch to list view.
+3. Open a feed on `https://www.reddit.com/` and tap the orange button.
+
+`hls.js` is loaded via `@require` from jsDelivr. `@connect` covers `api.redgifs.com` / `media.redgifs.com`; allow it when the manager asks.
 
 ---
 
-## 🛠️ Project structure
+## Project structure
 
 ```
-reddit-reels/
-├── src/
-│   ├── main.ts                 # Lifecycle: route → activate/deactivate, header toggle, Back restore
-│   ├── index.ts                # Entry (RedGifs bridge in RedGifs frames, reel elsewhere)
-│   ├── utils.ts                # URL safety, number formatting
-│   ├── cards/                  # Text and link post cards
-│   ├── core/
-│   │   ├── route.ts            # Feed-route matcher + client-side navigation watcher
-│   │   ├── feed-manager.ts     # Per-post enhancement, observers, videos-only filter, teardown
-│   │   ├── input-controller.ts # Taps, double-tap upvote, hotkeys (native controls pass through)
-│   │   ├── unconstrainer.ts    # Lifts Reddit's media size clamps, captions, gallery wiring
-│   │   ├── teardown-store.ts   # Original style/attribute backup for exact restore
-│   │   └── selectors.ts
-│   ├── extractor/              # <shreddit-post> parser + vote proxy
-│   ├── media/
-│   │   ├── audio-manager.ts    # Single-focus rule, play guard, native mute sync, embed parking
-│   │   ├── redgifs-bridge.ts   # Runs inside RedGifs iframes
-│   │   ├── video-hydrator.ts   # Last-resort source copy if Reddit never loads the active video
-│   │   └── gallery-media.ts
-│   ├── styles/                 # base, feed (window snap), overlay, cards, gallery, header
-│   └── ui/
-│       ├── header-toggle.ts    # Reel/list + videos-only buttons in Reddit's header
-│       ├── overlay.ts          # Info, vote rail, sound, comments (native), CC, Fit/Fill
-│       └── pulse.ts
-└── tests/
-    ├── unit/                   # Bun tests (routes, playback guard, extractor, bridge, teardown…)
-    ├── fixtures/               # Mock Reddit page + test server
-    └── *.spec.ts               # Playwright: lifecycle, audio focus, sizing, link cards, voting
+src/
+├── index.ts              # Entry
+├── app.ts                # FAB on feed routes, open/close, Back button, comments resume
+├── core/route.ts         # Feed-route matcher + client-side navigation watcher
+├── feed/
+│   ├── extract.ts        # <shreddit-post> → Post (video/redgifs/embed/gallery/image/text/link)
+│   ├── source.ts         # Posts in the page + next pages via Reddit's load-after partial
+│   ├── vote.ts           # Native vote buttons
+│   └── types.ts
+├── media/
+│   ├── player.ts         # The one shared <video>: mp4 / HLS / RedGifs blob, mute, captions
+│   └── redgifs.ts        # Token, gif lookup, blob download (GM_xmlhttpRequest)
+├── reel/
+│   ├── reel.ts           # Overlay: snap track, active slide, gestures, keys, seek, voting
+│   ├── slide.ts          # Slide shell + mount/unmount of heavy content
+│   ├── reel.css          # Shadow-root styles (mobile first, phone column on desktop)
+│   └── icons.ts
+├── ui/fab.ts             # Floating Reels button (own shadow root)
+└── utils.ts
+tests/
+├── fixtures/feed.html    # Real Reddit feed markup (video+mp4, video HLS-only, gallery, image, text, link)
+├── fixtures/server.ts    # Serves it + build + a fake load-after endpoint
+├── unit/                 # Extractor, feed paging, routes, RedGifs/API retry, source choice
+└── reel.spec.ts          # Playwright (Pixel 7): open, swipe, unmount, paging, Back, comments, keys
 ```
 
----
-
-## 🧪 Testing & development
+## Development
 
 ```bash
 bun install
-bun test tests/unit      # unit tests
-bun run test:e2e         # Playwright against the mock Reddit page
+bun test tests/unit
 bun run build            # dist/reddit-reels.user.js (unminified, @license MIT)
+bun run test:e2e         # needs the build; PW_CHROMIUM=/path/to/chromium to override the browser
 ```
 
-The Playwright suite runs against `tests/fixtures/mock-reddit.html`, not the real Reddit player. Changes to playback, header placement or navigation should also be checked by hand on reddit.com, on both desktop and mobile.
+The Playwright Chromium has no H.264 decoder, so e2e tests check sources, slides and lifecycle, not actual decoding.
 
----
+## Known limits
 
-## ⚠️ Known limits
+- RedGifs tokens are tied to the requesting network. Very flaky networks can make lookups fail; the slide then uses RedGifs' iframe player.
+- Logged-out Reddit hides NSFW feeds and asks to log in for votes.
+- The reel reads what Reddit renders; if Reddit renames `<shreddit-post>` attributes, `feed/extract.ts` is the one place to update.
 
-- Reddit's header markup isn't a public API. If `#expand-user-drawer-button` / `#login-button` move, the toggle shows as a floating pill instead.
-- Streamable / YouTube embeds have no bridge, so leaving their slide reloads them on return.
-- If Reddit's player keeps forcing mute on its own, the script re-asserts your choice at most 3 times per slide, to avoid a tug-of-war loop.
-
----
-
-## 📄 License
+## License
 
 [MIT](LICENSE)
