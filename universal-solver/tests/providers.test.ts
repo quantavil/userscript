@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { type Http, HttpError, type HttpRequest } from '../src/net/http.ts';
 import { thinkingConfigFor } from '../src/providers/gemini.ts';
 import { createProviders } from '../src/providers/index.ts';
+import { configProblem } from '../src/solver/controller.ts';
 
 const image = { mime: 'image/png', base64: 'AAAA' };
 const cfg = (o = {}) => ({ apiKey: 'KEY', model: 'm', baseUrl: '', ...o });
@@ -141,5 +142,36 @@ describe('groq (OpenAI-compatible)', () => {
     const { http, calls } = fakeHttp(ok);
     await createProviders(http).openai.complete(cfg({ baseUrl: 'http://localhost:11434/v1/' }), { image, prompt: 'p' });
     expect(calls[0]?.url).toBe('http://localhost:11434/v1/chat/completions');
+  });
+
+  test('custom endpoint without a key sends no Authorization header (Ollama / LM Studio)', async () => {
+    const { http, calls } = fakeHttp(ok);
+    const p = createProviders(http).openai;
+    expect(p.keyOptional).toBe(true);
+    await p.complete(cfg({ apiKey: '', baseUrl: 'http://localhost:1234/v1' }), { image, prompt: 'p' });
+    expect(calls[0]?.headers?.authorization).toBeUndefined();
+  });
+
+  test('OpenRouter is its own provider with a fixed URL', async () => {
+    const { http, calls } = fakeHttp(ok);
+    await createProviders(http).openrouter.complete(cfg({ baseUrl: 'https://openrouter.ai/api/v1' }), {
+      image,
+      prompt: 'p',
+    });
+    expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/chat/completions');
+    expect(calls[0]?.headers?.authorization).toBe('Bearer KEY');
+  });
+});
+
+describe('configProblem', () => {
+  const p = createProviders();
+  test('key required for hosted providers, optional for a custom endpoint, URL always required', () => {
+    expect(configProblem(p.gemini, cfg({ apiKey: '', baseUrl: 'x' }))).toMatch(/API key/);
+    expect(configProblem(p.openai, cfg({ apiKey: '', baseUrl: 'http://localhost:11434/v1' }))).toBeNull();
+    expect(configProblem(p.openai, cfg({ apiKey: '', baseUrl: '' }))).toMatch(/endpoint URL/);
+    expect(configProblem(p.openrouter, cfg({ model: '', baseUrl: 'x' }))).toMatch(/model/);
+  });
+  test('Gemini defaults to gemini-3.5-flash-lite', () => {
+    expect(p.gemini.defaultModel).toBe('gemini-3.5-flash-lite');
   });
 });

@@ -21,6 +21,8 @@ export interface Provider {
   /** Shown before (or instead of) a live model listing. */
   suggestedModels: readonly string[];
   defaultBaseUrl: string;
+  /** Local servers (Ollama, LM Studio) need no key. */
+  keyOptional?: boolean;
   /** Returns the model's raw text reply. */
   complete(cfg: ProviderConfig, input: CompleteInput): Promise<string>;
   listModels(cfg: ProviderConfig, signal?: AbortSignal): Promise<string[]>;

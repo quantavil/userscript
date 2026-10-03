@@ -17,15 +17,19 @@ Solves text, math and image-grid captchas on any site using AI vision models. Su
 3. Settings → **AI provider** → paste a key → **Test with a sample captcha**.
 4. On a page with a text captcha: **Configure this page** → click the image, then the answer box. Done.
 
-### Image-grid captchas (iframes)
-Grid challenges such as reCAPTCHA's live in an iframe, so the script runs in frames too (no `@noframes`). To keep ad frames quiet, frames register **no menu entries** and show the widget only once the captcha is actually present. Set up from inside the frame:
-1. Open the challenge, click its header text once so the frame has keyboard focus, press **`Alt+Shift+G`**.
-2. Click the grid image → one tile (widens to all tiles; Esc = click by position) → the "Select all…" text → Verify.
-3. In the editor, keep the pattern on the frame's own page (e.g. `www.google.com/recaptcha/api2/bframe`), not the whole host, so the checkbox frame is left alone.
+### reCAPTCHA v2 image grids (one click)
+Settings → **Sites** → **reCAPTCHA v2 image grid**. That's all. Then on any site:
+1. **You** tick "I'm not a robot". The checkbox stays with the human; it lives in a separate frame and is not the hard part.
+2. If Google opens a grid, the script (running inside that frame) reads "Select all images with…", sends the grid with tiles numbered, clicks the tiles the model returns, then the blue button. Its id is the same whether it reads Verify, Next or Skip.
+3. A new grid (wrong answer, or a "Next" round) is solved again automatically, **at most 3 rounds**; then it stops and says "finish by hand". Clicking Solve in the widget continues.
 
-For reCAPTCHA, `img[class^="rc-image-tile-"]` as the grid image and `td.rc-imageselect-tile` as tiles (with tiles per side = 0/auto) cover both 3x3 and 4x4.
+The preset matches `www.google.com/recaptcha/*` and `www.recaptcha.net/recaptcha/*`, which covers the api2 and enterprise challenge frames. The checkbox frame matches too but has no grid, so nothing runs or shows there.
 
-Upgrading from v1: rules and your API keys are preserved and migrated automatically.
+### Other image grids (iframes)
+The script runs in frames too (no `@noframes`). To keep ad frames quiet, frames register **no menu entries** and show the widget only once the captcha is present. Set up from inside the frame: click its header text once so the frame has focus, press **`Alt+Shift+G`**, then click the grid image → one tile (widens to all; Esc = click by position) → the "Select all…" text → the Verify button. Keep the pattern on the frame's own page.
+
+## AI providers
+One **Provider** dropdown: Google Gemini (default model `gemini-3.5-flash-lite`), Groq, OpenRouter, or **Custom endpoint**, meaning any OpenAI-compatible `/v1` URL (OpenAI, Ollama, LM Studio, vLLM). The key is optional for custom endpoints. The model is a dropdown of suggestions; **Fetch list** loads what your account can use, and **Other…** lets you type any id.
 
 ## Features
 - Two-click setup with a live selector preview, match counter, and ↑/↓ to widen/narrow the target

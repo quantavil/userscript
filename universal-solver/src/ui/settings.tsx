@@ -1,9 +1,10 @@
 import { useSignal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import { controller, providers, store } from '../app.ts';
+import { PRESETS } from '../config/presets.ts';
 import { PROVIDER_IDS, type ProviderId } from '../config/schema.ts';
 import { exportSites, importSites, pickJsonFile } from '../flows/data.ts';
-import { configureCurrentPage } from '../flows/setup.ts';
+import { configureCurrentPage, configureGridPage } from '../flows/setup.ts';
 import { resolveProvider } from '../solver/controller.ts';
 import { explainError } from '../solver/errors.ts';
 import { testProvider } from '../solver/selftest.ts';
@@ -53,10 +54,13 @@ function ProviderTab() {
   const busy = useSignal<'' | 'models' | 'test'>('');
   const result = useSignal<{ ok: boolean; text: string } | null>(null);
   const reveal = useSignal(false);
+  // "Other…" was chosen, or the saved model isn't in the list: show a free-text box.
+  const custom = useSignal(false);
 
   useEffect(() => {
     models.value = [...provider.suggestedModels];
     result.value = null;
+    custom.value = false;
   }, [id]);
 
   const refreshModels = async () => {
@@ -79,34 +83,48 @@ function ProviderTab() {
     busy.value = '';
   };
 
+  const canQuery = Boolean(cfg.baseUrl) && (Boolean(cfg.apiKey) || provider.keyOptional === true);
+  const options = models.value.includes(cfg.model) || !cfg.model ? models.value : [cfg.model, ...models.value];
+  const typing = custom.value || options.length === 0;
+  const OTHER = '\u0000other';
+
   return (
     <>
-      <fieldset class="seg" aria-label="Provider">
-        {PROVIDER_IDS.map((p: ProviderId) => (
-          <button key={p} type="button" aria-pressed={p === id} onClick={() => store.patchSettings({ provider: p })}>
-            {providers[p].label}
-          </button>
-        ))}
-      </fieldset>
+      <div class="field">
+        <label for="ucs-provider">Provider</label>
+        <select
+          id="ucs-provider"
+          value={id}
+          onChange={(e) => store.patchSettings({ provider: e.currentTarget.value as ProviderId })}
+        >
+          {PROVIDER_IDS.map((p: ProviderId) => (
+            <option key={p} value={p}>
+              {providers[p].label}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {id === 'openai' && (
         <div class="field">
-          <label for="ucs-base">Base URL</label>
+          <label for="ucs-base">Endpoint URL</label>
           <input
             id="ucs-base"
             type="url"
             class="mono"
+            placeholder="http://localhost:11434/v1"
             value={settings.openaiBaseUrl}
             onInput={(e) => store.patchSettings({ openaiBaseUrl: e.currentTarget.value.trim() })}
           />
           <p class="hint">
-            Any OpenAI-compatible endpoint: OpenRouter, OpenAI, Ollama (http://localhost:11434/v1), LM Studio…
+            Any OpenAI-compatible <code>/v1</code> base: OpenAI (https://api.openai.com/v1), Ollama, LM Studio, vLLM…
+            Your userscript manager may ask once to allow the host.
           </p>
         </div>
       )}
 
       <div class="field">
-        <label for="ucs-key">API key</label>
+        <label for="ucs-key">API key{provider.keyOptional && ' (optional)'}</label>
         <div class="row">
           <input
             id="ucs-key"
@@ -115,7 +133,7 @@ function ProviderTab() {
             autocomplete="off"
             spellcheck={false}
             value={cfg.apiKey}
-            placeholder="Paste your key"
+            placeholder={provider.keyOptional ? 'Not needed for local servers' : 'Paste your key'}
             onInput={(e) => store.setApiKey(id, e.currentTarget.value)}
           />
           <button type="button" class="btn sm" onClick={() => (reveal.value = !reveal.value)}>
@@ -123,44 +141,67 @@ function ProviderTab() {
           </button>
         </div>
         <p class="hint">
-          <a href={provider.keyHelpUrl} target="_blank" rel="noreferrer noopener">
-            Get a {provider.label} key
-          </a>
-          . Stored by your userscript manager; sent only to the provider.
+          {provider.keyHelpUrl && (
+            <>
+              <a href={provider.keyHelpUrl} target="_blank" rel="noreferrer noopener">
+                Get a {provider.label} key
+              </a>
+              .{' '}
+            </>
+          )}
+          Stored by your userscript manager; sent only to the provider.
         </p>
       </div>
 
       <div class="field">
         <label for="ucs-model">Model</label>
         <div class="row">
-          <input
-            id="ucs-model"
-            class="grow mono"
-            type="text"
-            list="ucs-models"
-            autocomplete="off"
-            spellcheck={false}
-            value={cfg.model}
-            placeholder={provider.defaultModel || 'model id'}
-            onInput={(e) => store.setModel(id, e.currentTarget.value)}
-          />
-          <datalist id="ucs-models">
-            {models.value.map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
+          {typing ? (
+            <input
+              id="ucs-model"
+              class="grow mono"
+              type="text"
+              autocomplete="off"
+              spellcheck={false}
+              value={cfg.model}
+              placeholder={provider.defaultModel || 'model id, e.g. gpt-4o-mini'}
+              onInput={(e) => store.setModel(id, e.currentTarget.value)}
+            />
+          ) : (
+            <select
+              id="ucs-model"
+              class="grow mono"
+              value={cfg.model}
+              onChange={(e) => {
+                const value = e.currentTarget.value;
+                if (value === OTHER) custom.value = true;
+                else store.setModel(id, value);
+              }}
+            >
+              {options.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                  {m === provider.defaultModel ? ' (default)' : ''}
+                </option>
+              ))}
+              <option value={OTHER}>Other…</option>
+            </select>
+          )}
           <button
             type="button"
             class="btn sm"
-            disabled={!cfg.apiKey || busy.value !== ''}
-            onClick={() => void refreshModels()}
+            disabled={!canQuery || busy.value !== ''}
+            title={canQuery ? 'Load the models this account can use' : 'Fill in the key / URL first'}
+            onClick={() => {
+              custom.value = false;
+              void refreshModels();
+            }}
           >
             {busy.value === 'models' ? '…' : 'Fetch list'}
           </button>
         </div>
         <p class="hint">
-          Providers retire models often. If solving starts failing with “model not found”, fetch the list and pick a
-          current vision model.
+          Pick a vision model. Providers retire models often: on “model not found”, fetch the list and choose another.
         </p>
       </div>
 
@@ -213,13 +254,36 @@ function SitesTab() {
           <Icon name="plus" /> Add manually
         </button>
       </div>
+      <div class="row">
+        {PRESETS.map((p) => {
+          const added = Object.keys(p.sites).every((k) => k in store.sites.value);
+          return (
+            <button
+              key={p.id}
+              type="button"
+              class="btn"
+              disabled={added}
+              onClick={() => {
+                store.mergeSites(p.sites);
+                toast(`Added ${p.label}. Tick the checkbox yourself; the grid is solved for you`);
+              }}
+            >
+              <Icon name="plus" /> {added ? `${p.label} added` : p.label}
+            </button>
+          );
+        })}
+        <button type="button" class="btn" onClick={() => void configureGridPage()}>
+          <Icon name="target" /> Other image grid
+        </button>
+      </div>
       <p class="hint">
-        Note: Currently solves text and math captchas only (images, canvas, SVG). Puzzle, slider, and
-        Turnstile/reCAPTCHA challenges are not supported.
+        Solves distorted-text, math and image-grid captchas. Not Turnstile, invisible reCAPTCHA scoring, sliders or
+        audio.
       </p>
       {sites.length === 0 ? (
         <p class="empty">
-          No sites yet. Open a page with a text captcha and choose “Configure this page”; it takes two clicks.
+          No sites yet. On a page with a text captcha choose “Configure this page” (two clicks), or add the reCAPTCHA
+          preset above.
         </p>
       ) : (
         sites.map(([pattern, rule]) => (
@@ -228,7 +292,9 @@ function SitesTab() {
               {pattern} {pattern === here && <span class="chip ok">active here</span>}
             </div>
             <div class="sel">
-              {rule.captcha} → {rule.input}
+              {rule.kind === 'grid'
+                ? `grid: ${rule.captcha}${rule.tiles ? ` · tiles ${rule.tiles}` : ''}`
+                : `${rule.captcha} → ${rule.input}`}
             </div>
             <div class="acts">
               <input
@@ -279,7 +345,7 @@ function DataTab() {
       </div>
       <p class="hint">
         Shortcuts: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> solve now · <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>{' '}
-        configure this page.
+        configure this page · <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> configure an image grid (inside its frame).
       </p>
     </>
   );

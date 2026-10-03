@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Universal Captcha Solver
 // @namespace    https://github.com/quantavil/userscript
-// @version      2.1.0
+// @version      2.2.0
 // @description  Solve text, math and image-grid captchas on any site using AI vision models
 // @author       quantavil
 // @license      MIT
@@ -1724,7 +1724,7 @@
   }
 
   // src/config/schema.ts
-  var PROVIDER_IDS = ["gemini", "groq", "openai"];
+  var PROVIDER_IDS = ["gemini", "groq", "openrouter", "openai"];
   function isValidSelector(selector) {
     if (typeof document === "undefined")
       return true;
@@ -1759,7 +1759,7 @@
     provider: optional(providerId, "gemini"),
     keys: optional(record(providerId, string()), {}),
     models: optional(record(providerId, string()), {}),
-    openaiBaseUrl: optional(string(), "https://openrouter.ai/api/v1"),
+    openaiBaseUrl: optional(string(), ""),
     autoSolve: optional(boolean(), true),
     ui: optional(object({
       minimized: optional(boolean(), false),
@@ -1934,8 +1934,8 @@
     id: "gemini",
     label: "Google Gemini",
     keyHelpUrl: "https://aistudio.google.com/apikey",
-    defaultModel: "gemini-3.1-flash-lite",
-    suggestedModels: ["gemini-3.1-flash-lite", "gemini-3.5-flash"],
+    defaultModel: "gemini-3.5-flash-lite",
+    suggestedModels: ["gemini-3.5-flash-lite", "gemini-3.5-flash"],
     defaultBaseUrl: BASE,
     async complete(cfg, { image, prompt, signal }) {
       const model = cfg.model.replace(/^models\//, "");
@@ -1997,6 +1997,7 @@
   }
   var createOpenAICompat = (opts) => (http = gmHttp) => {
     const root = (baseUrl) => (baseUrl || opts.defaultBaseUrl).replace(/\/+$/, "");
+    const auth = (key) => key ? { authorization: `Bearer ${key}` } : {};
     return {
       id: opts.id,
       label: opts.label,
@@ -2004,12 +2005,13 @@
       defaultModel: opts.defaultModel,
       suggestedModels: opts.suggestedModels,
       defaultBaseUrl: opts.defaultBaseUrl,
+      keyOptional: opts.keyOptional,
       async complete(cfg, { image, prompt, signal }) {
         const extras = opts.extraBody?.(cfg.model) ?? {};
         const call = (withExtras) => http({
           method: "POST",
           url: `${root(cfg.baseUrl)}/chat/completions`,
-          headers: { "content-type": "application/json", authorization: `Bearer ${cfg.apiKey}` },
+          headers: { "content-type": "application/json", ...auth(cfg.apiKey) },
           body: JSON.stringify({
             model: cfg.model,
             temperature: 0,
@@ -2041,7 +2043,7 @@
         const res = await http({
           method: "GET",
           url: `${root(cfg.baseUrl)}/models`,
-          headers: { authorization: `Bearer ${cfg.apiKey}` },
+          headers: auth(cfg.apiKey),
           signal
         });
         const data = JSON.parse(res.text);
@@ -2065,16 +2067,30 @@
   });
 
   // src/providers/index.ts
-  var createGenericOpenAI = createOpenAICompat({
-    id: "openai",
-    label: "OpenAI-compatible",
+  var createOpenRouter = createOpenAICompat({
+    id: "openrouter",
+    label: "OpenRouter",
     keyHelpUrl: "https://openrouter.ai/keys",
     defaultModel: "",
     suggestedModels: [],
     defaultBaseUrl: "https://openrouter.ai/api/v1"
   });
+  var createCustomEndpoint = createOpenAICompat({
+    id: "openai",
+    label: "Custom endpoint",
+    keyHelpUrl: "",
+    defaultModel: "",
+    suggestedModels: [],
+    defaultBaseUrl: "",
+    keyOptional: true
+  });
   function createProviders(http) {
-    return { gemini: createGemini(http), groq: createGroq(http), openai: createGenericOpenAI(http) };
+    return {
+      gemini: createGemini(http),
+      groq: createGroq(http),
+      openrouter: createOpenRouter(http),
+      openai: createCustomEndpoint(http)
+    };
   }
   var providers = createProviders();
 
@@ -2975,6 +2991,17 @@
       }
     };
   }
+  function configProblem(provider, cfg) {
+    if (!cfg.baseUrl)
+      return "Enter the endpoint URL";
+    if (!cfg.apiKey && !provider.keyOptional)
+      return `Add a ${provider.label} API key`;
+    if (!cfg.model)
+      return "Choose a model";
+    return null;
+  }
+  var MAX_GRID_ROUNDS = 3;
+  var ROUND_GAP_MS = 30000;
   var humanDelay = () => 180 + Math.random() * 220;
   var textOf = (el) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
   function createController({
@@ -2982,12 +3009,15 @@
     registry,
     capture = captureImage,
     location: getLoc = () => window.location,
-    clickDelay = humanDelay
+    clickDelay = humanDelay,
+    now = Date.now
   }) {
     const status = y3({ phase: "idle", text: "Idle" });
     const match = y3(null);
     const present = y3(false);
     const guard = new RateGuard(5, 60000);
+    let rounds = 0;
+    let lastRound = 0;
     let runId = 0;
     let abort = null;
     let watch = null;
@@ -3001,20 +3031,28 @@
         return;
       const { rule } = current;
       if (trigger === "auto") {
+        if (rule.kind === "grid") {
+          const t4 = now();
+          if (t4 - lastRound > ROUND_GAP_MS)
+            rounds = 0;
+          lastRound = t4;
+          if (++rounds > MAX_GRID_ROUNDS) {
+            set({ phase: "paused", text: `Gave up after ${MAX_GRID_ROUNDS} rounds. Finish by hand or click Solve` });
+            return;
+          }
+        }
         if (!guard.allow()) {
           set({ phase: "paused", text: "Auto-solve paused (too many attempts). Click Solve" });
           return;
         }
       } else {
         guard.reset();
+        rounds = 0;
       }
       const { provider, cfg } = resolveProvider(store.settings.value, registry);
-      if (!cfg.apiKey) {
-        set({ phase: "error", text: `Add a ${provider.label} API key`, action: "settings" });
-        return;
-      }
-      if (!cfg.model) {
-        set({ phase: "error", text: "Choose a model", action: "settings" });
+      const problem = configProblem(provider, cfg);
+      if (problem) {
+        set({ phase: "error", text: problem, action: "settings" });
         return;
       }
       abort?.abort();
@@ -3122,6 +3160,7 @@
       watch = null;
       watched = active;
       present.value = false;
+      rounds = 0;
       abort?.abort();
       if (!active) {
         set({ phase: "idle", text: "Idle" });
@@ -3131,6 +3170,7 @@
       watch = watchCaptcha(() => watched, (el) => {
         present.value = Boolean(el);
         if (!el) {
+          rounds = 0;
           set({ phase: "idle", text: "Waiting for captcha…" });
           return;
         }
@@ -3197,6 +3237,32 @@
     kv.set(KEYS.sites, sites);
     kv.set(KEYS.migrated, true);
     return { sites: Object.keys(legacy).length, apiKey: Boolean(apiKey) };
+  }
+  var OPENROUTER = "openrouter.ai";
+  function migrateOpenRouter(kv) {
+    const raw = kv.get(KEYS.settings, null);
+    if (!raw || typeof raw !== "object")
+      return false;
+    const url = raw.openaiBaseUrl;
+    if (!(url === undefined || typeof url === "string" && url.includes(OPENROUTER)))
+      return false;
+    const keys = { ...raw.keys };
+    const models = { ...raw.models };
+    const moved = Boolean(keys.openai || raw.provider === "openai");
+    if (keys.openai && !keys.openrouter)
+      keys.openrouter = keys.openai;
+    if (models.openai && !models.openrouter)
+      models.openrouter = models.openai;
+    delete keys.openai;
+    delete models.openai;
+    kv.set(KEYS.settings, {
+      ...raw,
+      provider: raw.provider === "openai" ? "openrouter" : raw.provider,
+      keys,
+      models,
+      openaiBaseUrl: ""
+    });
+    return moved;
   }
 
   // src/dom/frame.ts
@@ -3396,6 +3462,26 @@
     }, undefined, false, undefined, this);
   }
 
+  // src/config/presets.ts
+  var recaptchaV2 = parse(SiteRuleSchema, {
+    kind: "grid",
+    captcha: 'img[class^="rc-image-tile-"]',
+    tiles: "td.rc-imageselect-tile",
+    instruction: ".rc-imageselect-desc-wrapper",
+    submit: "#recaptcha-verify-button",
+    gridSize: 0
+  });
+  var PRESETS = [
+    {
+      id: "recaptcha-v2",
+      label: "reCAPTCHA v2 image grid",
+      sites: {
+        "www.google.com/recaptcha/*": recaptchaV2,
+        "www.recaptcha.net/recaptcha/*": recaptchaV2
+      }
+    }
+  ];
+
   // src/flows/data.ts
   function exportSites(store2) {
     const payload = { app: "universal-captcha-solver", version: 2, sites: store2.sites.value };
@@ -3473,10 +3559,9 @@
     hint: ""
   };
   async function testProvider(provider, cfg) {
-    if (!cfg.apiKey)
-      return { ok: false, text: "Enter an API key first" };
-    if (!cfg.model)
-      return { ok: false, text: "Choose a model first" };
+    const problem = configProblem(provider, cfg);
+    if (problem)
+      return { ok: false, text: problem };
     const card = renderTestCard();
     const started = performance.now();
     try {
@@ -3607,9 +3692,11 @@
     const busy = useSignal("");
     const result = useSignal(null);
     const reveal = useSignal(false);
+    const custom = useSignal(false);
     A2(() => {
       models.value = [...provider.suggestedModels];
       result.value = null;
+      custom.value = false;
     }, [id]);
     const refreshModels = async () => {
       busy.value = "models";
@@ -3629,36 +3716,55 @@
       result.value = await testProvider(provider, cfg);
       busy.value = "";
     };
+    const canQuery = Boolean(cfg.baseUrl) && (Boolean(cfg.apiKey) || provider.keyOptional === true);
+    const options = models.value.includes(cfg.model) || !cfg.model ? models.value : [cfg.model, ...models.value];
+    const typing = custom.value || options.length === 0;
+    const OTHER = "\x00other";
     return /* @__PURE__ */ u4(x, {
       children: [
-        /* @__PURE__ */ u4("fieldset", {
-          class: "seg",
-          "aria-label": "Provider",
-          children: PROVIDER_IDS.map((p5) => /* @__PURE__ */ u4("button", {
-            type: "button",
-            "aria-pressed": p5 === id,
-            onClick: () => store.patchSettings({ provider: p5 }),
-            children: providers[p5].label
-          }, p5, false, undefined, this))
-        }, undefined, false, undefined, this),
+        /* @__PURE__ */ u4("div", {
+          class: "field",
+          children: [
+            /* @__PURE__ */ u4("label", {
+              for: "ucs-provider",
+              children: "Provider"
+            }, undefined, false, undefined, this),
+            /* @__PURE__ */ u4("select", {
+              id: "ucs-provider",
+              value: id,
+              onChange: (e4) => store.patchSettings({ provider: e4.currentTarget.value }),
+              children: PROVIDER_IDS.map((p5) => /* @__PURE__ */ u4("option", {
+                value: p5,
+                children: providers[p5].label
+              }, p5, false, undefined, this))
+            }, undefined, false, undefined, this)
+          ]
+        }, undefined, true, undefined, this),
         id === "openai" && /* @__PURE__ */ u4("div", {
           class: "field",
           children: [
             /* @__PURE__ */ u4("label", {
               for: "ucs-base",
-              children: "Base URL"
+              children: "Endpoint URL"
             }, undefined, false, undefined, this),
             /* @__PURE__ */ u4("input", {
               id: "ucs-base",
               type: "url",
               class: "mono",
+              placeholder: "http://localhost:11434/v1",
               value: settings.openaiBaseUrl,
               onInput: (e4) => store.patchSettings({ openaiBaseUrl: e4.currentTarget.value.trim() })
             }, undefined, false, undefined, this),
             /* @__PURE__ */ u4("p", {
               class: "hint",
-              children: "Any OpenAI-compatible endpoint: OpenRouter, OpenAI, Ollama (http://localhost:11434/v1), LM Studio…"
-            }, undefined, false, undefined, this)
+              children: [
+                "Any OpenAI-compatible ",
+                /* @__PURE__ */ u4("code", {
+                  children: "/v1"
+                }, undefined, false, undefined, this),
+                " base: OpenAI (https://api.openai.com/v1), Ollama, LM Studio, vLLM… Your userscript manager may ask once to allow the host."
+              ]
+            }, undefined, true, undefined, this)
           ]
         }, undefined, true, undefined, this),
         /* @__PURE__ */ u4("div", {
@@ -3666,8 +3772,11 @@
           children: [
             /* @__PURE__ */ u4("label", {
               for: "ucs-key",
-              children: "API key"
-            }, undefined, false, undefined, this),
+              children: [
+                "API key",
+                provider.keyOptional && " (optional)"
+              ]
+            }, undefined, true, undefined, this),
             /* @__PURE__ */ u4("div", {
               class: "row",
               children: [
@@ -3678,7 +3787,7 @@
                   autocomplete: "off",
                   spellcheck: false,
                   value: cfg.apiKey,
-                  placeholder: "Paste your key",
+                  placeholder: provider.keyOptional ? "Not needed for local servers" : "Paste your key",
                   onInput: (e4) => store.setApiKey(id, e4.currentTarget.value)
                 }, undefined, false, undefined, this),
                 /* @__PURE__ */ u4("button", {
@@ -3692,17 +3801,23 @@
             /* @__PURE__ */ u4("p", {
               class: "hint",
               children: [
-                /* @__PURE__ */ u4("a", {
-                  href: provider.keyHelpUrl,
-                  target: "_blank",
-                  rel: "noreferrer noopener",
+                provider.keyHelpUrl && /* @__PURE__ */ u4(x, {
                   children: [
-                    "Get a ",
-                    provider.label,
-                    " key"
+                    /* @__PURE__ */ u4("a", {
+                      href: provider.keyHelpUrl,
+                      target: "_blank",
+                      rel: "noreferrer noopener",
+                      children: [
+                        "Get a ",
+                        provider.label,
+                        " key"
+                      ]
+                    }, undefined, true, undefined, this),
+                    ".",
+                    " "
                   ]
                 }, undefined, true, undefined, this),
-                ". Stored by your userscript manager; sent only to the provider."
+                "Stored by your userscript manager; sent only to the provider."
               ]
             }, undefined, true, undefined, this)
           ]
@@ -3717,35 +3832,56 @@
             /* @__PURE__ */ u4("div", {
               class: "row",
               children: [
-                /* @__PURE__ */ u4("input", {
+                typing ? /* @__PURE__ */ u4("input", {
                   id: "ucs-model",
                   class: "grow mono",
                   type: "text",
-                  list: "ucs-models",
                   autocomplete: "off",
                   spellcheck: false,
                   value: cfg.model,
-                  placeholder: provider.defaultModel || "model id",
+                  placeholder: provider.defaultModel || "model id, e.g. gpt-4o-mini",
                   onInput: (e4) => store.setModel(id, e4.currentTarget.value)
-                }, undefined, false, undefined, this),
-                /* @__PURE__ */ u4("datalist", {
-                  id: "ucs-models",
-                  children: models.value.map((m3) => /* @__PURE__ */ u4("option", {
-                    value: m3
-                  }, m3, false, undefined, this))
-                }, undefined, false, undefined, this),
+                }, undefined, false, undefined, this) : /* @__PURE__ */ u4("select", {
+                  id: "ucs-model",
+                  class: "grow mono",
+                  value: cfg.model,
+                  onChange: (e4) => {
+                    const value = e4.currentTarget.value;
+                    if (value === OTHER)
+                      custom.value = true;
+                    else
+                      store.setModel(id, value);
+                  },
+                  children: [
+                    options.map((m3) => /* @__PURE__ */ u4("option", {
+                      value: m3,
+                      children: [
+                        m3,
+                        m3 === provider.defaultModel ? " (default)" : ""
+                      ]
+                    }, m3, true, undefined, this)),
+                    /* @__PURE__ */ u4("option", {
+                      value: OTHER,
+                      children: "Other…"
+                    }, undefined, false, undefined, this)
+                  ]
+                }, undefined, true, undefined, this),
                 /* @__PURE__ */ u4("button", {
                   type: "button",
                   class: "btn sm",
-                  disabled: !cfg.apiKey || busy.value !== "",
-                  onClick: () => void refreshModels(),
+                  disabled: !canQuery || busy.value !== "",
+                  title: canQuery ? "Load the models this account can use" : "Fill in the key / URL first",
+                  onClick: () => {
+                    custom.value = false;
+                    refreshModels();
+                  },
                   children: busy.value === "models" ? "…" : "Fetch list"
                 }, undefined, false, undefined, this)
               ]
             }, undefined, true, undefined, this),
             /* @__PURE__ */ u4("p", {
               class: "hint",
-              children: "Providers retire models often. If solving starts failing with “model not found”, fetch the list and pick a current vision model."
+              children: "Pick a vision model. Providers retire models often: on “model not found”, fetch the list and choose another."
             }, undefined, false, undefined, this)
           ]
         }, undefined, true, undefined, this),
@@ -3816,13 +3952,48 @@
             }, undefined, true, undefined, this)
           ]
         }, undefined, true, undefined, this),
+        /* @__PURE__ */ u4("div", {
+          class: "row",
+          children: [
+            PRESETS.map((p5) => {
+              const added = Object.keys(p5.sites).every((k2) => (k2 in store.sites.value));
+              return /* @__PURE__ */ u4("button", {
+                type: "button",
+                class: "btn",
+                disabled: added,
+                onClick: () => {
+                  store.mergeSites(p5.sites);
+                  toast(`Added ${p5.label}. Tick the checkbox yourself; the grid is solved for you`);
+                },
+                children: [
+                  /* @__PURE__ */ u4(Icon, {
+                    name: "plus"
+                  }, undefined, false, undefined, this),
+                  " ",
+                  added ? `${p5.label} added` : p5.label
+                ]
+              }, p5.id, true, undefined, this);
+            }),
+            /* @__PURE__ */ u4("button", {
+              type: "button",
+              class: "btn",
+              onClick: () => void configureGridPage(),
+              children: [
+                /* @__PURE__ */ u4(Icon, {
+                  name: "target"
+                }, undefined, false, undefined, this),
+                " Other image grid"
+              ]
+            }, undefined, true, undefined, this)
+          ]
+        }, undefined, true, undefined, this),
         /* @__PURE__ */ u4("p", {
           class: "hint",
-          children: "Note: Currently solves text and math captchas only (images, canvas, SVG). Puzzle, slider, and Turnstile/reCAPTCHA challenges are not supported."
+          children: "Solves distorted-text, math and image-grid captchas. Not Turnstile, invisible reCAPTCHA scoring, sliders or audio."
         }, undefined, false, undefined, this),
         sites.length === 0 ? /* @__PURE__ */ u4("p", {
           class: "empty",
-          children: "No sites yet. Open a page with a text captcha and choose “Configure this page”; it takes two clicks."
+          children: "No sites yet. On a page with a text captcha choose “Configure this page” (two clicks), or add the reCAPTCHA preset above."
         }, undefined, false, undefined, this) : sites.map(([pattern, rule]) => /* @__PURE__ */ u4("div", {
           class: `site${rule.enabled ? "" : " off"}`,
           children: [
@@ -3839,12 +4010,8 @@
             }, undefined, true, undefined, this),
             /* @__PURE__ */ u4("div", {
               class: "sel",
-              children: [
-                rule.captcha,
-                " → ",
-                rule.input
-              ]
-            }, undefined, true, undefined, this),
+              children: rule.kind === "grid" ? `grid: ${rule.captcha}${rule.tiles ? ` · tiles ${rule.tiles}` : ""}` : `${rule.captcha} → ${rule.input}`
+            }, undefined, false, undefined, this),
             /* @__PURE__ */ u4("div", {
               class: "acts",
               children: [
@@ -3941,7 +4108,19 @@
               children: "C"
             }, undefined, false, undefined, this),
             " ",
-            "configure this page."
+            "configure this page · ",
+            /* @__PURE__ */ u4("kbd", {
+              children: "Alt"
+            }, undefined, false, undefined, this),
+            "+",
+            /* @__PURE__ */ u4("kbd", {
+              children: "Shift"
+            }, undefined, false, undefined, this),
+            "+",
+            /* @__PURE__ */ u4("kbd", {
+              children: "G"
+            }, undefined, false, undefined, this),
+            " configure an image grid (inside its frame)."
           ]
         }, undefined, true, undefined, this)
       ]
@@ -4453,9 +4632,6 @@ input:focus, select:focus { background: var(--bg); border-color: var(--accent); 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips button { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 2px 10px; font-size: 12px; }
 .chips button:hover { background: var(--bg-sub); }
-.seg { border: 0; margin: 0; min-width: 0; display: grid; grid-auto-flow: column; gap: 4px; padding: 3px; border-radius: 10px; background: var(--bg-sub); }
-.seg button { height: 28px; border: 0; border-radius: 8px; background: none; font-weight: 500; color: var(--fg-dim); }
-.seg button[aria-pressed='true'] { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
 .check { display: flex; gap: 8px; align-items: center; }
 .check input { width: 16px; height: 16px; accent-color: var(--accent); }
 details summary { cursor: pointer; font-weight: 500; color: var(--fg-dim); }
@@ -4662,7 +4838,8 @@ details[open] summary { margin-bottom: 10px; }
   // src/main.ts
   function main() {
     const migrated = migrateV1(gmKV);
-    if (migrated.sites || migrated.apiKey)
+    const movedToOpenRouter = migrateOpenRouter(gmKV);
+    if (migrated.sites || migrated.apiKey || movedToOpenRouter)
       store.reload();
     const open = (fn) => () => {
       mountUI();

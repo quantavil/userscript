@@ -1,6 +1,6 @@
 {
   "name": "universal-captcha-solver",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Solve text, math and image-grid captchas on any site using AI vision models",
   "type": "module",
   "private": true,

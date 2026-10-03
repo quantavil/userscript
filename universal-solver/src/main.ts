@@ -1,6 +1,6 @@
 import { effect } from '@preact/signals';
 import { controller, store } from './app.ts';
-import { migrateV1 } from './config/migrate.ts';
+import { migrateOpenRouter, migrateV1 } from './config/migrate.ts';
 import { gmKV, KEYS } from './config/store.ts';
 import { IN_FRAME } from './dom/frame.ts';
 import { configureCurrentPage, configureGridPage } from './flows/setup.ts';
@@ -9,7 +9,8 @@ import { settingsTab, toast } from './ui/state.ts';
 
 function main(): void {
   const migrated = migrateV1(gmKV);
-  if (migrated.sites || migrated.apiKey) store.reload();
+  const movedToOpenRouter = migrateOpenRouter(gmKV);
+  if (migrated.sites || migrated.apiKey || movedToOpenRouter) store.reload();
 
   const open = (fn: () => void) => () => {
     mountUI();

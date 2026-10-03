@@ -1,6 +1,7 @@
 import type { SiteRule } from '../config/schema.ts';
 import type { Provider, ProviderConfig } from '../providers/types.ts';
 import { buildPrompt, normalizeAnswer } from './answer.ts';
+import { configProblem } from './controller.ts';
 import { explainError } from './errors.ts';
 
 const ALPHABET = 'ACDEFGHJKLMNPRTUVWXY34679'; // no look-alikes (0/O, 1/I, 5/S, 2/Z, 8/B)
@@ -50,8 +51,8 @@ const RULE: Pick<SiteRule, 'kind' | 'charset' | 'caseMode' | 'minLength' | 'maxL
 };
 
 export async function testProvider(provider: Provider, cfg: ProviderConfig): Promise<TestResult> {
-  if (!cfg.apiKey) return { ok: false, text: 'Enter an API key first' };
-  if (!cfg.model) return { ok: false, text: 'Choose a model first' };
+  const problem = configProblem(provider, cfg);
+  if (problem) return { ok: false, text: problem };
   const card = renderTestCard();
   const started = performance.now();
   try {

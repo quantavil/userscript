@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { migrateV1 } from '../src/config/migrate.ts';
+import { findBestRule } from '../src/config/match.ts';
+import { migrateOpenRouter, migrateV1 } from '../src/config/migrate.ts';
+import { PRESETS } from '../src/config/presets.ts';
 import { createStore, KEYS, type KV } from '../src/config/store.ts';
 
 const memoryKV = (seed: Record<string, unknown> = {}): KV & { data: Map<string, unknown> } => {
@@ -95,5 +97,46 @@ describe('v1 migration', () => {
     const kv = memoryKV({ gemini_api_key: JSON.stringify({ captchaSelector: 'a', inputSelector: 'b' }) });
     migrateV1(kv);
     expect(Object.keys(createStore(kv).sites.value)).not.toContain('gemini_api_key');
+  });
+});
+
+describe('OpenRouter split (v2.0 -> v2.1)', () => {
+  test('a v2.0 "OpenAI-compatible" user on the OpenRouter default moves to the OpenRouter provider', () => {
+    const kv = memoryKV({
+      [KEYS.settings]: {
+        provider: 'openai',
+        keys: { openai: 'sk-or', gemini: 'G' },
+        models: { openai: 'qwen/qwen3-vl' },
+        openaiBaseUrl: 'https://openrouter.ai/api/v1',
+      },
+    });
+    expect(migrateOpenRouter(kv)).toBe(true);
+    const s = createStore(kv).settings.value;
+    expect(s.provider).toBe('openrouter');
+    expect(s.keys).toEqual({ gemini: 'G', openrouter: 'sk-or' });
+    expect(s.models.openrouter).toBe('qwen/qwen3-vl');
+    expect(s.openaiBaseUrl).toBe('');
+    expect(migrateOpenRouter(kv)).toBe(false); // idempotent
+  });
+  test('a real custom endpoint is left alone', () => {
+    const settings = { provider: 'openai', keys: { openai: 'x' }, openaiBaseUrl: 'http://localhost:11434/v1' };
+    const kv = memoryKV({ [KEYS.settings]: settings });
+    expect(migrateOpenRouter(kv)).toBe(false);
+    expect(kv.data.get(KEYS.settings)).toEqual(settings);
+  });
+});
+
+describe('reCAPTCHA v2 preset', () => {
+  const { sites } = PRESETS[0] as (typeof PRESETS)[number];
+  const at = (host: string, pathname: string) => findBestRule(sites, { hostname: host, host, pathname });
+  test('matches the challenge frame on both Google hosts, api2 and enterprise', () => {
+    expect(at('www.google.com', '/recaptcha/api2/bframe')?.rule.kind).toBe('grid');
+    expect(at('www.google.com', '/recaptcha/enterprise/bframe')).not.toBeNull();
+    expect(at('www.recaptcha.net', '/recaptcha/api2/bframe')).not.toBeNull();
+    expect(at('www.google.com', '/search')).toBeNull();
+  });
+  test('needs no answer box and auto-sizes the grid', () => {
+    const rule = sites['www.google.com/recaptcha/*'];
+    expect(rule).toMatchObject({ input: '', gridSize: 0, submit: '#recaptcha-verify-button' });
   });
 });

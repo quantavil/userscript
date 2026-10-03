@@ -235,6 +235,16 @@ describe('controller', () => {
       expect(ctl.status.value).toMatchObject({ phase: 'solved', answer: 'No matching tiles' });
     });
 
+    test('auto mode gives up after 3 rounds of the same challenge; a manual Solve continues', async () => {
+      const { ctl, clicks } = grid('{"tiles":[1]}');
+      for (let i = 0; i < 4; i++) await ctl.solve('auto');
+      expect(ctl.status.value).toMatchObject({ phase: 'paused' });
+      expect(ctl.status.value.text).toMatch(/Gave up after 3 rounds/);
+      expect(clicks.filter((c) => c === 'verify')).toHaveLength(3);
+      await ctl.solve('manual');
+      expect(ctl.status.value.phase).toBe('solved');
+    });
+
     test('a tile count that does not fit the grid is an error, nothing is clicked', async () => {
       const { ctl, clicks } = grid('{"tiles":[1]}', { gridSize: 4 });
       await ctl.solve('manual');

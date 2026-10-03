@@ -41,6 +41,14 @@ export function resolveProvider(
   };
 }
 
+/** What's missing before a request can be made, or null. */
+export function configProblem(provider: Provider, cfg: ProviderConfig): string | null {
+  if (!cfg.baseUrl) return 'Enter the endpoint URL';
+  if (!cfg.apiKey && !provider.keyOptional) return `Add a ${provider.label} API key`;
+  if (!cfg.model) return 'Choose a model';
+  return null;
+}
+
 export interface ControllerDeps {
   store: Store;
   registry: Record<ProviderId, Provider>;
@@ -48,7 +56,13 @@ export interface ControllerDeps {
   location?: () => LocationLike;
   /** Pause between synthetic tile clicks; randomised so it doesn't look scripted. */
   clickDelay?: () => number;
+  now?: () => number;
 }
+
+/** Grid challenges chain rounds ("Next", or a fresh grid after a miss). Give up after this many. */
+export const MAX_GRID_ROUNDS = 3;
+/** A round starting longer than this after the previous one is a new challenge, not a follow-up. */
+const ROUND_GAP_MS = 30_000;
 
 const humanDelay = () => 180 + Math.random() * 220;
 const textOf = (el: Element | null) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
@@ -59,6 +73,7 @@ export function createController({
   capture = captureImage,
   location: getLoc = () => window.location,
   clickDelay = humanDelay,
+  now = Date.now,
 }: ControllerDeps) {
   const status = signal<Status>({ phase: 'idle', text: 'Idle' });
   const match = signal<RuleMatch | null>(null);
@@ -67,6 +82,8 @@ export function createController({
   // 5 automatic attempts per minute; manual clicks reset the breaker.
   const guard = new RateGuard(5, 60_000);
 
+  let rounds = 0;
+  let lastRound = 0;
   let runId = 0;
   let abort: AbortController | null = null;
   let watch: Watch | null = null;
@@ -82,21 +99,28 @@ export function createController({
     const { rule } = current;
 
     if (trigger === 'auto') {
+      if (rule.kind === 'grid') {
+        const t = now();
+        if (t - lastRound > ROUND_GAP_MS) rounds = 0;
+        lastRound = t;
+        if (++rounds > MAX_GRID_ROUNDS) {
+          set({ phase: 'paused', text: `Gave up after ${MAX_GRID_ROUNDS} rounds. Finish by hand or click Solve` });
+          return;
+        }
+      }
       if (!guard.allow()) {
         set({ phase: 'paused', text: 'Auto-solve paused (too many attempts). Click Solve' });
         return;
       }
     } else {
       guard.reset();
+      rounds = 0;
     }
 
     const { provider, cfg } = resolveProvider(store.settings.value, registry);
-    if (!cfg.apiKey) {
-      set({ phase: 'error', text: `Add a ${provider.label} API key`, action: 'settings' });
-      return;
-    }
-    if (!cfg.model) {
-      set({ phase: 'error', text: 'Choose a model', action: 'settings' });
+    const problem = configProblem(provider, cfg);
+    if (problem) {
+      set({ phase: 'error', text: problem, action: 'settings' });
       return;
     }
 
@@ -222,6 +246,7 @@ export function createController({
     watch = null;
     watched = active;
     present.value = false;
+    rounds = 0;
     abort?.abort();
     if (!active) {
       set({ phase: 'idle', text: 'Idle' });
@@ -234,6 +259,7 @@ export function createController({
       (el) => {
         present.value = Boolean(el);
         if (!el) {
+          rounds = 0;
           set({ phase: 'idle', text: 'Waiting for captcha…' });
           return;
         }

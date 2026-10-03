@@ -35,8 +35,8 @@ export const createGemini = (http: Http = gmHttp): Provider => ({
   id: 'gemini',
   label: 'Google Gemini',
   keyHelpUrl: 'https://aistudio.google.com/apikey',
-  defaultModel: 'gemini-3.1-flash-lite',
-  suggestedModels: ['gemini-3.1-flash-lite', 'gemini-3.5-flash'],
+  defaultModel: 'gemini-3.5-flash-lite',
+  suggestedModels: ['gemini-3.5-flash-lite', 'gemini-3.5-flash'],
   defaultBaseUrl: BASE,
 
   async complete(cfg, { image, prompt, signal }) {

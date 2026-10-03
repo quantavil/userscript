@@ -1,6 +1,6 @@
 import * as v from 'valibot';
 
-export const PROVIDER_IDS = ['gemini', 'groq', 'openai'] as const;
+export const PROVIDER_IDS = ['gemini', 'groq', 'openrouter', 'openai'] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 /** Syntax-only check; returns true outside a DOM (unit tests, workers). */
@@ -65,8 +65,8 @@ export const SettingsSchema = v.object({
   provider: v.optional(providerId, 'gemini'),
   keys: v.optional(v.record(providerId, v.string()), {}),
   models: v.optional(v.record(providerId, v.string()), {}),
-  /** Only used by the generic OpenAI-compatible provider. */
-  openaiBaseUrl: v.optional(v.string(), 'https://openrouter.ai/api/v1'),
+  /** Only used by the custom OpenAI-compatible endpoint (`openai`). */
+  openaiBaseUrl: v.optional(v.string(), ''),
   autoSolve: v.optional(v.boolean(), true),
   ui: v.optional(
     v.object({
