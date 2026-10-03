@@ -28,6 +28,7 @@ The reel is its **own full-screen view** (shadow DOM, own CSS), not a restyle of
 | App nags | Mobile Reddit points post, user and subreddit links at `applink.reddit.com`, an App Link that launches the Reddit app. They are rewritten to `www.reddit.com` (tracking params dropped), and the header **Open App** button is hidden. |
 | Comments | Opens Reddit's post page (new Reddit) in a new tab, so the reel keeps its place. |
 | Memory | Only the active slide and its neighbours hold images/iframes; far slides are emptied. |
+| Landscape | On a phone held sideways, video slides hide the close button, subreddit, title, rail and seek bar (opacity only, so swiping stays smooth). A tap brings them back for 3 s; they stay while paused. Rotating keeps the same slide in view. |
 | Swiping | The slide switches only after the scroll settles, and live UI (seek bar, spinner, pulses) sits in a fixed layer above the track. Changing layout inside a scroll-snap track mid-swipe makes browsers snap back, which felt like "swipe twice". |
 
 ## Controls
@@ -38,6 +39,7 @@ The reel is its **own full-screen view** (shadow DOM, own CSS), not a restyle of
 | Tap | Play / pause (first tap after a blocked autoplay turns sound on; a ▶ shows when the browser blocked autoplay entirely) |
 | Double tap | Upvote |
 | Tap a long text post / **Read more** | Reader sheet (Back / `Esc` / ✕ closes it) |
+| Rotate the phone (video) | Immersive: only the video; tap shows the controls for 3 s, the next tap plays/pauses |
 | Drag the bottom bar | Seek |
 | `←` `→` | Gallery image, or seek ±5 s |
 | Space | Play / pause |

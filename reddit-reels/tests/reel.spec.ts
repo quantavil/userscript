@@ -198,3 +198,66 @@ test('long text posts fade out; Read more opens a reader that Back and Esc close
   await expect(reel(page)).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => !!history.state?.rrReel || !!history.state?.rrReader)).toBe(false);
 });
+
+test('landscape: video chrome hides, a tap shows it for a few seconds, rotation keeps the slide', async ({ page }) => {
+  await openReel(page);
+  await swipe(page, 1);
+  await expect(inReel(page, '.slide[data-index="1"]')).toHaveClass(/active/);
+  const opacity = (sel: string) =>
+    page.evaluate(
+      (s) => getComputedStyle(document.querySelector('#rr-reel-host')!.shadowRoot!.querySelector(s) as HTMLElement).opacity,
+      sel,
+    );
+
+  await page.setViewportSize({ width: 915, height: 412 });
+  const r = inReel(page, '.reel');
+  await expect(r).toHaveClass(/immersive/);
+  await expect.poll(() => opacity('.top')).toBe('0');
+  await expect.poll(() => opacity('.slide.active .rail')).toBe('0');
+  // Same slide after rotating: scrollTop follows the new slide height.
+  expect(
+    await page.evaluate(() => {
+      const t = document.querySelector('#rr-reel-host')!.shadowRoot!.querySelector('.track') as HTMLElement;
+      return t.scrollTop / t.clientHeight;
+    }),
+  ).toBe(1);
+
+  // First tap: controls only (video keeps its state).
+  const paused = () =>
+    page.evaluate(() => (document.querySelector('#rr-reel-host')!.shadowRoot!.querySelector('video') as HTMLVideoElement).paused);
+  const before = await paused();
+  await page.mouse.click(300, 200);
+  await expect(r).toHaveClass(/chrome-on/);
+  await expect.poll(() => opacity('.top')).toBe('1');
+  expect(await paused()).toBe(before);
+
+  // Text slides keep their chrome in landscape.
+  await page.keyboard.press('j');
+  await page.keyboard.press('j');
+  await page.keyboard.press('j');
+  await expect(inReel(page, '.slide.kind-text.active, .slide.kind-image.active, .slide.kind-gallery.active')).toHaveCount(1);
+  await expect(r).not.toHaveClass(/immersive/);
+
+  // Back to portrait: never immersive.
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.keyboard.press('k');
+  await page.keyboard.press('k');
+  await page.keyboard.press('k');
+  await expect(inReel(page, '.slide[data-index="1"]')).toHaveClass(/active/);
+  await expect(r).not.toHaveClass(/immersive/);
+});
+
+test('landscape: controls fade out again on their own while playing', async ({ page }) => {
+  await openReel(page);
+  await page.evaluate(() => {
+    const v = document.querySelector('#rr-reel-host')!.shadowRoot!.querySelector('video') as HTMLVideoElement;
+    // Bundled Chromium can't decode H.264: pretend it's playing.
+    Object.defineProperty(v, 'paused', { get: () => false });
+  });
+  await page.setViewportSize({ width: 915, height: 412 });
+  const r = inReel(page, '.reel');
+  await expect(r).toHaveClass(/immersive/);
+  await page.mouse.click(300, 200);
+  await expect(r).toHaveClass(/chrome-on/);
+  await expect(r).not.toHaveClass(/chrome-on/, { timeout: 5000 });
+});

@@ -876,7 +876,8 @@ a:focus-visible {
   color: #d7dadc;
   font-size: 14px;
   display: none;
-  pointer-events: auto;
+  /* Only the link takes taps; around it, a tap still reaches the slide. */
+  pointer-events: none;
 }
 
 .reel.errored .error {
@@ -885,6 +886,7 @@ a:focus-visible {
 
 .error a {
   color: #ff4500;
+  pointer-events: auto;
 }
 
 .toast {
@@ -948,4 +950,36 @@ a:focus-visible {
 .slide.kind-text .info .title,
 .slide.kind-link .info .title {
   display: none;
+}
+
+/* ---------- Landscape phone, video slide: immersive ----------
+   Chrome fades out (opacity only: nothing may change layout inside the track);
+   a tap brings it back for a few seconds. */
+.top,
+.info,
+.rail,
+.shade,
+.seek {
+  transition: opacity 0.25s ease;
+}
+
+.reel.immersive:not(.chrome-on) .top,
+.reel.immersive:not(.chrome-on) .info,
+.reel.immersive:not(.chrome-on) .rail,
+.reel.immersive:not(.chrome-on) .shade,
+.reel.immersive:not(.chrome-on) .seek,
+.reel.immersive:not(.chrome-on) .unmute-hint {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.reel.immersive:not(.chrome-on) .top button,
+.reel.immersive:not(.chrome-on) .rail button,
+.reel.immersive:not(.chrome-on) .info a {
+  pointer-events: none;
+}
+
+/* A tall video on a wide screen: show all of it unless "fill" was chosen. */
+.reel.immersive:not(.fill) .slide.portrait .media > video {
+  object-fit: contain;
 }

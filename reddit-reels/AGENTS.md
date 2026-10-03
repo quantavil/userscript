@@ -10,6 +10,7 @@ Guidance for work on **Reddit Reels** (`reddit-reels`). Read README.md first for
 - **Iframes only on the active slide.** YouTube/Streamable embeds and the RedGifs fallback can't be paused reliably; they are mounted for the active slide only and removed on leave.
 - **Mount radius.** Only slides within `MOUNT_RADIUS` of the active one keep images/iframes/backdrops. Keep it small; phones run out of memory.
 - **Text slides don't scroll.** A nested scroller swallows the swipe to the next post. Long bodies fade out; the reader sheet (outside the track, own history entry `rrReader`) shows the full text. Closing the reel with the reader open pops both entries.
+- **Landscape = immersive for video.** `(orientation: landscape) and (pointer: coarse) and (max-height: 600px)` + a video slide adds `.immersive`; chrome hides with opacity/pointer-events only (never `display`, which would change layout in the track). First tap shows it (`.chrome-on`, 3 s, kept while paused); on resize the track is re-aligned to the active slide.
 - **Nothing changes inside the track mid-swipe.** Measured with real touch flicks: any layout change inside the scroll-snap track during a swipe makes Chrome re-snap to the old slide ("swipe twice", "same post again"). Live UI (seek bar, time, spinner, ▶, pulses, errors, unmute hint) lives in the fixed `.hud`; the seek bar animates with `transform` only; slide activation runs on scroll settle (`scrollend` + 120 ms fallback), not on IntersectionObserver. Images inside slides need fixed boxes.
 
 ## Data

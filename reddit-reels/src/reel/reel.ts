@@ -25,6 +25,9 @@ const MOUNT_RADIUS = 1;
 const LOAD_AHEAD = 5;
 const TAP_MS = 260;
 const SETTLE_MS = 120;
+const CHROME_MS = 3000;
+/** Phone on its side: videos go immersive (chrome hidden until a tap). */
+const LANDSCAPE_MQ = '(orientation: landscape) and (pointer: coarse) and (max-height: 600px)';
 
 export interface ReelOptions {
   source: FeedSource;
@@ -56,6 +59,8 @@ export class Reel {
   private lastTap = 0;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
+  private chromeTimer: ReturnType<typeof setTimeout> | null = null;
+  private landscape = typeof matchMedia === 'function' ? matchMedia(LANDSCAPE_MQ) : null;
   private votes = new Map<string, 1 | 0 | -1>();
   private readerEl!: HTMLElement;
   private readerPost: Post | null = null;
@@ -143,6 +148,7 @@ export class Reel {
     if (this.settleTimer) clearTimeout(this.settleTimer);
     if (this.tapTimer) clearTimeout(this.tapTimer);
     if (this.toastTimer) clearTimeout(this.toastTimer);
+    if (this.chromeTimer) clearTimeout(this.chromeTimer);
     this.host.remove();
   }
 
@@ -240,6 +246,7 @@ export class Reel {
     } else {
       this.player.stop();
     }
+    this.syncImmersive();
     this.player.preload(posts[i + 1]);
 
     // Keep the feed flowing.
@@ -314,12 +321,31 @@ export class Reel {
       }
     });
     this.wireSeek();
+
+    // Rotation: show/hide the chrome, and keep the same slide in view (slide
+    // height changes, so the old scrollTop would land between two slides).
+    const onOrientation = () => this.syncImmersive();
+    this.landscape?.addEventListener('change', onOrientation);
+    this.cleanup.push(() => this.landscape?.removeEventListener('change', onOrientation));
+    let resizeFrame = 0;
+    const onResize = () => {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        if (this.active >= 0) this.track.scrollTop = this.active * this.track.clientHeight;
+      });
+    };
+    window.addEventListener('resize', onResize);
+    this.cleanup.push(() => {
+      cancelAnimationFrame(resizeFrame);
+      window.removeEventListener('resize', onResize);
+    });
   }
 
   private onClick(e: MouseEvent): void {
     const target = e.composedPath()[0] as HTMLElement;
     const btn = target.closest?.('[data-action]') as HTMLElement | null;
     if (btn) {
+      if (this.el.classList.contains('immersive')) this.showChrome();
       e.preventDefault();
       this.runAction(btn.dataset.action || '', btn);
       return;
@@ -361,7 +387,15 @@ export class Reel {
 
   private singleTap(): void {
     const post = this.activePost;
-    if (!post || !isVideoKind(post) || this.el.classList.contains('errored')) return;
+    if (!post || !isVideoKind(post)) return;
+    // Landscape: the first tap only brings the controls back (also when the
+    // video failed: the close button and rail must stay reachable).
+    if (this.el.classList.contains('immersive')) {
+      const hidden = !this.el.classList.contains('chrome-on');
+      this.showChrome();
+      if (hidden) return;
+    }
+    if (this.el.classList.contains('errored')) return;
     this.setState({ blocked: false });
     const playing = this.player.toggle();
     this.pulse(playing ? ICONS.play : ICONS.pause);
@@ -452,6 +486,34 @@ export class Reel {
       e.preventDefault();
       e.stopPropagation();
     }
+  }
+
+  // ---------- landscape (immersive) ----------
+
+  /** Videos in landscape hide everything but the picture; text/image slides keep their chrome. */
+  private syncImmersive(): void {
+    const post = this.activePost;
+    const on = !!this.landscape?.matches && !!post && isVideoKind(post);
+    this.el.classList.toggle('immersive', on);
+    if (!on) this.hideChrome();
+  }
+
+  /** Controls visible for a few seconds; any further tap or button press restarts the clock. */
+  private showChrome(): void {
+    this.el.classList.add('chrome-on');
+    if (this.chromeTimer) clearTimeout(this.chromeTimer);
+    this.chromeTimer = setTimeout(() => {
+      this.chromeTimer = null;
+      // Keep them up while paused or dragging the seek bar.
+      if (this.player.video.paused || this.seek.classList.contains('dragging')) this.showChrome();
+      else this.el.classList.remove('chrome-on');
+    }, CHROME_MS);
+  }
+
+  private hideChrome(): void {
+    if (this.chromeTimer) clearTimeout(this.chromeTimer);
+    this.chromeTimer = null;
+    this.el.classList.remove('chrome-on');
   }
 
   // ---------- reader sheet (outside the track) ----------
