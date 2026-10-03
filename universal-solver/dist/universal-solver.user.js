@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Universal Captcha Solver
 // @namespace    https://github.com/quantavil/userscript
-// @version      2.4.0
+// @version      2.4.1
 // @description  Solve text, math, image-grid and audio captchas on any site using AI vision and speech-to-text models
 // @author       quantavil
 // @license      GPL-3.0-or-later
@@ -25,7 +25,7 @@
 // @connect      127.0.0.1
 // ==/UserScript==
 
-// Universal Captcha Solver 2.4.0. Copyright (C) quantavil.
+// Universal Captcha Solver 2.4.1. Copyright (C) quantavil.
 // Licensed under GPL-3.0-or-later: https://github.com/quantavil/userscript/blob/main/universal-solver/LICENSE
 // This program comes with ABSOLUTELY NO WARRANTY.
 (() => {
@@ -4098,7 +4098,8 @@
     },
     {
       id: "hcaptcha",
-      label: "hCaptcha grid (experimental)",
+      label: "hCaptcha",
+      experimental: true,
       sites: { "newassets.hcaptcha.com": hcaptcha }
     }
   ];
@@ -4226,6 +4227,7 @@
     minus: "M5 12h14",
     x: "M18 6 6 18M6 6l12 12",
     plus: "M12 5v14M5 12h14",
+    check: "M20 6 9 17l-5-5",
     pencil: "M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z",
     trash: "M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2",
     target: "M22 12h-4M6 12H2M12 6V2M12 22v-4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
@@ -4610,7 +4612,7 @@
     return /* @__PURE__ */ u4(x, {
       children: [
         /* @__PURE__ */ u4("div", {
-          class: "row",
+          class: "row wrap",
           children: [
             /* @__PURE__ */ u4("button", {
               type: "button",
@@ -4636,49 +4638,63 @@
             }, undefined, true, undefined, this)
           ]
         }, undefined, true, undefined, this),
-        /* @__PURE__ */ u4("div", {
-          class: "row",
+        /* @__PURE__ */ u4("section", {
+          class: "group",
+          "aria-labelledby": "ucs-presets",
           children: [
-            PRESETS.map((p5) => {
-              const state = presetState(p5, store.sites.value);
-              return /* @__PURE__ */ u4("button", {
-                type: "button",
-                class: "btn",
-                disabled: state === "current",
-                title: state === "outdated" ? "Newer selectors available; your on/off, auto and audio choices are kept" : "",
-                onClick: () => {
-                  store.mergeSites(presetRules(p5, store.sites.value));
-                  toast(state === "outdated" ? `Updated ${p5.label}` : `Added ${p5.label}. Tick the checkbox yourself; the challenge is solved for you`);
-                },
-                children: [
-                  /* @__PURE__ */ u4(Icon, {
-                    name: "plus"
-                  }, undefined, false, undefined, this),
-                  " ",
-                  state === "current" ? `${p5.label} added` : state === "outdated" ? `Update ${p5.label}` : p5.label
-                ]
-              }, p5.id, true, undefined, this);
-            }),
-            /* @__PURE__ */ u4("button", {
-              type: "button",
-              class: "btn",
-              onClick: () => void configureGridPage(),
+            /* @__PURE__ */ u4("h3", {
+              id: "ucs-presets",
+              class: "sub",
+              children: "Image-grid captchas"
+            }, undefined, false, undefined, this),
+            /* @__PURE__ */ u4("div", {
+              class: "row wrap",
               children: [
-                /* @__PURE__ */ u4(Icon, {
-                  name: "target"
-                }, undefined, false, undefined, this),
-                " Other image grid"
+                PRESETS.map((p5) => {
+                  const state = presetState(p5, store.sites.value);
+                  return /* @__PURE__ */ u4("button", {
+                    type: "button",
+                    class: "btn sm",
+                    disabled: state === "current",
+                    title: state === "outdated" ? "Newer selectors available; your on/off, auto and audio choices are kept" : p5.experimental ? "Selectors not yet verified against the live widget" : "",
+                    onClick: () => {
+                      store.mergeSites(presetRules(p5, store.sites.value));
+                      toast(state === "outdated" ? `Updated ${p5.label}` : `Added ${p5.label}. Tick the checkbox yourself; the challenge is solved for you`);
+                    },
+                    children: [
+                      /* @__PURE__ */ u4(Icon, {
+                        name: state === "current" ? "check" : "plus"
+                      }, undefined, false, undefined, this),
+                      state === "outdated" ? `Update ${p5.label}` : p5.label,
+                      p5.experimental && /* @__PURE__ */ u4("span", {
+                        class: "chip warn",
+                        children: "beta"
+                      }, undefined, false, undefined, this)
+                    ]
+                  }, p5.id, true, undefined, this);
+                }),
+                /* @__PURE__ */ u4("button", {
+                  type: "button",
+                  class: "btn sm",
+                  onClick: () => void configureGridPage(),
+                  children: [
+                    /* @__PURE__ */ u4(Icon, {
+                      name: "target"
+                    }, undefined, false, undefined, this),
+                    " Other grid…"
+                  ]
+                }, undefined, true, undefined, this)
               ]
             }, undefined, true, undefined, this)
           ]
         }, undefined, true, undefined, this),
         /* @__PURE__ */ u4("p", {
           class: "hint",
-          children: "Solves distorted-text, math and image-grid captchas. Not Turnstile, invisible reCAPTCHA scoring, sliders or audio."
+          children: "Solves distorted-text, math, image-grid and audio captchas. Not Turnstile, invisible reCAPTCHA scoring, sliders or puzzles."
         }, undefined, false, undefined, this),
         sites.length === 0 ? /* @__PURE__ */ u4("p", {
           class: "empty",
-          children: "No sites yet. On a page with a text captcha choose “Configure this page” (two clicks), or add the reCAPTCHA preset above."
+          children: "No sites yet. For a text captcha, open its page and choose “Configure this page”. For reCAPTCHA, add it above."
         }, undefined, false, undefined, this) : sites.map(([pattern, rule]) => /* @__PURE__ */ u4("div", {
           class: `site${rule.enabled ? "" : " off"}`,
           children: [
@@ -5448,6 +5464,9 @@ dialog.modal::backdrop { background: rgb(0 0 0 / .4); backdrop-filter: blur(2px)
 .field > label, .label { font-size: 12px; font-weight: 500; color: var(--fg-dim); }
 .row { display: flex; gap: 8px; align-items: center; }
 .row > .grow { flex: 1; min-width: 0; }
+.row.wrap { flex-wrap: wrap; }
+.group { display: flex; flex-direction: column; gap: 8px; }
+.sub { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--fg-dim); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 input[type='text'], input[type='password'], input[type='number'], input[type='url'], select {
   width: 100%; height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-sub);

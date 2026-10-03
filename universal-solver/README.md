@@ -1,6 +1,8 @@
 # <img src="icon.svg" width="32" height="32" alt=""> Universal Captcha Solver
 
-Solves text, math, image-grid and audio captchas on any site using AI vision and speech-to-text models. Ships as a **userscript** and as a **Firefox extension** (same code). Supports any AI vision endpoint (Google Gemini, Groq, OpenRouter, OpenAI, Ollama, LM Studio, or local OpenAI-compatible APIs).
+[![GitHub](https://img.shields.io/badge/GitHub-quantavil%2Fuserscript-181717?logo=github&logoColor=white)](https://github.com/quantavil/userscript)
+
+Solves text, math, image-grid and audio captchas on any site using AI vision and speech-to-text models. Supports any AI vision endpoint (Google Gemini, Groq, OpenRouter, OpenAI, Ollama, LM Studio, or local OpenAI-compatible APIs).
 
 > [!IMPORTANT]
 > **Scope**
