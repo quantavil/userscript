@@ -16,9 +16,9 @@ const header = `// ==UserScript==
 // @author       quantavil
 // @license      ${pkg.license}
 // @icon         data:image/svg+xml;base64,${Buffer.from(ICON.replace(/\s*\n\s*/g, '')).toString('base64')}
-// @homepageURL  ${REPO}/tree/main/universal-solver
-// @downloadURL  ${REPO}/raw/main/universal-solver/${OUT}
-// @updateURL    ${REPO}/raw/main/universal-solver/${OUT}
+// @homepageURL  ${REPO}/tree/main/universal-captcha-solver
+// @downloadURL  ${REPO}/raw/main/universal-captcha-solver/${OUT}
+// @updateURL    ${REPO}/raw/main/universal-captcha-solver/${OUT}
 // @match        *://*/*
 // @run-at       document-idle
 // @grant        GM_xmlhttpRequest
@@ -38,7 +38,7 @@ const header = `// ==UserScript==
 
 /** GPL notice at the top of every shipped script. */
 const NOTICE = `// Universal Captcha Solver ${pkg.version}. Copyright (C) quantavil.
-// Licensed under ${pkg.license}: ${REPO}/blob/main/universal-solver/LICENSE
+// Licensed under ${pkg.license}: ${REPO}/blob/main/universal-captcha-solver/LICENSE
 // This program comes with ABSOLUTELY NO WARRANTY.
 `;
 
@@ -48,7 +48,7 @@ const manifest = {
   name: 'Universal Captcha Solver',
   version: pkg.version,
   description: pkg.description,
-  homepage_url: `${REPO}/tree/main/universal-solver`,
+  homepage_url: `${REPO}/tree/main/universal-captcha-solver`,
   icons: { 48: 'icon.svg', 96: 'icon.svg', 128: 'icon.svg' },
   action: { default_title: 'Universal Captcha Solver', default_popup: 'popup.html', default_icon: 'icon.svg' },
   background: { scripts: ['background.js'] },
@@ -74,6 +74,13 @@ const manifest = {
   },
 };
 
+function sanitizePreactInnerHTML(code: string): string {
+  // Firefox AMO addons-linter flags dynamic element.innerHTML assignments as UNSAFE_VAR_ASSIGNMENT.
+  // Preact includes `(t2.innerHTML = h2.__html)` for dangerouslySetInnerHTML, which this
+  // codebase never uses. Replacing it with textContent eliminates the warning safely.
+  return code.replace(/(\b[a-zA-Z0-9_$]+)\.innerHTML\s*=\s*([a-zA-Z0-9_$]+\.__html)/g, '$1.textContent = $2');
+}
+
 async function bundle(entry: string): Promise<string | null> {
   const res = await Bun.build({
     entrypoints: [entry],
@@ -87,7 +94,8 @@ async function bundle(entry: string): Promise<string | null> {
     if (!process.argv.includes('--watch')) process.exit(1);
     return null;
   }
-  return (await res.outputs[0]?.text()) ?? null;
+  const text = (await res.outputs[0]?.text()) ?? null;
+  return text ? sanitizePreactInnerHTML(text) : null;
 }
 
 async function buildUserscript(): Promise<void> {
@@ -121,14 +129,32 @@ async function buildExtension(): Promise<void> {
   for (const f of files) utimesSync(`${EXT}/${f}`, epoch, epoch);
   const tmp = `${ZIP}.tmp`;
   rmSync(tmp, { force: true });
+  let zipped = false;
   const zip = spawnSync('zip', ['-X', '-q', '-D', `../${tmp.split('/').pop()}`, ...files], { cwd: EXT });
-  const zipped = !zip.error && zip.status === 0;
+  if (!zip.error && zip.status === 0) {
+    zipped = true;
+  } else {
+    // Fallback: build reproducible zip with python3 zipfile when `zip` utility is not installed
+    const pyScript = `import os, sys, zipfile
+ext, tmp = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(tmp, 'w', compression=zipfile.ZIP_DEFLATED) as z:
+    for f in sorted(os.listdir(ext)):
+        path = os.path.join(ext, f)
+        if os.path.isfile(path):
+            zinfo = zipfile.ZipInfo(f, (2020, 1, 1, 0, 0, 0))
+            zinfo.external_attr = 0o644 << 16
+            with open(path, 'rb') as fp:
+                z.writestr(zinfo, fp.read())
+`;
+    const py = spawnSync('python3', ['-c', pyScript, EXT, tmp]);
+    zipped = !py.error && py.status === 0;
+  }
   // Back to real timestamps: with a fixed mtime and an unchanged size (2.4.0 -> 2.4.1), git's
   // stat cache would treat a rebuilt file as unmodified and never commit it.
   const now = new Date();
   for (const f of files) utimesSync(`${EXT}/${f}`, now, now);
   if (zipped) renameSync(tmp, ZIP);
-  else console.warn(`kept the old ${ZIP}: building it needs the zip command`);
+  else console.warn(`kept the old ${ZIP}: building it needs the zip command or python3`);
   console.log(`built ${EXT}/ (${files.length} files)${zipped ? ` and ${ZIP}` : ''}`);
 }
 
