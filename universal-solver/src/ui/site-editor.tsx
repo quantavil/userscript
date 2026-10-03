@@ -2,17 +2,18 @@ import { useSignal } from '@preact/signals';
 import * as v from 'valibot';
 import { store } from '../app.ts';
 import { parsePattern, scorePattern } from '../config/match.ts';
-import { type SiteRuleInput, SiteRuleSchema } from '../config/schema.ts';
+import { type CaptchaKind, type SiteRuleInput, SiteRuleSchema } from '../config/schema.ts';
 import { pickerView } from '../dom/picker.ts';
 import { repick } from '../flows/setup.ts';
 import { Icon } from './icons.tsx';
 import { Modal } from './modal.tsx';
 import { type EditorState, editor, settingsTab, toast } from './state.ts';
 
-function matchChip(selector: string | undefined) {
+function matchChip(selector: string | undefined, many = false) {
   if (!selector?.trim()) return null;
   try {
     const n = document.querySelectorAll(selector).length;
+    if (many) return <span class={`chip ${n ? 'ok' : 'warn'}`}>{n ? `${n} tiles` : 'not on this page'}</span>;
     if (n === 1) return <span class="chip ok">1 match on this page</span>;
     if (n === 0) return <span class="chip warn">not on this page</span>;
     return <span class="chip warn">{n} matches (first is used)</span>;
@@ -71,10 +72,14 @@ function EditorBody({
     close();
   };
 
-  const selectorField = (key: 'captcha' | 'input' | 'submit', label: string, help?: string) => (
+  const selectorField = (
+    key: 'captcha' | 'input' | 'submit' | 'tiles' | 'instruction',
+    label: string,
+    help?: string,
+  ) => (
     <div class="field">
       <label for={`ucs-${key}`}>
-        {label} {matchChip(rule[key])}
+        {label} {matchChip(rule[key], key === 'tiles')}
       </label>
       <div class="row">
         <input
@@ -95,6 +100,8 @@ function EditorBody({
   );
 
   const n = (value: string) => (value === '' ? Number.NaN : Number(value));
+  const kind = rule.kind ?? 'text';
+  const grid = kind === 'grid';
 
   return (
     <div class="body">
@@ -122,12 +129,65 @@ function EditorBody({
         {err('pattern')}
       </div>
 
-      {selectorField('captcha', 'Captcha image')}
-      {selectorField('input', 'Answer box')}
-      {selectorField(
-        'submit',
-        'Submit button (optional)',
-        'Clicked after a successful fill. Leave empty to submit yourself.',
+      <div class="field">
+        <label for="ucs-kind">Captcha type</label>
+        <select id="ucs-kind" value={kind} onChange={(e) => set({ kind: e.currentTarget.value as CaptchaKind })}>
+          <option value="text">Distorted text</option>
+          <option value="math">Arithmetic (3 + 4)</option>
+          <option value="grid">Image grid (click the matching tiles)</option>
+        </select>
+      </div>
+
+      {grid ? (
+        <>
+          {selectorField('captcha', 'Grid image', 'The whole picture sent to the model, with tile numbers drawn on.')}
+          {selectorField(
+            'tiles',
+            'Tiles (optional)',
+            'Pick one tile; it widens to all of them. Empty = click by position over the image.',
+          )}
+          {selectorField('instruction', 'Challenge text', 'The "Select all images with…" text. Or put it in the hint.')}
+          {selectorField(
+            'submit',
+            'Verify button (optional)',
+            'Clicked after the tiles. Leave empty to verify yourself.',
+          )}
+          <div class="grid2">
+            <div class="field">
+              <label for="ucs-grid">Tiles per side (0 = auto)</label>
+              <input
+                id="ucs-grid"
+                type="number"
+                min={0}
+                max={8}
+                value={rule.gridSize ?? 0}
+                onInput={(e) => set({ gridSize: n(e.currentTarget.value) })}
+              />
+            </div>
+          </div>
+          {err('gridSize')}
+          <div class="field">
+            <label for="ucs-hint">Extra hint for the model</label>
+            <input
+              id="ucs-hint"
+              type="text"
+              maxLength={200}
+              placeholder="e.g. Count bicycles even when partly hidden"
+              value={rule.hint ?? ''}
+              onInput={(e) => set({ hint: e.currentTarget.value })}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          {selectorField('captcha', 'Captcha image')}
+          {selectorField('input', 'Answer box')}
+          {selectorField(
+            'submit',
+            'Submit button (optional)',
+            'Clicked after a successful fill. Leave empty to submit yourself.',
+          )}
+        </>
       )}
 
       <label class="check">
@@ -135,83 +195,74 @@ function EditorBody({
         Solve automatically on this site
       </label>
 
-      <details>
-        <summary>Advanced: accuracy tuning</summary>
-        <div class="body" style={{ padding: 0 }}>
-          <div class="grid2">
-            <div class="field">
-              <label for="ucs-kind">Captcha type</label>
-              <select
-                id="ucs-kind"
-                value={rule.kind ?? 'text'}
-                onChange={(e) => set({ kind: e.currentTarget.value as 'text' | 'math' })}
-              >
-                <option value="text">Distorted text</option>
-                <option value="math">Arithmetic (3 + 4)</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="ucs-charset">Characters</label>
-              <select
-                id="ucs-charset"
-                value={rule.charset ?? 'alnum'}
-                onChange={(e) => set({ charset: e.currentTarget.value as 'alnum' })}
-              >
-                <option value="alnum">Letters + digits</option>
-                <option value="alpha">Letters only</option>
-                <option value="digits">Digits only</option>
-                <option value="any">Anything</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="ucs-case">Letter case</label>
-              <select
-                id="ucs-case"
-                value={rule.caseMode ?? 'keep'}
-                onChange={(e) => set({ caseMode: e.currentTarget.value as 'keep' })}
-              >
-                <option value="keep">As read</option>
-                <option value="upper">UPPERCASE</option>
-                <option value="lower">lowercase</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="ucs-min">Length (min – max, 0 = any)</label>
-              <div class="row">
-                <input
-                  id="ucs-min"
-                  type="number"
-                  min={1}
-                  max={32}
-                  value={rule.minLength ?? 3}
-                  onInput={(e) => set({ minLength: n(e.currentTarget.value) })}
-                />
-                <input
-                  aria-label="Maximum length"
-                  type="number"
-                  min={0}
-                  max={64}
-                  value={rule.maxLength ?? 0}
-                  onInput={(e) => set({ maxLength: n(e.currentTarget.value) })}
-                />
+      {!grid && (
+        <details>
+          <summary>Advanced: accuracy tuning</summary>
+          <div class="body" style={{ padding: 0 }}>
+            <div class="grid2">
+              <div class="field">
+                <label for="ucs-charset">Characters</label>
+                <select
+                  id="ucs-charset"
+                  value={rule.charset ?? 'alnum'}
+                  onChange={(e) => set({ charset: e.currentTarget.value as 'alnum' })}
+                >
+                  <option value="alnum">Letters + digits</option>
+                  <option value="alpha">Letters only</option>
+                  <option value="digits">Digits only</option>
+                  <option value="any">Anything</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="ucs-case">Letter case</label>
+                <select
+                  id="ucs-case"
+                  value={rule.caseMode ?? 'keep'}
+                  onChange={(e) => set({ caseMode: e.currentTarget.value as 'keep' })}
+                >
+                  <option value="keep">As read</option>
+                  <option value="upper">UPPERCASE</option>
+                  <option value="lower">lowercase</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="ucs-min">Length (min – max, 0 = any)</label>
+                <div class="row">
+                  <input
+                    id="ucs-min"
+                    type="number"
+                    min={1}
+                    max={32}
+                    value={rule.minLength ?? 3}
+                    onInput={(e) => set({ minLength: n(e.currentTarget.value) })}
+                  />
+                  <input
+                    aria-label="Maximum length"
+                    type="number"
+                    min={0}
+                    max={64}
+                    value={rule.maxLength ?? 0}
+                    onInput={(e) => set({ maxLength: n(e.currentTarget.value) })}
+                  />
+                </div>
               </div>
             </div>
+            {err('minLength')}
+            {err('maxLength')}
+            <div class="field">
+              <label for="ucs-hint">Extra hint for the model</label>
+              <input
+                id="ucs-hint"
+                type="text"
+                maxLength={200}
+                placeholder="e.g. Ignore the strike-through line"
+                value={rule.hint ?? ''}
+                onInput={(e) => set({ hint: e.currentTarget.value })}
+              />
+            </div>
           </div>
-          {err('minLength')}
-          {err('maxLength')}
-          <div class="field">
-            <label for="ucs-hint">Extra hint for the model</label>
-            <input
-              id="ucs-hint"
-              type="text"
-              maxLength={200}
-              placeholder="e.g. Ignore the strike-through line"
-              value={rule.hint ?? ''}
-              onInput={(e) => set({ hint: e.currentTarget.value })}
-            />
-          </div>
-        </div>
-      </details>
+        </details>
+      )}
 
       <div class="footer">
         <button type="button" class="btn" onClick={close}>

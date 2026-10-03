@@ -16,7 +16,6 @@ const header = `// ==UserScript==
 // @updateURL    ${REPO}/raw/main/universal-solver/${OUT}
 // @match        *://*/*
 // @run-at       document-idle
-// @noframes
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue

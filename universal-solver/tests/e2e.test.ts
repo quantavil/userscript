@@ -69,6 +69,12 @@ describe.skipIf(!existsSync(DIST))('built userscript (e2e)', () => {
     expect(root?.querySelector('.widget')).not.toBeNull();
   });
 
+  test('runs inside iframes: image-grid challenges live in one', () => {
+    const header = readFileSync(DIST, 'utf8').split('// ==/UserScript==')[0] ?? '';
+    expect(header).not.toContain('@noframes');
+    expect(header).toContain('@match        *://*/*');
+  });
+
   test('page CSS cannot reach the UI: styles live inside the shadow root', () => {
     expect(document.head.querySelector('style')).toBeNull();
   });

@@ -12,7 +12,9 @@ src/flows/      setup (picker -> editor), data (import/export)
 tests/          unit + e2e against the built bundle
 ```
 
-- **Scope**: Exclusively targets visual text and math captchas (`img`, `canvas`, `svg`). Out of scope: Turnstile, reCAPTCHA v2/v3, puzzle grids, slider or audio captchas.
+- **Scope**: Visual text and math captchas (`img`, `canvas`, `svg`) and image-grid captchas (`kind: 'grid'`). Out of scope: Turnstile, reCAPTCHA v3 / invisible scoring, sliders, jigsaws, audio.
+- **Grid flow**: capture the grid image with tile numbers drawn on → prompt with the challenge text → model replies `{"tiles":[…]}` (1-based, reading order) → `parseGridAnswer` rejects any out-of-range tile *before* clicking → `simulateClick` each tile (or the cell centre over the image when `tiles` is empty) with a randomised pause → Verify. Clicks are synthetic (`isTrusted === false`); never claim otherwise.
+- **Frames**: the script runs in every frame (no `@noframes`; grid challenges live in iframes). In a frame (`IN_FRAME`): register no menu commands, and mount the UI only when the captcha element is present (`controller.present`). Keep it that way; ad frames are everywhere.
 - **Add a provider** = a `createOpenAICompat({...})` config, or a new file implementing `Provider`. Never put keys in URLs.
 - All persisted data goes through `config/schema.ts` (valibot). Never `GM_setValue` elsewhere.
 - Network and storage are injected (`Http`, `KV`) so everything is testable without a browser.

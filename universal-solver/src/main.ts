@@ -2,7 +2,8 @@ import { effect } from '@preact/signals';
 import { controller, store } from './app.ts';
 import { migrateV1 } from './config/migrate.ts';
 import { gmKV, KEYS } from './config/store.ts';
-import { configureCurrentPage } from './flows/setup.ts';
+import { IN_FRAME } from './dom/frame.ts';
+import { configureCurrentPage, configureGridPage } from './flows/setup.ts';
 import { mountUI } from './ui/mount.tsx';
 import { settingsTab, toast } from './ui/state.ts';
 
@@ -14,21 +15,30 @@ function main(): void {
     mountUI();
     fn();
   };
-  GM_registerMenuCommand(
-    '⚙ Settings',
-    open(() => (settingsTab.value = 'provider')),
-    's',
-  );
-  GM_registerMenuCommand(
-    '🎯 Configure captcha on this page',
-    open(() => void configureCurrentPage()),
-    'c',
-  );
-  GM_registerMenuCommand(
-    '▶ Solve now',
-    open(() => void controller.solve('manual')),
-    'r',
-  );
+  // The script also runs in iframes (grid challenges live in one). Menu entries from every ad
+  // frame would flood the manager's menu, so frames get keyboard shortcuts only.
+  if (!IN_FRAME) {
+    GM_registerMenuCommand(
+      '⚙ Settings',
+      open(() => (settingsTab.value = 'provider')),
+      's',
+    );
+    GM_registerMenuCommand(
+      '🎯 Configure captcha on this page',
+      open(() => void configureCurrentPage()),
+      'c',
+    );
+    GM_registerMenuCommand(
+      '🧩 Configure image-grid captcha on this page',
+      open(() => void configureGridPage()),
+      'g',
+    );
+    GM_registerMenuCommand(
+      '▶ Solve now',
+      open(() => void controller.solve('manual')),
+      'r',
+    );
+  }
 
   // Keep every open tab in sync when settings or rules change elsewhere.
   for (const key of [KEYS.settings, KEYS.sites]) {
@@ -39,13 +49,15 @@ function main(): void {
     if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
     if (e.code === 'KeyS') open(() => void controller.solve('manual'))();
     else if (e.code === 'KeyC') open(() => void configureCurrentPage())();
+    else if (e.code === 'KeyG') open(() => void configureGridPage())();
     else return;
     e.preventDefault();
   });
 
-  // Zero UI cost on pages without a rule: mount only when one matches.
+  // Zero UI cost on pages without a rule: mount only when one matches. In a frame, also wait for
+  // the captcha itself, so a rule for e.g. google.com/recaptcha/* doesn't cover the checkbox frame.
   effect(() => {
-    if (controller.match.value) mountUI();
+    if (controller.match.value && (!IN_FRAME || controller.present.value)) mountUI();
   });
   controller.start();
 

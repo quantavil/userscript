@@ -24,22 +24,38 @@ const optionalSelector = v.optional(
   '',
 );
 
-export const SiteRuleSchema = v.object({
-  captcha: selector,
-  input: selector,
-  /** Optional button to click after a successful fill. Empty = don't submit. */
-  submit: optionalSelector,
-  kind: v.optional(v.picklist(['text', 'math']), 'text'),
-  charset: v.optional(v.picklist(['alnum', 'alpha', 'digits', 'any']), 'alnum'),
-  caseMode: v.optional(v.picklist(['keep', 'upper', 'lower']), 'keep'),
-  minLength: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(32)), 3),
-  /** 0 = unlimited */
-  maxLength: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(64)), 0),
-  /** Extra free-text instruction appended to the prompt. */
-  hint: v.optional(v.pipe(v.string(), v.maxLength(200)), ''),
-  auto: v.optional(v.boolean(), true),
-  enabled: v.optional(v.boolean(), true),
-});
+export const CAPTCHA_KINDS = ['text', 'math', 'grid'] as const;
+export type CaptchaKind = (typeof CAPTCHA_KINDS)[number];
+
+export const SiteRuleSchema = v.pipe(
+  v.object({
+    captcha: selector,
+    /** Text field for the answer. Required for text/math; unused for image grids. */
+    input: optionalSelector,
+    /** Optional button to click after a successful fill (or the grid's Verify button). Empty = don't submit. */
+    submit: optionalSelector,
+    kind: v.optional(v.picklist(CAPTCHA_KINDS), 'text'),
+    /** Grid only: clickable tiles in reading order. Empty = click by position over the captcha image. */
+    tiles: optionalSelector,
+    /** Grid only: element whose text says what to select ("Select all images with buses"). */
+    instruction: optionalSelector,
+    /** Grid only: tiles per side. 0 = infer from the tile count (default 3). */
+    gridSize: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(8)), 0),
+    charset: v.optional(v.picklist(['alnum', 'alpha', 'digits', 'any']), 'alnum'),
+    caseMode: v.optional(v.picklist(['keep', 'upper', 'lower']), 'keep'),
+    minLength: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(32)), 3),
+    /** 0 = unlimited */
+    maxLength: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(64)), 0),
+    /** Extra free-text instruction appended to the prompt. */
+    hint: v.optional(v.pipe(v.string(), v.maxLength(200)), ''),
+    auto: v.optional(v.boolean(), true),
+    enabled: v.optional(v.boolean(), true),
+  }),
+  v.forward(
+    v.partialCheck([['kind'], ['input']], (r) => r.kind === 'grid' || Boolean(r.input), 'Required'),
+    ['input'],
+  ),
+);
 export type SiteRule = v.InferOutput<typeof SiteRuleSchema>;
 export type SiteRuleInput = v.InferInput<typeof SiteRuleSchema>;
 

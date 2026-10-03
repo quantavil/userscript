@@ -27,8 +27,10 @@ export function explainError(e: unknown): string {
 
 const retryable = (e: unknown) => e instanceof HttpError && (e.status === 0 || e.status === 429 || e.status >= 500);
 
-const sleep = (ms: number, signal?: AbortSignal) =>
+/** Abortable delay. */
+export const sleep = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
     const t = setTimeout(resolve, ms);
     signal?.addEventListener(
       'abort',

@@ -1,5 +1,6 @@
 import { useRef } from 'preact/hooks';
 import { controller, store } from '../app.ts';
+import { IN_FRAME } from '../dom/frame.ts';
 import { Icon } from './icons.tsx';
 import { settingsTab, toast } from './state.ts';
 
@@ -10,7 +11,7 @@ export function Widget() {
   const drag = useRef<{ dx: number; dy: number; moved: boolean } | null>(null);
 
   const match = controller.match.value;
-  if (!match) return null;
+  if (!match || (IN_FRAME && !controller.present.value)) return null;
   const { status } = controller;
   const st = status.value;
   const ui = store.settings.value.ui;

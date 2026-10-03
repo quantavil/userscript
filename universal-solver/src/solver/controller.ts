@@ -1,14 +1,16 @@
 import { effect, signal, untracked } from '@preact/signals';
 import { findBestRule, type LocationLike, type RuleMatch } from '../config/match.ts';
-import type { ProviderId, Settings } from '../config/schema.ts';
+import type { ProviderId, Settings, SiteRule } from '../config/schema.ts';
 import type { Store } from '../config/store.ts';
+import { pageElementAt, pointIn, simulateClick } from '../dom/click.ts';
 import { clickElement, fillInput, isTextField } from '../dom/fill.ts';
 import { onUrlChange, type Watch, watchCaptcha } from '../dom/watch.ts';
 import { captureImage } from '../image/capture.ts';
 import { isAbort } from '../net/http.ts';
 import type { Provider, ProviderConfig } from '../providers/index.ts';
 import { buildPrompt, normalizeAnswer } from './answer.ts';
-import { explainError, withRetry } from './errors.ts';
+import { explainError, sleep, withRetry } from './errors.ts';
+import { buildGridPrompt, parseGridAnswer, resolveGridSize } from './grid.ts';
 import { RateGuard } from './guard.ts';
 
 export type Phase = 'idle' | 'solving' | 'solved' | 'error' | 'missing' | 'paused';
@@ -44,16 +46,24 @@ export interface ControllerDeps {
   registry: Record<ProviderId, Provider>;
   capture?: typeof captureImage;
   location?: () => LocationLike;
+  /** Pause between synthetic tile clicks; randomised so it doesn't look scripted. */
+  clickDelay?: () => number;
 }
+
+const humanDelay = () => 180 + Math.random() * 220;
+const textOf = (el: Element | null) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
 
 export function createController({
   store,
   registry,
   capture = captureImage,
   location: getLoc = () => window.location,
+  clickDelay = humanDelay,
 }: ControllerDeps) {
   const status = signal<Status>({ phase: 'idle', text: 'Idle' });
   const match = signal<RuleMatch | null>(null);
+  /** Whether the captcha element is currently on the page. */
+  const present = signal(false);
   // 5 automatic attempts per minute; manual clicks reset the breaker.
   const guard = new RateGuard(5, 60_000);
 
@@ -104,6 +114,11 @@ export function createController({
         return;
       }
 
+      if (rule.kind === 'grid') {
+        await solveGrid(rule, el, provider, cfg, ac.signal, () => id === runId, started);
+        return;
+      }
+
       const image = await capture(el, { signal: ac.signal });
       const raw = await withRetry(
         () => provider.complete(cfg, { image, prompt: buildPrompt(rule), signal: ac.signal }),
@@ -131,6 +146,73 @@ export function createController({
     }
   }
 
+  /**
+   * Image-grid flow: send the whole grid (tiles numbered on it) with the challenge text, get back
+   * {"tiles":[...]}, then click each tile with a short human-like pause and press Verify.
+   */
+  async function solveGrid(
+    rule: SiteRule,
+    el: Element,
+    provider: Provider,
+    cfg: ProviderConfig,
+    signal: AbortSignal,
+    current: () => boolean,
+    started: number,
+  ): Promise<void> {
+    const tiles = rule.tiles ? [...document.querySelectorAll(rule.tiles)] : [];
+    const size = resolveGridSize(rule.gridSize, tiles.length);
+    const total = size * size;
+    if (rule.tiles && tiles.length !== total) {
+      throw new Error(`Found ${tiles.length} tiles, expected ${total} (${size}x${size}). Check the tiles selector`);
+    }
+    const instruction = rule.instruction ? textOf(document.querySelector(rule.instruction)) : '';
+    if (!instruction && !rule.hint) throw new Error('No challenge text: set the instruction selector or a hint');
+
+    const image = await capture(el, { signal, grid: size });
+    const raw = await withRetry(
+      () => provider.complete(cfg, { image, prompt: buildGridPrompt(size, instruction, rule.hint), signal }),
+      { signal },
+    );
+    if (!current()) return;
+    const picks = parseGridAnswer(raw, total);
+
+    // Without a tiles selector, click the centre of each cell over the captcha image.
+    const cell = (n: number) => {
+      const r = el.getBoundingClientRect();
+      const w = r.width / size;
+      const h = r.height / size;
+      return { left: r.left + ((n - 1) % size) * w, top: r.top + Math.floor((n - 1) / size) * h, width: w, height: h };
+    };
+    for (const [i, n] of picks.entries()) {
+      if (i > 0) await sleep(clickDelay(), signal);
+      if (!current()) return;
+      const tile = tiles[n - 1];
+      if (tile) {
+        simulateClick(tile);
+      } else {
+        const at = pointIn(cell(n));
+        const target = pageElementAt(at);
+        if (!target) throw new Error(`Nothing clickable at tile ${n}`);
+        simulateClick(target, at);
+      }
+    }
+    if (rule.submit) {
+      await sleep(clickDelay() + 200, signal);
+      if (!current()) return;
+      const button = document.querySelector(rule.submit);
+      if (button) simulateClick(button);
+    }
+
+    const answer = picks.length ? `Tiles ${picks.join(', ')}` : 'No matching tiles';
+    set({
+      phase: 'solved',
+      text: answer,
+      answer,
+      ms: Math.round(performance.now() - started),
+      warning: image.refetched ? 'Image was re-downloaded; it may differ from the one shown' : undefined,
+    });
+  }
+
   function rematch(): void {
     const next = findBestRule(store.sites.value, getLoc());
     match.value = next;
@@ -139,6 +221,7 @@ export function createController({
     watch?.stop();
     watch = null;
     watched = active;
+    present.value = false;
     abort?.abort();
     if (!active) {
       set({ phase: 'idle', text: 'Idle' });
@@ -149,6 +232,7 @@ export function createController({
     watch = watchCaptcha(
       () => watched,
       (el) => {
+        present.value = Boolean(el);
         if (!el) {
           set({ phase: 'idle', text: 'Waiting for captcha…' });
           return;
@@ -162,6 +246,7 @@ export function createController({
   return {
     status,
     match,
+    present,
     solve,
     rematch,
     start() {
