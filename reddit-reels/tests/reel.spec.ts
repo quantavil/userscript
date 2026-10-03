@@ -34,7 +34,9 @@ test('first slide is a Reddit video playing through the one shared <video>', asy
   expect(await inReel(page, 'video').count()).toBe(1);
   const src = await active.locator('video').evaluate((v: HTMLVideoElement) => v.src);
   expect(src).toContain('packaged-media.redd.it');
-  await expect(active.locator('.seek')).toHaveCount(1);
+  // Live controls sit in the fixed HUD, not inside the scrolling slide.
+  await expect(inReel(page, '.hud .seek')).toBeVisible();
+  await expect(active.locator('.seek, .spinner')).toHaveCount(0);
   await expect(active.locator('.title')).toHaveText('Different balls with water drops');
 });
 
@@ -93,15 +95,25 @@ test('close button and Escape close the reel', async ({ page }) => {
   await expect(reel(page)).toHaveCount(0);
 });
 
-test('comments open the new-Reddit post page; Back resumes the reel on that post', async ({ page }) => {
+test('comments open the new-Reddit post page in a new tab; the reel stays put', async ({ page, context }) => {
   await openReel(page);
   await swipe(page, 3);
   await expect(inReel(page, '.slide[data-index="3"]')).toHaveClass(/active/);
-  await inReel(page, '.slide.active [data-action="comments"]').click();
-  await page.waitForURL(/\/comments\//);
-  expect(page.url()).toMatch(/^http:\/\/127\.0\.0\.1:3000\/r\/oddlysatisfying\/comments\//);
-  await page.goBack();
+  const [tab] = await Promise.all([
+    context.waitForEvent('page'),
+    inReel(page, '.slide.active [data-action="comments"]').click(),
+  ]);
+  await tab.waitForLoadState('domcontentloaded');
+  expect(tab.url()).toMatch(/^http:\/\/127\.0\.0\.1:3000\/r\/oddlysatisfying\/comments\//);
   await expect(inReel(page, '.slide.active')).toHaveAttribute('data-id', 't3_1wbnrm5');
+  expect(page.url()).toContain(FEED);
+});
+
+test('non-video slides hide the seek bar', async ({ page }) => {
+  await openReel(page);
+  await swipe(page, 2);
+  await expect(inReel(page, '.slide[data-index="2"]')).toHaveClass(/active/);
+  await expect(inReel(page, '.hud .seek')).toBeHidden();
 });
 
 test('keyboard: J/K navigate, M toggles sound, Space toggles play', async ({ page }) => {

@@ -13,7 +13,7 @@ export default defineConfig({
         description:
           'Mobile-first full-screen reels for Reddit feeds: swipe, one stream with sound, Reddit video and RedGifs, native voting.',
         author: 'quantavil',
-        version: '3.0.0',
+        version: '3.1.0',
         license: 'MIT',
         'run-at': 'document-end',
         homepage: 'https://github.com/quantavil/userscript/tree/main/reddit-reels',
@@ -23,7 +23,7 @@ export default defineConfig({
       },
       build: {
         externalGlobals: {
-          'hls.js': cdn.jsdelivr('Hls', 'dist/hls.light.min.js'),
+          'hls.js': cdn.jsdelivr('Hls', 'dist/hls.min.js'),
         },
       },
     }),

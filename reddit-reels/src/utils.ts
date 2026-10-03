@@ -55,25 +55,6 @@ export function isSafeUrl(url?: string | null): boolean {
   }
 }
 
-/**
- * Sanitizes a URL string, returning fallback if invalid or unsafe.
- */
-export function sanitizeUrl(url?: string | null, fallback = ''): string {
-  return isSafeUrl(url) ? url!.trim() : fallback;
-}
-
-/**
- * Safely opens a URL in a new window/tab, falling back to current location
- */
-export function openUrl(url?: string): void {
-  if (!url || !isSafeUrl(url)) return;
-  const safe = sanitizeUrl(url);
-  const opened = window.open(safe, '_blank', 'noopener,noreferrer');
-  if (!opened) {
-    window.location.href = safe;
-  }
-}
-
 /** 75 -> "1:15" */
 export function formatTime(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '0:00';

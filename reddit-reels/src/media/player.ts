@@ -16,7 +16,7 @@ declare function GM_setValue(key: string, value: unknown): void;
 
 const MUTED_KEY = '@reddit-reels/muted';
 
-export type PlayerEvent = 'muted' | 'autoplay-muted' | 'error' | 'loading' | 'ready';
+export type PlayerEvent = 'muted' | 'autoplay-muted' | 'blocked' | 'error' | 'loading' | 'ready';
 
 export function isMobile(): boolean {
   try {
@@ -84,6 +84,10 @@ export class Player {
     this.video.disableRemotePlayback = true;
     this.video.addEventListener('waiting', () => this.emit('loading'));
     this.video.addEventListener('playing', () => this.emit('ready'));
+    this.video.addEventListener('error', () => {
+      // Only element-level failures (bad/expired mp4, unsupported type); hls.js reports its own.
+      if (this.current && !this.hls && this.video.getAttribute('src')) this.nextSource(this.generation);
+    });
     this.video.addEventListener('volumechange', () => {
       // A system/native control changed it: adopt as the preference.
       if (this.video.muted !== this._muted && !this.autoplayMuted) {
@@ -141,6 +145,60 @@ export class Player {
     } catch {}
   }
 
+  /** Candidate sources for a Reddit video, best first: progressive mp4, then HLS. */
+  private sourcesFor(v: VideoSource): Array<{ type: 'mp4' | 'hls'; url: string }> {
+    const list: Array<{ type: 'mp4' | 'hls'; url: string }> = [];
+    const mp4 = pickMp4(v, isMobile());
+    if (mp4) list.push({ type: 'mp4', url: mp4 });
+    if (v.hls) list.push({ type: 'hls', url: v.hls });
+    return list;
+  }
+
+  /**
+   * HLS: hls.js whenever MediaSource works. Measured on Chrome 154: it answers
+   * "maybe" for native HLS yet fails Reddit's CMAF streams (MEDIA_ERR_SRC_NOT_SUPPORTED),
+   * so native HLS is only the last resort (iOS without MSE).
+   */
+  private attachHls(url: string, gen: number): void {
+    if (Hls.isSupported()) {
+      const hls = new Hls({ capLevelToPlayerSize: true, maxBufferLength: 15, startLevel: -1 });
+      this.hls = hls;
+      hls.on(Hls.Events.ERROR, (_e, data) => {
+        if (!data.fatal || gen !== this.generation) return;
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          hls.recoverMediaError();
+          return;
+        }
+        this.nextSource(gen);
+      });
+      hls.loadSource(url);
+      hls.attachMedia(this.video);
+    } else if (this.video.canPlayType('application/vnd.apple.mpegurl')) {
+      this.video.src = url;
+    } else {
+      this.nextSource(gen);
+    }
+  }
+
+  private queue: Array<{ type: 'mp4' | 'hls'; url: string }> = [];
+
+  /** Try the next candidate source; report an error when none is left. */
+  private nextSource(gen: number): void {
+    if (gen !== this.generation) return;
+    const next = this.queue.shift();
+    if (!next) {
+      this.emit('error');
+      return;
+    }
+    if (this.hls) {
+      this.hls.destroy();
+      this.hls = null;
+    }
+    if (next.type === 'mp4') this.video.src = next.url;
+    else this.attachHls(next.url, gen);
+    this.play();
+  }
+
   /** Load a post's video into the shared element and start it. */
   async load(post: Post): Promise<void> {
     const gen = ++this.generation;
@@ -153,20 +211,9 @@ export class Player {
       if (post.kind === 'video' && post.video) {
         const v = post.video;
         if (v.poster) this.video.poster = v.poster;
-        const mp4 = pickMp4(v, isMobile());
-        if (mp4) {
-          this.video.src = mp4;
-        } else if (this.video.canPlayType('application/vnd.apple.mpegurl')) {
-          this.video.src = v.hls;
-        } else if (Hls.isSupported()) {
-          this.hls = new Hls({ capLevelToPlayerSize: true, maxBufferLength: 15, startLevel: -1 });
-          this.hls.loadSource(v.hls);
-          this.hls.attachMedia(this.video);
-        } else {
-          throw new Error('no playable source');
-        }
         if (v.captions) this.captionsUrl = v.captions;
-        this.play();
+        this.queue = this.sourcesFor(v);
+        this.nextSource(gen);
         if (this._captions) void this.applyCaptions(gen);
       } else if (post.kind === 'redgifs' && post.redgifsId) {
         const info = await getRedgifs(post.redgifsId);
@@ -174,6 +221,7 @@ export class Player {
         if (info.poster) this.video.poster = info.poster;
         const blob = await redgifsBlobUrl(pickRedgifsUrl(info, isMobile()));
         if (gen !== this.generation) return;
+        this.queue = [];
         this.video.src = blob;
         this.play();
       }
@@ -205,12 +253,16 @@ export class Player {
     v.muted = this._muted;
     const p = v.play();
     p?.catch?.((err: Error) => {
-      if (err?.name === 'NotAllowedError' && !v.muted) {
+      if (err?.name !== 'NotAllowedError') return;
+      if (!v.muted) {
         // Audible autoplay blocked (no gesture yet): play muted, next tap unmutes.
         this.autoplayMuted = true;
         v.muted = true;
         this.emit('autoplay-muted');
-        v.play().catch(() => {});
+        v.play().catch(() => this.emit('blocked'));
+      } else {
+        // All autoplay blocked (e.g. iOS Low Power Mode, strict browser setting): wait for a tap.
+        this.emit('blocked');
       }
     });
   }
@@ -273,10 +325,20 @@ export class Player {
     } catch {}
   }
 
-  /** Detach everything (reel closed or non-video slide). */
+  /** Reel closed: also stop the preloader's download. */
+  dispose(): void {
+    this.stop();
+    this.preloader.removeAttribute('src');
+    try {
+      this.preloader.load();
+    } catch {}
+  }
+
+  /** Detach everything (non-video slide). */
   stop(): void {
     this.generation++;
     this.current = null;
+    this.queue = [];
     this.video.pause();
     this.resetSource();
     this.video.remove();

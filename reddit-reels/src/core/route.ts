@@ -18,8 +18,6 @@ export function isReelRoute(pathname: string): boolean {
   if (path === '/' || /^\/(?:best|hot|new|top|rising|controversial)$/i.test(path)) return true;
   if (/^\/r\/[A-Za-z0-9_]+(?:\/(?:best|hot|new|top|rising|controversial))?$/i.test(path)) return true;
   if (/^\/(?:user|u)\/[A-Za-z0-9_-]+(?:\/submitted)?$/i.test(path)) return true;
-  // Local test fixture
-  if (/^\/mock-reddit\.html$/i.test(path)) return true;
   return false;
 }
 

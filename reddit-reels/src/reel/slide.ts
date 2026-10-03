@@ -47,10 +47,8 @@ export function buildSlide(post: Post, index: number): SlideRefs {
   root.innerHTML = `
     <div class="slide-inner">
       <div class="media"></div>
-      <div class="spinner"></div>
       <div class="shade top"></div>
       <div class="shade"></div>
-      <div class="unmute-hint">${ICONS.soundOff}<span>Tap for sound</span></div>
       <div class="info">
         <div class="meta">
           ${sub ? `<a class="sub" href="${escapeHtml(subHref)}">${sub}</a>` : ''}
@@ -199,7 +197,7 @@ export function unmountSlide(refs: SlideRefs): void {
   Array.from(refs.media.children).forEach((c) => {
     if (!(c instanceof HTMLVideoElement)) c.remove();
   });
-  refs.root.classList.remove('vertical-embed', 'loading');
+  refs.root.classList.remove('vertical-embed');
 }
 
 export function setVoteUi(refs: SlideRefs, state: 1 | 0 | -1, score: number): void {

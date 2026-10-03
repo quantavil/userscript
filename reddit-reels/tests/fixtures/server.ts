@@ -12,13 +12,13 @@ const page = `<!DOCTYPE html><html><head><meta name="viewport" content="width=de
 body{margin:0;font-family:sans-serif} img,video,svg,iframe{max-width:100%;height:auto} svg{width:16px;height:16px}
 article{display:block;overflow:hidden;border-bottom:1px solid #ccc;padding:8px}</style></head>
 <body><header id="reddit-header">reddit</header><main>${feed}</main>
-<script src="/hls.light.min.js"></script><script src="/reddit-reels.user.js"></script></body></html>`;
+<script src="/hls.min.js"></script><script src="/reddit-reels.user.js"></script></body></html>`;
 
 Bun.serve({
   port: 3000,
   fetch(req) {
     const { pathname } = new URL(req.url);
-    if (pathname === '/hls.light.min.js') return new Response(Bun.file(join(ROOT, 'node_modules/hls.js/dist/hls.light.min.js')));
+    if (pathname === '/hls.min.js') return new Response(Bun.file(join(ROOT, 'node_modules/hls.js/dist/hls.min.js')));
     if (pathname === '/reddit-reels.user.js') {
       const bundle = join(ROOT, 'dist/reddit-reels.user.js');
       return existsSync(bundle) ? new Response(Bun.file(bundle)) : new Response('build first', { status: 500 });

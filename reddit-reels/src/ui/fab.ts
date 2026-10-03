@@ -9,7 +9,9 @@ const CSS = `
 button {
   position: fixed;
   right: calc(16px + env(safe-area-inset-right, 0px));
-  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  top: auto;
+  left: auto;
   z-index: 2147483000;
   width: 56px;
   height: 56px;

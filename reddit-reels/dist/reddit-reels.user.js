@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Reels
 // @namespace    https://github.com/quantavil/userscript/tree/main/reddit-reels
-// @version      3.0.0
+// @version      3.1.0
 // @author       quantavil
 // @description  Mobile-first full-screen reels for Reddit feeds: swipe, one stream with sound, Reddit video and RedGifs, native voting.
 // @license      MIT
@@ -9,7 +9,7 @@
 // @supportURL   https://github.com/quantavil/userscript/issues
 // @match        https://www.reddit.com/*
 // @match        https://reddit.com/*
-// @require      https://cdn.jsdelivr.net/npm/hls.js@1.7.3/dist/hls.light.min.js
+// @require      https://cdn.jsdelivr.net/npm/hls.js@1.7.3/dist/hls.min.js
 // @connect      api.redgifs.com
 // @connect      media.redgifs.com
 // @connect      redgifs.com
@@ -51,7 +51,6 @@
 		if (path === "/" || /^\/(?:best|hot|new|top|rising|controversial)$/i.test(path)) return true;
 		if (/^\/r\/[A-Za-z0-9_]+(?:\/(?:best|hot|new|top|rising|controversial))?$/i.test(path)) return true;
 		if (/^\/(?:user|u)\/[A-Za-z0-9_-]+(?:\/submitted)?$/i.test(path)) return true;
-		if (/^\/mock-reddit\.html$/i.test(path)) return true;
 		return false;
 	}
 	function watchRoute(onChange) {
@@ -234,7 +233,7 @@
 	}
 	var FeedSource = class {
 		posts = [];
-		ids = new Set();
+		byId = new Map();
 		loading = null;
 		exhausted = false;
 		observer = null;
@@ -248,14 +247,14 @@
 			const added = [];
 			document.querySelectorAll("shreddit-post").forEach((el) => {
 				if (el.closest("shreddit-ad-post") || el.hasAttribute("promoted")) return;
-				if (this.ids.has(el.id)) {
-					const known = this.posts.find((p) => p.id === el.id);
-					if (known && known.el !== el && el.isConnected) known.el = el;
+				const known = this.byId.get(el.id);
+				if (known) {
+					if (known.el !== el) known.el = el;
 					return;
 				}
 				const post = extractPost(el);
 				if (!post) return;
-				this.ids.add(post.id);
+				this.byId.set(post.id, post);
 				this.posts.push(post);
 				added.push(post);
 			});
@@ -311,7 +310,8 @@
 					this.scan();
 				}, 200);
 			});
-			this.observer.observe(document.body, {
+			const feed = document.querySelector("shreddit-feed") || document.body;
+			this.observer.observe(feed, {
 				childList: true,
 				subtree: true
 			});
@@ -325,10 +325,40 @@
 		reset() {
 			this.disconnect();
 			this.posts.length = 0;
-			this.ids.clear();
+			this.byId.clear();
 			this.exhausted = false;
 		}
 	};
+	function voteButton(el, dir) {
+		const label = dir === "up" ? "upvote" : "downvote";
+		const roots = [];
+		if (el.shadowRoot) roots.push(el.shadowRoot);
+		roots.push(el);
+		for (const root of roots) {
+			const btn = root.querySelector(`button[${label}]`) || Array.from(root.querySelectorAll("button")).find((b) => (b.getAttribute("aria-label") || "").trim().toLowerCase() === label);
+			if (btn) return btn;
+		}
+		return null;
+	}
+	function readVote(post) {
+		const el = post.el;
+		if (!el) return 0;
+		const isOn = (b) => !!b && (b.getAttribute("aria-pressed") === "true" || b.hasAttribute("data-active"));
+		if (isOn(voteButton(el, "up"))) return 1;
+		if (isOn(voteButton(el, "down"))) return -1;
+		const attr = el.getAttribute("vote-type") || el.getAttribute("user-vote") || "";
+		if (/up/i.test(attr)) return 1;
+		if (/down/i.test(attr)) return -1;
+		return 0;
+	}
+	function vote(post, dir) {
+		const el = post.el;
+		if (!el?.isConnected) return false;
+		const btn = voteButton(el, dir);
+		if (!btn) return false;
+		btn.click();
+		return true;
+	}
 	function hasGm() {
 		return typeof GM_xmlhttpRequest === "function";
 	}
@@ -523,6 +553,9 @@
 			this.video.disableRemotePlayback = true;
 			this.video.addEventListener("waiting", () => this.emit("loading"));
 			this.video.addEventListener("playing", () => this.emit("ready"));
+			this.video.addEventListener("error", () => {
+				if (this.current && !this.hls && this.video.getAttribute("src")) this.nextSource(this.generation);
+			});
 			this.video.addEventListener("volumechange", () => {
 				if (this.video.muted !== this._muted && !this.autoplayMuted) {
 					this._muted = this.video.muted;
@@ -570,6 +603,56 @@
 				this.video.load();
 			} catch {}
 		}
+		sourcesFor(v) {
+			const list = [];
+			const mp4 = pickMp4(v, isMobile());
+			if (mp4) list.push({
+				type: "mp4",
+				url: mp4
+			});
+			if (v.hls) list.push({
+				type: "hls",
+				url: v.hls
+			});
+			return list;
+		}
+		attachHls(url, gen) {
+			if (hls_js.default.isSupported()) {
+				const hls = new hls_js.default({
+					capLevelToPlayerSize: true,
+					maxBufferLength: 15,
+					startLevel: -1
+				});
+				this.hls = hls;
+				hls.on(hls_js.default.Events.ERROR, (_e, data) => {
+					if (!data.fatal || gen !== this.generation) return;
+					if (data.type === hls_js.default.ErrorTypes.MEDIA_ERROR) {
+						hls.recoverMediaError();
+						return;
+					}
+					this.nextSource(gen);
+				});
+				hls.loadSource(url);
+				hls.attachMedia(this.video);
+			} else if (this.video.canPlayType("application/vnd.apple.mpegurl")) this.video.src = url;
+			else this.nextSource(gen);
+		}
+		queue = [];
+		nextSource(gen) {
+			if (gen !== this.generation) return;
+			const next = this.queue.shift();
+			if (!next) {
+				this.emit("error");
+				return;
+			}
+			if (this.hls) {
+				this.hls.destroy();
+				this.hls = null;
+			}
+			if (next.type === "mp4") this.video.src = next.url;
+			else this.attachHls(next.url, gen);
+			this.play();
+		}
 		async load(post) {
 			const gen = ++this.generation;
 			this.current = post;
@@ -580,20 +663,9 @@
 				if (post.kind === "video" && post.video) {
 					const v = post.video;
 					if (v.poster) this.video.poster = v.poster;
-					const mp4 = pickMp4(v, isMobile());
-					if (mp4) this.video.src = mp4;
-					else if (this.video.canPlayType("application/vnd.apple.mpegurl")) this.video.src = v.hls;
-					else if (hls_js.default.isSupported()) {
-						this.hls = new hls_js.default({
-							capLevelToPlayerSize: true,
-							maxBufferLength: 15,
-							startLevel: -1
-						});
-						this.hls.loadSource(v.hls);
-						this.hls.attachMedia(this.video);
-					} else throw new Error("no playable source");
 					if (v.captions) this.captionsUrl = v.captions;
-					this.play();
+					this.queue = this.sourcesFor(v);
+					this.nextSource(gen);
 					if (this._captions) this.applyCaptions(gen);
 				} else if (post.kind === "redgifs" && post.redgifsId) {
 					const info = await getRedgifs(post.redgifsId);
@@ -601,6 +673,7 @@
 					if (info.poster) this.video.poster = info.poster;
 					const blob = await redgifsBlobUrl(pickRedgifsUrl(info, isMobile()));
 					if (gen !== this.generation) return;
+					this.queue = [];
 					this.video.src = blob;
 					this.play();
 				}
@@ -624,12 +697,13 @@
 			const v = this.video;
 			v.muted = this._muted;
 			v.play()?.catch?.((err) => {
-				if (err?.name === "NotAllowedError" && !v.muted) {
+				if (err?.name !== "NotAllowedError") return;
+				if (!v.muted) {
 					this.autoplayMuted = true;
 					v.muted = true;
 					this.emit("autoplay-muted");
-					v.play().catch(() => {});
-				}
+					v.play().catch(() => this.emit("blocked"));
+				} else this.emit("blocked");
 			});
 		}
 		pause() {
@@ -683,44 +757,22 @@
 				track.track.mode = "showing";
 			} catch {}
 		}
+		dispose() {
+			this.stop();
+			this.preloader.removeAttribute("src");
+			try {
+				this.preloader.load();
+			} catch {}
+		}
 		stop() {
 			this.generation++;
 			this.current = null;
+			this.queue = [];
 			this.video.pause();
 			this.resetSource();
 			this.video.remove();
 		}
 	};
-	function voteButton(el, dir) {
-		const label = dir === "up" ? "upvote" : "downvote";
-		const roots = [];
-		if (el.shadowRoot) roots.push(el.shadowRoot);
-		roots.push(el);
-		for (const root of roots) {
-			const btn = root.querySelector(`button[${label}]`) || Array.from(root.querySelectorAll("button")).find((b) => (b.getAttribute("aria-label") || "").trim().toLowerCase() === label);
-			if (btn) return btn;
-		}
-		return null;
-	}
-	function readVote(post) {
-		const el = post.el;
-		if (!el) return 0;
-		const isOn = (b) => !!b && (b.getAttribute("aria-pressed") === "true" || b.hasAttribute("data-active"));
-		if (isOn(voteButton(el, "up"))) return 1;
-		if (isOn(voteButton(el, "down"))) return -1;
-		const attr = el.getAttribute("vote-type") || el.getAttribute("user-vote") || "";
-		if (/up/i.test(attr)) return 1;
-		if (/down/i.test(attr)) return -1;
-		return 0;
-	}
-	function vote(post, dir) {
-		const el = post.el;
-		if (!el?.isConnected) return false;
-		const btn = voteButton(el, dir);
-		if (!btn) return false;
-		btn.click();
-		return true;
-	}
 	function formatCount(num) {
 		if (!num || Number.isNaN(num)) return "0";
 		if (Math.abs(num) >= 1e6) return (num / 1e6).toFixed(1).replace(/\.0$/, "") + "m";
@@ -771,7 +823,7 @@
 		heart: svg("<path d=\"M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z\"/>", "currentColor"),
 		reel: svg("<rect x=\"5\" y=\"2\" width=\"14\" height=\"20\" rx=\"3\"/><polygon points=\"10 9 15 12 10 15 10 9\" fill=\"currentColor\"/>")
 	};
-	var reel_default = "/* Reel overlay. Lives in a shadow root: Reddit's CSS can't reach in, ours can't leak out. */\n:host {\n  all: initial;\n}\n\n* {\n  box-sizing: border-box;\n}\n\n.reel {\n  position: fixed;\n  inset: 0;\n  z-index: 2147483646;\n  background: #000;\n  color: #fff;\n  font:\n    15px / 1.35 -apple-system,\n    BlinkMacSystemFont,\n    \"Segoe UI\",\n    Roboto,\n    Helvetica,\n    Arial,\n    sans-serif;\n  -webkit-font-smoothing: antialiased;\n  -webkit-tap-highlight-color: transparent;\n  user-select: none;\n  -webkit-user-select: none;\n}\n\nbutton {\n  font: inherit;\n  color: inherit;\n  background: none;\n  border: 0;\n  padding: 0;\n  margin: 0;\n  cursor: pointer;\n  -webkit-tap-highlight-color: transparent;\n}\n\nbutton:focus-visible,\na:focus-visible {\n  outline: 2px solid #ff4500;\n  outline-offset: 2px;\n}\n\n/* ---------- Vertical track ---------- */\n.track {\n  position: absolute;\n  inset: 0;\n  overflow-y: auto;\n  overflow-x: hidden;\n  scroll-snap-type: y mandatory;\n  overscroll-behavior: contain;\n  scrollbar-width: none;\n}\n\n.track::-webkit-scrollbar {\n  display: none;\n}\n\n.slide {\n  position: relative;\n  height: 100%;\n  width: 100%;\n  overflow: hidden;\n  scroll-snap-align: start;\n  scroll-snap-stop: always;\n  contain: strict;\n  background: #000;\n}\n\n.slide.end {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  color: #9aa0a6;\n  font-size: 14px;\n}\n\n/* ---------- Media ---------- */\n.backdrop {\n  position: absolute;\n  inset: -40px;\n  width: calc(100% + 80px);\n  height: calc(100% + 80px);\n  object-fit: cover;\n  filter: blur(28px) brightness(0.45);\n  transform: translateZ(0);\n  pointer-events: none;\n}\n\n.media {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n.media > video,\n.media > img.main {\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n  background: transparent;\n  display: block;\n}\n\n.reel.fill .media > video,\n.reel.fill .media > img.main,\n.slide.portrait .media > video {\n  object-fit: cover;\n}\n\n.reel.fit .slide.portrait .media > video {\n  object-fit: contain;\n}\n\n.media > iframe {\n  width: 100%;\n  height: min(100%, 56.25vw);\n  border: 0;\n  background: #000;\n}\n\n.slide.vertical-embed .media > iframe {\n  height: 100%;\n}\n\n.shade {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  height: 45%;\n  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));\n  pointer-events: none;\n}\n\n.shade.top {\n  top: 0;\n  bottom: auto;\n  height: 120px;\n  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));\n}\n\n/* Gallery: native-feeling horizontal swipe */\n.gallery {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  overflow-x: auto;\n  overflow-y: hidden;\n  scroll-snap-type: x mandatory;\n  overscroll-behavior-x: contain;\n  scrollbar-width: none;\n}\n\n.gallery::-webkit-scrollbar {\n  display: none;\n}\n\n.gallery > div {\n  flex: 0 0 100%;\n  height: 100%;\n  scroll-snap-align: center;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n.gallery img {\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n}\n\n.count {\n  position: absolute;\n  top: calc(64px + env(safe-area-inset-top, 0px));\n  right: 14px;\n  padding: 4px 10px;\n  border-radius: 999px;\n  background: rgba(0, 0, 0, 0.55);\n  font-size: 12px;\n  font-weight: 700;\n  pointer-events: none;\n}\n\n/* Text / link cards */\n.card {\n  position: absolute;\n  inset: calc(70px + env(safe-area-inset-top, 0px)) 76px calc(150px + env(safe-area-inset-bottom, 0px)) 16px;\n  display: flex;\n  flex-direction: column;\n  justify-content: center;\n}\n\n.card-inner {\n  max-height: 100%;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n  padding: 20px;\n  border-radius: 16px;\n  background: #16171b;\n  border: 1px solid #2a2c33;\n  user-select: text;\n  -webkit-user-select: text;\n}\n\n.card h2 {\n  margin: 0 0 12px;\n  font-size: 20px;\n  line-height: 1.3;\n}\n\n.card p {\n  margin: 0;\n  color: #d7dadc;\n  white-space: pre-wrap;\n  word-break: break-word;\n}\n\n.card img {\n  width: 100%;\n  max-height: 40vh;\n  object-fit: cover;\n  border-radius: 10px;\n  margin-bottom: 12px;\n}\n\n.card .domain {\n  color: #9aa0a6;\n  font-size: 13px;\n  margin-bottom: 14px;\n}\n\n.card a.cta {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  padding: 10px 16px;\n  border-radius: 999px;\n  background: #ff4500;\n  color: #fff;\n  font-weight: 700;\n  text-decoration: none;\n}\n\n.card a.cta svg {\n  width: 18px;\n  height: 18px;\n}\n\n/* ---------- Chrome ---------- */\n.top {\n  position: absolute;\n  top: 0;\n  left: 0;\n  right: 0;\n  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 0;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  z-index: 5;\n  pointer-events: none;\n}\n\n.top button {\n  pointer-events: auto;\n}\n\n.icon-btn {\n  width: 44px;\n  height: 44px;\n  border-radius: 999px;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  background: rgba(0, 0, 0, 0.35);\n  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));\n}\n\n.icon-btn svg {\n  width: 24px;\n  height: 24px;\n}\n\n.feed-name {\n  font-weight: 700;\n  font-size: 15px;\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);\n  max-width: 50vw;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.info {\n  position: absolute;\n  left: 14px;\n  right: 78px;\n  bottom: calc(22px + env(safe-area-inset-bottom, 0px));\n  z-index: 3;\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);\n}\n\n.meta {\n  display: flex;\n  gap: 6px;\n  align-items: center;\n  font-size: 13px;\n  margin-bottom: 6px;\n  flex-wrap: wrap;\n}\n\n.meta a {\n  color: #fff;\n  text-decoration: none;\n  font-weight: 700;\n}\n\n.meta .author {\n  color: #d7dadc;\n  font-weight: 500;\n}\n\n.nsfw {\n  padding: 1px 6px;\n  border-radius: 4px;\n  background: #d93a00;\n  font-size: 11px;\n  font-weight: 800;\n}\n\n.title {\n  margin: 0;\n  font-size: 15px;\n  font-weight: 600;\n  display: -webkit-box;\n  -webkit-line-clamp: 3;\n  -webkit-box-orient: vertical;\n  overflow: hidden;\n  word-break: break-word;\n}\n\n.title.open {\n  -webkit-line-clamp: unset;\n  max-height: 40vh;\n  overflow-y: auto;\n}\n\n.rail {\n  position: absolute;\n  right: 8px;\n  bottom: calc(22px + env(safe-area-inset-bottom, 0px));\n  z-index: 4;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 14px;\n}\n\n.rail .item {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 2px;\n  font-size: 12px;\n  font-weight: 700;\n  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);\n}\n\n.rail button {\n  width: 48px;\n  height: 48px;\n  border-radius: 999px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7));\n}\n\n.rail button:active {\n  transform: scale(0.9);\n}\n\n.rail .up.on {\n  color: #ff4500;\n}\n\n.rail .down.on {\n  color: #7193ff;\n}\n\n.rail .cc.on {\n  color: #ff4500;\n}\n\n.slide.has-video .info,\n.slide.has-video .rail {\n  bottom: calc(34px + env(safe-area-inset-bottom, 0px));\n}\n\n/* Seek bar: thin, with a tall invisible touch target */\n.seek {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: env(safe-area-inset-bottom, 0px);\n  height: 24px;\n  z-index: 6;\n  display: flex;\n  align-items: flex-end;\n  touch-action: none;\n  cursor: pointer;\n}\n\n.seek .rail-line {\n  position: relative;\n  width: 100%;\n  height: 3px;\n  background: rgba(255, 255, 255, 0.25);\n  transition: height 0.12s ease;\n}\n\n.seek.dragging .rail-line,\n.seek:hover .rail-line {\n  height: 6px;\n}\n\n.seek .fill {\n  position: absolute;\n  inset: 0 auto 0 0;\n  width: 0;\n  background: #fff;\n}\n\n.seek .buffer {\n  position: absolute;\n  inset: 0 auto 0 0;\n  width: 0;\n  background: rgba(255, 255, 255, 0.35);\n}\n\n.time {\n  position: absolute;\n  bottom: calc(30px + env(safe-area-inset-bottom, 0px));\n  left: 50%;\n  transform: translateX(-50%);\n  padding: 4px 10px;\n  border-radius: 999px;\n  background: rgba(0, 0, 0, 0.6);\n  font-size: 13px;\n  font-weight: 700;\n  font-variant-numeric: tabular-nums;\n  display: none;\n  z-index: 7;\n}\n\n.seek.dragging + .time {\n  display: block;\n}\n\n/* ---------- Feedback ---------- */\n.spinner {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  width: 44px;\n  height: 44px;\n  margin: -22px 0 0 -22px;\n  border-radius: 50%;\n  border: 3px solid rgba(255, 255, 255, 0.25);\n  border-top-color: #fff;\n  animation: spin 0.8s linear infinite;\n  display: none;\n  pointer-events: none;\n  z-index: 2;\n}\n\n.slide.loading .spinner {\n  display: block;\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.pulse {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  width: 84px;\n  height: 84px;\n  margin: -42px 0 0 -42px;\n  border-radius: 50%;\n  background: rgba(0, 0, 0, 0.45);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  pointer-events: none;\n  z-index: 8;\n  animation: pulse 0.6s ease-out forwards;\n}\n\n.pulse.heart {\n  background: none;\n  color: #ff4500;\n}\n\n.pulse svg {\n  width: 40px;\n  height: 40px;\n}\n\n.pulse.heart svg {\n  width: 90px;\n  height: 90px;\n  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));\n}\n\n@keyframes pulse {\n  0% {\n    opacity: 0;\n    transform: scale(0.6);\n  }\n  30% {\n    opacity: 1;\n    transform: scale(1.05);\n  }\n  100% {\n    opacity: 0;\n    transform: scale(1.2);\n  }\n}\n\n.unmute-hint {\n  position: absolute;\n  top: calc(64px + env(safe-area-inset-top, 0px));\n  left: 50%;\n  transform: translateX(-50%);\n  padding: 8px 14px;\n  border-radius: 999px;\n  background: rgba(0, 0, 0, 0.7);\n  font-size: 13px;\n  font-weight: 700;\n  display: none;\n  align-items: center;\n  gap: 6px;\n  z-index: 6;\n}\n\n.unmute-hint svg {\n  width: 18px;\n  height: 18px;\n}\n\n.reel.autoplay-muted .slide.active .unmute-hint {\n  display: inline-flex;\n}\n\n.toast {\n  position: absolute;\n  left: 50%;\n  bottom: calc(110px + env(safe-area-inset-bottom, 0px));\n  transform: translateX(-50%);\n  padding: 10px 16px;\n  border-radius: 12px;\n  background: rgba(30, 31, 36, 0.95);\n  font-size: 14px;\n  z-index: 9;\n  max-width: 86vw;\n  text-align: center;\n  pointer-events: none;\n  opacity: 0;\n  transition: opacity 0.2s ease;\n}\n\n.toast.show {\n  opacity: 1;\n}\n\n.error {\n  position: absolute;\n  inset: auto 0 50% 0;\n  text-align: center;\n  color: #d7dadc;\n  font-size: 14px;\n  z-index: 2;\n}\n\n.error a {\n  color: #ff4500;\n}\n\n/* ---------- Wider screens: keep the reel a phone-shaped column ---------- */\n@media (min-width: 900px) and (pointer: fine) {\n  .slide-inner {\n    position: absolute;\n    top: 0;\n    bottom: 0;\n    left: 50%;\n    width: min(100vw, calc(100dvh * 9 / 16));\n    transform: translateX(-50%);\n  }\n\n  .rail {\n    right: -68px;\n  }\n\n  .info {\n    right: 14px;\n  }\n\n  .card {\n    right: 16px;\n  }\n}\n\n@media (max-width: 899px), (pointer: coarse) {\n  .slide-inner {\n    position: absolute;\n    inset: 0;\n  }\n}\n\n/* Text / link cards already show the title */\n.slide.kind-text .info .title,\n.slide.kind-link .info .title {\n  display: none;\n}\n";
+	var reel_default = "/* Reel overlay. Lives in a shadow root: Reddit's CSS can't reach in, ours can't leak out. */\n:host {\n  all: initial;\n}\n\n* {\n  box-sizing: border-box;\n}\n\n.reel {\n  position: fixed;\n  inset: 0;\n  z-index: 2147483646;\n  background: #000;\n  color: #fff;\n  font:\n    15px / 1.35 -apple-system,\n    BlinkMacSystemFont,\n    \"Segoe UI\",\n    Roboto,\n    Helvetica,\n    Arial,\n    sans-serif;\n  -webkit-font-smoothing: antialiased;\n  -webkit-tap-highlight-color: transparent;\n  user-select: none;\n  -webkit-user-select: none;\n}\n\nbutton {\n  font: inherit;\n  color: inherit;\n  background: none;\n  border: 0;\n  padding: 0;\n  margin: 0;\n  cursor: pointer;\n  -webkit-tap-highlight-color: transparent;\n}\n\nbutton:focus-visible,\na:focus-visible {\n  outline: 2px solid #ff4500;\n  outline-offset: 2px;\n}\n\n/* ---------- Vertical track ---------- */\n.track {\n  position: absolute;\n  inset: 0;\n  overflow-y: auto;\n  overflow-x: hidden;\n  scroll-snap-type: y mandatory;\n  overscroll-behavior: contain;\n  scrollbar-width: none;\n}\n\n.track::-webkit-scrollbar {\n  display: none;\n}\n\n.slide {\n  position: relative;\n  height: 100%;\n  width: 100%;\n  overflow: hidden;\n  scroll-snap-align: start;\n  scroll-snap-stop: always;\n  contain: strict;\n  background: #000;\n}\n\n.slide.end {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  color: #9aa0a6;\n  font-size: 14px;\n}\n\n/* ---------- Media ---------- */\n.backdrop {\n  position: absolute;\n  inset: -40px;\n  width: calc(100% + 80px);\n  height: calc(100% + 80px);\n  object-fit: cover;\n  filter: blur(28px) brightness(0.45);\n  transform: translateZ(0);\n  pointer-events: none;\n}\n\n.media {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n.media > video,\n.media > img.main {\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n  background: transparent;\n  display: block;\n}\n\n.reel.fill .media > video,\n.reel.fill .media > img.main,\n.slide.portrait .media > video {\n  object-fit: cover;\n}\n\n.media > iframe {\n  width: 100%;\n  height: min(100%, 56.25vw);\n  border: 0;\n  background: #000;\n}\n\n.slide.vertical-embed .media > iframe {\n  height: 100%;\n}\n\n.shade {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  height: 45%;\n  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));\n  pointer-events: none;\n}\n\n.shade.top {\n  top: 0;\n  bottom: auto;\n  height: 120px;\n  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));\n}\n\n/* Gallery: native-feeling horizontal swipe */\n.gallery {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  overflow-x: auto;\n  overflow-y: hidden;\n  scroll-snap-type: x mandatory;\n  overscroll-behavior-x: contain;\n  scrollbar-width: none;\n}\n\n.gallery::-webkit-scrollbar {\n  display: none;\n}\n\n.gallery > div {\n  flex: 0 0 100%;\n  height: 100%;\n  scroll-snap-align: center;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n.gallery img {\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n}\n\n.count {\n  position: absolute;\n  top: calc(64px + env(safe-area-inset-top, 0px));\n  right: 14px;\n  padding: 4px 10px;\n  border-radius: 999px;\n  background: rgba(0, 0, 0, 0.55);\n  font-size: 12px;\n  font-weight: 700;\n  pointer-events: none;\n}\n\n/* Text / link cards */\n.card {\n  position: absolute;\n  /* Symmetric gutters so the card is centered; the rail floats over the right gutter. */\n  inset: calc(70px + env(safe-area-inset-top, 0px)) 64px calc(150px + env(safe-area-inset-bottom, 0px));\n  display: flex;\n  flex-direction: column;\n  justify-content: center;\n  align-items: center;\n}\n\n.card-inner {\n  width: 100%;\n  max-width: 560px;\n  max-height: 100%;\n  overflow-y: auto;\n  overscroll-behavior: contain;\n  padding: 20px;\n  border-radius: 16px;\n  background: #16171b;\n  border: 1px solid #2a2c33;\n  user-select: text;\n  -webkit-user-select: text;\n}\n\n.card h2 {\n  margin: 0 0 12px;\n  font-size: 20px;\n  line-height: 1.3;\n}\n\n.card p {\n  margin: 0;\n  color: #d7dadc;\n  white-space: pre-wrap;\n  word-break: break-word;\n}\n\n.card img {\n  width: 100%;\n  /* Fixed box: an image finishing its load must not change layout inside the snap track. */\n  aspect-ratio: 16 / 9;\n  height: auto;\n  max-height: 40vh;\n  object-fit: cover;\n  border-radius: 10px;\n  margin-bottom: 12px;\n}\n\n.card .domain {\n  color: #9aa0a6;\n  font-size: 13px;\n  margin-bottom: 14px;\n}\n\n.card a.cta {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  padding: 10px 16px;\n  border-radius: 999px;\n  background: #ff4500;\n  color: #fff;\n  font-weight: 700;\n  text-decoration: none;\n}\n\n.card a.cta svg {\n  width: 18px;\n  height: 18px;\n}\n\n/* ---------- Chrome ---------- */\n.top {\n  position: absolute;\n  top: 0;\n  left: 0;\n  right: 0;\n  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 0;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  z-index: 5;\n  pointer-events: none;\n}\n\n.top button {\n  pointer-events: auto;\n}\n\n.icon-btn {\n  width: 44px;\n  height: 44px;\n  border-radius: 999px;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  background: rgba(0, 0, 0, 0.35);\n  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));\n}\n\n.icon-btn svg {\n  width: 24px;\n  height: 24px;\n}\n\n.feed-name {\n  font-weight: 700;\n  font-size: 15px;\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);\n  max-width: 50vw;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.info {\n  position: absolute;\n  left: 14px;\n  right: 78px;\n  bottom: calc(22px + env(safe-area-inset-bottom, 0px));\n  z-index: 3;\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);\n}\n\n.meta {\n  display: flex;\n  gap: 6px;\n  align-items: center;\n  font-size: 13px;\n  margin-bottom: 6px;\n  flex-wrap: wrap;\n}\n\n.meta a {\n  color: #fff;\n  text-decoration: none;\n  font-weight: 700;\n}\n\n.meta .author {\n  color: #d7dadc;\n  font-weight: 500;\n}\n\n.nsfw {\n  padding: 1px 6px;\n  border-radius: 4px;\n  background: #d93a00;\n  font-size: 11px;\n  font-weight: 800;\n}\n\n.title {\n  margin: 0;\n  font-size: 15px;\n  font-weight: 600;\n  display: -webkit-box;\n  -webkit-line-clamp: 3;\n  -webkit-box-orient: vertical;\n  overflow: hidden;\n  word-break: break-word;\n}\n\n.title.open {\n  -webkit-line-clamp: unset;\n  max-height: 40vh;\n  overflow-y: auto;\n}\n\n.rail {\n  position: absolute;\n  right: 8px;\n  bottom: calc(22px + env(safe-area-inset-bottom, 0px));\n  z-index: 4;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 14px;\n}\n\n.rail .item {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 2px;\n  font-size: 12px;\n  font-weight: 700;\n  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);\n}\n\n.rail button {\n  width: 48px;\n  height: 48px;\n  border-radius: 999px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7));\n}\n\n.rail button:active {\n  transform: scale(0.9);\n}\n\n.rail .up.on {\n  color: #ff4500;\n}\n\n.rail .down.on {\n  color: #7193ff;\n}\n\n.rail .cc.on {\n  color: #ff4500;\n}\n\n.slide.has-video .info,\n.slide.has-video .rail {\n  bottom: calc(34px + env(safe-area-inset-bottom, 0px));\n}\n\n/* ---------- HUD: fixed layer above the track ----------\n   Everything that changes while you watch lives here, never inside a slide:\n   layout changes inside a scroll-snap track during a swipe make the browser\n   snap back to the old slide. */\n.hud {\n  pointer-events: none;\n  z-index: 4;\n}\n\n.reel:not(.has-video) .seek,\n.reel:not(.has-video) .time {\n  display: none;\n}\n\n.seek {\n  position: absolute;\n  left: 0;\n  right: 0;\n  bottom: env(safe-area-inset-bottom, 0px);\n  height: 24px;\n  display: flex;\n  align-items: flex-end;\n  touch-action: none;\n  cursor: pointer;\n  pointer-events: auto;\n}\n\n.seek .rail-line {\n  position: relative;\n  width: 100%;\n  height: 3px;\n  background: rgba(255, 255, 255, 0.25);\n  overflow: hidden;\n}\n\n.seek.dragging .rail-line,\n.seek:hover .rail-line {\n  height: 6px;\n}\n\n.seek .fill,\n.seek .buffer {\n  position: absolute;\n  inset: 0;\n  transform-origin: left center;\n  transform: scaleX(0);\n  will-change: transform;\n}\n\n.seek .fill {\n  background: #fff;\n}\n\n.seek .buffer {\n  background: rgba(255, 255, 255, 0.35);\n}\n\n.time {\n  position: absolute;\n  bottom: calc(30px + env(safe-area-inset-bottom, 0px));\n  left: 50%;\n  transform: translateX(-50%);\n  padding: 4px 10px;\n  border-radius: 999px;\n  background: rgba(0, 0, 0, 0.6);\n  font-size: 13px;\n  font-weight: 700;\n  font-variant-numeric: tabular-nums;\n  display: none;\n}\n\n.seek.dragging + .time {\n  display: block;\n}\n\n.spinner {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  width: 44px;\n  height: 44px;\n  margin: -22px 0 0 -22px;\n  border-radius: 50%;\n  border: 3px solid rgba(255, 255, 255, 0.25);\n  border-top-color: #fff;\n  animation: spin 0.8s linear infinite;\n  display: none;\n}\n\n.reel.loading .spinner {\n  display: block;\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.tap-play {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  width: 76px;\n  height: 76px;\n  margin: -38px 0 0 -38px;\n  border-radius: 50%;\n  background: rgba(0, 0, 0, 0.5);\n  display: none;\n  align-items: center;\n  justify-content: center;\n}\n\n.tap-play svg {\n  width: 34px;\n  height: 34px;\n  margin-left: 4px;\n}\n\n.reel.blocked .tap-play {\n  display: flex;\n}\n\n.pulse {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  width: 84px;\n  height: 84px;\n  margin: -42px 0 0 -42px;\n  border-radius: 50%;\n  background: rgba(0, 0, 0, 0.45);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  animation: pulse 0.6s ease-out forwards;\n}\n\n.pulse.heart {\n  background: none;\n  color: #ff4500;\n}\n\n.pulse svg {\n  width: 40px;\n  height: 40px;\n}\n\n.pulse.heart svg {\n  width: 90px;\n  height: 90px;\n  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));\n}\n\n@keyframes pulse {\n  0% {\n    opacity: 0;\n    transform: scale(0.6);\n  }\n  30% {\n    opacity: 1;\n    transform: scale(1.05);\n  }\n  100% {\n    opacity: 0;\n    transform: scale(1.2);\n  }\n}\n\n.unmute-hint {\n  position: absolute;\n  top: calc(64px + env(safe-area-inset-top, 0px));\n  left: 50%;\n  transform: translateX(-50%);\n  padding: 8px 14px;\n  border-radius: 999px;\n  background: rgba(0, 0, 0, 0.7);\n  font-size: 13px;\n  font-weight: 700;\n  display: none;\n  align-items: center;\n  gap: 6px;\n}\n\n.unmute-hint svg {\n  width: 18px;\n  height: 18px;\n}\n\n.reel.autoplay-muted.has-video .unmute-hint {\n  display: inline-flex;\n}\n\n.error {\n  position: absolute;\n  left: 16px;\n  right: 16px;\n  top: 50%;\n  transform: translateY(-50%);\n  text-align: center;\n  color: #d7dadc;\n  font-size: 14px;\n  display: none;\n  pointer-events: auto;\n}\n\n.reel.errored .error {\n  display: block;\n}\n\n.error a {\n  color: #ff4500;\n}\n\n.toast {\n  position: absolute;\n  left: 50%;\n  bottom: calc(110px + env(safe-area-inset-bottom, 0px));\n  transform: translateX(-50%);\n  padding: 10px 16px;\n  border-radius: 12px;\n  background: rgba(30, 31, 36, 0.95);\n  font-size: 14px;\n  z-index: 9;\n  max-width: 86vw;\n  text-align: center;\n  pointer-events: none;\n  opacity: 0;\n  transition: opacity 0.2s ease;\n}\n\n.toast.show {\n  opacity: 1;\n}\n\n/* ---------- Wider screens: keep the reel a phone-shaped column ---------- */\n@media (min-width: 900px) and (pointer: fine) {\n  .slide-inner,\n  .hud {\n    position: absolute;\n    top: 0;\n    bottom: 0;\n    left: 50%;\n    width: min(100vw, calc(100vh * 9 / 16));\n    /* biome-ignore lint/suspicious/noDuplicateProperties: vh fallback for browsers without dvh */\n    width: min(100vw, calc(100dvh * 9 / 16));\n    transform: translateX(-50%);\n  }\n\n  .rail {\n    right: -68px;\n  }\n\n  .info {\n    right: 14px;\n  }\n\n  .card {\n    left: 16px;\n    right: 16px;\n  }\n}\n\n@media (max-width: 899px), (pointer: coarse) {\n  .slide-inner,\n  .hud {\n    position: absolute;\n    inset: 0;\n  }\n}\n\n/* Text / link cards already show the title */\n.slide.kind-text .info .title,\n.slide.kind-link .info .title {\n  display: none;\n}\n";
 	var REDDIT = "https://www.reddit.com";
 	function postUrl(post) {
 		if (post.permalink.startsWith("http")) return post.permalink;
@@ -797,10 +849,8 @@
 		root.innerHTML = `
     <div class="slide-inner">
       <div class="media"></div>
-      <div class="spinner"></div>
       <div class="shade top"></div>
       <div class="shade"></div>
-      <div class="unmute-hint">${ICONS.soundOff}<span>Tap for sound</span></div>
       <div class="info">
         <div class="meta">
           ${sub ? `<a class="sub" href="${escapeHtml(subHref)}">${sub}</a>` : ""}
@@ -918,7 +968,7 @@
 		Array.from(refs.media.children).forEach((c) => {
 			if (!(c instanceof HTMLVideoElement)) c.remove();
 		});
-		refs.root.classList.remove("vertical-embed", "loading");
+		refs.root.classList.remove("vertical-embed");
 	}
 	function setVoteUi(refs, state, score) {
 		const up = refs.root.querySelector("button.up");
@@ -939,25 +989,32 @@
 	var MOUNT_RADIUS = 1;
 	var LOAD_AHEAD = 5;
 	var TAP_MS = 260;
+	var SETTLE_MS = 120;
 	var Reel = class {
 		opts;
 		host;
 		shadow;
 		el;
 		track;
+		hud;
+		seek;
+		seekFill;
+		seekBuffer;
+		timeEl;
+		errorEl;
 		toastEl;
 		soundBtn;
+		endEl;
 		slides = [];
+		slideIds = new Set();
 		active = -1;
-		observer = null;
 		player = new Player();
 		cleanup = [];
 		tapTimer = null;
 		lastTap = 0;
-		seekEl = null;
-		timeEl = null;
+		settleTimer = null;
+		toastTimer = null;
 		votes = new Map();
-		endEl = null;
 		constructor(opts) {
 			this.opts = opts;
 			this.host = document.createElement("div");
@@ -975,7 +1032,15 @@
 			this.el.setAttribute("role", "dialog");
 			this.el.setAttribute("aria-label", "Reddit reels");
 			this.el.innerHTML = `
-      <div class="track" tabindex="-1"></div>
+      <div class="track" tabindex="-1"><section class="slide end"></section></div>
+      <div class="hud">
+        <div class="spinner"></div>
+        <div class="tap-play" aria-hidden="true">${ICONS.play}</div>
+        <div class="unmute-hint">${ICONS.soundOff}<span>Tap for sound</span></div>
+        <div class="error"></div>
+        <div class="seek" role="slider" aria-label="Seek"><div class="rail-line"><div class="buffer"></div><div class="fill"></div></div></div>
+        <div class="time"></div>
+      </div>
       <div class="top">
         <button type="button" class="icon-btn" data-action="close" aria-label="Close reels">${ICONS.close}</button>
         <span class="feed-name"></span>
@@ -984,15 +1049,19 @@
       <div class="toast" role="status" aria-live="polite"></div>
     `;
 			this.shadow.append(style, this.el);
-			this.track = this.el.querySelector(".track");
-			this.toastEl = this.el.querySelector(".toast");
-			this.soundBtn = this.el.querySelector("[data-action=\"sound\"]");
-			this.el.querySelector(".feed-name").textContent = this.opts.feedName;
+			const q = (sel) => this.el.querySelector(sel);
+			this.track = q(".track");
+			this.endEl = q(".slide.end");
+			this.hud = q(".hud");
+			this.seek = q(".seek");
+			this.seekFill = q(".seek .fill");
+			this.seekBuffer = q(".seek .buffer");
+			this.timeEl = q(".time");
+			this.errorEl = q(".error");
+			this.toastEl = q(".toast");
+			this.soundBtn = q("[data-action=\"sound\"]");
+			q(".feed-name").textContent = this.opts.feedName;
 			document.documentElement.appendChild(this.host);
-			this.observer = new IntersectionObserver((entries) => this.onIntersect(entries), {
-				root: this.track,
-				threshold: [.6]
-			});
 			this.appendSlides(this.opts.source.posts);
 			this.cleanup.push(this.opts.source.onAdded((added) => this.appendSlides(added)));
 			this.wireEvents();
@@ -1003,44 +1072,51 @@
 			this.track.focus({ preventScroll: true });
 		}
 		close() {
-			this.player.stop();
-			this.observer?.disconnect();
+			this.player.dispose();
 			for (const fn of this.cleanup) fn();
 			this.cleanup = [];
+			if (this.settleTimer) clearTimeout(this.settleTimer);
+			if (this.tapTimer) clearTimeout(this.tapTimer);
+			if (this.toastTimer) clearTimeout(this.toastTimer);
 			this.host.remove();
 		}
 		appendSlides(posts) {
+			const wasOnEnd = this.active >= 0 && this.currentIndex() >= this.slides.length;
+			const firstNew = this.slides.length;
 			for (const post of posts) {
-				if (this.slides.some((s) => s.root.dataset.id === post.id)) continue;
+				if (this.slideIds.has(post.id)) continue;
+				this.slideIds.add(post.id);
 				const refs = buildSlide(post, this.slides.length);
 				this.slides.push(refs);
 				this.track.insertBefore(refs.root, this.endEl);
-				this.observer?.observe(refs.root);
 				this.votes.set(post.id, readVote(post));
 				setVoteUi(refs, this.votes.get(post.id) || 0, post.score);
 			}
 			this.syncEnd();
-			if (this.active >= 0) this.mountAround(this.active);
+			if (wasOnEnd && this.slides.length > firstNew) {
+				this.track.scrollTop = firstNew * this.track.clientHeight;
+				this.activate(firstNew);
+			} else if (this.active >= 0) this.mountAround(this.active);
 		}
 		syncEnd() {
-			if (!this.endEl) {
-				this.endEl = document.createElement("section");
-				this.endEl.className = "slide end";
-				this.track.appendChild(this.endEl);
-				this.observer?.observe(this.endEl);
-			}
 			this.endEl.textContent = this.opts.source.hasMore ? "Loading more…" : "You're all caught up";
 		}
-		onIntersect(entries) {
-			for (const e of entries) {
-				if (!e.isIntersecting) continue;
-				if (e.target === this.endEl) {
-					this.loadMore();
-					continue;
-				}
-				const i = Number(e.target.dataset.index);
-				if (Number.isFinite(i) && i !== this.active) this.activate(i);
+		currentIndex() {
+			return Math.round(this.track.scrollTop / Math.max(1, this.track.clientHeight));
+		}
+		onScroll() {
+			if (this.settleTimer) clearTimeout(this.settleTimer);
+			this.settleTimer = setTimeout(() => this.settle(), SETTLE_MS);
+		}
+		settle() {
+			if (this.settleTimer) clearTimeout(this.settleTimer);
+			this.settleTimer = null;
+			const i = this.currentIndex();
+			if (i >= this.slides.length) {
+				this.loadMore();
+				return;
 			}
+			if (i !== this.active) this.activate(i);
 		}
 		mountAround(center) {
 			this.slides.forEach((refs, i) => {
@@ -1054,27 +1130,33 @@
 			const posts = this.opts.source.posts;
 			const post = posts[i];
 			if (!post) return;
-			this.slides[this.active]?.root.classList.remove("active", "loading");
+			this.slides[this.active]?.root.classList.remove("active");
 			this.active = i;
-			if (this.target === i) this.target = -1;
 			const refs = this.slides[i];
 			refs.root.classList.add("active");
+			this.setState({
+				loading: false,
+				blocked: false,
+				error: ""
+			});
 			this.mountAround(i);
-			this.removeSeek();
 			this.track.querySelectorAll("iframe.rg-fallback").forEach((f) => {
 				if (!refs.root.contains(f)) f.remove();
 			});
-			if (isVideoKind(post)) {
+			const video = isVideoKind(post);
+			this.el.classList.toggle("has-video", video);
+			this.updateSeek(true);
+			if (post.kind === "video" && post.el?.isConnected) {
+				const fresh = extractPost(post.el);
+				if (fresh?.video) post.video = fresh.video;
+			}
+			if (video) {
 				refs.media.querySelector("img.poster")?.remove();
 				refs.media.prepend(this.player.video);
-				refs.root.classList.add("loading");
-				this.addSeek(refs);
+				this.setState({ loading: true });
 				this.player.load(post);
-				this.player.preload(posts[i + 1]);
-			} else {
-				this.player.stop();
-				if (posts[i + 1]) this.player.preload(posts[i + 1]);
-			}
+			} else this.player.stop();
+			this.player.preload(posts[i + 1]);
 			if (i >= posts.length - LOAD_AHEAD) this.loadMore();
 		}
 		loadMore() {
@@ -1084,43 +1166,49 @@
 			}
 			this.opts.source.loadMore().then(() => this.syncEnd());
 		}
-		target = -1;
 		go(delta) {
-			const from = this.target >= 0 ? this.target : this.active;
-			const next = Math.max(0, Math.min(this.slides.length - 1, from + delta));
-			this.target = next;
-			this.slides[next]?.root.scrollIntoView({
-				behavior: "smooth",
-				block: "start"
+			const next = Math.max(0, Math.min(this.slides.length - 1, this.currentIndex() + delta));
+			this.track.scrollTo({
+				top: next * this.track.clientHeight,
+				behavior: "smooth"
 			});
 		}
+		setState(s) {
+			if (s.loading !== void 0) this.el.classList.toggle("loading", s.loading);
+			if (s.blocked !== void 0) this.el.classList.toggle("blocked", s.blocked);
+			if (s.error !== void 0) {
+				this.errorEl.innerHTML = s.error;
+				this.el.classList.toggle("errored", !!s.error);
+			}
+		}
 		wireEvents() {
-			const onClick = (e) => this.onClick(e);
-			this.el.addEventListener("click", onClick);
+			this.el.addEventListener("click", (e) => this.onClick(e));
+			this.track.addEventListener("scroll", () => this.onScroll(), { passive: true });
+			this.track.addEventListener("scrollend", () => this.settle());
 			const onKey = (e) => this.onKey(e);
 			window.addEventListener("keydown", onKey, true);
 			this.cleanup.push(() => window.removeEventListener("keydown", onKey, true));
-			const offPlayer = this.player.on((ev) => {
-				const refs = this.slides[this.active];
-				if (ev === "ready") refs?.root.classList.remove("loading");
-				if (ev === "loading" && this.player.video.readyState < 3) refs?.root.classList.add("loading");
-				if (ev === "error") {
-					refs?.root.classList.remove("loading");
-					const post = this.activePost;
-					if (refs && post?.kind === "redgifs" && post.redgifsId) this.redgifsFallback(refs, post.redgifsId);
-					else this.showError(refs);
-				}
+			this.cleanup.push(this.player.on((ev) => {
+				if (ev === "ready") this.setState({
+					loading: false,
+					blocked: false
+				});
+				if (ev === "loading" && this.player.video.readyState < 3) this.setState({ loading: true });
+				if (ev === "blocked") this.setState({
+					loading: false,
+					blocked: true
+				});
+				if (ev === "error") this.onPlayerError();
 				if (ev === "muted" || ev === "autoplay-muted") this.syncSound();
-			});
-			this.cleanup.push(offPlayer);
+			}));
 			const v = this.player.video;
-			const onTime = () => this.updateSeek();
-			v.addEventListener("timeupdate", onTime);
-			v.addEventListener("progress", onTime);
+			v.addEventListener("timeupdate", () => this.updateSeek());
+			v.addEventListener("progress", () => this.updateSeek());
 			v.addEventListener("loadedmetadata", () => {
 				const refs = this.slides[this.active];
 				if (refs && v.videoWidth && v.videoHeight) refs.root.classList.toggle("portrait", v.videoHeight / v.videoWidth >= 1.5);
 			});
+			this.wireSeek();
 		}
 		onClick(e) {
 			const target = e.composedPath()[0];
@@ -1130,7 +1218,7 @@
 				this.runAction(btn.dataset.action || "", btn);
 				return;
 			}
-			if (target.closest?.("a, .card-inner, .seek, .gallery .count")) return;
+			if (target.closest?.("a, .card-inner, .seek, .gallery .count, .top")) return;
 			if (target.closest?.(".title")) {
 				target.closest(".title")?.classList.toggle("open");
 				return;
@@ -1152,7 +1240,8 @@
 		}
 		singleTap() {
 			const post = this.activePost;
-			if (!post || !isVideoKind(post)) return;
+			if (!post || !isVideoKind(post) || this.el.classList.contains("errored")) return;
+			this.setState({ blocked: false });
 			const playing = this.player.toggle();
 			this.pulse(playing ? ICONS.play : ICONS.pause);
 		}
@@ -1210,7 +1299,7 @@
 					left: (k === "ArrowRight" ? 1 : -1) * strip.clientWidth,
 					behavior: "smooth"
 				});
-				else if (isVideoKind(this.activePost)) this.player.video.currentTime += k === "ArrowRight" ? 5 : -5;
+				else if (this.activePost && isVideoKind(this.activePost)) this.player.video.currentTime += k === "ArrowRight" ? 5 : -5;
 			} else handled = false;
 			if (handled) {
 				e.preventDefault();
@@ -1222,7 +1311,7 @@
 				this.toast("Open the post on Reddit to vote");
 				return;
 			}
-			if (document.querySelector("#login-button, a[href*=\"/login\"]") && !document.querySelector("#expand-user-drawer-button")) {
+			if (document.querySelector("#login-button")) {
 				this.toast("Log in to Reddit to vote");
 				return;
 			}
@@ -1244,24 +1333,15 @@
 				}
 			}, 900);
 		}
-		addSeek(refs) {
-			const seek = document.createElement("div");
-			seek.className = "seek";
-			seek.setAttribute("role", "slider");
-			seek.setAttribute("aria-label", "Seek");
-			seek.innerHTML = "<div class=\"rail-line\"><div class=\"buffer\"></div><div class=\"fill\"></div></div>";
-			const time = document.createElement("div");
-			time.className = "time";
-			refs.inner.append(seek, time);
-			this.seekEl = seek;
-			this.timeEl = time;
+		wireSeek() {
+			const seek = this.seek;
 			const v = this.player.video;
 			const seekTo = (clientX) => {
 				const rect = seek.getBoundingClientRect();
 				const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / Math.max(1, rect.width)));
 				if (Number.isFinite(v.duration)) {
 					v.currentTime = ratio * v.duration;
-					time.textContent = `${formatTime(v.currentTime)} / ${formatTime(v.duration)}`;
+					this.timeEl.textContent = `${formatTime(v.currentTime)} / ${formatTime(v.duration)}`;
 				}
 				this.updateSeek();
 			};
@@ -1282,24 +1362,17 @@
 			};
 			seek.addEventListener("pointerup", end);
 			seek.addEventListener("pointercancel", end);
-			seek.addEventListener("click", (e) => e.stopPropagation());
 		}
-		removeSeek() {
-			this.seekEl?.remove();
-			this.timeEl?.remove();
-			this.seekEl = null;
-			this.timeEl = null;
-		}
-		updateSeek() {
-			const seek = this.seekEl;
+		updateSeek(reset = false) {
 			const v = this.player.video;
-			if (!seek || !Number.isFinite(v.duration) || v.duration <= 0) return;
-			seek.querySelector(".fill").style.width = `${v.currentTime / v.duration * 100}%`;
+			if (reset || !Number.isFinite(v.duration) || v.duration <= 0) {
+				this.seekFill.style.transform = "scaleX(0)";
+				this.seekBuffer.style.transform = "scaleX(0)";
+				return;
+			}
+			this.seekFill.style.transform = `scaleX(${v.currentTime / v.duration})`;
 			try {
-				if (v.buffered.length) {
-					const end = v.buffered.end(v.buffered.length - 1);
-					seek.querySelector(".buffer").style.width = `${end / v.duration * 100}%`;
-				}
+				if (v.buffered.length) this.seekBuffer.style.transform = `scaleX(${v.buffered.end(v.buffered.length - 1) / v.duration})`;
 			} catch {}
 		}
 		syncSound() {
@@ -1309,24 +1382,33 @@
 			this.el.classList.toggle("autoplay-muted", this.player.autoplayMuted && !this.player.muted);
 		}
 		pulse(icon, cls = "") {
-			const refs = this.slides[this.active];
-			if (!refs) return;
 			const p = document.createElement("div");
 			p.className = `pulse ${cls}`;
 			p.innerHTML = icon;
-			refs.inner.appendChild(p);
+			this.hud.appendChild(p);
 			setTimeout(() => p.remove(), 650);
 		}
-		toastTimer = null;
 		toast(message) {
 			this.toastEl.textContent = message;
 			this.toastEl.classList.add("show");
 			if (this.toastTimer) clearTimeout(this.toastTimer);
 			this.toastTimer = setTimeout(() => this.toastEl.classList.remove("show"), 1800);
 		}
+		onPlayerError() {
+			const post = this.activePost;
+			const refs = this.slides[this.active];
+			this.setState({ loading: false });
+			if (!post || !refs) return;
+			if (post.kind === "redgifs" && post.redgifsId) {
+				this.redgifsFallback(refs, post.redgifsId);
+				return;
+			}
+			this.setState({ error: `Couldn't play this one. <a href="${escapeHtml(postUrl(post))}" target="_blank" rel="noopener">Open on Reddit</a>` });
+			if (isMobile()) this.toast("Swipe for the next one");
+		}
 		redgifsFallback(refs, id) {
 			this.player.stop();
-			this.removeSeek();
+			this.el.classList.remove("has-video");
 			if (refs.media.querySelector("iframe.rg-fallback")) return;
 			const frame = document.createElement("iframe");
 			frame.className = "rg-fallback";
@@ -1335,22 +1417,15 @@
 			refs.root.classList.add("vertical-embed");
 			refs.media.appendChild(frame);
 		}
-		showError(refs) {
-			const post = this.activePost;
-			if (!refs || !post || refs.inner.querySelector(".error")) return;
-			const box = document.createElement("div");
-			box.className = "error";
-			box.innerHTML = `Couldn't play this one. <a href="${postUrl(post)}" target="_blank" rel="noopener">Open on Reddit</a>`;
-			refs.inner.appendChild(box);
-			if (isMobile()) this.toast("Swipe for the next one");
-		}
 	};
 	var CSS = `
 :host { all: initial; }
 button {
   position: fixed;
   right: calc(16px + env(safe-area-inset-right, 0px));
-  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  top: auto;
+  left: auto;
   z-index: 2147483000;
   width: 56px;
   height: 56px;
@@ -1392,8 +1467,6 @@ button svg { width: 28px; height: 28px; }
 		shadow.append(style, btn);
 		return host;
 	}
-	var RESUME_KEY = "@reddit-reels/resume";
-	var RESUME_MS = 18e5;
 	var PAGE_CSS = `
 html.rr-open { overflow: hidden !important; }
 html.rr-open body { display: none !important; }
@@ -1440,38 +1513,7 @@ html.rr-open body { display: none !important; }
 		};
 		walk(document);
 	}
-	function readResume() {
-		try {
-			const raw = sessionStorage.getItem(RESUME_KEY);
-			if (!raw) return null;
-			const r = JSON.parse(raw);
-			if (Date.now() - r.ts > RESUME_MS || typeof r.id !== "string") return null;
-			return r;
-		} catch {
-			return null;
-		}
-	}
-	function resumeIfReturning() {
-		const r = readResume();
-		if (!r) return;
-		const here = location.pathname;
-		if (here === r.path && isReelRoute(here)) {
-			let tries = 0;
-			const attempt = () => {
-				if (location.pathname !== r.path || reel) return;
-				openReel(r.id);
-				if (!reel && ++tries < 15) setTimeout(attempt, 300);
-			};
-			attempt();
-		} else if (here !== r.via) clearResume();
-	}
-	var leavingForComments = false;
-	function clearResume() {
-		try {
-			sessionStorage.removeItem(RESUME_KEY);
-		} catch {}
-	}
-	function openReel(startId) {
+	function openReel() {
 		if (reel) return;
 		if (location.pathname !== sourcePath) {
 			source.reset();
@@ -1481,9 +1523,7 @@ html.rr-open body { display: none !important; }
 		source.scan();
 		source.observe();
 		if (!source.posts.length) return;
-		let start = startId ? source.posts.findIndex((p) => p.id === startId) : -1;
-		if (start < 0) start = nearestPostIndex(source.posts);
-		clearResume();
+		const start = nearestPostIndex(source.posts);
 		pausePageMedia();
 		savedRestoration = history.scrollRestoration;
 		history.scrollRestoration = "manual";
@@ -1507,8 +1547,6 @@ html.rr-open body { display: none !important; }
 		reel = null;
 		source.disconnect();
 		document.documentElement.classList.remove("rr-open");
-		if (!leavingForComments) clearResume();
-		leavingForComments = false;
 		if (!fromHistory && history.state?.rrReel) history.back();
 		const land = () => {
 			if (last?.el?.isConnected) last.el.scrollIntoView({ block: "center" });
@@ -1521,22 +1559,7 @@ html.rr-open body { display: none !important; }
 		}, 120);
 	}
 	function openComments(post) {
-		const url = postUrl(post);
-		if (!isMobile()) {
-			window.open(url, "_blank", "noopener");
-			return;
-		}
-		const resume = {
-			path: location.pathname,
-			via: new URL(url).pathname,
-			id: post.id,
-			ts: Date.now()
-		};
-		try {
-			sessionStorage.setItem(RESUME_KEY, JSON.stringify(resume));
-		} catch {}
-		leavingForComments = true;
-		location.assign(url);
+		window.open(postUrl(post), "_blank", "noopener");
 	}
 	function syncFab() {
 		const show = isReelRoute(location.pathname);
@@ -1557,12 +1580,10 @@ html.rr-open body { display: none !important; }
 		watchRoute(() => {
 			if (reel) closeReel(true);
 			syncFab();
-			resumeIfReturning();
 		});
 		window.addEventListener("popstate", () => {
 			if (reel && !history.state?.rrReel) closeReel(true);
 		});
-		resumeIfReturning();
 	}
 	if (typeof window !== "undefined" && typeof document !== "undefined") {
 		if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });

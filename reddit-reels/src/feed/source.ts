@@ -23,7 +23,7 @@ export function findLoadAfter(root: ParentNode): Element | null {
 
 export class FeedSource {
   readonly posts: Post[] = [];
-  private ids = new Set<string>();
+  private byId = new Map<string, Post>();
   private loading: Promise<number> | null = null;
   private exhausted = false;
   private observer: MutationObserver | null = null;
@@ -40,15 +40,15 @@ export class FeedSource {
     const added: Post[] = [];
     document.querySelectorAll<HTMLElement>('shreddit-post').forEach((el) => {
       if (el.closest('shreddit-ad-post') || el.hasAttribute('promoted')) return;
-      if (this.ids.has(el.id)) {
+      const known = this.byId.get(el.id);
+      if (known) {
         // Reddit may re-render a post; keep the live element for voting.
-        const known = this.posts.find((p) => p.id === el.id);
-        if (known && known.el !== el && el.isConnected) known.el = el;
+        if (known.el !== el) known.el = el;
         return;
       }
       const post = extractPost(el);
       if (!post) return;
-      this.ids.add(post.id);
+      this.byId.set(post.id, post);
       this.posts.push(post);
       added.push(post);
     });
@@ -115,7 +115,9 @@ export class FeedSource {
         this.scan();
       }, 200);
     });
-    this.observer.observe(document.body, { childList: true, subtree: true });
+    // The feed is all that matters; watching the whole body rescans on every unrelated change.
+    const feed = document.querySelector('shreddit-feed') || document.body;
+    this.observer.observe(feed, { childList: true, subtree: true });
   }
 
   disconnect(): void {
@@ -129,7 +131,7 @@ export class FeedSource {
   reset(): void {
     this.disconnect();
     this.posts.length = 0;
-    this.ids.clear();
+    this.byId.clear();
     this.exhausted = false;
   }
 }

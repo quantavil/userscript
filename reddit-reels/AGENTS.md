@@ -9,6 +9,7 @@ Guidance for work on **Reddit Reels** (`reddit-reels`). Read README.md first for
 - **One `<video>`.** `media/player.ts` owns a single shared video element that moves into the active slide. Do not create per-slide videos: it reintroduces audio bleed and breaks the iOS "first gesture unlocks sound" behaviour. The only other media element is the muted, never-attached preloader.
 - **Iframes only on the active slide.** YouTube/Streamable embeds and the RedGifs fallback can't be paused reliably; they are mounted for the active slide only and removed on leave.
 - **Mount radius.** Only slides within `MOUNT_RADIUS` of the active one keep images/iframes/backdrops. Keep it small; phones run out of memory.
+- **Nothing changes inside the track mid-swipe.** Measured with real touch flicks: any layout change inside the scroll-snap track during a swipe makes Chrome re-snap to the old slide ("swipe twice", "same post again"). Live UI (seek bar, time, spinner, ▶, pulses, errors, unmute hint) lives in the fixed `.hud`; the seek bar animates with `transform` only; slide activation runs on scroll settle (`scrollend` + 120 ms fallback), not on IntersectionObserver. Images inside slides need fixed boxes.
 
 ## Data
 
@@ -21,12 +22,13 @@ Guidance for work on **Reddit Reels** (`reddit-reels`). Read README.md first for
 - Reddit CSP: `connect-src` and `media-src` allow only Reddit hosts plus `blob:`; `frame-src` allows youtube, youtube-nocookie, streamable and redgifs; `img-src` allows any https.
 - `media.redgifs.com` returns 403 for a reddit.com Referer.
 - So RedGifs API and media go through `GM_xmlhttpRequest` (`@connect` api/media.redgifs.com) and play from `blob:`. Temporary tokens are device/IP-bound: on 401, refetch the token (max 2 retries).
-- `v.redd.it` HLS sends `Access-Control-Allow-Origin: *`; `packaged-media.redd.it` mp4s include audio.
+- `v.redd.it` HLS sends `Access-Control-Allow-Origin: *`; `packaged-media.redd.it` mp4s include audio. Reddit often adds `packaged-media-json` after first render, so the source is re-read on activation.
+- Reddit HLS keeps audio in a separate `EXT-X-MEDIA` playlist: use the **full** `hls.js` build (the light build plays video only). Prefer `hls.js` whenever MSE exists: Chrome 154 answers `maybe` to native HLS but fails Reddit's streams with `MEDIA_ERR_SRC_NOT_SUPPORTED`.
 
 ## Navigation
 
 - Opening pushes a history entry (`{ ...state, rrReel: true }`); `popstate` without it closes the reel. `history.scrollRestoration` is `manual` while open, so closing can land on the last watched post.
-- Reddit may turn `location.assign(postUrl)` into an in-page navigation. The resume marker (`@reddit-reels/resume` in sessionStorage) survives that and reopens the reel when the user returns to the same feed path; navigating anywhere else clears it.
+- Comments open in a new tab (phones too). Same-tab navigation made Reddit hijack it as an in-page route and needed a fragile resume step.
 
 ## Code style
 
@@ -38,4 +40,4 @@ Guidance for work on **Reddit Reels** (`reddit-reels`). Read README.md first for
 
 - `bun test tests/unit`: extractor tests run on **real Reddit markup** in `tests/fixtures/feed.html`. Refresh the fixture from a live page when Reddit's markup changes.
 - `bun run build && bun run test:e2e`: Playwright against the fixture server. Bundled Chromium can't decode H.264; assert sources and lifecycle, not playback.
-- Before claiming playback works, try the build on real Reddit (phone first).
+- Real playback: run the build in Google Chrome (has H.264) against live mobile Reddit and check `webkitAudioDecodedByteCount`. Swipes: use raw CDP `Input.dispatchTouchEvent` drags (`synthesizeScrollGesture` doesn't scroll in headless).

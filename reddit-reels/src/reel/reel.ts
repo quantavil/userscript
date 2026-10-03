@@ -1,13 +1,22 @@
 /**
  * Reel overlay: a full-screen, separately rendered vertical feed on top of
  * Reddit's page. Reddit's page stays underneath (hidden) as the data source.
+ *
+ * Scrolling rule (measured with real touch flicks in Chrome): any layout change
+ * inside the scroll-snap track while a swipe is in flight makes the browser
+ * re-snap to the old slide, so the swipe "doesn't count". Therefore:
+ * - everything that updates live (seek bar, spinner, pulses, errors) lives in the
+ *   fixed HUD layer above the track, never inside a slide;
+ * - slide changes (moving the video, mounting neighbours) happen only after the
+ *   scroll has settled.
  */
 
+import { extractPost } from '../feed/extract';
 import type { FeedSource } from '../feed/source';
 import type { Post } from '../feed/types';
 import { readVote, vote } from '../feed/vote';
 import { isMobile, Player } from '../media/player';
-import { formatTime } from '../utils';
+import { escapeHtml, formatTime } from '../utils';
 import { ICONS } from './icons';
 import css from './reel.css?inline';
 import { buildSlide, isVideoKind, mountSlide, postUrl, type SlideRefs, setVoteUi, unmountSlide } from './slide';
@@ -15,6 +24,7 @@ import { buildSlide, isVideoKind, mountSlide, postUrl, type SlideRefs, setVoteUi
 const MOUNT_RADIUS = 1;
 const LOAD_AHEAD = 5;
 const TAP_MS = 260;
+const SETTLE_MS = 120;
 
 export interface ReelOptions {
   source: FeedSource;
@@ -28,19 +38,25 @@ export class Reel {
   private shadow: ShadowRoot;
   private el!: HTMLElement;
   private track!: HTMLElement;
+  private hud!: HTMLElement;
+  private seek!: HTMLElement;
+  private seekFill!: HTMLElement;
+  private seekBuffer!: HTMLElement;
+  private timeEl!: HTMLElement;
+  private errorEl!: HTMLElement;
   private toastEl!: HTMLElement;
   private soundBtn!: HTMLButtonElement;
+  private endEl!: HTMLElement;
   private slides: SlideRefs[] = [];
+  private slideIds = new Set<string>();
   private active = -1;
-  private observer: IntersectionObserver | null = null;
   private player = new Player();
   private cleanup: Array<() => void> = [];
   private tapTimer: ReturnType<typeof setTimeout> | null = null;
   private lastTap = 0;
-  private seekEl: HTMLElement | null = null;
-  private timeEl: HTMLElement | null = null;
+  private settleTimer: ReturnType<typeof setTimeout> | null = null;
+  private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private votes = new Map<string, 1 | 0 | -1>();
-  private endEl: HTMLElement | null = null;
 
   constructor(private opts: ReelOptions) {
     this.host = document.createElement('div');
@@ -60,7 +76,15 @@ export class Reel {
     this.el.setAttribute('role', 'dialog');
     this.el.setAttribute('aria-label', 'Reddit reels');
     this.el.innerHTML = `
-      <div class="track" tabindex="-1"></div>
+      <div class="track" tabindex="-1"><section class="slide end"></section></div>
+      <div class="hud">
+        <div class="spinner"></div>
+        <div class="tap-play" aria-hidden="true">${ICONS.play}</div>
+        <div class="unmute-hint">${ICONS.soundOff}<span>Tap for sound</span></div>
+        <div class="error"></div>
+        <div class="seek" role="slider" aria-label="Seek"><div class="rail-line"><div class="buffer"></div><div class="fill"></div></div></div>
+        <div class="time"></div>
+      </div>
       <div class="top">
         <button type="button" class="icon-btn" data-action="close" aria-label="Close reels">${ICONS.close}</button>
         <span class="feed-name"></span>
@@ -69,16 +93,20 @@ export class Reel {
       <div class="toast" role="status" aria-live="polite"></div>
     `;
     this.shadow.append(style, this.el);
-    this.track = this.el.querySelector('.track') as HTMLElement;
-    this.toastEl = this.el.querySelector('.toast') as HTMLElement;
-    this.soundBtn = this.el.querySelector('[data-action="sound"]') as HTMLButtonElement;
-    (this.el.querySelector('.feed-name') as HTMLElement).textContent = this.opts.feedName;
+    const q = <T extends HTMLElement>(sel: string) => this.el.querySelector(sel) as T;
+    this.track = q('.track');
+    this.endEl = q('.slide.end');
+    this.hud = q('.hud');
+    this.seek = q('.seek');
+    this.seekFill = q('.seek .fill');
+    this.seekBuffer = q('.seek .buffer');
+    this.timeEl = q('.time');
+    this.errorEl = q('.error');
+    this.toastEl = q('.toast');
+    this.soundBtn = q('[data-action="sound"]');
+    q('.feed-name').textContent = this.opts.feedName;
     document.documentElement.appendChild(this.host);
 
-    this.observer = new IntersectionObserver((entries) => this.onIntersect(entries), {
-      root: this.track,
-      threshold: [0.6],
-    });
     this.appendSlides(this.opts.source.posts);
     this.cleanup.push(this.opts.source.onAdded((added) => this.appendSlides(added)));
     this.wireEvents();
@@ -91,50 +119,64 @@ export class Reel {
   }
 
   close(): void {
-    this.player.stop();
-    this.observer?.disconnect();
+    this.player.dispose();
     for (const fn of this.cleanup) fn();
     this.cleanup = [];
+    if (this.settleTimer) clearTimeout(this.settleTimer);
+    if (this.tapTimer) clearTimeout(this.tapTimer);
+    if (this.toastTimer) clearTimeout(this.toastTimer);
     this.host.remove();
   }
 
   // ---------- slides ----------
 
   private appendSlides(posts: Post[]): void {
+    // If the user is parked on the "Loading more" slide, keep them in place:
+    // otherwise the browser would follow that slide down past the new ones.
+    const wasOnEnd = this.active >= 0 && this.currentIndex() >= this.slides.length;
+    const firstNew = this.slides.length;
     for (const post of posts) {
-      if (this.slides.some((s) => s.root.dataset.id === post.id)) continue;
+      if (this.slideIds.has(post.id)) continue;
+      this.slideIds.add(post.id);
       const refs = buildSlide(post, this.slides.length);
       this.slides.push(refs);
       this.track.insertBefore(refs.root, this.endEl);
-      this.observer?.observe(refs.root);
       this.votes.set(post.id, readVote(post));
       setVoteUi(refs, this.votes.get(post.id) || 0, post.score);
     }
     this.syncEnd();
-    if (this.active >= 0) this.mountAround(this.active);
+    if (wasOnEnd && this.slides.length > firstNew) {
+      this.track.scrollTop = firstNew * this.track.clientHeight;
+      this.activate(firstNew);
+    } else if (this.active >= 0) {
+      this.mountAround(this.active);
+    }
   }
 
   private syncEnd(): void {
-    if (!this.endEl) {
-      this.endEl = document.createElement('section');
-      this.endEl.className = 'slide end';
-      this.track.appendChild(this.endEl);
-      this.observer?.observe(this.endEl);
-    }
     this.endEl.textContent = this.opts.source.hasMore ? 'Loading more…' : "You're all caught up";
   }
 
-  private onIntersect(entries: IntersectionObserverEntry[]): void {
-    for (const e of entries) {
-      if (!e.isIntersecting) continue;
-      if (e.target === this.endEl) {
-        // Sitting on "Loading more…": fetch now; new slides land right here.
-        this.loadMore();
-        continue;
-      }
-      const i = Number((e.target as HTMLElement).dataset.index);
-      if (Number.isFinite(i) && i !== this.active) this.activate(i);
+  /** Slide index at the current scroll position (slides.length = the end slide). */
+  private currentIndex(): number {
+    return Math.round(this.track.scrollTop / Math.max(1, this.track.clientHeight));
+  }
+
+  private onScroll(): void {
+    if (this.settleTimer) clearTimeout(this.settleTimer);
+    this.settleTimer = setTimeout(() => this.settle(), SETTLE_MS);
+  }
+
+  /** Scroll came to rest: now (and only now) switch the active slide. */
+  private settle(): void {
+    if (this.settleTimer) clearTimeout(this.settleTimer);
+    this.settleTimer = null;
+    const i = this.currentIndex();
+    if (i >= this.slides.length) {
+      this.loadMore();
+      return;
     }
+    if (i !== this.active) this.activate(i);
   }
 
   private mountAround(center: number): void {
@@ -150,31 +192,35 @@ export class Reel {
     const posts = this.opts.source.posts;
     const post = posts[i];
     if (!post) return;
-    const prev = this.slides[this.active];
-    prev?.root.classList.remove('active', 'loading');
+    this.slides[this.active]?.root.classList.remove('active');
     this.active = i;
-    if (this.target === i) this.target = -1;
     const refs = this.slides[i];
     refs.root.classList.add('active');
+    this.setState({ loading: false, blocked: false, error: '' });
     this.mountAround(i);
-    this.removeSeek();
     // Fallback players are iframes we can't pause: they only live on the active slide.
     this.track.querySelectorAll('iframe.rg-fallback').forEach((f) => {
       if (!refs.root.contains(f)) f.remove();
     });
 
-    if (isVideoKind(post)) {
+    const video = isVideoKind(post);
+    this.el.classList.toggle('has-video', video);
+    this.updateSeek(true);
+    if (post.kind === 'video' && post.el?.isConnected) {
+      // Reddit fills in the direct mp4 (packaged-media-json) a while after render; re-read it.
+      const fresh = extractPost(post.el);
+      if (fresh?.video) post.video = fresh.video;
+    }
+    if (video) {
       // Move the one shared <video> into this slide, then load it.
       refs.media.querySelector('img.poster')?.remove();
       refs.media.prepend(this.player.video);
-      refs.root.classList.add('loading');
-      this.addSeek(refs);
+      this.setState({ loading: true });
       void this.player.load(post);
-      this.player.preload(posts[i + 1]);
     } else {
       this.player.stop();
-      if (posts[i + 1]) this.player.preload(posts[i + 1]);
     }
+    this.player.preload(posts[i + 1]);
 
     // Keep the feed flowing.
     if (i >= posts.length - LOAD_AHEAD) this.loadMore();
@@ -188,50 +234,54 @@ export class Reel {
     void this.opts.source.loadMore().then(() => this.syncEnd());
   }
 
-  /** Where a key-driven scroll is heading (presses during a smooth scroll stack up). */
-  private target = -1;
-
   private go(delta: number): void {
-    const from = this.target >= 0 ? this.target : this.active;
-    const next = Math.max(0, Math.min(this.slides.length - 1, from + delta));
-    this.target = next;
-    this.slides[next]?.root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const next = Math.max(0, Math.min(this.slides.length - 1, this.currentIndex() + delta));
+    this.track.scrollTo({ top: next * this.track.clientHeight, behavior: 'smooth' });
+  }
+
+  // ---------- HUD state (outside the scroll track) ----------
+
+  private setState(s: { loading?: boolean; blocked?: boolean; error?: string }): void {
+    if (s.loading !== undefined) this.el.classList.toggle('loading', s.loading);
+    if (s.blocked !== undefined) this.el.classList.toggle('blocked', s.blocked);
+    if (s.error !== undefined) {
+      this.errorEl.innerHTML = s.error;
+      this.el.classList.toggle('errored', !!s.error);
+    }
   }
 
   // ---------- events ----------
 
   private wireEvents(): void {
-    const onClick = (e: Event) => this.onClick(e as MouseEvent);
-    this.el.addEventListener('click', onClick);
+    this.el.addEventListener('click', (e) => this.onClick(e as MouseEvent));
+
+    this.track.addEventListener('scroll', () => this.onScroll(), { passive: true });
+    this.track.addEventListener('scrollend', () => this.settle());
 
     const onKey = (e: KeyboardEvent) => this.onKey(e);
     window.addEventListener('keydown', onKey, true);
     this.cleanup.push(() => window.removeEventListener('keydown', onKey, true));
 
-    const offPlayer = this.player.on((ev) => {
-      const refs = this.slides[this.active];
-      if (ev === 'ready') refs?.root.classList.remove('loading');
-      if (ev === 'loading' && this.player.video.readyState < 3) refs?.root.classList.add('loading');
-      if (ev === 'error') {
-        refs?.root.classList.remove('loading');
-        const post = this.activePost;
-        if (refs && post?.kind === 'redgifs' && post.redgifsId) this.redgifsFallback(refs, post.redgifsId);
-        else this.showError(refs);
-      }
-      if (ev === 'muted' || ev === 'autoplay-muted') this.syncSound();
-    });
-    this.cleanup.push(offPlayer);
+    this.cleanup.push(
+      this.player.on((ev) => {
+        if (ev === 'ready') this.setState({ loading: false, blocked: false });
+        if (ev === 'loading' && this.player.video.readyState < 3) this.setState({ loading: true });
+        if (ev === 'blocked') this.setState({ loading: false, blocked: true });
+        if (ev === 'error') this.onPlayerError();
+        if (ev === 'muted' || ev === 'autoplay-muted') this.syncSound();
+      })
+    );
 
     const v = this.player.video;
-    const onTime = () => this.updateSeek();
-    v.addEventListener('timeupdate', onTime);
-    v.addEventListener('progress', onTime);
+    v.addEventListener('timeupdate', () => this.updateSeek());
+    v.addEventListener('progress', () => this.updateSeek());
     v.addEventListener('loadedmetadata', () => {
       const refs = this.slides[this.active];
       if (refs && v.videoWidth && v.videoHeight) {
         refs.root.classList.toggle('portrait', v.videoHeight / v.videoWidth >= 1.5);
       }
     });
+    this.wireSeek();
   }
 
   private onClick(e: MouseEvent): void {
@@ -242,7 +292,7 @@ export class Reel {
       this.runAction(btn.dataset.action || '', btn);
       return;
     }
-    if (target.closest?.('a, .card-inner, .seek, .gallery .count')) return;
+    if (target.closest?.('a, .card-inner, .seek, .gallery .count, .top')) return;
     if (target.closest?.('.title')) {
       target.closest('.title')?.classList.toggle('open');
       return;
@@ -267,7 +317,8 @@ export class Reel {
 
   private singleTap(): void {
     const post = this.activePost;
-    if (!post || !isVideoKind(post)) return;
+    if (!post || !isVideoKind(post) || this.el.classList.contains('errored')) return;
+    this.setState({ blocked: false });
     const playing = this.player.toggle();
     this.pulse(playing ? ICONS.play : ICONS.pause);
   }
@@ -327,7 +378,9 @@ export class Reel {
     else if (k === 'ArrowRight' || k === 'ArrowLeft') {
       const strip = this.slides[this.active]?.media.querySelector<HTMLElement>('.gallery');
       if (strip) strip.scrollBy({ left: (k === 'ArrowRight' ? 1 : -1) * strip.clientWidth, behavior: 'smooth' });
-      else if (isVideoKind(this.activePost as Post)) this.player.video.currentTime += k === 'ArrowRight' ? 5 : -5;
+      else if (this.activePost && isVideoKind(this.activePost)) {
+        this.player.video.currentTime += k === 'ArrowRight' ? 5 : -5;
+      }
     } else handled = false;
     if (handled) {
       e.preventDefault();
@@ -342,10 +395,8 @@ export class Reel {
       this.toast('Open the post on Reddit to vote');
       return;
     }
-    if (
-      document.querySelector('#login-button, a[href*="/login"]') &&
-      !document.querySelector('#expand-user-drawer-button')
-    ) {
+    // Logged-out Reddit renders a login button; its login dialog would open inside the hidden page.
+    if (document.querySelector('#login-button')) {
       this.toast('Log in to Reddit to vote');
       return;
     }
@@ -369,27 +420,17 @@ export class Reel {
     }, 900);
   }
 
-  // ---------- seek bar ----------
+  // ---------- seek bar (HUD) ----------
 
-  private addSeek(refs: SlideRefs): void {
-    const seek = document.createElement('div');
-    seek.className = 'seek';
-    seek.setAttribute('role', 'slider');
-    seek.setAttribute('aria-label', 'Seek');
-    seek.innerHTML = '<div class="rail-line"><div class="buffer"></div><div class="fill"></div></div>';
-    const time = document.createElement('div');
-    time.className = 'time';
-    refs.inner.append(seek, time);
-    this.seekEl = seek;
-    this.timeEl = time;
-
+  private wireSeek(): void {
+    const seek = this.seek;
     const v = this.player.video;
     const seekTo = (clientX: number) => {
       const rect = seek.getBoundingClientRect();
       const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / Math.max(1, rect.width)));
       if (Number.isFinite(v.duration)) {
         v.currentTime = ratio * v.duration;
-        time.textContent = `${formatTime(v.currentTime)} / ${formatTime(v.duration)}`;
+        this.timeEl.textContent = `${formatTime(v.currentTime)} / ${formatTime(v.duration)}`;
       }
       this.updateSeek();
     };
@@ -410,25 +451,20 @@ export class Reel {
     };
     seek.addEventListener('pointerup', end);
     seek.addEventListener('pointercancel', end);
-    seek.addEventListener('click', (e) => e.stopPropagation());
   }
 
-  private removeSeek(): void {
-    this.seekEl?.remove();
-    this.timeEl?.remove();
-    this.seekEl = null;
-    this.timeEl = null;
-  }
-
-  private updateSeek(): void {
-    const seek = this.seekEl;
+  /** Transform-only updates: no layout work at 4 Hz. */
+  private updateSeek(reset = false): void {
     const v = this.player.video;
-    if (!seek || !Number.isFinite(v.duration) || v.duration <= 0) return;
-    (seek.querySelector('.fill') as HTMLElement).style.width = `${(v.currentTime / v.duration) * 100}%`;
+    if (reset || !Number.isFinite(v.duration) || v.duration <= 0) {
+      this.seekFill.style.transform = 'scaleX(0)';
+      this.seekBuffer.style.transform = 'scaleX(0)';
+      return;
+    }
+    this.seekFill.style.transform = `scaleX(${v.currentTime / v.duration})`;
     try {
       if (v.buffered.length) {
-        const end = v.buffered.end(v.buffered.length - 1);
-        (seek.querySelector('.buffer') as HTMLElement).style.width = `${(end / v.duration) * 100}%`;
+        this.seekBuffer.style.transform = `scaleX(${v.buffered.end(v.buffered.length - 1) / v.duration})`;
       }
     } catch {}
   }
@@ -443,16 +479,12 @@ export class Reel {
   }
 
   private pulse(icon: string, cls = ''): void {
-    const refs = this.slides[this.active];
-    if (!refs) return;
     const p = document.createElement('div');
     p.className = `pulse ${cls}`;
     p.innerHTML = icon;
-    refs.inner.appendChild(p);
+    this.hud.appendChild(p);
     setTimeout(() => p.remove(), 650);
   }
-
-  private toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   toast(message: string): void {
     this.toastEl.textContent = message;
@@ -461,10 +493,25 @@ export class Reel {
     this.toastTimer = setTimeout(() => this.toastEl.classList.remove('show'), 1800);
   }
 
+  private onPlayerError(): void {
+    const post = this.activePost;
+    const refs = this.slides[this.active];
+    this.setState({ loading: false });
+    if (!post || !refs) return;
+    if (post.kind === 'redgifs' && post.redgifsId) {
+      this.redgifsFallback(refs, post.redgifsId);
+      return;
+    }
+    this.setState({
+      error: `Couldn't play this one. <a href="${escapeHtml(postUrl(post))}" target="_blank" rel="noopener">Open on Reddit</a>`,
+    });
+    if (isMobile()) this.toast('Swipe for the next one');
+  }
+
   /** RedGifs API/media unreachable: use RedGifs' own player (Reddit's CSP allows its iframe). */
   private redgifsFallback(refs: SlideRefs, id: string): void {
     this.player.stop();
-    this.removeSeek();
+    this.el.classList.remove('has-video');
     if (refs.media.querySelector('iframe.rg-fallback')) return;
     const frame = document.createElement('iframe');
     frame.className = 'rg-fallback';
@@ -472,15 +519,5 @@ export class Reel {
     frame.allow = 'autoplay; fullscreen';
     refs.root.classList.add('vertical-embed');
     refs.media.appendChild(frame);
-  }
-
-  private showError(refs: SlideRefs | undefined): void {
-    const post = this.activePost;
-    if (!refs || !post || refs.inner.querySelector('.error')) return;
-    const box = document.createElement('div');
-    box.className = 'error';
-    box.innerHTML = `Couldn't play this one. <a href="${postUrl(post)}" target="_blank" rel="noopener">Open on Reddit</a>`;
-    refs.inner.appendChild(box);
-    if (isMobile()) this.toast('Swipe for the next one');
   }
 }
