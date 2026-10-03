@@ -1,14 +1,13 @@
 /**
  * Input Controller Subsystem
  * Handles keyboard hotkeys and tap gestures (play/pause, double-tap upvote).
- * Fit/Fill toggle moved to 'f' key + triple-tap manual action.
+ * Taps on Reddit's native player controls are left to the player.
  */
 
 import type { ReelPost } from '../extractor/types';
-import { audioManager, unlockAudio, applyAudioState } from '../media';
+import { audioManager, unlockAudio } from '../media';
 import { proxyUpvote } from '../extractor/vote-proxy';
 import { showPlayPulse, showScalePulse, showVotePulse, showVolumePulse } from '../ui/pulse';
-import { isCommentsDrawerOpen, closeCommentsDrawer } from '../ui/comments-drawer';
 
 export const POST_SELECTORS = 'shreddit-post, article, [data-testid="post-container"], .Post';
 export const VOLUME_STEP = 0.1;
@@ -119,16 +118,20 @@ export class InputController {
 
   private handleTap(e: MouseEvent): void {
     if (!this.options.isReelModeActive()) return;
+    // Programmatic clicks (vote proxy, native comments link) must reach Reddit untouched.
+    if (!e.isTrusted) return;
 
     const target = e.target as HTMLElement;
     // Allow clicks on reel controls, comments drawer, link cards, text card links, author/sub badges, gallery nav
     if (
       target.closest(
-        '.rr-action-rail, .rr-post-info, .rr-top-bar, .rr-link-card-container, .rr-comments-drawer, .rr-comments-backdrop, .rr-sub-badge, .rr-author, .rr-link-card-btn, button[slot="previous-button"], button[slot="next-button"], .prev-btn, .next-btn'
+        '.rr-action-rail, .rr-post-info, .rr-header-cluster, .rr-link-card-container, .rr-sub-badge, .rr-author, .rr-link-card-btn, button[slot="previous-button"], button[slot="next-button"], .prev-btn, .next-btn'
       )
     ) {
       return;
     }
+    // Reddit's native player controls (seek bar, play, volume, captions, fullscreen) stay native.
+    if (this.isNativeControl(e)) return;
     if (target.closest('.rr-text-card-body a')) {
       return;
     }
@@ -187,6 +190,21 @@ export class InputController {
     }, TAP_WINDOW_MS);
   }
 
+  private isNativeControl(e: MouseEvent): boolean {
+    try {
+      const path = e.composedPath() as Element[];
+      for (const node of path) {
+        const tag = (node as Element).tagName?.toLowerCase?.();
+        if (!tag) continue;
+        if (tag === 'shreddit-post' || tag === 'article') break;
+        if (tag === 'button' || tag === 'input' || tag === 'select' || tag.includes('controls')) return true;
+        const role = (node as Element).getAttribute?.('role');
+        if (role === 'slider' || role === 'button' || role === 'menuitem') return true;
+      }
+    } catch {}
+    return false;
+  }
+
   private wasSwipe(e: MouseEvent): boolean {
     try {
       const dx = e.clientX - this.downX;
@@ -209,10 +227,6 @@ export class InputController {
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
 
     if (e.key === 'Escape') {
-      if (isCommentsDrawerOpen()) {
-        closeCommentsDrawer();
-        return;
-      }
       this.options.onExit();
     } else if (e.key === 'm' || e.key === 'M') {
       this.options.onToggleMute();

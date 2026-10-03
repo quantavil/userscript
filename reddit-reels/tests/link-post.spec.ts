@@ -5,10 +5,8 @@ test.describe('Link Post & Clutter Eradication', () => {
     await page.goto('/mock-reddit.html');
     await page.waitForLoadState('domcontentloaded');
 
-    // Activate Reel Mode via FAB
-    const fab = page.locator('button.rr-fab');
-    await expect(fab).toBeVisible();
-    await fab.click();
+    // Reel layout turns on by itself on feed routes
+    await expect(page.locator('html')).toHaveClass(/rr-active/);
     await page.waitForTimeout(300);
   });
 
@@ -58,15 +56,15 @@ test.describe('Link Post & Clutter Eradication', () => {
     const commentBtn = post4Rail.locator('.rr-comment-btn');
     await expect(commentBtn).toBeVisible();
 
-    // 6. Verify video posts do NOT duplicate the sound button in the rail
-    // (mute is a single global control in the top bar)
+    // 6. Sound toggle sits on the rail of video posts only; there is no separate top bar
     const videoPost = page.locator('#t3_nativevideo2');
-    await expect(videoPost.locator('.rr-action-rail .rr-sound-btn')).toHaveCount(0);
-    await expect(page.locator('.rr-sound-btn-top')).toBeVisible();
+    await expect(videoPost.locator('.rr-action-rail .rr-sound-btn')).toHaveCount(1);
+    await expect(post4Rail.locator('.rr-sound-btn')).toHaveCount(0);
+    await expect(page.locator('.rr-top-bar')).toHaveCount(0);
   });
 
-  test('top bar filter toggles between All Reels and Videos Only', async ({ page }) => {
-    const filterBtn = page.locator('.rr-filter-btn-top');
+  test('header filter toggles between all posts and videos only', async ({ page }) => {
+    const filterBtn = page.locator('#rr-header-cluster .rr-header-filter');
     await expect(filterBtn).toBeVisible();
 
     // Initially All Reels mode (Post 4 link post is visible)
@@ -75,7 +73,7 @@ test.describe('Link Post & Clutter Eradication', () => {
 
     // Click filter button to switch to Videos Only
     await filterBtn.click();
-    await expect(filterBtn).toContainText('Videos Only');
+    await expect(filterBtn).toHaveAttribute('aria-pressed', 'true');
     await expect(linkPost).toBeHidden();
 
     // Image post (Post 3) should also be hidden
@@ -88,7 +86,7 @@ test.describe('Link Post & Clutter Eradication', () => {
 
     // Click again to switch back to All Reels
     await filterBtn.click();
-    await expect(filterBtn).toContainText('All Reels');
+    await expect(filterBtn).toHaveAttribute('aria-pressed', 'false');
     await expect(linkPost).toBeVisible();
   });
 });

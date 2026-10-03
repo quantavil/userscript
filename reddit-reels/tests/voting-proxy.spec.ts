@@ -8,7 +8,7 @@ test.describe('Voting Proxy', () => {
 
   test('triggering proxyUpvote clicks mock Reddit upvote button and updates aria-pressed', async ({ page }) => {
     // 1. Initially check aria-pressed is false
-    const initialPressed = await page.locator('#t3_redgifs1 button[aria-label="Upvote"]').getAttribute('aria-pressed');
+    const initialPressed = await page.locator('#t3_redgifs1 button[aria-label="Upvote"]:not(.rr-action-btn)').getAttribute('aria-pressed');
     expect(initialPressed).toBe('false');
 
     // 2. Call proxyUpvote on extracted post
@@ -26,7 +26,7 @@ test.describe('Voting Proxy', () => {
     expect(result.isUpvotedInPost).toBe(true);
 
     // 3. Verify the underlying DOM button now has aria-pressed="true"
-    const updatedPressed = await page.locator('#t3_redgifs1 button[aria-label="Upvote"]').getAttribute('aria-pressed');
+    const updatedPressed = await page.locator('#t3_redgifs1 button[aria-label="Upvote"]:not(.rr-action-btn)').getAttribute('aria-pressed');
     expect(updatedPressed).toBe('true');
 
     // 4. Trigger proxyUpvote again to toggle off (un-upvote)
@@ -44,7 +44,7 @@ test.describe('Voting Proxy', () => {
     expect(toggleResult.isUpvotedInPost).toBe(false);
 
     // 5. Verify DOM button toggled back to aria-pressed="false"
-    const toggledPressed = await page.locator('#t3_redgifs1 button[aria-label="Upvote"]').getAttribute('aria-pressed');
+    const toggledPressed = await page.locator('#t3_redgifs1 button[aria-label="Upvote"]:not(.rr-action-btn)').getAttribute('aria-pressed');
     expect(toggledPressed).toBe('false');
   });
 
@@ -56,8 +56,8 @@ test.describe('Voting Proxy', () => {
       (window as any).proxyUpvote(post);
     });
 
-    const upvotePressed = await page.locator('#t3_redgifs1 button[aria-label="Upvote"]').getAttribute('aria-pressed');
-    const downvotePressedBefore = await page.locator('#t3_redgifs1 button[aria-label="Downvote"]').getAttribute('aria-pressed');
+    const upvotePressed = await page.locator('#t3_redgifs1 button[aria-label="Upvote"]:not(.rr-action-btn)').getAttribute('aria-pressed');
+    const downvotePressedBefore = await page.locator('#t3_redgifs1 button[aria-label="Downvote"]:not(.rr-action-btn)').getAttribute('aria-pressed');
     expect(upvotePressed).toBe('true');
     expect(downvotePressedBefore).toBe('false');
 
@@ -78,8 +78,8 @@ test.describe('Voting Proxy', () => {
     expect(downvoteResult.isUpvoted).toBe(false);
 
     // 3. Verify DOM reflection
-    const upvotePressedAfter = await page.locator('#t3_redgifs1 button[aria-label="Upvote"]').getAttribute('aria-pressed');
-    const downvotePressedAfter = await page.locator('#t3_redgifs1 button[aria-label="Downvote"]').getAttribute('aria-pressed');
+    const upvotePressedAfter = await page.locator('#t3_redgifs1 button[aria-label="Upvote"]:not(.rr-action-btn)').getAttribute('aria-pressed');
+    const downvotePressedAfter = await page.locator('#t3_redgifs1 button[aria-label="Downvote"]:not(.rr-action-btn)').getAttribute('aria-pressed');
     expect(upvotePressedAfter).toBe('false');
     expect(downvotePressedAfter).toBe('true');
   });

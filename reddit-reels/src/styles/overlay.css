@@ -231,3 +231,14 @@ html.rr-active .rr-post-overlay {
 .rr-action-btn.rr-cc-btn:not(.is-active-cc) {
   color: #888d99 !important;
 }
+
+/* Video posts: lift info + rail above Reddit's native player control bar */
+html.rr-active shreddit-post.rr-has-video .rr-post-info,
+html.rr-active shreddit-post.rr-has-video .rr-action-rail {
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Sound toggle: muted is dimmed grey, unmuted plain white */
+.rr-action-btn.rr-sound-btn.is-muted {
+  color: #888d99 !important;
+}

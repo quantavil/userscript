@@ -1,54 +1,110 @@
 import './style.css';
-import { audioManager, unlockAudio, listenForRedGifsReady } from './media';
-import {
-  createFabButton,
-  createTopBar,
-  syncTopBarState,
-  closeCommentsDrawer,
-} from './ui';
-import {
-  FeedManager,
-  InputController,
-  getClosestPostToViewport,
-} from './core';
+import { FeedManager, getClosestPostToViewport, InputController, isReelRoute, watchRoute } from './core';
 import { parsePostElement, proxyUpvote } from './extractor';
+import { audioManager, listenForRedGifsReady, unlockAudio } from './media';
+import { mountHeaderToggle, syncHeaderToggle, syncOverlaySoundButtons, unmountHeaderToggle } from './ui';
 import { showVotePulse } from './ui/pulse';
 
-let isReelModeActive = false;
-let topBarElement: HTMLElement | null = null;
-let stopRedgifsReady: (() => void) | null = null;
-let savedScrollY = 0;
+declare function GM_getValue<T>(key: string, defaultValue?: T): T;
+declare function GM_setValue(key: string, value: unknown): void;
 
-function isFeedRoute(): boolean {
-  if (typeof window === 'undefined') return true;
-  const path = window.location.pathname;
-  if (/^\/(?:settings|message|chat|notifications|mod\/|premium)/i.test(path)) {
-    return false;
-  }
+const ENABLED_KEY = '@reddit-reels/enabled';
+const LAST_POST_KEY = '@reddit-reels/last-post';
+
+let isReelModeActive = false;
+/** Set when the remembered slide had not streamed in yet on activation. */
+let pendingRestoreUntil = 0;
+let stopRedgifsReady: (() => void) | null = null;
+
+/** Reel layout preference (on by default), toggled from the header button or Esc. */
+function readEnabled(): boolean {
+  try {
+    if (typeof GM_getValue === 'function') {
+      const v = GM_getValue<string | null>(ENABLED_KEY, null);
+      if (v !== null) return v !== '0';
+    }
+  } catch {}
+  try {
+    const v = localStorage.getItem(ENABLED_KEY);
+    if (v !== null) return v !== '0';
+  } catch {}
   return true;
 }
 
-function syncTopBarSound(): void {
-  // Single global mute control lives in the top bar.
-  syncTopBarState(topBarElement, audioManager.isMuted, feedManager.isVideosOnly);
+function writeEnabled(on: boolean): void {
+  try {
+    if (typeof GM_setValue === 'function') GM_setValue(ENABLED_KEY, on ? '1' : '0');
+  } catch {}
+  try {
+    localStorage.setItem(ENABLED_KEY, on ? '1' : '0');
+  } catch {}
+}
+
+let reelEnabled = readEnabled();
+
+function postKey(el: HTMLElement): string {
+  return el.id || el.getAttribute('permalink') || '';
+}
+
+function rememberActivePost(el: HTMLElement): void {
+  try {
+    const key = postKey(el);
+    if (key) sessionStorage.setItem(LAST_POST_KEY, `${location.pathname}|${key}`);
+  } catch {}
+}
+
+function rememberedKey(): string | null {
+  try {
+    const raw = sessionStorage.getItem(LAST_POST_KEY);
+    if (!raw) return null;
+    const sep = raw.indexOf('|');
+    if (raw.slice(0, sep) !== location.pathname) return null;
+    return raw.slice(sep + 1) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** After Back from a post page, land on the slide the user left from. */
+function findRememberedPost(): HTMLElement | null {
+  try {
+    const key = rememberedKey();
+    if (!key) return null;
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>('shreddit-post'))) {
+      if (postKey(el) === key) return el;
+    }
+  } catch {}
+  return null;
+}
+
+function syncSoundUi(): void {
+  syncOverlaySoundButtons(audioManager.isMuted);
 }
 
 function handleToggleMute(): void {
   unlockAudio();
-  const activePost = getClosestPostToViewport();
-  audioManager.toggleMute(activePost || undefined);
+  audioManager.toggleMute(getClosestPostToViewport() || undefined);
   audioManager.reassertActiveIframeUnmute();
-  syncTopBarSound();
-}
-
-function handleVolumeChange(): void {
-  // Volume state already applied by InputController via AudioManager;
-  // keep the top-bar mute icon in sync (volume 0 mutes, >0 unmutes).
-  syncTopBarSound();
 }
 
 const feedManager = new FeedManager({
   isReelModeActive: () => isReelModeActive,
+  onActivePost: rememberActivePost,
+  onPostsAdded: () => {
+    mountToggle();
+    if (pendingRestoreUntil && Date.now() < pendingRestoreUntil) {
+      const el = findRememberedPost();
+      if (el && !el.classList.contains('rr-filtered-out')) {
+        pendingRestoreUntil = 0;
+        el.scrollIntoView({
+          behavior: 'instant' as ScrollBehavior,
+          block: 'start',
+        });
+        audioManager.requestPlayback(el);
+      }
+    }
+  },
+  onToggleMute: handleToggleMute,
 });
 
 const inputController = new InputController({
@@ -67,127 +123,142 @@ const inputController = new InputController({
     try {
       const reel = parsePostElement(tappedPost);
       if (reel) {
-        const isUp = !!reel.isUpvoted;
-        const willBeUp = !isUp;
+        const willBeUp = !reel.isUpvoted;
         proxyUpvote(reel);
         showVotePulse(willBeUp ? true : null);
       }
     } catch {}
   },
-  onExit: () => toggleReelMode(false),
+  onExit: () => setReelEnabled(false),
   onToggleMute: handleToggleMute,
-  onVolumeChange: handleVolumeChange,
+  onVolumeChange: () => syncSoundUi(),
   onToggleSubtitles: () => feedManager.toggleSubtitles(),
   onNextPost: () => feedManager.scrollToNext(),
   onPrevPost: () => feedManager.scrollToPrev(),
 });
 
-/**
- * Toggle In-Place Reel Mode ON or OFF
- */
-export function toggleReelMode(forceState?: boolean): void {
-  const nextState = forceState !== undefined ? forceState : !isReelModeActive;
-  isReelModeActive = nextState;
+function mountToggle(): void {
+  if (!isReelRoute(location.pathname)) {
+    unmountHeaderToggle();
+    return;
+  }
+  mountHeaderToggle({
+    onToggleReel: () => setReelEnabled(!reelEnabled),
+    onToggleFilter: () => {
+      if (!isReelModeActive) return;
+      const anchor = getClosestPostToViewport();
+      feedManager.toggleVideosOnly();
+      syncHeaderToggle(reelEnabled, feedManager.isVideosOnly);
+      const target = anchor && !anchor.classList.contains('rr-filtered-out') ? anchor : getClosestPostToViewport();
+      target?.scrollIntoView({
+        behavior: 'instant' as ScrollBehavior,
+        block: 'start',
+      });
+    },
+  });
+  syncHeaderToggle(reelEnabled, feedManager.isVideosOnly);
+}
 
-  const feedContainer =
-    document.querySelector('shreddit-feed, #posts-container, [data-testid="feed-container"]') ||
-    document.querySelector('main') ||
-    document.body;
+function activate(): void {
+  if (isReelModeActive) return;
+  // Pick the anchor slide before the layout changes: the remembered one after Back,
+  // otherwise whatever the user was looking at in list view.
+  const remembered = findRememberedPost();
+  pendingRestoreUntil = !remembered && rememberedKey() ? Date.now() + 3000 : 0;
+  const anchor = remembered || getClosestPostToViewport();
+  isReelModeActive = true;
 
-  if (isReelModeActive) {
-    savedScrollY = typeof window !== 'undefined' ? window.scrollY : 0;
-    unlockAudio();
-    document.documentElement.classList.add('rr-active');
-    feedContainer?.classList.add('rr-feed-container');
+  document.documentElement.classList.add('rr-active');
+  feedManager.enhanceAllPosts();
+  feedManager.applyVideosOnlyFilter();
+  feedManager.startObservers();
+  inputController.attach();
 
-    feedManager.enhanceAllPosts();
-    feedManager.applyVideosOnlyFilter();
+  if (!stopRedgifsReady) {
+    stopRedgifsReady = listenForRedGifsReady(() => ({
+      muted: audioManager.isMuted,
+      volume: audioManager.volume,
+      activeContainer: getClosestPostToViewport(),
+    }));
+  }
 
-    const activePost = getClosestPostToViewport();
-    if (activePost) {
-      activePost.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'start' });
-      audioManager.requestPlayback(activePost);
-    }
-
-    if (topBarElement) topBarElement.remove();
-    topBarElement = createTopBar(audioManager.isMuted, feedManager.isVideosOnly, {
-      onExit: () => toggleReelMode(false),
-      onToggleFilter: () => {
-        const nextFilter = feedManager.toggleVideosOnly();
-        syncTopBarState(topBarElement, audioManager.isMuted, nextFilter);
-        const active = getClosestPostToViewport();
-        if (active) {
-          active.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      },
-      onToggleMute: handleToggleMute,
+  const target = anchor && !anchor.classList.contains('rr-filtered-out') ? anchor : getClosestPostToViewport();
+  if (target) {
+    target.scrollIntoView({
+      behavior: 'instant' as ScrollBehavior,
+      block: 'start',
     });
-    document.body.appendChild(topBarElement);
-
-    feedManager.startObservers();
-    inputController.attach();
-    if (!stopRedgifsReady) {
-      stopRedgifsReady = listenForRedGifsReady(() => ({
-        muted: audioManager.isMuted,
-        volume: audioManager.volume,
-        activeContainer: getClosestPostToViewport(),
-      }));
-    }
-  } else {
-    document.documentElement.classList.remove('rr-active');
-    feedContainer?.classList.remove('rr-feed-container');
-    audioManager.stopAll();
-
-    if (topBarElement) {
-      topBarElement.remove();
-      topBarElement = null;
-    }
-
-    if (stopRedgifsReady) {
-      stopRedgifsReady();
-      stopRedgifsReady = null;
-    }
-
-    closeCommentsDrawer();
-
-    feedManager.stopObservers();
-    inputController.detach();
-    feedManager.teardownAllPosts();
-
-    if (typeof window !== 'undefined' && savedScrollY > 0) {
-      window.scrollTo({ top: savedScrollY, behavior: 'instant' as ScrollBehavior });
-    }
+    // Reddit restores its own scroll position after re-rendering on Back; re-pin once it settles.
+    setTimeout(() => {
+      if (isReelModeActive && target.isConnected) {
+        target.scrollIntoView({
+          behavior: 'instant' as ScrollBehavior,
+          block: 'start',
+        });
+      }
+    }, 350);
+    audioManager.requestPlayback(target);
   }
 }
 
+function deactivate(): void {
+  if (!isReelModeActive) return;
+  const anchor = getClosestPostToViewport();
+  isReelModeActive = false;
+  pendingRestoreUntil = 0;
+
+  audioManager.stopAll();
+  feedManager.stopObservers();
+  inputController.detach();
+  feedManager.teardownAllPosts();
+  document.documentElement.classList.remove('rr-active', 'rr-hide-captions');
+
+  if (stopRedgifsReady) {
+    stopRedgifsReady();
+    stopRedgifsReady = null;
+  }
+  // Keep the user's place: the slide they were on stays in view in list layout.
+  if (anchor?.isConnected) {
+    anchor.scrollIntoView({
+      behavior: 'instant' as ScrollBehavior,
+      block: 'center',
+    });
+  }
+}
+
+/** Single source of truth: reels run on feed routes while the preference is on. */
+function syncState(): void {
+  const shouldRun = reelEnabled && isReelRoute(location.pathname);
+  if (shouldRun) activate();
+  else deactivate();
+  mountToggle();
+}
+
+export function setReelEnabled(on: boolean): void {
+  reelEnabled = on;
+  writeEnabled(on);
+  if (on) unlockAudio();
+  syncState();
+}
+
+/** Back-compat for callers/tests: toggles the preference. */
+export function toggleReelMode(forceState?: boolean): void {
+  setReelEnabled(forceState !== undefined ? forceState : !reelEnabled);
+}
+
 function init(): void {
-  // If running inside RedGifs iframe, do not inject Reddit Reel UI (handled by redgifs-bridge)
-  if (typeof window !== 'undefined' && /redgifs\.com/i.test(window.location.hostname)) {
-    return;
-  }
+  if (typeof window === 'undefined') return;
+  // RedGifs frames run only the bridge (src/index.ts); never run the reel inside any iframe.
+  if (/redgifs\.com/i.test(window.location.hostname)) return;
+  if (window.top !== window.self) return;
 
-  const fabContainerId = 'rr-fab-container';
-  let fabContainer = document.getElementById(fabContainerId);
-  if (!fabContainer) {
-    fabContainer = document.createElement('div');
-    fabContainer.id = fabContainerId;
-    fabContainer.appendChild(createFabButton(() => toggleReelMode()));
-    document.body.appendChild(fabContainer);
-  }
-
-  const updateRoute = () => {
-    const isFeed = isFeedRoute();
-    if (!isFeed && isReelModeActive) {
-      toggleReelMode(false);
-    }
-    const fc = document.getElementById(fabContainerId);
-    if (fc) {
-      fc.style.display = isFeed ? '' : 'none';
-    }
-  };
-
-  updateRoute();
-  window.addEventListener('popstate', updateRoute);
+  audioManager.onChange(syncSoundUi);
+  watchRoute(() => {
+    // Leaving a feed (opening a post) must stop reel playback immediately;
+    // coming back re-applies the layout to whatever feed Reddit rendered.
+    syncState();
+  });
+  syncState();
 }
 
 if (typeof document !== 'undefined') {

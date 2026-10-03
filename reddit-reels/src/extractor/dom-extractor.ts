@@ -370,6 +370,14 @@ export const DOWNVOTE_SELECTORS = [
  * and prefers real <button> hits over wrapper containers.
  */
 export function queryDeep(root: HTMLElement, selectors: string[]): HTMLElement | null {
+  // Our own rail buttons share aria-labels with Reddit's; never proxy onto them.
+  const isOurs = (el: HTMLElement): boolean => {
+    try {
+      return !!el.closest?.('.rr-post-overlay, .rr-link-card-container, .rr-text-card-container');
+    } catch {
+      return false;
+    }
+  };
   const isHidden = (el: HTMLElement): boolean => {
     try {
       if (el.hidden) return true;
@@ -422,7 +430,7 @@ export function queryDeep(root: HTMLElement, selectors: string[]): HTMLElement |
   for (const selector of selectors) {
     try {
       const found = root.querySelector<HTMLElement>(selector);
-      if (found && !isHidden(found)) {
+      if (found && !isOurs(found) && !isHidden(found)) {
         if (found.tagName.toLowerCase() === 'button') return found;
       }
     } catch {}
@@ -440,10 +448,11 @@ export function queryDeep(root: HTMLElement, selectors: string[]): HTMLElement |
 
   const all: HTMLElement[] = [];
   collect(root, all);
-  const visible = all.filter((el) => !isHidden(el));
-  const btn = visible.find((el) => el.tagName.toLowerCase() === 'button');
-  if (btn) return btn;
-  return visible[0] || null;
+  const native = all.filter((el) => !isOurs(el));
+  const visible = native.filter((el) => !isHidden(el));
+  const isButton = (el: HTMLElement) => el.tagName.toLowerCase() === 'button';
+  // In reel layout Reddit's action row is hidden by us but still clickable: fall back to it.
+  return visible.find(isButton) || native.find(isButton) || visible[0] || native[0] || null;
 }
 
 /**

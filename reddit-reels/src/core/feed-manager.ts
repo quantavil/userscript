@@ -45,7 +45,7 @@ function writePref(key: string, value: boolean): void {
 function hasVideoIframe(postEl: HTMLElement): boolean {
   const iframes = postEl.querySelectorAll<HTMLIFrameElement>('iframe');
   for (const ifr of iframes) {
-    const src = ifr.src || ifr.dataset.rrSrc || '';
+    const src = `${ifr.src || ''} ${ifr.dataset.rrSrc || ''}`;
     if (VIDEO_IFRAME_HOSTS_REGEX.test(src)) {
       return true;
     }
@@ -112,6 +112,12 @@ export function getClosestPostToViewport(): HTMLElement | null {
 
 export interface FeedManagerOptions {
   isReelModeActive: () => boolean;
+  /** Called when a post becomes the visible slide. */
+  onActivePost?: (post: HTMLElement) => void;
+  /** Called after newly streamed posts were enhanced. */
+  onPostsAdded?: () => void;
+  /** Rail sound button handler. */
+  onToggleMute?: () => void;
 }
 
 export class FeedManager {
@@ -220,8 +226,10 @@ export class FeedManager {
           postEl;
         if (media.type === 'iframe' && media.src) {
           const iframe = document.createElement('iframe');
-          const src = normalizeIframeSrc(media.src, audioManager.isMuted);
-          iframe.src = src;
+          // Parked until this post is the visible slide (AudioManager loads it then):
+          // eagerly loading every RedGifs embed lets them all autoplay with sound.
+          iframe.src = 'about:blank';
+          iframe.dataset.rrSrc = normalizeIframeSrc(media.src, audioManager.isMuted);
           iframe.className = 'rr-embedded-iframe';
           iframe.tabIndex = -1;
           iframe.setAttribute('loading', 'eager');
@@ -269,8 +277,7 @@ export class FeedManager {
       if (
         el.classList?.contains('rr-post-overlay') ||
         el.classList?.contains('rr-link-card-container') ||
-        el.classList?.contains('rr-text-card-container') ||
-        el.classList?.contains('rr-comments-drawer')
+        el.classList?.contains('rr-text-card-container')
       ) {
         return;
       }
@@ -307,6 +314,7 @@ export class FeedManager {
     renderReelOverlay(postEl, post, {
       hasVideo,
       isSubtitlesEnabled: () => this.subtitlesEnabled,
+      onToggleMute: this.options.onToggleMute,
       onToggleSubtitles: () => this.toggleSubtitles(),
       onToggleFitFill: () => {
         const isContain = postEl.classList.contains('rr-fit-contain');
@@ -377,11 +385,13 @@ export class FeedManager {
 
     // 6. Remove post-level classes and inline display
     postEl.classList.remove('rr-filtered-out', 'rr-is-link', 'rr-is-text');
+    this.enhancedPosts.delete(postEl);
     postEl.style.removeProperty('display');
   }
 
   public teardownAllPosts(): void {
-    const posts = getPostElements();
+    // Only undo what we did: Reddit's post page renders its own untouched shreddit-post.
+    const posts = getPostElements().filter((p) => this.enhancedPosts.has(p));
     posts.forEach((p) => this.restorePost(p));
     document.querySelector('.rr-empty-feed')?.remove();
     if (typeof document !== 'undefined') {
@@ -444,6 +454,7 @@ export class FeedManager {
             unconstrainPostMedia(post);
             applySubtitlesState(post, this.subtitlesEnabled);
             audioManager.requestPlayback(post);
+            this.options.onActivePost?.(post);
           } else if (!entry.isIntersecting || entry.intersectionRatio < 0.2) {
             // Inactive post: pause + mute immediately (zero bleed).
             applyAudioState(post, true);
@@ -507,6 +518,7 @@ export class FeedManager {
           }
         }
         this.applyVideosOnlyFilter();
+        this.options.onPostsAdded?.();
       }, 150);
     });
 

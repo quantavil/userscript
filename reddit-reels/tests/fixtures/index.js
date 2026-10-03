@@ -40,41 +40,42 @@
   // src/index.ts
   var exports_src = {};
   __export(exports_src, {
-    AudioManager: () => AudioManager,
-    DOWNVOTE_SELECTORS: () => DOWNVOTE_SELECTORS,
-    REDGIFS_MESSAGE_SOURCE: () => REDGIFS_MESSAGE_SOURCE,
-    UPVOTE_SELECTORS: () => UPVOTE_SELECTORS,
-    applyAudioState: () => applyAudioState,
-    audioManager: () => audioManager,
-    blurIframes: () => blurIframes,
-    checkIsDownvoted: () => checkIsDownvoted,
-    checkIsUpvoted: () => checkIsUpvoted,
-    deepFindMediaElements: () => deepFindMediaElements,
-    determinePostType: () => determinePostType,
-    ensureAutoplayAttrs: () => ensureAutoplayAttrs,
-    extractAuthor: () => extractAuthor,
-    extractContentHref: () => extractContentHref,
-    extractPermalink: () => extractPermalink,
-    extractPostId: () => extractPostId,
-    extractPosts: () => extractPosts,
-    extractSubreddit: () => extractSubreddit,
-    extractTitle: () => extractTitle,
-    hydrateVideoFromPlayer: () => hydrateVideoFromPlayer,
-    initRedGifsBridge: () => initRedGifsBridge,
-    isRedGifsFrame: () => isRedGifsFrame,
-    listenForRedGifsReady: () => listenForRedGifsReady,
-    normalizeIframeSrc: () => normalizeIframeSrc,
-    observeNewPosts: () => observeNewPosts,
-    parseCommentCount: () => parseCommentCount,
-    parsePostElement: () => parsePostElement,
-    parseScore: () => parseScore,
-    proxyDownvote: () => proxyDownvote,
-    proxyUpvote: () => proxyUpvote,
-    queryDeep: () => queryDeep,
-    resolveMedia: () => resolveMedia,
-    sendIframePlay: () => sendIframePlay,
+    unlockAudio: () => unlockAudio,
     unconstrainPostMedia: () => unconstrainPostMedia,
-    unlockAudio: () => unlockAudio
+    shadowContains: () => shadowContains,
+    sendIframePlay: () => sendIframePlay,
+    resolveMedia: () => resolveMedia,
+    queryDeep: () => queryDeep,
+    proxyUpvote: () => proxyUpvote,
+    proxyDownvote: () => proxyDownvote,
+    parseScore: () => parseScore,
+    parsePostElement: () => parsePostElement,
+    parseCommentCount: () => parseCommentCount,
+    observeNewPosts: () => observeNewPosts,
+    normalizeIframeSrc: () => normalizeIframeSrc,
+    listenForRedGifsReady: () => listenForRedGifsReady,
+    isRedGifsFrame: () => isRedGifsFrame,
+    initRedGifsBridge: () => initRedGifsBridge,
+    hydrateVideoFromPlayer: () => hydrateVideoFromPlayer,
+    extractTitle: () => extractTitle,
+    extractSubreddit: () => extractSubreddit,
+    extractPosts: () => extractPosts,
+    extractPostId: () => extractPostId,
+    extractPermalink: () => extractPermalink,
+    extractContentHref: () => extractContentHref,
+    extractAuthor: () => extractAuthor,
+    ensureAutoplayAttrs: () => ensureAutoplayAttrs,
+    determinePostType: () => determinePostType,
+    deepFindMediaElements: () => deepFindMediaElements,
+    checkIsUpvoted: () => checkIsUpvoted,
+    checkIsDownvoted: () => checkIsDownvoted,
+    blurIframes: () => blurIframes,
+    audioManager: () => audioManager,
+    applyAudioState: () => applyAudioState,
+    UPVOTE_SELECTORS: () => UPVOTE_SELECTORS,
+    REDGIFS_MESSAGE_SOURCE: () => REDGIFS_MESSAGE_SOURCE,
+    DOWNVOTE_SELECTORS: () => DOWNVOTE_SELECTORS,
+    AudioManager: () => AudioManager
   });
 
   // src/extractor/dom-extractor.ts
@@ -128,7 +129,8 @@
     if (element.dataset.reelPostId) {
       return element.dataset.reelPostId;
     }
-    const generatedId = `t3_gen_${Math.random().toString(36).slice(2, 10)}`;
+    const rand = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID().replace(/-/g, "").slice(0, 10) : Math.random().toString(36).slice(2, 10);
+    const generatedId = `t3_gen_${rand}`;
     element.dataset.reelPostId = generatedId;
     return generatedId;
   }
@@ -248,7 +250,7 @@
       return "link";
     }
     const isVideoHost = /(redgifs\.com|streamable\.com|gfycat\.com)/i.test(domain) || /(redgifs\.com|streamable\.com|gfycat\.com)/i.test(contentHref);
-    const isVideo = rawType === "video" || isVideoHost || element.querySelector('shreddit-player-2, video, [data-testid="shreddit-player"]') !== null || /(\.mp4|\.webm|\.m3u8|v\.redd\.it|redgifs\.com|streamable\.com|youtube\.com|youtu\.be|tiktok\.com|vimeo\.com)/i.test(contentHref);
+    const isVideo = rawType === "video" || isVideoHost || element.querySelector('shreddit-player-2, video, [data-testid="shreddit-player"]') !== null || /(\.mp4|\.webm|\.m3u8|v\.redd\.it|redgifs\.com|streamable\.com|gfycat\.com|youtube\.com|youtu\.be)/i.test(contentHref);
     if (isVideo) {
       return "video";
     }
@@ -313,6 +315,13 @@
     ".arrow.downmod"
   ];
   function queryDeep(root, selectors) {
+    const isOurs = (el) => {
+      try {
+        return !!el.closest?.(".rr-post-overlay, .rr-link-card-container, .rr-text-card-container");
+      } catch {
+        return false;
+      }
+    };
     const isHidden = (el) => {
       try {
         if (el.hidden)
@@ -322,6 +331,15 @@
           return true;
         if (el.classList?.contains("rr-native-suppressed"))
           return true;
+        let curr = el.parentElement;
+        while (curr && curr !== root) {
+          if (curr.hidden || curr.classList?.contains("rr-native-suppressed"))
+            return true;
+          const parentStyle = curr.getAttribute("style") || "";
+          if (/display\s*:\s*none/i.test(parentStyle))
+            return true;
+          curr = curr.parentElement;
+        }
       } catch {}
       return false;
     };
@@ -359,7 +377,7 @@
     for (const selector of selectors) {
       try {
         const found = root.querySelector(selector);
-        if (found && !isHidden(found)) {
+        if (found && !isOurs(found) && !isHidden(found)) {
           if (found.tagName.toLowerCase() === "button")
             return found;
         }
@@ -378,11 +396,10 @@
     }
     const all = [];
     collect(root, all);
-    const visible = all.filter((el) => !isHidden(el));
-    const btn = visible.find((el) => el.tagName.toLowerCase() === "button");
-    if (btn)
-      return btn;
-    return visible[0] || null;
+    const native = all.filter((el) => !isOurs(el));
+    const visible = native.filter((el) => !isHidden(el));
+    const isButton = (el) => el.tagName.toLowerCase() === "button";
+    return visible.find(isButton) || native.find(isButton) || visible[0] || native[0] || null;
   }
   function checkIsUpvoted(element) {
     const voteState = element.getAttribute("vote-state") || element.getAttribute("score-state");
@@ -656,6 +673,31 @@
       }
     }
   }
+  function scheduleVoteSync(post, expectedUp, expectedDown, onSync) {
+    let attempts = 0;
+    const intervals = [50, 150, 350, 750, 1500];
+    const check = () => {
+      if (!post.element)
+        return;
+      const liveUp = checkIsUpvoted(post.element);
+      const liveDown = checkIsDownvoted(post.element);
+      if (liveUp === expectedUp && liveDown === expectedDown) {
+        post.isUpvoted = liveUp;
+        post.isDownvoted = liveDown;
+        onSync?.();
+        return;
+      }
+      attempts++;
+      if (attempts < intervals.length) {
+        setTimeout(check, intervals[attempts]);
+      } else {
+        post.isUpvoted = liveUp;
+        post.isDownvoted = liveDown;
+        onSync?.();
+      }
+    };
+    setTimeout(check, intervals[0]);
+  }
   function proxyUpvote(post, onSync) {
     if (!post || !post.element)
       return false;
@@ -663,28 +705,20 @@
     if (!button)
       return false;
     const wasUpvoted = !!post.isUpvoted;
-    const wasDownvoted = !!post.isDownvoted;
     const success = clickButton(button);
     if (success && post.element) {
-      if (wasUpvoted) {
-        post.isUpvoted = false;
-      } else {
-        post.isUpvoted = true;
+      const expectedUp = !wasUpvoted;
+      const expectedDown = false;
+      post.isUpvoted = expectedUp;
+      if (expectedUp)
         post.isDownvoted = false;
-      }
       const liveUp = checkIsUpvoted(post.element);
       const liveDown = checkIsDownvoted(post.element);
-      if (liveUp !== wasUpvoted || liveDown !== wasDownvoted) {
+      if (liveUp === expectedUp && liveDown === expectedDown) {
         post.isUpvoted = liveUp;
         post.isDownvoted = liveDown;
       }
-      setTimeout(() => {
-        if (post.element) {
-          post.isUpvoted = checkIsUpvoted(post.element);
-          post.isDownvoted = checkIsDownvoted(post.element);
-        }
-        onSync?.();
-      }, 50);
+      scheduleVoteSync(post, expectedUp, expectedDown, onSync);
     }
     return success;
   }
@@ -694,31 +728,52 @@
     const button = queryDeep(post.element, DOWNVOTE_SELECTORS);
     if (!button)
       return false;
-    const wasUpvoted = !!post.isUpvoted;
     const wasDownvoted = !!post.isDownvoted;
     const success = clickButton(button);
     if (success && post.element) {
-      if (wasDownvoted) {
-        post.isDownvoted = false;
-      } else {
-        post.isDownvoted = true;
+      const expectedDown = !wasDownvoted;
+      const expectedUp = false;
+      post.isDownvoted = expectedDown;
+      if (expectedDown)
         post.isUpvoted = false;
-      }
       const liveUp = checkIsUpvoted(post.element);
       const liveDown = checkIsDownvoted(post.element);
-      if (liveUp !== wasUpvoted || liveDown !== wasDownvoted) {
+      if (liveUp === expectedUp && liveDown === expectedDown) {
         post.isUpvoted = liveUp;
         post.isDownvoted = liveDown;
       }
-      setTimeout(() => {
-        if (post.element) {
-          post.isUpvoted = checkIsUpvoted(post.element);
-          post.isDownvoted = checkIsDownvoted(post.element);
-        }
-        onSync?.();
-      }, 50);
+      scheduleVoteSync(post, expectedUp, expectedDown, onSync);
     }
     return success;
+  }
+
+  // src/media/gallery-media.ts
+  function getActiveCarouselSlide(carouselContainer) {
+    const list = carouselContainer.querySelector('ul[slot="items"], [slot="items"], .carousel-items, ul');
+    if (!list)
+      return null;
+    const items = Array.from(list.children).filter((el) => typeof HTMLElement !== "undefined" ? el instanceof HTMLElement : Boolean(el && el.nodeType === 1));
+    if (items.length === 0)
+      return null;
+    if (items.length === 1)
+      return items[0];
+    const scrollLeft = list.scrollLeft;
+    let closestSlide = items[0];
+    let minDiff = Infinity;
+    for (const item of items) {
+      const diff = Math.abs(item.offsetLeft - scrollLeft);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestSlide = item;
+      }
+    }
+    return closestSlide;
+  }
+  function findActiveSlideVideo(carouselContainer) {
+    const slide = getActiveCarouselSlide(carouselContainer);
+    if (!slide)
+      return null;
+    return slide.querySelector("video");
   }
 
   // src/media/video-hydrator.ts
@@ -773,70 +828,48 @@
 
   // src/media/audio-manager.ts
   var STORAGE_KEY = "reddit_reels_muted";
-  function getInitialMuteState() {
-    try {
-      if (typeof GM_getValue === "function") {
-        const gmVal = GM_getValue(STORAGE_KEY, null);
-        if (gmVal !== null && typeof gmVal === "boolean") {
-          return gmVal;
-        }
-      }
-    } catch {}
-    try {
-      if (typeof localStorage !== "undefined") {
-        const localVal = localStorage.getItem(STORAGE_KEY);
-        if (localVal !== null) {
-          return localVal === "true";
-        }
-      }
-    } catch {}
-    return false;
-  }
-  function persistMuteState(muted) {
-    try {
-      if (typeof GM_setValue === "function") {
-        GM_setValue(STORAGE_KEY, muted);
-      }
-    } catch {}
-    try {
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem(STORAGE_KEY, String(muted));
-      }
-    } catch {}
-  }
   var VOLUME_KEY = "reddit_reels_volume";
-  function getInitialVolume() {
+  var POST_SELECTOR = "shreddit-post, [data-post-id], article";
+  var EMBED_HOSTS = /(?:redgifs\.com|streamable\.com|gfycat\.com|youtube\.com|youtube-nocookie\.com|youtu\.be)/i;
+  var REDGIFS_HOST = /redgifs\.com/i;
+  var USER_GESTURE_MS = 1500;
+  var HYDRATE_DELAY_MS = 1500;
+  var MAX_REASSERTS = 3;
+  function readStored(key, parse, fallback) {
     try {
       if (typeof GM_getValue === "function") {
-        const gmVal = GM_getValue(VOLUME_KEY, null);
-        if (typeof gmVal === "number" && gmVal >= 0 && gmVal <= 1)
-          return gmVal;
+        const v = parse(GM_getValue(key, null));
+        if (v !== null)
+          return v;
       }
     } catch {}
     try {
       if (typeof localStorage !== "undefined") {
-        const raw = localStorage.getItem(VOLUME_KEY);
+        const raw = localStorage.getItem(key);
         if (raw !== null) {
-          const n = parseFloat(raw);
-          if (!Number.isNaN(n) && n >= 0 && n <= 1)
-            return n;
+          const v = parse(raw);
+          if (v !== null)
+            return v;
         }
       }
     } catch {}
-    return 1;
+    return fallback;
   }
-  function persistVolume(volume) {
+  function writeStored(key, value) {
     try {
-      if (typeof GM_setValue === "function") {
-        GM_setValue(VOLUME_KEY, volume);
-      }
+      if (typeof GM_setValue === "function")
+        GM_setValue(key, value);
     } catch {}
     try {
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem(VOLUME_KEY, String(volume));
-      }
+      if (typeof localStorage !== "undefined")
+        localStorage.setItem(key, String(value));
     } catch {}
   }
+  var parseBool = (raw) => typeof raw === "boolean" ? raw : raw === "true" ? true : raw === "false" ? false : null;
+  var parseVolume = (raw) => {
+    const n = typeof raw === "number" ? raw : typeof raw === "string" ? parseFloat(raw) : NaN;
+    return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null;
+  };
   function normalizeIframeSrc(src, isMuted) {
     if (!src || src === "about:blank")
       return src;
@@ -858,13 +891,34 @@
   function listenForRedGifsReady(getState) {
     const handler = (event) => {
       try {
+        const origin = event.origin || "";
+        if (!/https:\/\/(?:[a-zA-Z0-9-]+\.)?redgifs\.com$/i.test(origin) && origin !== window.location.origin) {
+          return;
+        }
         const data = event.data;
         if (!data || data.source !== "redgifs-bridge" || data.type !== "READY")
           return;
         const src = event.source;
         if (!src || typeof src.postMessage !== "function")
           return;
-        const { muted, volume } = getState();
+        audioManager.markBridgeReady(src);
+        const state = getState();
+        const active = state.activeContainer;
+        if (active) {
+          const activeIframes = Array.from(active.querySelectorAll("iframe"));
+          const isFromActive = activeIframes.some((ifr) => ifr.contentWindow === src);
+          if (!isFromActive) {
+            src.postMessage({
+              source: "reddit-reels",
+              type: "SET_AUDIO",
+              muted: true,
+              volume: 0
+            }, "*");
+            src.postMessage({ source: "reddit-reels", type: "PAUSE" }, "*");
+            return;
+          }
+        }
+        const { muted, volume } = state;
         src.postMessage({ source: "reddit-reels", type: "SET_AUDIO", muted, volume }, "*");
         src.postMessage({ source: "reddit-reels", type: "PLAY" }, "*");
       } catch {}
@@ -891,15 +945,9 @@
       if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
         sharedAudioCtx = new AudioCtx;
       }
-      const ctx = sharedAudioCtx;
-      if (ctx.state === "suspended") {
-        ctx.resume().catch(() => {});
+      if (sharedAudioCtx.state === "suspended") {
+        sharedAudioCtx.resume().catch(() => {});
       }
-      const buffer = ctx.createBuffer(1, 1, 22050);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start(0);
     } catch {}
   }
   function deepFindMediaElements(root) {
@@ -909,39 +957,55 @@
     function traverse(node) {
       if (!node)
         return;
-      if (typeof HTMLVideoElement !== "undefined" && node instanceof HTMLVideoElement || node.tagName?.toLowerCase() === "video") {
+      const tag = node.tagName?.toLowerCase?.();
+      if (tag === "video") {
         videos.push(node);
-      } else if (typeof HTMLAudioElement !== "undefined" && node instanceof HTMLAudioElement || node.tagName?.toLowerCase() === "audio") {
+      } else if (tag === "audio") {
         audios.push(node);
-      } else if (node instanceof HTMLElement) {
-        const tag = node.tagName.toLowerCase();
+      } else if (tag) {
         if (tag.includes("player") || tag.includes("vds-media") || tag.includes("vds-video") || tag.includes("vds-audio")) {
           players.push(node);
         }
-        if (node.shadowRoot) {
-          traverse(node.shadowRoot);
-        }
+        const sr = node.shadowRoot;
+        if (sr)
+          traverse(sr);
       }
-      if (node.childNodes && node.childNodes.length > 0) {
-        for (let i = 0;i < node.childNodes.length; i++) {
-          traverse(node.childNodes[i]);
-        }
-      }
+      const children = node.childNodes;
+      for (let i = 0;i < (children?.length || 0); i++)
+        traverse(children[i]);
     }
     traverse(root);
     return { videos, audios, players };
   }
-  function applyAudioState(container, isMuted, volume = 1) {
+  function shadowContains(container, target) {
+    if (!container || !target)
+      return false;
+    let curr = target;
+    while (curr) {
+      if (curr === container)
+        return true;
+      curr = curr.parentNode || curr.host || null;
+    }
+    return false;
+  }
+  function isEmbedIframe(ifr) {
+    return EMBED_HOSTS.test(`${ifr.src || ""} ${ifr.dataset.rrSrc || ""}`);
+  }
+  function applyAudioState(container, isMuted, volume = 1, activeTargetVideo) {
     if (!container)
       return;
     const level = isMuted ? 0 : volume;
-    const { videos, audios, players } = deepFindMediaElements(container);
+    const { videos, audios } = deepFindMediaElements(container);
     for (const video of videos) {
       try {
+        const isTarget = activeTargetVideo !== undefined ? video === activeTargetVideo : videos.length === 1 || video === videos[0];
         video.muted = isMuted;
         video.volume = level;
-        if (!isMuted && video.paused) {
-          video.play().catch(() => {});
+        if (isTarget) {
+          if (!isMuted && video.paused)
+            video.play().catch(() => {});
+        } else if (!video.paused) {
+          video.pause();
         }
       } catch {}
     }
@@ -949,28 +1013,14 @@
       try {
         audio.muted = isMuted;
         audio.volume = level;
-        if (!isMuted && audio.paused) {
-          audio.play().catch(() => {});
-        }
+        if (isMuted && !audio.paused)
+          audio.pause();
       } catch {}
     }
-    for (const player of players) {
-      try {
-        if (isMuted) {
-          player.setAttribute("muted", "");
-          player.muted = true;
-        } else {
-          player.removeAttribute("muted");
-          player.muted = false;
-          player.volume = level;
-        }
-      } catch {}
-    }
-    const iframes = container.querySelectorAll("iframe");
-    for (const ifr of iframes) {
+    container.querySelectorAll("iframe").forEach((ifr) => {
       try {
         if (!ifr.src || ifr.src === "about:blank")
-          continue;
+          return;
         ifr.contentWindow?.postMessage({
           source: "reddit-reels",
           type: "SET_AUDIO",
@@ -984,7 +1034,7 @@
           volume: level
         }, "*");
       } catch {}
-    }
+    });
   }
 
   class AudioManager {
@@ -993,36 +1043,68 @@
     activeContainer = null;
     activeVideo = null;
     videoCache = new WeakMap;
+    knownVideos = new Set;
+    guardedVideos = new WeakSet;
+    autoplayMuted = new WeakSet;
+    bridgeFrames = new WeakSet;
+    lastGestureAt = 0;
+    reasserts = 0;
+    hydrateTimer = null;
+    listeners = new Set;
     constructor(initialMuted, initialVolume) {
-      this._isMuted = initialMuted !== undefined ? initialMuted : getInitialMuteState();
-      this._volume = initialVolume !== undefined ? initialVolume : getInitialVolume();
+      this._isMuted = initialMuted !== undefined ? initialMuted : readStored(STORAGE_KEY, parseBool, false);
+      this._volume = initialVolume !== undefined ? initialVolume : readStored(VOLUME_KEY, parseVolume, 1);
+      if (typeof document !== "undefined") {
+        const mark = () => {
+          this.lastGestureAt = Date.now();
+        };
+        document.addEventListener("pointerdown", mark, true);
+        document.addEventListener("keydown", mark, true);
+      }
     }
     get isMuted() {
       return this._isMuted;
     }
     set isMuted(value) {
       this._isMuted = value;
-      persistMuteState(this._isMuted);
-      this.syncActiveMute();
+      writeStored(STORAGE_KEY, value);
+      this.syncActive();
+      this.emit();
     }
     get volume() {
       return this._volume;
     }
+    onChange(cb) {
+      this.listeners.add(cb);
+      return () => this.listeners.delete(cb);
+    }
+    emit() {
+      this.listeners.forEach((cb) => {
+        try {
+          cb();
+        } catch {}
+      });
+    }
+    markBridgeReady(win) {
+      try {
+        this.bridgeFrames.add(win);
+      } catch {}
+    }
     setVolume(level, container) {
       const clamped = Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 1;
       this._volume = clamped;
-      persistVolume(clamped);
-      if (clamped === 0 && !this._isMuted) {
-        this._isMuted = true;
-        persistMuteState(true);
-      } else if (clamped > 0 && this._isMuted) {
-        this._isMuted = false;
-        persistMuteState(false);
+      writeStored(VOLUME_KEY, clamped);
+      const nextMuted = clamped === 0;
+      if (nextMuted !== this._isMuted) {
+        this._isMuted = nextMuted;
+        writeStored(STORAGE_KEY, nextMuted);
       }
-      const target = container || this.activeContainer;
-      if (target)
-        applyAudioState(target, this._isMuted, this._volume);
-      this.syncActiveMute();
+      if (container && container !== this.activeContainer) {
+        applyAudioState(container, this._isMuted, this._volume);
+      } else {
+        this.syncActive();
+      }
+      this.emit();
       return this._volume;
     }
     adjustVolume(delta, container) {
@@ -1034,60 +1116,143 @@
     getActiveContainer() {
       return this.activeContainer;
     }
+    guardVideo(video) {
+      this.knownVideos.add(video);
+      if (this.guardedVideos.has(video) || typeof video.addEventListener !== "function")
+        return;
+      this.guardedVideos.add(video);
+      video.addEventListener("play", () => {
+        if (!this.activeContainer)
+          return;
+        if (video === this.activeVideo)
+          return;
+        if (shadowContains(this.activeContainer, video)) {
+          const prev = this.activeVideo;
+          this.activeVideo = video;
+          if (prev && prev !== video)
+            this.pauseVideo(prev);
+          try {
+            video.muted = this._isMuted;
+            video.volume = this._isMuted ? 0 : this._volume;
+          } catch {}
+          return;
+        }
+        try {
+          video.pause();
+          video.muted = true;
+        } catch {}
+      });
+      video.addEventListener("volumechange", () => {
+        if (video !== this.activeVideo)
+          return;
+        const level = video.muted ? 0 : video.volume;
+        const expectedLevel = this._isMuted ? 0 : this._volume;
+        if (video.muted === this._isMuted && Math.abs(level - expectedLevel) < 0.01)
+          return;
+        if (video.muted && this.autoplayMuted.has(video))
+          return;
+        if (Date.now() - this.lastGestureAt < USER_GESTURE_MS) {
+          this.autoplayMuted.delete(video);
+          this._isMuted = video.muted || video.volume === 0;
+          if (!video.muted && video.volume > 0)
+            this._volume = video.volume;
+          writeStored(STORAGE_KEY, this._isMuted);
+          writeStored(VOLUME_KEY, this._volume);
+          this.reasserts = 0;
+          this.emit();
+        } else if (this.reasserts < MAX_REASSERTS) {
+          this.reasserts++;
+          try {
+            video.muted = this._isMuted;
+            video.volume = expectedLevel;
+          } catch {}
+        }
+      });
+    }
+    pauseVideo(v) {
+      try {
+        if (!v.paused)
+          v.pause();
+        v.muted = true;
+      } catch {}
+    }
+    pauseIframe(ifr) {
+      if (!ifr.src || ifr.src === "about:blank" || !isEmbedIframe(ifr))
+        return;
+      let viaBridge = false;
+      try {
+        const win = ifr.contentWindow;
+        viaBridge = !!win && REDGIFS_HOST.test(ifr.src) && this.bridgeFrames.has(win);
+        win?.postMessage({ source: "reddit-reels", type: "PAUSE" }, "*");
+      } catch {}
+      if (!viaBridge) {
+        ifr.dataset.rrSrc = ifr.src;
+        ifr.src = "about:blank";
+      }
+    }
     requestPlayback(target) {
       if (!target)
         return;
       let targetVideo = null;
       let targetContainer = null;
-      const isVideo = typeof HTMLVideoElement !== "undefined" && target instanceof HTMLVideoElement || target.tagName?.toLowerCase() === "video" || typeof target.play === "function";
+      const isVideo = target.tagName?.toLowerCase() === "video" || typeof target.play === "function";
       if (isVideo) {
         targetVideo = target;
-        targetContainer = typeof target.closest === "function" ? target.closest("shreddit-post, [data-post-id], article") : null;
+        targetContainer = target.closest?.(POST_SELECTOR) ?? null;
       } else {
         targetContainer = target;
-        targetVideo = this.findVideo(target);
+        targetVideo = this.findVideo(targetContainer);
       }
-      if (this.activeVideo && this.activeVideo !== targetVideo) {
+      const sameTarget = targetContainer === this.activeContainer && targetVideo === this.activeVideo;
+      if (sameTarget && targetVideo && !targetVideo.paused) {
+        if (targetContainer)
+          applyAudioState(targetContainer, this._isMuted, this._volume, targetVideo);
+        return;
+      }
+      if (this.hydrateTimer) {
+        clearTimeout(this.hydrateTimer);
+        this.hydrateTimer = null;
+      }
+      const previous = this.activeVideo;
+      if (previous && previous !== targetVideo) {
+        this.pauseVideo(previous);
         try {
-          this.activeVideo.pause();
-          this.activeVideo.muted = true;
-          this.activeVideo.currentTime = 0;
+          previous.currentTime = 0;
         } catch {}
-      }
-      if (this.activeContainer && this.activeContainer !== targetContainer) {
-        applyAudioState(this.activeContainer, true);
       }
       this.activeContainer = targetContainer;
       this.activeVideo = targetVideo;
+      this.reasserts = 0;
+      if (targetVideo)
+        this.guardVideo(targetVideo);
       if (typeof document !== "undefined") {
-        const allVideos = document.querySelectorAll("video");
-        allVideos.forEach((v) => {
-          if (v !== targetVideo) {
-            try {
-              if (!v.paused)
-                v.pause();
-              v.muted = true;
-              v.currentTime = 0;
-            } catch {}
-          }
+        document.querySelectorAll("video").forEach((v) => {
+          this.knownVideos.add(v);
         });
-        const allAudios = document.querySelectorAll("audio");
-        allAudios.forEach((a) => {
+        for (const v of this.knownVideos) {
+          if (v.isConnected === false) {
+            this.knownVideos.delete(v);
+            continue;
+          }
+          if (v === targetVideo)
+            continue;
+          if (targetContainer && shadowContains(targetContainer, v) && !targetVideo)
+            continue;
+          this.pauseVideo(v);
+        }
+        document.querySelectorAll("audio").forEach((a) => {
+          if (targetContainer && targetContainer.contains(a))
+            return;
           try {
             if (!a.paused)
               a.pause();
             a.muted = true;
-            a.currentTime = 0;
           } catch {}
         });
-        const allIframes = document.querySelectorAll("iframe");
-        allIframes.forEach((ifr) => {
-          if (!targetContainer || !targetContainer.contains(ifr)) {
-            if (ifr.src && ifr.src !== "about:blank") {
-              ifr.dataset.rrSrc = ifr.src;
-              ifr.src = "about:blank";
-            }
-          }
+        document.querySelectorAll("iframe").forEach((ifr) => {
+          if (targetContainer && targetContainer.contains(ifr))
+            return;
+          this.pauseIframe(ifr);
         });
       }
       if (targetContainer) {
@@ -1097,147 +1262,186 @@
             const stored = ifr.dataset.rrSrc;
             if (ifr.src === "about:blank" && stored) {
               ifr.src = normalizeIframeSrc(stored, this._isMuted);
+              delete ifr.dataset.rrSrc;
             }
             ifr.tabIndex = -1;
           } catch {}
         });
-        applyAudioState(targetContainer, this._isMuted, this._volume);
-        iframes.forEach((ifr) => sendIframePlay(ifr));
+        applyAudioState(targetContainer, this._isMuted, this._volume, targetVideo);
+        for (const ifr of iframes)
+          sendIframePlay(ifr);
         blurIframes(targetContainer);
       }
       if (targetVideo) {
-        if (targetContainer && targetContainer === this.activeContainer && !targetVideo.paused && targetVideo.currentSrc) {
-          applyAudioState(targetContainer, this._isMuted, this._volume);
-          return;
+        const video = targetVideo;
+        ensureAutoplayAttrs(video);
+        this.playWithFallback(video);
+        if (targetContainer && !video.currentSrc && !video.src) {
+          const container = targetContainer;
+          this.hydrateTimer = setTimeout(() => {
+            this.hydrateTimer = null;
+            if (this.activeVideo !== video || video.currentSrc || video.src)
+              return;
+            if (hydrateVideoFromPlayer(container, video))
+              this.playWithFallback(video);
+          }, HYDRATE_DELAY_MS);
         }
-        ensureAutoplayAttrs(targetVideo);
-        if (targetContainer && (!targetVideo.currentSrc || targetVideo.readyState === 0)) {
-          hydrateVideoFromPlayer(targetContainer, targetVideo);
-        }
-        targetVideo.muted = this._isMuted;
-        targetVideo.volume = this._isMuted ? 0 : this._volume;
-        targetVideo.play().catch((err) => {
-          if (!targetVideo)
+      }
+    }
+    playWithFallback(video) {
+      try {
+        video.muted = this._isMuted;
+        video.volume = this._isMuted ? 0 : this._volume;
+        const p = video.play();
+        p?.catch?.((err) => {
+          if (this.activeVideo !== video)
             return;
           const name = err && err.name || "";
-          if (name === "NotSupportedError") {
-            if (targetContainer)
-              hydrateVideoFromPlayer(targetContainer, targetVideo);
-            targetVideo.muted = true;
-            targetVideo.play().catch(() => {});
-            return;
-          }
-          if (!targetVideo.muted && (name === "NotAllowedError" || name === "AbortError")) {
-            targetVideo.muted = true;
-            targetVideo.play().catch(() => {});
+          if (!video.muted && (name === "NotAllowedError" || name === "AbortError")) {
+            this.autoplayMuted.add(video);
+            video.muted = true;
+            video.play().catch(() => {});
           }
         });
-      }
+      } catch {}
     }
     findVideo(container) {
       if (!container)
         return null;
-      if (container === this.activeContainer && this.activeVideo && container.contains(this.activeVideo)) {
+      if (container === this.activeContainer && this.activeVideo && shadowContains(container, this.activeVideo)) {
         return this.activeVideo;
       }
       const cached = this.videoCache.get(container);
-      if (cached && Date.now() - cached.time < 1000 && (cached.video === null || container.contains(cached.video))) {
+      if (cached && Date.now() - cached.time < 1000 && (cached.video === null || shadowContains(container, cached.video))) {
         return cached.video;
       }
-      const { videos } = deepFindMediaElements(container);
-      const found = videos.length > 0 ? videos[0] : null;
+      const found = findActiveSlideVideo(container) || deepFindMediaElements(container).videos[0] || null;
       try {
         this.videoCache.set(container, { video: found, time: Date.now() });
       } catch {}
+      if (found)
+        this.guardVideo(found);
       return found;
     }
-    invalidateVideoCache(container) {
-      try {
-        if (container) {
-          this.videoCache.delete(container);
+    togglePlayback(target) {
+      if (!target)
+        return false;
+      if (this.activeContainer !== target) {
+        this.requestPlayback(target);
+        return true;
+      }
+      const video = this.activeVideo || this.findVideo(target);
+      if (video) {
+        if (this.autoplayMuted.has(video) && !this._isMuted) {
+          this.autoplayMuted.delete(video);
+          video.muted = false;
+          video.volume = this._volume;
+          if (video.paused)
+            video.play().catch(() => {});
+          return true;
         }
-      } catch {}
+        if (video.paused) {
+          this.playWithFallback(video);
+          return true;
+        }
+        video.pause();
+        return false;
+      }
+      const ifr = target.querySelector("iframe");
+      if (ifr && ifr.src && ifr.src !== "about:blank") {
+        const isPaused = ifr.dataset.rrPaused === "1";
+        ifr.dataset.rrPaused = isPaused ? "0" : "1";
+        if (isPaused) {
+          sendIframePlay(ifr);
+          return true;
+        }
+        ifr.contentWindow?.postMessage({ source: "reddit-reels", type: "PAUSE" }, "*");
+        ifr.contentWindow?.postMessage({ action: "pause", type: "pause" }, "*");
+        return false;
+      }
+      return false;
+    }
+    invalidateVideoCache(container) {
+      if (container)
+        this.videoCache.delete(container);
     }
     toggleMute(container) {
       this._isMuted = !this._isMuted;
-      persistMuteState(this._isMuted);
-      const target = container || this.activeContainer;
-      if (target) {
-        applyAudioState(target, this._isMuted, this._volume);
+      writeStored(STORAGE_KEY, this._isMuted);
+      if (this.activeVideo)
+        this.autoplayMuted.delete(this.activeVideo);
+      if (container && container !== this.activeContainer) {
+        applyAudioState(container, this._isMuted, this._volume);
+      } else {
+        this.syncActive();
       }
-      this.syncActiveMute();
+      this.emit();
       return this._isMuted;
     }
     reassertActiveIframeUnmute() {
       if (this._isMuted || !this.activeContainer)
         return;
-      try {
-        const iframes = this.activeContainer.querySelectorAll("iframe");
-        iframes.forEach((ifr) => {
-          try {
-            const stored = ifr.dataset.rrSrc;
-            if (ifr.src === "about:blank" && stored) {
-              ifr.src = normalizeIframeSrc(stored, false);
-            }
-          } catch {}
-        });
-        applyAudioState(this.activeContainer, false, this._volume);
-        iframes.forEach((ifr) => sendIframePlay(ifr));
-      } catch {}
+      this.activeContainer.querySelectorAll("iframe").forEach((ifr) => {
+        try {
+          const stored = ifr.dataset.rrSrc;
+          if (ifr.src === "about:blank" && stored) {
+            ifr.src = normalizeIframeSrc(stored, false);
+            delete ifr.dataset.rrSrc;
+          }
+          ifr.contentWindow?.postMessage({
+            source: "reddit-reels",
+            type: "SET_AUDIO",
+            muted: false,
+            volume: this._volume
+          }, "*");
+          sendIframePlay(ifr);
+        } catch {}
+      });
     }
-    syncActiveMute() {
+    syncActive() {
       if (this.activeContainer) {
-        applyAudioState(this.activeContainer, this._isMuted, this._volume);
+        applyAudioState(this.activeContainer, this._isMuted, this._volume, this.activeVideo ?? undefined);
       } else if (this.activeVideo) {
         try {
           this.activeVideo.muted = this._isMuted;
           this.activeVideo.volume = this._isMuted ? 0 : this._volume;
-          if (!this._isMuted && this.activeVideo.paused) {
-            this.activeVideo.play().catch(() => {});
-          }
         } catch {}
       }
     }
     stopAll() {
-      if (this.activeContainer) {
-        applyAudioState(this.activeContainer, true);
-      }
-      if (this.activeVideo) {
-        try {
-          this.activeVideo.pause();
-          this.activeVideo.muted = true;
-          this.activeVideo.currentTime = 0;
-        } catch {}
+      if (this.hydrateTimer) {
+        clearTimeout(this.hydrateTimer);
+        this.hydrateTimer = null;
       }
       this.activeVideo = null;
       this.activeContainer = null;
       if (typeof document !== "undefined") {
-        const allVideos = document.querySelectorAll("video");
-        allVideos.forEach((v) => {
-          try {
-            if (!v.paused)
-              v.pause();
-            v.muted = true;
-            v.currentTime = 0;
-          } catch {}
-        });
-        const allAudios = document.querySelectorAll("audio");
-        allAudios.forEach((a) => {
-          try {
-            if (!a.paused)
-              a.pause();
-            a.muted = true;
-            a.currentTime = 0;
-          } catch {}
-        });
-        const allIframes = document.querySelectorAll("iframe");
-        allIframes.forEach((ifr) => {
-          try {
-            ifr.contentWindow?.postMessage({ source: "reddit-reels", type: "PAUSE", muted: true }, "*");
-            ifr.contentWindow?.postMessage({ action: "pause", muted: true }, "*");
-          } catch {}
+        document.querySelectorAll("video").forEach((v) => {
+          this.knownVideos.add(v);
         });
       }
+      for (const v of this.knownVideos) {
+        if (v.isConnected === false) {
+          this.knownVideos.delete(v);
+          continue;
+        }
+        this.pauseVideo(v);
+      }
+      if (typeof document === "undefined")
+        return;
+      document.querySelectorAll("audio").forEach((a) => {
+        try {
+          if (!a.paused)
+            a.pause();
+          a.muted = true;
+        } catch {}
+      });
+      document.querySelectorAll("iframe").forEach((ifr) => {
+        try {
+          ifr.contentWindow?.postMessage({ source: "reddit-reels", type: "PAUSE", muted: true }, "*");
+          ifr.contentWindow?.postMessage({ action: "pause", muted: true }, "*");
+        } catch {}
+      });
     }
   }
   var audioManager = new AudioManager;
@@ -1295,6 +1499,10 @@
         applyToVideo(video);
     };
     const handleMessage = (event) => {
+      const origin = event.origin || "";
+      if (origin && !/https:\/\/(?:[a-zA-Z0-9-]+\.)?reddit\.com$/i.test(origin) && origin !== window.location.origin) {
+        return;
+      }
       const data = event.data;
       if (!data || data.source !== REDGIFS_MESSAGE_SOURCE)
         return;
@@ -1357,9 +1565,62 @@
   }
 
   // src/media/index.ts
+  function resolveExternalVideo(post) {
+    const href = post.contentHref || post.mediaUrl || "";
+    if (!href)
+      return null;
+    if (/redgifs\.com/i.test(href)) {
+      const match = href.match(/redgifs\.com\/(?:watch|ifr|v)\/([a-zA-Z0-9_-]+)/i);
+      if (match) {
+        return {
+          type: "iframe",
+          src: normalizeIframeSrc(`https://www.redgifs.com/ifr/${match[1]}?autoplay=1&muted=1`, audioManager.isMuted),
+          hasAudio: true
+        };
+      }
+    } else if (/streamable\.com/i.test(href)) {
+      const match = href.match(/streamable\.com\/([a-zA-Z0-9_-]+)/i);
+      if (match) {
+        return {
+          type: "iframe",
+          src: `https://streamable.com/e/${match[1]}?autoplay=1${audioManager.isMuted ? "&muted=1" : ""}`,
+          hasAudio: true
+        };
+      }
+    } else if (/gfycat\.com/i.test(href)) {
+      const match = href.match(/gfycat\.com\/(?:ifr\/)?([a-zA-Z0-9_-]+)/i);
+      if (match) {
+        return {
+          type: "iframe",
+          src: `https://gfycat.com/ifr/${match[1]}?autoplay=1`,
+          hasAudio: true
+        };
+      }
+    } else if (/youtube\.com|youtu\.be/i.test(href)) {
+      const ytMatch = href.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+      if (ytMatch) {
+        return {
+          type: "iframe",
+          src: `https://www.youtube-nocookie.com/embed/${ytMatch[1]}?autoplay=1&enablejsapi=1`,
+          hasAudio: true
+        };
+      }
+    } else if (/\.(mp4|webm)(\?|$)/i.test(href)) {
+      return {
+        type: "video",
+        src: href,
+        poster: post.mediaUrl !== href ? post.mediaUrl || "" : "",
+        hasAudio: true
+      };
+    }
+    return null;
+  }
   function resolveMedia(post) {
     const el = post.element;
     if (!el) {
+      const external2 = resolveExternalVideo(post);
+      if (external2)
+        return external2;
       return {
         type: "image",
         src: post.mediaUrl || post.contentHref || "",
@@ -1392,24 +1653,9 @@
         element: iframe
       };
     }
-    if (post.contentHref && /redgifs\.com/i.test(post.contentHref)) {
-      const match = post.contentHref.match(/redgifs\.com\/(?:watch|ifr|v)\/([a-zA-Z0-9_-]+)/i);
-      if (!match) {
-        const imgFallback = el.querySelector("img");
-        const fallbackSrc = imgFallback?.src || post.mediaUrl || post.contentHref || "";
-        return {
-          type: "image",
-          src: fallbackSrc,
-          poster: fallbackSrc,
-          hasAudio: false
-        };
-      }
-      return {
-        type: "iframe",
-        src: normalizeIframeSrc(`https://www.redgifs.com/ifr/${match[1]}?autoplay=1&muted=1`, audioManager.isMuted),
-        hasAudio: true
-      };
-    }
+    const external = resolveExternalVideo(post);
+    if (external)
+      return external;
     const img = el.querySelector('img[src*="i.redd.it"], img[src*="preview.redd.it"], [slot="post-media-container"] img, img');
     const imgSrc = img?.src || post.mediaUrl || post.contentHref || "";
     return {
@@ -1420,701 +1666,62 @@
     };
   }
 
-  // node_modules/preact/dist/preact.module.js
-  var n;
-  var l;
-  var u;
-  var t;
-  var i;
-  var r;
-  var o;
-  var e;
-  var f;
-  var c;
-  var a;
-  var s;
-  var h;
-  var p;
-  var v;
-  var y;
-  var d = {};
-  var w = [];
-  var _ = /acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i;
-  var g = Array.isArray;
-  function m(n, l) {
-    for (var u in l)
-      n[u] = l[u];
-    return n;
-  }
-  function b(n) {
-    n && n.parentNode && n.parentNode.removeChild(n);
-  }
-  function k(l, u, t) {
-    var i, r, o, e = {};
-    for (o in u)
-      o == "key" ? i = u[o] : o == "ref" ? r = u[o] : e[o] = u[o];
-    if (arguments.length > 2 && (e.children = arguments.length > 3 ? n.call(arguments, 2) : t), typeof l == "function" && l.defaultProps != null)
-      for (o in l.defaultProps)
-        e[o] === undefined && (e[o] = l.defaultProps[o]);
-    return x(l, e, i, r, null);
-  }
-  function x(n, t, i, r, o) {
-    var e = { type: n, props: t, key: i, ref: r, __k: null, __: null, __b: 0, __e: null, __c: null, constructor: undefined, __v: o == null ? ++u : o, __i: -1, __u: 0 };
-    return o == null && l.vnode != null && l.vnode(e), e;
-  }
-  function S(n) {
-    return n.children;
-  }
-  function C(n, l) {
-    this.props = n, this.context = l;
-  }
-  function $(n, l) {
-    if (l == null)
-      return n.__ ? $(n.__, n.__i + 1) : null;
-    for (var u;l < n.__k.length; l++)
-      if ((u = n.__k[l]) != null && u.__e != null)
-        return u.__e;
-    return typeof n.type == "function" ? $(n) : null;
-  }
-  function I(n) {
-    if (n.__P && n.__d) {
-      var u = n.__v, t = u.__e, i = [], r = [], o = m({}, u);
-      o.__v = u.__v + 1, l.vnode && l.vnode(o), q(n.__P, o, u, n.__n, n.__P.namespaceURI, 32 & u.__u ? [t] : null, i, t == null ? $(u) : t, !!(32 & u.__u), r), o.__v = u.__v, o.__.__k[o.__i] = o, D(i, o, r), u.__e = u.__ = null, o.__e != t && P(o);
-    }
-  }
-  function P(n) {
-    if ((n = n.__) != null && n.__c != null)
-      return n.__e = n.__c.base = null, n.__k.some(function(l) {
-        if (l != null && l.__e != null)
-          return n.__e = n.__c.base = l.__e;
-      }), P(n);
-  }
-  function A(n) {
-    (!n.__d && (n.__d = true) && i.push(n) && !H.__r++ || r != l.debounceRendering) && ((r = l.debounceRendering) || o)(H);
-  }
-  function H() {
-    try {
-      for (var n, l = 1;i.length; )
-        i.length > l && i.sort(e), n = i.shift(), l = i.length, I(n);
-    } finally {
-      i.length = H.__r = 0;
-    }
-  }
-  function L(n, l, u, t, i, r, o, e, f, c, a) {
-    var s, h, p, v, y, _, g = t && t.__k || w, m = l.length;
-    for (f = T(u, l, g, f, m), s = 0;s < m; s++)
-      (p = u.__k[s]) != null && (h = p.__i != -1 && g[p.__i] || d, p.__i = s, _ = q(n, p, h, i, r, o, e, f, c, a), v = p.__e, p.ref && h.ref != p.ref && (h.ref && J(h.ref, null, p), a.push(p.ref, p.__c || v, p)), y == null && v != null && (y = v), 4 & p.__u ? (f = j(p, f, n), h.__e && (h.__e = null)) : typeof p.type == "function" && _ !== undefined ? f = _ : v && (f = v.nextSibling), p.__u &= -7);
-    return u.__e = y, f;
-  }
-  function T(n, l, u, t, i) {
-    var r, o, e, f, c, a = u.length, s = a, h = 0;
-    for (n.__k = new Array(i), r = 0;r < i; r++)
-      (o = l[r]) != null && typeof o != "boolean" && typeof o != "function" ? (typeof o == "string" || typeof o == "number" || typeof o == "bigint" || o.constructor == String ? o = n.__k[r] = x(null, o, null, null, null) : g(o) ? o = n.__k[r] = x(S, { children: o }, null, null, null) : o.constructor === undefined && o.__b > 0 ? o = n.__k[r] = x(o.type, o.props, o.key, o.ref ? o.ref : null, o.__v) : n.__k[r] = o, f = r + h, o.__ = n, o.__b = n.__b + 1, e = null, (c = o.__i = O(o, u, f, s)) != -1 && (s--, (e = u[c]) && (e.__u |= 2)), e == null || e.__v == null ? (c == -1 && (i > a ? h-- : i < a && h++), typeof o.type != "function" && (o.__u |= 4)) : c != f && (c == f - 1 ? h-- : c == f + 1 ? h++ : (c > f ? h-- : h++, o.__u |= 4))) : n.__k[r] = null;
-    if (s)
-      for (r = 0;r < a; r++)
-        (e = u[r]) != null && (2 & e.__u) == 0 && (e.__e == t && (t = $(e)), K(e, e));
-    return t;
-  }
-  function j(n, l, u) {
-    var t, i;
-    if (typeof n.type == "function") {
-      for (t = n.__k, i = 0;t && i < t.length; i++)
-        t[i] && (t[i].__ = n, l = j(t[i], l, u));
-      return l;
-    }
-    n.__e != l && (l && n.type && !l.parentNode && (l = $(n)), l = u.insertBefore(n.__e, l || null));
-    do {
-      l = l && l.nextSibling;
-    } while (l != null && l.nodeType == 8);
-    return l;
-  }
-  function O(n, l, u, t) {
-    var i, r, o, { key: e, type: f } = n, c = l[u], a = c != null && (2 & c.__u) == 0;
-    if (c === null && e == null || a && e == c.key && f == c.type)
-      return u;
-    if (t > (a ? 1 : 0)) {
-      for (i = u - 1, r = u + 1;i >= 0 || r < l.length; )
-        if ((c = l[o = i >= 0 ? i-- : r++]) != null && (2 & c.__u) == 0 && e == c.key && f == c.type)
-          return o;
-    }
-    return -1;
-  }
-  function z(n, l, u) {
-    l[0] == "-" ? n.setProperty(l, u == null ? "" : u) : n[l] = u == null ? "" : typeof u != "number" || _.test(l) ? u : u + "px";
-  }
-  function N(n, l, u, t, i) {
-    var r, o;
-    n:
-      if (l == "style")
-        if (typeof u == "string")
-          n.style.cssText = u;
-        else {
-          if (typeof t == "string" && (n.style.cssText = t = ""), t)
-            for (l in t)
-              u && l in u || z(n.style, l, "");
-          if (u)
-            for (l in u)
-              t && u[l] == t[l] || z(n.style, l, u[l]);
-        }
-      else if (l[0] == "o" && l[1] == "n")
-        r = l != (l = l.replace(s, "$1")), o = l.toLowerCase(), l = o in n || l == "onFocusOut" || l == "onFocusIn" ? o.slice(2) : l.slice(2), n.l || (n.l = {}), n.l[l + r] = u, u ? t ? u[a] = t[a] : (u[a] = h, n.addEventListener(l, r ? v : p, r)) : n.removeEventListener(l, r ? v : p, r);
-      else {
-        if (i == "http://www.w3.org/2000/svg")
-          l = l.replace(/xlink(H|:h)/, "h").replace(/sName$/, "s");
-        else if (l != "width" && l != "height" && l != "href" && l != "list" && l != "form" && l != "tabIndex" && l != "download" && l != "rowSpan" && l != "colSpan" && l != "role" && l != "popover" && l in n)
-          try {
-            n[l] = u == null ? "" : u;
-            break n;
-          } catch (n) {}
-        typeof u == "function" || (u == null || u === false && l[4] != "-" ? n.removeAttribute(l) : n.setAttribute(l, l == "popover" && u == 1 ? "" : u));
+  // src/core/teardown-store.ts
+  var backupStore = new WeakMap;
+  function backupElementState(el, attributesToTrack = []) {
+    let record = backupStore.get(el);
+    if (!record) {
+      const originalAttrs = {};
+      for (const attr of attributesToTrack) {
+        originalAttrs[attr] = el.getAttribute(attr);
       }
+      record = {
+        inlineStyle: el.getAttribute("style"),
+        attributes: originalAttrs,
+        abortController: new AbortController
+      };
+      backupStore.set(el, record);
+    }
+    return record.abortController.signal;
   }
-  function V(n) {
-    return function(u) {
-      if (this.l) {
-        var t = this.l[u.type + n];
-        if (u[c] == null)
-          u[c] = h++;
-        else if (u[c] < t[a])
-          return;
-        return t(l.event ? l.event(u) : u);
-      }
-    };
-  }
-  function q(n, u, t, i, r, o, e, f, c, a) {
-    var s, h, p, v, y, d, _, k, x, M, I, P, A, H, T, j, F = u.type;
-    if (u.constructor !== undefined)
-      return null;
-    128 & t.__u && (c = !!(32 & t.__u), o = [f = u.__e = t.__e]), (s = l.__b) && s(u);
-    n:
-      if (typeof F == "function") {
-        h = e.length;
+  function restoreElementState(el) {
+    const record = backupStore.get(el);
+    if (record) {
+      if (record.abortController) {
         try {
-          if (x = u.props, M = F.prototype && F.prototype.render, I = (s = F.contextType) && i[s.__c], P = s ? I ? I.props.value : s.__ : i, t.__c ? k = (p = u.__c = t.__c).__ = p.__E : (M ? u.__c = p = new F(x, P) : (u.__c = p = new C(x, P), p.constructor = F, p.render = Q), I && I.sub(p), p.state || (p.state = {}), p.__n = i, v = p.__d = true, p.__h = [], p._sb = []), M && p.__s == null && (p.__s = p.state), M && F.getDerivedStateFromProps != null && (p.__s == p.state && (p.__s = m({}, p.__s)), m(p.__s, F.getDerivedStateFromProps(x, p.__s))), y = p.props, d = p.state, p.__v = u, v)
-            M && F.getDerivedStateFromProps == null && p.componentWillMount != null && p.componentWillMount(), M && p.componentDidMount != null && p.__h.push(p.componentDidMount);
-          else {
-            if (M && F.getDerivedStateFromProps == null && x !== y && p.componentWillReceiveProps != null && p.componentWillReceiveProps(x, P), u.__v == t.__v || !p.__e && p.shouldComponentUpdate != null && p.shouldComponentUpdate(x, p.__s, P) === false) {
-              u.__v != t.__v && (p.props = x, p.state = p.__s, p.__d = false), u.__e = t.__e, u.__k = t.__k, u.__k.some(function(n) {
-                n && (n.__ = u);
-              }), w.push.apply(p.__h, p._sb), p._sb = [], p.__h.length && e.push(p), f = $(t);
-              break n;
-            }
-            p.componentWillUpdate != null && p.componentWillUpdate(x, p.__s, P), M && p.componentDidUpdate != null && p.__h.push(function() {
-              p.componentDidUpdate(y, d, _);
-            });
+          record.abortController.abort();
+        } catch {}
+      }
+      if (record.inlineStyle !== null) {
+        el.setAttribute("style", record.inlineStyle);
+      } else {
+        el.removeAttribute("style");
+      }
+      for (const [attr, val] of Object.entries(record.attributes)) {
+        if (val !== null) {
+          el.setAttribute(attr, val);
+        } else {
+          el.removeAttribute(attr);
+        }
+      }
+      backupStore.delete(el);
+    }
+  }
+  function clearAllRrState(postEl) {
+    const elements = [postEl, ...Array.from(postEl.querySelectorAll("*"))];
+    for (const el of elements) {
+      if (el.dataset) {
+        const keys = Object.keys(el.dataset);
+        for (const k of keys) {
+          if (k.startsWith("rr") || k === "reelPostId") {
+            delete el.dataset[k];
           }
-          if (p.context = P, p.props = x, p.__P = n, p.__e = false, A = l.__r, H = 0, M)
-            p.state = p.__s, p.__d = false, A && A(u), s = p.render(p.props, p.state, p.context), w.push.apply(p.__h, p._sb), p._sb = [];
-          else
-            do {
-              p.__d = false, A && A(u), s = p.render(p.props, p.state, p.context), p.state = p.__s;
-            } while (p.__d && ++H < 25);
-          p.state = p.__s, p.getChildContext != null && (i = m(m({}, i), p.getChildContext())), M && !v && p.getSnapshotBeforeUpdate != null && (_ = p.getSnapshotBeforeUpdate(y, d)), T = s != null && s.type === S && s.key == null ? E(s.props.children) : s, f = L(n, g(T) ? T : [T], u, t, i, r, o, e, f, c, a), p.base = u.__e, u.__u &= -161, p.__h.length && e.push(p), k && (p.__E = p.__ = null);
-        } catch (n) {
-          if (e.length = h, u.__v = null, c || o != null) {
-            if (n.then) {
-              for (u.__u |= c ? 160 : 128;f && f.nodeType == 8 && f.nextSibling; )
-                f = f.nextSibling;
-              o != null && (o[o.indexOf(f)] = null), u.__e = f;
-            } else if (o != null)
-              for (j = o.length;j--; )
-                b(o[j]);
-          } else
-            u.__e = t.__e;
-          u.__k == null && (u.__k = t.__k || []), n.then || B(u), l.__e(n, u, t);
         }
-      } else
-        o == null && u.__v == t.__v ? (u.__k = t.__k, u.__e = t.__e) : f = u.__e = G(t.__e, u, t, i, r, o, e, c, a);
-    return (s = l.diffed) && s(u), 128 & u.__u ? undefined : f;
-  }
-  function B(n) {
-    n && (n.__c && (n.__c.__e = true), n.__k && n.__k.some(B));
-  }
-  function D(n, u, t) {
-    for (var i = 0;i < t.length; i++)
-      J(t[i], t[++i], t[++i]);
-    l.__c && l.__c(u, n), n.some(function(u) {
-      try {
-        n = u.__h, u.__h = [], n.some(function(n) {
-          n.call(u);
-        });
-      } catch (n) {
-        l.__e(n, u.__v);
       }
-    });
-  }
-  function E(n) {
-    return typeof n != "object" || n == null || n.__b > 0 ? n : g(n) ? n.map(E) : n.constructor !== undefined ? null : m({}, n);
-  }
-  function G(u, t, i, r, o, e, f, c, a) {
-    var s, h, p, v, y, w, _, m = i.props || d, { props: k, type: x } = t;
-    if (x == "svg" ? o = "http://www.w3.org/2000/svg" : x == "math" ? o = "http://www.w3.org/1998/Math/MathML" : o || (o = "http://www.w3.org/1999/xhtml"), e != null) {
-      for (s = 0;s < e.length; s++)
-        if ((y = e[s]) && "setAttribute" in y == !!x && (x ? y.localName == x : y.nodeType == 3)) {
-          u = y, e[s] = null;
-          break;
-        }
-    }
-    if (u == null) {
-      if (x == null)
-        return document.createTextNode(k);
-      u = document.createElementNS(o, x, k.is && k), c && (l.__m && l.__m(t, e), c = false), e = null;
-    }
-    if (x == null)
-      m === k || c && u.data == k || (u.data = k);
-    else {
-      if (e = x == "textarea" && k.defaultValue != null ? null : e && n.call(u.childNodes), !c && e != null)
-        for (m = {}, s = 0;s < u.attributes.length; s++)
-          m[(y = u.attributes[s]).name] = y.value;
-      for (s in m)
-        y = m[s], s == "dangerouslySetInnerHTML" ? p = y : s == "children" || (s in k) || s == "value" && ("defaultValue" in k) || s == "checked" && ("defaultChecked" in k) || N(u, s, null, y, o);
-      for (s in k)
-        y = k[s], s == "children" ? v = y : s == "dangerouslySetInnerHTML" ? h = y : s == "value" ? w = y : s == "checked" ? _ = y : c && typeof y != "function" || m[s] === y || N(u, s, y, m[s], o);
-      if (h)
-        c || p && (h.__html == p.__html || h.__html == u.innerHTML) || (u.innerHTML = h.__html), t.__k = [];
-      else if (p && (u.innerHTML = ""), L(t.type == "template" ? u.content : u, g(v) ? v : [v], t, i, r, x == "foreignObject" ? "http://www.w3.org/1999/xhtml" : o, e, f, e ? e[0] : i.__k && $(i, 0), c, a), e != null)
-        for (s = e.length;s--; )
-          b(e[s]);
-      c && x != "textarea" || (s = "value", x == "progress" && w == null ? u.removeAttribute("value") : w != null && (w !== u[s] || x == "progress" && !w || x == "option" && w != m[s]) && N(u, s, w, m[s], o), s = "checked", _ != null && _ != u[s] && N(u, s, _, m[s], o));
-    }
-    return u;
-  }
-  function J(n, u, t) {
-    try {
-      if (typeof n == "function") {
-        var i = typeof n.__u == "function";
-        i && n.__u(), i && u == null || (n.__u = n(u));
-      } else
-        n.current = u;
-    } catch (n) {
-      l.__e(n, t);
-    }
-  }
-  function K(n, u, t) {
-    var i, r;
-    if (l.unmount && l.unmount(n), (i = n.ref) && (i.current && i.current != n.__e || J(i, null, u)), (i = n.__c) != null) {
-      if (i.componentWillUnmount)
-        try {
-          i.componentWillUnmount();
-        } catch (n) {
-          l.__e(n, u);
-        }
-      i.base = i.__P = i.__n = null;
-    }
-    if (i = n.__k)
-      for (r = 0;r < i.length; r++)
-        i[r] && K(i[r], u, t || typeof n.type != "function");
-    t || b(n.__e), n.__c = n.__ = n.__e = undefined;
-  }
-  function Q(n, l, u) {
-    return this.constructor(n, u);
-  }
-  function R(u, t, i) {
-    var r, o, e, f;
-    t == document && (t = document.documentElement), l.__ && l.__(u, t), o = (r = typeof i == "function") ? null : i && i.__k || t.__k, e = [], f = [], q(t, u = (!r && i || t).__k = k(S, null, [u]), o || d, d, t.namespaceURI, !r && i ? [i] : o ? null : t.firstChild ? n.call(t.childNodes) : null, e, !r && i ? i : o ? o.__e : t.firstChild, r, f), D(e, u, f), u.props.children = null;
-  }
-  n = w.slice, l = { __e: function(n, l, u, t) {
-    for (var i, r, o;l = l.__; )
-      if ((i = l.__c) && !i.__)
-        try {
-          if ((r = i.constructor) && r.getDerivedStateFromError != null && (i.setState(r.getDerivedStateFromError(n)), o = i.__d), i.componentDidCatch != null && (i.componentDidCatch(n, t || {}), o = i.__d), o)
-            return i.__E = i;
-        } catch (l) {
-          n = l;
-        }
-    throw n;
-  } }, u = 0, t = function(n) {
-    return n != null && n.constructor === undefined;
-  }, C.prototype.setState = function(n, l) {
-    var u;
-    u = this.__s != null && this.__s != this.state ? this.__s : this.__s = m({}, this.state), typeof n == "function" && (n = n(m({}, u), this.props)), n && m(u, n), n != null && this.__v && (l && this._sb.push(l), A(this));
-  }, C.prototype.forceUpdate = function(n) {
-    this.__v && (this.__e = true, n && this.__h.push(n), A(this));
-  }, C.prototype.render = S, i = [], o = typeof Promise == "function" ? Promise.prototype.then.bind(Promise.resolve()) : setTimeout, e = function(n, l) {
-    return n.__v.__b - l.__v.__b;
-  }, H.__r = 0, f = Math.random().toString(8), c = "__d" + f, a = "__a" + f, s = /(PointerCapture)$|Capture$/i, h = 0, p = V(false), v = V(true), y = 0;
-  // node_modules/preact/jsx-runtime/dist/jsxRuntime.module.js
-  var f2 = 0;
-  function u2(e, t, n, o, i, u) {
-    t || (t = {});
-    var a, c, p = t;
-    if ("ref" in p)
-      for (c in p = {}, t)
-        c == "ref" ? a = t[c] : p[c] = t[c];
-    var l2 = { type: e, props: p, key: n, ref: a, __k: null, __: null, __b: 0, __e: null, __c: null, constructor: undefined, __v: --f2, __i: -1, __u: 0, __source: i, __self: u };
-    if (typeof e == "function" && (a = e.defaultProps))
-      for (c in a)
-        p[c] === undefined && (p[c] = a[c]);
-    return l.vnode && l.vnode(l2), l2;
-  }
-
-  // src/ui/FabButton.tsx
-  function FabButton({ onClick }) {
-    return /* @__PURE__ */ u2("button", {
-      type: "button",
-      id: "rr-fab",
-      class: "rr-fab",
-      onClick,
-      "aria-label": "Open Reddit Reel Mode",
-      title: "Open Reddit Reel Mode",
-      children: /* @__PURE__ */ u2("svg", {
-        class: "rr-fab-icon",
-        viewBox: "0 0 24 24",
-        fill: "none",
-        stroke: "currentColor",
-        strokeWidth: 2,
-        strokeLinecap: "round",
-        strokeLinejoin: "round",
-        children: [
-          /* @__PURE__ */ u2("rect", {
-            x: "2.5",
-            y: "2.5",
-            width: "19",
-            height: "19",
-            rx: "4.5"
-          }, undefined, false, undefined, this),
-          /* @__PURE__ */ u2("path", {
-            d: "M2.5 8.5h19"
-          }, undefined, false, undefined, this),
-          /* @__PURE__ */ u2("path", {
-            d: "m6.5 2.5 3 6"
-          }, undefined, false, undefined, this),
-          /* @__PURE__ */ u2("path", {
-            d: "m11.5 2.5 3 6"
-          }, undefined, false, undefined, this),
-          /* @__PURE__ */ u2("path", {
-            d: "m16.5 2.5 3 6"
-          }, undefined, false, undefined, this),
-          /* @__PURE__ */ u2("polygon", {
-            points: "10 11.5 15.5 14.75 10 18 10 11.5",
-            fill: "currentColor",
-            stroke: "none"
-          }, undefined, false, undefined, this)
-        ]
-      }, undefined, true, undefined, this)
-    }, undefined, false, undefined, this);
-  }
-  // src/ui/pulse.ts
-  function showPlayPulse(isPlaying) {
-    const existing = document.querySelector(".rr-play-pulse");
-    if (existing)
-      existing.remove();
-    const pulse = document.createElement("div");
-    pulse.className = "rr-play-pulse";
-    pulse.innerHTML = isPlaying ? `<svg width="44" height="44" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>` : `<svg width="44" height="44" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`;
-    document.body.appendChild(pulse);
-    setTimeout(() => pulse.remove(), 550);
-  }
-  function showScalePulse(mode) {
-    const existing = document.querySelector(".rr-scale-pulse");
-    if (existing)
-      existing.remove();
-    const pulse = document.createElement("div");
-    pulse.className = "rr-scale-pulse";
-    pulse.textContent = mode;
-    document.body.appendChild(pulse);
-    setTimeout(() => pulse.remove(), 650);
-  }
-  function showVotePulse(upvoted) {
-    const existing = document.querySelector(".rr-play-pulse");
-    if (existing)
-      existing.remove();
-    const pulse = document.createElement("div");
-    pulse.className = "rr-play-pulse";
-    pulse.innerHTML = upvoted ? `<svg width="44" height="44" viewBox="0 0 24 24" fill="#ff4500"><path d="M12 21s-7.5-4.9-10-9.5C.4 8.6 2.4 5 5.8 5c2 0 3.4 1.1 4.2 2.3h4C14.8 6.1 16.2 5 18.2 5c3.4 0 5.4 3.6 3.8 6.5C19.5 16.1 12 21 12 21z" transform="scale(0.9) translate(1.3,1.3)"></path></svg>` : `<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#7193ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
-    document.body.appendChild(pulse);
-    setTimeout(() => pulse.remove(), 550);
-  }
-  function showVolumePulse(level, muted) {
-    const existing = document.querySelector(".rr-scale-pulse");
-    if (existing)
-      existing.remove();
-    const pct = Math.round(level * 100);
-    const pulse = document.createElement("div");
-    pulse.className = "rr-scale-pulse";
-    pulse.textContent = muted || pct === 0 ? "Muted" : `Volume ${pct}%`;
-    document.body.appendChild(pulse);
-    setTimeout(() => pulse.remove(), 650);
-  }
-  // src/ui/top-bar.ts
-  function getSoundIconSvg(isMuted) {
-    return isMuted ? `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>` : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
-  }
-  function getFilterIconSvg() {
-    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.5"></rect><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"></path></svg>`;
-  }
-  function getFilterLabelHtml(videosOnly) {
-    return `<span class="rr-filter-icon">${getFilterIconSvg()}</span><span>${videosOnly ? "Videos Only" : "All Reels"}</span>`;
-  }
-  function createTopBar(isMuted, videosOnly, handlers) {
-    const topBar = document.createElement("div");
-    topBar.className = "rr-top-bar";
-    const exitBtn = document.createElement("button");
-    exitBtn.type = "button";
-    exitBtn.className = "rr-exit-btn";
-    exitBtn.setAttribute("aria-label", "Exit Reel Mode");
-    exitBtn.title = "Exit Reel Mode";
-    exitBtn.innerHTML = `
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18"></line>
-      <line x1="6" y1="6" x2="18" y2="18"></line>
-    </svg>
-  `;
-    exitBtn.onclick = (e) => {
-      e.stopPropagation();
-      handlers.onExit();
-    };
-    const controls = document.createElement("div");
-    controls.className = "rr-top-controls";
-    const filterBtn = document.createElement("button");
-    filterBtn.type = "button";
-    filterBtn.className = `rr-filter-btn-top ${videosOnly ? "is-active" : ""}`;
-    filterBtn.setAttribute("aria-label", "Toggle Videos Only Filter");
-    filterBtn.title = videosOnly ? "Showing Videos Only (Click to show all)" : "Showing All Reels (Click for videos only)";
-    filterBtn.innerHTML = getFilterLabelHtml(videosOnly);
-    filterBtn.onclick = (e) => {
-      e.stopPropagation();
-      handlers.onToggleFilter();
-    };
-    const soundBtn = document.createElement("button");
-    soundBtn.type = "button";
-    soundBtn.className = `rr-sound-btn-top ${isMuted ? "is-muted" : ""}`;
-    soundBtn.setAttribute("aria-label", isMuted ? "Unmute" : "Mute");
-    soundBtn.title = isMuted ? "Unmute" : "Mute";
-    soundBtn.innerHTML = getSoundIconSvg(isMuted);
-    soundBtn.onclick = (e) => {
-      e.stopPropagation();
-      handlers.onToggleMute();
-    };
-    controls.appendChild(filterBtn);
-    controls.appendChild(soundBtn);
-    topBar.appendChild(exitBtn);
-    topBar.appendChild(controls);
-    return topBar;
-  }
-  function syncTopBarState(topBar, isMuted, videosOnly) {
-    if (!topBar)
-      return;
-    const filterBtn = topBar.querySelector(".rr-filter-btn-top");
-    if (filterBtn) {
-      filterBtn.classList.toggle("is-active", videosOnly);
-      filterBtn.title = videosOnly ? "Showing Videos Only (Click to show all)" : "Showing All Reels (Click for videos only)";
-      filterBtn.innerHTML = getFilterLabelHtml(videosOnly);
-    }
-    const soundBtn = topBar.querySelector(".rr-sound-btn-top");
-    if (soundBtn) {
-      soundBtn.classList.toggle("is-muted", isMuted);
-      soundBtn.setAttribute("aria-label", isMuted ? "Unmute" : "Mute");
-      soundBtn.title = isMuted ? "Unmute" : "Mute";
-      soundBtn.innerHTML = getSoundIconSvg(isMuted);
-    }
-  }
-  // src/utils.ts
-  function formatCount(num) {
-    if (!num || isNaN(num))
-      return "0";
-    if (Math.abs(num) >= 1e6)
-      return (num / 1e6).toFixed(1).replace(/\.0$/, "") + "m";
-    if (Math.abs(num) >= 1000)
-      return (num / 1000).toFixed(1).replace(/\.0$/, "") + "k";
-    return num.toString();
-  }
-  function escapeHtml(str) {
-    if (!str)
-      return "";
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-  }
-  function extractDomain(url) {
-    if (!url)
-      return "";
-    try {
-      const parsed = new URL(url.startsWith("http") ? url : `https://${url}`);
-      return parsed.hostname.replace(/^www\./, "");
-    } catch {
-      return url.replace(/^https?:\/\//, "").split("/")[0];
-    }
-  }
-  function openUrl(url) {
-    if (!url)
-      return;
-    const opened = window.open(url, "_blank", "noopener,noreferrer");
-    if (!opened) {
-      window.location.href = url;
+      restoreElementState(el);
     }
   }
 
-  // src/ui/overlay.ts
-  function getUpvoteIconSvg(isUpvoted) {
-    return `<svg width="26" height="26" viewBox="0 0 24 24" fill="${isUpvoted ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>`;
-  }
-  function getDownvoteIconSvg(isDownvoted) {
-    return `<svg width="26" height="26" viewBox="0 0 24 24" fill="${isDownvoted ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
-  }
-  function getCcIconSvg(_enabled) {
-    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="2" y="4" width="20" height="16" rx="3" ry="3"></rect>
-    <path d="M7 15h0a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1"></path>
-    <path d="M15 15h0a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1"></path>
-  </svg>`;
-  }
-  function getCommentIconSvg() {
-    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-  </svg>`;
-  }
-  function renderReelOverlay(postEl, post, options) {
-    if (postEl.querySelector(".rr-post-overlay"))
-      return null;
-    const overlay = document.createElement("div");
-    overlay.className = "rr-post-overlay";
-    const isUpvoted = !!post.isUpvoted;
-    const isDownvoted = !!post.isDownvoted;
-    const isSubtitles = options.isSubtitlesEnabled ? options.isSubtitlesEnabled() : false;
-    const initialVoteVal = isUpvoted ? 1 : isDownvoted ? -1 : 0;
-    const baseScore = post.score;
-    const isHiddenScore = !!post.isScoreHidden;
-    const formatScoreDisplay = (currentScore, hasVoted) => {
-      if (isHiddenScore && !hasVoted)
-        return "Vote";
-      return formatCount(currentScore);
-    };
-    const cleanSub = post.subreddit ? post.subreddit.replace(/^\/?/, "") : "";
-    overlay.innerHTML = `
-    <!-- Bottom-Left Post Information -->
-    <div class="rr-post-info">
-      <div class="rr-post-meta">
-        ${post.subreddit ? `<a class="rr-sub-badge" role="link" tabindex="0" href="https://www.reddit.com/${escapeHtml(cleanSub)}/" target="_blank" rel="noopener noreferrer">${escapeHtml(post.subreddit)}</a>` : ""}
-        ${post.subreddit && post.author ? `<span class="rr-dot">•</span>` : ""}
-        ${post.author ? `<a class="rr-author" role="link" tabindex="0" href="https://www.reddit.com/user/${escapeHtml(post.author.replace(/^u\//, ""))}/" target="_blank" rel="noopener noreferrer">u/${escapeHtml(post.author.replace(/^u\//, ""))}</a>` : ""}
-      </div>
-      <div class="rr-post-title" title="${escapeHtml(post.title)}">${escapeHtml(post.title)}</div>
-    </div>
-
-    <!-- Bottom-Right Vertical Action Rail (NO SHARE BUTTON, NO SOUND BUTTON — mute lives in top bar) -->
-    <div class="rr-action-rail">
-      <!-- 1. Subtitles Toggle (ONLY rendered if post has video) -->
-      ${options.hasVideo && options.onToggleSubtitles ? `
-          <div class="rr-action-item">
-            <button
-              type="button"
-              class="rr-action-btn rr-cc-btn ${isSubtitles ? "is-active-cc" : ""}"
-              aria-label="${isSubtitles ? "Disable Subtitles" : "Enable Subtitles"}"
-              title="${isSubtitles ? "Disable Subtitles" : "Enable Subtitles"}"
-            >
-              ${getCcIconSvg(isSubtitles)}
-            </button>
-          </div>
-          ` : ""}
-
-      <!-- 2. Vote Cluster (Upvote, Score, Downvote) -->
-      <div class="rr-action-item rr-vote-group">
-        <button
-          type="button"
-          class="rr-action-btn rr-upvote-btn ${isUpvoted ? "is-active-up" : ""}"
-          aria-label="Upvote"
-          title="Upvote"
-        >
-          ${getUpvoteIconSvg(isUpvoted)}
-        </button>
-        <span class="rr-action-label rr-score-label">${formatScoreDisplay(post.score, isUpvoted || isDownvoted)}</span>
-        <button
-          type="button"
-          class="rr-action-btn rr-downvote-btn ${isDownvoted ? "is-active-down" : ""}"
-          aria-label="Downvote"
-          title="Downvote"
-        >
-          ${getDownvoteIconSvg(isDownvoted)}
-        </button>
-      </div>
-
-      <!-- 3. Reddit Comments (Directly opens Reddit comments) -->
-      <div class="rr-action-item">
-        <button
-          type="button"
-          class="rr-action-btn rr-comment-btn"
-          aria-label="Open Reddit comments"
-          title="Open Reddit comments"
-        >
-          ${getCommentIconSvg()}
-        </button>
-        <span class="rr-action-label">${formatCount(post.commentCount)}</span>
-      </div>
-    </div>
-  `;
-    const upvoteBtn = overlay.querySelector(".rr-upvote-btn");
-    const downvoteBtn = overlay.querySelector(".rr-downvote-btn");
-    const commentBtn = overlay.querySelector(".rr-comment-btn");
-    const ccBtn = overlay.querySelector(".rr-cc-btn");
-    const scoreLabel = overlay.querySelector(".rr-score-label");
-    const subBadge = overlay.querySelector(".rr-sub-badge");
-    const authorBadge = overlay.querySelector(".rr-author");
-    if (upvoteBtn) {
-      upvoteBtn.onclick = (e) => {
-        e.stopPropagation();
-        const ok = proxyUpvote(post, () => syncVoteUI());
-        syncVoteUI(!ok);
-      };
-    }
-    if (downvoteBtn) {
-      downvoteBtn.onclick = (e) => {
-        e.stopPropagation();
-        const ok = proxyDownvote(post, () => syncVoteUI());
-        syncVoteUI(!ok);
-      };
-    }
-    function syncVoteUI(revert = false) {
-      const isUp = revert ? initialVoteVal === 1 : !!post.isUpvoted;
-      const isDown = revert ? initialVoteVal === -1 : !!post.isDownvoted;
-      if (upvoteBtn) {
-        upvoteBtn.classList.toggle("is-active-up", isUp);
-        upvoteBtn.innerHTML = getUpvoteIconSvg(isUp);
-      }
-      if (downvoteBtn) {
-        downvoteBtn.classList.toggle("is-active-down", isDown);
-        downvoteBtn.innerHTML = getDownvoteIconSvg(isDown);
-      }
-      if (scoreLabel) {
-        const curVal = isUp ? 1 : isDown ? -1 : 0;
-        const newScore = baseScore + (curVal - initialVoteVal);
-        scoreLabel.textContent = formatScoreDisplay(newScore, isUp || isDown);
-      }
-    }
-    if (commentBtn) {
-      commentBtn.onclick = (e) => {
-        e.stopPropagation();
-        if (post.permalink) {
-          const url = post.permalink.startsWith("http") ? post.permalink : `https://www.reddit.com${post.permalink}`;
-          openUrl(url);
-        }
-      };
-    }
-    if (ccBtn && options.onToggleSubtitles) {
-      ccBtn.onclick = (e) => {
-        e.stopPropagation();
-        options.onToggleSubtitles();
-      };
-    }
-    if (subBadge) {
-      subBadge.onclick = (e) => {
-        e.stopPropagation();
-      };
-    }
-    if (authorBadge) {
-      authorBadge.onclick = (e) => {
-        e.stopPropagation();
-      };
-    }
-    postEl.appendChild(overlay);
-    return overlay;
-  }
-  function syncOverlaySubtitlesButtons(enabled) {
-    document.querySelectorAll(".rr-cc-btn").forEach((btn) => {
-      btn.classList.toggle("is-active-cc", enabled);
-      btn.setAttribute("aria-label", enabled ? "Disable Subtitles" : "Enable Subtitles");
-      btn.setAttribute("title", enabled ? "Disable Subtitles" : "Enable Subtitles");
-      btn.innerHTML = getCcIconSvg(enabled);
-    });
-  }
   // src/core/unconstrainer.ts
   var CAPTION_BUTTON_SELECTORS = [
     'button[aria-label*="caption" i]',
@@ -2125,21 +1732,19 @@
     '[data-testid*="caption" i] button',
     '[data-testid*="subtitle" i] button'
   ];
-  function isPressed(btn) {
-    if (btn.getAttribute("aria-pressed") === "true")
+  function isCaptionsButtonActive(btn) {
+    const aria = btn.getAttribute("aria-pressed") || btn.getAttribute("aria-checked") || btn.getAttribute("data-selected");
+    if (aria === "true")
       return true;
-    if (btn.getAttribute("aria-pressed") === "false")
-      return false;
-    if (btn.getAttribute("aria-checked") === "true")
-      return true;
-    if (btn.getAttribute("aria-checked") === "false")
-      return false;
-    if (btn.getAttribute("data-selected") === "true")
-      return true;
-    if (btn.getAttribute("data-selected") === "false")
+    if (aria === "false")
       return false;
     if (btn.classList.contains("active") || btn.classList.contains("selected") || btn.classList.contains("enabled"))
       return true;
+    const label = (btn.getAttribute("aria-label") || btn.getAttribute("title") || "").toLowerCase();
+    if (label.includes("turn off") || label.includes("hide caption") || label.includes("captions on"))
+      return true;
+    if (label.includes("turn on") || label.includes("show caption") || label.includes("captions off"))
+      return false;
     return null;
   }
   function findCaptionButton(root) {
@@ -2154,6 +1759,22 @@
   }
   function syncPlayerCaptionsControl(player, enabled) {
     try {
+      try {
+        if (enabled) {
+          player.setAttribute("captions", "true");
+          player.captions = true;
+          player.captionsEnabled = true;
+          player.subtitlesEnabled = true;
+        } else {
+          player.removeAttribute("captions");
+          player.captions = false;
+          player.captionsEnabled = false;
+          player.subtitlesEnabled = false;
+        }
+      } catch {}
+      try {
+        localStorage.setItem("@reddit/shreddit-player-media-captions", enabled ? "true" : "false");
+      } catch {}
       const scopes = [player];
       if (player.shadowRoot)
         scopes.push(player.shadowRoot);
@@ -2165,9 +1786,9 @@
         const btn = findCaptionButton(scope);
         if (!btn)
           continue;
-        const pressed = isPressed(btn);
-        if (pressed === null || pressed === enabled)
-          continue;
+        const active = isCaptionsButtonActive(btn);
+        if (active === enabled)
+          return;
         btn.click();
         return;
       }
@@ -2186,6 +1807,22 @@
           } catch {}
         }
       }
+      const tracked = v;
+      if (v.textTracks && !tracked._rrTrackWired) {
+        tracked._rrTrackWired = true;
+        try {
+          v.textTracks.addEventListener("addtrack", () => {
+            const cur = container.dataset.rrCaptions === "on";
+            if (v.textTracks) {
+              for (let i = 0;i < v.textTracks.length; i++) {
+                try {
+                  v.textTracks[i].mode = cur ? "showing" : "disabled";
+                } catch {}
+              }
+            }
+          });
+        } catch {}
+      }
     });
     players.forEach((p) => {
       p.classList.toggle("rr-hide-captions", !enabled);
@@ -2198,36 +1835,54 @@
     }
   }
   function promoteGalleryMedia(container) {
-    container.querySelectorAll("picture source, source").forEach((source) => {
-      try {
-        const ds = source.dataset;
-        const lazySrcset = ds?.srcset || ds?.lazySrcset || source.getAttribute("data-srcset") || source.getAttribute("data-lazy-srcset");
-        if (lazySrcset && (!source.srcset || source.srcset.startsWith("data:image/gif"))) {
-          source.srcset = lazySrcset;
+    const list = container.querySelector('ul[slot="items"], [slot="items"], .carousel-items, ul');
+    const slides = list ? Array.from(list.children).filter((el) => typeof HTMLElement !== "undefined" ? el instanceof HTMLElement : Boolean(el && el.nodeType === 1)) : [];
+    let targetRoots = [container];
+    if (slides.length > 0) {
+      const scrollLeft = list?.scrollLeft || 0;
+      let activeIdx = 0;
+      let minDiff = Infinity;
+      for (let i = 0;i < slides.length; i++) {
+        const diff = Math.abs(slides[i].offsetLeft - scrollLeft);
+        if (diff < minDiff) {
+          minDiff = diff;
+          activeIdx = i;
         }
-      } catch {}
-    });
-    container.querySelectorAll("img").forEach((img) => {
-      try {
-        if (img.classList.contains("post-background-image-filter") || img.classList.contains("shreddit-subreddit-icon__icon")) {
-          return;
-        }
-        img.setAttribute("loading", "eager");
-        img.setAttribute("fetchpriority", "high");
-        img.removeAttribute("decoding");
-        const ds = img.dataset;
-        const lazySrc = ds?.src || ds?.lazySrc || img.getAttribute("data-src") || img.getAttribute("data-lazy-src");
-        const isPlaceholder = !img.src || img.src === "about:blank" || img.src.startsWith("data:image/gif") || img.src.startsWith("data:image/svg");
-        if (lazySrc && isPlaceholder) {
-          img.src = lazySrc;
-        }
-        const lazySrcset = ds?.srcset || ds?.lazySrcset || img.getAttribute("data-srcset") || img.getAttribute("data-lazy-srcset");
-        if (lazySrcset && (!img.srcset || img.srcset.startsWith("data:image/gif"))) {
-          img.srcset = lazySrcset;
-        }
-        img.style.removeProperty("display");
-      } catch {}
-    });
+      }
+      targetRoots = slides.slice(Math.max(0, activeIdx - 1), Math.min(slides.length, activeIdx + 2));
+    }
+    for (const root of targetRoots) {
+      root.querySelectorAll("picture source, source").forEach((source) => {
+        try {
+          const ds = source.dataset;
+          const lazySrcset = ds?.srcset || ds?.lazySrcset || source.getAttribute("data-srcset") || source.getAttribute("data-lazy-srcset");
+          if (lazySrcset && (!source.srcset || source.srcset.startsWith("data:image/gif"))) {
+            source.srcset = lazySrcset;
+          }
+        } catch {}
+      });
+      root.querySelectorAll("img").forEach((img) => {
+        try {
+          if (img.classList.contains("post-background-image-filter") || img.classList.contains("shreddit-subreddit-icon__icon")) {
+            return;
+          }
+          img.setAttribute("loading", "eager");
+          img.setAttribute("fetchpriority", "high");
+          img.removeAttribute("decoding");
+          const ds = img.dataset;
+          const lazySrc = ds?.src || ds?.lazySrc || img.getAttribute("data-src") || img.getAttribute("data-lazy-src");
+          const isPlaceholder = !img.src || img.src === "about:blank" || img.src.startsWith("data:image/gif") || img.src.startsWith("data:image/svg");
+          if (lazySrc && isPlaceholder) {
+            img.src = lazySrc;
+          }
+          const lazySrcset = ds?.srcset || ds?.lazySrcset || img.getAttribute("data-srcset") || img.getAttribute("data-lazy-srcset");
+          if (lazySrcset && (!img.srcset || img.srcset.startsWith("data:image/gif"))) {
+            img.srcset = lazySrcset;
+          }
+          img.style.removeProperty("display");
+        } catch {}
+      });
+    }
   }
   function unconstrainPlayerShadow(player) {
     player.style.setProperty("--max-height", "100dvh", "important");
@@ -2284,13 +1939,36 @@
           visibility: hidden !important;
           opacity: 0 !important;
         }
+        :host(:not(.rr-hide-captions)) .captions-display,
+        :host(:not(.rr-hide-captions)) [data-testid="captions"],
+        :host(:not(.rr-hide-captions)) shreddit-player-captions,
+        :host(:not(.rr-hide-captions)) [part="captions"] {
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          z-index: 10 !important;
+          pointer-events: none !important;
+        }
       `;
         player.shadowRoot.appendChild(shadowStyle);
       }
     }
   }
   function unconstrainPostMedia(postEl) {
+    if (postEl.dataset.rrUnconstrained === "1")
+      return;
+    postEl.dataset.rrUnconstrained = "1";
+    if (postEl.querySelector('gallery-carousel, faceplate-carousel, [data-testid="media-gallery"]')) {
+      postEl.classList.add("rr-has-gallery");
+    }
+    if (postEl.querySelector("video, iframe, shreddit-player-2")) {
+      postEl.classList.add("rr-has-video");
+    }
+    if (postEl.querySelector("img:not(.shreddit-subreddit-icon__icon)")) {
+      postEl.classList.add("rr-has-image");
+    }
     postEl.querySelectorAll('shreddit-aspect-ratio, [slot="post-media-container"], [data-aspect-ratio-container], .media-container, gallery-carousel, faceplate-carousel, shreddit-async-loader, .media-lightbox-img, shreddit-media-lightbox-listener').forEach((el) => {
+      backupElementState(el, ["aspect-ratio", "max-height"]);
       el.style.setProperty("--max-height", "100dvh", "important");
       el.style.setProperty("--max-width", "100vw", "important");
       el.style.setProperty("max-height", "100dvh", "important");
@@ -2310,21 +1988,15 @@
       el.removeAttribute("max-height");
     });
     postEl.querySelectorAll("shreddit-player-2").forEach((player) => {
+      backupElementState(player, ["data-is-vertical"]);
       unconstrainPlayerShadow(player);
     });
     postEl.querySelectorAll('gallery-carousel, faceplate-carousel, [data-testid="media-gallery"]').forEach((carousel) => {
-      promoteGalleryMedia(carousel);
-      const wired = carousel;
-      if (!wired.dataset.rrGalleryWired) {
-        wired.dataset.rrGalleryWired = "1";
-        carousel.addEventListener("scroll", () => promoteGalleryMedia(carousel), { passive: true });
-        carousel.addEventListener("click", () => {
-          setTimeout(() => promoteGalleryMedia(carousel), 50);
-        }, { passive: true });
-      }
+      wireGalleryCarousel(carousel);
     });
     const { videos } = deepFindMediaElements(postEl);
     videos.forEach((v) => {
+      backupElementState(v, ["class"]);
       const handleSizing = () => {
         const w = v.videoWidth;
         const h = v.videoHeight;
@@ -2333,8 +2005,12 @@
           if (isVertical) {
             v.classList.add("rr-vertical-video");
             v.style.setProperty("object-fit", "cover", "important");
-            postEl.classList.add("rr-has-vertical-video");
-            postEl.setAttribute("data-vertical-video", "true");
+            const slide = v.closest("li") || v.closest("shreddit-player-2");
+            slide?.classList.add("rr-vertical-video");
+            if (videos.length === 1) {
+              postEl.classList.add("rr-has-vertical-video");
+              postEl.setAttribute("data-vertical-video", "true");
+            }
             const player = v.closest("shreddit-player-2") || postEl.querySelector("shreddit-player-2");
             if (player) {
               player.classList.add("rr-vertical-video");
@@ -2343,17 +2019,23 @@
           } else {
             v.classList.remove("rr-vertical-video");
             v.style.setProperty("object-fit", "contain", "important");
-            postEl.classList.remove("rr-has-vertical-video");
-            postEl.removeAttribute("data-vertical-video");
+            const slide = v.closest("li") || v.closest("shreddit-player-2");
+            slide?.classList.remove("rr-vertical-video");
+            if (videos.length === 1) {
+              postEl.classList.remove("rr-has-vertical-video");
+              postEl.removeAttribute("data-vertical-video");
+            }
           }
         }
       };
       handleSizing();
-      const wired = v;
-      if (!wired.dataset.rrWired) {
-        wired.dataset.rrWired = "1";
-        v.addEventListener("loadedmetadata", handleSizing);
-        v.addEventListener("resize", handleSizing);
+      const vWithAc = v;
+      if (!vWithAc._rrSizingController) {
+        const vAc = new AbortController;
+        vWithAc._rrSizingController = vAc;
+        vWithAc.dataset.rrWired = "1";
+        v.addEventListener("loadedmetadata", handleSizing, { signal: vAc.signal });
+        v.addEventListener("resize", handleSizing, { signal: vAc.signal });
         v.addEventListener("loadedmetadata", () => {
           const pref = postEl.dataset?.rrCaptions;
           if (pref !== "on" && pref !== "off")
@@ -2367,9 +2049,72 @@
               } catch {}
             }
           } catch {}
-        });
+        }, { signal: vAc.signal });
       }
     });
+  }
+  function wireGalleryCarousel(carousel) {
+    promoteGalleryMedia(carousel);
+    const container = carousel;
+    if (container._rrAbortController) {
+      return;
+    }
+    const ac = new AbortController;
+    container._rrAbortController = ac;
+    const signal = ac.signal;
+    const getScrollContainer = () => {
+      return carousel.querySelector('ul[slot="items"], .carousel-items, ul') || carousel.shadowRoot?.querySelector("ul, .carousel-items") || carousel;
+    };
+    const updateButtons = () => {
+      const sc2 = getScrollContainer();
+      if (!sc2)
+        return;
+      const prevBtn = carousel.querySelector('[slot="previous-button"], .prev-btn');
+      const nextBtn = carousel.querySelector('[slot="next-button"], .next-btn');
+      const maxScroll = sc2.scrollWidth - sc2.clientWidth;
+      if (prevBtn) {
+        const atStart = sc2.scrollLeft <= 5;
+        prevBtn.style.setProperty("display", atStart ? "none" : "flex", "important");
+      }
+      if (nextBtn) {
+        const atEnd = sc2.scrollLeft >= maxScroll - 5;
+        nextBtn.style.setProperty("display", atEnd ? "none" : "flex", "important");
+      }
+      promoteGalleryMedia(carousel);
+    };
+    const sc = getScrollContainer();
+    if (sc) {
+      sc.addEventListener("scroll", updateButtons, { passive: true, signal });
+    }
+    const prevBtns = carousel.querySelectorAll('[slot="previous-button"], .prev-btn');
+    prevBtns.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const scEl = getScrollContainer();
+        if (!scEl)
+          return;
+        const step = scEl.clientWidth || window.innerWidth;
+        scEl.scrollBy({ left: -step, behavior: "smooth" });
+        setTimeout(updateButtons, 100);
+        setTimeout(updateButtons, 350);
+      }, { signal });
+    });
+    const nextBtns = carousel.querySelectorAll('[slot="next-button"], .next-btn');
+    nextBtns.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const scEl = getScrollContainer();
+        if (!scEl)
+          return;
+        const step = scEl.clientWidth || window.innerWidth;
+        scEl.scrollBy({ left: step, behavior: "smooth" });
+        setTimeout(updateButtons, 100);
+        setTimeout(updateButtons, 350);
+      }, { signal });
+    });
+    setTimeout(updateButtons, 50);
   }
   function restorePostMedia(postEl) {
     postEl.querySelectorAll('shreddit-aspect-ratio, [slot="post-media-container"], [data-aspect-ratio-container], .media-container, gallery-carousel, faceplate-carousel, shreddit-async-loader, .media-lightbox-img, shreddit-media-lightbox-listener').forEach((el) => {
@@ -2408,21 +2153,86 @@
       }
     });
     postEl.querySelectorAll('gallery-carousel, faceplate-carousel, [data-testid="media-gallery"]').forEach((carousel) => {
-      if (carousel.shadowRoot) {
-        const style = carousel.shadowRoot.querySelector("#rr-carousel-style");
-        style?.remove();
+      const c = carousel;
+      if (c._rrAbortController) {
+        try {
+          c._rrAbortController.abort();
+        } catch {}
+        delete c._rrAbortController;
       }
       delete carousel.dataset.rrGalleryWired;
     });
     const { videos } = deepFindMediaElements(postEl);
     videos.forEach((v) => {
+      const vid = v;
+      if (vid._rrSizingController) {
+        try {
+          vid._rrSizingController.abort();
+        } catch {}
+        delete vid._rrSizingController;
+      }
+      delete vid.dataset?.rrWired;
+      delete vid._rrTrackWired;
       v.classList.remove("rr-vertical-video");
       v.style.removeProperty("object-fit");
     });
-    postEl.classList.remove("rr-has-vertical-video", "rr-hide-captions");
+    clearAllRrState(postEl);
+    postEl.classList.remove("rr-has-vertical-video", "rr-hide-captions", "rr-has-gallery", "rr-has-video", "rr-has-image", "rr-fit-contain", "rr-fit-cover");
     postEl.removeAttribute("data-vertical-video");
     delete postEl.dataset.rrCaptions;
+    delete postEl.dataset.rrUnconstrained;
   }
+  // src/ui/pulse.ts
+  function showPlayPulse(isPlaying) {
+    const existing = document.querySelector(".rr-play-pulse");
+    if (existing)
+      existing.remove();
+    const pulse = document.createElement("div");
+    pulse.className = "rr-play-pulse";
+    pulse.innerHTML = isPlaying ? `<svg width="44" height="44" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>` : `<svg width="44" height="44" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`;
+    document.body.appendChild(pulse);
+    setTimeout(() => pulse.remove(), 550);
+  }
+  function showScalePulse(mode) {
+    const existing = document.querySelector(".rr-scale-pulse");
+    if (existing)
+      existing.remove();
+    const pulse = document.createElement("div");
+    pulse.className = "rr-scale-pulse";
+    pulse.textContent = mode;
+    document.body.appendChild(pulse);
+    setTimeout(() => pulse.remove(), 650);
+  }
+  function showVotePulse(upvoted) {
+    const existing = document.querySelector(".rr-play-pulse");
+    if (existing)
+      existing.remove();
+    if (upvoted === null) {
+      const pulse2 = document.createElement("div");
+      pulse2.className = "rr-play-pulse";
+      pulse2.innerHTML = `<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7.5-4.9-10-9.5C.4 8.6 2.4 5 5.8 5c2 0 3.4 1.1 4.2 2.3h4C14.8 6.1 16.2 5 18.2 5c3.4 0 5.4 3.6 3.8 6.5C19.5 16.1 12 21 12 21z" transform="scale(0.9) translate(1.3,1.3)"></path></svg>`;
+      document.body.appendChild(pulse2);
+      setTimeout(() => pulse2.remove(), 550);
+      return;
+    }
+    const pulse = document.createElement("div");
+    pulse.className = "rr-play-pulse";
+    pulse.innerHTML = upvoted ? `<svg width="44" height="44" viewBox="0 0 24 24" fill="#ff4500"><path d="M12 21s-7.5-4.9-10-9.5C.4 8.6 2.4 5 5.8 5c2 0 3.4 1.1 4.2 2.3h4C14.8 6.1 16.2 5 18.2 5c3.4 0 5.4 3.6 3.8 6.5C19.5 16.1 12 21 12 21z" transform="scale(0.9) translate(1.3,1.3)"></path></svg>` : `<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#7193ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+    document.body.appendChild(pulse);
+    setTimeout(() => pulse.remove(), 550);
+  }
+  function showVolumePulse(level, muted) {
+    const existing = document.querySelector(".rr-scale-pulse");
+    if (existing)
+      existing.remove();
+    const pct = Math.round(level * 100);
+    const pulse = document.createElement("div");
+    pulse.className = "rr-scale-pulse";
+    pulse.textContent = muted || pct === 0 ? "Muted" : `Volume ${pct}%`;
+    document.body.appendChild(pulse);
+    setTimeout(() => pulse.remove(), 650);
+  }
+
   // src/core/input-controller.ts
   var POST_SELECTORS = 'shreddit-post, article, [data-testid="post-container"], .Post';
   var VOLUME_STEP = 0.1;
@@ -2493,27 +2303,8 @@
     fireSingleTap(post) {
       if (!this.options.isReelModeActive())
         return;
-      const video = audioManager.findVideo(post);
-      if (video) {
-        const wasPaused = video.paused;
-        if (wasPaused) {
-          applyAudioState(post, audioManager.isMuted, audioManager.volume);
-          video.play().catch(() => {});
-        } else {
-          video.pause();
-        }
-        showPlayPulse(wasPaused);
-      } else if (post.querySelector("iframe")) {}
-    }
-    fireDoubleTapUpvote() {
-      if (!this.options.isReelModeActive())
-        return;
-      const getPost = this.options.getActiveReelPost;
-      const reel = getPost ? getPost() : null;
-      if (!reel)
-        return;
-      const ok = proxyUpvote(reel);
-      showVotePulse(ok ? !!reel.isUpvoted : false);
+      const isPlaying = audioManager.togglePlayback(post);
+      showPlayPulse(isPlaying);
     }
     toggleFitFill(post) {
       const isCurrentlyContain = post.classList.contains("rr-fit-contain");
@@ -2530,8 +2321,15 @@
     handleTap(e) {
       if (!this.options.isReelModeActive())
         return;
+      if (!e.isTrusted)
+        return;
       const target = e.target;
-      if (target.closest('.rr-action-rail, .rr-post-info, .rr-top-bar, .rr-link-card-container, .rr-text-card-container, button, a, shreddit-post-action-row, [slot="action-row"], [slot="vote"]')) {
+      if (target.closest('.rr-action-rail, .rr-post-info, .rr-header-cluster, .rr-link-card-container, .rr-sub-badge, .rr-author, .rr-link-card-btn, button[slot="previous-button"], button[slot="next-button"], .prev-btn, .next-btn')) {
+        return;
+      }
+      if (this.isNativeControl(e))
+        return;
+      if (target.closest(".rr-text-card-body a")) {
         return;
       }
       const post = target.closest(POST_SELECTORS);
@@ -2560,16 +2358,12 @@
           clearTimeout(this.singleTapTimer);
           this.singleTapTimer = null;
         }
-        this.fireDoubleTapUpvote();
-        return;
-      }
-      if (this.tapCount === 3) {
-        if (this.singleTapTimer) {
-          clearTimeout(this.singleTapTimer);
-          this.singleTapTimer = null;
-        }
         this.resetTapState();
-        this.toggleFitFill(post);
+        if (this.options.onDoubleTap) {
+          this.options.onDoubleTap(post);
+        } else {
+          this.toggleFitFill(post);
+        }
         return;
       }
       if (this.singleTapTimer) {
@@ -2580,6 +2374,24 @@
         this.resetTapState();
         this.fireSingleTap(post);
       }, TAP_WINDOW_MS);
+    }
+    isNativeControl(e) {
+      try {
+        const path = e.composedPath();
+        for (const node of path) {
+          const tag = node.tagName?.toLowerCase?.();
+          if (!tag)
+            continue;
+          if (tag === "shreddit-post" || tag === "article")
+            break;
+          if (tag === "button" || tag === "input" || tag === "select" || tag.includes("controls"))
+            return true;
+          const role = node.getAttribute?.("role");
+          if (role === "slider" || role === "button" || role === "menuitem")
+            return true;
+        }
+      } catch {}
+      return false;
     }
     wasSwipe(e) {
       try {
@@ -2634,11 +2446,64 @@
       this.options.onVolumeChange?.(level, audioManager.isMuted);
     }
   }
+  // src/utils.ts
+  function formatCount(num) {
+    if (!num || isNaN(num))
+      return "0";
+    if (Math.abs(num) >= 1e6)
+      return (num / 1e6).toFixed(1).replace(/\.0$/, "") + "m";
+    if (Math.abs(num) >= 1000)
+      return (num / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+    return num.toString();
+  }
+  function escapeHtml(str) {
+    if (!str)
+      return "";
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+  function extractDomain(url) {
+    if (!url)
+      return "";
+    try {
+      const parsed = new URL(url.startsWith("http") ? url : `https://${url}`);
+      return parsed.hostname.replace(/^www\./, "");
+    } catch {
+      return url.replace(/^https?:\/\//, "").split("/")[0];
+    }
+  }
+  function isSafeUrl(url) {
+    if (!url || typeof url !== "string")
+      return false;
+    const trimmed = url.trim();
+    if (!trimmed)
+      return false;
+    try {
+      const base = typeof location !== "undefined" ? location.origin : "https://www.reddit.com";
+      const parsed = new URL(trimmed, base);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+  function sanitizeUrl(url, fallback = "") {
+    return isSafeUrl(url) ? url.trim() : fallback;
+  }
+  function openUrl(url) {
+    if (!url || !isSafeUrl(url))
+      return;
+    const safe = sanitizeUrl(url);
+    const opened = window.open(safe, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      window.location.href = safe;
+    }
+  }
+
   // src/cards/text-card.ts
   function renderTextCard(postEl, post) {
     if (postEl.querySelector(".rr-text-card-container"))
       return;
-    const targetUrl = post.permalink ? post.permalink.startsWith("http") ? post.permalink : `https://www.reddit.com${post.permalink}` : post.contentHref || "";
+    const rawTargetUrl = post.permalink ? post.permalink.startsWith("http") ? post.permalink : `https://www.reddit.com${post.permalink}` : post.contentHref || "";
+    const targetUrl = sanitizeUrl(rawTargetUrl);
     const container = document.createElement("div");
     container.className = "rr-text-card-container";
     let rawBody = (post.textBody || "").trim();
@@ -2673,7 +2538,9 @@
                 </svg>
               </a>` : ""}
       </div>
-      <h2 class="rr-text-card-title">${escapeHtml(post.title)}</h2>
+      <h2 class="rr-text-card-title">
+        ${targetUrl ? `<a href="${escapeHtml(targetUrl)}" target="_blank" rel="noopener noreferrer" class="rr-text-title-link">${escapeHtml(post.title)}</a>` : escapeHtml(post.title)}
+      </h2>
       ${formattedBodyHtml ? `<div class="rr-text-card-body">${formattedBodyHtml}</div>` : ""}
     </div>
   `;
@@ -2691,14 +2558,6 @@
       cardBody.addEventListener("touchmove", (e) => {
         e.stopPropagation();
       }, { passive: true });
-    }
-    const titleEl = container.querySelector(".rr-text-card-title");
-    if (titleEl && targetUrl) {
-      titleEl.style.cursor = "pointer";
-      titleEl.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openUrl(targetUrl);
-      });
     }
     postEl.appendChild(container);
   }
@@ -2719,10 +2578,11 @@
     const domain = extractDomain(post.contentHref);
     const thumbUrl = findThumbnailUrl(postEl, post);
     const targetUrl = post.contentHref || (post.permalink.startsWith("http") ? post.permalink : `https://www.reddit.com${post.permalink}`);
+    const safeTarget = sanitizeUrl(targetUrl);
     const container = document.createElement("div");
     container.className = "rr-link-card-container";
     container.innerHTML = `
-    <div class="rr-link-card" tabindex="0" role="link" aria-label="Open ${escapeHtml(post.title)} on ${escapeHtml(domain)}">
+    <div class="rr-link-card" role="region" aria-label="Article: ${escapeHtml(post.title)}">
       ${thumbUrl ? `<div class="rr-link-card-thumb-wrap">
                <img src="${escapeHtml(thumbUrl)}" alt="${escapeHtml(post.title)}" class="rr-link-card-thumb" />
              </div>` : ""}
@@ -2735,14 +2595,16 @@
                  </svg>
                  <span>${escapeHtml(domain)}</span>
                </div>` : ""}
-        <h3 class="rr-link-card-title">${escapeHtml(post.title)}</h3>
-        <button type="button" class="rr-link-card-cta">
+        <h3 class="rr-link-card-title">
+          <a href="${escapeHtml(safeTarget)}" target="_blank" rel="noopener noreferrer" class="rr-link-card-title-link">${escapeHtml(post.title)}</a>
+        </h3>
+        <a href="${escapeHtml(safeTarget)}" target="_blank" rel="noopener noreferrer" class="rr-link-card-cta" title="Open article in new tab">
           <span>Read Article</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"></line>
             <polyline points="12 5 19 12 12 19"></polyline>
           </svg>
-        </button>
+        </a>
       </div>
     </div>
   `;
@@ -2750,9 +2612,8 @@
     const ctaBtn = container.querySelector(".rr-link-card-cta");
     const openLink = (e) => {
       e.stopPropagation();
-      e.preventDefault();
-      if (targetUrl) {
-        openUrl(targetUrl);
+      if (safeTarget) {
+        openUrl(safeTarget);
       }
     };
     linkCard?.addEventListener("click", openLink);
@@ -2764,6 +2625,256 @@
     ctaBtn?.addEventListener("click", openLink);
     postEl.appendChild(container);
   }
+  // src/ui/overlay.ts
+  function getSoundIconSvg(isMuted) {
+    return isMuted ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>` : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
+  }
+  function openPostNatively(postEl, permalink) {
+    const native = postEl.querySelector('a[slot="full-post-link"], a[data-click-id="comments"], a[href*="/comments/"]');
+    if (native && native.href) {
+      native.click();
+      return;
+    }
+    const url = sanitizeUrl(permalink);
+    if (url)
+      window.location.assign(url);
+  }
+  function syncOverlaySoundButtons(isMuted) {
+    document.querySelectorAll(".rr-sound-btn").forEach((btn) => {
+      btn.classList.toggle("is-muted", isMuted);
+      btn.setAttribute("aria-label", isMuted ? "Unmute" : "Mute");
+      btn.setAttribute("aria-pressed", String(!isMuted));
+      btn.title = isMuted ? "Unmute (M)" : "Mute (M)";
+      btn.innerHTML = getSoundIconSvg(isMuted);
+    });
+  }
+  function getUpvoteIconSvg(isUpvoted) {
+    return `<svg width="26" height="26" viewBox="0 0 24 24" fill="${isUpvoted ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>`;
+  }
+  function getDownvoteIconSvg(isDownvoted) {
+    return `<svg width="26" height="26" viewBox="0 0 24 24" fill="${isDownvoted ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+  }
+  function getCcIconSvg(enabled = false) {
+    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${enabled ? "2.4" : "2.2"}" stroke-linecap="round" stroke-linejoin="round" data-enabled="${enabled}">
+    <rect x="2" y="4" width="20" height="16" rx="3" ry="3"></rect>
+    <path d="M7 15h0a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1"></path>
+    <path d="M15 15h0a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1"></path>
+  </svg>`;
+  }
+  function getFitFillIconSvg() {
+    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="15 3 21 3 21 9"></polyline>
+    <polyline points="9 21 3 21 3 15"></polyline>
+    <line x1="21" y1="3" x2="14" y2="10"></line>
+    <line x1="3" y1="21" x2="10" y2="14"></line>
+  </svg>`;
+  }
+  function getCommentIconSvg() {
+    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+  </svg>`;
+  }
+  function renderReelOverlay(postEl, post, options) {
+    if (postEl.querySelector(".rr-post-overlay"))
+      return null;
+    const overlay = document.createElement("div");
+    overlay.className = "rr-post-overlay";
+    const isUpvoted = !!post.isUpvoted;
+    const isDownvoted = !!post.isDownvoted;
+    const isSubtitles = options.isSubtitlesEnabled ? options.isSubtitlesEnabled() : false;
+    const initialVoteVal = isUpvoted ? 1 : isDownvoted ? -1 : 0;
+    const baseScore = post.score;
+    const isHiddenScore = !!post.isScoreHidden;
+    const formatScoreDisplay = (currentScore) => {
+      if (isHiddenScore)
+        return "Vote";
+      return formatCount(currentScore);
+    };
+    const cleanSub = post.subreddit ? post.subreddit.replace(/^\/?/, "") : "";
+    overlay.innerHTML = `
+    <!-- Bottom-Left Post Information -->
+    <div class="rr-post-info">
+      <div class="rr-post-meta">
+        ${post.subreddit ? `<a class="rr-sub-badge" role="link" tabindex="0" href="/${escapeHtml(cleanSub)}/">${escapeHtml(post.subreddit)}</a>` : ""}
+        ${post.subreddit && post.author ? `<span class="rr-dot">•</span>` : ""}
+        ${post.author ? `<a class="rr-author" role="link" tabindex="0" href="/user/${escapeHtml(post.author.replace(/^u\//, ""))}/">u/${escapeHtml(post.author.replace(/^u\//, ""))}</a>` : ""}
+      </div>
+      <div class="rr-post-title" title="${escapeHtml(post.title)}">${escapeHtml(post.title)}</div>
+    </div>
+
+    <!-- Bottom-Right Vertical Action Rail. Seek/play/fullscreen stay on Reddit's native player bar. -->
+    <div class="rr-action-rail">
+      ${options.hasVideo && options.onToggleMute ? `
+          <div class="rr-action-item">
+            <button
+              type="button"
+              class="rr-action-btn rr-sound-btn ${audioManager.isMuted ? "is-muted" : ""}"
+              aria-label="${audioManager.isMuted ? "Unmute" : "Mute"}"
+              aria-pressed="${!audioManager.isMuted}"
+              title="${audioManager.isMuted ? "Unmute (M)" : "Mute (M)"}"
+            >
+              ${getSoundIconSvg(audioManager.isMuted)}
+            </button>
+          </div>
+          ` : ""}
+
+      <!-- 1. Subtitles Toggle (ONLY rendered if post has video) -->
+      ${options.hasVideo && options.onToggleSubtitles ? `
+          <div class="rr-action-item">
+            <button
+              type="button"
+              class="rr-action-btn rr-cc-btn ${isSubtitles ? "is-active-cc" : ""}"
+              aria-label="${isSubtitles ? "Disable Subtitles" : "Enable Subtitles"}"
+              aria-pressed="${isSubtitles}"
+              title="${isSubtitles ? "Disable Subtitles" : "Enable Subtitles"}"
+            >
+              ${getCcIconSvg(isSubtitles)}
+            </button>
+          </div>
+          ` : ""}
+
+      <!-- 2. Fit/Fill Mode Toggle -->
+      <div class="rr-action-item">
+        <button
+          type="button"
+          class="rr-action-btn rr-fit-btn"
+          aria-label="Toggle Fit or Fill scaling"
+          title="Toggle Fit / Fill (Original vs Full Bleed)"
+        >
+          ${getFitFillIconSvg()}
+        </button>
+      </div>
+
+      <!-- 3. Vote Cluster (Upvote, Score, Downvote) -->
+      <div class="rr-action-item rr-vote-group">
+        <button
+          type="button"
+          class="rr-action-btn rr-upvote-btn ${isUpvoted ? "is-active-up" : ""}"
+          aria-label="Upvote"
+          aria-pressed="${isUpvoted}"
+          title="Upvote"
+        >
+          ${getUpvoteIconSvg(isUpvoted)}
+        </button>
+        <span class="rr-action-label rr-score-label" aria-live="polite">${formatScoreDisplay(post.score)}</span>
+        <button
+          type="button"
+          class="rr-action-btn rr-downvote-btn ${isDownvoted ? "is-active-down" : ""}"
+          aria-label="Downvote"
+          aria-pressed="${isDownvoted}"
+          title="Downvote"
+        >
+          ${getDownvoteIconSvg(isDownvoted)}
+        </button>
+      </div>
+
+      <!-- 4. Reddit Comments (opens the native new-Reddit post page) -->
+      <div class="rr-action-item">
+        <button
+          type="button"
+          class="rr-action-btn rr-comment-btn"
+          aria-label="Open Reddit comments"
+          title="Open Reddit comments"
+        >
+          ${getCommentIconSvg()}
+        </button>
+        <span class="rr-action-label">${formatCount(post.commentCount)}</span>
+      </div>
+    </div>
+  `;
+    const upvoteBtn = overlay.querySelector(".rr-upvote-btn");
+    const downvoteBtn = overlay.querySelector(".rr-downvote-btn");
+    const fitBtn = overlay.querySelector(".rr-fit-btn");
+    const commentBtn = overlay.querySelector(".rr-comment-btn");
+    const ccBtn = overlay.querySelector(".rr-cc-btn");
+    const scoreLabel = overlay.querySelector(".rr-score-label");
+    const subBadge = overlay.querySelector(".rr-sub-badge");
+    const authorBadge = overlay.querySelector(".rr-author");
+    if (fitBtn && options.onToggleFitFill) {
+      fitBtn.onclick = (e) => {
+        e.stopPropagation();
+        options.onToggleFitFill();
+      };
+    }
+    if (upvoteBtn) {
+      upvoteBtn.onclick = (e) => {
+        e.stopPropagation();
+        const ok = proxyUpvote(post, () => syncVoteUI());
+        syncVoteUI(!ok);
+      };
+    }
+    if (downvoteBtn) {
+      downvoteBtn.onclick = (e) => {
+        e.stopPropagation();
+        const ok = proxyDownvote(post, () => syncVoteUI());
+        syncVoteUI(!ok);
+      };
+    }
+    function syncVoteUI(revert = false) {
+      const isUp = revert ? initialVoteVal === 1 : !!post.isUpvoted;
+      const isDown = revert ? initialVoteVal === -1 : !!post.isDownvoted;
+      if (upvoteBtn) {
+        upvoteBtn.classList.toggle("is-active-up", isUp);
+        upvoteBtn.setAttribute("aria-pressed", String(isUp));
+        upvoteBtn.innerHTML = getUpvoteIconSvg(isUp);
+      }
+      if (downvoteBtn) {
+        downvoteBtn.classList.toggle("is-active-down", isDown);
+        downvoteBtn.setAttribute("aria-pressed", String(isDown));
+        downvoteBtn.innerHTML = getDownvoteIconSvg(isDown);
+      }
+      if (scoreLabel) {
+        const curVal = isUp ? 1 : isDown ? -1 : 0;
+        const newScore = baseScore + (curVal - initialVoteVal);
+        scoreLabel.textContent = formatScoreDisplay(newScore);
+      }
+    }
+    if (commentBtn) {
+      commentBtn.onclick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        openPostNatively(postEl, post.permalink);
+      };
+    }
+    const soundBtn = overlay.querySelector(".rr-sound-btn");
+    if (soundBtn && options.onToggleMute) {
+      soundBtn.onclick = (e) => {
+        e.stopPropagation();
+        options.onToggleMute();
+      };
+    }
+    if (ccBtn && options.onToggleSubtitles) {
+      ccBtn.onclick = (e) => {
+        e.stopPropagation();
+        options.onToggleSubtitles();
+      };
+    }
+    if (subBadge) {
+      subBadge.onclick = (e) => {
+        e.stopPropagation();
+      };
+    }
+    if (authorBadge) {
+      authorBadge.onclick = (e) => {
+        e.stopPropagation();
+      };
+    }
+    postEl.appendChild(overlay);
+    return overlay;
+  }
+  function syncOverlaySubtitlesButtons(enabled) {
+    document.querySelectorAll(".rr-cc-btn").forEach((btn) => {
+      btn.classList.toggle("is-active-cc", enabled);
+      btn.setAttribute("aria-label", enabled ? "Disable Subtitles" : "Enable Subtitles");
+      btn.setAttribute("title", enabled ? "Disable Subtitles" : "Enable Subtitles");
+      btn.innerHTML = getCcIconSvg(enabled);
+    });
+  }
+
+  // src/core/selectors.ts
+  var POST_SELECTORS2 = 'shreddit-post, article, [data-testid="post-container"], .Post';
+  var VIDEO_IFRAME_HOSTS_REGEX = /(?:redgifs\.com|streamable\.com|gfycat\.com|youtube\.com|youtu\.be|v\.redd\.it)/i;
+
   // src/core/feed-manager.ts
   var VIDEOS_ONLY_KEY = "@reddit-reels/videos-only";
   var SUBTITLES_KEY = "@reddit-reels/subtitles";
@@ -2791,6 +2902,16 @@
       localStorage.setItem(key, value ? "1" : "0");
     } catch {}
   }
+  function hasVideoIframe(postEl) {
+    const iframes = postEl.querySelectorAll("iframe");
+    for (const ifr of iframes) {
+      const src = `${ifr.src || ""} ${ifr.dataset.rrSrc || ""}`;
+      if (VIDEO_IFRAME_HOSTS_REGEX.test(src)) {
+        return true;
+      }
+    }
+    return false;
+  }
   function hasVideoContent(postEl, postType) {
     const resolvedType = postType ?? postEl.dataset?.rrPostType;
     if (resolvedType === "video")
@@ -2802,7 +2923,7 @@
       const contentHref = postEl.getAttribute("content-href") || "";
       if (/(redgifs\.com|streamable\.com|gfycat\.com)/i.test(domain + " " + contentHref))
         return true;
-      if (postEl.querySelector("iframe"))
+      if (hasVideoIframe(postEl))
         return true;
       try {
         const parsed = parsePostElement(postEl);
@@ -2810,7 +2931,7 @@
           return true;
       } catch {}
     }
-    return !!audioManager.findVideo(postEl) || !!postEl.querySelector("iframe");
+    return !!audioManager.findVideo(postEl) || hasVideoIframe(postEl);
   }
   function getPostElements() {
     const shredditPosts = Array.from(document.querySelectorAll("shreddit-post"));
@@ -2848,6 +2969,7 @@
     mutationDebounce = null;
     videosOnlyMode = false;
     subtitlesEnabled = false;
+    enhancedPosts = new WeakSet;
     constructor(options) {
       this.options = options;
       this.videosOnlyMode = readPref(VIDEOS_ONLY_KEY);
@@ -2925,11 +3047,11 @@
       } else {
         if (post.postType === "video" && !postEl.querySelector("video, iframe")) {
           const media = resolveMedia(post);
+          const container = postEl.querySelector('[slot="post-media-container"]') || postEl.querySelector(".media-container") || postEl;
           if (media.type === "iframe" && media.src) {
-            const container = postEl.querySelector('[slot="post-media-container"]') || postEl.querySelector(".media-container") || postEl;
             const iframe = document.createElement("iframe");
-            const src = normalizeIframeSrc(media.src, audioManager.isMuted);
-            iframe.src = src;
+            iframe.src = "about:blank";
+            iframe.dataset.rrSrc = normalizeIframeSrc(media.src, audioManager.isMuted);
             iframe.className = "rr-embedded-iframe";
             iframe.tabIndex = -1;
             iframe.setAttribute("loading", "eager");
@@ -2940,6 +3062,17 @@
             try {
               iframe.blur();
             } catch {}
+            audioManager.invalidateVideoCache(postEl);
+          } else if (media.type === "video" && media.src) {
+            const vid = document.createElement("video");
+            vid.src = media.src;
+            vid.className = "rr-embedded-video";
+            vid.playsInline = true;
+            vid.setAttribute("playsinline", "");
+            vid.setAttribute("loop", "");
+            vid.muted = audioManager.isMuted;
+            vid.autoplay = true;
+            container.appendChild(vid);
             audioManager.invalidateVideoCache(postEl);
           }
         }
@@ -2967,7 +3100,7 @@
           el.classList.add("rr-native-offscreen");
           return;
         }
-        if (!isLinkPost && !isTextPost && (el.matches?.('[slot="post-media-container"], shreddit-player-2, .media-container, gallery-carousel, faceplate-carousel, shreddit-aspect-ratio, shreddit-async-loader') || el.querySelector("video, img:not(.shreddit-subreddit-icon__icon), iframe, gallery-carousel, faceplate-carousel, shreddit-player-2") !== null)) {
+        if (!isLinkPost && !isTextPost && (el.matches?.('[slot="post-media-container"], shreddit-player-2, .media-container, gallery-carousel, faceplate-carousel, shreddit-aspect-ratio, shreddit-async-loader, shreddit-player-captions, [slot="captions"]') || el.querySelector("video, img:not(.shreddit-subreddit-icon__icon), iframe, gallery-carousel, faceplate-carousel, shreddit-player-2, shreddit-player-captions") !== null)) {
           return;
         }
         el.classList.add("rr-native-suppressed");
@@ -2981,13 +3114,34 @@
       renderReelOverlay(postEl, post, {
         hasVideo,
         isSubtitlesEnabled: () => this.subtitlesEnabled,
-        onToggleSubtitles: () => this.toggleSubtitles()
+        onToggleMute: this.options.onToggleMute,
+        onToggleSubtitles: () => this.toggleSubtitles(),
+        onToggleFitFill: () => {
+          const isContain = postEl.classList.contains("rr-fit-contain");
+          if (isContain) {
+            postEl.classList.remove("rr-fit-contain");
+            postEl.classList.add("rr-fit-cover");
+          } else {
+            postEl.classList.remove("rr-fit-cover");
+            postEl.classList.add("rr-fit-contain");
+          }
+        }
       });
+      this.enhancedPosts.add(postEl);
     }
     restorePost(postEl) {
       postEl.querySelectorAll(".rr-post-overlay, .rr-text-card-container, .rr-link-card-container").forEach((el) => el.remove());
       postEl.querySelectorAll("iframe.rr-embedded-iframe").forEach((ifr) => {
         ifr.remove();
+      });
+      postEl.querySelectorAll("video.rr-embedded-video").forEach((vid) => {
+        vid.remove();
+      });
+      postEl.querySelectorAll("iframe").forEach((ifr) => {
+        if (ifr.dataset.rrSrc) {
+          ifr.src = ifr.dataset.rrSrc;
+          delete ifr.dataset.rrSrc;
+        }
       });
       if (postEl.shadowRoot) {
         const cleanupStyle = postEl.shadowRoot.querySelector("#rr-shadow-cleanup-style");
@@ -3010,11 +3164,19 @@
       }
       restorePostMedia(postEl);
       postEl.classList.remove("rr-filtered-out", "rr-is-link", "rr-is-text");
+      this.enhancedPosts.delete(postEl);
       postEl.style.removeProperty("display");
     }
     teardownAllPosts() {
-      const posts = getPostElements();
+      const posts = getPostElements().filter((p) => this.enhancedPosts.has(p));
       posts.forEach((p) => this.restorePost(p));
+      document.querySelector(".rr-empty-feed")?.remove();
+      if (typeof document !== "undefined") {
+        document.querySelectorAll("iframe[data-rr-src]").forEach((ifr) => {
+          ifr.src = ifr.dataset.rrSrc;
+          delete ifr.dataset.rrSrc;
+        });
+      }
     }
     enhanceAllPosts() {
       const posts = getPostElements();
@@ -3022,14 +3184,32 @@
     }
     applyVideosOnlyFilter() {
       const posts = getPostElements();
+      let visibleCount = 0;
       for (const postEl of posts) {
         const hasVideo = hasVideoContent(postEl, postEl.dataset?.rrPostType);
         if (this.videosOnlyMode && !hasVideo) {
           postEl.classList.add("rr-filtered-out");
         } else {
           postEl.classList.remove("rr-filtered-out");
+          visibleCount++;
         }
         postEl.style.removeProperty("display");
+      }
+      const existingEmpty = document.querySelector(".rr-empty-feed");
+      if (this.videosOnlyMode && posts.length > 0 && visibleCount === 0) {
+        if (!existingEmpty) {
+          const emptyEl = document.createElement("div");
+          emptyEl.className = "rr-empty-feed";
+          emptyEl.innerHTML = `
+          <div class="rr-empty-title">No videos found</div>
+          <div class="rr-empty-subtitle">Tap here to view all posts</div>
+        `;
+          emptyEl.onclick = () => this.toggleVideosOnly();
+          const feedContainer = document.querySelector(".rr-feed-container") || document.body;
+          feedContainer.appendChild(emptyEl);
+        }
+      } else {
+        existingEmpty?.remove();
       }
     }
     startObservers() {
@@ -3044,6 +3224,7 @@
             unconstrainPostMedia(post);
             applySubtitlesState(post, this.subtitlesEnabled);
             audioManager.requestPlayback(post);
+            this.options.onActivePost?.(post);
           } else if (!entry.isIntersecting || entry.intersectionRatio < 0.2) {
             applyAudioState(post, true);
             const video = audioManager.findVideo(post);
@@ -3064,24 +3245,33 @@
       this.mutationObserver = new MutationObserver((mutations) => {
         if (!this.options.isReelModeActive())
           return;
-        let hasRelevantChanges = false;
+        const addedElements = [];
         for (const mutation of mutations) {
-          if (mutation.type !== "childList" || mutation.addedNodes.length === 0)
+          if (mutation.type !== "childList")
             continue;
           for (let i = 0;i < mutation.addedNodes.length; i++) {
             const node = mutation.addedNodes[i];
-            if (node.nodeType !== Node.ELEMENT_NODE)
-              continue;
-            const el = node;
-            if (el.matches?.('shreddit-post, article, [data-testid="post-container"], .Post') || el.querySelector?.('shreddit-post, article, [data-testid="post-container"], .Post')) {
-              hasRelevantChanges = true;
-              break;
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const el = node;
+              if (el.matches?.(POST_SELECTORS2)) {
+                addedElements.push(el);
+              } else if (el.querySelectorAll) {
+                const inner = el.querySelectorAll(POST_SELECTORS2);
+                inner.forEach((p) => addedElements.push(p));
+              }
             }
           }
-          if (hasRelevantChanges)
-            break;
+          for (let i = 0;i < mutation.removedNodes.length; i++) {
+            const node = mutation.removedNodes[i];
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const el = node;
+              if (el.matches?.(POST_SELECTORS2)) {
+                this.feedObserver?.unobserve(el);
+              }
+            }
+          }
         }
-        if (!hasRelevantChanges)
+        if (addedElements.length === 0)
           return;
         if (this.mutationDebounce)
           clearTimeout(this.mutationDebounce);
@@ -3089,12 +3279,14 @@
           this.mutationDebounce = null;
           if (!this.options.isReelModeActive())
             return;
-          this.enhanceAllPosts();
-          this.applyVideosOnlyFilter();
-          if (this.feedObserver) {
-            const currentPosts = getPostElements();
-            currentPosts.forEach((p) => this.feedObserver?.observe(p));
+          for (const p of addedElements) {
+            if (!this.enhancedPosts.has(p)) {
+              this.enhancePost(p);
+              this.feedObserver?.observe(p);
+            }
           }
+          this.applyVideosOnlyFilter();
+          this.options.onPostsAdded?.();
         }, 150);
       });
       this.mutationObserver.observe(document.body || document.documentElement, {
@@ -3137,25 +3329,247 @@
       }
     }
   }
-  // src/main.tsx
+  // src/core/route.ts
+  var NON_FEED_SEGMENTS = /^\/(?:settings|message|messages|chat|notifications|mod|premium|submit|search|media|login|register|account|coins|prefs|wiki|gallery)(?:\/|$)/i;
+  function isReelRoute(pathname) {
+    const path = pathname.replace(/\/+$/, "") || "/";
+    if (/\/comments\//i.test(path) || /\/s\/[A-Za-z0-9]+$/.test(path))
+      return false;
+    if (NON_FEED_SEGMENTS.test(path))
+      return false;
+    if (path === "/" || /^\/(?:best|hot|new|top|rising|controversial)$/i.test(path))
+      return true;
+    if (/^\/r\/[A-Za-z0-9_]+(?:\/(?:best|hot|new|top|rising|controversial))?$/i.test(path))
+      return true;
+    if (/^\/(?:user|u)\/[A-Za-z0-9_-]+(?:\/submitted)?$/i.test(path))
+      return true;
+    if (/^\/mock-reddit\.html$/i.test(path))
+      return true;
+    return false;
+  }
+  function watchRoute(onChange) {
+    let lastHref = location.href;
+    let timer = null;
+    const check = () => {
+      if (timer)
+        clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        if (location.href === lastHref)
+          return;
+        lastHref = location.href;
+        onChange();
+      }, 50);
+    };
+    const origPush = history.pushState;
+    const origReplace = history.replaceState;
+    history.pushState = function(...args) {
+      const ret = origPush.apply(this, args);
+      check();
+      return ret;
+    };
+    history.replaceState = function(...args) {
+      const ret = origReplace.apply(this, args);
+      check();
+      return ret;
+    };
+    const nav = window.navigation;
+    nav?.addEventListener?.("navigatesuccess", check);
+    window.addEventListener("popstate", check);
+    const onPageShow = (e) => {
+      if (e.persisted) {
+        lastHref = "";
+        check();
+      }
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      history.pushState = origPush;
+      history.replaceState = origReplace;
+      nav?.removeEventListener?.("navigatesuccess", check);
+      window.removeEventListener("popstate", check);
+      window.removeEventListener("pageshow", onPageShow);
+      if (timer)
+        clearTimeout(timer);
+    };
+  }
+  // src/ui/header-toggle.ts
+  var CLUSTER_ID = "rr-header-cluster";
+  var HEADER_ANCHORS = [
+    "#expand-user-drawer-button",
+    "#login-button",
+    "reddit-header-large header nav > :last-child",
+    "reddit-header-small header nav > :last-child"
+  ];
+  var FILTER_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.5"></rect><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"></path></svg>`;
+  var REEL_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"></rect><polygon points="10 9 15 12 10 15 10 9"></polygon></svg>`;
+  var LIST_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="4" cy="6" r="1"></circle><circle cx="4" cy="12" r="1"></circle><circle cx="4" cy="18" r="1"></circle></svg>`;
+  function findHeaderAnchor() {
+    for (const sel of HEADER_ANCHORS) {
+      try {
+        const el = document.querySelector(sel);
+        if (el?.parentElement)
+          return el;
+      } catch {}
+    }
+    return null;
+  }
+  function buildCluster(handlers) {
+    const cluster = document.createElement("div");
+    cluster.id = CLUSTER_ID;
+    cluster.className = "rr-header-cluster";
+    const filterBtn = document.createElement("button");
+    filterBtn.type = "button";
+    filterBtn.className = "rr-header-btn rr-header-filter";
+    filterBtn.innerHTML = FILTER_ICON;
+    filterBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handlers.onToggleFilter();
+    });
+    const reelBtn = document.createElement("button");
+    reelBtn.type = "button";
+    reelBtn.className = "rr-header-btn rr-header-reel";
+    reelBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handlers.onToggleReel();
+    });
+    cluster.append(filterBtn, reelBtn);
+    return cluster;
+  }
+  function mountHeaderToggle(handlers) {
+    let cluster = document.getElementById(CLUSTER_ID);
+    if (!cluster)
+      cluster = buildCluster(handlers);
+    const anchor = findHeaderAnchor();
+    if (anchor && anchor.parentElement) {
+      if (cluster.nextElementSibling !== anchor) {
+        anchor.parentElement.insertBefore(cluster, anchor);
+      }
+      cluster.classList.remove("is-floating");
+    } else if (!cluster.isConnected || !cluster.classList.contains("is-floating")) {
+      cluster.classList.add("is-floating");
+      document.body.appendChild(cluster);
+    }
+    return cluster;
+  }
+  function syncHeaderToggle(reelOn, videosOnly) {
+    const cluster = document.getElementById(CLUSTER_ID);
+    if (!cluster)
+      return;
+    const reelBtn = cluster.querySelector(".rr-header-reel");
+    if (reelBtn) {
+      reelBtn.innerHTML = reelOn ? LIST_ICON : REEL_ICON;
+      const label = reelOn ? "Switch to list view" : "Switch to reel view";
+      reelBtn.setAttribute("aria-label", label);
+      reelBtn.title = label;
+      reelBtn.setAttribute("aria-pressed", String(reelOn));
+    }
+    const filterBtn = cluster.querySelector(".rr-header-filter");
+    if (filterBtn) {
+      filterBtn.classList.toggle("is-active", videosOnly);
+      filterBtn.setAttribute("aria-pressed", String(videosOnly));
+      const label = videosOnly ? "Showing videos only (show all posts)" : "Showing all posts (videos only)";
+      filterBtn.setAttribute("aria-label", label);
+      filterBtn.title = label;
+    }
+  }
+  function unmountHeaderToggle() {
+    document.getElementById(CLUSTER_ID)?.remove();
+  }
+  // src/main.ts
+  var ENABLED_KEY = "@reddit-reels/enabled";
+  var LAST_POST_KEY = "@reddit-reels/last-post";
   var isReelModeActive = false;
-  var topBarElement = null;
+  var pendingRestoreUntil = 0;
   var stopRedgifsReady = null;
-  function syncTopBarSound() {
-    syncTopBarState(topBarElement, audioManager.isMuted, feedManager.isVideosOnly);
+  function readEnabled() {
+    try {
+      if (typeof GM_getValue === "function") {
+        const v = GM_getValue(ENABLED_KEY, null);
+        if (v !== null)
+          return v !== "0";
+      }
+    } catch {}
+    try {
+      const v = localStorage.getItem(ENABLED_KEY);
+      if (v !== null)
+        return v !== "0";
+    } catch {}
+    return true;
+  }
+  function writeEnabled(on) {
+    try {
+      if (typeof GM_setValue === "function")
+        GM_setValue(ENABLED_KEY, on ? "1" : "0");
+    } catch {}
+    try {
+      localStorage.setItem(ENABLED_KEY, on ? "1" : "0");
+    } catch {}
+  }
+  var reelEnabled = readEnabled();
+  function postKey(el) {
+    return el.id || el.getAttribute("permalink") || "";
+  }
+  function rememberActivePost(el) {
+    try {
+      const key = postKey(el);
+      if (key)
+        sessionStorage.setItem(LAST_POST_KEY, `${location.pathname}|${key}`);
+    } catch {}
+  }
+  function rememberedKey() {
+    try {
+      const raw = sessionStorage.getItem(LAST_POST_KEY);
+      if (!raw)
+        return null;
+      const sep = raw.indexOf("|");
+      if (raw.slice(0, sep) !== location.pathname)
+        return null;
+      return raw.slice(sep + 1) || null;
+    } catch {
+      return null;
+    }
+  }
+  function findRememberedPost() {
+    try {
+      const key = rememberedKey();
+      if (!key)
+        return null;
+      for (const el of Array.from(document.querySelectorAll("shreddit-post"))) {
+        if (postKey(el) === key)
+          return el;
+      }
+    } catch {}
+    return null;
+  }
+  function syncSoundUi() {
+    syncOverlaySoundButtons(audioManager.isMuted);
   }
   function handleToggleMute() {
     unlockAudio();
-    const activePost = getClosestPostToViewport();
-    audioManager.toggleMute(activePost || undefined);
+    audioManager.toggleMute(getClosestPostToViewport() || undefined);
     audioManager.reassertActiveIframeUnmute();
-    syncTopBarSound();
-  }
-  function handleVolumeChange() {
-    syncTopBarSound();
   }
   var feedManager = new FeedManager({
-    isReelModeActive: () => isReelModeActive
+    isReelModeActive: () => isReelModeActive,
+    onActivePost: rememberActivePost,
+    onPostsAdded: () => {
+      mountToggle();
+      if (pendingRestoreUntil && Date.now() < pendingRestoreUntil) {
+        const el = findRememberedPost();
+        if (el && !el.classList.contains("rr-filtered-out")) {
+          pendingRestoreUntil = 0;
+          el.scrollIntoView({
+            behavior: "instant",
+            block: "start"
+          });
+          audioManager.requestPlayback(el);
+        }
+      }
+    },
+    onToggleMute: handleToggleMute
   });
   var inputController = new InputController({
     isReelModeActive: () => isReelModeActive,
@@ -3170,78 +3584,130 @@
         return null;
       }
     },
-    onExit: () => toggleReelMode(false),
+    onDoubleTap: (tappedPost) => {
+      try {
+        const reel = parsePostElement(tappedPost);
+        if (reel) {
+          const willBeUp = !reel.isUpvoted;
+          proxyUpvote(reel);
+          showVotePulse(willBeUp ? true : null);
+        }
+      } catch {}
+    },
+    onExit: () => setReelEnabled(false),
     onToggleMute: handleToggleMute,
-    onVolumeChange: handleVolumeChange,
+    onVolumeChange: () => syncSoundUi(),
     onToggleSubtitles: () => feedManager.toggleSubtitles(),
     onNextPost: () => feedManager.scrollToNext(),
     onPrevPost: () => feedManager.scrollToPrev()
   });
-  function toggleReelMode(forceState) {
-    const nextState = forceState !== undefined ? forceState : !isReelModeActive;
-    isReelModeActive = nextState;
-    const feedContainer = document.querySelector('shreddit-feed, #posts-container, [data-testid="feed-container"]') || document.querySelector("main") || document.body;
-    if (isReelModeActive) {
-      unlockAudio();
-      document.documentElement.classList.add("rr-active");
-      feedContainer?.classList.add("rr-feed-container");
-      feedManager.enhanceAllPosts();
-      feedManager.applyVideosOnlyFilter();
-      const activePost = getClosestPostToViewport();
-      if (activePost) {
-        activePost.scrollIntoView({ behavior: "instant", block: "start" });
-        audioManager.requestPlayback(activePost);
-      }
-      if (topBarElement)
-        topBarElement.remove();
-      topBarElement = createTopBar(audioManager.isMuted, feedManager.isVideosOnly, {
-        onExit: () => toggleReelMode(false),
-        onToggleFilter: () => {
-          const nextFilter = feedManager.toggleVideosOnly();
-          syncTopBarState(topBarElement, audioManager.isMuted, nextFilter);
-          const active = getClosestPostToViewport();
-          if (active) {
-            active.scrollIntoView({ behavior: "smooth", block: "start" });
-          }
-        },
-        onToggleMute: handleToggleMute
-      });
-      document.body.appendChild(topBarElement);
-      feedManager.startObservers();
-      inputController.attach();
-      if (!stopRedgifsReady) {
-        stopRedgifsReady = listenForRedGifsReady(() => ({
-          muted: audioManager.isMuted,
-          volume: audioManager.volume
-        }));
-      }
-    } else {
-      document.documentElement.classList.remove("rr-active");
-      feedContainer?.classList.remove("rr-feed-container");
-      audioManager.stopAll();
-      if (topBarElement) {
-        topBarElement.remove();
-        topBarElement = null;
-      }
-      feedManager.stopObservers();
-      inputController.detach();
-      feedManager.teardownAllPosts();
-    }
-  }
-  function init() {
-    if (typeof window !== "undefined" && /redgifs\.com/i.test(window.location.hostname)) {
+  function mountToggle() {
+    if (!isReelRoute(location.pathname)) {
+      unmountHeaderToggle();
       return;
     }
-    const fabContainerId = "rr-fab-container";
-    let fabContainer = document.getElementById(fabContainerId);
-    if (!fabContainer) {
-      fabContainer = document.createElement("div");
-      fabContainer.id = fabContainerId;
-      document.body.appendChild(fabContainer);
+    mountHeaderToggle({
+      onToggleReel: () => setReelEnabled(!reelEnabled),
+      onToggleFilter: () => {
+        if (!isReelModeActive)
+          return;
+        const anchor = getClosestPostToViewport();
+        feedManager.toggleVideosOnly();
+        syncHeaderToggle(reelEnabled, feedManager.isVideosOnly);
+        const target = anchor && !anchor.classList.contains("rr-filtered-out") ? anchor : getClosestPostToViewport();
+        target?.scrollIntoView({
+          behavior: "instant",
+          block: "start"
+        });
+      }
+    });
+    syncHeaderToggle(reelEnabled, feedManager.isVideosOnly);
+  }
+  function activate() {
+    if (isReelModeActive)
+      return;
+    const remembered = findRememberedPost();
+    pendingRestoreUntil = !remembered && rememberedKey() ? Date.now() + 3000 : 0;
+    const anchor = remembered || getClosestPostToViewport();
+    isReelModeActive = true;
+    document.documentElement.classList.add("rr-active");
+    feedManager.enhanceAllPosts();
+    feedManager.applyVideosOnlyFilter();
+    feedManager.startObservers();
+    inputController.attach();
+    if (!stopRedgifsReady) {
+      stopRedgifsReady = listenForRedGifsReady(() => ({
+        muted: audioManager.isMuted,
+        volume: audioManager.volume,
+        activeContainer: getClosestPostToViewport()
+      }));
     }
-    R(/* @__PURE__ */ u2(FabButton, {
-      onClick: () => toggleReelMode()
-    }, undefined, false, undefined, this), fabContainer);
+    const target = anchor && !anchor.classList.contains("rr-filtered-out") ? anchor : getClosestPostToViewport();
+    if (target) {
+      target.scrollIntoView({
+        behavior: "instant",
+        block: "start"
+      });
+      setTimeout(() => {
+        if (isReelModeActive && target.isConnected) {
+          target.scrollIntoView({
+            behavior: "instant",
+            block: "start"
+          });
+        }
+      }, 350);
+      audioManager.requestPlayback(target);
+    }
+  }
+  function deactivate() {
+    if (!isReelModeActive)
+      return;
+    const anchor = getClosestPostToViewport();
+    isReelModeActive = false;
+    pendingRestoreUntil = 0;
+    audioManager.stopAll();
+    feedManager.stopObservers();
+    inputController.detach();
+    feedManager.teardownAllPosts();
+    document.documentElement.classList.remove("rr-active", "rr-hide-captions");
+    if (stopRedgifsReady) {
+      stopRedgifsReady();
+      stopRedgifsReady = null;
+    }
+    if (anchor?.isConnected) {
+      anchor.scrollIntoView({
+        behavior: "instant",
+        block: "center"
+      });
+    }
+  }
+  function syncState() {
+    const shouldRun = reelEnabled && isReelRoute(location.pathname);
+    if (shouldRun)
+      activate();
+    else
+      deactivate();
+    mountToggle();
+  }
+  function setReelEnabled(on) {
+    reelEnabled = on;
+    writeEnabled(on);
+    if (on)
+      unlockAudio();
+    syncState();
+  }
+  function init() {
+    if (typeof window === "undefined")
+      return;
+    if (/redgifs\.com/i.test(window.location.hostname))
+      return;
+    if (window.top !== window.self)
+      return;
+    audioManager.onChange(syncSoundUi);
+    watchRoute(() => {
+      syncState();
+    });
+    syncState();
   }
   if (typeof document !== "undefined") {
     if (document.readyState === "loading") {

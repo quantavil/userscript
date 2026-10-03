@@ -2,34 +2,55 @@
    Fullscreen Reels Feed & Snap-Scroll Rules
    ========================================================= */
 
-/* Root Lock */
-html.rr-active,
+/* Root: the WINDOW is the scroller. Reddit's infinite loader, Back/forward
+   scroll restoration and lazy media all keep working because nothing nests. */
+html.rr-active {
+  scroll-snap-type: y mandatory !important;
+  overscroll-behavior-y: contain !important;
+  scrollbar-width: none !important;
+  background: #000000 !important;
+}
+
+html.rr-active::-webkit-scrollbar {
+  display: none !important;
+}
+
 html.rr-active body {
-  overflow: hidden !important;
   margin: 0 !important;
   padding: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  height: 100dvh !important;
   background: #000000 !important;
   color: #ffffff !important;
-  touch-action: pan-y !important;
   -webkit-user-select: none;
   user-select: none;
 }
 
-/* Suppress all Reddit outer framing in Reel Mode */
-html.rr-active header,
-html.rr-active nav,
+/* Reddit's header stays (search, account, menu) as a translucent bar over the reel */
+html.rr-active reddit-header-large,
+html.rr-active reddit-header-small {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: var(--rr-z-header) !important;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0)) !important;
+}
+
+html.rr-active reddit-header-large header,
+html.rr-active reddit-header-small header,
+html.rr-active reddit-header-large > *,
+html.rr-active reddit-header-small > * {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Suppress the rest of Reddit's framing in reel layout */
 html.rr-active aside,
 html.rr-active footer,
 html.rr-active .bottom-nav,
-html.rr-active [slot="header"],
-html.rr-active reddit-header-large,
-html.rr-active reddit-header-small,
+html.rr-active #left-sidebar-container,
+html.rr-active #right-sidebar-container,
 html.rr-active shreddit-async-loader[bundlename="bottom_bar"],
-html.rr-active shreddit-async-loader[bundlename="header"],
-html.rr-active shreddit-async-loader[bundlename="subgrid"],
 html.rr-active shreddit-comment-jump-button,
 html.rr-active reddit-comment-jump-button,
 html.rr-active .comment-jump-button,
@@ -42,45 +63,37 @@ html.rr-active [data-testid*="comment-jump" i],
 html.rr-active shreddit-back-to-top-button,
 html.rr-active back-to-top-button,
 html.rr-active faceplate-tracker[source="floating_action_bar"],
-html.rr-active [slot="floating-action-bar"] {
+html.rr-active [slot="floating-action-bar"],
+html.rr-active shreddit-ad-post,
+html.rr-active shreddit-feed > hr,
+html.rr-active shreddit-feed hr,
+html.rr-active masthead-ad,
+html.rr-active .masthead {
   display: none !important;
   visibility: hidden !important;
 }
 
-/* Post Container / Scroll Track */
+/* Feed wrappers: full width, no gutters, no own scrolling */
 html.rr-active #subgrid-container,
 html.rr-active main,
 html.rr-active .main-container,
+html.rr-active #main-content,
 html.rr-active #posts-container,
-html.rr-active [data-testid="posts-list"],
-html.rr-active .rr-feed-container {
-  height: 100vh !important;
-  height: 100dvh !important;
+html.rr-active shreddit-feed,
+html.rr-active [data-testid="posts-list"] {
   width: 100vw !important;
   max-width: 100vw !important;
   margin: 0 !important;
   padding: 0 !important;
-  overflow-y: scroll !important;
-  overflow-x: hidden !important;
-  scroll-snap-type: y mandatory !important;
-  overscroll-behavior-y: contain !important;
-  scrollbar-width: none !important; /* Firefox */
+  overflow: visible !important;
   background: #000000 !important;
   display: block !important;
 }
 
-html.rr-active #subgrid-container::-webkit-scrollbar,
-html.rr-active main::-webkit-scrollbar,
-html.rr-active #posts-container::-webkit-scrollbar,
-html.rr-active .rr-feed-container::-webkit-scrollbar {
-  display: none !important;
-}
-
 /* Single Reel Slide (shreddit-post, article, div containers) */
 html.rr-active shreddit-post,
-html.rr-active .rr-feed-container > article,
-html.rr-active .rr-feed-container > div[data-testid="post-container"],
-html.rr-active .rr-feed-container > .Post {
+html.rr-active #posts-container > article,
+html.rr-active [data-testid="posts-list"] > div[data-testid="post-container"] {
   height: 100vh !important;
   height: 100dvh !important;
   width: 100vw !important;
@@ -105,7 +118,6 @@ html.rr-active .rr-feed-container > .Post {
 /* Ensure post media wrapper fills viewport */
 html.rr-active shreddit-post [slot="post-media-container"],
 html.rr-active shreddit-post .media-container,
-html.rr-active .rr-feed-container .media-container,
 html.rr-active shreddit-post shreddit-aspect-ratio,
 html.rr-active shreddit-post shreddit-player-2 {
   position: absolute !important;
@@ -135,10 +147,7 @@ html.rr-active shreddit-post shreddit-player-2 {
 html.rr-active shreddit-post video,
 html.rr-active shreddit-post iframe,
 html.rr-active shreddit-post .rr-embedded-iframe,
-html.rr-active shreddit-post:not(.rr-is-link):not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb):not(.shreddit-subreddit-icon__icon):not(.post-background-image-filter),
-html.rr-active .rr-feed-container video,
-html.rr-active .rr-feed-container iframe,
-html.rr-active .rr-feed-container > article:not(.rr-is-link):not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb) {
+html.rr-active shreddit-post:not(.rr-is-link):not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb):not(.shreddit-subreddit-icon__icon):not(.post-background-image-filter) {
   position: absolute !important;
   inset: 0 !important;
   width: 100% !important;
@@ -187,7 +196,6 @@ html.rr-active shreddit-post [slot="post-media-container"] > .pointer-events-non
 /* Vertical video full-bleed scaling: fills 100% width and height without letterbox bars */
 html.rr-active shreddit-post.rr-has-vertical-video video,
 html.rr-active shreddit-post video.rr-vertical-video,
-html.rr-active .rr-feed-container video.rr-vertical-video,
 html.rr-active shreddit-post[data-vertical-video="true"] video {
   object-fit: cover !important;
 }
@@ -265,7 +273,7 @@ html.rr-active .rr-native-offscreen {
 }
 
 /* Bare media taps must not navigate: only explicit overlay/card buttons open URLs */
-html.rr-active shreddit-post a:not(.rr-sub-badge):not(.rr-author):not(.rr-link-card-btn):not(.rr-text-card-body a):not(.rr-comments-drawer a):not(.rr-drawer-btn),
+html.rr-active shreddit-post a:not(.rr-sub-badge):not(.rr-author):not(.rr-link-card-btn):not(.rr-text-card-body a),
 html.rr-active shreddit-post a[data-click-id="body"],
 html.rr-active shreddit-post a[slot="full-post-link"],
 html.rr-active shreddit-post a[href*="/comments/"],
@@ -276,15 +284,14 @@ html.rr-active shreddit-post shreddit-media-lightbox-listener a {
 
 html.rr-active .rr-post-overlay a,
 html.rr-active .rr-link-card-container a,
-html.rr-active .rr-text-card-container a,
-html.rr-active .rr-comments-drawer a {
+html.rr-active .rr-text-card-container a {
   pointer-events: auto !important;
 }
 
 /* Videos-only filter: scoped under html.rr-active so exit automatically restores visibility */
 html.rr-active shreddit-post.rr-filtered-out,
-html.rr-active .rr-feed-container > article.rr-filtered-out,
-html.rr-active .rr-feed-container > div.rr-filtered-out {
+html.rr-active article.rr-filtered-out,
+html.rr-active div.rr-filtered-out {
   display: none !important;
 }
 

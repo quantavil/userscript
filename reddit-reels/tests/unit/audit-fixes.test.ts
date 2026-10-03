@@ -7,7 +7,7 @@ import { SELECTORS } from '../../src/core/selectors';
 import { renderReelOverlay } from '../../src/ui/overlay';
 import { renderTextCard } from '../../src/cards/text-card';
 import { renderLinkCard } from '../../src/cards/link-card';
-import { createTopBar } from '../../src/ui/top-bar';
+import { mountHeaderToggle, syncHeaderToggle } from '../../src/ui/header-toggle';
 import { unconstrainPostMedia } from '../../src/core/unconstrainer';
 import { ReelPost } from '../../src/extractor/types';
 import { AudioManager, applyAudioState } from '../../src/media/audio-manager';
@@ -261,23 +261,41 @@ describe('Audit Fixes & Robustness Tests', () => {
     expect(cta?.tagName.toLowerCase()).toBe('a');
   });
 
-  it('Issue 30: Top bar labels say "Videos only" and "All posts"', () => {
-    const topBar = createTopBar(false, false, {
-      onToggleMute: () => {},
-      onToggleFilter: () => {},
-      onExit: () => {},
-    });
+  it('Header toggle mounts next to the user menu and reflects reel + filter state', () => {
+    const header = document.createElement('header');
+    const nav = document.createElement('nav');
+    const userBtn = document.createElement('button');
+    userBtn.id = 'expand-user-drawer-button';
+    nav.appendChild(userBtn);
+    header.appendChild(nav);
+    document.body.appendChild(header);
 
-    const filterBtn = topBar.querySelector('.rr-filter-btn-top')!;
-    expect(filterBtn.textContent).toContain('All posts');
+    let reelToggled = 0;
+    const cluster = mountHeaderToggle({ onToggleReel: () => reelToggled++, onToggleFilter: () => {} });
+    expect(cluster.nextElementSibling).toBe(userBtn);
+    expect(cluster.classList.contains('is-floating')).toBe(false);
 
-    const topBarActive = createTopBar(false, true, {
-      onToggleMute: () => {},
-      onToggleFilter: () => {},
-      onExit: () => {},
-    });
-    const filterBtnActive = topBarActive.querySelector('.rr-filter-btn-top')!;
-    expect(filterBtnActive.textContent).toContain('Videos only');
+    syncHeaderToggle(true, false);
+    const reelBtn = cluster.querySelector('.rr-header-reel')!;
+    expect(reelBtn.getAttribute('aria-label')).toBe('Switch to list view');
+    expect(cluster.querySelector('.rr-header-filter')!.getAttribute('aria-pressed')).toBe('false');
+
+    syncHeaderToggle(false, true);
+    expect(reelBtn.getAttribute('aria-label')).toBe('Switch to reel view');
+    expect(cluster.querySelector('.rr-header-filter')!.classList.contains('is-active')).toBe(true);
+
+    (reelBtn as HTMLButtonElement).click();
+    expect(reelToggled).toBe(1);
+
+    // Mounting again does not duplicate
+    mountHeaderToggle({ onToggleReel: () => {}, onToggleFilter: () => {} });
+    expect(document.querySelectorAll('#rr-header-cluster').length).toBe(1);
+  });
+
+  it('Header toggle floats when Reddit header anchors are missing', () => {
+    const cluster = mountHeaderToggle({ onToggleReel: () => {}, onToggleFilter: () => {} });
+    expect(cluster.classList.contains('is-floating')).toBe(true);
+    expect(cluster.parentElement).toBe(document.body);
   });
 
   it('Issue 33: Centralized selector registry is defined and populated', () => {

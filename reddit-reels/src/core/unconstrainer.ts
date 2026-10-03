@@ -261,12 +261,6 @@ export function unconstrainPlayerShadow(player: HTMLElement): void {
           z-index: 10 !important;
           pointer-events: none !important;
         }
-        :host .play-pause-overlay,
-        :host [data-testid="play-pause-button"],
-        :host shreddit-player-controls,
-        :host .controls-overlay {
-          pointer-events: none !important;
-        }
       `;
       player.shadowRoot.appendChild(shadowStyle);
     }

@@ -8,11 +8,18 @@ Guidance for agentic development on the **Reddit Reel Mode** userscript (`reddit
 
 - **File Size & Decomposition**: Keep source files focused and under 150 lines where practical. Never create monolithic orchestrators.
   - `src/cards/`: Discussion text cards and external link preview cards (`text-card.ts`, `link-card.ts`).
-  - `src/core/`: Feed transformation (`feed-manager.ts`), scroll snap, input/touch controllers (`input-controller.ts`), centralized selector registry (`selectors.ts`), DOM state backup and restoration (`teardown-store.ts`), unconstrainer logic (`unconstrainer.ts`).
+  - `src/core/`: Feed-route matching and client-side navigation watching (`route.ts`), feed transformation (`feed-manager.ts`), input/touch controllers (`input-controller.ts`), centralized selector registry (`selectors.ts`), DOM state backup and restoration (`teardown-store.ts`), unconstrainer logic (`unconstrainer.ts`).
   - `src/extractor/`: `<shreddit-post>` DOM extraction, metadata parsing, and native vote proxying.
   - `src/media/`: Single-media audio mutex (`AudioManager`), active carousel slide tracking (`gallery-media.ts`), RedGifs iframe bridge (`redgifs-bridge.ts`), and video resolvers (`media/index.ts`).
-  - `src/styles/`: Domain-specific stylesheets (`base`, `feed`, `cards`, `comments`, `gallery`, `overlay`, `top-bar`).
-  - `src/ui/`: Floating controls, overlay actions, author badges, inline comments drawer (`comments-drawer.ts`), and pulse animations.
+  - `src/styles/`: Domain-specific stylesheets (`base`, `feed`, `cards`, `gallery`, `overlay`, `header`).
+  - `src/ui/`: Header reel/list toggle (`header-toggle.ts`), overlay actions and author badges (`overlay.ts`), and pulse animations.
+- **Work With Reddit, Not Against It**: The reel is Reddit's own feed restyled in place. There is no launcher button and no separate reel app.
+  - Reel layout activates automatically on feed routes (`isReelRoute`) while the persisted preference (`@reddit-reels/enabled`) is on. It never runs on post pages, tool pages, or inside iframes.
+  - Route changes come from `watchRoute` (Navigation API, wrapped `history.pushState/replaceState`, `popstate`, bfcache `pageshow`). Never rely on `popstate` alone; Reddit navigates with `pushState`.
+  - The **window** is the scroller (`html { scroll-snap-type: y mandatory }`). Never turn `main` or any feed wrapper into a nested scroll container: it breaks Reddit's infinite loader, scroll restoration and Back.
+  - Reddit's header stays visible (translucent, fixed). The reel/list toggle mounts into it next to `#expand-user-drawer-button` / `#login-button`, with a floating fallback.
+  - Comments open Reddit's own post page by clicking the post's native full-post link (client-side navigation). Never iframe Reddit pages: the `?embedded=true` route serves old Reddit, and the script would run again inside the frame.
+  - Reddit's native player control bar (seek, play, captions, fullscreen) must stay clickable; `InputController` lets taps on native controls through via `composedPath()`. Programmatic (`!isTrusted`) clicks are never intercepted.
 - **No Inline Styles**: Avoid sprawling inline `element.style` modifications; prefer dedicated scoped CSS classes prefixed with `.rr-`.
 - **Zero Runtime Dependencies**: The runtime bundle is 100% vanilla TypeScript / browser DOM without virtual DOM frameworks (no React/Preact) or heavy utilities. All UI elements are created directly via `document.createElement`.
 - **Clean Teardown Contract**: Exiting Reel Mode must cleanly reverse all injected DOM (`.rr-post-overlay`, card containers, embedded iframes) and restore original dimensions/attributes bit-for-bit via `teardown-store.ts` without leaving native feeds collapsed or overlapped. All `rr` dataset flags must be deleted on exit.
@@ -22,8 +29,10 @@ Guidance for agentic development on the **Reddit Reel Mode** userscript (`reddit
 
 ## 🔊 Audio & Playback Contract
 
-- **Single-Media Focus Mutex**: `AudioManager` is the sole authority for media playback.
-- **Zero Audio Bleed**: Navigating between posts must immediately pause, mute, and reset all previous video elements and embedded iframes. Overlapping audio is strictly prohibited.
+- **Single-Media Focus Rule**: Reddit's player owns decoding, buffering and its controls; `AudioManager` only enforces that exactly one post plays, at the user's mute/volume. Never write to the player custom element's own attributes/properties (`muted`, `volume`) and never overwrite a video's `src` while Reddit is still loading it (`video-hydrator.ts` is a delayed last resort).
+- **Zero Audio Bleed**: Navigating between posts must immediately pause and mute all other media. Reddit's videos live in shadow roots that `document.querySelectorAll('video')` misses, so videos are tracked in a registry (`guardVideo`). A guarded non-active video that starts playing is paused again.
+- **Native Control Sync**: A mute/volume change on the active video within 1.5s of a user gesture is adopted as the global preference (and emitted via `onChange`). A change without a gesture is the player resetting itself, and is reverted (max 3 times per slide).
+- **Embed Parking**: Injected embeds start as `about:blank` with `data-rr-src` and load only when their post becomes active. Inactive embeds are paused through the RedGifs bridge when it reported `READY`, otherwise unloaded.
 - **Active Slide Targeting**: In multi-video galleries/carousels, playback and audio state must target only the currently visible slide (`gallery-media.ts`). Non-target videos in the same container must remain paused.
 - **Default State**: Audio begins unmuted by default unless explicitly toggled off by the user. Mute state persists across page reloads.
 - **RedGifs & External Iframe Protocol**: RedGifs embed iframes (`https://*.redgifs.com/ifr/*`) run the userscript directly in their context. The `redgifs-bridge` synchronizes mute, volume, and playback in real-time via `postMessage` (`SET_AUDIO`, `PAUSE`, `PLAY`) and shared `GM_getValue` storage without mutating `iframe.src` (which avoids destructive reloading).

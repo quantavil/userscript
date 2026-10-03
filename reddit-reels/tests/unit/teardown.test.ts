@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { GlobalWindow } from 'happy-dom';
 import { FeedManager } from '../../src/core/feed-manager';
 import { extractPostId } from '../../src/extractor/dom-extractor';
-import { getCcIconSvg } from '../../src/ui/overlay';
+import { getCcIconSvg, openPostNatively } from '../../src/ui/overlay';
 import { audioManager } from '../../src/media';
 
 describe('Teardown and Audit Bug Fixes', () => {
@@ -241,46 +241,22 @@ describe('Teardown and Audit Bug Fixes', () => {
     expect((carousel as any)._rrAbortController).toBeUndefined();
   });
 
-  it('Comments Feature: openCommentsDrawer opens same-origin drawer and closes cleanly', () => {
-    const { openCommentsDrawer, closeCommentsDrawer, isCommentsDrawerOpen } = require('../../src/ui/comments-drawer');
-
-    let beforeOpenCalled = false;
-    let closeCalled = false;
-
-    const post = {
-      id: 't3_comments1',
-      title: 'Exciting Discussion',
-      author: 'redditor1',
-      subreddit: 'r/askreddit',
-      score: 1200,
-      commentCount: 450,
-      permalink: '/r/askreddit/comments/comments1/exciting_discussion/',
-      postType: 'text' as const,
-    };
-
-    const drawer = openCommentsDrawer(post, {
-      onBeforeOpen: () => { beforeOpenCalled = true; },
-      onClose: () => { closeCalled = true; },
+  it('Comments open through the native full-post link (new Reddit), not an iframe', () => {
+    const postEl = document.createElement('shreddit-post');
+    const link = document.createElement('a');
+    link.setAttribute('slot', 'full-post-link');
+    link.href = 'https://www.reddit.com/r/askreddit/comments/abc/x/';
+    let clicked = 0;
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      clicked++;
     });
+    postEl.appendChild(link);
+    document.body.appendChild(postEl);
 
-    expect(beforeOpenCalled).toBe(true);
-    expect(isCommentsDrawerOpen()).toBe(true);
-    expect(document.querySelector('.rr-comments-drawer')).not.toBeNull();
-    expect(document.querySelector('.rr-comments-backdrop')).not.toBeNull();
-
-    const iframe = drawer.querySelector<HTMLIFrameElement>('.rr-drawer-iframe')!;
-    expect(iframe.src).toContain('https://www.reddit.com/r/askreddit/comments/comments1/exciting_discussion/');
-    expect(iframe.src).toContain('embedded=true');
-
-    // Title and comment count
-    const titleEl = drawer.querySelector('.rr-drawer-title');
-    expect(titleEl?.textContent).toBe('Exciting Discussion');
-    const subtitleEl = drawer.querySelector('.rr-drawer-subtitle');
-    expect(subtitleEl?.textContent).toContain('450 comments');
-
-    // Close drawer
-    closeCommentsDrawer();
-    expect(closeCalled).toBe(true);
+    openPostNatively(postEl, '/r/askreddit/comments/abc/x/');
+    expect(clicked).toBe(1);
+    expect(document.querySelector('iframe')).toBeNull();
   });
 
   it('Shadow DOM Helper: shadowContains correctly detects elements in shadow trees', () => {

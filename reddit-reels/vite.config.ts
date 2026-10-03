@@ -14,9 +14,9 @@ export default defineConfig({
           'https://*.redgifs.com/ifr/*',
           'https://www.redgifs.com/ifr/*'
         ],
-        description: 'Swipe Reddit feeds like reels: unmuted playback, galleries, and native voting.',
+        description: 'Turns Reddit feeds into a swipeable reel in place: one post per screen, single unmuted stream, RedGifs, native player controls and voting.',
         author: 'quantavil',
-        version: '1.4.0',
+        version: '2.0.0',
         license: 'MIT',
         'run-at': 'document-end',
         homepage: 'https://github.com/quantavil/userscript/tree/main/reddit-reels',

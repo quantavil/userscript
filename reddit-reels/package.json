@@ -1,6 +1,6 @@
 {
   "name": "reddit-reels",
-  "version": "1.4.0",
+  "version": "2.0.0",
   "author": "quantavil",
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
@@ -12,7 +12,7 @@
     "vite": "^8.3.1",
     "vite-plugin-monkey": "^8.1.1"
   },
-  "description": "Swipe Reddit feeds like reels: unmuted playback, galleries, and native voting.",
+  "description": "Turns Reddit feeds into a swipeable reel in place: one post per screen, single unmuted stream, RedGifs, native player controls and voting.",
   "license": "MIT",
   "private": true,
   "scripts": {

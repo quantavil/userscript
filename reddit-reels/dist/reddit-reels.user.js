@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Reddit Reels
 // @namespace    https://github.com/quantavil/userscript/tree/main/reddit-reels
-// @version      1.4.0
+// @version      2.0.0
 // @author       quantavil
-// @description  Swipe Reddit feeds like reels: unmuted playback, galleries, and native voting.
+// @description  Turns Reddit feeds into a swipeable reel in place: one post per screen, single unmuted stream, RedGifs, native player controls and voting.
 // @license      MIT
 // @homepage     https://github.com/quantavil/userscript/tree/main/reddit-reels
 // @supportURL   https://github.com/quantavil/userscript/issues
@@ -185,6 +185,13 @@
 		".arrow.downmod"
 	];
 	function queryDeep(root, selectors) {
+		const isOurs = (el) => {
+			try {
+				return !!el.closest?.(".rr-post-overlay, .rr-link-card-container, .rr-text-card-container");
+			} catch {
+				return false;
+			}
+		};
 		const isHidden = (el) => {
 			try {
 				if (el.hidden) return true;
@@ -221,7 +228,7 @@
 		};
 		for (const selector of selectors) try {
 			const found = root.querySelector(selector);
-			if (found && !isHidden(found)) {
+			if (found && !isOurs(found) && !isHidden(found)) {
 				if (found.tagName.toLowerCase() === "button") return found;
 			}
 		} catch {}
@@ -233,10 +240,10 @@
 		} catch {}
 		const all = [];
 		collect(root, all);
-		const visible = all.filter((el) => !isHidden(el));
-		const btn = visible.find((el) => el.tagName.toLowerCase() === "button");
-		if (btn) return btn;
-		return visible[0] || null;
+		const native = all.filter((el) => !isOurs(el));
+		const visible = native.filter((el) => !isHidden(el));
+		const isButton = (el) => el.tagName.toLowerCase() === "button";
+		return visible.find(isButton) || native.find(isButton) || visible[0] || native[0] || null;
 	}
 	function checkIsUpvoted(element) {
 		const voteState = element.getAttribute("vote-state") || element.getAttribute("score-state");
@@ -524,6 +531,29 @@
 		}
 		return success;
 	}
+	function getActiveCarouselSlide(carouselContainer) {
+		const list = carouselContainer.querySelector("ul[slot=\"items\"], [slot=\"items\"], .carousel-items, ul");
+		if (!list) return null;
+		const items = Array.from(list.children).filter((el) => typeof HTMLElement !== "undefined" ? el instanceof HTMLElement : Boolean(el && el.nodeType === 1));
+		if (items.length === 0) return null;
+		if (items.length === 1) return items[0];
+		const scrollLeft = list.scrollLeft;
+		let closestSlide = items[0];
+		let minDiff = Infinity;
+		for (const item of items) {
+			const diff = Math.abs(item.offsetLeft - scrollLeft);
+			if (diff < minDiff) {
+				minDiff = diff;
+				closestSlide = item;
+			}
+		}
+		return closestSlide;
+	}
+	function findActiveSlideVideo(carouselContainer) {
+		const slide = getActiveCarouselSlide(carouselContainer);
+		if (!slide) return null;
+		return slide.querySelector("video");
+	}
 	function readPlayerSrc(player) {
 		try {
 			const direct = player.getAttribute("stream-url") || player.getAttribute("src");
@@ -564,80 +594,45 @@
 			video.preload = "auto";
 		} catch {}
 	}
-	function getActiveCarouselSlide(carouselContainer) {
-		const list = carouselContainer.querySelector("ul[slot=\"items\"], [slot=\"items\"], .carousel-items, ul");
-		if (!list) return null;
-		const items = Array.from(list.children).filter((el) => typeof HTMLElement !== "undefined" ? el instanceof HTMLElement : Boolean(el && el.nodeType === 1));
-		if (items.length === 0) return null;
-		if (items.length === 1) return items[0];
-		const scrollLeft = list.scrollLeft;
-		let closestSlide = items[0];
-		let minDiff = Infinity;
-		for (const item of items) {
-			const diff = Math.abs(item.offsetLeft - scrollLeft);
-			if (diff < minDiff) {
-				minDiff = diff;
-				closestSlide = item;
-			}
-		}
-		return closestSlide;
-	}
-	function findActiveSlideVideo(carouselContainer) {
-		const slide = getActiveCarouselSlide(carouselContainer);
-		if (!slide) return null;
-		return slide.querySelector("video");
-	}
 	var STORAGE_KEY = "reddit_reels_muted";
-	function getInitialMuteState() {
-		try {
-			if (typeof GM_getValue === "function") {
-				const gmVal = GM_getValue(STORAGE_KEY, null);
-				if (gmVal !== null && typeof gmVal === "boolean") return gmVal;
-			}
-		} catch {}
-		try {
-			if (typeof localStorage !== "undefined") {
-				const localVal = localStorage.getItem(STORAGE_KEY);
-				if (localVal !== null) return localVal === "true";
-			}
-		} catch {}
-		return false;
-	}
-	function persistMuteState(muted) {
-		try {
-			if (typeof GM_setValue === "function") GM_setValue(STORAGE_KEY, muted);
-		} catch {}
-		try {
-			if (typeof localStorage !== "undefined") localStorage.setItem(STORAGE_KEY, String(muted));
-		} catch {}
-	}
 	var VOLUME_KEY = "reddit_reels_volume";
-	function getInitialVolume() {
+	var POST_SELECTOR = "shreddit-post, [data-post-id], article";
+	var EMBED_HOSTS = /(?:redgifs\.com|streamable\.com|gfycat\.com|youtube\.com|youtube-nocookie\.com|youtu\.be)/i;
+	var REDGIFS_HOST = /redgifs\.com/i;
+	var USER_GESTURE_MS = 1500;
+	var HYDRATE_DELAY_MS = 1500;
+	var MAX_REASSERTS = 3;
+	function readStored(key, parse, fallback) {
 		try {
 			if (typeof GM_getValue === "function") {
-				const gmVal = GM_getValue(VOLUME_KEY, null);
-				if (typeof gmVal === "number" && gmVal >= 0 && gmVal <= 1) return gmVal;
+				const v = parse(GM_getValue(key, null));
+				if (v !== null) return v;
 			}
 		} catch {}
 		try {
 			if (typeof localStorage !== "undefined") {
-				const raw = localStorage.getItem(VOLUME_KEY);
+				const raw = localStorage.getItem(key);
 				if (raw !== null) {
-					const n = parseFloat(raw);
-					if (!Number.isNaN(n) && n >= 0 && n <= 1) return n;
+					const v = parse(raw);
+					if (v !== null) return v;
 				}
 			}
 		} catch {}
-		return 1;
+		return fallback;
 	}
-	function persistVolume(volume) {
+	function writeStored(key, value) {
 		try {
-			if (typeof GM_setValue === "function") GM_setValue(VOLUME_KEY, volume);
+			if (typeof GM_setValue === "function") GM_setValue(key, value);
 		} catch {}
 		try {
-			if (typeof localStorage !== "undefined") localStorage.setItem(VOLUME_KEY, String(volume));
+			if (typeof localStorage !== "undefined") localStorage.setItem(key, String(value));
 		} catch {}
 	}
+	var parseBool = (raw) => typeof raw === "boolean" ? raw : raw === "true" ? true : raw === "false" ? false : null;
+	var parseVolume = (raw) => {
+		const n = typeof raw === "number" ? raw : typeof raw === "string" ? parseFloat(raw) : NaN;
+		return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null;
+	};
 	function normalizeIframeSrc(src, isMuted) {
 		if (!src || src === "about:blank") return src;
 		const target = isMuted ? "muted=1" : "muted=0";
@@ -666,6 +661,7 @@
 				if (!data || data.source !== "redgifs-bridge" || data.type !== "READY") return;
 				const src = event.source;
 				if (!src || typeof src.postMessage !== "function") return;
+				audioManager.markBridgeReady(src);
 				const state = getState();
 				const active = state.activeContainer;
 				if (active) {
@@ -715,13 +711,7 @@
 			const AudioCtx = window.AudioContext || window.webkitAudioContext;
 			if (!AudioCtx) return;
 			if (!sharedAudioCtx || sharedAudioCtx.state === "closed") sharedAudioCtx = new AudioCtx();
-			const ctx = sharedAudioCtx;
-			if (ctx.state === "suspended") ctx.resume().catch(() => {});
-			const buffer = ctx.createBuffer(1, 1, 22050);
-			const source = ctx.createBufferSource();
-			source.buffer = buffer;
-			source.connect(ctx.destination);
-			source.start(0);
+			if (sharedAudioCtx.state === "suspended") sharedAudioCtx.resume().catch(() => {});
 		} catch {}
 	}
 	function deepFindMediaElements(root) {
@@ -730,14 +720,16 @@
 		const players = [];
 		function traverse(node) {
 			if (!node) return;
-			if (typeof HTMLVideoElement !== "undefined" && node instanceof HTMLVideoElement || node.tagName?.toLowerCase() === "video") videos.push(node);
-			else if (typeof HTMLAudioElement !== "undefined" && node instanceof HTMLAudioElement || node.tagName?.toLowerCase() === "audio") audios.push(node);
-			else if (node instanceof HTMLElement) {
-				const tag = node.tagName.toLowerCase();
+			const tag = node.tagName?.toLowerCase?.();
+			if (tag === "video") videos.push(node);
+			else if (tag === "audio") audios.push(node);
+			else if (tag) {
 				if (tag.includes("player") || tag.includes("vds-media") || tag.includes("vds-video") || tag.includes("vds-audio")) players.push(node);
-				if (node.shadowRoot) traverse(node.shadowRoot);
+				const sr = node.shadowRoot;
+				if (sr) traverse(sr);
 			}
-			if (node.childNodes && node.childNodes.length > 0) for (let i = 0; i < node.childNodes.length; i++) traverse(node.childNodes[i]);
+			const children = node.childNodes;
+			for (let i = 0; i < (children?.length || 0); i++) traverse(children[i]);
 		}
 		traverse(root);
 		return {
@@ -755,10 +747,13 @@
 		}
 		return false;
 	}
+	function isEmbedIframe(ifr) {
+		return EMBED_HOSTS.test(`${ifr.src || ""} ${ifr.dataset.rrSrc || ""}`);
+	}
 	function applyAudioState(container, isMuted, volume = 1, activeTargetVideo) {
 		if (!container) return;
 		const level = isMuted ? 0 : volume;
-		const { videos, audios, players } = deepFindMediaElements(container);
+		const { videos, audios } = deepFindMediaElements(container);
 		for (const video of videos) try {
 			const isTarget = activeTargetVideo !== void 0 ? video === activeTargetVideo : videos.length === 1 || video === videos[0];
 			video.muted = isMuted;
@@ -770,34 +765,25 @@
 		for (const audio of audios) try {
 			audio.muted = isMuted;
 			audio.volume = level;
-			if (!isMuted && audio.paused) audio.play().catch(() => {});
+			if (isMuted && !audio.paused) audio.pause();
 		} catch {}
-		for (const player of players) try {
-			if (isMuted) {
-				player.setAttribute("muted", "");
-				player.muted = true;
-			} else {
-				player.removeAttribute("muted");
-				player.muted = false;
-				player.volume = level;
-			}
-		} catch {}
-		const iframes = container.querySelectorAll("iframe");
-		for (const ifr of iframes) try {
-			if (!ifr.src || ifr.src === "about:blank") continue;
-			ifr.contentWindow?.postMessage({
-				source: "reddit-reels",
-				type: "SET_AUDIO",
-				muted: isMuted,
-				volume: level
-			}, "*");
-			ifr.contentWindow?.postMessage({
-				action: isMuted ? "mute" : "unmute",
-				type: isMuted ? "mute" : "unmute",
-				muted: isMuted,
-				volume: level
-			}, "*");
-		} catch {}
+		container.querySelectorAll("iframe").forEach((ifr) => {
+			try {
+				if (!ifr.src || ifr.src === "about:blank") return;
+				ifr.contentWindow?.postMessage({
+					source: "reddit-reels",
+					type: "SET_AUDIO",
+					muted: isMuted,
+					volume: level
+				}, "*");
+				ifr.contentWindow?.postMessage({
+					action: isMuted ? "mute" : "unmute",
+					type: isMuted ? "mute" : "unmute",
+					muted: isMuted,
+					volume: level
+				}, "*");
+			} catch {}
+		});
 	}
 	var AudioManager = class {
 		_isMuted;
@@ -805,35 +791,65 @@
 		activeContainer = null;
 		activeVideo = null;
 		videoCache = new WeakMap();
+		knownVideos = new Set();
+		guardedVideos = new WeakSet();
+		autoplayMuted = new WeakSet();
+		bridgeFrames = new WeakSet();
+		lastGestureAt = 0;
+		reasserts = 0;
+		hydrateTimer = null;
+		listeners = new Set();
 		constructor(initialMuted, initialVolume) {
-			this._isMuted = initialMuted !== void 0 ? initialMuted : getInitialMuteState();
-			this._volume = initialVolume !== void 0 ? initialVolume : getInitialVolume();
+			this._isMuted = initialMuted !== void 0 ? initialMuted : readStored(STORAGE_KEY, parseBool, false);
+			this._volume = initialVolume !== void 0 ? initialVolume : readStored(VOLUME_KEY, parseVolume, 1);
+			if (typeof document !== "undefined") {
+				const mark = () => {
+					this.lastGestureAt = Date.now();
+				};
+				document.addEventListener("pointerdown", mark, true);
+				document.addEventListener("keydown", mark, true);
+			}
 		}
 		get isMuted() {
 			return this._isMuted;
 		}
 		set isMuted(value) {
 			this._isMuted = value;
-			persistMuteState(this._isMuted);
-			this.syncActiveMute();
+			writeStored(STORAGE_KEY, value);
+			this.syncActive();
+			this.emit();
 		}
 		get volume() {
 			return this._volume;
 		}
+		onChange(cb) {
+			this.listeners.add(cb);
+			return () => this.listeners.delete(cb);
+		}
+		emit() {
+			this.listeners.forEach((cb) => {
+				try {
+					cb();
+				} catch {}
+			});
+		}
+		markBridgeReady(win) {
+			try {
+				this.bridgeFrames.add(win);
+			} catch {}
+		}
 		setVolume(level, container) {
 			const clamped = Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 1;
 			this._volume = clamped;
-			persistVolume(clamped);
-			if (clamped === 0 && !this._isMuted) {
-				this._isMuted = true;
-				persistMuteState(true);
-			} else if (clamped > 0 && this._isMuted) {
-				this._isMuted = false;
-				persistMuteState(false);
+			writeStored(VOLUME_KEY, clamped);
+			const nextMuted = clamped === 0;
+			if (nextMuted !== this._isMuted) {
+				this._isMuted = nextMuted;
+				writeStored(STORAGE_KEY, nextMuted);
 			}
-			const target = container || this.activeContainer;
-			if (target) applyAudioState(target, this._isMuted, this._volume);
-			this.syncActiveMute();
+			if (container && container !== this.activeContainer) applyAudioState(container, this._isMuted, this._volume);
+			else this.syncActive();
+			this.emit();
 			return this._volume;
 		}
 		adjustVolume(delta, container) {
@@ -845,47 +861,126 @@
 		getActiveContainer() {
 			return this.activeContainer;
 		}
+		guardVideo(video) {
+			this.knownVideos.add(video);
+			if (this.guardedVideos.has(video) || typeof video.addEventListener !== "function") return;
+			this.guardedVideos.add(video);
+			video.addEventListener("play", () => {
+				if (!this.activeContainer) return;
+				if (video === this.activeVideo) return;
+				if (shadowContains(this.activeContainer, video)) {
+					const prev = this.activeVideo;
+					this.activeVideo = video;
+					if (prev && prev !== video) this.pauseVideo(prev);
+					try {
+						video.muted = this._isMuted;
+						video.volume = this._isMuted ? 0 : this._volume;
+					} catch {}
+					return;
+				}
+				try {
+					video.pause();
+					video.muted = true;
+				} catch {}
+			});
+			video.addEventListener("volumechange", () => {
+				if (video !== this.activeVideo) return;
+				const level = video.muted ? 0 : video.volume;
+				const expectedLevel = this._isMuted ? 0 : this._volume;
+				if (video.muted === this._isMuted && Math.abs(level - expectedLevel) < .01) return;
+				if (video.muted && this.autoplayMuted.has(video)) return;
+				if (Date.now() - this.lastGestureAt < USER_GESTURE_MS) {
+					this.autoplayMuted.delete(video);
+					this._isMuted = video.muted || video.volume === 0;
+					if (!video.muted && video.volume > 0) this._volume = video.volume;
+					writeStored(STORAGE_KEY, this._isMuted);
+					writeStored(VOLUME_KEY, this._volume);
+					this.reasserts = 0;
+					this.emit();
+				} else if (this.reasserts < MAX_REASSERTS) {
+					this.reasserts++;
+					try {
+						video.muted = this._isMuted;
+						video.volume = expectedLevel;
+					} catch {}
+				}
+			});
+		}
+		pauseVideo(v) {
+			try {
+				if (!v.paused) v.pause();
+				v.muted = true;
+			} catch {}
+		}
+		pauseIframe(ifr) {
+			if (!ifr.src || ifr.src === "about:blank" || !isEmbedIframe(ifr)) return;
+			let viaBridge = false;
+			try {
+				const win = ifr.contentWindow;
+				viaBridge = !!win && REDGIFS_HOST.test(ifr.src) && this.bridgeFrames.has(win);
+				win?.postMessage({
+					source: "reddit-reels",
+					type: "PAUSE"
+				}, "*");
+			} catch {}
+			if (!viaBridge) {
+				ifr.dataset.rrSrc = ifr.src;
+				ifr.src = "about:blank";
+			}
+		}
 		requestPlayback(target) {
 			if (!target) return;
 			let targetVideo = null;
 			let targetContainer = null;
-			if (typeof HTMLVideoElement !== "undefined" && target instanceof HTMLVideoElement || target.tagName?.toLowerCase() === "video" || typeof target.play === "function") {
+			if (target.tagName?.toLowerCase() === "video" || typeof target.play === "function") {
 				targetVideo = target;
-				targetContainer = typeof target.closest === "function" ? target.closest("shreddit-post, [data-post-id], article") : null;
+				targetContainer = target.closest?.(POST_SELECTOR) ?? null;
 			} else {
 				targetContainer = target;
-				targetVideo = this.findVideo(target);
+				targetVideo = this.findVideo(targetContainer);
 			}
-			if (this.activeVideo && this.activeVideo !== targetVideo) try {
-				this.activeVideo.pause();
-				this.activeVideo.muted = true;
-				this.activeVideo.currentTime = 0;
-			} catch {}
-			if (this.activeContainer && this.activeContainer !== targetContainer) applyAudioState(this.activeContainer, true);
+			if (targetContainer === this.activeContainer && targetVideo === this.activeVideo && targetVideo && !targetVideo.paused) {
+				if (targetContainer) applyAudioState(targetContainer, this._isMuted, this._volume, targetVideo);
+				return;
+			}
+			if (this.hydrateTimer) {
+				clearTimeout(this.hydrateTimer);
+				this.hydrateTimer = null;
+			}
+			const previous = this.activeVideo;
+			if (previous && previous !== targetVideo) {
+				this.pauseVideo(previous);
+				try {
+					previous.currentTime = 0;
+				} catch {}
+			}
 			this.activeContainer = targetContainer;
 			this.activeVideo = targetVideo;
+			this.reasserts = 0;
+			if (targetVideo) this.guardVideo(targetVideo);
 			if (typeof document !== "undefined") {
 				document.querySelectorAll("video").forEach((v) => {
-					if (v !== targetVideo) try {
-						if (!v.paused) v.pause();
-						v.muted = true;
-						v.currentTime = 0;
-					} catch {}
+					this.knownVideos.add(v);
 				});
+				for (const v of this.knownVideos) {
+					if (v.isConnected === false) {
+						this.knownVideos.delete(v);
+						continue;
+					}
+					if (v === targetVideo) continue;
+					if (targetContainer && shadowContains(targetContainer, v) && !targetVideo) continue;
+					this.pauseVideo(v);
+				}
 				document.querySelectorAll("audio").forEach((a) => {
+					if (targetContainer && targetContainer.contains(a)) return;
 					try {
 						if (!a.paused) a.pause();
 						a.muted = true;
-						a.currentTime = 0;
 					} catch {}
 				});
 				document.querySelectorAll("iframe").forEach((ifr) => {
-					if (!targetContainer || !targetContainer.contains(ifr)) {
-						if (ifr.src && ifr.src !== "about:blank") {
-							ifr.dataset.rrSrc = ifr.src;
-							ifr.src = "about:blank";
-						}
-					}
+					if (targetContainer && targetContainer.contains(ifr)) return;
+					this.pauseIframe(ifr);
 				});
 			}
 			if (targetContainer) {
@@ -893,62 +988,59 @@
 				iframes.forEach((ifr) => {
 					try {
 						const stored = ifr.dataset.rrSrc;
-						if (ifr.src === "about:blank" && stored) ifr.src = normalizeIframeSrc(stored, this._isMuted);
+						if (ifr.src === "about:blank" && stored) {
+							ifr.src = normalizeIframeSrc(stored, this._isMuted);
+							delete ifr.dataset.rrSrc;
+						}
 						ifr.tabIndex = -1;
 					} catch {}
 				});
 				applyAudioState(targetContainer, this._isMuted, this._volume, targetVideo);
-				iframes.forEach((ifr) => sendIframePlay(ifr));
+				for (const ifr of iframes) sendIframePlay(ifr);
 				blurIframes(targetContainer);
 			}
 			if (targetVideo) {
-				if (targetContainer && targetContainer === this.activeContainer && !targetVideo.paused && targetVideo.currentSrc) {
-					applyAudioState(targetContainer, this._isMuted, this._volume);
-					return;
+				const video = targetVideo;
+				ensureAutoplayAttrs(video);
+				this.playWithFallback(video);
+				if (targetContainer && !video.currentSrc && !video.src) {
+					const container = targetContainer;
+					this.hydrateTimer = setTimeout(() => {
+						this.hydrateTimer = null;
+						if (this.activeVideo !== video || video.currentSrc || video.src) return;
+						if (hydrateVideoFromPlayer(container, video)) this.playWithFallback(video);
+					}, HYDRATE_DELAY_MS);
 				}
-				ensureAutoplayAttrs(targetVideo);
-				if (targetContainer && (!targetVideo.currentSrc || targetVideo.readyState === 0)) hydrateVideoFromPlayer(targetContainer, targetVideo);
-				targetVideo.muted = this._isMuted;
-				targetVideo.volume = this._isMuted ? 0 : this._volume;
-				targetVideo.play().catch((err) => {
-					if (!targetVideo) return;
+			}
+		}
+		playWithFallback(video) {
+			try {
+				video.muted = this._isMuted;
+				video.volume = this._isMuted ? 0 : this._volume;
+				video.play()?.catch?.((err) => {
+					if (this.activeVideo !== video) return;
 					const name = err && err.name || "";
-					if (name === "NotSupportedError") {
-						if (targetContainer) hydrateVideoFromPlayer(targetContainer, targetVideo);
-						targetVideo.muted = true;
-						targetVideo.play().catch(() => {});
-						return;
-					}
-					if (!targetVideo.muted && (name === "NotAllowedError" || name === "AbortError")) {
-						targetVideo.muted = true;
-						targetVideo.play().catch(() => {});
+					if (!video.muted && (name === "NotAllowedError" || name === "AbortError")) {
+						this.autoplayMuted.add(video);
+						video.muted = true;
+						video.play().catch(() => {});
 					}
 				});
-			}
+			} catch {}
 		}
 		findVideo(container) {
 			if (!container) return null;
 			if (container === this.activeContainer && this.activeVideo && shadowContains(container, this.activeVideo)) return this.activeVideo;
 			const cached = this.videoCache.get(container);
 			if (cached && Date.now() - cached.time < 1e3 && (cached.video === null || shadowContains(container, cached.video))) return cached.video;
-			const activeSlideVid = findActiveSlideVideo(container);
-			if (activeSlideVid) {
-				try {
-					this.videoCache.set(container, {
-						video: activeSlideVid,
-						time: Date.now()
-					});
-				} catch {}
-				return activeSlideVid;
-			}
-			const { videos } = deepFindMediaElements(container);
-			const found = videos.length > 0 ? videos[0] : null;
+			const found = findActiveSlideVideo(container) || deepFindMediaElements(container).videos[0] || null;
 			try {
 				this.videoCache.set(container, {
 					video: found,
 					time: Date.now()
 				});
 			} catch {}
+			if (found) this.guardVideo(found);
 			return found;
 		}
 		togglePlayback(target) {
@@ -959,119 +1051,115 @@
 			}
 			const video = this.activeVideo || this.findVideo(target);
 			if (video) {
-				if (video.paused) {
-					applyAudioState(target, this._isMuted, this._volume, video);
-					video.play().catch(() => {});
+				if (this.autoplayMuted.has(video) && !this._isMuted) {
+					this.autoplayMuted.delete(video);
+					video.muted = false;
+					video.volume = this._volume;
+					if (video.paused) video.play().catch(() => {});
 					return true;
-				} else {
-					video.pause();
-					return false;
 				}
+				if (video.paused) {
+					this.playWithFallback(video);
+					return true;
+				}
+				video.pause();
+				return false;
 			}
 			const ifr = target.querySelector("iframe");
 			if (ifr && ifr.src && ifr.src !== "about:blank") {
-				if (ifr.dataset.rrPaused === "1") {
-					ifr.dataset.rrPaused = "0";
+				const isPaused = ifr.dataset.rrPaused === "1";
+				ifr.dataset.rrPaused = isPaused ? "0" : "1";
+				if (isPaused) {
 					sendIframePlay(ifr);
 					return true;
-				} else {
-					ifr.dataset.rrPaused = "1";
-					ifr.contentWindow?.postMessage({
-						source: "reddit-reels",
-						type: "PAUSE"
-					}, "*");
-					ifr.contentWindow?.postMessage({
-						action: "pause",
-						type: "pause"
-					}, "*");
-					return false;
 				}
+				ifr.contentWindow?.postMessage({
+					source: "reddit-reels",
+					type: "PAUSE"
+				}, "*");
+				ifr.contentWindow?.postMessage({
+					action: "pause",
+					type: "pause"
+				}, "*");
+				return false;
 			}
 			return false;
 		}
 		invalidateVideoCache(container) {
-			try {
-				if (container) this.videoCache.delete(container);
-			} catch {}
+			if (container) this.videoCache.delete(container);
 		}
 		toggleMute(container) {
 			this._isMuted = !this._isMuted;
-			persistMuteState(this._isMuted);
-			const target = container || this.activeContainer;
-			if (target) applyAudioState(target, this._isMuted, this._volume);
-			this.syncActiveMute();
+			writeStored(STORAGE_KEY, this._isMuted);
+			if (this.activeVideo) this.autoplayMuted.delete(this.activeVideo);
+			if (container && container !== this.activeContainer) applyAudioState(container, this._isMuted, this._volume);
+			else this.syncActive();
+			this.emit();
 			return this._isMuted;
 		}
 		reassertActiveIframeUnmute() {
 			if (this._isMuted || !this.activeContainer) return;
-			try {
-				const iframes = this.activeContainer.querySelectorAll("iframe");
-				if (iframes.length === 0) return;
-				iframes.forEach((ifr) => {
-					try {
-						const stored = ifr.dataset.rrSrc;
-						if (ifr.src === "about:blank" && stored) ifr.src = normalizeIframeSrc(stored, false);
-					} catch {}
-				});
-				iframes.forEach((ifr) => {
-					try {
-						ifr.contentWindow?.postMessage({
-							source: "reddit-reels",
-							type: "SET_AUDIO",
-							muted: false,
-							volume: this._volume
-						}, "*");
-						sendIframePlay(ifr);
-					} catch {}
-				});
-			} catch {}
+			this.activeContainer.querySelectorAll("iframe").forEach((ifr) => {
+				try {
+					const stored = ifr.dataset.rrSrc;
+					if (ifr.src === "about:blank" && stored) {
+						ifr.src = normalizeIframeSrc(stored, false);
+						delete ifr.dataset.rrSrc;
+					}
+					ifr.contentWindow?.postMessage({
+						source: "reddit-reels",
+						type: "SET_AUDIO",
+						muted: false,
+						volume: this._volume
+					}, "*");
+					sendIframePlay(ifr);
+				} catch {}
+			});
 		}
-		syncActiveMute() {
-			if (this.activeContainer) applyAudioState(this.activeContainer, this._isMuted, this._volume);
+		syncActive() {
+			if (this.activeContainer) applyAudioState(this.activeContainer, this._isMuted, this._volume, this.activeVideo ?? void 0);
 			else if (this.activeVideo) try {
 				this.activeVideo.muted = this._isMuted;
 				this.activeVideo.volume = this._isMuted ? 0 : this._volume;
-				if (!this._isMuted && this.activeVideo.paused) this.activeVideo.play().catch(() => {});
 			} catch {}
 		}
 		stopAll() {
-			if (this.activeContainer) applyAudioState(this.activeContainer, true);
-			if (this.activeVideo) try {
-				this.activeVideo.pause();
-				this.activeVideo.muted = true;
-				this.activeVideo.currentTime = 0;
-			} catch {}
+			if (this.hydrateTimer) {
+				clearTimeout(this.hydrateTimer);
+				this.hydrateTimer = null;
+			}
 			this.activeVideo = null;
 			this.activeContainer = null;
-			if (typeof document !== "undefined") {
-				document.querySelectorAll("video").forEach((v) => {
-					try {
-						if (!v.paused) v.pause();
-						v.muted = true;
-						v.currentTime = 0;
-					} catch {}
-				});
-				document.querySelectorAll("audio").forEach((a) => {
-					try {
-						if (!a.paused) a.pause();
-						a.muted = true;
-						a.currentTime = 0;
-					} catch {}
-				});
-				document.querySelectorAll("iframe").forEach((ifr) => {
-					try {
-						ifr.contentWindow?.postMessage({
-							source: "reddit-reels",
-							type: "PAUSE",
-							muted: true
-						}, "*");
-						ifr.contentWindow?.postMessage({
-							action: "pause",
-							muted: true
-						}, "*");
-					} catch {}
-				});
+			if (typeof document !== "undefined") document.querySelectorAll("video").forEach((v) => {
+				this.knownVideos.add(v);
+			});
+			for (const v of this.knownVideos) {
+				if (v.isConnected === false) {
+					this.knownVideos.delete(v);
+					continue;
+				}
+				this.pauseVideo(v);
 			}
+			if (typeof document === "undefined") return;
+			document.querySelectorAll("audio").forEach((a) => {
+				try {
+					if (!a.paused) a.pause();
+					a.muted = true;
+				} catch {}
+			});
+			document.querySelectorAll("iframe").forEach((ifr) => {
+				try {
+					ifr.contentWindow?.postMessage({
+						source: "reddit-reels",
+						type: "PAUSE",
+						muted: true
+					}, "*");
+					ifr.contentWindow?.postMessage({
+						action: "pause",
+						muted: true
+					}, "*");
+				} catch {}
+			});
 		}
 	};
 	var audioManager = new AudioManager();
@@ -1484,12 +1572,6 @@
           z-index: 10 !important;
           pointer-events: none !important;
         }
-        :host .play-pause-overlay,
-        :host [data-testid="play-pause-button"],
-        :host shreddit-player-controls,
-        :host .controls-overlay {
-          pointer-events: none !important;
-        }
       `;
 				player.shadowRoot.appendChild(shadowStyle);
 			}
@@ -1703,38 +1785,7 @@
 		delete postEl.dataset.rrCaptions;
 		delete postEl.dataset.rrUnconstrained;
 	}
-	_css(":root {\n  --rr-z-fab: 99999;\n  --rr-z-reels: 2147483640;\n  --rr-z-overlay: 2147483645;\n  --rr-font-stack: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;\n  --rr-primary: #ff4500;\n  --rr-surface-glass: rgba(18, 22, 30, 0.72);\n  --rr-border-glass: rgba(255, 255, 255, 0.12);\n  --rr-highlight-glass: rgba(255, 255, 255, 0.22);\n}\n\n/* =========================================================\n   Floating Action Button (Launcher)\n   ========================================================= */\n\n#rr-fab,\n.rr-fab,\n#reddit-reels-fab {\n  position: fixed !important;\n  bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;\n  right: calc(20px + env(safe-area-inset-right, 0px)) !important;\n  z-index: var(--rr-z-fab) !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  width: 54px !important;\n  height: 54px !important;\n  border-radius: 9999px !important;\n  background: #ff4500 !important;\n  color: #ffffff !important;\n  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;\n  cursor: pointer !important;\n  border: none !important;\n  outline: none !important;\n  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease !important;\n  user-select: none !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n#rr-fab:hover,\n.rr-fab:hover,\n#reddit-reels-fab:hover {\n  transform: scale(1.06) !important;\n  background: #e03d00 !important;\n  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45) !important;\n}\n\n#rr-fab:active,\n.rr-fab:active,\n#reddit-reels-fab:active {\n  transform: scale(0.95) !important;\n}\n\n#rr-fab svg,\n.rr-fab svg,\n.rr-fab-icon,\n#reddit-reels-fab svg {\n  width: 26px !important;\n  height: 26px !important;\n  fill: none !important;\n  stroke: currentColor !important;\n  stroke-width: 2.2 !important;\n  stroke-linecap: round !important;\n  stroke-linejoin: round !important;\n}\n\n/* Hide FAB when Reels mode is active */\nhtml.rr-active #rr-fab-container,\nhtml.rr-active #rr-fab,\nhtml.rr-active .rr-fab,\nhtml.rr-active #reddit-reels-fab {\n  display: none !important;\n}\n\n/* =========================================================\n   Feedback Pulses (Play/Pause, Fit/Fill)\n   ========================================================= */\n\n.rr-play-pulse {\n  position: fixed !important;\n  top: 50% !important;\n  left: 50% !important;\n  transform: translate(-50%, -50%) !important;\n  width: 76px !important;\n  height: 76px !important;\n  border-radius: 9999px !important;\n  background: rgba(18, 22, 30, 0.8) !important;\n  border: 1px solid rgba(255, 255, 255, 0.15) !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  color: #ffffff !important;\n  pointer-events: none !important;\n  z-index: 2147483646 !important;\n  animation: rr-pulse-fade 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;\n}\n\n.rr-play-pulse svg {\n  width: 36px !important;\n  height: 36px !important;\n  fill: currentColor !important;\n}\n\n.rr-scale-pulse {\n  position: fixed !important;\n  top: 50% !important;\n  left: 50% !important;\n  transform: translate(-50%, -50%) !important;\n  padding: 10px 20px !important;\n  border-radius: 9999px !important;\n  background: #181a1f !important;\n  border: 1px solid #30323a !important;\n  color: #ffffff !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 13px !important;\n  font-weight: 700 !important;\n  letter-spacing: 0.3px !important;\n  pointer-events: none !important;\n  z-index: 2147483646 !important;\n  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;\n  animation: rr-pulse-fade 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;\n}\n\n@keyframes rr-pulse-fade {\n  0% {\n    opacity: 0;\n    transform: translate(-50%, -50%) scale(0.65);\n  }\n  35% {\n    opacity: 1;\n    transform: translate(-50%, -50%) scale(1.08);\n  }\n  100% {\n    opacity: 0;\n    transform: translate(-50%, -50%) scale(1.15);\n  }\n}\n\n/* =========================================================\n   Fullscreen Reels Feed & Snap-Scroll Rules\n   ========================================================= */\n\n/* Root Lock */\nhtml.rr-active,\nhtml.rr-active body {\n  overflow: hidden !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  width: 100vw !important;\n  height: 100vh !important;\n  height: 100dvh !important;\n  background: #000000 !important;\n  color: #ffffff !important;\n  touch-action: pan-y !important;\n  -webkit-user-select: none;\n  user-select: none;\n}\n\n/* Suppress all Reddit outer framing in Reel Mode */\nhtml.rr-active header,\nhtml.rr-active nav,\nhtml.rr-active aside,\nhtml.rr-active footer,\nhtml.rr-active .bottom-nav,\nhtml.rr-active [slot=\"header\"],\nhtml.rr-active reddit-header-large,\nhtml.rr-active reddit-header-small,\nhtml.rr-active shreddit-async-loader[bundlename=\"bottom_bar\"],\nhtml.rr-active shreddit-async-loader[bundlename=\"header\"],\nhtml.rr-active shreddit-async-loader[bundlename=\"subgrid\"],\nhtml.rr-active shreddit-comment-jump-button,\nhtml.rr-active reddit-comment-jump-button,\nhtml.rr-active .comment-jump-button,\nhtml.rr-active shreddit-async-loader[bundlename*=\"comment_jump\"],\nhtml.rr-active shreddit-async-loader[bundlename*=\"floating\"],\nhtml.rr-active shreddit-floating-action-bar,\nhtml.rr-active floating-action-bar,\nhtml.rr-active [data-testid*=\"floating\" i],\nhtml.rr-active [data-testid*=\"comment-jump\" i],\nhtml.rr-active shreddit-back-to-top-button,\nhtml.rr-active back-to-top-button,\nhtml.rr-active faceplate-tracker[source=\"floating_action_bar\"],\nhtml.rr-active [slot=\"floating-action-bar\"] {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Post Container / Scroll Track */\nhtml.rr-active #subgrid-container,\nhtml.rr-active main,\nhtml.rr-active .main-container,\nhtml.rr-active #posts-container,\nhtml.rr-active [data-testid=\"posts-list\"],\nhtml.rr-active .rr-feed-container {\n  height: 100vh !important;\n  height: 100dvh !important;\n  width: 100vw !important;\n  max-width: 100vw !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  overflow-y: scroll !important;\n  overflow-x: hidden !important;\n  scroll-snap-type: y mandatory !important;\n  overscroll-behavior-y: contain !important;\n  scrollbar-width: none !important; /* Firefox */\n  background: #000000 !important;\n  display: block !important;\n}\n\nhtml.rr-active #subgrid-container::-webkit-scrollbar,\nhtml.rr-active main::-webkit-scrollbar,\nhtml.rr-active #posts-container::-webkit-scrollbar,\nhtml.rr-active .rr-feed-container::-webkit-scrollbar {\n  display: none !important;\n}\n\n/* Single Reel Slide (shreddit-post, article, div containers) */\nhtml.rr-active shreddit-post,\nhtml.rr-active .rr-feed-container > article,\nhtml.rr-active .rr-feed-container > div[data-testid=\"post-container\"],\nhtml.rr-active .rr-feed-container > .Post {\n  height: 100vh !important;\n  height: 100dvh !important;\n  width: 100vw !important;\n  min-height: 100vh !important;\n  min-height: 100dvh !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  min-width: 100vw !important;\n  max-width: 100vw !important;\n  scroll-snap-align: start !important;\n  scroll-snap-stop: always !important;\n  position: relative !important;\n  overflow: hidden !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: none !important;\n  border-radius: 0 !important;\n  background: #000000 !important;\n  box-sizing: border-box !important;\n}\n\n/* Ensure post media wrapper fills viewport */\nhtml.rr-active shreddit-post [slot=\"post-media-container\"],\nhtml.rr-active shreddit-post .media-container,\nhtml.rr-active .rr-feed-container .media-container,\nhtml.rr-active shreddit-post shreddit-aspect-ratio,\nhtml.rr-active shreddit-post shreddit-player-2 {\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100vw !important;\n  height: 100vh !important;\n  height: 100dvh !important;\n  max-width: 100vw !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  min-height: 100vh !important;\n  min-height: 100dvh !important;\n  --max-height: 100dvh !important;\n  --max-width: 100vw !important;\n  aspect-ratio: unset !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border-radius: 0 !important;\n  background: transparent !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  z-index: 5 !important;\n}\n\n/* Standalone Video, Iframe, and Single Image Sizing (Excluding Carousels) */\nhtml.rr-active shreddit-post video,\nhtml.rr-active shreddit-post iframe,\nhtml.rr-active shreddit-post .rr-embedded-iframe,\nhtml.rr-active shreddit-post:not(.rr-is-link):not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb):not(.shreddit-subreddit-icon__icon):not(.post-background-image-filter),\nhtml.rr-active .rr-feed-container video,\nhtml.rr-active .rr-feed-container iframe,\nhtml.rr-active .rr-feed-container > article:not(.rr-is-link):not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb) {\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100vw !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  object-fit: contain !important;\n  background: transparent !important;\n  border: none !important;\n  z-index: 10 !important;\n}\n\n/* Unconstrain nested media containers and aspect-ratio wrappers inside shreddit-post (Excluding Carousels) */\nhtml.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container],\nhtml.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container] > div,\nhtml.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) shreddit-media-lightbox-listener,\nhtml.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) .media-lightbox-img {\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100vw !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  aspect-ratio: unset !important;\n  position: absolute !important;\n  inset: 0 !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: none !important;\n  background: transparent !important;\n}\n\n/* Suppress crosspost leakages inside post-media-container */\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] .crosspost-credit-bar,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] .crosspost-title,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] .post-background-image-filter,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] .text-secondary-plain-weak,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] div:has(> .text-secondary-plain-weak),\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] > div > .crosspost-credit-bar,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] > div:not(:has(img, video, gallery-carousel, faceplate-carousel, shreddit-aspect-ratio, [data-aspect-ratio-container])),\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] > .pointer-events-none.border-sm {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Vertical video full-bleed scaling: fills 100% width and height without letterbox bars */\nhtml.rr-active shreddit-post.rr-has-vertical-video video,\nhtml.rr-active shreddit-post video.rr-vertical-video,\nhtml.rr-active .rr-feed-container video.rr-vertical-video,\nhtml.rr-active shreddit-post[data-vertical-video=\"true\"] video {\n  object-fit: cover !important;\n}\n\n/* User toggle overrides (Video and Single Image) - Supports all post containers */\nhtml.rr-active .rr-fit-contain video,\nhtml.rr-active .rr-fit-contain iframe,\nhtml.rr-active .rr-fit-contain img,\nhtml.rr-active shreddit-post.rr-fit-contain video,\nhtml.rr-active shreddit-post.rr-fit-contain iframe,\nhtml.rr-active shreddit-post.rr-fit-contain img {\n  object-fit: contain !important;\n}\n\nhtml.rr-active .rr-fit-cover video,\nhtml.rr-active .rr-fit-cover iframe,\nhtml.rr-active .rr-fit-cover img,\nhtml.rr-active shreddit-post.rr-fit-cover video,\nhtml.rr-active shreddit-post.rr-fit-cover iframe,\nhtml.rr-active shreddit-post.rr-fit-cover img {\n  object-fit: cover !important;\n}\n\n/* Subtitles / Closed Captions Suppression when disabled */\nhtml.rr-active.rr-hide-captions ::cue,\nhtml.rr-active shreddit-post.rr-hide-captions ::cue,\nhtml.rr-active.rr-hide-captions .captions-display,\nhtml.rr-active.rr-hide-captions [data-testid=\"captions\"],\nhtml.rr-active.rr-hide-captions shreddit-player-captions,\nhtml.rr-active.rr-hide-captions .caption-wrapper,\nhtml.rr-active.rr-hide-captions .caption-container,\nhtml.rr-active.rr-hide-captions [part=\"captions\"],\nhtml.rr-active shreddit-post.rr-hide-captions .captions-display,\nhtml.rr-active shreddit-post.rr-hide-captions [data-testid=\"captions\"],\nhtml.rr-active shreddit-post.rr-hide-captions shreddit-player-captions,\nhtml.rr-active shreddit-post.rr-hide-captions .caption-wrapper,\nhtml.rr-active shreddit-post.rr-hide-captions .caption-container,\nhtml.rr-active shreddit-post.rr-hide-captions [part=\"captions\"] {\n  display: none !important;\n  visibility: hidden !important;\n  opacity: 0 !important;\n}\n\n/* Suppress native Reddit UI in slides (vote slots use off-screen hiding so proxy clicks work) */\nhtml.rr-active shreddit-post [slot=\"credit-bar\"],\nhtml.rr-active shreddit-post [slot=\"post-credit-bar\"],\nhtml.rr-active shreddit-post [slot=\"title-and-metadata\"],\nhtml.rr-active shreddit-post [slot=\"title\"],\nhtml.rr-active shreddit-post [slot=\"action-row\"],\nhtml.rr-active shreddit-post [slot=\"text-body\"],\nhtml.rr-active shreddit-post shreddit-post-action-row,\nhtml.rr-active shreddit-post feed-post-action-row,\nhtml.rr-active shreddit-post shreddit-post-credit-bar,\nhtml.rr-active shreddit-post shreddit-action-bar,\nhtml.rr-active shreddit-post rpl-action-bar,\nhtml.rr-active shreddit-post shreddit-interaction-container,\nhtml.rr-active shreddit-post faceplate-tracker,\nhtml.rr-active .rr-native-suppressed {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Vote targets stay in DOM and clickable via proxy (off-screen, not display:none) */\nhtml.rr-active shreddit-post [slot=\"vote\"],\nhtml.rr-active shreddit-post [slot=\"vote-button\"],\nhtml.rr-active shreddit-post shreddit-post-vote-control,\nhtml.rr-active shreddit-post [data-testid=\"post-vote-control\"],\nhtml.rr-active .rr-native-offscreen {\n  position: absolute !important;\n  width: 1px !important;\n  height: 1px !important;\n  opacity: 0 !important;\n  pointer-events: none !important;\n  overflow: hidden !important;\n}\n\n/* Bare media taps must not navigate: only explicit overlay/card buttons open URLs */\nhtml.rr-active shreddit-post a:not(.rr-sub-badge):not(.rr-author):not(.rr-link-card-btn):not(.rr-text-card-body a):not(.rr-comments-drawer a):not(.rr-drawer-btn),\nhtml.rr-active shreddit-post a[data-click-id=\"body\"],\nhtml.rr-active shreddit-post a[slot=\"full-post-link\"],\nhtml.rr-active shreddit-post a[href*=\"/comments/\"],\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] a,\nhtml.rr-active shreddit-post shreddit-media-lightbox-listener a {\n  pointer-events: none !important;\n}\n\nhtml.rr-active .rr-post-overlay a,\nhtml.rr-active .rr-link-card-container a,\nhtml.rr-active .rr-text-card-container a,\nhtml.rr-active .rr-comments-drawer a {\n  pointer-events: auto !important;\n}\n\n/* Videos-only filter: scoped under html.rr-active so exit automatically restores visibility */\nhtml.rr-active shreddit-post.rr-filtered-out,\nhtml.rr-active .rr-feed-container > article.rr-filtered-out,\nhtml.rr-active .rr-feed-container > div.rr-filtered-out {\n  display: none !important;\n}\n\n/* Hide any injected iframes or videos when Reel Mode is inactive */\n.rr-embedded-iframe,\n.rr-embedded-video {\n  display: none !important;\n}\n\nhtml.rr-active .rr-embedded-video {\n  display: block !important;\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100vw !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  object-fit: contain !important;\n  background: #000000 !important;\n}\n\nhtml.rr-active .rr-embedded-iframe {\n  display: block !important;\n}\n\n/* Empty feed state */\nhtml.rr-active .rr-empty-feed {\n  display: flex !important;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  height: 100vh !important;\n  height: 100dvh !important;\n  width: 100vw !important;\n  color: #a0a0a0;\n  font-size: 16px;\n  font-weight: 500;\n  text-align: center;\n  padding: 24px;\n  box-sizing: border-box;\n}\n/* =========================================================\n   Multiple-Image Gallery & Carousel Fullscreen Layout\n   ========================================================= */\n\nhtml.rr-active shreddit-post gallery-carousel,\nhtml.rr-active shreddit-post faceplate-carousel,\nhtml.rr-active shreddit-post.rr-has-gallery shreddit-async-loader,\nhtml.rr-active shreddit-post shreddit-async-loader:has(gallery-carousel, faceplate-carousel),\nhtml.rr-active shreddit-post [data-testid=\"media-gallery\"] {\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100% !important;\n  max-height: 100% !important;\n  --gallery-initial-height: 100% !important;\n  display: block !important;\n  overflow: hidden !important;\n  z-index: 6 !important;\n  background: #000000 !important;\n  touch-action: pan-x pan-y !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel ul[slot=\"items\"],\nhtml.rr-active shreddit-post faceplate-carousel ul[slot=\"items\"],\nhtml.rr-active shreddit-post gallery-carousel .carousel-items,\nhtml.rr-active shreddit-post faceplate-carousel .carousel-items {\n  display: flex !important;\n  flex-direction: row !important;\n  flex-wrap: nowrap !important;\n  height: 100% !important;\n  width: 100% !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  align-items: center !important;\n  list-style: none !important;\n  overflow-x: auto !important;\n  overflow-y: hidden !important;\n  scroll-snap-type: x mandatory !important;\n  scroll-behavior: smooth !important;\n  scrollbar-width: none !important;\n  touch-action: pan-x pan-y !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel ul::-webkit-scrollbar,\nhtml.rr-active shreddit-post faceplate-carousel ul::-webkit-scrollbar {\n  display: none !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel ul[slot=\"items\"] > li,\nhtml.rr-active shreddit-post faceplate-carousel ul[slot=\"items\"] > li,\nhtml.rr-active shreddit-post gallery-carousel .carousel-item,\nhtml.rr-active shreddit-post faceplate-carousel .carousel-item {\n  flex: 0 0 100% !important;\n  flex-shrink: 0 !important;\n  width: 100% !important;\n  min-width: 100% !important;\n  max-width: 100% !important;\n  height: 100% !important;\n  max-height: 100% !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  position: relative !important;\n  scroll-snap-align: center !important;\n  scroll-snap-stop: always !important;\n  overflow: hidden !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  box-sizing: border-box !important;\n  touch-action: pan-x pan-y !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel figure,\nhtml.rr-active shreddit-post faceplate-carousel figure,\nhtml.rr-active shreddit-post gallery-carousel [data-aspect-ratio-container],\nhtml.rr-active shreddit-post faceplate-carousel [data-aspect-ratio-container] {\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100% !important;\n  max-height: 100% !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  position: relative !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel img:not(.post-background-image-filter):not(.shreddit-subreddit-icon__icon),\nhtml.rr-active shreddit-post faceplate-carousel img:not(.post-background-image-filter):not(.shreddit-subreddit-icon__icon),\nhtml.rr-active shreddit-post gallery-carousel .media-lightbox-img,\nhtml.rr-active shreddit-post faceplate-carousel .media-lightbox-img {\n  position: relative !important;\n  inset: auto !important;\n  max-width: 100% !important;\n  max-height: 100% !important;\n  width: auto !important;\n  height: auto !important;\n  object-fit: contain !important;\n  display: block !important;\n  margin: auto !important;\n  visibility: visible !important;\n  opacity: 1 !important;\n}\n\n/* Blurred backdrop copies must never cover the real slide (black-screen cause) */\nhtml.rr-active shreddit-post gallery-carousel img.post-background-image-filter,\nhtml.rr-active shreddit-post faceplate-carousel img.post-background-image-filter,\nhtml.rr-active shreddit-post gallery-carousel [class*=\"background-image-filter\"],\nhtml.rr-active shreddit-post faceplate-carousel [class*=\"background-image-filter\"] {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Gallery image alt-text / caption badges (\"[Image 1]\") are always suppressed\n   in Reel Mode. They are image metadata, NOT video subtitles, so the CC toggle\n   must never unhide them. Scoped to carousels (and away from video slides) so\n   real video caption layers elsewhere are unaffected. */\nhtml.rr-active shreddit-post gallery-carousel figcaption,\nhtml.rr-active shreddit-post faceplate-carousel figcaption,\nhtml.rr-active shreddit-post gallery-carousel [slot=\"caption\"],\nhtml.rr-active shreddit-post faceplate-carousel [slot=\"caption\"],\nhtml.rr-active shreddit-post gallery-carousel .gallery-caption,\nhtml.rr-active shreddit-post faceplate-carousel .gallery-caption,\nhtml.rr-active shreddit-post gallery-carousel .image-caption,\nhtml.rr-active shreddit-post faceplate-carousel .image-caption,\nhtml.rr-active shreddit-post gallery-carousel [data-testid*=\"alt-text\" i],\nhtml.rr-active shreddit-post faceplate-carousel [data-testid*=\"alt-text\" i],\nhtml.rr-active shreddit-post gallery-carousel li:not(:has(video)) [data-testid*=\"caption\" i],\nhtml.rr-active shreddit-post faceplate-carousel li:not(:has(video)) [data-testid*=\"caption\" i] {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Horizontal slide buttons for gallery */\nhtml.rr-active shreddit-post gallery-carousel button[slot=\"previous-button\"],\nhtml.rr-active shreddit-post gallery-carousel button[slot=\"next-button\"],\nhtml.rr-active shreddit-post faceplate-carousel button[slot=\"previous-button\"],\nhtml.rr-active shreddit-post faceplate-carousel button[slot=\"next-button\"],\nhtml.rr-active shreddit-post button.prev-btn,\nhtml.rr-active shreddit-post button.next-btn {\n  position: absolute !important;\n  top: 50% !important;\n  transform: translateY(-50%) !important;\n  z-index: 25 !important;\n  background: rgba(18, 22, 30, 0.65) !important;\n  border: 1px solid rgba(255, 255, 255, 0.15) !important;\n  color: #ffffff !important;\n  width: 44px !important;\n  height: 44px !important;\n  border-radius: 9999px !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  cursor: pointer !important;\n  opacity: 0.8 !important;\n  transition: opacity 0.15s ease, background 0.15s ease !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel button[slot=\"previous-button\"]:hover,\nhtml.rr-active shreddit-post gallery-carousel button[slot=\"next-button\"]:hover,\nhtml.rr-active shreddit-post faceplate-carousel button[slot=\"previous-button\"]:hover,\nhtml.rr-active shreddit-post faceplate-carousel button[slot=\"next-button\"]:hover,\nhtml.rr-active shreddit-post button.prev-btn:hover,\nhtml.rr-active shreddit-post button.next-btn:hover {\n  opacity: 1 !important;\n  background: rgba(18, 22, 30, 0.9) !important;\n}\n\n/* Hide disabled navigation buttons at carousel boundaries */\nhtml.rr-active shreddit-post gallery-carousel button[disabled],\nhtml.rr-active shreddit-post faceplate-carousel button[disabled],\nhtml.rr-active shreddit-post gallery-carousel button[aria-disabled=\"true\"],\nhtml.rr-active shreddit-post faceplate-carousel button[aria-disabled=\"true\"],\nhtml.rr-active shreddit-post button.prev-btn[disabled],\nhtml.rr-active shreddit-post button.next-btn[disabled] {\n  display: none !important;\n  opacity: 0 !important;\n  pointer-events: none !important;\n}\n\nhtml.rr-active shreddit-post button[slot=\"previous-button\"],\nhtml.rr-active shreddit-post button.prev-btn {\n  left: 16px !important;\n}\n\nhtml.rr-active shreddit-post button[slot=\"next-button\"],\nhtml.rr-active shreddit-post button.next-btn {\n  right: 16px !important;\n}\n\n/* Pagination dots indicators */\nhtml.rr-active shreddit-post gallery-carousel [slot=\"indicators\"],\nhtml.rr-active shreddit-post faceplate-carousel [slot=\"indicators\"],\nhtml.rr-active shreddit-post gallery-carousel [slot=\"dots\"],\nhtml.rr-active shreddit-post faceplate-carousel [slot=\"dots\"],\nhtml.rr-active shreddit-post gallery-carousel [part=\"indicators\"],\nhtml.rr-active shreddit-post faceplate-carousel [part=\"indicators\"],\nhtml.rr-active shreddit-post gallery-carousel .carousel-indicators,\nhtml.rr-active shreddit-post faceplate-carousel .carousel-indicators {\n  position: absolute !important;\n  bottom: calc(85px + env(safe-area-inset-bottom, 0px)) !important;\n  left: 50% !important;\n  transform: translateX(-50%) !important;\n  z-index: 22 !important;\n  display: flex !important;\n  justify-content: center !important;\n  align-items: center !important;\n  pointer-events: auto !important;\n}\n/* =========================================================\n   Post Overlay (Metadata & Action Rail)\n   ========================================================= */\n\n/* Ensure overlay is completely hidden by default when Reel Mode is inactive */\n.rr-post-overlay {\n  display: none !important;\n  visibility: hidden !important;\n}\n\nhtml.rr-active .rr-post-overlay {\n  position: absolute !important;\n  inset: 0 !important;\n  z-index: 20 !important;\n  pointer-events: none !important;\n  display: flex !important;\n  visibility: visible !important;\n  flex-direction: column !important;\n  justify-content: space-between !important;\n  padding: 16px !important;\n  box-sizing: border-box !important;\n  background: linear-gradient(\n    to bottom,\n    rgba(0, 0, 0, 0.3) 0%,\n    transparent 15%,\n    transparent 70%,\n    rgba(0, 0, 0, 0.55) 100%\n  ) !important;\n}\n\n/* Bottom Left: Post Metadata */\n.rr-post-info {\n  position: absolute !important;\n  bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;\n  left: 16px !important;\n  right: 76px !important;\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 6px !important;\n  pointer-events: auto !important;\n  z-index: 25 !important;\n}\n\n.rr-post-meta {\n  display: flex !important;\n  flex-direction: row !important;\n  align-items: center !important;\n  gap: 6px !important;\n  min-width: 0 !important;\n  max-width: 100% !important;\n  flex-wrap: nowrap !important;\n}\n\n.rr-sub-badge {\n  display: inline-flex !important;\n  align-items: center !important;\n  flex-shrink: 0 !important;\n  background: #202126 !important;\n  border: 1px solid #30323a !important;\n  border-radius: 9999px !important;\n  padding: 3px 9px !important;\n  color: #ff6b35 !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  letter-spacing: 0.2px !important;\n  cursor: pointer !important;\n  user-select: none !important;\n  transition: background 0.15s ease, border-color 0.15s ease !important;\n}\n\n.rr-sub-badge:hover {\n  background: #2c2e35 !important;\n  border-color: #444752 !important;\n}\n\n.rr-dot {\n  flex-shrink: 0 !important;\n  color: rgba(255, 255, 255, 0.5) !important;\n  font-weight: 700 !important;\n  font-size: 11px !important;\n  user-select: none !important;\n}\n\n/* Author Username: clickable link, single-line with ellipsis */\n.rr-author {\n  display: inline-block !important;\n  flex-shrink: 1 !important;\n  min-width: 0 !important;\n  white-space: nowrap !important;\n  overflow: hidden !important;\n  text-overflow: ellipsis !important;\n  color: rgba(255, 255, 255, 0.78) !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 12px !important;\n  font-weight: 500 !important;\n  pointer-events: auto !important;\n  cursor: pointer !important;\n  user-select: text !important;\n  text-decoration: none !important;\n  transition: color 0.15s ease, text-decoration 0.15s ease !important;\n}\n\n.rr-author:hover {\n  color: #ffffff !important;\n  text-decoration: underline !important;\n}\n\n/* Post Title */\n.rr-post-title {\n  color: #ffffff !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 15px !important;\n  font-weight: 600 !important;\n  line-height: 1.4 !important;\n  letter-spacing: -0.015em !important;\n  display: -webkit-box !important;\n  -webkit-line-clamp: 2 !important;\n  -webkit-box-orient: vertical !important;\n  overflow: hidden !important;\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7) !important;\n}\n\n/* Bottom Right: Vertical Action Rail */\n.rr-action-rail {\n  position: absolute !important;\n  bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;\n  right: 14px !important;\n  display: flex !important;\n  flex-direction: column !important;\n  align-items: center !important;\n  gap: 14px !important;\n  pointer-events: auto !important;\n  z-index: 25 !important;\n}\n\n.rr-action-item {\n  display: flex !important;\n  flex-direction: column !important;\n  align-items: center !important;\n  gap: 3px !important;\n}\n\n.rr-action-btn {\n  width: 44px !important;\n  height: 44px !important;\n  border-radius: 9999px !important;\n  background: #1c1d22 !important;\n  border: 1px solid #30323a !important;\n  color: #ffffff !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  cursor: pointer !important;\n  padding: 0 !important;\n  outline: none !important;\n  transition: background 0.15s ease, transform 0.12s ease !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-action-btn:hover {\n  background: #282a32 !important;\n}\n\n.rr-action-btn:active {\n  transform: scale(0.92) !important;\n}\n\n.rr-action-label {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;\n  user-select: none !important;\n}\n\n/* Integrated Vote Group Cluster */\n.rr-vote-group {\n  display: flex !important;\n  flex-direction: column !important;\n  align-items: center !important;\n  background: #181a1f !important;\n  border: 1px solid #282a32 !important;\n  border-radius: 9999px !important;\n  padding: 4px !important;\n  gap: 2px !important;\n}\n\n.rr-vote-group .rr-action-btn {\n  background: transparent !important;\n  border: none !important;\n  box-shadow: none !important;\n  width: 44px !important;\n  height: 44px !important;\n  min-width: 44px !important;\n  min-height: 44px !important;\n  color: #9a9ca6 !important;\n}\n\n.rr-vote-group .rr-action-btn:hover {\n  color: #ffffff !important;\n  background: rgba(255, 255, 255, 0.08) !important;\n}\n\n.rr-vote-group .rr-score-label {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 12px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  padding: 1px 0 !important;\n  line-height: 1 !important;\n}\n\n.rr-upvote-btn.is-active-up {\n  color: #ff4500 !important;\n}\n\n.rr-downvote-btn.is-active-down {\n  color: #7193ff !important;\n}\n\n/* CC on (enabled): plain white icon on the standard dark pill.\n   CC off (disabled): dimmed grey icon. No accent color. */\n.rr-action-btn.rr-cc-btn.is-active-cc {\n  background: #1c1d22 !important;\n  border-color: #565a66 !important;\n  color: #ffffff !important;\n}\n\n.rr-action-btn.rr-cc-btn:not(.is-active-cc) {\n  color: #888d99 !important;\n}\n\n/* =========================================================\n   Top Bar Navigation & Filter Buttons\n   ========================================================= */\n\n.rr-top-bar {\n  position: fixed !important;\n  top: calc(16px + env(safe-area-inset-top, 0px)) !important;\n  left: 16px !important;\n  right: 16px !important;\n  display: flex !important;\n  justify-content: space-between !important;\n  align-items: center !important;\n  z-index: var(--rr-z-overlay) !important;\n  pointer-events: none !important;\n}\n\n.rr-exit-btn,\n.rr-sound-btn-top {\n  width: 44px !important;\n  height: 44px !important;\n  border-radius: 9999px !important;\n  background: #1c1d22 !important;\n  border: 1px solid #30323a !important;\n  color: #ffffff !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  cursor: pointer !important;\n  pointer-events: auto !important;\n  outline: none !important;\n  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;\n  transition: background 0.15s ease, transform 0.12s ease !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-exit-btn:hover,\n.rr-sound-btn-top:hover {\n  background: #282a32 !important;\n}\n\n.rr-exit-btn:active,\n.rr-sound-btn-top:active {\n  transform: scale(0.92) !important;\n}\n\n/* Muted (disabled): dimmed grey icon. Unmuted (enabled): plain white icon. */\n.rr-sound-btn-top.is-muted {\n  color: #888d99 !important;\n}\n\n.rr-top-controls {\n  display: flex !important;\n  align-items: center !important;\n  gap: 10px !important;\n  pointer-events: auto !important;\n}\n\n.rr-filter-btn-top {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 6px !important;\n  padding: 8px 14px !important;\n  border-radius: 9999px !important;\n  background: #1c1d22 !important;\n  border: 1px solid #30323a !important;\n  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;\n  color: #ffffff !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 12px !important;\n  font-weight: 700 !important;\n  letter-spacing: 0.2px !important;\n  cursor: pointer !important;\n  transition: all 0.15s ease !important;\n  user-select: none !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-filter-btn-top:hover {\n  background: #282a32 !important;\n}\n\n.rr-filter-btn-top.is-active {\n  background: #2c1a16 !important;\n  border-color: #ff4500 !important;\n  color: #ff6b35 !important;\n}\n\n.rr-filter-btn-top .rr-filter-icon {\n  display: inline-flex !important;\n  align-items: center !important;\n}\n\n/* By default, card containers are hidden when Reel Mode is inactive */\n.rr-text-card-container,\n.rr-link-card-container {\n  display: none !important;\n}\n\n/* When Reel Mode is active, display as full-bleed centered overlay */\nhtml.rr-active .rr-text-card-container {\n  display: flex !important;\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100% !important;\n  height: 100% !important;\n  align-items: center !important;\n  justify-content: center !important;\n  z-index: 15 !important;\n  overflow: hidden !important;\n  pointer-events: auto !important;\n  box-sizing: border-box !important;\n  padding: 16px !important;\n}\n\n@media (min-width: 769px) {\n  html.rr-active .rr-text-card-container {\n    padding: 32px !important;\n  }\n}\n\nhtml.rr-active .rr-text-card {\n  position: relative !important;\n  z-index: 2 !important;\n  width: 100% !important;\n  max-width: 480px !important;\n  max-height: calc(100dvh - 120px) !important;\n  background: #141518 !important;\n  border: 1px solid #28292e !important;\n  border-radius: 16px !important;\n  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6) !important;\n  overflow: hidden !important;\n  display: flex !important;\n  flex-direction: column !important;\n  cursor: default !important;\n  transition: border-color 0.15s ease !important;\n  padding: 20px !important;\n  gap: 12px !important;\n  margin: 0 auto !important;\n  box-sizing: border-box !important;\n  user-select: text !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-text-card:hover {\n  border-color: #383a42 !important;\n}\n\n.rr-text-card-header {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  gap: 8px !important;\n}\n\n.rr-text-pill {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 6px !important;\n  background: #202126 !important;\n  border: 1px solid #30323a !important;\n  border-radius: 9999px !important;\n  padding: 3px 9px !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  color: #9a9ca6 !important;\n  letter-spacing: 0.3px !important;\n  text-transform: uppercase !important;\n}\n\n.rr-text-open-btn {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 5px !important;\n  background: #202126 !important;\n  border: 1px solid #30323a !important;\n  border-radius: 9999px !important;\n  padding: 3px 10px !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 11px !important;\n  font-weight: 600 !important;\n  color: #c5c7d0 !important;\n  text-decoration: none !important;\n  cursor: pointer !important;\n  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease !important;\n}\n\n.rr-text-open-btn:hover {\n  background: #2c2e35 !important;\n  color: #ffffff !important;\n  border-color: #444752 !important;\n}\n\n.rr-text-card-title {\n  margin: 0 !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 17px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  line-height: 1.35 !important;\n  letter-spacing: -0.015em !important;\n}\n\n.rr-text-card-body {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 14px !important;\n  line-height: 1.65 !important;\n  color: #c5c7d0 !important;\n  overflow-y: auto !important;\n  max-height: calc(100dvh - 220px) !important;\n  padding-right: 6px !important;\n  scrollbar-width: thin !important;\n  scrollbar-color: #383a42 transparent !important;\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 10px !important;\n  overscroll-behavior: contain !important;\n  -webkit-overflow-scrolling: touch !important;\n  touch-action: pan-y !important;\n}\n\n.rr-text-card-body p {\n  margin: 0 !important;\n}\n\n/* =========================================================\n   External Web Link Card\n   ========================================================= */\n\nhtml.rr-active .rr-link-card-container {\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100% !important;\n  height: 100% !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  z-index: 15 !important;\n  overflow: hidden !important;\n  pointer-events: auto !important;\n  box-sizing: border-box !important;\n  padding: 16px !important;\n}\n\n@media (min-width: 769px) {\n  html.rr-active .rr-link-card-container {\n    padding: 32px !important;\n  }\n}\n\nhtml.rr-active .rr-link-card {\n  position: relative !important;\n  z-index: 2 !important;\n  width: 100% !important;\n  max-width: 440px !important;\n  background: #141518 !important;\n  border: 1px solid #28292e !important;\n  border-radius: 16px !important;\n  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6) !important;\n  overflow: hidden !important;\n  display: flex !important;\n  flex-direction: column !important;\n  cursor: pointer !important;\n  transition: transform 0.15s ease, border-color 0.15s ease !important;\n  padding: 16px !important;\n  gap: 12px !important;\n  margin: 0 auto !important;\n  box-sizing: border-box !important;\n  user-select: none !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-link-card:hover {\n  transform: translateY(-2px) !important;\n  border-color: #383a42 !important;\n}\n\n.rr-link-card:active {\n  transform: scale(0.98) !important;\n}\n\n.rr-link-card-thumb-wrap {\n  width: 100% !important;\n  height: 190px !important;\n  border-radius: 10px !important;\n  overflow: hidden !important;\n  position: relative !important;\n  background: #1c1d22 !important;\n}\n\n.rr-link-card-thumb {\n  width: 100% !important;\n  height: 100% !important;\n  object-fit: cover !important;\n  display: block !important;\n}\n\n.rr-link-card-body {\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 8px !important;\n}\n\n.rr-link-card-domain {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 6px !important;\n  background: #202126 !important;\n  border: 1px solid #30323a !important;\n  border-radius: 9999px !important;\n  padding: 3px 9px !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  color: #ff6b35 !important;\n  letter-spacing: 0.3px !important;\n  text-transform: lowercase !important;\n}\n\n.rr-link-card-title {\n  margin: 0 !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 15px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  line-height: 1.35 !important;\n  letter-spacing: -0.015em !important;\n  display: -webkit-box !important;\n  -webkit-line-clamp: 3 !important;\n  -webkit-box-orient: vertical !important;\n  overflow: hidden !important;\n}\n\n.rr-link-card-cta {\n  display: inline-flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  gap: 8px !important;\n  width: 100% !important;\n  padding: 10px 16px !important;\n  margin-top: 4px !important;\n  border-radius: 10px !important;\n  background: #ff4500 !important;\n  color: #ffffff !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 13px !important;\n  font-weight: 700 !important;\n  border: none !important;\n  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;\n  cursor: pointer !important;\n  transition: opacity 0.15s ease !important;\n}\n\n.rr-link-card-cta:hover {\n  opacity: 0.9 !important;\n}\n\n.rr-link-card-cta:active {\n  transform: scale(0.97) !important;\n}\n\n/* =========================================================\n   In-Reel Comments Drawer & Backdrop\n   ========================================================= */\n\n.rr-comments-backdrop {\n  position: fixed !important;\n  inset: 0 !important;\n  background: rgba(0, 0, 0, 0.65) !important;\n  z-index: 2147483646 !important;\n  backdrop-filter: blur(4px) !important;\n  -webkit-backdrop-filter: blur(4px) !important;\n  opacity: 0;\n  transition: opacity 0.2s ease !important;\n}\n\n.rr-comments-backdrop.is-visible {\n  opacity: 1 !important;\n}\n\n.rr-comments-drawer {\n  position: fixed !important;\n  bottom: 0 !important;\n  left: 0 !important;\n  right: 0 !important;\n  height: 80vh !important;\n  max-height: 85vh !important;\n  background: #141518 !important;\n  border-top: 1px solid rgba(255, 255, 255, 0.12) !important;\n  border-radius: 16px 16px 0 0 !important;\n  z-index: 2147483647 !important;\n  display: flex !important;\n  flex-direction: column !important;\n  overflow: hidden !important;\n  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.75) !important;\n  transform: translateY(100%) !important;\n  transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1) !important;\n}\n\n.rr-comments-drawer.is-open {\n  transform: translateY(0%) !important;\n}\n\n/* Desktop layout: slide-over panel on the right side */\n@media (min-width: 768px) {\n  .rr-comments-drawer {\n    top: 0 !important;\n    bottom: 0 !important;\n    right: 0 !important;\n    left: auto !important;\n    width: 480px !important;\n    height: 100vh !important;\n    max-height: 100vh !important;\n    border-radius: 16px 0 0 16px !important;\n    border-top: none !important;\n    border-left: 1px solid rgba(255, 255, 255, 0.12) !important;\n    transform: translateX(100%) !important;\n    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.75) !important;\n  }\n\n  .rr-comments-drawer.is-open {\n    transform: translateX(0%) !important;\n  }\n}\n\n.rr-drawer-header {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  padding: 12px 16px !important;\n  background: #181a1f !important;\n  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;\n  gap: 12px !important;\n  flex-shrink: 0 !important;\n}\n\n.rr-drawer-title-group {\n  display: flex !important;\n  flex-direction: column !important;\n  min-width: 0 !important;\n  flex: 1 !important;\n}\n\n.rr-drawer-title {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 14px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  white-space: nowrap !important;\n  overflow: hidden !important;\n  text-overflow: ellipsis !important;\n}\n\n.rr-drawer-subtitle {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 12px !important;\n  color: #8b8d98 !important;\n  white-space: nowrap !important;\n  overflow: hidden !important;\n  text-overflow: ellipsis !important;\n}\n\n.rr-drawer-actions {\n  display: flex !important;\n  align-items: center !important;\n  gap: 8px !important;\n  flex-shrink: 0 !important;\n}\n\n.rr-drawer-btn {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  width: 36px !important;\n  height: 36px !important;\n  border-radius: 9999px !important;\n  background: rgba(255, 255, 255, 0.08) !important;\n  border: 1px solid rgba(255, 255, 255, 0.08) !important;\n  color: #d7dadc !important;\n  cursor: pointer !important;\n  text-decoration: none !important;\n  transition: background 0.15s ease, color 0.15s ease !important;\n}\n\n.rr-drawer-btn:hover {\n  background: rgba(255, 255, 255, 0.16) !important;\n  color: #ffffff !important;\n}\n\n.rr-drawer-btn svg {\n  width: 18px !important;\n  height: 18px !important;\n  stroke: currentColor !important;\n  fill: none !important;\n  stroke-width: 2 !important;\n}\n\n.rr-drawer-body {\n  position: relative !important;\n  flex: 1 !important;\n  display: flex !important;\n  flex-direction: column !important;\n  overflow: hidden !important;\n  background: #0e1113 !important;\n}\n\n.rr-drawer-iframe {\n  flex: 1 !important;\n  width: 100% !important;\n  height: 100% !important;\n  border: none !important;\n  background: #0e1113 !important;\n  color-scheme: dark !important;\n}\n\n.rr-drawer-spinner {\n  position: absolute !important;\n  inset: 0 !important;\n  display: flex !important;\n  flex-direction: column !important;\n  align-items: center !important;\n  justify-content: center !important;\n  gap: 12px !important;\n  background: #0e1113 !important;\n  color: #8b8d98 !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 13px !important;\n  z-index: 5 !important;\n  transition: opacity 0.2s ease !important;\n}\n\n.rr-drawer-spinner.is-hidden {\n  opacity: 0 !important;\n  pointer-events: none !important;\n}\n\n.rr-spinner-circle {\n  width: 28px !important;\n  height: 28px !important;\n  border: 2.5px solid rgba(255, 255, 255, 0.12) !important;\n  border-top-color: #ff4500 !important;\n  border-radius: 50% !important;\n  animation: rr-spin 0.75s linear infinite !important;\n}\n\n@keyframes rr-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n");
-	function createFabButton(onClick) {
-		const btn = document.createElement("button");
-		btn.type = "button";
-		btn.id = "rr-fab";
-		btn.className = "rr-fab";
-		btn.setAttribute("aria-label", "Open Reddit Reel Mode");
-		btn.title = "Open Reddit Reel Mode";
-		btn.innerHTML = `
-    <svg
-      class="rr-fab-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <rect x="2.5" y="2.5" width="19" height="19" rx="4.5"></rect>
-      <path d="M2.5 8.5h19"></path>
-      <path d="m6.5 2.5 3 6"></path>
-      <path d="m11.5 2.5 3 6"></path>
-      <path d="m16.5 2.5 3 6"></path>
-      <polygon points="10 11.5 15.5 14.75 10 18 10 11.5" fill="currentColor" stroke="none"></polygon>
-    </svg>
-  `;
-		btn.onclick = (e) => {
-			e.stopPropagation();
-			onClick();
-		};
-		return btn;
-	}
+	_css(":root {\n  --rr-z-header: 2147483641;\n  --rr-z-reels: 2147483640;\n  --rr-z-overlay: 2147483645;\n  --rr-font-stack: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;\n  --rr-primary: #ff4500;\n  --rr-surface-glass: rgba(18, 22, 30, 0.72);\n  --rr-border-glass: rgba(255, 255, 255, 0.12);\n  --rr-highlight-glass: rgba(255, 255, 255, 0.22);\n}\n\n/* =========================================================\n   Feedback Pulses (Play/Pause, Fit/Fill)\n   ========================================================= */\n\n.rr-play-pulse {\n  position: fixed !important;\n  top: 50% !important;\n  left: 50% !important;\n  transform: translate(-50%, -50%) !important;\n  width: 76px !important;\n  height: 76px !important;\n  border-radius: 9999px !important;\n  background: rgba(18, 22, 30, 0.8) !important;\n  border: 1px solid rgba(255, 255, 255, 0.15) !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  color: #ffffff !important;\n  pointer-events: none !important;\n  z-index: 2147483646 !important;\n  animation: rr-pulse-fade 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;\n}\n\n.rr-play-pulse svg {\n  width: 36px !important;\n  height: 36px !important;\n  fill: currentColor !important;\n}\n\n.rr-scale-pulse {\n  position: fixed !important;\n  top: 50% !important;\n  left: 50% !important;\n  transform: translate(-50%, -50%) !important;\n  padding: 10px 20px !important;\n  border-radius: 9999px !important;\n  background: #181a1f !important;\n  border: 1px solid #30323a !important;\n  color: #ffffff !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 13px !important;\n  font-weight: 700 !important;\n  letter-spacing: 0.3px !important;\n  pointer-events: none !important;\n  z-index: 2147483646 !important;\n  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;\n  animation: rr-pulse-fade 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;\n}\n\n@keyframes rr-pulse-fade {\n  0% {\n    opacity: 0;\n    transform: translate(-50%, -50%) scale(0.65);\n  }\n  35% {\n    opacity: 1;\n    transform: translate(-50%, -50%) scale(1.08);\n  }\n  100% {\n    opacity: 0;\n    transform: translate(-50%, -50%) scale(1.15);\n  }\n}\n\n/* =========================================================\n   Fullscreen Reels Feed & Snap-Scroll Rules\n   ========================================================= */\n\n/* Root: the WINDOW is the scroller. Reddit's infinite loader, Back/forward\n   scroll restoration and lazy media all keep working because nothing nests. */\nhtml.rr-active {\n  scroll-snap-type: y mandatory !important;\n  overscroll-behavior-y: contain !important;\n  scrollbar-width: none !important;\n  background: #000000 !important;\n}\n\nhtml.rr-active::-webkit-scrollbar {\n  display: none !important;\n}\n\nhtml.rr-active body {\n  margin: 0 !important;\n  padding: 0 !important;\n  background: #000000 !important;\n  color: #ffffff !important;\n  -webkit-user-select: none;\n  user-select: none;\n}\n\n/* Reddit's header stays (search, account, menu) as a translucent bar over the reel */\nhtml.rr-active reddit-header-large,\nhtml.rr-active reddit-header-small {\n  position: fixed !important;\n  top: 0 !important;\n  left: 0 !important;\n  right: 0 !important;\n  z-index: var(--rr-z-header) !important;\n  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0)) !important;\n}\n\nhtml.rr-active reddit-header-large header,\nhtml.rr-active reddit-header-small header,\nhtml.rr-active reddit-header-large > *,\nhtml.rr-active reddit-header-small > * {\n  background: transparent !important;\n  border: none !important;\n  box-shadow: none !important;\n}\n\n/* Suppress the rest of Reddit's framing in reel layout */\nhtml.rr-active aside,\nhtml.rr-active footer,\nhtml.rr-active .bottom-nav,\nhtml.rr-active #left-sidebar-container,\nhtml.rr-active #right-sidebar-container,\nhtml.rr-active shreddit-async-loader[bundlename=\"bottom_bar\"],\nhtml.rr-active shreddit-comment-jump-button,\nhtml.rr-active reddit-comment-jump-button,\nhtml.rr-active .comment-jump-button,\nhtml.rr-active shreddit-async-loader[bundlename*=\"comment_jump\"],\nhtml.rr-active shreddit-async-loader[bundlename*=\"floating\"],\nhtml.rr-active shreddit-floating-action-bar,\nhtml.rr-active floating-action-bar,\nhtml.rr-active [data-testid*=\"floating\" i],\nhtml.rr-active [data-testid*=\"comment-jump\" i],\nhtml.rr-active shreddit-back-to-top-button,\nhtml.rr-active back-to-top-button,\nhtml.rr-active faceplate-tracker[source=\"floating_action_bar\"],\nhtml.rr-active [slot=\"floating-action-bar\"],\nhtml.rr-active shreddit-ad-post,\nhtml.rr-active shreddit-feed > hr,\nhtml.rr-active shreddit-feed hr,\nhtml.rr-active masthead-ad,\nhtml.rr-active .masthead {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Feed wrappers: full width, no gutters, no own scrolling */\nhtml.rr-active #subgrid-container,\nhtml.rr-active main,\nhtml.rr-active .main-container,\nhtml.rr-active #main-content,\nhtml.rr-active #posts-container,\nhtml.rr-active shreddit-feed,\nhtml.rr-active [data-testid=\"posts-list\"] {\n  width: 100vw !important;\n  max-width: 100vw !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  overflow: visible !important;\n  background: #000000 !important;\n  display: block !important;\n}\n\n/* Single Reel Slide (shreddit-post, article, div containers) */\nhtml.rr-active shreddit-post,\nhtml.rr-active #posts-container > article,\nhtml.rr-active [data-testid=\"posts-list\"] > div[data-testid=\"post-container\"] {\n  height: 100vh !important;\n  height: 100dvh !important;\n  width: 100vw !important;\n  min-height: 100vh !important;\n  min-height: 100dvh !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  min-width: 100vw !important;\n  max-width: 100vw !important;\n  scroll-snap-align: start !important;\n  scroll-snap-stop: always !important;\n  position: relative !important;\n  overflow: hidden !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: none !important;\n  border-radius: 0 !important;\n  background: #000000 !important;\n  box-sizing: border-box !important;\n}\n\n/* Ensure post media wrapper fills viewport */\nhtml.rr-active shreddit-post [slot=\"post-media-container\"],\nhtml.rr-active shreddit-post .media-container,\nhtml.rr-active shreddit-post shreddit-aspect-ratio,\nhtml.rr-active shreddit-post shreddit-player-2 {\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100vw !important;\n  height: 100vh !important;\n  height: 100dvh !important;\n  max-width: 100vw !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  min-height: 100vh !important;\n  min-height: 100dvh !important;\n  --max-height: 100dvh !important;\n  --max-width: 100vw !important;\n  aspect-ratio: unset !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border-radius: 0 !important;\n  background: transparent !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  z-index: 5 !important;\n}\n\n/* Standalone Video, Iframe, and Single Image Sizing (Excluding Carousels) */\nhtml.rr-active shreddit-post video,\nhtml.rr-active shreddit-post iframe,\nhtml.rr-active shreddit-post .rr-embedded-iframe,\nhtml.rr-active shreddit-post:not(.rr-is-link):not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb):not(.shreddit-subreddit-icon__icon):not(.post-background-image-filter) {\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100vw !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  object-fit: contain !important;\n  background: transparent !important;\n  border: none !important;\n  z-index: 10 !important;\n}\n\n/* Unconstrain nested media containers and aspect-ratio wrappers inside shreddit-post (Excluding Carousels) */\nhtml.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container],\nhtml.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container] > div,\nhtml.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) shreddit-media-lightbox-listener,\nhtml.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) .media-lightbox-img {\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100vw !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  aspect-ratio: unset !important;\n  position: absolute !important;\n  inset: 0 !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  border: none !important;\n  background: transparent !important;\n}\n\n/* Suppress crosspost leakages inside post-media-container */\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] .crosspost-credit-bar,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] .crosspost-title,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] .post-background-image-filter,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] .text-secondary-plain-weak,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] div:has(> .text-secondary-plain-weak),\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] > div > .crosspost-credit-bar,\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] > div:not(:has(img, video, gallery-carousel, faceplate-carousel, shreddit-aspect-ratio, [data-aspect-ratio-container])),\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] > .pointer-events-none.border-sm {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Vertical video full-bleed scaling: fills 100% width and height without letterbox bars */\nhtml.rr-active shreddit-post.rr-has-vertical-video video,\nhtml.rr-active shreddit-post video.rr-vertical-video,\nhtml.rr-active shreddit-post[data-vertical-video=\"true\"] video {\n  object-fit: cover !important;\n}\n\n/* User toggle overrides (Video and Single Image) - Supports all post containers */\nhtml.rr-active .rr-fit-contain video,\nhtml.rr-active .rr-fit-contain iframe,\nhtml.rr-active .rr-fit-contain img,\nhtml.rr-active shreddit-post.rr-fit-contain video,\nhtml.rr-active shreddit-post.rr-fit-contain iframe,\nhtml.rr-active shreddit-post.rr-fit-contain img {\n  object-fit: contain !important;\n}\n\nhtml.rr-active .rr-fit-cover video,\nhtml.rr-active .rr-fit-cover iframe,\nhtml.rr-active .rr-fit-cover img,\nhtml.rr-active shreddit-post.rr-fit-cover video,\nhtml.rr-active shreddit-post.rr-fit-cover iframe,\nhtml.rr-active shreddit-post.rr-fit-cover img {\n  object-fit: cover !important;\n}\n\n/* Subtitles / Closed Captions Suppression when disabled */\nhtml.rr-active.rr-hide-captions ::cue,\nhtml.rr-active shreddit-post.rr-hide-captions ::cue,\nhtml.rr-active.rr-hide-captions .captions-display,\nhtml.rr-active.rr-hide-captions [data-testid=\"captions\"],\nhtml.rr-active.rr-hide-captions shreddit-player-captions,\nhtml.rr-active.rr-hide-captions .caption-wrapper,\nhtml.rr-active.rr-hide-captions .caption-container,\nhtml.rr-active.rr-hide-captions [part=\"captions\"],\nhtml.rr-active shreddit-post.rr-hide-captions .captions-display,\nhtml.rr-active shreddit-post.rr-hide-captions [data-testid=\"captions\"],\nhtml.rr-active shreddit-post.rr-hide-captions shreddit-player-captions,\nhtml.rr-active shreddit-post.rr-hide-captions .caption-wrapper,\nhtml.rr-active shreddit-post.rr-hide-captions .caption-container,\nhtml.rr-active shreddit-post.rr-hide-captions [part=\"captions\"] {\n  display: none !important;\n  visibility: hidden !important;\n  opacity: 0 !important;\n}\n\n/* Suppress native Reddit UI in slides (vote slots use off-screen hiding so proxy clicks work) */\nhtml.rr-active shreddit-post [slot=\"credit-bar\"],\nhtml.rr-active shreddit-post [slot=\"post-credit-bar\"],\nhtml.rr-active shreddit-post [slot=\"title-and-metadata\"],\nhtml.rr-active shreddit-post [slot=\"title\"],\nhtml.rr-active shreddit-post [slot=\"action-row\"],\nhtml.rr-active shreddit-post [slot=\"text-body\"],\nhtml.rr-active shreddit-post shreddit-post-action-row,\nhtml.rr-active shreddit-post feed-post-action-row,\nhtml.rr-active shreddit-post shreddit-post-credit-bar,\nhtml.rr-active shreddit-post shreddit-action-bar,\nhtml.rr-active shreddit-post rpl-action-bar,\nhtml.rr-active shreddit-post shreddit-interaction-container,\nhtml.rr-active shreddit-post faceplate-tracker,\nhtml.rr-active .rr-native-suppressed {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Vote targets stay in DOM and clickable via proxy (off-screen, not display:none) */\nhtml.rr-active shreddit-post [slot=\"vote\"],\nhtml.rr-active shreddit-post [slot=\"vote-button\"],\nhtml.rr-active shreddit-post shreddit-post-vote-control,\nhtml.rr-active shreddit-post [data-testid=\"post-vote-control\"],\nhtml.rr-active .rr-native-offscreen {\n  position: absolute !important;\n  width: 1px !important;\n  height: 1px !important;\n  opacity: 0 !important;\n  pointer-events: none !important;\n  overflow: hidden !important;\n}\n\n/* Bare media taps must not navigate: only explicit overlay/card buttons open URLs */\nhtml.rr-active shreddit-post a:not(.rr-sub-badge):not(.rr-author):not(.rr-link-card-btn):not(.rr-text-card-body a),\nhtml.rr-active shreddit-post a[data-click-id=\"body\"],\nhtml.rr-active shreddit-post a[slot=\"full-post-link\"],\nhtml.rr-active shreddit-post a[href*=\"/comments/\"],\nhtml.rr-active shreddit-post [slot=\"post-media-container\"] a,\nhtml.rr-active shreddit-post shreddit-media-lightbox-listener a {\n  pointer-events: none !important;\n}\n\nhtml.rr-active .rr-post-overlay a,\nhtml.rr-active .rr-link-card-container a,\nhtml.rr-active .rr-text-card-container a {\n  pointer-events: auto !important;\n}\n\n/* Videos-only filter: scoped under html.rr-active so exit automatically restores visibility */\nhtml.rr-active shreddit-post.rr-filtered-out,\nhtml.rr-active article.rr-filtered-out,\nhtml.rr-active div.rr-filtered-out {\n  display: none !important;\n}\n\n/* Hide any injected iframes or videos when Reel Mode is inactive */\n.rr-embedded-iframe,\n.rr-embedded-video {\n  display: none !important;\n}\n\nhtml.rr-active .rr-embedded-video {\n  display: block !important;\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100vw !important;\n  max-height: 100vh !important;\n  max-height: 100dvh !important;\n  object-fit: contain !important;\n  background: #000000 !important;\n}\n\nhtml.rr-active .rr-embedded-iframe {\n  display: block !important;\n}\n\n/* Empty feed state */\nhtml.rr-active .rr-empty-feed {\n  display: flex !important;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  height: 100vh !important;\n  height: 100dvh !important;\n  width: 100vw !important;\n  color: #a0a0a0;\n  font-size: 16px;\n  font-weight: 500;\n  text-align: center;\n  padding: 24px;\n  box-sizing: border-box;\n}\n/* =========================================================\n   Multiple-Image Gallery & Carousel Fullscreen Layout\n   ========================================================= */\n\nhtml.rr-active shreddit-post gallery-carousel,\nhtml.rr-active shreddit-post faceplate-carousel,\nhtml.rr-active shreddit-post.rr-has-gallery shreddit-async-loader,\nhtml.rr-active shreddit-post shreddit-async-loader:has(gallery-carousel, faceplate-carousel),\nhtml.rr-active shreddit-post [data-testid=\"media-gallery\"] {\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100% !important;\n  max-height: 100% !important;\n  --gallery-initial-height: 100% !important;\n  display: block !important;\n  overflow: hidden !important;\n  z-index: 6 !important;\n  background: #000000 !important;\n  touch-action: pan-x pan-y !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel ul[slot=\"items\"],\nhtml.rr-active shreddit-post faceplate-carousel ul[slot=\"items\"],\nhtml.rr-active shreddit-post gallery-carousel .carousel-items,\nhtml.rr-active shreddit-post faceplate-carousel .carousel-items {\n  display: flex !important;\n  flex-direction: row !important;\n  flex-wrap: nowrap !important;\n  height: 100% !important;\n  width: 100% !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  align-items: center !important;\n  list-style: none !important;\n  overflow-x: auto !important;\n  overflow-y: hidden !important;\n  scroll-snap-type: x mandatory !important;\n  scroll-behavior: smooth !important;\n  scrollbar-width: none !important;\n  touch-action: pan-x pan-y !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel ul::-webkit-scrollbar,\nhtml.rr-active shreddit-post faceplate-carousel ul::-webkit-scrollbar {\n  display: none !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel ul[slot=\"items\"] > li,\nhtml.rr-active shreddit-post faceplate-carousel ul[slot=\"items\"] > li,\nhtml.rr-active shreddit-post gallery-carousel .carousel-item,\nhtml.rr-active shreddit-post faceplate-carousel .carousel-item {\n  flex: 0 0 100% !important;\n  flex-shrink: 0 !important;\n  width: 100% !important;\n  min-width: 100% !important;\n  max-width: 100% !important;\n  height: 100% !important;\n  max-height: 100% !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  position: relative !important;\n  scroll-snap-align: center !important;\n  scroll-snap-stop: always !important;\n  overflow: hidden !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  box-sizing: border-box !important;\n  touch-action: pan-x pan-y !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel figure,\nhtml.rr-active shreddit-post faceplate-carousel figure,\nhtml.rr-active shreddit-post gallery-carousel [data-aspect-ratio-container],\nhtml.rr-active shreddit-post faceplate-carousel [data-aspect-ratio-container] {\n  width: 100% !important;\n  height: 100% !important;\n  max-width: 100% !important;\n  max-height: 100% !important;\n  margin: 0 !important;\n  padding: 0 !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  position: relative !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel img:not(.post-background-image-filter):not(.shreddit-subreddit-icon__icon),\nhtml.rr-active shreddit-post faceplate-carousel img:not(.post-background-image-filter):not(.shreddit-subreddit-icon__icon),\nhtml.rr-active shreddit-post gallery-carousel .media-lightbox-img,\nhtml.rr-active shreddit-post faceplate-carousel .media-lightbox-img {\n  position: relative !important;\n  inset: auto !important;\n  max-width: 100% !important;\n  max-height: 100% !important;\n  width: auto !important;\n  height: auto !important;\n  object-fit: contain !important;\n  display: block !important;\n  margin: auto !important;\n  visibility: visible !important;\n  opacity: 1 !important;\n}\n\n/* Blurred backdrop copies must never cover the real slide (black-screen cause) */\nhtml.rr-active shreddit-post gallery-carousel img.post-background-image-filter,\nhtml.rr-active shreddit-post faceplate-carousel img.post-background-image-filter,\nhtml.rr-active shreddit-post gallery-carousel [class*=\"background-image-filter\"],\nhtml.rr-active shreddit-post faceplate-carousel [class*=\"background-image-filter\"] {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Gallery image alt-text / caption badges (\"[Image 1]\") are always suppressed\n   in Reel Mode. They are image metadata, NOT video subtitles, so the CC toggle\n   must never unhide them. Scoped to carousels (and away from video slides) so\n   real video caption layers elsewhere are unaffected. */\nhtml.rr-active shreddit-post gallery-carousel figcaption,\nhtml.rr-active shreddit-post faceplate-carousel figcaption,\nhtml.rr-active shreddit-post gallery-carousel [slot=\"caption\"],\nhtml.rr-active shreddit-post faceplate-carousel [slot=\"caption\"],\nhtml.rr-active shreddit-post gallery-carousel .gallery-caption,\nhtml.rr-active shreddit-post faceplate-carousel .gallery-caption,\nhtml.rr-active shreddit-post gallery-carousel .image-caption,\nhtml.rr-active shreddit-post faceplate-carousel .image-caption,\nhtml.rr-active shreddit-post gallery-carousel [data-testid*=\"alt-text\" i],\nhtml.rr-active shreddit-post faceplate-carousel [data-testid*=\"alt-text\" i],\nhtml.rr-active shreddit-post gallery-carousel li:not(:has(video)) [data-testid*=\"caption\" i],\nhtml.rr-active shreddit-post faceplate-carousel li:not(:has(video)) [data-testid*=\"caption\" i] {\n  display: none !important;\n  visibility: hidden !important;\n}\n\n/* Horizontal slide buttons for gallery */\nhtml.rr-active shreddit-post gallery-carousel button[slot=\"previous-button\"],\nhtml.rr-active shreddit-post gallery-carousel button[slot=\"next-button\"],\nhtml.rr-active shreddit-post faceplate-carousel button[slot=\"previous-button\"],\nhtml.rr-active shreddit-post faceplate-carousel button[slot=\"next-button\"],\nhtml.rr-active shreddit-post button.prev-btn,\nhtml.rr-active shreddit-post button.next-btn {\n  position: absolute !important;\n  top: 50% !important;\n  transform: translateY(-50%) !important;\n  z-index: 25 !important;\n  background: rgba(18, 22, 30, 0.65) !important;\n  border: 1px solid rgba(255, 255, 255, 0.15) !important;\n  color: #ffffff !important;\n  width: 44px !important;\n  height: 44px !important;\n  border-radius: 9999px !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  cursor: pointer !important;\n  opacity: 0.8 !important;\n  transition: opacity 0.15s ease, background 0.15s ease !important;\n}\n\nhtml.rr-active shreddit-post gallery-carousel button[slot=\"previous-button\"]:hover,\nhtml.rr-active shreddit-post gallery-carousel button[slot=\"next-button\"]:hover,\nhtml.rr-active shreddit-post faceplate-carousel button[slot=\"previous-button\"]:hover,\nhtml.rr-active shreddit-post faceplate-carousel button[slot=\"next-button\"]:hover,\nhtml.rr-active shreddit-post button.prev-btn:hover,\nhtml.rr-active shreddit-post button.next-btn:hover {\n  opacity: 1 !important;\n  background: rgba(18, 22, 30, 0.9) !important;\n}\n\n/* Hide disabled navigation buttons at carousel boundaries */\nhtml.rr-active shreddit-post gallery-carousel button[disabled],\nhtml.rr-active shreddit-post faceplate-carousel button[disabled],\nhtml.rr-active shreddit-post gallery-carousel button[aria-disabled=\"true\"],\nhtml.rr-active shreddit-post faceplate-carousel button[aria-disabled=\"true\"],\nhtml.rr-active shreddit-post button.prev-btn[disabled],\nhtml.rr-active shreddit-post button.next-btn[disabled] {\n  display: none !important;\n  opacity: 0 !important;\n  pointer-events: none !important;\n}\n\nhtml.rr-active shreddit-post button[slot=\"previous-button\"],\nhtml.rr-active shreddit-post button.prev-btn {\n  left: 16px !important;\n}\n\nhtml.rr-active shreddit-post button[slot=\"next-button\"],\nhtml.rr-active shreddit-post button.next-btn {\n  right: 16px !important;\n}\n\n/* Pagination dots indicators */\nhtml.rr-active shreddit-post gallery-carousel [slot=\"indicators\"],\nhtml.rr-active shreddit-post faceplate-carousel [slot=\"indicators\"],\nhtml.rr-active shreddit-post gallery-carousel [slot=\"dots\"],\nhtml.rr-active shreddit-post faceplate-carousel [slot=\"dots\"],\nhtml.rr-active shreddit-post gallery-carousel [part=\"indicators\"],\nhtml.rr-active shreddit-post faceplate-carousel [part=\"indicators\"],\nhtml.rr-active shreddit-post gallery-carousel .carousel-indicators,\nhtml.rr-active shreddit-post faceplate-carousel .carousel-indicators {\n  position: absolute !important;\n  bottom: calc(85px + env(safe-area-inset-bottom, 0px)) !important;\n  left: 50% !important;\n  transform: translateX(-50%) !important;\n  z-index: 22 !important;\n  display: flex !important;\n  justify-content: center !important;\n  align-items: center !important;\n  pointer-events: auto !important;\n}\n/* =========================================================\n   Post Overlay (Metadata & Action Rail)\n   ========================================================= */\n\n/* Ensure overlay is completely hidden by default when Reel Mode is inactive */\n.rr-post-overlay {\n  display: none !important;\n  visibility: hidden !important;\n}\n\nhtml.rr-active .rr-post-overlay {\n  position: absolute !important;\n  inset: 0 !important;\n  z-index: 20 !important;\n  pointer-events: none !important;\n  display: flex !important;\n  visibility: visible !important;\n  flex-direction: column !important;\n  justify-content: space-between !important;\n  padding: 16px !important;\n  box-sizing: border-box !important;\n  background: linear-gradient(\n    to bottom,\n    rgba(0, 0, 0, 0.3) 0%,\n    transparent 15%,\n    transparent 70%,\n    rgba(0, 0, 0, 0.55) 100%\n  ) !important;\n}\n\n/* Bottom Left: Post Metadata */\n.rr-post-info {\n  position: absolute !important;\n  bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;\n  left: 16px !important;\n  right: 76px !important;\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 6px !important;\n  pointer-events: auto !important;\n  z-index: 25 !important;\n}\n\n.rr-post-meta {\n  display: flex !important;\n  flex-direction: row !important;\n  align-items: center !important;\n  gap: 6px !important;\n  min-width: 0 !important;\n  max-width: 100% !important;\n  flex-wrap: nowrap !important;\n}\n\n.rr-sub-badge {\n  display: inline-flex !important;\n  align-items: center !important;\n  flex-shrink: 0 !important;\n  background: #202126 !important;\n  border: 1px solid #30323a !important;\n  border-radius: 9999px !important;\n  padding: 3px 9px !important;\n  color: #ff6b35 !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  letter-spacing: 0.2px !important;\n  cursor: pointer !important;\n  user-select: none !important;\n  transition: background 0.15s ease, border-color 0.15s ease !important;\n}\n\n.rr-sub-badge:hover {\n  background: #2c2e35 !important;\n  border-color: #444752 !important;\n}\n\n.rr-dot {\n  flex-shrink: 0 !important;\n  color: rgba(255, 255, 255, 0.5) !important;\n  font-weight: 700 !important;\n  font-size: 11px !important;\n  user-select: none !important;\n}\n\n/* Author Username: clickable link, single-line with ellipsis */\n.rr-author {\n  display: inline-block !important;\n  flex-shrink: 1 !important;\n  min-width: 0 !important;\n  white-space: nowrap !important;\n  overflow: hidden !important;\n  text-overflow: ellipsis !important;\n  color: rgba(255, 255, 255, 0.78) !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 12px !important;\n  font-weight: 500 !important;\n  pointer-events: auto !important;\n  cursor: pointer !important;\n  user-select: text !important;\n  text-decoration: none !important;\n  transition: color 0.15s ease, text-decoration 0.15s ease !important;\n}\n\n.rr-author:hover {\n  color: #ffffff !important;\n  text-decoration: underline !important;\n}\n\n/* Post Title */\n.rr-post-title {\n  color: #ffffff !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 15px !important;\n  font-weight: 600 !important;\n  line-height: 1.4 !important;\n  letter-spacing: -0.015em !important;\n  display: -webkit-box !important;\n  -webkit-line-clamp: 2 !important;\n  -webkit-box-orient: vertical !important;\n  overflow: hidden !important;\n  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7) !important;\n}\n\n/* Bottom Right: Vertical Action Rail */\n.rr-action-rail {\n  position: absolute !important;\n  bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;\n  right: 14px !important;\n  display: flex !important;\n  flex-direction: column !important;\n  align-items: center !important;\n  gap: 14px !important;\n  pointer-events: auto !important;\n  z-index: 25 !important;\n}\n\n.rr-action-item {\n  display: flex !important;\n  flex-direction: column !important;\n  align-items: center !important;\n  gap: 3px !important;\n}\n\n.rr-action-btn {\n  width: 44px !important;\n  height: 44px !important;\n  border-radius: 9999px !important;\n  background: #1c1d22 !important;\n  border: 1px solid #30323a !important;\n  color: #ffffff !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  cursor: pointer !important;\n  padding: 0 !important;\n  outline: none !important;\n  transition: background 0.15s ease, transform 0.12s ease !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-action-btn:hover {\n  background: #282a32 !important;\n}\n\n.rr-action-btn:active {\n  transform: scale(0.92) !important;\n}\n\n.rr-action-label {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;\n  user-select: none !important;\n}\n\n/* Integrated Vote Group Cluster */\n.rr-vote-group {\n  display: flex !important;\n  flex-direction: column !important;\n  align-items: center !important;\n  background: #181a1f !important;\n  border: 1px solid #282a32 !important;\n  border-radius: 9999px !important;\n  padding: 4px !important;\n  gap: 2px !important;\n}\n\n.rr-vote-group .rr-action-btn {\n  background: transparent !important;\n  border: none !important;\n  box-shadow: none !important;\n  width: 44px !important;\n  height: 44px !important;\n  min-width: 44px !important;\n  min-height: 44px !important;\n  color: #9a9ca6 !important;\n}\n\n.rr-vote-group .rr-action-btn:hover {\n  color: #ffffff !important;\n  background: rgba(255, 255, 255, 0.08) !important;\n}\n\n.rr-vote-group .rr-score-label {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 12px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  padding: 1px 0 !important;\n  line-height: 1 !important;\n}\n\n.rr-upvote-btn.is-active-up {\n  color: #ff4500 !important;\n}\n\n.rr-downvote-btn.is-active-down {\n  color: #7193ff !important;\n}\n\n/* CC on (enabled): plain white icon on the standard dark pill.\n   CC off (disabled): dimmed grey icon. No accent color. */\n.rr-action-btn.rr-cc-btn.is-active-cc {\n  background: #1c1d22 !important;\n  border-color: #565a66 !important;\n  color: #ffffff !important;\n}\n\n.rr-action-btn.rr-cc-btn:not(.is-active-cc) {\n  color: #888d99 !important;\n}\n\n/* Video posts: lift info + rail above Reddit's native player control bar */\nhtml.rr-active shreddit-post.rr-has-video .rr-post-info,\nhtml.rr-active shreddit-post.rr-has-video .rr-action-rail {\n  bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;\n}\n\n/* Sound toggle: muted is dimmed grey, unmuted plain white */\n.rr-action-btn.rr-sound-btn.is-muted {\n  color: #888d99 !important;\n}\n/* By default, card containers are hidden when Reel Mode is inactive */\n.rr-text-card-container,\n.rr-link-card-container {\n  display: none !important;\n}\n\n/* When Reel Mode is active, display as full-bleed centered overlay */\nhtml.rr-active .rr-text-card-container {\n  display: flex !important;\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100% !important;\n  height: 100% !important;\n  align-items: center !important;\n  justify-content: center !important;\n  z-index: 15 !important;\n  overflow: hidden !important;\n  pointer-events: auto !important;\n  box-sizing: border-box !important;\n  padding: 16px !important;\n}\n\n@media (min-width: 769px) {\n  html.rr-active .rr-text-card-container {\n    padding: 32px !important;\n  }\n}\n\nhtml.rr-active .rr-text-card {\n  position: relative !important;\n  z-index: 2 !important;\n  width: 100% !important;\n  max-width: 480px !important;\n  max-height: calc(100dvh - 120px) !important;\n  background: #141518 !important;\n  border: 1px solid #28292e !important;\n  border-radius: 16px !important;\n  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6) !important;\n  overflow: hidden !important;\n  display: flex !important;\n  flex-direction: column !important;\n  cursor: default !important;\n  transition: border-color 0.15s ease !important;\n  padding: 20px !important;\n  gap: 12px !important;\n  margin: 0 auto !important;\n  box-sizing: border-box !important;\n  user-select: text !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-text-card:hover {\n  border-color: #383a42 !important;\n}\n\n.rr-text-card-header {\n  display: flex !important;\n  align-items: center !important;\n  justify-content: space-between !important;\n  gap: 8px !important;\n}\n\n.rr-text-pill {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 6px !important;\n  background: #202126 !important;\n  border: 1px solid #30323a !important;\n  border-radius: 9999px !important;\n  padding: 3px 9px !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  color: #9a9ca6 !important;\n  letter-spacing: 0.3px !important;\n  text-transform: uppercase !important;\n}\n\n.rr-text-open-btn {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 5px !important;\n  background: #202126 !important;\n  border: 1px solid #30323a !important;\n  border-radius: 9999px !important;\n  padding: 3px 10px !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 11px !important;\n  font-weight: 600 !important;\n  color: #c5c7d0 !important;\n  text-decoration: none !important;\n  cursor: pointer !important;\n  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease !important;\n}\n\n.rr-text-open-btn:hover {\n  background: #2c2e35 !important;\n  color: #ffffff !important;\n  border-color: #444752 !important;\n}\n\n.rr-text-card-title {\n  margin: 0 !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 17px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  line-height: 1.35 !important;\n  letter-spacing: -0.015em !important;\n}\n\n.rr-text-card-body {\n  font-family: var(--rr-font-stack) !important;\n  font-size: 14px !important;\n  line-height: 1.65 !important;\n  color: #c5c7d0 !important;\n  overflow-y: auto !important;\n  max-height: calc(100dvh - 220px) !important;\n  padding-right: 6px !important;\n  scrollbar-width: thin !important;\n  scrollbar-color: #383a42 transparent !important;\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 10px !important;\n  overscroll-behavior: contain !important;\n  -webkit-overflow-scrolling: touch !important;\n  touch-action: pan-y !important;\n}\n\n.rr-text-card-body p {\n  margin: 0 !important;\n}\n\n/* =========================================================\n   External Web Link Card\n   ========================================================= */\n\nhtml.rr-active .rr-link-card-container {\n  position: absolute !important;\n  inset: 0 !important;\n  width: 100% !important;\n  height: 100% !important;\n  display: flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  z-index: 15 !important;\n  overflow: hidden !important;\n  pointer-events: auto !important;\n  box-sizing: border-box !important;\n  padding: 16px !important;\n}\n\n@media (min-width: 769px) {\n  html.rr-active .rr-link-card-container {\n    padding: 32px !important;\n  }\n}\n\nhtml.rr-active .rr-link-card {\n  position: relative !important;\n  z-index: 2 !important;\n  width: 100% !important;\n  max-width: 440px !important;\n  background: #141518 !important;\n  border: 1px solid #28292e !important;\n  border-radius: 16px !important;\n  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6) !important;\n  overflow: hidden !important;\n  display: flex !important;\n  flex-direction: column !important;\n  cursor: pointer !important;\n  transition: transform 0.15s ease, border-color 0.15s ease !important;\n  padding: 16px !important;\n  gap: 12px !important;\n  margin: 0 auto !important;\n  box-sizing: border-box !important;\n  user-select: none !important;\n  -webkit-tap-highlight-color: transparent !important;\n}\n\n.rr-link-card:hover {\n  transform: translateY(-2px) !important;\n  border-color: #383a42 !important;\n}\n\n.rr-link-card:active {\n  transform: scale(0.98) !important;\n}\n\n.rr-link-card-thumb-wrap {\n  width: 100% !important;\n  height: 190px !important;\n  border-radius: 10px !important;\n  overflow: hidden !important;\n  position: relative !important;\n  background: #1c1d22 !important;\n}\n\n.rr-link-card-thumb {\n  width: 100% !important;\n  height: 100% !important;\n  object-fit: cover !important;\n  display: block !important;\n}\n\n.rr-link-card-body {\n  display: flex !important;\n  flex-direction: column !important;\n  gap: 8px !important;\n}\n\n.rr-link-card-domain {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 6px !important;\n  background: #202126 !important;\n  border: 1px solid #30323a !important;\n  border-radius: 9999px !important;\n  padding: 3px 9px !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  color: #ff6b35 !important;\n  letter-spacing: 0.3px !important;\n  text-transform: lowercase !important;\n}\n\n.rr-link-card-title {\n  margin: 0 !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 15px !important;\n  font-weight: 700 !important;\n  color: #ffffff !important;\n  line-height: 1.35 !important;\n  letter-spacing: -0.015em !important;\n  display: -webkit-box !important;\n  -webkit-line-clamp: 3 !important;\n  -webkit-box-orient: vertical !important;\n  overflow: hidden !important;\n}\n\n.rr-link-card-cta {\n  display: inline-flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  gap: 8px !important;\n  width: 100% !important;\n  padding: 10px 16px !important;\n  margin-top: 4px !important;\n  border-radius: 10px !important;\n  background: #ff4500 !important;\n  color: #ffffff !important;\n  font-family: var(--rr-font-stack) !important;\n  font-size: 13px !important;\n  font-weight: 700 !important;\n  border: none !important;\n  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;\n  cursor: pointer !important;\n  transition: opacity 0.15s ease !important;\n}\n\n.rr-link-card-cta:hover {\n  opacity: 0.9 !important;\n}\n\n.rr-link-card-cta:active {\n  transform: scale(0.97) !important;\n}\n\n/* =========================================================\n   Reel / list toggle and videos-only filter inside Reddit's header\n   ========================================================= */\n\n.rr-header-cluster {\n  display: inline-flex !important;\n  align-items: center !important;\n  gap: 6px !important;\n  margin: 0 6px !important;\n  flex-shrink: 0 !important;\n}\n\n.rr-header-cluster.is-floating {\n  position: fixed !important;\n  top: calc(10px + env(safe-area-inset-top, 0px)) !important;\n  right: calc(12px + env(safe-area-inset-right, 0px)) !important;\n  z-index: var(--rr-z-overlay) !important;\n  margin: 0 !important;\n}\n\n.rr-header-btn {\n  width: 40px !important;\n  height: 40px !important;\n  border-radius: 9999px !important;\n  background: #1c1d22 !important;\n  border: 1px solid #30323a !important;\n  color: #ffffff !important;\n  display: inline-flex !important;\n  align-items: center !important;\n  justify-content: center !important;\n  padding: 0 !important;\n  cursor: pointer !important;\n  outline: none !important;\n  -webkit-tap-highlight-color: transparent !important;\n  transition: background 0.15s ease, transform 0.12s ease !important;\n}\n\n.rr-header-btn:hover {\n  background: #282a32 !important;\n}\n\n.rr-header-btn:active {\n  transform: scale(0.92) !important;\n}\n\n.rr-header-btn:focus-visible {\n  box-shadow: 0 0 0 2px #ff4500 !important;\n}\n\n/* Filter only makes sense while the reel layout is on */\n.rr-header-filter {\n  display: none !important;\n}\n\nhtml.rr-active .rr-header-filter {\n  display: inline-flex !important;\n}\n\n.rr-header-filter.is-active {\n  background: #2c1a16 !important;\n  border-color: #ff4500 !important;\n  color: #ff6b35 !important;\n}\n");
 	function showPlayPulse(isPlaying) {
 		const existing = document.querySelector(".rr-play-pulse");
 		if (existing) existing.remove();
@@ -1779,383 +1830,6 @@
 		pulse.textContent = muted || pct === 0 ? "Muted" : `Volume ${pct}%`;
 		document.body.appendChild(pulse);
 		setTimeout(() => pulse.remove(), 650);
-	}
-	function getSoundIconSvg(isMuted) {
-		return isMuted ? `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>` : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
-	}
-	function getFilterIconSvg() {
-		return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.5"></rect><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"></path></svg>`;
-	}
-	function getFilterLabelHtml(videosOnly) {
-		return `<span class="rr-filter-icon">${getFilterIconSvg()}</span><span>${videosOnly ? "Videos only" : "All posts"}</span>`;
-	}
-	function createTopBar(isMuted, videosOnly, handlers) {
-		const topBar = document.createElement("div");
-		topBar.className = "rr-top-bar";
-		const exitBtn = document.createElement("button");
-		exitBtn.type = "button";
-		exitBtn.className = "rr-exit-btn";
-		exitBtn.setAttribute("aria-label", "Exit Reel Mode");
-		exitBtn.title = "Exit Reel Mode";
-		exitBtn.innerHTML = `
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18"></line>
-      <line x1="6" y1="6" x2="18" y2="18"></line>
-    </svg>
-  `;
-		exitBtn.onclick = (e) => {
-			e.stopPropagation();
-			handlers.onExit();
-		};
-		const controls = document.createElement("div");
-		controls.className = "rr-top-controls";
-		const filterBtn = document.createElement("button");
-		filterBtn.type = "button";
-		filterBtn.className = `rr-filter-btn-top ${videosOnly ? "is-active" : ""}`;
-		filterBtn.setAttribute("aria-label", "Toggle Videos Only Filter");
-		filterBtn.title = videosOnly ? "Showing Videos Only (Click to show all)" : "Showing All Reels (Click for videos only)";
-		filterBtn.innerHTML = getFilterLabelHtml(videosOnly);
-		filterBtn.onclick = (e) => {
-			e.stopPropagation();
-			handlers.onToggleFilter();
-		};
-		const soundBtn = document.createElement("button");
-		soundBtn.type = "button";
-		soundBtn.className = `rr-sound-btn-top ${isMuted ? "is-muted" : ""}`;
-		soundBtn.setAttribute("aria-label", isMuted ? "Unmute" : "Mute");
-		soundBtn.title = isMuted ? "Unmute" : "Mute";
-		soundBtn.innerHTML = getSoundIconSvg(isMuted);
-		soundBtn.onclick = (e) => {
-			e.stopPropagation();
-			handlers.onToggleMute();
-		};
-		controls.appendChild(filterBtn);
-		controls.appendChild(soundBtn);
-		topBar.appendChild(exitBtn);
-		topBar.appendChild(controls);
-		return topBar;
-	}
-	function syncTopBarState(topBar, isMuted, videosOnly) {
-		if (!topBar) return;
-		const filterBtn = topBar.querySelector(".rr-filter-btn-top");
-		if (filterBtn) {
-			filterBtn.classList.toggle("is-active", videosOnly);
-			filterBtn.title = videosOnly ? "Showing Videos Only (Click to show all)" : "Showing All Reels (Click for videos only)";
-			filterBtn.innerHTML = getFilterLabelHtml(videosOnly);
-		}
-		const soundBtn = topBar.querySelector(".rr-sound-btn-top");
-		if (soundBtn) {
-			soundBtn.classList.toggle("is-muted", isMuted);
-			soundBtn.setAttribute("aria-label", isMuted ? "Unmute" : "Mute");
-			soundBtn.title = isMuted ? "Unmute" : "Mute";
-			soundBtn.innerHTML = getSoundIconSvg(isMuted);
-		}
-	}
-	function formatCount(num) {
-		if (!num || isNaN(num)) return "0";
-		if (Math.abs(num) >= 1e6) return (num / 1e6).toFixed(1).replace(/\.0$/, "") + "m";
-		if (Math.abs(num) >= 1e3) return (num / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
-		return num.toString();
-	}
-	function escapeHtml(str) {
-		if (!str) return "";
-		return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-	}
-	function extractDomain(url) {
-		if (!url) return "";
-		try {
-			return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./, "");
-		} catch {
-			return url.replace(/^https?:\/\//, "").split("/")[0];
-		}
-	}
-	function isSafeUrl(url) {
-		if (!url || typeof url !== "string") return false;
-		const trimmed = url.trim();
-		if (!trimmed) return false;
-		try {
-			const base = typeof location !== "undefined" ? location.origin : "https://www.reddit.com";
-			const parsed = new URL(trimmed, base);
-			return parsed.protocol === "http:" || parsed.protocol === "https:";
-		} catch {
-			return false;
-		}
-	}
-	function sanitizeUrl(url, fallback = "") {
-		return isSafeUrl(url) ? url.trim() : fallback;
-	}
-	function openUrl(url) {
-		if (!url || !isSafeUrl(url)) return;
-		const safe = sanitizeUrl(url);
-		if (!window.open(safe, "_blank", "noopener,noreferrer")) window.location.href = safe;
-	}
-	var safeRaf = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
-	var activeDrawer = null;
-	var activeBackdrop = null;
-	var onDrawerCloseCallback = null;
-	function isCommentsDrawerOpen() {
-		return activeDrawer !== null && document.body.contains(activeDrawer);
-	}
-	function closeCommentsDrawer() {
-		if (onDrawerCloseCallback) {
-			try {
-				onDrawerCloseCallback();
-			} catch {}
-			onDrawerCloseCallback = null;
-		}
-		if (activeDrawer) {
-			activeDrawer.classList.remove("is-open");
-			const drawerToKill = activeDrawer;
-			setTimeout(() => drawerToKill.remove(), 280);
-			activeDrawer = null;
-		}
-		if (activeBackdrop) {
-			activeBackdrop.classList.remove("is-visible");
-			const backdropToKill = activeBackdrop;
-			setTimeout(() => backdropToKill.remove(), 200);
-			activeBackdrop = null;
-		}
-	}
-	function openCommentsDrawer(post, callbacks) {
-		closeCommentsDrawer();
-		if (callbacks?.onBeforeOpen) try {
-			callbacks.onBeforeOpen();
-		} catch {}
-		onDrawerCloseCallback = callbacks?.onClose || null;
-		const rawUrl = post.permalink?.startsWith("http") ? post.permalink : `https://www.reddit.com${post.permalink || ""}`;
-		const embedUrl = rawUrl.includes("?") ? `${rawUrl}&embedded=true` : `${rawUrl}?embedded=true`;
-		const backdrop = document.createElement("div");
-		backdrop.className = "rr-comments-backdrop";
-		backdrop.onclick = () => closeCommentsDrawer();
-		document.body.appendChild(backdrop);
-		activeBackdrop = backdrop;
-		safeRaf(() => backdrop.classList.add("is-visible"));
-		const drawer = document.createElement("div");
-		drawer.className = "rr-comments-drawer";
-		drawer.innerHTML = `
-    <div class="rr-drawer-header">
-      <div class="rr-drawer-title-group">
-        <div class="rr-drawer-title">${escapeHtml(post.title || "Comments")}</div>
-        <div class="rr-drawer-subtitle">${post.subreddit ? escapeHtml(post.subreddit) + " • " : ""}${formatCount(post.commentCount)} comments</div>
-      </div>
-      <div class="rr-drawer-actions">
-        <a class="rr-drawer-btn" href="${escapeHtml(rawUrl)}" target="_blank" rel="noopener noreferrer" title="Open in new tab">
-          <svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-        </a>
-        <button type="button" class="rr-drawer-btn rr-drawer-close-btn" aria-label="Close comments" title="Close">
-          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-        </button>
-      </div>
-    </div>
-    <div class="rr-drawer-body">
-      <div class="rr-drawer-spinner"><div class="rr-spinner-circle"></div><span>Loading comments...</span></div>
-      <iframe class="rr-drawer-iframe" src="${escapeHtml(embedUrl)}" loading="eager" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
-    </div>
-  `;
-		drawer.querySelector(".rr-drawer-close-btn")?.addEventListener("click", () => closeCommentsDrawer());
-		const iframe = drawer.querySelector(".rr-drawer-iframe");
-		const spinner = drawer.querySelector(".rr-drawer-spinner");
-		iframe?.addEventListener("load", () => spinner?.classList.add("is-hidden"), { once: true });
-		setTimeout(() => spinner?.classList.add("is-hidden"), 3500);
-		document.body.appendChild(drawer);
-		activeDrawer = drawer;
-		safeRaf(() => drawer.classList.add("is-open"));
-		return drawer;
-	}
-	function getUpvoteIconSvg(isUpvoted) {
-		return `<svg width="26" height="26" viewBox="0 0 24 24" fill="${isUpvoted ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>`;
-	}
-	function getDownvoteIconSvg(isDownvoted) {
-		return `<svg width="26" height="26" viewBox="0 0 24 24" fill="${isDownvoted ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
-	}
-	function getCcIconSvg(enabled = false) {
-		return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${enabled ? "2.4" : "2.2"}" stroke-linecap="round" stroke-linejoin="round" data-enabled="${enabled}">
-    <rect x="2" y="4" width="20" height="16" rx="3" ry="3"></rect>
-    <path d="M7 15h0a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1"></path>
-    <path d="M15 15h0a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1"></path>
-  </svg>`;
-	}
-	function getFitFillIconSvg() {
-		return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="15 3 21 3 21 9"></polyline>
-    <polyline points="9 21 3 21 3 15"></polyline>
-    <line x1="21" y1="3" x2="14" y2="10"></line>
-    <line x1="3" y1="21" x2="10" y2="14"></line>
-  </svg>`;
-	}
-	function getCommentIconSvg() {
-		return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-  </svg>`;
-	}
-	function renderReelOverlay(postEl, post, options) {
-		if (postEl.querySelector(".rr-post-overlay")) return null;
-		const overlay = document.createElement("div");
-		overlay.className = "rr-post-overlay";
-		const isUpvoted = !!post.isUpvoted;
-		const isDownvoted = !!post.isDownvoted;
-		const isSubtitles = options.isSubtitlesEnabled ? options.isSubtitlesEnabled() : false;
-		const initialVoteVal = isUpvoted ? 1 : isDownvoted ? -1 : 0;
-		const baseScore = post.score;
-		const isHiddenScore = !!post.isScoreHidden;
-		const formatScoreDisplay = (currentScore) => {
-			if (isHiddenScore) return "Vote";
-			return formatCount(currentScore);
-		};
-		const cleanSub = post.subreddit ? post.subreddit.replace(/^\/?/, "") : "";
-		overlay.innerHTML = `
-    <!-- Bottom-Left Post Information -->
-    <div class="rr-post-info">
-      <div class="rr-post-meta">
-        ${post.subreddit ? `<a class="rr-sub-badge" role="link" tabindex="0" href="https://www.reddit.com/${escapeHtml(cleanSub)}/" target="_blank" rel="noopener noreferrer">${escapeHtml(post.subreddit)}</a>` : ""}
-        ${post.subreddit && post.author ? `<span class="rr-dot">•</span>` : ""}
-        ${post.author ? `<a class="rr-author" role="link" tabindex="0" href="https://www.reddit.com/user/${escapeHtml(post.author.replace(/^u\//, ""))}/" target="_blank" rel="noopener noreferrer">u/${escapeHtml(post.author.replace(/^u\//, ""))}</a>` : ""}
-      </div>
-      <div class="rr-post-title" title="${escapeHtml(post.title)}">${escapeHtml(post.title)}</div>
-    </div>
-
-    <!-- Bottom-Right Vertical Action Rail (NO SHARE BUTTON, NO SOUND BUTTON — mute lives in top bar) -->
-    <div class="rr-action-rail">
-      <!-- 1. Subtitles Toggle (ONLY rendered if post has video) -->
-      ${options.hasVideo && options.onToggleSubtitles ? `
-          <div class="rr-action-item">
-            <button
-              type="button"
-              class="rr-action-btn rr-cc-btn ${isSubtitles ? "is-active-cc" : ""}"
-              aria-label="${isSubtitles ? "Disable Subtitles" : "Enable Subtitles"}"
-              aria-pressed="${isSubtitles}"
-              title="${isSubtitles ? "Disable Subtitles" : "Enable Subtitles"}"
-            >
-              ${getCcIconSvg(isSubtitles)}
-            </button>
-          </div>
-          ` : ""}
-
-      <!-- 2. Fit/Fill Mode Toggle -->
-      <div class="rr-action-item">
-        <button
-          type="button"
-          class="rr-action-btn rr-fit-btn"
-          aria-label="Toggle Fit or Fill scaling"
-          title="Toggle Fit / Fill (Original vs Full Bleed)"
-        >
-          ${getFitFillIconSvg()}
-        </button>
-      </div>
-
-      <!-- 3. Vote Cluster (Upvote, Score, Downvote) -->
-      <div class="rr-action-item rr-vote-group">
-        <button
-          type="button"
-          class="rr-action-btn rr-upvote-btn ${isUpvoted ? "is-active-up" : ""}"
-          aria-label="Upvote"
-          aria-pressed="${isUpvoted}"
-          title="Upvote"
-        >
-          ${getUpvoteIconSvg(isUpvoted)}
-        </button>
-        <span class="rr-action-label rr-score-label" aria-live="polite">${formatScoreDisplay(post.score)}</span>
-        <button
-          type="button"
-          class="rr-action-btn rr-downvote-btn ${isDownvoted ? "is-active-down" : ""}"
-          aria-label="Downvote"
-          aria-pressed="${isDownvoted}"
-          title="Downvote"
-        >
-          ${getDownvoteIconSvg(isDownvoted)}
-        </button>
-      </div>
-
-      <!-- 4. Reddit Comments (Directly opens in-reel comments drawer) -->
-      <div class="rr-action-item">
-        <button
-          type="button"
-          class="rr-action-btn rr-comment-btn"
-          aria-label="Open Reddit comments"
-          title="Open Reddit comments"
-        >
-          ${getCommentIconSvg()}
-        </button>
-        <span class="rr-action-label">${formatCount(post.commentCount)}</span>
-      </div>
-    </div>
-  `;
-		const upvoteBtn = overlay.querySelector(".rr-upvote-btn");
-		const downvoteBtn = overlay.querySelector(".rr-downvote-btn");
-		const fitBtn = overlay.querySelector(".rr-fit-btn");
-		const commentBtn = overlay.querySelector(".rr-comment-btn");
-		const ccBtn = overlay.querySelector(".rr-cc-btn");
-		const scoreLabel = overlay.querySelector(".rr-score-label");
-		const subBadge = overlay.querySelector(".rr-sub-badge");
-		const authorBadge = overlay.querySelector(".rr-author");
-		if (fitBtn && options.onToggleFitFill) fitBtn.onclick = (e) => {
-			e.stopPropagation();
-			options.onToggleFitFill();
-		};
-		if (upvoteBtn) upvoteBtn.onclick = (e) => {
-			e.stopPropagation();
-			syncVoteUI(!proxyUpvote(post, () => syncVoteUI()));
-		};
-		if (downvoteBtn) downvoteBtn.onclick = (e) => {
-			e.stopPropagation();
-			syncVoteUI(!proxyDownvote(post, () => syncVoteUI()));
-		};
-		function syncVoteUI(revert = false) {
-			const isUp = revert ? initialVoteVal === 1 : !!post.isUpvoted;
-			const isDown = revert ? initialVoteVal === -1 : !!post.isDownvoted;
-			if (upvoteBtn) {
-				upvoteBtn.classList.toggle("is-active-up", isUp);
-				upvoteBtn.setAttribute("aria-pressed", String(isUp));
-				upvoteBtn.innerHTML = getUpvoteIconSvg(isUp);
-			}
-			if (downvoteBtn) {
-				downvoteBtn.classList.toggle("is-active-down", isDown);
-				downvoteBtn.setAttribute("aria-pressed", String(isDown));
-				downvoteBtn.innerHTML = getDownvoteIconSvg(isDown);
-			}
-			if (scoreLabel) {
-				const newScore = baseScore + ((isUp ? 1 : isDown ? -1 : 0) - initialVoteVal);
-				scoreLabel.textContent = formatScoreDisplay(newScore);
-			}
-		}
-		if (commentBtn) commentBtn.onclick = (e) => {
-			e.stopPropagation();
-			e.preventDefault();
-			const currentVideo = audioManager.findVideo(postEl);
-			const wasPlaying = currentVideo && !currentVideo.paused;
-			openCommentsDrawer(post, {
-				onBeforeOpen: () => {
-					if (currentVideo && !currentVideo.paused) try {
-						currentVideo.pause();
-					} catch {}
-				},
-				onClose: () => {
-					if (wasPlaying && currentVideo) try {
-						currentVideo.play().catch(() => {});
-					} catch {}
-				}
-			});
-		};
-		if (ccBtn && options.onToggleSubtitles) ccBtn.onclick = (e) => {
-			e.stopPropagation();
-			options.onToggleSubtitles();
-		};
-		if (subBadge) subBadge.onclick = (e) => {
-			e.stopPropagation();
-		};
-		if (authorBadge) authorBadge.onclick = (e) => {
-			e.stopPropagation();
-		};
-		postEl.appendChild(overlay);
-		return overlay;
-	}
-	function syncOverlaySubtitlesButtons(enabled) {
-		document.querySelectorAll(".rr-cc-btn").forEach((btn) => {
-			btn.classList.toggle("is-active-cc", enabled);
-			btn.setAttribute("aria-label", enabled ? "Disable Subtitles" : "Enable Subtitles");
-			btn.setAttribute("title", enabled ? "Disable Subtitles" : "Enable Subtitles");
-			btn.innerHTML = getCcIconSvg(enabled);
-		});
 	}
 	var POST_SELECTORS$1 = "shreddit-post, article, [data-testid=\"post-container\"], .Post";
 	var VOLUME_STEP = .1;
@@ -2237,8 +1911,10 @@
 		}
 		handleTap(e) {
 			if (!this.options.isReelModeActive()) return;
+			if (!e.isTrusted) return;
 			const target = e.target;
-			if (target.closest(".rr-action-rail, .rr-post-info, .rr-top-bar, .rr-link-card-container, .rr-comments-drawer, .rr-comments-backdrop, .rr-sub-badge, .rr-author, .rr-link-card-btn, button[slot=\"previous-button\"], button[slot=\"next-button\"], .prev-btn, .next-btn")) return;
+			if (target.closest(".rr-action-rail, .rr-post-info, .rr-header-cluster, .rr-link-card-container, .rr-sub-badge, .rr-author, .rr-link-card-btn, button[slot=\"previous-button\"], button[slot=\"next-button\"], .prev-btn, .next-btn")) return;
+			if (this.isNativeControl(e)) return;
 			if (target.closest(".rr-text-card-body a")) return;
 			const post = target.closest(POST_SELECTORS$1);
 			if (!post) return;
@@ -2273,6 +1949,20 @@
 				this.fireSingleTap(post);
 			}, TAP_WINDOW_MS);
 		}
+		isNativeControl(e) {
+			try {
+				const path = e.composedPath();
+				for (const node of path) {
+					const tag = node.tagName?.toLowerCase?.();
+					if (!tag) continue;
+					if (tag === "shreddit-post" || tag === "article") break;
+					if (tag === "button" || tag === "input" || tag === "select" || tag.includes("controls")) return true;
+					const role = node.getAttribute?.("role");
+					if (role === "slider" || role === "button" || role === "menuitem") return true;
+				}
+			} catch {}
+			return false;
+		}
 		wasSwipe(e) {
 			try {
 				const dx = e.clientX - this.downX;
@@ -2291,13 +1981,8 @@
 			if (!this.options.isReelModeActive()) return;
 			const target = e.target;
 			if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
-			if (e.key === "Escape") {
-				if (isCommentsDrawerOpen()) {
-					closeCommentsDrawer();
-					return;
-				}
-				this.options.onExit();
-			} else if (e.key === "m" || e.key === "M") this.options.onToggleMute();
+			if (e.key === "Escape") this.options.onExit();
+			else if (e.key === "m" || e.key === "M") this.options.onToggleMute();
 			else if (e.key === "f" || e.key === "F") {
 				const post = this.options.getActivePost();
 				if (post) this.toggleFitFill(post);
@@ -2325,6 +2010,44 @@
 			this.options.onVolumeChange?.(level, audioManager.isMuted);
 		}
 	};
+	function formatCount(num) {
+		if (!num || isNaN(num)) return "0";
+		if (Math.abs(num) >= 1e6) return (num / 1e6).toFixed(1).replace(/\.0$/, "") + "m";
+		if (Math.abs(num) >= 1e3) return (num / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
+		return num.toString();
+	}
+	function escapeHtml(str) {
+		if (!str) return "";
+		return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+	}
+	function extractDomain(url) {
+		if (!url) return "";
+		try {
+			return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./, "");
+		} catch {
+			return url.replace(/^https?:\/\//, "").split("/")[0];
+		}
+	}
+	function isSafeUrl(url) {
+		if (!url || typeof url !== "string") return false;
+		const trimmed = url.trim();
+		if (!trimmed) return false;
+		try {
+			const base = typeof location !== "undefined" ? location.origin : "https://www.reddit.com";
+			const parsed = new URL(trimmed, base);
+			return parsed.protocol === "http:" || parsed.protocol === "https:";
+		} catch {
+			return false;
+		}
+	}
+	function sanitizeUrl(url, fallback = "") {
+		return isSafeUrl(url) ? url.trim() : fallback;
+	}
+	function openUrl(url) {
+		if (!url || !isSafeUrl(url)) return;
+		const safe = sanitizeUrl(url);
+		if (!window.open(safe, "_blank", "noopener,noreferrer")) window.location.href = safe;
+	}
 	function renderTextCard(postEl, post) {
 		if (postEl.querySelector(".rr-text-card-container")) return;
 		const targetUrl = sanitizeUrl(post.permalink ? post.permalink.startsWith("http") ? post.permalink : `https://www.reddit.com${post.permalink}` : post.contentHref || "");
@@ -2433,6 +2156,228 @@
 		ctaBtn?.addEventListener("click", openLink);
 		postEl.appendChild(container);
 	}
+	function getSoundIconSvg(isMuted) {
+		return isMuted ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>` : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
+	}
+	function openPostNatively(postEl, permalink) {
+		const native = postEl.querySelector("a[slot=\"full-post-link\"], a[data-click-id=\"comments\"], a[href*=\"/comments/\"]");
+		if (native && native.href) {
+			native.click();
+			return;
+		}
+		const url = sanitizeUrl(permalink);
+		if (url) window.location.assign(url);
+	}
+	function syncOverlaySoundButtons(isMuted) {
+		document.querySelectorAll(".rr-sound-btn").forEach((btn) => {
+			btn.classList.toggle("is-muted", isMuted);
+			btn.setAttribute("aria-label", isMuted ? "Unmute" : "Mute");
+			btn.setAttribute("aria-pressed", String(!isMuted));
+			btn.title = isMuted ? "Unmute (M)" : "Mute (M)";
+			btn.innerHTML = getSoundIconSvg(isMuted);
+		});
+	}
+	function getUpvoteIconSvg(isUpvoted) {
+		return `<svg width="26" height="26" viewBox="0 0 24 24" fill="${isUpvoted ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>`;
+	}
+	function getDownvoteIconSvg(isDownvoted) {
+		return `<svg width="26" height="26" viewBox="0 0 24 24" fill="${isDownvoted ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+	}
+	function getCcIconSvg(enabled = false) {
+		return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${enabled ? "2.4" : "2.2"}" stroke-linecap="round" stroke-linejoin="round" data-enabled="${enabled}">
+    <rect x="2" y="4" width="20" height="16" rx="3" ry="3"></rect>
+    <path d="M7 15h0a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1"></path>
+    <path d="M15 15h0a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1"></path>
+  </svg>`;
+	}
+	function getFitFillIconSvg() {
+		return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="15 3 21 3 21 9"></polyline>
+    <polyline points="9 21 3 21 3 15"></polyline>
+    <line x1="21" y1="3" x2="14" y2="10"></line>
+    <line x1="3" y1="21" x2="10" y2="14"></line>
+  </svg>`;
+	}
+	function getCommentIconSvg() {
+		return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+  </svg>`;
+	}
+	function renderReelOverlay(postEl, post, options) {
+		if (postEl.querySelector(".rr-post-overlay")) return null;
+		const overlay = document.createElement("div");
+		overlay.className = "rr-post-overlay";
+		const isUpvoted = !!post.isUpvoted;
+		const isDownvoted = !!post.isDownvoted;
+		const isSubtitles = options.isSubtitlesEnabled ? options.isSubtitlesEnabled() : false;
+		const initialVoteVal = isUpvoted ? 1 : isDownvoted ? -1 : 0;
+		const baseScore = post.score;
+		const isHiddenScore = !!post.isScoreHidden;
+		const formatScoreDisplay = (currentScore) => {
+			if (isHiddenScore) return "Vote";
+			return formatCount(currentScore);
+		};
+		const cleanSub = post.subreddit ? post.subreddit.replace(/^\/?/, "") : "";
+		overlay.innerHTML = `
+    <!-- Bottom-Left Post Information -->
+    <div class="rr-post-info">
+      <div class="rr-post-meta">
+        ${post.subreddit ? `<a class="rr-sub-badge" role="link" tabindex="0" href="/${escapeHtml(cleanSub)}/">${escapeHtml(post.subreddit)}</a>` : ""}
+        ${post.subreddit && post.author ? `<span class="rr-dot">•</span>` : ""}
+        ${post.author ? `<a class="rr-author" role="link" tabindex="0" href="/user/${escapeHtml(post.author.replace(/^u\//, ""))}/">u/${escapeHtml(post.author.replace(/^u\//, ""))}</a>` : ""}
+      </div>
+      <div class="rr-post-title" title="${escapeHtml(post.title)}">${escapeHtml(post.title)}</div>
+    </div>
+
+    <!-- Bottom-Right Vertical Action Rail. Seek/play/fullscreen stay on Reddit's native player bar. -->
+    <div class="rr-action-rail">
+      ${options.hasVideo && options.onToggleMute ? `
+          <div class="rr-action-item">
+            <button
+              type="button"
+              class="rr-action-btn rr-sound-btn ${audioManager.isMuted ? "is-muted" : ""}"
+              aria-label="${audioManager.isMuted ? "Unmute" : "Mute"}"
+              aria-pressed="${!audioManager.isMuted}"
+              title="${audioManager.isMuted ? "Unmute (M)" : "Mute (M)"}"
+            >
+              ${getSoundIconSvg(audioManager.isMuted)}
+            </button>
+          </div>
+          ` : ""}
+
+      <!-- 1. Subtitles Toggle (ONLY rendered if post has video) -->
+      ${options.hasVideo && options.onToggleSubtitles ? `
+          <div class="rr-action-item">
+            <button
+              type="button"
+              class="rr-action-btn rr-cc-btn ${isSubtitles ? "is-active-cc" : ""}"
+              aria-label="${isSubtitles ? "Disable Subtitles" : "Enable Subtitles"}"
+              aria-pressed="${isSubtitles}"
+              title="${isSubtitles ? "Disable Subtitles" : "Enable Subtitles"}"
+            >
+              ${getCcIconSvg(isSubtitles)}
+            </button>
+          </div>
+          ` : ""}
+
+      <!-- 2. Fit/Fill Mode Toggle -->
+      <div class="rr-action-item">
+        <button
+          type="button"
+          class="rr-action-btn rr-fit-btn"
+          aria-label="Toggle Fit or Fill scaling"
+          title="Toggle Fit / Fill (Original vs Full Bleed)"
+        >
+          ${getFitFillIconSvg()}
+        </button>
+      </div>
+
+      <!-- 3. Vote Cluster (Upvote, Score, Downvote) -->
+      <div class="rr-action-item rr-vote-group">
+        <button
+          type="button"
+          class="rr-action-btn rr-upvote-btn ${isUpvoted ? "is-active-up" : ""}"
+          aria-label="Upvote"
+          aria-pressed="${isUpvoted}"
+          title="Upvote"
+        >
+          ${getUpvoteIconSvg(isUpvoted)}
+        </button>
+        <span class="rr-action-label rr-score-label" aria-live="polite">${formatScoreDisplay(post.score)}</span>
+        <button
+          type="button"
+          class="rr-action-btn rr-downvote-btn ${isDownvoted ? "is-active-down" : ""}"
+          aria-label="Downvote"
+          aria-pressed="${isDownvoted}"
+          title="Downvote"
+        >
+          ${getDownvoteIconSvg(isDownvoted)}
+        </button>
+      </div>
+
+      <!-- 4. Reddit Comments (opens the native new-Reddit post page) -->
+      <div class="rr-action-item">
+        <button
+          type="button"
+          class="rr-action-btn rr-comment-btn"
+          aria-label="Open Reddit comments"
+          title="Open Reddit comments"
+        >
+          ${getCommentIconSvg()}
+        </button>
+        <span class="rr-action-label">${formatCount(post.commentCount)}</span>
+      </div>
+    </div>
+  `;
+		const upvoteBtn = overlay.querySelector(".rr-upvote-btn");
+		const downvoteBtn = overlay.querySelector(".rr-downvote-btn");
+		const fitBtn = overlay.querySelector(".rr-fit-btn");
+		const commentBtn = overlay.querySelector(".rr-comment-btn");
+		const ccBtn = overlay.querySelector(".rr-cc-btn");
+		const scoreLabel = overlay.querySelector(".rr-score-label");
+		const subBadge = overlay.querySelector(".rr-sub-badge");
+		const authorBadge = overlay.querySelector(".rr-author");
+		if (fitBtn && options.onToggleFitFill) fitBtn.onclick = (e) => {
+			e.stopPropagation();
+			options.onToggleFitFill();
+		};
+		if (upvoteBtn) upvoteBtn.onclick = (e) => {
+			e.stopPropagation();
+			syncVoteUI(!proxyUpvote(post, () => syncVoteUI()));
+		};
+		if (downvoteBtn) downvoteBtn.onclick = (e) => {
+			e.stopPropagation();
+			syncVoteUI(!proxyDownvote(post, () => syncVoteUI()));
+		};
+		function syncVoteUI(revert = false) {
+			const isUp = revert ? initialVoteVal === 1 : !!post.isUpvoted;
+			const isDown = revert ? initialVoteVal === -1 : !!post.isDownvoted;
+			if (upvoteBtn) {
+				upvoteBtn.classList.toggle("is-active-up", isUp);
+				upvoteBtn.setAttribute("aria-pressed", String(isUp));
+				upvoteBtn.innerHTML = getUpvoteIconSvg(isUp);
+			}
+			if (downvoteBtn) {
+				downvoteBtn.classList.toggle("is-active-down", isDown);
+				downvoteBtn.setAttribute("aria-pressed", String(isDown));
+				downvoteBtn.innerHTML = getDownvoteIconSvg(isDown);
+			}
+			if (scoreLabel) {
+				const newScore = baseScore + ((isUp ? 1 : isDown ? -1 : 0) - initialVoteVal);
+				scoreLabel.textContent = formatScoreDisplay(newScore);
+			}
+		}
+		if (commentBtn) commentBtn.onclick = (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			openPostNatively(postEl, post.permalink);
+		};
+		const soundBtn = overlay.querySelector(".rr-sound-btn");
+		if (soundBtn && options.onToggleMute) soundBtn.onclick = (e) => {
+			e.stopPropagation();
+			options.onToggleMute();
+		};
+		if (ccBtn && options.onToggleSubtitles) ccBtn.onclick = (e) => {
+			e.stopPropagation();
+			options.onToggleSubtitles();
+		};
+		if (subBadge) subBadge.onclick = (e) => {
+			e.stopPropagation();
+		};
+		if (authorBadge) authorBadge.onclick = (e) => {
+			e.stopPropagation();
+		};
+		postEl.appendChild(overlay);
+		return overlay;
+	}
+	function syncOverlaySubtitlesButtons(enabled) {
+		document.querySelectorAll(".rr-cc-btn").forEach((btn) => {
+			btn.classList.toggle("is-active-cc", enabled);
+			btn.setAttribute("aria-label", enabled ? "Disable Subtitles" : "Enable Subtitles");
+			btn.setAttribute("title", enabled ? "Disable Subtitles" : "Enable Subtitles");
+			btn.innerHTML = getCcIconSvg(enabled);
+		});
+	}
 	var POST_SELECTORS = "shreddit-post, article, [data-testid=\"post-container\"], .Post";
 	var VIDEO_IFRAME_HOSTS_REGEX = /(?:redgifs\.com|streamable\.com|gfycat\.com|youtube\.com|youtu\.be|v\.redd\.it)/i;
 	var VIDEOS_ONLY_KEY = "@reddit-reels/videos-only";
@@ -2461,7 +2406,7 @@
 	function hasVideoIframe(postEl) {
 		const iframes = postEl.querySelectorAll("iframe");
 		for (const ifr of iframes) {
-			const src = ifr.src || ifr.dataset.rrSrc || "";
+			const src = `${ifr.src || ""} ${ifr.dataset.rrSrc || ""}`;
 			if (VIDEO_IFRAME_HOSTS_REGEX.test(src)) return true;
 		}
 		return false;
@@ -2592,7 +2537,8 @@
 					const container = postEl.querySelector("[slot=\"post-media-container\"]") || postEl.querySelector(".media-container") || postEl;
 					if (media.type === "iframe" && media.src) {
 						const iframe = document.createElement("iframe");
-						iframe.src = normalizeIframeSrc(media.src, audioManager.isMuted);
+						iframe.src = "about:blank";
+						iframe.dataset.rrSrc = normalizeIframeSrc(media.src, audioManager.isMuted);
 						iframe.className = "rr-embedded-iframe";
 						iframe.tabIndex = -1;
 						iframe.setAttribute("loading", "eager");
@@ -2627,7 +2573,7 @@
 			const VOTE_OFFSCREEN_SELECTORS = "[slot=\"vote\"], [slot=\"vote-button\"], shreddit-post-vote-control, [data-testid=\"post-vote-control\"]";
 			Array.from(postEl.children).forEach((child) => {
 				const el = child;
-				if (el.classList?.contains("rr-post-overlay") || el.classList?.contains("rr-link-card-container") || el.classList?.contains("rr-text-card-container") || el.classList?.contains("rr-comments-drawer")) return;
+				if (el.classList?.contains("rr-post-overlay") || el.classList?.contains("rr-link-card-container") || el.classList?.contains("rr-text-card-container")) return;
 				if (el.matches?.(NATIVE_SUPPRESSION_SELECTORS)) {
 					el.classList.add("rr-native-suppressed");
 					return;
@@ -2648,6 +2594,7 @@
 			renderReelOverlay(postEl, post, {
 				hasVideo,
 				isSubtitlesEnabled: () => this.subtitlesEnabled,
+				onToggleMute: this.options.onToggleMute,
 				onToggleSubtitles: () => this.toggleSubtitles(),
 				onToggleFitFill: () => {
 					if (postEl.classList.contains("rr-fit-contain")) {
@@ -2692,10 +2639,11 @@
 			}
 			restorePostMedia(postEl);
 			postEl.classList.remove("rr-filtered-out", "rr-is-link", "rr-is-text");
+			this.enhancedPosts.delete(postEl);
 			postEl.style.removeProperty("display");
 		}
 		teardownAllPosts() {
-			getPostElements().forEach((p) => this.restorePost(p));
+			getPostElements().filter((p) => this.enhancedPosts.has(p)).forEach((p) => this.restorePost(p));
 			document.querySelector(".rr-empty-feed")?.remove();
 			if (typeof document !== "undefined") document.querySelectorAll("iframe[data-rr-src]").forEach((ifr) => {
 				ifr.src = ifr.dataset.rrSrc;
@@ -2742,6 +2690,7 @@
 						unconstrainPostMedia(post);
 						applySubtitlesState(post, this.subtitlesEnabled);
 						audioManager.requestPlayback(post);
+						this.options.onActivePost?.(post);
 					} else if (!entry.isIntersecting || entry.intersectionRatio < .2) {
 						applyAudioState(post, true);
 						const video = audioManager.findVideo(post);
@@ -2788,6 +2737,7 @@
 						this.feedObserver?.observe(p);
 					}
 					this.applyVideosOnlyFilter();
+					this.options.onPostsAdded?.();
 				}, 150);
 			});
 			this.mutationObserver.observe(document.body || document.documentElement, {
@@ -2830,30 +2780,219 @@
 			});
 		}
 	};
+	var NON_FEED_SEGMENTS = /^\/(?:settings|message|messages|chat|notifications|mod|premium|submit|search|media|login|register|account|coins|prefs|wiki|gallery)(?:\/|$)/i;
+	function isReelRoute(pathname) {
+		const path = pathname.replace(/\/+$/, "") || "/";
+		if (/\/comments\//i.test(path) || /\/s\/[A-Za-z0-9]+$/.test(path)) return false;
+		if (NON_FEED_SEGMENTS.test(path)) return false;
+		if (path === "/" || /^\/(?:best|hot|new|top|rising|controversial)$/i.test(path)) return true;
+		if (/^\/r\/[A-Za-z0-9_]+(?:\/(?:best|hot|new|top|rising|controversial))?$/i.test(path)) return true;
+		if (/^\/(?:user|u)\/[A-Za-z0-9_-]+(?:\/submitted)?$/i.test(path)) return true;
+		if (/^\/mock-reddit\.html$/i.test(path)) return true;
+		return false;
+	}
+	function watchRoute(onChange) {
+		let lastHref = location.href;
+		let timer = null;
+		const check = () => {
+			if (timer) clearTimeout(timer);
+			timer = setTimeout(() => {
+				timer = null;
+				if (location.href === lastHref) return;
+				lastHref = location.href;
+				onChange();
+			}, 50);
+		};
+		const origPush = history.pushState;
+		const origReplace = history.replaceState;
+		history.pushState = function(...args) {
+			const ret = origPush.apply(this, args);
+			check();
+			return ret;
+		};
+		history.replaceState = function(...args) {
+			const ret = origReplace.apply(this, args);
+			check();
+			return ret;
+		};
+		const nav = window.navigation;
+		nav?.addEventListener?.("navigatesuccess", check);
+		window.addEventListener("popstate", check);
+		const onPageShow = (e) => {
+			if (e.persisted) {
+				lastHref = "";
+				check();
+			}
+		};
+		window.addEventListener("pageshow", onPageShow);
+		return () => {
+			history.pushState = origPush;
+			history.replaceState = origReplace;
+			nav?.removeEventListener?.("navigatesuccess", check);
+			window.removeEventListener("popstate", check);
+			window.removeEventListener("pageshow", onPageShow);
+			if (timer) clearTimeout(timer);
+		};
+	}
+	var CLUSTER_ID = "rr-header-cluster";
+	var HEADER_ANCHORS = [
+		"#expand-user-drawer-button",
+		"#login-button",
+		"reddit-header-large header nav > :last-child",
+		"reddit-header-small header nav > :last-child"
+	];
+	var FILTER_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.5"></rect><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"></path></svg>`;
+	var REEL_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"></rect><polygon points="10 9 15 12 10 15 10 9"></polygon></svg>`;
+	var LIST_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="4" cy="6" r="1"></circle><circle cx="4" cy="12" r="1"></circle><circle cx="4" cy="18" r="1"></circle></svg>`;
+	function findHeaderAnchor() {
+		for (const sel of HEADER_ANCHORS) try {
+			const el = document.querySelector(sel);
+			if (el?.parentElement) return el;
+		} catch {}
+		return null;
+	}
+	function buildCluster(handlers) {
+		const cluster = document.createElement("div");
+		cluster.id = CLUSTER_ID;
+		cluster.className = "rr-header-cluster";
+		const filterBtn = document.createElement("button");
+		filterBtn.type = "button";
+		filterBtn.className = "rr-header-btn rr-header-filter";
+		filterBtn.innerHTML = FILTER_ICON;
+		filterBtn.addEventListener("click", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			handlers.onToggleFilter();
+		});
+		const reelBtn = document.createElement("button");
+		reelBtn.type = "button";
+		reelBtn.className = "rr-header-btn rr-header-reel";
+		reelBtn.addEventListener("click", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			handlers.onToggleReel();
+		});
+		cluster.append(filterBtn, reelBtn);
+		return cluster;
+	}
+	function mountHeaderToggle(handlers) {
+		let cluster = document.getElementById(CLUSTER_ID);
+		if (!cluster) cluster = buildCluster(handlers);
+		const anchor = findHeaderAnchor();
+		if (anchor && anchor.parentElement) {
+			if (cluster.nextElementSibling !== anchor) anchor.parentElement.insertBefore(cluster, anchor);
+			cluster.classList.remove("is-floating");
+		} else if (!cluster.isConnected || !cluster.classList.contains("is-floating")) {
+			cluster.classList.add("is-floating");
+			document.body.appendChild(cluster);
+		}
+		return cluster;
+	}
+	function syncHeaderToggle(reelOn, videosOnly) {
+		const cluster = document.getElementById(CLUSTER_ID);
+		if (!cluster) return;
+		const reelBtn = cluster.querySelector(".rr-header-reel");
+		if (reelBtn) {
+			reelBtn.innerHTML = reelOn ? LIST_ICON : REEL_ICON;
+			const label = reelOn ? "Switch to list view" : "Switch to reel view";
+			reelBtn.setAttribute("aria-label", label);
+			reelBtn.title = label;
+			reelBtn.setAttribute("aria-pressed", String(reelOn));
+		}
+		const filterBtn = cluster.querySelector(".rr-header-filter");
+		if (filterBtn) {
+			filterBtn.classList.toggle("is-active", videosOnly);
+			filterBtn.setAttribute("aria-pressed", String(videosOnly));
+			const label = videosOnly ? "Showing videos only (show all posts)" : "Showing all posts (videos only)";
+			filterBtn.setAttribute("aria-label", label);
+			filterBtn.title = label;
+		}
+	}
+	function unmountHeaderToggle() {
+		document.getElementById(CLUSTER_ID)?.remove();
+	}
+	var ENABLED_KEY = "@reddit-reels/enabled";
+	var LAST_POST_KEY = "@reddit-reels/last-post";
 	var isReelModeActive = false;
-	var topBarElement = null;
+	var pendingRestoreUntil = 0;
 	var stopRedgifsReady = null;
-	var savedScrollY = 0;
-	function isFeedRoute() {
-		if (typeof window === "undefined") return true;
-		const path = window.location.pathname;
-		if (/^\/(?:settings|message|chat|notifications|mod\/|premium)/i.test(path)) return false;
+	function readEnabled() {
+		try {
+			if (typeof GM_getValue === "function") {
+				const v = GM_getValue(ENABLED_KEY, null);
+				if (v !== null) return v !== "0";
+			}
+		} catch {}
+		try {
+			const v = localStorage.getItem(ENABLED_KEY);
+			if (v !== null) return v !== "0";
+		} catch {}
 		return true;
 	}
-	function syncTopBarSound() {
-		syncTopBarState(topBarElement, audioManager.isMuted, feedManager.isVideosOnly);
+	function writeEnabled(on) {
+		try {
+			if (typeof GM_setValue === "function") GM_setValue(ENABLED_KEY, on ? "1" : "0");
+		} catch {}
+		try {
+			localStorage.setItem(ENABLED_KEY, on ? "1" : "0");
+		} catch {}
+	}
+	var reelEnabled = readEnabled();
+	function postKey(el) {
+		return el.id || el.getAttribute("permalink") || "";
+	}
+	function rememberActivePost(el) {
+		try {
+			const key = postKey(el);
+			if (key) sessionStorage.setItem(LAST_POST_KEY, `${location.pathname}|${key}`);
+		} catch {}
+	}
+	function rememberedKey() {
+		try {
+			const raw = sessionStorage.getItem(LAST_POST_KEY);
+			if (!raw) return null;
+			const sep = raw.indexOf("|");
+			if (raw.slice(0, sep) !== location.pathname) return null;
+			return raw.slice(sep + 1) || null;
+		} catch {
+			return null;
+		}
+	}
+	function findRememberedPost() {
+		try {
+			const key = rememberedKey();
+			if (!key) return null;
+			for (const el of Array.from(document.querySelectorAll("shreddit-post"))) if (postKey(el) === key) return el;
+		} catch {}
+		return null;
+	}
+	function syncSoundUi() {
+		syncOverlaySoundButtons(audioManager.isMuted);
 	}
 	function handleToggleMute() {
 		unlockAudio();
-		const activePost = getClosestPostToViewport();
-		audioManager.toggleMute(activePost || void 0);
+		audioManager.toggleMute(getClosestPostToViewport() || void 0);
 		audioManager.reassertActiveIframeUnmute();
-		syncTopBarSound();
 	}
-	function handleVolumeChange() {
-		syncTopBarSound();
-	}
-	var feedManager = new FeedManager({ isReelModeActive: () => isReelModeActive });
+	var feedManager = new FeedManager({
+		isReelModeActive: () => isReelModeActive,
+		onActivePost: rememberActivePost,
+		onPostsAdded: () => {
+			mountToggle();
+			if (pendingRestoreUntil && Date.now() < pendingRestoreUntil) {
+				const el = findRememberedPost();
+				if (el && !el.classList.contains("rr-filtered-out")) {
+					pendingRestoreUntil = 0;
+					el.scrollIntoView({
+						behavior: "instant",
+						block: "start"
+					});
+					audioManager.requestPlayback(el);
+				}
+			}
+		},
+		onToggleMute: handleToggleMute
+	});
 	var inputController = new InputController({
 		isReelModeActive: () => isReelModeActive,
 		getActivePost: () => getClosestPostToViewport(),
@@ -2870,99 +3009,109 @@
 			try {
 				const reel = parsePostElement(tappedPost);
 				if (reel) {
-					const willBeUp = !!!reel.isUpvoted;
+					const willBeUp = !reel.isUpvoted;
 					proxyUpvote(reel);
 					showVotePulse(willBeUp ? true : null);
 				}
 			} catch {}
 		},
-		onExit: () => toggleReelMode(false),
+		onExit: () => setReelEnabled(false),
 		onToggleMute: handleToggleMute,
-		onVolumeChange: handleVolumeChange,
+		onVolumeChange: () => syncSoundUi(),
 		onToggleSubtitles: () => feedManager.toggleSubtitles(),
 		onNextPost: () => feedManager.scrollToNext(),
 		onPrevPost: () => feedManager.scrollToPrev()
 	});
-	function toggleReelMode(forceState) {
-		isReelModeActive = forceState !== void 0 ? forceState : !isReelModeActive;
-		const feedContainer = document.querySelector("shreddit-feed, #posts-container, [data-testid=\"feed-container\"]") || document.querySelector("main") || document.body;
-		if (isReelModeActive) {
-			savedScrollY = typeof window !== "undefined" ? window.scrollY : 0;
-			unlockAudio();
-			document.documentElement.classList.add("rr-active");
-			feedContainer?.classList.add("rr-feed-container");
-			feedManager.enhanceAllPosts();
-			feedManager.applyVideosOnlyFilter();
-			const activePost = getClosestPostToViewport();
-			if (activePost) {
-				activePost.scrollIntoView({
+	function mountToggle() {
+		if (!isReelRoute(location.pathname)) {
+			unmountHeaderToggle();
+			return;
+		}
+		mountHeaderToggle({
+			onToggleReel: () => setReelEnabled(!reelEnabled),
+			onToggleFilter: () => {
+				if (!isReelModeActive) return;
+				const anchor = getClosestPostToViewport();
+				feedManager.toggleVideosOnly();
+				syncHeaderToggle(reelEnabled, feedManager.isVideosOnly);
+				(anchor && !anchor.classList.contains("rr-filtered-out") ? anchor : getClosestPostToViewport())?.scrollIntoView({
 					behavior: "instant",
 					block: "start"
 				});
-				audioManager.requestPlayback(activePost);
 			}
-			if (topBarElement) topBarElement.remove();
-			topBarElement = createTopBar(audioManager.isMuted, feedManager.isVideosOnly, {
-				onExit: () => toggleReelMode(false),
-				onToggleFilter: () => {
-					const nextFilter = feedManager.toggleVideosOnly();
-					syncTopBarState(topBarElement, audioManager.isMuted, nextFilter);
-					const active = getClosestPostToViewport();
-					if (active) active.scrollIntoView({
-						behavior: "smooth",
-						block: "start"
-					});
-				},
-				onToggleMute: handleToggleMute
+		});
+		syncHeaderToggle(reelEnabled, feedManager.isVideosOnly);
+	}
+	function activate() {
+		if (isReelModeActive) return;
+		const remembered = findRememberedPost();
+		pendingRestoreUntil = !remembered && rememberedKey() ? Date.now() + 3e3 : 0;
+		const anchor = remembered || getClosestPostToViewport();
+		isReelModeActive = true;
+		document.documentElement.classList.add("rr-active");
+		feedManager.enhanceAllPosts();
+		feedManager.applyVideosOnlyFilter();
+		feedManager.startObservers();
+		inputController.attach();
+		if (!stopRedgifsReady) stopRedgifsReady = listenForRedGifsReady(() => ({
+			muted: audioManager.isMuted,
+			volume: audioManager.volume,
+			activeContainer: getClosestPostToViewport()
+		}));
+		const target = anchor && !anchor.classList.contains("rr-filtered-out") ? anchor : getClosestPostToViewport();
+		if (target) {
+			target.scrollIntoView({
+				behavior: "instant",
+				block: "start"
 			});
-			document.body.appendChild(topBarElement);
-			feedManager.startObservers();
-			inputController.attach();
-			if (!stopRedgifsReady) stopRedgifsReady = listenForRedGifsReady(() => ({
-				muted: audioManager.isMuted,
-				volume: audioManager.volume,
-				activeContainer: getClosestPostToViewport()
-			}));
-		} else {
-			document.documentElement.classList.remove("rr-active");
-			feedContainer?.classList.remove("rr-feed-container");
-			audioManager.stopAll();
-			if (topBarElement) {
-				topBarElement.remove();
-				topBarElement = null;
-			}
-			if (stopRedgifsReady) {
-				stopRedgifsReady();
-				stopRedgifsReady = null;
-			}
-			closeCommentsDrawer();
-			feedManager.stopObservers();
-			inputController.detach();
-			feedManager.teardownAllPosts();
-			if (typeof window !== "undefined" && savedScrollY > 0) window.scrollTo({
-				top: savedScrollY,
-				behavior: "instant"
-			});
+			setTimeout(() => {
+				if (isReelModeActive && target.isConnected) target.scrollIntoView({
+					behavior: "instant",
+					block: "start"
+				});
+			}, 350);
+			audioManager.requestPlayback(target);
 		}
 	}
-	function init() {
-		if (typeof window !== "undefined" && /redgifs\.com/i.test(window.location.hostname)) return;
-		const fabContainerId = "rr-fab-container";
-		let fabContainer = document.getElementById(fabContainerId);
-		if (!fabContainer) {
-			fabContainer = document.createElement("div");
-			fabContainer.id = fabContainerId;
-			fabContainer.appendChild(createFabButton(() => toggleReelMode()));
-			document.body.appendChild(fabContainer);
+	function deactivate() {
+		if (!isReelModeActive) return;
+		const anchor = getClosestPostToViewport();
+		isReelModeActive = false;
+		pendingRestoreUntil = 0;
+		audioManager.stopAll();
+		feedManager.stopObservers();
+		inputController.detach();
+		feedManager.teardownAllPosts();
+		document.documentElement.classList.remove("rr-active", "rr-hide-captions");
+		if (stopRedgifsReady) {
+			stopRedgifsReady();
+			stopRedgifsReady = null;
 		}
-		const updateRoute = () => {
-			const isFeed = isFeedRoute();
-			if (!isFeed && isReelModeActive) toggleReelMode(false);
-			const fc = document.getElementById(fabContainerId);
-			if (fc) fc.style.display = isFeed ? "" : "none";
-		};
-		updateRoute();
-		window.addEventListener("popstate", updateRoute);
+		if (anchor?.isConnected) anchor.scrollIntoView({
+			behavior: "instant",
+			block: "center"
+		});
+	}
+	function syncState() {
+		if (reelEnabled && isReelRoute(location.pathname)) activate();
+		else deactivate();
+		mountToggle();
+	}
+	function setReelEnabled(on) {
+		reelEnabled = on;
+		writeEnabled(on);
+		if (on) unlockAudio();
+		syncState();
+	}
+	function init() {
+		if (typeof window === "undefined") return;
+		if (/redgifs\.com/i.test(window.location.hostname)) return;
+		if (window.top !== window.self) return;
+		audioManager.onChange(syncSoundUi);
+		watchRoute(() => {
+			syncState();
+		});
+		syncState();
 	}
 	if (typeof document !== "undefined") {
 		if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

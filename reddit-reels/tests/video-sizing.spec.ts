@@ -5,10 +5,8 @@ test.describe('Vertical Video & Media Sizing Unconstraining', () => {
     await page.goto('/mock-reddit.html');
     await page.waitForLoadState('domcontentloaded');
 
-    // Activate Reel Mode via FAB
-    const fab = page.locator('button.rr-fab');
-    await expect(fab).toBeVisible();
-    await fab.click();
+    // Reel layout turns on by itself on feed routes
+    await expect(page.locator('html')).toHaveClass(/rr-active/);
     await page.waitForTimeout(400);
   });
 
@@ -36,30 +34,23 @@ test.describe('Vertical Video & Media Sizing Unconstraining', () => {
     expect(styles.inlineMaxHeight).not.toBe('512px');
   });
 
-  test('double tap on video toggles between Fit (contain) and Fill (cover)', async ({ page }) => {
+  test('double tap on a video upvotes the post; F toggles Fit / Fill', async ({ page }) => {
     const post2 = page.locator('#t3_nativevideo2');
     const video = post2.locator('video');
     await expect(video).toBeVisible();
+    await post2.scrollIntoViewIfNeeded();
 
-    // Double tap video quickly (< 320ms between clicks)
+    // Double tap quickly (< 320ms between clicks)
     await video.click();
     await page.waitForTimeout(50);
     await video.click();
+    // The native Reddit vote button is the source of truth for the vote.
+    await expect(post2.locator('button.vote-btn[aria-label="Upvote"]')).toHaveAttribute('aria-pressed', 'true');
 
-    // Should have toggled to rr-fit-contain or rr-fit-cover and shown scale pulse
+    await page.keyboard.press('f');
     const scalePulse = page.locator('.rr-scale-pulse');
     await expect(scalePulse).toBeVisible();
-    const pulseText = await scalePulse.textContent();
-    expect(pulseText).toMatch(/Fit|Fill/);
-
-    // Double tap again to toggle back
-    await page.waitForTimeout(400); // wait for pulse or tap window reset
-    await video.click();
-    await page.waitForTimeout(50);
-    await video.click();
-
-    const secondPulse = page.locator('.rr-scale-pulse');
-    await expect(secondPulse).toBeVisible();
+    expect(await scalePulse.textContent()).toMatch(/Fit|Fill/);
   });
 
   test('vertical videos apply object-fit cover while horizontal videos stay contained', async ({ page }) => {

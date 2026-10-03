@@ -1,6 +1,6 @@
 /* src/styles/base.css */
 :root {
-  --rr-z-fab: 99999;
+  --rr-z-header: 2147480000;
   --rr-z-reels: 2147480000;
   --rr-z-overlay: 2147480000;
   --rr-font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -10,59 +10,13 @@
   --rr-highlight-glass: #ffffff38;
 }
 
-#rr-fab, .rr-fab, #reddit-reels-fab {
-  position: fixed !important;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
-  right: calc(20px + env(safe-area-inset-right, 0px)) !important;
-  z-index: var(--rr-z-fab) !important;
-  display: flex !important;
-  color: #fff !important;
-  cursor: pointer !important;
-  outline: none !important;
-  user-select: none !important;
-  -webkit-tap-highlight-color: transparent !important;
-  background: #ff4500 !important;
-  border: none !important;
-  border-radius: 9999px !important;
-  justify-content: center !important;
-  align-items:  center !important;
-  width: 54px !important;
-  height: 54px !important;
-  transition: transform .18s, background .18s, box-shadow .18s !important;
-  box-shadow: 0 4px 14px #00000059 !important;
-}
-
-#rr-fab:hover, .rr-fab:hover, #reddit-reels-fab:hover {
-  background: #e03d00 !important;
-  transform: scale(1.06) !important;
-  box-shadow: 0 6px 20px #00000073 !important;
-}
-
-#rr-fab:active, .rr-fab:active, #reddit-reels-fab:active {
-  transform: scale(.95) !important;
-}
-
-#rr-fab svg, .rr-fab svg, .rr-fab-icon, #reddit-reels-fab svg {
-  fill: none !important;
-  stroke: currentColor !important;
-  stroke-width: 2.2 !important;
-  stroke-linecap: round !important;
-  stroke-linejoin: round !important;
-  width: 26px !important;
-  height: 26px !important;
-}
-
-html.rr-active #rr-fab-container, html.rr-active #rr-fab, html.rr-active .rr-fab, html.rr-active #reddit-reels-fab {
-  display: none !important;
-}
-
 .rr-play-pulse {
   position: fixed !important;
   display: flex !important;
   color: #fff !important;
   pointer-events: none !important;
   z-index: 2147480000 !important;
-  animation: .5s cubic-bezier(.34,1.56,.64,1) forwards rr-pulse-fade !important;
+  animation: rr-pulse-fade .5s cubic-bezier(.34, 1.56, .64, 1) forwards !important;
   background: #12161ecc !important;
   border: 1px solid #ffffff26 !important;
   border-radius: 9999px !important;
@@ -88,7 +42,7 @@ html.rr-active #rr-fab-container, html.rr-active #rr-fab, html.rr-active .rr-fab
   letter-spacing: .3px !important;
   pointer-events: none !important;
   z-index: 2147480000 !important;
-  animation: .6s cubic-bezier(.34,1.56,.64,1) forwards rr-pulse-fade !important;
+  animation: rr-pulse-fade .6s cubic-bezier(.34, 1.56, .64, 1) forwards !important;
   background: #181a1f !important;
   border: 1px solid #30323a !important;
   border-radius: 9999px !important;
@@ -119,56 +73,63 @@ html.rr-active #rr-fab-container, html.rr-active #rr-fab, html.rr-active .rr-fab
 }
 
 /* src/styles/feed.css */
-html.rr-active, html.rr-active body {
+html.rr-active {
+  scroll-snap-type: y mandatory !important;
+  overscroll-behavior-y: contain !important;
+  scrollbar-width: none !important;
+  background: #000 !important;
+}
+
+html.rr-active::-webkit-scrollbar {
+  display: none !important;
+}
+
+html.rr-active body {
   -webkit-user-select: none;
   user-select: none;
-  overflow: hidden !important;
   color: #fff !important;
-  touch-action: pan-y !important;
   background: #000 !important;
-  width: 100vw !important;
-  height: 100dvh !important;
   margin: 0 !important;
   padding: 0 !important;
 }
 
-html.rr-active header, html.rr-active nav, html.rr-active aside, html.rr-active footer, html.rr-active .bottom-nav, html.rr-active [slot="header"], html.rr-active reddit-header-large, html.rr-active reddit-header-small, html.rr-active shreddit-async-loader[bundlename="bottom_bar"], html.rr-active shreddit-async-loader[bundlename="header"], html.rr-active shreddit-async-loader[bundlename="subgrid"], html.rr-active shreddit-comment-jump-button, html.rr-active reddit-comment-jump-button, html.rr-active .comment-jump-button, html.rr-active shreddit-async-loader[bundlename*="comment_jump"], html.rr-active shreddit-async-loader[bundlename*="floating"], html.rr-active shreddit-floating-action-bar, html.rr-active floating-action-bar, html.rr-active [data-testid*="floating" i], html.rr-active [data-testid*="comment-jump" i], html.rr-active shreddit-back-to-top-button, html.rr-active back-to-top-button, html.rr-active faceplate-tracker[source="floating_action_bar"], html.rr-active [slot="floating-action-bar"] {
+html.rr-active reddit-header-large, html.rr-active reddit-header-small {
+  position: fixed !important;
+  z-index: var(--rr-z-header) !important;
+  background: linear-gradient(#000000b3, #0000) !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
+html.rr-active reddit-header-large header, html.rr-active reddit-header-small header, html.rr-active reddit-header-large > *, html.rr-active reddit-header-small > * {
+  box-shadow: none !important;
+  background: none !important;
+  border: none !important;
+}
+
+html.rr-active aside, html.rr-active footer, html.rr-active .bottom-nav, html.rr-active #left-sidebar-container, html.rr-active #right-sidebar-container, html.rr-active shreddit-async-loader[bundlename="bottom_bar"], html.rr-active shreddit-comment-jump-button, html.rr-active reddit-comment-jump-button, html.rr-active .comment-jump-button, html.rr-active shreddit-async-loader[bundlename*="comment_jump"], html.rr-active shreddit-async-loader[bundlename*="floating"], html.rr-active shreddit-floating-action-bar, html.rr-active floating-action-bar, html.rr-active [data-testid*="floating" i], html.rr-active [data-testid*="comment-jump" i], html.rr-active shreddit-back-to-top-button, html.rr-active back-to-top-button, html.rr-active faceplate-tracker[source="floating_action_bar"], html.rr-active [slot="floating-action-bar"], html.rr-active shreddit-ad-post, html.rr-active shreddit-feed > hr, html.rr-active shreddit-feed hr, html.rr-active masthead-ad, html.rr-active .masthead {
   display: none !important;
   visibility: hidden !important;
 }
 
-html.rr-active #subgrid-container, html.rr-active main, html.rr-active .main-container, html.rr-active #posts-container, html.rr-active [data-testid="posts-list"], html.rr-active .rr-feed-container {
-  overflow-y: scroll !important;
-  overflow-x: hidden !important;
-  scroll-snap-type: y mandatory !important;
-  overscroll-behavior-y: contain !important;
-  scrollbar-width: none !important;
+html.rr-active #subgrid-container, html.rr-active main, html.rr-active .main-container, html.rr-active #main-content, html.rr-active #posts-container, html.rr-active shreddit-feed, html.rr-active [data-testid="posts-list"] {
+  overflow: visible !important;
   display: block !important;
   background: #000 !important;
   width: 100vw !important;
   max-width: 100vw !important;
-  height: 100dvh !important;
   margin: 0 !important;
   padding: 0 !important;
 }
 
-html.rr-active #subgrid-container::-webkit-scrollbar {
-  display: none !important;
-}
-
-html.rr-active main::-webkit-scrollbar {
-  display: none !important;
-}
-
-html.rr-active #posts-container::-webkit-scrollbar {
-  display: none !important;
-}
-
-html.rr-active .rr-feed-container::-webkit-scrollbar {
-  display: none !important;
-}
-
-html.rr-active shreddit-post, html.rr-active .rr-feed-container > article, html.rr-active .rr-feed-container > div[data-testid="post-container"] {
+html.rr-active shreddit-post, html.rr-active #posts-container > article, html.rr-active [data-testid="posts-list"] > div[data-testid="post-container"] {
+  height: 100vh !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  max-height: 100vh !important;
   scroll-snap-align: start !important;
   scroll-snap-stop: always !important;
   position: relative !important;
@@ -177,18 +138,22 @@ html.rr-active shreddit-post, html.rr-active .rr-feed-container > article, html.
   background: #000 !important;
   border: none !important;
   border-radius: 0 !important;
-  width: 100vw !important;
   min-width: 100vw !important;
   max-width: 100vw !important;
-  height: 100dvh !important;
-  min-height: 100dvh !important;
   max-height: 100dvh !important;
   margin: 0 !important;
   padding: 0 !important;
 }
 
-html.rr-active shreddit-post [slot="post-media-container"], html.rr-active shreddit-post .media-container, html.rr-active .rr-feed-container .media-container, html.rr-active shreddit-post shreddit-aspect-ratio, html.rr-active shreddit-post shreddit-player-2 {
+html.rr-active shreddit-post [slot="post-media-container"], html.rr-active shreddit-post .media-container, html.rr-active shreddit-post shreddit-aspect-ratio, html.rr-active shreddit-post shreddit-player-2 {
   position: absolute !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100vh !important;
+  min-height: 100vh !important;
+  max-height: 100dvh !important;
   --max-height: 100dvh !important;
   --max-width: 100vw !important;
   aspect-ratio: unset !important;
@@ -198,105 +163,94 @@ html.rr-active shreddit-post [slot="post-media-container"], html.rr-active shred
   border-radius: 0 !important;
   justify-content: center !important;
   align-items:  center !important;
-  width: 100vw !important;
-  max-width: 100vw !important;
-  height: 100dvh !important;
   min-height: 100dvh !important;
-  max-height: 100dvh !important;
   margin: 0 !important;
   padding: 0 !important;
   inset: 0 !important;
 }
 
-html.rr-active shreddit-post video, html.rr-active shreddit-post iframe, html.rr-active shreddit-post .rr-embedded-iframe, html.rr-active .rr-feed-container video, html.rr-active .rr-feed-container iframe {
+html.rr-active shreddit-post video, html.rr-active shreddit-post iframe, html.rr-active shreddit-post .rr-embedded-iframe {
   position: absolute !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+  height: 100% !important;
+  max-height: 100vh !important;
   object-fit: contain !important;
   z-index: 10 !important;
   background: none !important;
   border: none !important;
-  width: 100% !important;
-  max-width: 100vw !important;
-  height: 100% !important;
   max-height: 100dvh !important;
   inset: 0 !important;
 }
 
-html.rr-active shreddit-post:not(.rr-is-link):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb):not(.shreddit-subreddit-icon__icon):not(.post-background-image-filter) {
+html.rr-active shreddit-post:not(.rr-is-link):not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb):not(.shreddit-subreddit-icon__icon):not(.post-background-image-filter) {
   position: absolute !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+  height: 100% !important;
+  max-height: 100vh !important;
   object-fit: contain !important;
   z-index: 10 !important;
   background: none !important;
   border: none !important;
-  width: 100% !important;
-  max-width: 100vw !important;
-  height: 100% !important;
   max-height: 100dvh !important;
   inset: 0 !important;
 }
 
-html.rr-active .rr-feed-container > article:not(.rr-is-link):not(:has(gallery-carousel, faceplate-carousel)) img:not(.rr-link-card-thumb) {
-  position: absolute !important;
-  object-fit: contain !important;
-  z-index: 10 !important;
-  background: none !important;
-  border: none !important;
+html.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container] {
   width: 100% !important;
   max-width: 100vw !important;
   height: 100% !important;
-  max-height: 100dvh !important;
-  inset: 0 !important;
-}
-
-html.rr-active shreddit-post:not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container] {
+  max-height: 100vh !important;
   aspect-ratio: unset !important;
   position: absolute !important;
   background: none !important;
   border: none !important;
-  width: 100% !important;
-  max-width: 100vw !important;
-  height: 100% !important;
   max-height: 100dvh !important;
   margin: 0 !important;
   padding: 0 !important;
   inset: 0 !important;
 }
 
-html.rr-active shreddit-post:not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container] > div {
+html.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) [data-aspect-ratio-container] > div {
+  width: 100% !important;
+  max-width: 100vw !important;
+  height: 100% !important;
+  max-height: 100vh !important;
   aspect-ratio: unset !important;
   position: absolute !important;
   background: none !important;
   border: none !important;
-  width: 100% !important;
-  max-width: 100vw !important;
-  height: 100% !important;
   max-height: 100dvh !important;
   margin: 0 !important;
   padding: 0 !important;
   inset: 0 !important;
 }
 
-html.rr-active shreddit-post:not(:has(gallery-carousel, faceplate-carousel)) shreddit-media-lightbox-listener {
+html.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) shreddit-media-lightbox-listener {
+  width: 100% !important;
+  max-width: 100vw !important;
+  height: 100% !important;
+  max-height: 100vh !important;
   aspect-ratio: unset !important;
   position: absolute !important;
   background: none !important;
   border: none !important;
-  width: 100% !important;
-  max-width: 100vw !important;
-  height: 100% !important;
   max-height: 100dvh !important;
   margin: 0 !important;
   padding: 0 !important;
   inset: 0 !important;
 }
 
-html.rr-active shreddit-post:not(:has(gallery-carousel, faceplate-carousel)) .media-lightbox-img {
+html.rr-active shreddit-post:not(.rr-has-gallery):not(:has(gallery-carousel, faceplate-carousel)) .media-lightbox-img {
+  width: 100% !important;
+  max-width: 100vw !important;
+  height: 100% !important;
+  max-height: 100vh !important;
   aspect-ratio: unset !important;
   position: absolute !important;
   background: none !important;
   border: none !important;
-  width: 100% !important;
-  max-width: 100vw !important;
-  height: 100% !important;
   max-height: 100dvh !important;
   margin: 0 !important;
   padding: 0 !important;
@@ -318,15 +272,15 @@ html.rr-active shreddit-post [slot="post-media-container"] > div:not(:has(img, v
   visibility: hidden !important;
 }
 
-html.rr-active shreddit-post.rr-has-vertical-video video, html.rr-active shreddit-post video.rr-vertical-video, html.rr-active .rr-feed-container video.rr-vertical-video, html.rr-active shreddit-post[data-vertical-video="true"] video {
+html.rr-active shreddit-post.rr-has-vertical-video video, html.rr-active shreddit-post video.rr-vertical-video, html.rr-active shreddit-post[data-vertical-video="true"] video {
   object-fit: cover !important;
 }
 
-html.rr-active shreddit-post.rr-fit-contain video, html.rr-active shreddit-post.rr-fit-contain iframe, html.rr-active shreddit-post.rr-fit-contain img {
+html.rr-active .rr-fit-contain video, html.rr-active .rr-fit-contain iframe, html.rr-active .rr-fit-contain img, html.rr-active shreddit-post.rr-fit-contain video, html.rr-active shreddit-post.rr-fit-contain iframe, html.rr-active shreddit-post.rr-fit-contain img {
   object-fit: contain !important;
 }
 
-html.rr-active shreddit-post.rr-fit-cover video, html.rr-active shreddit-post.rr-fit-cover iframe, html.rr-active shreddit-post.rr-fit-cover img {
+html.rr-active .rr-fit-cover video, html.rr-active .rr-fit-cover iframe, html.rr-active .rr-fit-cover img, html.rr-active shreddit-post.rr-fit-cover video, html.rr-active shreddit-post.rr-fit-cover iframe, html.rr-active shreddit-post.rr-fit-cover img {
   object-fit: cover !important;
 }
 
@@ -350,7 +304,7 @@ html.rr-active shreddit-post [slot="vote"], html.rr-active shreddit-post [slot="
   height: 1px !important;
 }
 
-html.rr-active shreddit-post a[data-click-id="body"], html.rr-active shreddit-post a[slot="full-post-link"], html.rr-active shreddit-post [slot="post-media-container"] a:not(.rr-sub-badge):not(.rr-author), html.rr-active shreddit-post shreddit-media-lightbox-listener a {
+html.rr-active shreddit-post a:not(.rr-sub-badge):not(.rr-author):not(.rr-link-card-btn):not(.rr-text-card-body a), html.rr-active shreddit-post a[data-click-id="body"], html.rr-active shreddit-post a[slot="full-post-link"], html.rr-active shreddit-post a[href*="/comments/"], html.rr-active shreddit-post [slot="post-media-container"] a, html.rr-active shreddit-post shreddit-media-lightbox-listener a {
   pointer-events: none !important;
 }
 
@@ -358,16 +312,43 @@ html.rr-active .rr-post-overlay a, html.rr-active .rr-link-card-container a, htm
   pointer-events: auto !important;
 }
 
-html.rr-active shreddit-post.rr-filtered-out, html.rr-active .rr-feed-container > article.rr-filtered-out, html.rr-active .rr-feed-container > div.rr-filtered-out, .rr-embedded-iframe {
+html.rr-active shreddit-post.rr-filtered-out, html.rr-active article.rr-filtered-out, html.rr-active div.rr-filtered-out, .rr-embedded-iframe, .rr-embedded-video {
   display: none !important;
+}
+
+html.rr-active .rr-embedded-video {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+  height: 100% !important;
+  max-height: 100vh !important;
+  object-fit: contain !important;
+  background: #000 !important;
+  max-height: 100dvh !important;
 }
 
 html.rr-active .rr-embedded-iframe {
   display: block !important;
 }
 
+html.rr-active .rr-empty-feed {
+  color: #a0a0a0;
+  text-align: center;
+  box-sizing: border-box;
+  flex-direction: column;
+  justify-content: center;
+  align-items:  center;
+  padding: 24px;
+  font-size: 16px;
+  font-weight: 500;
+  display: flex !important;
+  height: 100vh !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+}
+
 /* src/styles/gallery.css */
-html.rr-active shreddit-post gallery-carousel, html.rr-active shreddit-post faceplate-carousel, html.rr-active shreddit-post [data-testid="media-gallery"] {
+html.rr-active shreddit-post gallery-carousel, html.rr-active shreddit-post faceplate-carousel, html.rr-active shreddit-post.rr-has-gallery shreddit-async-loader, html.rr-active shreddit-post [data-testid="media-gallery"] {
   position: absolute !important;
   --gallery-initial-height: 100% !important;
   display: block !important;
@@ -547,7 +528,7 @@ html.rr-active .rr-post-overlay {
   display: flex !important;
   visibility: visible !important;
   box-sizing: border-box !important;
-  background: linear-gradient(#00000073 0%, #0000 18% 65%, #000000bf 100%) !important;
+  background: linear-gradient(#0000004d 0%, #0000 15% 70%, #0000008c 100%) !important;
   flex-direction: column !important;
   justify-content: space-between !important;
   padding: 16px !important;
@@ -712,8 +693,10 @@ html.rr-active .rr-post-overlay {
   color: #9a9ca6 !important;
   background: none !important;
   border: none !important;
-  width: 40px !important;
-  height: 38px !important;
+  width: 44px !important;
+  min-width: 44px !important;
+  height: 44px !important;
+  min-height: 44px !important;
 }
 
 .rr-vote-group .rr-action-btn:hover {
@@ -748,89 +731,12 @@ html.rr-active .rr-post-overlay {
   color: #888d99 !important;
 }
 
-/* src/styles/top-bar.css */
-.rr-top-bar {
-  position: fixed !important;
-  top: env(safe-area-inset-top, 16px) !important;
-  display: flex !important;
-  z-index: var(--rr-z-overlay) !important;
-  pointer-events: none !important;
-  justify-content: space-between !important;
-  align-items:  center !important;
-  left: 16px !important;
-  right: 16px !important;
+html.rr-active shreddit-post.rr-has-video .rr-post-info, html.rr-active shreddit-post.rr-has-video .rr-action-rail {
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
-.rr-exit-btn, .rr-sound-btn-top {
-  color: #fff !important;
-  display: flex !important;
-  cursor: pointer !important;
-  pointer-events: auto !important;
-  outline: none !important;
-  -webkit-tap-highlight-color: transparent !important;
-  background: #1c1d22 !important;
-  border: 1px solid #30323a !important;
-  border-radius: 9999px !important;
-  justify-content: center !important;
-  align-items:  center !important;
-  width: 44px !important;
-  height: 44px !important;
-  transition: background .15s, transform .12s !important;
-  box-shadow: 0 4px 14px #0006 !important;
-}
-
-.rr-exit-btn:hover, .rr-sound-btn-top:hover {
-  background: #282a32 !important;
-}
-
-.rr-exit-btn:active, .rr-sound-btn-top:active {
-  transform: scale(.92) !important;
-}
-
-.rr-sound-btn-top.is-muted {
+.rr-action-btn.rr-sound-btn.is-muted {
   color: #888d99 !important;
-}
-
-.rr-top-controls {
-  display: flex !important;
-  pointer-events: auto !important;
-  align-items:  center !important;
-  gap: 10px !important;
-}
-
-.rr-filter-btn-top {
-  display: inline-flex !important;
-  color: #fff !important;
-  font-family: var(--rr-font-stack) !important;
-  letter-spacing: .2px !important;
-  cursor: pointer !important;
-  user-select: none !important;
-  -webkit-tap-highlight-color: transparent !important;
-  background: #1c1d22 !important;
-  border: 1px solid #30323a !important;
-  border-radius: 9999px !important;
-  align-items:  center !important;
-  gap: 6px !important;
-  padding: 8px 14px !important;
-  transition: all .15s !important;
-  font-size: 12px !important;
-  font-weight: 700 !important;
-  box-shadow: 0 4px 14px #0006 !important;
-}
-
-.rr-filter-btn-top:hover {
-  background: #282a32 !important;
-}
-
-.rr-filter-btn-top.is-active {
-  color: #ff6b35 !important;
-  background: #2c1a16 !important;
-  border-color: #ff4500 !important;
-}
-
-.rr-filter-btn-top .rr-filter-icon {
-  display: inline-flex !important;
-  align-items:  center !important;
 }
 
 /* src/styles/cards.css */
@@ -1092,6 +998,66 @@ html.rr-active .rr-link-card {
 
 .rr-link-card-cta:active {
   transform: scale(.97) !important;
+}
+
+/* src/styles/header.css */
+.rr-header-cluster {
+  display: inline-flex !important;
+  flex-shrink: 0 !important;
+  align-items:  center !important;
+  gap: 6px !important;
+  margin: 0 6px !important;
+}
+
+.rr-header-cluster.is-floating {
+  position: fixed !important;
+  top: calc(10px + env(safe-area-inset-top, 0px)) !important;
+  right: calc(12px + env(safe-area-inset-right, 0px)) !important;
+  z-index: var(--rr-z-overlay) !important;
+  margin: 0 !important;
+}
+
+.rr-header-btn {
+  color: #fff !important;
+  display: inline-flex !important;
+  cursor: pointer !important;
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  background: #1c1d22 !important;
+  border: 1px solid #30323a !important;
+  border-radius: 9999px !important;
+  justify-content: center !important;
+  align-items:  center !important;
+  width: 40px !important;
+  height: 40px !important;
+  padding: 0 !important;
+  transition: background .15s, transform .12s !important;
+}
+
+.rr-header-btn:hover {
+  background: #282a32 !important;
+}
+
+.rr-header-btn:active {
+  transform: scale(.92) !important;
+}
+
+.rr-header-btn:focus-visible {
+  box-shadow: 0 0 0 2px #ff4500 !important;
+}
+
+.rr-header-filter {
+  display: none !important;
+}
+
+html.rr-active .rr-header-filter {
+  display: inline-flex !important;
+}
+
+.rr-header-filter.is-active {
+  color: #ff6b35 !important;
+  background: #2c1a16 !important;
+  border-color: #ff4500 !important;
 }
 
 /* src/styles/index.css */

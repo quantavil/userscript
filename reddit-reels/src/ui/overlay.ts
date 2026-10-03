@@ -5,9 +5,42 @@
  */
 
 import { ReelPost, proxyUpvote, proxyDownvote } from '../extractor';
-import { escapeHtml, formatCount, openUrl } from '../utils';
-import { openCommentsDrawer } from './comments-drawer';
+import { escapeHtml, formatCount, sanitizeUrl } from '../utils';
 import { audioManager } from '../media';
+
+export function getSoundIconSvg(isMuted: boolean): string {
+  return isMuted
+    ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`
+    : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
+}
+
+/**
+ * Open the post's comments with Reddit's own router (new Reddit post page).
+ * Clicking the post's native full-post link keeps it a client-side navigation,
+ * so Back returns to the same feed; a plain page load is the fallback.
+ */
+export function openPostNatively(postEl: HTMLElement, permalink: string): void {
+  const native = postEl.querySelector<HTMLAnchorElement>(
+    'a[slot="full-post-link"], a[data-click-id="comments"], a[href*="/comments/"]'
+  );
+  if (native && native.href) {
+    native.click();
+    return;
+  }
+  const url = sanitizeUrl(permalink);
+  if (url) window.location.assign(url);
+}
+
+/** Refresh every rendered sound button after a mute change. */
+export function syncOverlaySoundButtons(isMuted: boolean): void {
+  document.querySelectorAll<HTMLButtonElement>('.rr-sound-btn').forEach((btn) => {
+    btn.classList.toggle('is-muted', isMuted);
+    btn.setAttribute('aria-label', isMuted ? 'Unmute' : 'Mute');
+    btn.setAttribute('aria-pressed', String(!isMuted));
+    btn.title = isMuted ? 'Unmute (M)' : 'Mute (M)';
+    btn.innerHTML = getSoundIconSvg(isMuted);
+  });
+}
 
 export function getUpvoteIconSvg(isUpvoted: boolean): string {
   return `<svg width="26" height="26" viewBox="0 0 24 24" fill="${isUpvoted ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>`;
@@ -43,6 +76,7 @@ export function getCommentIconSvg(): string {
 export interface OverlayOptions {
   hasVideo: boolean;
   isSubtitlesEnabled?: () => boolean;
+  onToggleMute?: () => void;
   onToggleSubtitles?: () => void;
   onToggleFitFill?: () => void;
 }
@@ -78,15 +112,33 @@ export function renderReelOverlay(
     <!-- Bottom-Left Post Information -->
     <div class="rr-post-info">
       <div class="rr-post-meta">
-        ${post.subreddit ? `<a class="rr-sub-badge" role="link" tabindex="0" href="https://www.reddit.com/${escapeHtml(cleanSub)}/" target="_blank" rel="noopener noreferrer">${escapeHtml(post.subreddit)}</a>` : ''}
+        ${post.subreddit ? `<a class="rr-sub-badge" role="link" tabindex="0" href="/${escapeHtml(cleanSub)}/">${escapeHtml(post.subreddit)}</a>` : ''}
         ${post.subreddit && post.author ? `<span class="rr-dot">•</span>` : ''}
-        ${post.author ? `<a class="rr-author" role="link" tabindex="0" href="https://www.reddit.com/user/${escapeHtml(post.author.replace(/^u\//, ''))}/" target="_blank" rel="noopener noreferrer">u/${escapeHtml(post.author.replace(/^u\//, ''))}</a>` : ''}
+        ${post.author ? `<a class="rr-author" role="link" tabindex="0" href="/user/${escapeHtml(post.author.replace(/^u\//, ''))}/">u/${escapeHtml(post.author.replace(/^u\//, ''))}</a>` : ''}
       </div>
       <div class="rr-post-title" title="${escapeHtml(post.title)}">${escapeHtml(post.title)}</div>
     </div>
 
-    <!-- Bottom-Right Vertical Action Rail (NO SHARE BUTTON, NO SOUND BUTTON — mute lives in top bar) -->
+    <!-- Bottom-Right Vertical Action Rail. Seek/play/fullscreen stay on Reddit's native player bar. -->
     <div class="rr-action-rail">
+      ${
+        options.hasVideo && options.onToggleMute
+          ? `
+          <div class="rr-action-item">
+            <button
+              type="button"
+              class="rr-action-btn rr-sound-btn ${audioManager.isMuted ? 'is-muted' : ''}"
+              aria-label="${audioManager.isMuted ? 'Unmute' : 'Mute'}"
+              aria-pressed="${!audioManager.isMuted}"
+              title="${audioManager.isMuted ? 'Unmute (M)' : 'Mute (M)'}"
+            >
+              ${getSoundIconSvg(audioManager.isMuted)}
+            </button>
+          </div>
+          `
+          : ''
+      }
+
       <!-- 1. Subtitles Toggle (ONLY rendered if post has video) -->
       ${
         options.hasVideo && options.onToggleSubtitles
@@ -141,7 +193,7 @@ export function renderReelOverlay(
         </button>
       </div>
 
-      <!-- 4. Reddit Comments (Directly opens in-reel comments drawer) -->
+      <!-- 4. Reddit Comments (opens the native new-Reddit post page) -->
       <div class="rr-action-item">
         <button
           type="button"
@@ -214,20 +266,15 @@ export function renderReelOverlay(
     commentBtn.onclick = (e) => {
       e.stopPropagation();
       e.preventDefault();
-      const currentVideo = audioManager.findVideo(postEl);
-      const wasPlaying = currentVideo && !currentVideo.paused;
-      openCommentsDrawer(post, {
-        onBeforeOpen: () => {
-          if (currentVideo && !currentVideo.paused) {
-            try { currentVideo.pause(); } catch {}
-          }
-        },
-        onClose: () => {
-          if (wasPlaying && currentVideo) {
-            try { currentVideo.play().catch(() => {}); } catch {}
-          }
-        },
-      });
+      openPostNatively(postEl, post.permalink);
+    };
+  }
+
+  const soundBtn = overlay.querySelector<HTMLButtonElement>('.rr-sound-btn');
+  if (soundBtn && options.onToggleMute) {
+    soundBtn.onclick = (e) => {
+      e.stopPropagation();
+      options.onToggleMute!();
     };
   }
 
