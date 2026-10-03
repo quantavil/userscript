@@ -3,7 +3,7 @@
   "name": "Universal Captcha Solver",
   "version": "2.5.0",
   "description": "Solve text, math, image-grid and audio captchas on any site using AI vision and speech-to-text models",
-  "homepage_url": "https://github.com/quantavil/userscript/tree/main/universal-solver",
+  "homepage_url": "https://github.com/quantavil/userscript/tree/main/universal-captcha-solver",
   "icons": {
     "48": "icon.svg",
     "96": "icon.svg",
