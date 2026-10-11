@@ -187,6 +187,9 @@ describe('panel hotkeys and settings', () => {
     updatePanelSetting('openingBook', false);
     expect(BotState.openingBook).toBe(0);
 
+    updatePanelSetting('openingStyle', 'hyper-aggressive');
+    expect(BotState.openingStyle).toBe('hyper-aggressive');
+
     updatePanelSetting('moveTimeMs', 50);
     expect(BotState.moveTime).toBe(50);
   });

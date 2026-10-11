@@ -118,7 +118,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       anticipatedPonder = null;
     }
 
-    const bookMove = kind === 'main' && BotState.openingBook ? lookupBookMove(fen) : null;
+    const bookMove = kind === 'main' && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
     let result: AnalysisResult;
     let best: BestLine | null = null;
 

@@ -569,6 +569,55 @@
   color: var(--paper);
 }
 
+.panel-opening-style-section {
+  display: grid;
+  gap: 6px;
+  padding: 2px 0 4px;
+}
+
+.panel-opening-style-picker {
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+}
+
+.panel-opening-style-picker .panel-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0;
+  transition:
+    background 140ms var(--ease),
+    color 140ms var(--ease);
+}
+
+.panel-opening-style-picker .panel-segment svg {
+  display: block;
+  color: var(--muted);
+  transition:
+    color 140ms var(--ease),
+    transform 140ms var(--ease);
+}
+
+.panel-opening-style-picker .panel-segment:hover svg {
+  color: var(--paper);
+  transform: scale(1.08);
+}
+
+.panel-opening-style-picker .panel-segment[aria-pressed="true"] svg {
+  color: var(--brass);
+  transform: scale(1.05);
+}
+
+.panel-opening-style-desc {
+  min-height: 28px;
+  margin: 0;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 /* Activity */
 
 .panel-activity {

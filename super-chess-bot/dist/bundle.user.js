@@ -1747,6 +1747,22 @@
 			}
 		});
 	}
+	function picklist(options, message$1) {
+		return _standardSchema({
+			kind: "schema",
+			type: "picklist",
+			reference: picklist,
+			expects: _joinExpects(options.map(_stringify), "|"),
+			async: false,
+			options,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (this.options.includes(dataset.value)) dataset.typed = true;
+				else _addIssue(this, "type", dataset, config$1);
+				return dataset;
+			}
+		});
+	}
 	function string(message$1) {
 		return _standardSchema({
 			kind: "schema",
@@ -1834,6 +1850,7 @@
 		moveTime: 100,
 		autoMove: 1,
 		openingBook: 1,
+		openingStyle: "balanced",
 		ponderEnabled: 1,
 		menuPosition: null
 	};
@@ -1843,12 +1860,20 @@
 		top: pipe(string(), maxLength(32)),
 		left: pipe(string(), maxLength(32))
 	});
+	var openingStyleSchema = picklist([
+		"hyper-defensive",
+		"defensive",
+		"balanced",
+		"aggressive",
+		"hyper-aggressive"
+	]);
 	var savedSettingsSchema = object({
 		hackEnabled: optional(flagSchema),
 		botPower: optional(integerInRange(1, 30)),
 		moveTime: optional(integerInRange(25, 1e4)),
 		autoMove: optional(flagSchema),
 		openingBook: optional(flagSchema),
+		openingStyle: optional(openingStyleSchema),
 		ponderEnabled: optional(flagSchema),
 		menuPosition: optional(nullable(positionSchema))
 	});
@@ -2133,6 +2158,7 @@
 		moveTime: 100,
 		autoMove: 1,
 		openingBook: 1,
+		openingStyle: "balanced",
 		currentEvaluation: "-",
 		bestMove: "-",
 		principalVariation: "-",
@@ -2150,6 +2176,7 @@
 					moveTime: BotState.moveTime,
 					autoMove: BotState.autoMove,
 					openingBook: BotState.openingBook,
+					openingStyle: BotState.openingStyle,
 					ponderEnabled: BotState.ponderEnabled,
 					menuPosition: menuWrap ? {
 						top: menuWrap.style.top,
@@ -4496,7 +4523,7 @@
 		const sanText = typeof san === "string" ? san : String(san ?? "");
 		return whiteToMove ? `${moveNumber}. ${sanText}` : `${moveNumber}... ${sanText}`;
 	}
-	var panel_default = ":host{--ink:#1b1a17;--well:#151411;--wood:#252420;--wood-raised:#302e28;--line:#3b3932;--paper:#efe9dc;--muted:#a8a193;--brass:#d9a94f;--sage:#8fb996;--brick:#d8826b;--serif:\"Iowan Old Style\", \"Palatino Linotype\", Palatino, \"Book Antiqua\", Georgia, serif;--sans:system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif;--radius:14px;--radius-control:8px;--target:40px;--ease:cubic-bezier(.2, .7, .2, 1);all:initial;z-index:9999999;width:min(380px,100vw - 24px);color:var(--paper);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font:13px / 1.45 var(--sans);-webkit-font-smoothing:antialiased;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}.panel button{font:inherit;color:inherit}.panel :is(button,input):focus-visible,.panel-log:focus-visible{outline:2px solid var(--brass);outline-offset:2px}.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--ink);overflow:hidden;box-shadow:0 16px 40px #0000006b}.panel-bar{cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:60px;padding:8px 8px 8px 12px;display:flex}.panel[data-state=open] .panel-bar{border-bottom:1px solid var(--line)}:host(.dragging) .panel-bar{cursor:grabbing}.panel-mark{border-radius:var(--radius-control);background:var(--wood-raised);width:32px;height:32px;color:var(--brass);flex:none;place-items:center;display:grid}.panel-mark-icon{display:block}.panel-bar-text{flex-direction:column;flex:auto;gap:3px;min-width:0;display:flex}.panel-title{letter-spacing:-.005em;white-space:nowrap;flex-shrink:0;font-size:14px;font-weight:600}.panel-status,.panel-summary{min-width:0;color:var(--muted);align-items:center;gap:7px;font-size:12px;display:flex}.panel-status-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-summary b{color:var(--paper);font:600 17px / 1 var(--serif)}.panel-summary>span:last-child{color:var(--brass);font-variant-numeric:tabular-nums}.panel-dot{background:var(--muted);border-radius:50%;flex:none;width:7px;height:7px}.panel[data-tone=ready] .panel-dot{background:var(--sage)}.panel[data-tone=working] .panel-dot{background:var(--sage);animation:panel-pulse 1.6s var(--ease) infinite}.panel[data-tone=paused] .panel-dot{background:var(--brass)}.panel[data-tone=error] .panel-dot{background:var(--brick)}.panel[data-tone=error] .panel-status{color:var(--brick)}.panel[data-tone=paused] .panel-status{color:var(--brass)}@keyframes panel-pulse{0%,to{box-shadow:0 0 #8fb99680}50%{box-shadow:0 0 0 5px #8fb99600}}.panel-icon{width:var(--target);height:var(--target);border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);cursor:pointer;flex:none;place-items:center;display:grid}.panel-icon:hover{background:var(--wood-raised)}.panel-chevron{transition:transform .18s var(--ease)}.panel[data-state=collapsed] .panel-chevron{transform:rotate(180deg)}.panel-enable{min-height:var(--target);border:1px solid var(--line);background:var(--wood);cursor:pointer;border-radius:999px;flex:none;align-items:center;gap:8px;padding:0 10px 0 12px;font-size:12px;font-weight:500;display:inline-flex}.panel-enable:hover{background:var(--wood-raised)}.panel-enable-state{min-width:18px;color:var(--muted);font-variant-numeric:tabular-nums}.panel-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line))}.panel-enable[aria-pressed=true] .panel-enable-state{color:var(--sage)}.panel-enable-wide{border-radius:var(--radius-control);justify-content:space-between;width:100%;padding:0 12px;font-size:13px}.panel-quick-enable{border:1px solid var(--line);background:var(--wood);min-height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), border-color .14s var(--ease), color .14s var(--ease);border-radius:999px;flex:none;align-items:center;gap:6px;padding:0 6px 0 8px;font-size:11px;font-weight:500;display:inline-flex}.panel-quick-enable:hover{background:var(--wood-raised);color:var(--paper)}.panel-quick-state{min-width:16px;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600}.panel-quick-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line));color:var(--sage)}.panel-quick-enable[aria-pressed=true] .panel-quick-state{color:var(--sage)}.panel-switch{flex:none;align-items:center;width:34px;height:20px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{background:var(--line);transition:background .16s var(--ease);border-radius:999px;position:absolute;inset:0}.panel-switch-knob{background:var(--muted);pointer-events:none;width:14px;height:14px;transition:transform .16s var(--ease), background .16s var(--ease);border-radius:50%;position:absolute;top:3px;left:3px}.panel-enable .panel-switch-knob,.panel-quick-enable .panel-switch-knob{background:var(--paper)}.panel-switch-input:checked~.panel-switch-track,.panel-enable[aria-pressed=true] .panel-switch-track,.panel-quick-enable[aria-pressed=true] .panel-switch-track{background:var(--sage)}.panel-switch-input:checked~.panel-switch-knob,.panel-enable[aria-pressed=true] .panel-switch-knob,.panel-quick-enable[aria-pressed=true] .panel-switch-knob{background:var(--ink);transform:translate(14px)}.panel-body{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(76vh,680px);animation:panel-rise .18s var(--ease);overflow:auto}@keyframes panel-rise{0%{opacity:0;transform:translateY(-4px)}}.panel-hero{padding:14px 16px}.panel-move-row{justify-content:space-between;align-items:baseline;gap:12px;display:flex}.panel-move{overflow-wrap:anywhere;color:var(--paper);font:600 36px / 1.05 var(--serif);letter-spacing:.01em}.panel-score{color:var(--brass);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600}.panel-line{color:var(--muted);font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap;margin:6px 0 0;font-size:12px;overflow:hidden}.panel-notice{border-radius:var(--radius-control);background:var(--wood);box-shadow:inset 0 0 0 1px var(--line);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;margin-top:12px;padding:10px 12px;font-size:12px;display:grid}.panel-notice p{margin:0}.panel-notice[data-kind=retry]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brick) 60%, transparent)}.panel-notice[data-kind=resume]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brass) 60%, transparent)}.panel-button{min-height:var(--target);border:1px solid var(--brass);border-radius:var(--radius-control);background:var(--brass);color:var(--ink);white-space:nowrap;cursor:pointer;padding:0 14px;font-size:13px;font-weight:600}.panel-button:hover{filter:brightness(1.06)}.panel-settings{border-top:1px solid var(--line);gap:2px;padding:12px 16px 16px;display:grid}.panel-toggles{margin-top:6px;display:grid}.panel-toggle{cursor:pointer;justify-content:space-between;align-items:center;gap:12px;min-height:44px;display:flex}.panel-note{color:var(--muted);margin:4px 0 0;font-size:12px}.panel-field{gap:6px;padding:8px 0 4px;display:grid}.panel-field-head{justify-content:space-between;align-items:baseline;gap:10px;display:flex}.panel-field-head output{font-variant-numeric:tabular-nums;font-weight:600}.panel-field-label{color:var(--muted);font-size:12px}.panel-range{appearance:none;cursor:pointer;width:100%;height:28px;accent-color:var(--brass);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-moz-range-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px;margin-top:-8px}.panel-range::-moz-range-thumb{border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px}.panel-segmented{border-radius:var(--radius-control);background:var(--wood);grid-auto-columns:1fr;grid-auto-flow:column;gap:4px;padding:4px;display:grid}.panel-segment{min-height:var(--target);color:var(--muted);cursor:pointer;background:0 0;border:0;border-radius:6px;font-weight:500}.panel-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-activity{border-top:1px solid var(--line);background:var(--well)}.panel-activity-head{justify-content:space-between;align-items:center;gap:8px;min-height:44px;padding:0 8px 0 16px;display:flex}.panel-disclosure{min-height:var(--target);cursor:pointer;background:0 0;border:0;align-items:center;gap:8px;padding:0;font-size:13px;font-weight:600;display:inline-flex}.panel-count{background:var(--wood-raised);min-width:24px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:center;border-radius:999px;padding:2px 6px;font-size:11px}.panel-activity-actions{gap:4px;display:flex}.panel-icon-btn{border-radius:var(--radius-control);width:32px;height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), color .14s var(--ease);background:0 0;border:0;justify-content:center;align-items:center;display:inline-flex}.panel-icon-btn:hover{background:var(--wood-raised);color:var(--paper)}.panel-icon-btn.is-success{color:var(--sage)}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;gap:6px;min-height:80px;max-height:240px;padding:2px 16px 14px;display:grid;overflow:auto}.panel-log-empty{color:var(--muted);margin:0;font-size:12px}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:44px minmax(0,1fr);gap:8px;margin:0;font-size:12px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--muted);font-variant-numeric:tabular-nums}.log-text-info{color:var(--paper)}.log-text-status{color:var(--muted)}.log-text-move{color:var(--sage)}.log-text-warn{color:var(--brass)}.log-text-error{color:var(--brick)}.log-text-opponent{color:#cfc7b5}@media (pointer:coarse){:host{--target:48px}.panel-range::-webkit-slider-runnable-track{height:6px}.panel-range::-webkit-slider-thumb{width:28px;height:28px;margin-top:-11px}.panel-range::-moz-range-thumb{width:28px;height:28px}.panel-icon-btn{width:44px;height:44px}}@media (width<=560px){:host{width:100%;inset:auto 0 0!important}.panel{padding-bottom:env(safe-area-inset-bottom,0px);border-bottom:0;border-left:0;border-right:0;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px #0000005c}.panel-bar{cursor:default;touch-action:manipulation;gap:8px;padding:8px 8px 8px 10px}.panel-body{-webkit-overflow-scrolling:touch;max-height:min(70vh,580px)}.panel-log{-webkit-overflow-scrolling:touch;max-height:180px}}@media (width<=380px){.panel-title{font-size:13px}.panel-quick-enable{gap:4px;padding:0 4px 0 6px}.panel-notice{grid-template-columns:1fr;gap:8px}}@media (prefers-reduced-motion:reduce){.panel *,.panel :before,.panel :after{transition-duration:1ms!important;animation-duration:1ms!important;animation-iteration-count:1!important}}";
+	var panel_default = ":host{--ink:#1b1a17;--well:#151411;--wood:#252420;--wood-raised:#302e28;--line:#3b3932;--paper:#efe9dc;--muted:#a8a193;--brass:#d9a94f;--sage:#8fb996;--brick:#d8826b;--serif:\"Iowan Old Style\", \"Palatino Linotype\", Palatino, \"Book Antiqua\", Georgia, serif;--sans:system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif;--radius:14px;--radius-control:8px;--target:40px;--ease:cubic-bezier(.2, .7, .2, 1);all:initial;z-index:9999999;width:min(380px,100vw - 24px);color:var(--paper);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font:13px / 1.45 var(--sans);-webkit-font-smoothing:antialiased;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}.panel button{font:inherit;color:inherit}.panel :is(button,input):focus-visible,.panel-log:focus-visible{outline:2px solid var(--brass);outline-offset:2px}.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--ink);overflow:hidden;box-shadow:0 16px 40px #0000006b}.panel-bar{cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:60px;padding:8px 8px 8px 12px;display:flex}.panel[data-state=open] .panel-bar{border-bottom:1px solid var(--line)}:host(.dragging) .panel-bar{cursor:grabbing}.panel-mark{border-radius:var(--radius-control);background:var(--wood-raised);width:32px;height:32px;color:var(--brass);flex:none;place-items:center;display:grid}.panel-mark-icon{display:block}.panel-bar-text{flex-direction:column;flex:auto;gap:3px;min-width:0;display:flex}.panel-title{letter-spacing:-.005em;white-space:nowrap;flex-shrink:0;font-size:14px;font-weight:600}.panel-status,.panel-summary{min-width:0;color:var(--muted);align-items:center;gap:7px;font-size:12px;display:flex}.panel-status-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-summary b{color:var(--paper);font:600 17px / 1 var(--serif)}.panel-summary>span:last-child{color:var(--brass);font-variant-numeric:tabular-nums}.panel-dot{background:var(--muted);border-radius:50%;flex:none;width:7px;height:7px}.panel[data-tone=ready] .panel-dot{background:var(--sage)}.panel[data-tone=working] .panel-dot{background:var(--sage);animation:panel-pulse 1.6s var(--ease) infinite}.panel[data-tone=paused] .panel-dot{background:var(--brass)}.panel[data-tone=error] .panel-dot{background:var(--brick)}.panel[data-tone=error] .panel-status{color:var(--brick)}.panel[data-tone=paused] .panel-status{color:var(--brass)}@keyframes panel-pulse{0%,to{box-shadow:0 0 #8fb99680}50%{box-shadow:0 0 0 5px #8fb99600}}.panel-icon{width:var(--target);height:var(--target);border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);cursor:pointer;flex:none;place-items:center;display:grid}.panel-icon:hover{background:var(--wood-raised)}.panel-chevron{transition:transform .18s var(--ease)}.panel[data-state=collapsed] .panel-chevron{transform:rotate(180deg)}.panel-enable{min-height:var(--target);border:1px solid var(--line);background:var(--wood);cursor:pointer;border-radius:999px;flex:none;align-items:center;gap:8px;padding:0 10px 0 12px;font-size:12px;font-weight:500;display:inline-flex}.panel-enable:hover{background:var(--wood-raised)}.panel-enable-state{min-width:18px;color:var(--muted);font-variant-numeric:tabular-nums}.panel-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line))}.panel-enable[aria-pressed=true] .panel-enable-state{color:var(--sage)}.panel-enable-wide{border-radius:var(--radius-control);justify-content:space-between;width:100%;padding:0 12px;font-size:13px}.panel-quick-enable{border:1px solid var(--line);background:var(--wood);min-height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), border-color .14s var(--ease), color .14s var(--ease);border-radius:999px;flex:none;align-items:center;gap:6px;padding:0 6px 0 8px;font-size:11px;font-weight:500;display:inline-flex}.panel-quick-enable:hover{background:var(--wood-raised);color:var(--paper)}.panel-quick-state{min-width:16px;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600}.panel-quick-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line));color:var(--sage)}.panel-quick-enable[aria-pressed=true] .panel-quick-state{color:var(--sage)}.panel-switch{flex:none;align-items:center;width:34px;height:20px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{background:var(--line);transition:background .16s var(--ease);border-radius:999px;position:absolute;inset:0}.panel-switch-knob{background:var(--muted);pointer-events:none;width:14px;height:14px;transition:transform .16s var(--ease), background .16s var(--ease);border-radius:50%;position:absolute;top:3px;left:3px}.panel-enable .panel-switch-knob,.panel-quick-enable .panel-switch-knob{background:var(--paper)}.panel-switch-input:checked~.panel-switch-track,.panel-enable[aria-pressed=true] .panel-switch-track,.panel-quick-enable[aria-pressed=true] .panel-switch-track{background:var(--sage)}.panel-switch-input:checked~.panel-switch-knob,.panel-enable[aria-pressed=true] .panel-switch-knob,.panel-quick-enable[aria-pressed=true] .panel-switch-knob{background:var(--ink);transform:translate(14px)}.panel-body{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(76vh,680px);animation:panel-rise .18s var(--ease);overflow:auto}@keyframes panel-rise{0%{opacity:0;transform:translateY(-4px)}}.panel-hero{padding:14px 16px}.panel-move-row{justify-content:space-between;align-items:baseline;gap:12px;display:flex}.panel-move{overflow-wrap:anywhere;color:var(--paper);font:600 36px / 1.05 var(--serif);letter-spacing:.01em}.panel-score{color:var(--brass);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600}.panel-line{color:var(--muted);font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap;margin:6px 0 0;font-size:12px;overflow:hidden}.panel-notice{border-radius:var(--radius-control);background:var(--wood);box-shadow:inset 0 0 0 1px var(--line);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;margin-top:12px;padding:10px 12px;font-size:12px;display:grid}.panel-notice p{margin:0}.panel-notice[data-kind=retry]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brick) 60%, transparent)}.panel-notice[data-kind=resume]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brass) 60%, transparent)}.panel-button{min-height:var(--target);border:1px solid var(--brass);border-radius:var(--radius-control);background:var(--brass);color:var(--ink);white-space:nowrap;cursor:pointer;padding:0 14px;font-size:13px;font-weight:600}.panel-button:hover{filter:brightness(1.06)}.panel-settings{border-top:1px solid var(--line);gap:2px;padding:12px 16px 16px;display:grid}.panel-toggles{margin-top:6px;display:grid}.panel-toggle{cursor:pointer;justify-content:space-between;align-items:center;gap:12px;min-height:44px;display:flex}.panel-note{color:var(--muted);margin:4px 0 0;font-size:12px}.panel-field{gap:6px;padding:8px 0 4px;display:grid}.panel-field-head{justify-content:space-between;align-items:baseline;gap:10px;display:flex}.panel-field-head output{font-variant-numeric:tabular-nums;font-weight:600}.panel-field-label{color:var(--muted);font-size:12px}.panel-range{appearance:none;cursor:pointer;width:100%;height:28px;accent-color:var(--brass);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-moz-range-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px;margin-top:-8px}.panel-range::-moz-range-thumb{border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px}.panel-segmented{border-radius:var(--radius-control);background:var(--wood);grid-auto-columns:1fr;grid-auto-flow:column;gap:4px;padding:4px;display:grid}.panel-segment{min-height:var(--target);color:var(--muted);cursor:pointer;background:0 0;border:0;border-radius:6px;font-weight:500}.panel-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-opening-style-section{gap:6px;padding:2px 0 4px;display:grid}.panel-opening-style-picker{grid-auto-columns:1fr;grid-auto-flow:column}.panel-opening-style-picker .panel-segment{min-height:34px;transition:background .14s var(--ease), color .14s var(--ease);justify-content:center;align-items:center;padding:0;display:flex}.panel-opening-style-picker .panel-segment svg{color:var(--muted);transition:color .14s var(--ease), transform .14s var(--ease);display:block}.panel-opening-style-picker .panel-segment:hover svg{color:var(--paper);transform:scale(1.08)}.panel-opening-style-picker .panel-segment[aria-pressed=true] svg{color:var(--brass);transform:scale(1.05)}.panel-opening-style-desc{min-height:28px;color:var(--muted);margin:0;padding:0 4px;font-size:11px;line-height:1.35}.panel-activity{border-top:1px solid var(--line);background:var(--well)}.panel-activity-head{justify-content:space-between;align-items:center;gap:8px;min-height:44px;padding:0 8px 0 16px;display:flex}.panel-disclosure{min-height:var(--target);cursor:pointer;background:0 0;border:0;align-items:center;gap:8px;padding:0;font-size:13px;font-weight:600;display:inline-flex}.panel-count{background:var(--wood-raised);min-width:24px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:center;border-radius:999px;padding:2px 6px;font-size:11px}.panel-activity-actions{gap:4px;display:flex}.panel-icon-btn{border-radius:var(--radius-control);width:32px;height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), color .14s var(--ease);background:0 0;border:0;justify-content:center;align-items:center;display:inline-flex}.panel-icon-btn:hover{background:var(--wood-raised);color:var(--paper)}.panel-icon-btn.is-success{color:var(--sage)}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;gap:6px;min-height:80px;max-height:240px;padding:2px 16px 14px;display:grid;overflow:auto}.panel-log-empty{color:var(--muted);margin:0;font-size:12px}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:44px minmax(0,1fr);gap:8px;margin:0;font-size:12px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--muted);font-variant-numeric:tabular-nums}.log-text-info{color:var(--paper)}.log-text-status{color:var(--muted)}.log-text-move{color:var(--sage)}.log-text-warn{color:var(--brass)}.log-text-error{color:var(--brick)}.log-text-opponent{color:#cfc7b5}@media (pointer:coarse){:host{--target:48px}.panel-range::-webkit-slider-runnable-track{height:6px}.panel-range::-webkit-slider-thumb{width:28px;height:28px;margin-top:-11px}.panel-range::-moz-range-thumb{width:28px;height:28px}.panel-icon-btn{width:44px;height:44px}}@media (width<=560px){:host{width:100%;inset:auto 0 0!important}.panel{padding-bottom:env(safe-area-inset-bottom,0px);border-bottom:0;border-left:0;border-right:0;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px #0000005c}.panel-bar{cursor:default;touch-action:manipulation;gap:8px;padding:8px 8px 8px 10px}.panel-body{-webkit-overflow-scrolling:touch;max-height:min(70vh,580px)}.panel-log{-webkit-overflow-scrolling:touch;max-height:180px}}@media (width<=380px){.panel-title{font-size:13px}.panel-quick-enable{gap:4px;padding:0 4px 0 6px}.panel-notice{grid-template-columns:1fr;gap:8px}}@media (prefers-reduced-motion:reduce){.panel *,.panel :before,.panel :after{transition-duration:1ms!important;animation-duration:1ms!important;animation-iteration-count:1!important}}";
 	var n$1;
 	var t$2;
 	var i$2;
@@ -5587,178 +5614,6 @@
 		};
 		return (u || i) && (p.__source = u, p.__self = i), n$1.vnode && n$1.vnode(p), p;
 	}
-	function getPanelCapabilityView(capabilities) {
-		return { transportNote: capabilities?.input === "selection" ? "Moves use legal square selection on this site." : capabilities?.input === "controller" ? "Moves use the active game controller." : null };
-	}
-	var EDGE_MARGIN = 8;
-	var DOCK_QUERY = "(max-width: 560px)";
-	var COLLAPSED_KEY = "gabibot_panel_collapsed";
-	var LOG_STICK_PX = 16;
-	var COPY_FEEDBACK_MS = 1400;
-	var EDITABLE_TAGS = new Set([
-		"INPUT",
-		"TEXTAREA",
-		"SELECT"
-	]);
-	var readSettings = () => ({
-		enabled: !!BotState.hackEnabled,
-		autoMove: !!BotState.autoMove,
-		openingBook: !!BotState.openingBook,
-		ponder: !!BotState.ponderEnabled,
-		depth: BotState.botPower,
-		moveTimeMs: BotState.moveTime
-	});
-	var settingsSignal = y$1(readSettings());
-	var analysisSignal = y$1({
-		status: BotState.statusInfo,
-		evaluation: BotState.currentEvaluation,
-		bestMove: BotState.bestMove,
-		principalVariation: BotState.principalVariation,
-		recoveryAction: BotState.recoveryAction
-	});
-	var logsSignal = y$1([]);
-	var nextLogId = 0;
-	var logTextClass = {
-		info: "log-text-info",
-		status: "log-text-status",
-		error: "log-text-error",
-		warn: "log-text-warn",
-		move: "log-text-move",
-		opponent: "log-text-opponent"
-	};
-	function shallowEqual(a, b) {
-		return Object.keys(b).every((key) => a[key] === b[key]);
-	}
-	function appendPanelLog(text, type = "info") {
-		const entry = {
-			id: ++nextLogId,
-			text,
-			type,
-			time: new Date().toLocaleTimeString([], {
-				hour: "2-digit",
-				minute: "2-digit",
-				hourCycle: "h23"
-			})
-		};
-		logsSignal.value = [...logsSignal.value, entry].slice(-100);
-	}
-	function clearPanelLogs() {
-		logsSignal.value = [];
-	}
-	function syncPanelSettings() {
-		const next = readSettings();
-		if (shallowEqual(settingsSignal.value, next)) return;
-		settingsSignal.value = next;
-	}
-	function updatePanelAnalysis(next) {
-		if (shallowEqual(analysisSignal.value, next)) return;
-		analysisSignal.value = next;
-	}
-	function writeBotState(key, value) {
-		switch (key) {
-			case "enabled":
-				BotState.hackEnabled = value ? 1 : 0;
-				break;
-			case "autoMove":
-				BotState.autoMove = value ? 1 : 0;
-				break;
-			case "openingBook":
-				BotState.openingBook = value ? 1 : 0;
-				break;
-			case "ponder":
-				BotState.ponderEnabled = value ? 1 : 0;
-				break;
-			case "depth":
-				BotState.botPower = Number(value);
-				break;
-			case "moveTimeMs": BotState.moveTime = Number(value);
-		}
-	}
-	function updatePanelSetting(key, value, actions) {
-		settingsSignal.value = {
-			...settingsSignal.value,
-			[key]: value
-		};
-		writeBotState(key, value);
-		Settings.save();
-		if (key === "enabled") actions?.setEnabled?.(!!value);
-		else actions?.refreshSettings?.();
-	}
-	function isEditableTarget(target) {
-		if (!target || typeof target !== "object") return false;
-		const element = target;
-		return element.isContentEditable === true || EDITABLE_TAGS.has((element.tagName ?? "").toUpperCase());
-	}
-	function handlePanelKeyDown(event, actions = {}, toggleCollapsed) {
-		if (isEditableTarget(event.composedPath ? event.composedPath()[0] : event.target)) return;
-		if (event.key?.toLowerCase() === "b" && event.ctrlKey && !event.metaKey) {
-			event.preventDefault?.();
-			toggleCollapsed?.();
-			return;
-		}
-		if (event.ctrlKey || event.metaKey || event.altKey) return;
-		if (event.code === "KeyE") {
-			event.preventDefault?.();
-			updatePanelSetting("enabled", !settingsSignal.value.enabled, actions);
-		} else if (event.code === "KeyR" && analysisSignal.value.recoveryAction !== null) {
-			event.preventDefault?.();
-			actions.recover?.();
-		}
-	}
-	function clampPosition(left, top, width, height) {
-		const maxLeft = Math.max(EDGE_MARGIN, window.innerWidth - width - EDGE_MARGIN);
-		const maxTop = Math.max(EDGE_MARGIN, window.innerHeight - height - EDGE_MARGIN);
-		return {
-			left: Math.min(Math.max(EDGE_MARGIN, left), maxLeft),
-			top: Math.min(Math.max(EDGE_MARGIN, top), maxTop)
-		};
-	}
-	function placeHost(host, left, top) {
-		const nextLeft = `${left}px`;
-		const nextTop = `${top}px`;
-		if (host.style.left !== nextLeft) host.style.left = nextLeft;
-		if (host.style.top !== nextTop) host.style.top = nextTop;
-		if (host.style.right !== "auto") host.style.right = "auto";
-	}
-	function isDocked() {
-		return typeof window.matchMedia === "function" && window.matchMedia(DOCK_QUERY).matches;
-	}
-	function readStoredCollapsed() {
-		try {
-			const value = localStorage.getItem(COLLAPSED_KEY);
-			return value === null ? null : value === "1";
-		} catch {
-			return null;
-		}
-	}
-	function storeCollapsed(collapsed) {
-		try {
-			localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
-		} catch {}
-	}
-	function mountPanel(root, host, actions, capabilities) {
-		G$1(u(Panel, {
-			host,
-			actions,
-			capabilities
-		}), root);
-	}
-	function formatBudget(milliseconds) {
-		return milliseconds < 1e3 ? `${milliseconds} ms` : `${Number((milliseconds / 1e3).toFixed(2))} s`;
-	}
-	function displayValue(value) {
-		return value && value !== "-" ? value : "—";
-	}
-	function hasLine(value) {
-		return !!value && value !== "-" && value !== "Not available";
-	}
-	function statusTone(analysis, enabled) {
-		if (analysis.recoveryAction === "retry") return "error";
-		if (analysis.recoveryAction === "resume") return "paused";
-		if (/error|failed|unavailable|not confirmed/i.test(analysis.status)) return "error";
-		if (/loading|analyz|ponder|submitting|resuming/i.test(analysis.status)) return "working";
-		return enabled ? "ready" : "idle";
-	}
 	function KnightIcon() {
 		return u("svg", {
 			class: "panel-mark-icon",
@@ -5882,6 +5737,271 @@
 			})
 		});
 	}
+	function IconDualShields() {
+		return u("svg", {
+			width: "22",
+			height: "18",
+			viewBox: "0 0 24 20",
+			fill: "none",
+			stroke: "currentColor",
+			"stroke-width": "1.8",
+			"stroke-linecap": "round",
+			"stroke-linejoin": "round",
+			"aria-hidden": "true",
+			children: [u("path", {
+				d: "M7 2L2.5 4v4.5c0 4 2.8 6.8 4.5 7.8 1.7-1 4.5-3.8 4.5-7.8V4L7 2z",
+				opacity: "0.6"
+			}), u("path", { d: "M17 3l-4.5 2v4.5c0 4 2.8 6.8 4.5 7.8 1.7-1 4.5-3.8 4.5-7.8V5L17 3z" })]
+		});
+	}
+	function IconShield() {
+		return u("svg", {
+			width: "18",
+			height: "18",
+			viewBox: "0 0 24 20",
+			fill: "none",
+			stroke: "currentColor",
+			"stroke-width": "1.8",
+			"stroke-linecap": "round",
+			"stroke-linejoin": "round",
+			"aria-hidden": "true",
+			children: u("path", { d: "M12 2L6 4.5v5.5c0 5 4.5 8.5 6 10 1.5-1.5 6-5 6-10V4.5L12 2z" })
+		});
+	}
+	function IconScale() {
+		return u("svg", {
+			width: "18",
+			height: "18",
+			viewBox: "0 0 24 20",
+			fill: "none",
+			stroke: "currentColor",
+			"stroke-width": "1.8",
+			"stroke-linecap": "round",
+			"stroke-linejoin": "round",
+			"aria-hidden": "true",
+			children: [u("path", { d: "M12 2v15M8 18h8M4 7h16" }), u("path", { d: "M4 7l-2.5 5.5h5L4 7zM20 7l-2.5 5.5h5L20 7z" })]
+		});
+	}
+	function IconSword() {
+		return u("svg", {
+			width: "18",
+			height: "18",
+			viewBox: "0 0 24 20",
+			fill: "none",
+			stroke: "currentColor",
+			"stroke-width": "1.8",
+			"stroke-linecap": "round",
+			"stroke-linejoin": "round",
+			"aria-hidden": "true",
+			children: u("path", { d: "M18 2l-9.5 9.5M15 2l3 3M7.5 12.5l2 2M6 14l-3 3M4 18l2-2" })
+		});
+	}
+	function IconDualSwordsSparks() {
+		return u("svg", {
+			width: "22",
+			height: "18",
+			viewBox: "0 0 24 20",
+			fill: "none",
+			stroke: "currentColor",
+			"stroke-width": "1.8",
+			"stroke-linecap": "round",
+			"stroke-linejoin": "round",
+			"aria-hidden": "true",
+			children: [
+				u("path", { d: "M4 3l16 14M17 19l3-3M3 5l2 2" }),
+				u("path", { d: "M20 3L4 17M7 19l-3-3M21 5l-2 2" }),
+				u("path", {
+					d: "M12 1v3M10 2.5h4",
+					"stroke-width": "1.4"
+				})
+			]
+		});
+	}
+	function OpeningStyleIcon({ style }) {
+		switch (style) {
+			case "hyper-defensive": return u(IconDualShields, {});
+			case "defensive": return u(IconShield, {});
+			case "balanced": return u(IconScale, {});
+			case "aggressive": return u(IconSword, {});
+			case "hyper-aggressive": return u(IconDualSwordsSparks, {});
+		}
+	}
+	function getPanelCapabilityView(capabilities) {
+		return { transportNote: capabilities?.input === "selection" ? "Moves use legal square selection on this site." : capabilities?.input === "controller" ? "Moves use the active game controller." : null };
+	}
+	var EDGE_MARGIN = 8;
+	var DOCK_QUERY = "(max-width: 560px)";
+	var COLLAPSED_KEY = "gabibot_panel_collapsed";
+	var LOG_STICK_PX = 16;
+	var COPY_FEEDBACK_MS = 1400;
+	var EDITABLE_TAGS = new Set([
+		"INPUT",
+		"TEXTAREA",
+		"SELECT"
+	]);
+	var readSettings = () => ({
+		enabled: !!BotState.hackEnabled,
+		autoMove: !!BotState.autoMove,
+		openingBook: !!BotState.openingBook,
+		openingStyle: BotState.openingStyle,
+		ponder: !!BotState.ponderEnabled,
+		depth: BotState.botPower,
+		moveTimeMs: BotState.moveTime
+	});
+	var settingsSignal = y$1(readSettings());
+	var analysisSignal = y$1({
+		status: BotState.statusInfo,
+		evaluation: BotState.currentEvaluation,
+		bestMove: BotState.bestMove,
+		principalVariation: BotState.principalVariation,
+		recoveryAction: BotState.recoveryAction
+	});
+	var logsSignal = y$1([]);
+	var nextLogId = 0;
+	var logTextClass = {
+		info: "log-text-info",
+		status: "log-text-status",
+		error: "log-text-error",
+		warn: "log-text-warn",
+		move: "log-text-move",
+		opponent: "log-text-opponent"
+	};
+	function shallowEqual(a, b) {
+		return Object.keys(b).every((key) => a[key] === b[key]);
+	}
+	function appendPanelLog(text, type = "info") {
+		const entry = {
+			id: ++nextLogId,
+			text,
+			type,
+			time: new Date().toLocaleTimeString([], {
+				hour: "2-digit",
+				minute: "2-digit",
+				hourCycle: "h23"
+			})
+		};
+		logsSignal.value = [...logsSignal.value, entry].slice(-100);
+	}
+	function clearPanelLogs() {
+		logsSignal.value = [];
+	}
+	function syncPanelSettings() {
+		const next = readSettings();
+		if (shallowEqual(settingsSignal.value, next)) return;
+		settingsSignal.value = next;
+	}
+	function updatePanelAnalysis(next) {
+		if (shallowEqual(analysisSignal.value, next)) return;
+		analysisSignal.value = next;
+	}
+	function writeBotState(key, value) {
+		switch (key) {
+			case "enabled":
+				BotState.hackEnabled = value ? 1 : 0;
+				break;
+			case "autoMove":
+				BotState.autoMove = value ? 1 : 0;
+				break;
+			case "openingBook":
+				BotState.openingBook = value ? 1 : 0;
+				break;
+			case "openingStyle":
+				BotState.openingStyle = value;
+				break;
+			case "ponder":
+				BotState.ponderEnabled = value ? 1 : 0;
+				break;
+			case "depth":
+				BotState.botPower = Number(value);
+				break;
+			case "moveTimeMs": BotState.moveTime = Number(value);
+		}
+	}
+	function updatePanelSetting(key, value, actions) {
+		settingsSignal.value = {
+			...settingsSignal.value,
+			[key]: value
+		};
+		writeBotState(key, value);
+		Settings.save();
+		if (key === "enabled") actions?.setEnabled?.(!!value);
+		else actions?.refreshSettings?.();
+	}
+	function isEditableTarget(target) {
+		if (!target || typeof target !== "object") return false;
+		const element = target;
+		return element.isContentEditable === true || EDITABLE_TAGS.has((element.tagName ?? "").toUpperCase());
+	}
+	function handlePanelKeyDown(event, actions = {}, toggleCollapsed) {
+		if (isEditableTarget(event.composedPath ? event.composedPath()[0] : event.target)) return;
+		if (event.key?.toLowerCase() === "b" && event.ctrlKey && !event.metaKey) {
+			event.preventDefault?.();
+			toggleCollapsed?.();
+			return;
+		}
+		if (event.ctrlKey || event.metaKey || event.altKey) return;
+		if (event.code === "KeyE") {
+			event.preventDefault?.();
+			updatePanelSetting("enabled", !settingsSignal.value.enabled, actions);
+		} else if (event.code === "KeyR" && analysisSignal.value.recoveryAction !== null) {
+			event.preventDefault?.();
+			actions.recover?.();
+		}
+	}
+	function clampPosition(left, top, width, height) {
+		const maxLeft = Math.max(EDGE_MARGIN, window.innerWidth - width - EDGE_MARGIN);
+		const maxTop = Math.max(EDGE_MARGIN, window.innerHeight - height - EDGE_MARGIN);
+		return {
+			left: Math.min(Math.max(EDGE_MARGIN, left), maxLeft),
+			top: Math.min(Math.max(EDGE_MARGIN, top), maxTop)
+		};
+	}
+	function placeHost(host, left, top) {
+		const nextLeft = `${left}px`;
+		const nextTop = `${top}px`;
+		if (host.style.left !== nextLeft) host.style.left = nextLeft;
+		if (host.style.top !== nextTop) host.style.top = nextTop;
+		if (host.style.right !== "auto") host.style.right = "auto";
+	}
+	function isDocked() {
+		return typeof window.matchMedia === "function" && window.matchMedia(DOCK_QUERY).matches;
+	}
+	function readStoredCollapsed() {
+		try {
+			const value = localStorage.getItem(COLLAPSED_KEY);
+			return value === null ? null : value === "1";
+		} catch {
+			return null;
+		}
+	}
+	function storeCollapsed(collapsed) {
+		try {
+			localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
+		} catch {}
+	}
+	function mountPanel(root, host, actions, capabilities) {
+		G$1(u(Panel, {
+			host,
+			actions,
+			capabilities
+		}), root);
+	}
+	function formatBudget(milliseconds) {
+		return milliseconds < 1e3 ? `${milliseconds} ms` : `${Number((milliseconds / 1e3).toFixed(2))} s`;
+	}
+	function displayValue(value) {
+		return value && value !== "-" ? value : "—";
+	}
+	function hasLine(value) {
+		return !!value && value !== "-" && value !== "Not available";
+	}
+	function statusTone(analysis, enabled) {
+		if (analysis.recoveryAction === "retry") return "error";
+		if (analysis.recoveryAction === "resume") return "paused";
+		if (/error|failed|unavailable|not confirmed/i.test(analysis.status)) return "error";
+		if (/loading|analyz|ponder|submitting|resuming/i.test(analysis.status)) return "working";
+		return enabled ? "ready" : "idle";
+	}
 	function QuickEnableButton({ enabled, onToggle }) {
 		return u("button", {
 			type: "button",
@@ -5977,6 +6097,38 @@
 			})]
 		});
 	}
+	var OPENING_STYLES = [
+		{
+			id: "hyper-defensive",
+			label: "Hyper-Defensive",
+			tooltip: "Hyper-Defensive (Berlin Wall, Petroff, Slav, Réti)",
+			description: "Hyper-Defensive: Ironclad fortresses & solid pawn structures"
+		},
+		{
+			id: "defensive",
+			label: "Defensive",
+			tooltip: "Defensive (Caro-Kann, French, Queen’s Gambit Declined)",
+			description: "Defensive: Solid positional control & resilient structures"
+		},
+		{
+			id: "balanced",
+			label: "Balanced",
+			tooltip: "Balanced (Classical GM mainlines & open games)",
+			description: "Balanced: Classical grandmaster mainlines & standard book"
+		},
+		{
+			id: "aggressive",
+			label: "Aggressive",
+			tooltip: "Aggressive (King’s Gambit, Evans, Scotch, Smith-Morra)",
+			description: "Aggressive: Sharp tactical lines & active piece attacks"
+		},
+		{
+			id: "hyper-aggressive",
+			label: "Hyper-Aggressive",
+			tooltip: "Hyper-Aggressive (Danish, Traxler, Stafford, Albin)",
+			description: "Hyper-Aggressive: High-risk gambits & tactical fireworks"
+		}
+	];
 	function RecoveryNotice({ kind, onRecover }) {
 		const resume = kind === "resume";
 		return u("div", {
@@ -6193,6 +6345,24 @@
 										checked: settings.openingBook,
 										onChange: (next) => updateSetting("openingBook", next)
 									}),
+									settings.openingBook && u("div", {
+										class: "panel-opening-style-section",
+										children: [u("div", {
+											class: "panel-segmented panel-opening-style-picker",
+											children: OPENING_STYLES.map((st) => u("button", {
+												type: "button",
+												class: "panel-segment",
+												"aria-pressed": settings.openingStyle === st.id,
+												"aria-label": st.label,
+												title: st.tooltip,
+												onClick: () => updateSetting("openingStyle", st.id),
+												children: u(OpeningStyleIcon, { style: st.id })
+											}, st.id))
+										}), u("p", {
+											class: "panel-opening-style-desc",
+											children: OPENING_STYLES.find((st) => st.id === settings.openingStyle)?.description
+										})]
+									}),
 									u(Toggle, {
 										label: "Background ponder",
 										checked: settings.ponder,
@@ -6364,78 +6534,437 @@
 		const parts = fen.trim().split(/\s+/);
 		return parts.length >= 4 ? parts.slice(0, 4).join(" ") : fen;
 	}
+	function bookKey(epd) {
+		return `${epd.split(" ").slice(0, 3).join(" ")} -`;
+	}
 	var EPD_BOOK = {
-		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -": [
-			["e2e4", 70],
-			["d2d4", 25],
-			["c2c4", 5]
-		],
-		"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3": [
-			["c7c5", 70],
-			["e7e5", 20],
-			["e7e6", 5],
-			["c7c6", 5]
-		],
-		"rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3": [
-			["g8f6", 70],
-			["d7d5", 25],
-			["c7c5", 5]
-		],
-		"rnbqkbnr/pppppppp/8/8/2P5/8/PP1PPPPP/RNBQKBNR b KQkq c3": [["e7e5", 75], ["g8f6", 25]],
-		"rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq -": [["d7d5", 70], ["g8f6", 30]],
-		"rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -": [["f2f4", 60], ["g1f3", 40]],
-		"rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6": [["d2d4", 60], ["g1f3", 40]],
+		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -": {
+			default: [
+				["e2e4", 65],
+				["d2d4", 25],
+				["c2c4", 10]
+			],
+			"hyper-defensive": [
+				["g1f3", 50],
+				["c2c4", 30],
+				["d2d4", 20]
+			],
+			defensive: [
+				["d2d4", 60],
+				["c2c4", 25],
+				["g1f3", 15]
+			],
+			balanced: [
+				["e2e4", 65],
+				["d2d4", 25],
+				["c2c4", 10]
+			],
+			aggressive: [["e2e4", 80], ["d2d4", 20]],
+			"hyper-aggressive": [["e2e4", 85], ["d2d4", 15]]
+		},
+		"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3": {
+			default: [
+				["c7c5", 60],
+				["e7e5", 30],
+				["c7c6", 5],
+				["e7e6", 5]
+			],
+			"hyper-defensive": [["e7e5", 60], ["c7c6", 40]],
+			defensive: [["c7c6", 50], ["e7e6", 50]],
+			balanced: [
+				["c7c5", 60],
+				["e7e5", 30],
+				["c7c6", 5],
+				["e7e6", 5]
+			],
+			aggressive: [["c7c5", 75], ["e7e5", 25]],
+			"hyper-aggressive": [
+				["e7e5", 50],
+				["c7c5", 35],
+				["d7d5", 15]
+			]
+		},
+		"rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3": {
+			default: [
+				["g8f6", 70],
+				["d7d5", 25],
+				["c7c5", 5]
+			],
+			"hyper-defensive": [["d7d5", 70], ["g8f6", 30]],
+			defensive: [["d7d5", 50], ["g8f6", 50]],
+			balanced: [
+				["g8f6", 70],
+				["d7d5", 25],
+				["c7c5", 5]
+			],
+			aggressive: [["g8f6", 80], ["c7c5", 20]],
+			"hyper-aggressive": [
+				["g8f6", 60],
+				["c7c5", 25],
+				["e7e5", 15]
+			]
+		},
+		"rnbqkbnr/pppppppp/8/8/2P5/8/PP1PPPPP/RNBQKBNR b KQkq c3": {
+			default: [["e7e5", 70], ["g8f6", 30]],
+			"hyper-defensive": [["e7e6", 60], ["c7c6", 40]],
+			defensive: [["e7e6", 50], ["c7c5", 50]],
+			balanced: [["e7e5", 70], ["g8f6", 30]],
+			aggressive: [["e7e5", 80], ["g8f6", 20]],
+			"hyper-aggressive": [["e7e5", 70], ["f7f5", 30]]
+		},
+		"rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq -": {
+			default: [["d7d5", 60], ["g8f6", 40]],
+			"hyper-defensive": [["d7d5", 70], ["c7c6", 30]],
+			defensive: [["d7d5", 60], ["g8f6", 40]],
+			balanced: [["d7d5", 60], ["g8f6", 40]],
+			aggressive: [["g8f6", 70], ["c7c5", 30]],
+			"hyper-aggressive": [["c7c5", 60], ["g8f6", 40]]
+		},
+		"rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -": {
+			default: [
+				["g1f3", 75],
+				["f1c4", 15],
+				["f2f4", 10]
+			],
+			"hyper-defensive": [["g1f3", 100]],
+			defensive: [["g1f3", 80], ["f1c4", 20]],
+			balanced: [
+				["g1f3", 75],
+				["f1c4", 15],
+				["f2f4", 10]
+			],
+			aggressive: [
+				["f2f4", 50],
+				["g1f3", 30],
+				["b1c3", 20]
+			],
+			"hyper-aggressive": [
+				["d2d4", 50],
+				["f2f4", 40],
+				["b1c3", 10]
+			]
+		},
+		"rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6": {
+			default: [
+				["g1f3", 75],
+				["d2d4", 15],
+				["b1c3", 10]
+			],
+			"hyper-defensive": [["g1f3", 60], ["c2c3", 40]],
+			defensive: [["g1f3", 70], ["c2c3", 30]],
+			balanced: [
+				["g1f3", 75],
+				["d2d4", 15],
+				["b1c3", 10]
+			],
+			aggressive: [
+				["d2d4", 55],
+				["f2f4", 30],
+				["g1f3", 15]
+			],
+			"hyper-aggressive": [["d2d4", 60], ["b2b4", 40]]
+		},
 		"rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -": [["d2d4", 100]],
-		"rnbqkbnr/pp1ppppp/2p5/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -": [["d2d4", 100]],
-		"rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR w KQkq -": [["c2c4", 90], ["g1f3", 10]],
-		"rnbqkb1r/pppppppp/5n2/8/3P4/8/PPP1PPPP/RNBQKBNR w KQkq -": [["c2c4", 90], ["g1f3", 10]],
-		"rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -": [["b8c6", 85], ["g8f6", 15]],
-		"rnbqkbnr/pppp1ppp/8/4p3/4PP2/8/PPPP2PP/RNBQKBNR b KQkq f3": [["e5f4", 80], ["d7d5", 20]],
-		"rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -": [
-			["d7d6", 60],
-			["b8c6", 30],
-			["e7e6", 10]
-		],
+		"rnbqkbnr/pp1ppppp/2p5/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -": {
+			default: [["d2d4", 100]],
+			aggressive: [["d2d4", 70], ["c2c4", 30]],
+			"hyper-aggressive": [["d2d4", 60], ["f2f4", 40]]
+		},
+		"rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6": {
+			default: [["e4d5", 100]],
+			"hyper-aggressive": [["e4d5", 80], ["g1f3", 20]]
+		},
+		"rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR w KQkq -": {
+			default: [["c2c4", 85], ["g1f3", 15]],
+			"hyper-defensive": [["g1f3", 70], ["c2c4", 30]],
+			defensive: [["c2c4", 70], ["g1f3", 30]],
+			balanced: [["c2c4", 85], ["g1f3", 15]],
+			aggressive: [["c2c4", 75], ["e2e4", 25]],
+			"hyper-aggressive": [["e2e4", 70], ["c2c4", 30]]
+		},
+		"rnbqkb1r/pppppppp/5n2/8/3P4/8/PPP1PPPP/RNBQKBNR w KQkq -": {
+			default: [["c2c4", 85], ["g1f3", 15]],
+			"hyper-defensive": [["g1f3", 60], ["c2c4", 40]],
+			defensive: [["c2c4", 70], ["g1f3", 30]],
+			balanced: [["c2c4", 85], ["g1f3", 15]],
+			aggressive: [["c2c4", 80], ["c1g5", 20]],
+			"hyper-aggressive": [["c1g5", 60], ["c2c4", 40]]
+		},
+		"rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -": {
+			default: [["b8c6", 85], ["g8f6", 15]],
+			"hyper-defensive": [["g8f6", 100]],
+			defensive: [["b8c6", 70], ["g8f6", 30]],
+			balanced: [["b8c6", 85], ["g8f6", 15]],
+			aggressive: [["b8c6", 80], ["g8f6", 20]],
+			"hyper-aggressive": [
+				["g8f6", 60],
+				["f7f5", 30],
+				["b8c6", 10]
+			]
+		},
+		"rnbqkbnr/pppp1ppp/8/4p3/4PP2/8/PPPP2PP/RNBQKBNR b KQkq f3": {
+			default: [["e5f4", 80], ["d7d5", 20]],
+			"hyper-defensive": [["d7d5", 60], ["e5f4", 40]],
+			defensive: [["d7d5", 50], ["e5f4", 50]],
+			balanced: [["e5f4", 80], ["d7d5", 20]],
+			aggressive: [["e5f4", 85], ["d7d5", 15]],
+			"hyper-aggressive": [["e5f4", 80], ["f8c5", 20]]
+		},
+		"rnbqkbnr/pppp1ppp/8/4p3/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3": [["e5d4", 100]],
+		"rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -": {
+			default: [
+				["d7d6", 60],
+				["b8c6", 30],
+				["e7e6", 10]
+			],
+			"hyper-defensive": [["e7e6", 60], ["d7d6", 40]],
+			defensive: [
+				["e7e6", 50],
+				["b8c6", 30],
+				["d7d6", 20]
+			],
+			balanced: [
+				["d7d6", 60],
+				["b8c6", 30],
+				["e7e6", 10]
+			],
+			aggressive: [["d7d6", 70], ["b8c6", 30]],
+			"hyper-aggressive": [["d7d6", 65], ["g7g6", 35]]
+		},
 		"rnbqkbnr/pp1ppppp/8/2p5/3PP3/8/PPP2PPP/RNBQKBNR b KQkq d3": [["c5d4", 100]],
+		"rnbqkbnr/pp1ppppp/8/2p5/1P6/8/P1PPPPPP/RNBQKBNR b KQkq b3": [["c5b4", 100]],
+		"rnbqkbnr/pp1ppppp/8/2p5/4PP2/8/PPPP2PP/RNBQKBNR b KQkq f3": [["d7d6", 60], ["b8c6", 40]],
 		"rnbqkbnr/pppp1ppp/4p3/8/3PP3/8/PPP2PPP/RNBQKBNR b KQkq d3": [["d7d5", 100]],
 		"rnbqkbnr/pp1ppppp/2p5/8/3PP3/8/PPP2PPP/RNBQKBNR b KQkq d3": [["d7d5", 100]],
-		"rnbqkbnr/ppp1pppp/8/3p4/2PP4/8/PP2PPPP/RNBQKBNR b KQkq c3": [
-			["e7e6", 70],
-			["c7c6", 20],
-			["d5c4", 10]
-		],
-		"rnbqkb1r/pppppppp/5n2/8/2PP4/8/PP2PPPP/RNBQKBNR b KQkq c3": [
-			["e7e6", 50],
-			["g7g6", 30],
-			["c7c5", 20]
-		],
-		"r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq -": [
-			["f1c4", 60],
-			["f1b5", 25],
-			["d2d4", 15]
-		],
-		"rnbqkbnr/pppp1ppp/8/8/4Pp2/8/PPPP2PP/RNBQKBNR w KQkq -": [["g1f3", 80], ["f1c4", 20]],
+		"rnbqkbnr/ppp1pppp/8/3P4/8/8/PPPP1PPP/RNBQKBNR b KQkq -": {
+			default: [["d8d5", 70], ["g8f6", 30]],
+			"hyper-defensive": [["d8d5", 100]],
+			defensive: [["d8d5", 100]],
+			balanced: [["d8d5", 70], ["g8f6", 30]],
+			aggressive: [["g8f6", 75], ["d8d5", 25]],
+			"hyper-aggressive": [["g8f6", 85], ["d8d5", 15]]
+		},
+		"rnbqkbnr/ppp1pppp/8/3p4/2PP4/8/PP2PPPP/RNBQKBNR b KQkq c3": {
+			default: [
+				["e7e6", 70],
+				["c7c6", 20],
+				["d5c4", 10]
+			],
+			"hyper-defensive": [["c7c6", 60], ["e7e6", 40]],
+			defensive: [["e7e6", 60], ["c7c6", 40]],
+			balanced: [
+				["e7e6", 70],
+				["c7c6", 20],
+				["d5c4", 10]
+			],
+			aggressive: [
+				["d5c4", 50],
+				["e7e6", 30],
+				["c7c6", 20]
+			],
+			"hyper-aggressive": [
+				["e7e5", 60],
+				["d5c4", 30],
+				["b8c6", 10]
+			]
+		},
+		"rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3": [["d5e4", 100]],
+		"rnbqkb1r/pppppppp/5n2/8/2PP4/8/PP2PPPP/RNBQKBNR b KQkq c3": {
+			default: [
+				["e7e6", 50],
+				["g7g6", 30],
+				["c7c5", 20]
+			],
+			"hyper-defensive": [["e7e6", 70], ["g7g6", 30]],
+			defensive: [["e7e6", 60], ["g7g6", 40]],
+			balanced: [
+				["e7e6", 50],
+				["g7g6", 30],
+				["c7c5", 20]
+			],
+			aggressive: [["g7g6", 70], ["c7c5", 30]],
+			"hyper-aggressive": [
+				["e7e5", 50],
+				["c7c5", 35],
+				["g7g6", 15]
+			]
+		},
+		"r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq -": {
+			default: [
+				["f1c4", 50],
+				["f1b5", 35],
+				["d2d4", 15]
+			],
+			"hyper-defensive": [["f1b5", 60], ["b1c3", 40]],
+			defensive: [["f1b5", 60], ["f1c4", 40]],
+			balanced: [
+				["f1c4", 50],
+				["f1b5", 35],
+				["d2d4", 15]
+			],
+			aggressive: [["f1c4", 65], ["d2d4", 35]],
+			"hyper-aggressive": [["f1c4", 70], ["d2d4", 30]]
+		},
+		"rnbqkb1r/pppp1ppp/5n2/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq -": {
+			default: [["f3e5", 80], ["d2d4", 20]],
+			"hyper-defensive": [["f3e5", 100]],
+			defensive: [["f3e5", 80], ["d2d4", 20]],
+			balanced: [["f3e5", 80], ["d2d4", 20]],
+			aggressive: [["f3e5", 70], ["f1c4", 30]],
+			"hyper-aggressive": [["f3e5", 70], ["f1c4", 30]]
+		},
+		"rnbqkbnr/pppp1ppp/8/8/3pP3/8/PPP2PPP/RNBQKBNR w KQkq -": {
+			default: [["c2c3", 70], ["g1f3", 30]],
+			"hyper-aggressive": [["c2c3", 90], ["g1f3", 10]],
+			aggressive: [["c2c3", 75], ["g1f3", 25]]
+		},
+		"rnbqkbnr/pppp1ppp/8/8/4Pp2/8/PPPP2PP/RNBQKBNR w KQkq -": {
+			default: [["g1f3", 80], ["f1c4", 20]],
+			"hyper-aggressive": [["f1c4", 60], ["g1f3", 40]]
+		},
 		"rnbqkbnr/pp2pppp/3p4/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq -": [["d2d4", 100]],
-		"rnbqkbnr/pp1ppppp/8/8/3pP3/8/PPP2PPP/RNBQKBNR w KQkq -": [["c2c3", 80], ["g1f3", 20]],
+		"rnbqkbnr/pp1ppppp/8/8/3pP3/8/PPP2PPP/RNBQKBNR w KQkq -": {
+			default: [["c2c3", 80], ["g1f3", 20]],
+			aggressive: [["c2c3", 90], ["g1f3", 10]],
+			"hyper-aggressive": [["c2c3", 90], ["g1f3", 10]]
+		},
 		"rnbqkbnr/ppp2ppp/4p3/3p4/3PP3/8/PPP2PPP/RNBQKBNR w KQkq -": [["b1c3", 60], ["e4e5", 40]],
 		"rnbqkbnr/pp2pppp/2p5/3p4/3PP3/8/PPP2PPP/RNBQKBNR w KQkq -": [["b1c3", 60], ["e4e5", 40]],
 		"rnbqkbnr/ppp2ppp/4p3/3p4/2PP4/8/PP2PPPP/RNBQKBNR w KQkq -": [["b1c3", 70], ["g1f3", 30]],
+		"rnbqkbnr/ppp1pppp/8/8/4p3/8/PPPP1PPP/RNBQKBNR w KQkq -": [["b1c3", 100]],
 		"rnbqkb1r/pppp1ppp/4pn2/8/2PP4/8/PP2PPPP/RNBQKBNR w KQkq -": [["b1c3", 70], ["g1f3", 30]],
 		"rnbqkb1r/pppppp1p/5np1/8/2PP4/8/PP2PPPP/RNBQKBNR w KQkq -": [["b1c3", 80], ["g1f3", 20]],
-		"r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq -": [["f8c5", 60], ["g8f6", 40]],
-		"r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq -": [["a7a6", 80], ["g8f6", 20]],
+		"rnbqkb1r/pp1ppppp/5n2/2pP4/2P5/8/PP2PPPP/RNBQKBNR b KQkq -": {
+			default: [["e7e6", 60], ["b7b5", 40]],
+			"hyper-aggressive": [["b7b5", 80], ["e7e6", 20]],
+			aggressive: [["b7b5", 60], ["e7e6", 40]]
+		},
+		"rnbqkb1r/pppp1ppp/5n2/4P3/2P5/8/PP2PPPP/RNBQKBNR b KQkq -": [["f6g4", 100]],
+		"rnbqkbnr/ppp2ppp/8/3pP3/2P5/8/PP2PPPP/RNBQKBNR b KQkq -": [["d5d4", 100]],
+		"r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq -": {
+			default: [["f8c5", 50], ["g8f6", 50]],
+			"hyper-defensive": [["f8c5", 70], ["g8f6", 30]],
+			defensive: [["f8c5", 60], ["g8f6", 40]],
+			balanced: [["f8c5", 50], ["g8f6", 50]],
+			aggressive: [["g8f6", 70], ["f8c5", 30]],
+			"hyper-aggressive": [["g8f6", 90], ["f8c5", 10]]
+		},
+		"r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq -": {
+			default: [["a7a6", 75], ["g8f6", 25]],
+			"hyper-defensive": [["g8f6", 90], ["a7a6", 10]],
+			defensive: [["g8f6", 50], ["a7a6", 50]],
+			balanced: [["a7a6", 75], ["g8f6", 25]],
+			aggressive: [["a7a6", 80], ["f7f5", 20]],
+			"hyper-aggressive": [["f7f5", 60], ["a7a6", 40]]
+		},
 		"r1bqkbnr/pppp1ppp/2n5/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b KQkq d3": [["e5d4", 100]],
-		"rnbqkbnr/pp2pppp/3p4/2p5/3PP3/5N2/PPP2PPP/RNBQKB1R b KQkq d3": [["c5d4", 100]],
-		"rnbqkbnr/pp1ppppp/8/8/3pP3/2P5/PP3PPP/RNBQKBNR b KQkq -": [["d4c3", 80], ["d7d5", 20]],
+		"rnbqkb1r/pppp1ppp/8/4N3/4P3/8/PPPP1PPP/RNBQKB1R b KQkq -": {
+			default: [["d7d6", 85], ["b8c6", 15]],
+			"hyper-defensive": [["d7d6", 100]],
+			defensive: [["d7d6", 100]],
+			balanced: [["d7d6", 85], ["b8c6", 15]],
+			aggressive: [["d7d6", 50], ["b8c6", 50]],
+			"hyper-aggressive": [["b8c6", 90], ["d7d6", 10]]
+		},
+		"rnbqkbnr/pppp1ppp/8/8/3pP3/2P5/PP3PPP/RNBQKBNR b KQkq -": {
+			default: [["d4c3", 80], ["d7d5", 20]],
+			aggressive: [["d4c3", 85], ["d7d5", 15]],
+			"hyper-aggressive": [["d4c3", 90], ["d7d5", 10]]
+		},
+		"rnbqkbnr/ppp1pppp/8/8/4p3/2N5/PPPP1PPP/R1BQKBNR b KQkq -": [["g8f6", 100]],
+		"rnbqkbnr/pp2pppp/3p4/8/3pP3/5N2/PPP2PPP/RNBQKB1R w KQkq -": [["f3d4", 100]],
+		"rnbqkbnr/pp1ppppp/8/8/4P3/2p5/PP3PPP/RNBQKBNR w KQkq -": [["b1c3", 100]],
 		"rnbqkbnr/ppp2ppp/4p3/3p4/2PP4/2N5/PP2PPPP/R1BQKBNR b KQkq -": [["g8f6", 80], ["c7c6", 20]],
 		"rnbqkb1r/pppp1ppp/4pn2/8/2PP4/2N5/PP2PPPP/R1BQKBNR b KQkq -": [["f8b4", 70], ["d7d5", 30]],
-		"rnbqkb1r/pppppp1p/5np1/8/2PP4/2N5/PP2PPPP/R1BQKBNR b KQkq -": [["d7d5", 50], ["f8g7", 50]]
+		"rnbqkb1r/pppppp1p/5np1/8/2PP4/2N5/PP2PPPP/R1BQKBNR b KQkq -": [["d7d5", 50], ["f8g7", 50]],
+		"r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq -": {
+			default: [
+				["d2d3", 60],
+				["f3g5", 30],
+				["d2d4", 10]
+			],
+			"hyper-defensive": [["d2d3", 80], ["d2d4", 20]],
+			defensive: [["d2d3", 75], ["d2d4", 25]],
+			balanced: [
+				["d2d3", 60],
+				["f3g5", 30],
+				["d2d4", 10]
+			],
+			aggressive: [["f3g5", 70], ["d2d4", 30]],
+			"hyper-aggressive": [["f3g5", 85], ["d2d4", 15]]
+		},
+		"r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq -": {
+			default: [
+				["c2c3", 60],
+				["d2d3", 30],
+				["b2b4", 10]
+			],
+			"hyper-defensive": [["d2d3", 70], ["c2c3", 30]],
+			defensive: [["d2d3", 60], ["c2c3", 40]],
+			balanced: [
+				["c2c3", 60],
+				["d2d3", 30],
+				["b2b4", 10]
+			],
+			aggressive: [["b2b4", 60], ["c2c3", 40]],
+			"hyper-aggressive": [["b2b4", 85], ["c2c3", 15]]
+		},
+		"r1bqkbnr/pppp1ppp/2n5/8/2BpP3/5N2/PPP2PPP/RNBQK2R b KQkq -": [["f8c5", 50], ["g8f6", 50]],
+		"r1bqkb1r/ppp2ppp/2p5/4P3/4P3/8/PPPP1PPP/RNBQKB1R w KQkq -": [["d2d3", 80], ["b1c3", 20]],
+		"rnbqkb1r/ppp1pppp/5n2/8/4p3/2N2P2/PPPP2PP/R1BQKBNR b KQkq -": [["e4f3", 100]],
+		"r1bqkb1r/pppp1ppp/2n2n2/4p1N1/2B1P3/8/PPPP1PPP/RNBQK2R b KQkq -": {
+			default: [["d7d5", 100]],
+			"hyper-defensive": [["d7d5", 100]],
+			defensive: [["d7d5", 100]],
+			balanced: [["d7d5", 100]],
+			aggressive: [["d7d5", 75], ["f8c5", 25]],
+			"hyper-aggressive": [["f8c5", 90], ["d7d5", 10]]
+		},
+		"r1bqk1nr/pppp1ppp/2n5/8/1bB1P3/2P2N2/P2P1PPP/RNBQK2R b KQkq -": [["b4a5", 70], ["b4e7", 30]],
+		"rnbqkbnr/pppp1ppp/8/8/2B1P3/8/PB3PPP/RN1QK1NR b KQkq -": [["d7d6", 50], ["g8f6", 50]],
+		"rnbqkb1r/pp2pppp/3p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R b KQkq -": {
+			default: [
+				["a7a6", 60],
+				["g7g6", 25],
+				["b8c6", 15]
+			],
+			"hyper-defensive": [["a7a6", 50], ["e7e6", 50]],
+			defensive: [["e7e6", 50], ["a7a6", 50]],
+			balanced: [
+				["a7a6", 60],
+				["g7g6", 25],
+				["b8c6", 15]
+			],
+			aggressive: [["g7g6", 65], ["a7a6", 35]],
+			"hyper-aggressive": [["g7g6", 80], ["a7a6", 20]]
+		}
 	};
-	function lookupBookMove(fen, rng = Math.random) {
-		const candidates = EPD_BOOK[normalizeEpd(fen)];
+	var EPD_INDEX = (() => {
+		const index = {};
+		for (const [epd, entry] of Object.entries(EPD_BOOK)) {
+			const key = bookKey(epd);
+			if (index[key]) throw new Error(`duplicate opening book key: ${key}`);
+			index[key] = entry;
+		}
+		return index;
+	})();
+	function getCandidatesForPosition(epd, style = "balanced") {
+		const entry = EPD_INDEX[bookKey(epd)];
+		if (!entry) return null;
+		if (Array.isArray(entry)) return entry;
+		const styleCandidates = entry[style];
+		if (styleCandidates && styleCandidates.length > 0) return styleCandidates;
+		return entry.default ?? entry.balanced ?? null;
+	}
+	function lookupBookMove(fen, styleOrRng, rng) {
+		let style = "balanced";
+		let rand = rng ?? Math.random;
+		if (typeof styleOrRng === "function") rand = styleOrRng;
+		else if (styleOrRng !== void 0) style = styleOrRng;
+		const candidates = getCandidatesForPosition(normalizeEpd(fen), style);
 		if (!candidates || candidates.length === 0) return null;
 		const totalWeight = candidates.reduce((sum, [, w]) => sum + w, 0);
-		let threshold = rng() * totalWeight;
+		let threshold = rand() * totalWeight;
 		for (const [move, weight] of candidates) {
 			threshold -= weight;
 			if (threshold <= 0) return move;
@@ -6538,7 +7067,7 @@
 				anticipatedPonder = null;
 				if (anticipated?.fromFen === fen && ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history)) return;
 			} else anticipatedPonder = null;
-			const bookMove = kind === "main" && BotState.openingBook ? lookupBookMove(fen) : null;
+			const bookMove = kind === "main" && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
 			let result;
 			let best = null;
 			if (bookMove) {

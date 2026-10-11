@@ -51,6 +51,7 @@ const dependencies = vi.hoisted(() => {
       botPower: 20,
       ponderEnabled: 0,
       openingBook: 1,
+      openingStyle: 'balanced' as const,
       currentEvaluation: '-',
       bestMove: '-',
       principalVariation: '-',

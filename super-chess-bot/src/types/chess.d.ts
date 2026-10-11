@@ -5,12 +5,15 @@ export interface Evaluation {
 
 export type RecoveryAction = 'resume' | 'retry';
 
+export type OpeningStyle = 'hyper-defensive' | 'defensive' | 'balanced' | 'aggressive' | 'hyper-aggressive';
+
 export interface BotState {
   hackEnabled: number;
   botPower: number;
   moveTime: number;
   autoMove: number;
   openingBook: number;
+  openingStyle: OpeningStyle;
   currentEvaluation: string;
   bestMove: string;
   principalVariation: string;
@@ -26,6 +29,7 @@ export interface SettingsData {
   moveTime: number;
   autoMove: number;
   openingBook: number;
+  openingStyle: OpeningStyle;
   ponderEnabled: number;
   menuPosition: { top: string; left: string } | null;
 }

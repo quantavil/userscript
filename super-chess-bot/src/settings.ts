@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS: SettingsData = {
   moveTime: 100,
   autoMove: 1,
   openingBook: 1,
+  openingStyle: 'balanced',
   ponderEnabled: 1,
   menuPosition: null,
 };
@@ -18,6 +19,7 @@ const positionSchema = v.object({
   top: v.pipe(v.string(), v.maxLength(32)),
   left: v.pipe(v.string(), v.maxLength(32)),
 });
+const openingStyleSchema = v.picklist(['hyper-defensive', 'defensive', 'balanced', 'aggressive', 'hyper-aggressive']);
 
 const savedSettingsSchema = v.object({
   hackEnabled: v.optional(flagSchema),
@@ -25,6 +27,7 @@ const savedSettingsSchema = v.object({
   moveTime: v.optional(integerInRange(25, 10_000)),
   autoMove: v.optional(flagSchema),
   openingBook: v.optional(flagSchema),
+  openingStyle: v.optional(openingStyleSchema),
   ponderEnabled: v.optional(flagSchema),
   menuPosition: v.optional(v.nullable(positionSchema)),
 });

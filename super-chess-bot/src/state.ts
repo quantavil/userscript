@@ -62,6 +62,7 @@ export const BotState: BotStateInterface = {
   moveTime: 100, // Single search deadline (ms)
   autoMove: 1,
   openingBook: 1,
+  openingStyle: 'balanced',
   currentEvaluation: '-',
   bestMove: '-',
   principalVariation: '-',
@@ -81,6 +82,7 @@ export const Settings = {
         moveTime: BotState.moveTime,
         autoMove: BotState.autoMove,
         openingBook: BotState.openingBook,
+        openingStyle: BotState.openingStyle,
         ponderEnabled: BotState.ponderEnabled,
         menuPosition: menuWrap ? { top: menuWrap.style.top, left: menuWrap.style.left } : null,
       };

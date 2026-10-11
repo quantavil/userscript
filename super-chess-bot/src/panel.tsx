@@ -3,9 +3,10 @@ import { signal } from '@preact/signals';
 import type { TargetedPointerEvent } from 'preact';
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { CheckIcon, Chevron, ClearIcon, CopyIcon, KnightIcon, OpeningStyleIcon, PowerIcon } from './icons.js';
 import type { SiteCapabilities } from './sites/types.js';
 import { BotState, Settings } from './state.js';
-import type { RecoveryAction } from './types/chess.js';
+import type { OpeningStyle, RecoveryAction } from './types/chess.js';
 
 export type PanelLogType = 'info' | 'status' | 'error' | 'warn' | 'move' | 'opponent';
 
@@ -35,6 +36,7 @@ interface PanelSettings {
   enabled: boolean;
   autoMove: boolean;
   openingBook: boolean;
+  openingStyle: OpeningStyle;
   ponder: boolean;
   depth: number;
   moveTimeMs: number;
@@ -80,6 +82,7 @@ const readSettings = (): PanelSettings => ({
   enabled: !!BotState.hackEnabled,
   autoMove: !!BotState.autoMove,
   openingBook: !!BotState.openingBook,
+  openingStyle: BotState.openingStyle,
   ponder: !!BotState.ponderEnabled,
   depth: BotState.botPower,
   moveTimeMs: BotState.moveTime,
@@ -145,6 +148,9 @@ function writeBotState<K extends keyof PanelSettings>(key: K, value: PanelSettin
       break;
     case 'openingBook':
       BotState.openingBook = value ? 1 : 0;
+      break;
+    case 'openingStyle':
+      BotState.openingStyle = value as OpeningStyle;
       break;
     case 'ponder':
       BotState.ponderEnabled = value ? 1 : 0;
@@ -273,129 +279,6 @@ function statusTone(analysis: PanelAnalysis, enabled: boolean): Tone {
   return enabled ? 'ready' : 'idle';
 }
 
-function KnightIcon() {
-  return (
-    <svg
-      class="panel-mark-icon"
-      viewBox="0 0 45 45"
-      width="22"
-      height="22"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path
-        d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21"
-        fill="currentColor"
-        stroke="currentColor"
-        stroke-width="1.5"
-      />
-      <path
-        d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.04-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4 1-4-4 0-2 6-12 6-12 0 0 1.89-1.9 2-3.5-.73-.99-.5-2-.5-3 1-1 3 2.5 3 2.5l2 0s.78-1.99 2.5-3c1 0 1 3 1 3z"
-        fill="currentColor"
-        stroke="currentColor"
-        stroke-width="1.5"
-      />
-      <circle cx="15" cy="14" r="1.5" fill="var(--ink)" stroke="none" />
-      <path d="M14 39v2h24v-2" stroke="currentColor" stroke-width="1.5" />
-    </svg>
-  );
-}
-
-function PowerIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      width="12"
-      height="12"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.8"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 2v4.5" />
-      <path d="M4.2 4.5a5.5 5.5 0 1 0 7.6 0" />
-    </svg>
-  );
-}
-
-function CopyIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.6"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="5" y="5" width="8" height="8" rx="1.5" />
-      <path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M3.5 8.5l3 3 6-6" />
-    </svg>
-  );
-}
-
-function ClearIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M2.5 4.5h11" />
-      <path d="M6 2.5h4" />
-      <path d="M4.5 4.5l.8 8.4a1.2 1.2 0 0 0 1.2 1.1h3a1.2 1.2 0 0 0 1.2-1.1l.8-8.4" />
-      <path d="M7 7.5v3.5M9 7.5v3.5" />
-    </svg>
-  );
-}
-
-function Chevron() {
-  return (
-    <svg class="panel-chevron" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-      <path
-        d="M4 6l4 4 4-4"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
-    </svg>
-  );
-}
-
 function QuickEnableButton({ enabled, onToggle }: { enabled: boolean; onToggle: (enabled: boolean) => void }) {
   return (
     <button
@@ -506,6 +389,44 @@ function Slider({
     </div>
   );
 }
+
+const OPENING_STYLES: {
+  id: OpeningStyle;
+  label: string;
+  tooltip: string;
+  description: string;
+}[] = [
+  {
+    id: 'hyper-defensive',
+    label: 'Hyper-Defensive',
+    tooltip: 'Hyper-Defensive (Berlin Wall, Petroff, Slav, Réti)',
+    description: 'Hyper-Defensive: Ironclad fortresses & solid pawn structures',
+  },
+  {
+    id: 'defensive',
+    label: 'Defensive',
+    tooltip: 'Defensive (Caro-Kann, French, Queen’s Gambit Declined)',
+    description: 'Defensive: Solid positional control & resilient structures',
+  },
+  {
+    id: 'balanced',
+    label: 'Balanced',
+    tooltip: 'Balanced (Classical GM mainlines & open games)',
+    description: 'Balanced: Classical grandmaster mainlines & standard book',
+  },
+  {
+    id: 'aggressive',
+    label: 'Aggressive',
+    tooltip: 'Aggressive (King’s Gambit, Evans, Scotch, Smith-Morra)',
+    description: 'Aggressive: Sharp tactical lines & active piece attacks',
+  },
+  {
+    id: 'hyper-aggressive',
+    label: 'Hyper-Aggressive',
+    tooltip: 'Hyper-Aggressive (Danish, Traxler, Stafford, Albin)',
+    description: 'Hyper-Aggressive: High-risk gambits & tactical fireworks',
+  },
+];
 
 function RecoveryNotice({ kind, onRecover }: { kind: RecoveryAction; onRecover: () => void }) {
   const resume = kind === 'resume';
@@ -725,6 +646,28 @@ function Panel({
                 checked={settings.openingBook}
                 onChange={(next) => updateSetting('openingBook', next)}
               />
+              {settings.openingBook && (
+                <div class="panel-opening-style-section">
+                  <div class="panel-segmented panel-opening-style-picker">
+                    {OPENING_STYLES.map((st) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        class="panel-segment"
+                        aria-pressed={settings.openingStyle === st.id}
+                        aria-label={st.label}
+                        title={st.tooltip}
+                        onClick={() => updateSetting('openingStyle', st.id)}
+                      >
+                        <OpeningStyleIcon style={st.id} />
+                      </button>
+                    ))}
+                  </div>
+                  <p class="panel-opening-style-desc">
+                    {OPENING_STYLES.find((st) => st.id === settings.openingStyle)?.description}
+                  </p>
+                </div>
+              )}
               <Toggle
                 label="Background ponder"
                 checked={settings.ponder}
