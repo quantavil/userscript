@@ -1,7 +1,8 @@
-import { GAME_CACHE_TTL } from './config.js';
 import { DEFAULT_SETTINGS, loadSettings } from './settings.js';
 import type { BotState as BotStateInterface, SettingsData } from './types/chess';
 import { debounce } from './utils.js';
+
+export const GAME_CACHE_TTL = 100;
 
 // Encapsulated state (avoid global pollution)
 export const BotState: BotStateInterface = {

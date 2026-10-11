@@ -1,12 +1,3 @@
-export interface Move {
-  from: number;
-  to: number;
-  flags: number;
-  piece: number;
-  captured: number;
-  promo?: number;
-}
-
 export interface Evaluation {
   cp?: number;
   mate?: number;
