@@ -133,13 +133,13 @@ export function attachToBoard(boardEl: HTMLElement | null): void {
   evalBarWrap.id = 'evaluationBarWrap';
   evalBarWrap.setAttribute('data-gabibot-overlay', '');
   evalBarWrap.style.cssText =
-    'position:absolute;height:100%;width:14px;left:-22px;top:0;background:#111;z-index:50;overflow:hidden;pointer-events:none;border-radius:4px;';
+    'position:absolute;height:100%;width:14px;left:-22px;top:0;background:#111;z-index:50;overflow:hidden;pointer-events:none;border-radius:4px;border:1px solid rgba(255,255,255,0.2);box-sizing:border-box;';
   const whiteBar = document.createElement('div');
   whiteBar.id = 'evaluationBarWhite';
-  whiteBar.style.cssText = 'position:absolute;top:0;left:0;right:0;height:50%;background:#f0d9b5;';
+  whiteBar.style.cssText = 'position:absolute;left:0;right:0;bottom:0;height:50%;background:#f0d9b5;';
   const blackBar = document.createElement('div');
   blackBar.id = 'evaluationBarBlack';
-  blackBar.style.cssText = 'position:absolute;bottom:0;left:0;right:0;height:50%;background:#111;';
+  blackBar.style.cssText = 'position:absolute;left:0;right:0;top:0;height:50%;background:#111;';
   evalBarWrap.appendChild(whiteBar);
   evalBarWrap.appendChild(blackBar);
 
@@ -304,30 +304,37 @@ export function drawArrow(uciFrom: string, uciTo: string, color: string, thickne
 
   const size = Math.min(drawingBoard.width, drawingBoard.height);
   const tile = size / 8;
+  const angle = Math.atan2(b.y - a.y, b.x - a.x);
+  const headLength = Math.max(14, tile * 0.35);
+  const headAngle = Math.PI / 6; // 30 degrees
+
+  // Circle marker at origin square
+  ctx.beginPath();
+  ctx.arc(a.x, a.y, Math.max(4, thickness * 1.2), 0, 2 * Math.PI);
+  ctx.fillStyle = color;
+  ctx.fill();
+
+  // Line shaft stopping at the arrowhead base
+  const shaftEndX = b.x - headLength * 0.6 * Math.cos(angle);
+  const shaftEndY = b.y - headLength * 0.6 * Math.sin(angle);
 
   ctx.beginPath();
   ctx.moveTo(a.x, a.y);
-  ctx.lineTo(b.x, b.y);
-  ctx.lineWidth = thickness;
+  ctx.lineTo(shaftEndX, shaftEndY);
+  ctx.lineWidth = Math.max(thickness, 4);
   ctx.strokeStyle = color;
   ctx.lineCap = 'round';
   ctx.stroke();
 
+  // Solid chevron arrowhead at destination
   ctx.beginPath();
-  ctx.arc(a.x, a.y, tile / 7, 0, 2 * Math.PI);
-  ctx.fillStyle = color.replace('0.7', '0.3');
+  ctx.moveTo(b.x, b.y);
+  ctx.lineTo(b.x - headLength * Math.cos(angle - headAngle), b.y - headLength * Math.sin(angle - headAngle));
+  ctx.lineTo(b.x - headLength * 0.5 * Math.cos(angle), b.y - headLength * 0.5 * Math.sin(angle));
+  ctx.lineTo(b.x - headLength * Math.cos(angle + headAngle), b.y - headLength * Math.sin(angle + headAngle));
+  ctx.closePath();
+  ctx.fillStyle = color;
   ctx.fill();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(b.x, b.y, tile / 5, 0, 2 * Math.PI);
-  ctx.fillStyle = color.replace('0.7', '0.5');
-  ctx.fill();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.stroke();
 }
 
 function dispatchPointerOrMouse(el: Element | null, type: string, opts: PointerEventInit, usePointer: boolean): void {
@@ -340,9 +347,7 @@ function dispatchPointerOrMouse(el: Element | null, type: string, opts: PointerE
       return;
     } catch {}
   }
-  el.dispatchEvent(
-    new MouseEvent(mouseType, { bubbles: true, cancelable: true, composed: true, ...opts }),
-  );
+  el.dispatchEvent(new MouseEvent(mouseType, { bubbles: true, cancelable: true, composed: true, ...opts }));
 }
 
 function getTargetAt(x: number, y: number): Element {
@@ -570,7 +575,11 @@ export function getMoveRevision(): number {
   return moveRevision;
 }
 
-function setStyleIfChanged(element: HTMLElement, property: 'height' | 'borderColor', value: string): void {
+function setStyleIfChanged(
+  element: HTMLElement,
+  property: 'height' | 'borderColor' | 'top' | 'bottom',
+  value: string,
+): void {
   if (element.style[property] !== value) element.style[property] = value;
 }
 
@@ -657,8 +666,22 @@ export function updateEvaluationBar(evaluation: string | number, _playingAs?: nu
   const whitePercent = 50 + (clampedScore / maxScore) * 50;
   const blackPercent = 100 - whitePercent;
 
-  setStyleIfChanged(whiteBar, 'height', `${whitePercent}%`);
-  setStyleIfChanged(blackBar, 'height', `${blackPercent}%`);
+  const flipped = isBoardFlipped();
+  if (flipped) {
+    setStyleIfChanged(blackBar, 'bottom', '0');
+    setStyleIfChanged(blackBar, 'top', 'auto');
+    setStyleIfChanged(blackBar, 'height', `${blackPercent}%`);
+    setStyleIfChanged(whiteBar, 'top', '0');
+    setStyleIfChanged(whiteBar, 'bottom', 'auto');
+    setStyleIfChanged(whiteBar, 'height', `${whitePercent}%`);
+  } else {
+    setStyleIfChanged(whiteBar, 'bottom', '0');
+    setStyleIfChanged(whiteBar, 'top', 'auto');
+    setStyleIfChanged(whiteBar, 'height', `${whitePercent}%`);
+    setStyleIfChanged(blackBar, 'top', '0');
+    setStyleIfChanged(blackBar, 'bottom', 'auto');
+    setStyleIfChanged(blackBar, 'height', `${blackPercent}%`);
+  }
 
   const ourColor = getPlayerColor(getGame());
   const ourEval = ourColor === 'w' ? score : -score;

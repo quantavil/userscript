@@ -49,7 +49,6 @@ function searchBudget(): number {
   return Math.max(1, Math.floor(Math.min(configured, remaining / 40) - 12));
 }
 
-
 export async function scheduleAnalysis(kind: string, fen: string): Promise<void> {
   const key = `${kind}:${fen}`;
   if (!BotState.hackEnabled || key === processed) return;

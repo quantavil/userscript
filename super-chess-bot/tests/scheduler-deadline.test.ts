@@ -46,7 +46,7 @@ vi.mock('../src/engine/analysis.js', () => ({
   resetEngine: () => {},
   cancelPonder: dependencies.cancelPonder,
   ponderPosition: dependencies.ponderPosition,
-  parseBestLine: (res: any) =>
+  parseBestLine: (res: { bestmove?: string; success?: boolean }) =>
     res?.bestmove === '(none)' || res?.success === false
       ? null
       : { uci: 'e2e4', pv: dependencies.pv, score: dependencies.score },
@@ -220,5 +220,3 @@ describe('search and execution ownership', () => {
     expect(dependencies.execute).not.toHaveBeenCalled();
   });
 });
-
-
