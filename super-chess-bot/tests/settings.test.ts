@@ -25,7 +25,6 @@ describe('loadSettings', () => {
       autoMove: 1,
       openingBook: 1,
       ponderEnabled: 1,
-      autoRematch: 0,
       moveMethod: 'click',
       menuPosition: null,
     });
@@ -41,7 +40,6 @@ describe('loadSettings', () => {
       autoMove: 1,
       openingBook: 1,
       ponderEnabled: 1,
-      autoRematch: 0,
       moveMethod: 'click',
       menuPosition: null,
     });
@@ -57,7 +55,6 @@ describe('loadSettings', () => {
       autoMove: 1,
       openingBook: 1,
       ponderEnabled: 1,
-      autoRematch: 0,
       moveMethod: 'click',
       menuPosition: null,
     });
@@ -77,12 +74,5 @@ describe('loadSettings', () => {
 
     expect(settings).not.toHaveProperty('jitter');
     expect(BotState).not.toHaveProperty('jitter');
-  });
-
-  it('migrates the old premove setting to the current pondering setting', () => {
-    const settings = loadStoredSettings('{"premoveEnabled":0}');
-
-    expect(settings).toMatchObject({ ponderEnabled: 0 });
-    expect(settings).not.toHaveProperty('premoveEnabled');
   });
 });

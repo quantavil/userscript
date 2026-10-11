@@ -11,7 +11,7 @@ const AFTER_UNDERPROMOTION = 'N6k/8/8/8/8/8/8/7K b - - 0 1';
 const CASTLE_FEN = 'r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1';
 const AFTER_CASTLE = 'r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1';
 
-describe('Lichess Play against computer adapter', () => {
+describe('Lichess player-round adapter', () => {
   it('explains the synchronous page injection requirement before the round controller is captured', () => {
     const fixture = makeFixture();
     expect(fixture.adapter.read()).toMatchObject({
@@ -20,7 +20,7 @@ describe('Lichess Play against computer adapter', () => {
     });
   });
 
-  it('reads the accepted level-8 AI position, clock, and move history', async () => {
+  it('reads the accepted player-round position, clock, and move history', async () => {
     const fixture = makeFixture();
     await fixture.captureRound();
 
@@ -41,15 +41,7 @@ describe('Lichess Play against computer adapter', () => {
     });
   });
 
-  it('rejects non-AI games and every AI level below the requested maximum level 8', async () => {
-    const nonAi = makeFixture({ source: 'friend' });
-    await nonAi.captureRound();
-    expect(nonAi.adapter.read()).toMatchObject({ kind: 'ineligible', reason: expect.stringContaining('AI') });
-
-    const lowerLevel = makeFixture({ aiLevel: 7 });
-    await lowerLevel.captureRound();
-    expect(lowerLevel.adapter.read()).toMatchObject({ kind: 'ineligible', reason: expect.stringContaining('level 8') });
-
+  it('rejects only non-standard or spectator rounds', async () => {
     const variant = makeFixture({ variant: 'chess960' });
     await variant.captureRound();
     expect(variant.adapter.read()).toMatchObject({
@@ -84,14 +76,14 @@ describe('Lichess Play against computer adapter', () => {
     const normal = makeFixture();
     await normal.captureRound();
     const read = normal.adapter.read();
-    if (read.kind !== 'game') throw new Error('Expected a Lichess AI game');
+    if (read.kind !== 'game') throw new Error('Expected a Lichess game');
     await expect(normal.adapter.submitMove(makeRequest(read.snapshot, 'e2e4', AFTER_E4))).resolves.toBe(true);
     expect(normal.round.pluginMove).toHaveBeenCalledWith('e2', 'e4', undefined, true);
 
     const promotion = makeFixture({ fen: PROMOTION_FEN, promotionMove: true });
     await promotion.captureRound();
     const promotionRead = promotion.adapter.read();
-    if (promotionRead.kind !== 'game') throw new Error('Expected a Lichess AI promotion position');
+    if (promotionRead.kind !== 'game') throw new Error('Expected a Lichess promotion position');
     await expect(
       promotion.adapter.submitMove(makeRequest(promotionRead.snapshot, 'a7a8n', AFTER_UNDERPROMOTION)),
     ).resolves.toBe(true);
@@ -102,7 +94,7 @@ describe('Lichess Play against computer adapter', () => {
     const castle = makeFixture({ fen: CASTLE_FEN, legalFrom: 'e1', legalTo: 'g1' });
     await castle.captureRound();
     const read = castle.adapter.read();
-    if (read.kind !== 'game') throw new Error('Expected a Lichess AI castling position');
+    if (read.kind !== 'game') throw new Error('Expected a Lichess castling position');
     await expect(castle.adapter.submitMove(makeRequest(read.snapshot, 'e1g1', AFTER_CASTLE))).resolves.toBe(true);
     expect(castle.round.pluginMove).toHaveBeenCalledWith('e1', 'g1', undefined, true);
   });
@@ -111,7 +103,7 @@ describe('Lichess Play against computer adapter', () => {
     const stale = makeFixture();
     await stale.captureRound();
     const read = stale.adapter.read();
-    if (read.kind !== 'game') throw new Error('Expected a Lichess AI game');
+    if (read.kind !== 'game') throw new Error('Expected a Lichess game');
     const staleRequest = makeRequest(read.snapshot, 'e2e4', AFTER_E4);
     staleRequest.isCurrent = () => false;
     await expect(stale.adapter.submitMove(staleRequest)).resolves.toBe(false);
@@ -206,8 +198,6 @@ function makeRequest(snapshot: GameSnapshot, uci: string, expectedFen: string): 
 
 function makeFixture(
   options: {
-    source?: string;
-    aiLevel?: number;
     variant?: string;
     spectator?: boolean;
     fen?: string;
@@ -259,12 +249,10 @@ function makeFixture(
     data: {
       game: {
         id: 'game-id',
-        source: options.source ?? 'ai',
         variant: { key: options.variant ?? 'standard' },
         status: { id: 20 },
       },
       player: { color: 'white', spectator: options.spectator ?? false },
-      opponent: { ai: options.aiLevel ?? 8 },
       steps,
     },
     chessground: { state },

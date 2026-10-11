@@ -319,7 +319,7 @@ export function createPychessAdapter(page: () => Window = pageWindow): SiteAdapt
 
   return {
     id: 'pychess',
-    capabilities: { input: 'selection', autoRematch: false },
+    capabilities: { input: 'selection' },
     read: () => capture().read,
     subscribe(listener) {
       const currentPage = page() as PychessPage;
@@ -453,9 +453,6 @@ export function createPychessAdapter(page: () => Window = pageWindow): SiteAdapt
     cancelInput() {
       cancelCurrentInput();
     },
-    requestRematch() {
-      return false;
-    },
   };
 }
 
@@ -512,7 +509,6 @@ function collectPychessObservation(page: PychessPage): PychessObservation {
       variant: dataset.variant || null,
       chess960: dataset.chess960 || null,
       correspondence: dataset.corr || null,
-      level: dataset.level || null,
       initialFen: dataset.initialfen ?? null,
       status: dataset.status ?? null,
       initialResult: dataset.result ?? null,

@@ -195,23 +195,18 @@ describe('panel hotkeys and settings', () => {
   });
 
   it('shows site-supported controls without changing hidden saved settings', () => {
-    BotState.autoRematch = 1;
     BotState.moveMethod = 'drag';
 
-    expect(getPanelCapabilityView({ input: 'selection', autoRematch: false })).toEqual({
-      showAutoRematch: false,
+    expect(getPanelCapabilityView({ input: 'selection' })).toEqual({
       showMoveMethod: false,
       transportNote: 'Moves use legal square selection on this site.',
     });
-    expect(BotState.autoRematch).toBe(1);
     expect(BotState.moveMethod).toBe('drag');
-    expect(getPanelCapabilityView({ input: 'gestures', autoRematch: true })).toEqual({
-      showAutoRematch: true,
+    expect(getPanelCapabilityView({ input: 'gestures' })).toEqual({
       showMoveMethod: true,
       transportNote: null,
     });
-    expect(getPanelCapabilityView({ input: 'controller', autoRematch: false })).toEqual({
-      showAutoRematch: false,
+    expect(getPanelCapabilityView({ input: 'controller' })).toEqual({
       showMoveMethod: false,
       transportNote: 'Moves use the active game controller.',
     });

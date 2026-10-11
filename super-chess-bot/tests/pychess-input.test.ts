@@ -385,7 +385,6 @@ function makePage(options: PageOptions = {}) {
         variant: 'chess',
         chess960: 'False',
         corr: 'False',
-        level: '7',
         initialfen: options.initialFen ?? '',
         status: '0',
         result: '*',

@@ -13,9 +13,9 @@ Project guidance for `super-chess-bot`.
 ## Architecture boundaries
 
 - `sites/types.ts` and `sites/index.ts`: define normalized snapshots and select adapters only for exact supported hostnames.
-- `sites/chesscom.ts` and `sites/chesscom-state.ts`: isolate Chess.com selectors, private game API, clocks, rematch, and legacy click/drag transport.
+- `sites/chesscom.ts` and `sites/chesscom-state.ts`: isolate Chess.com selectors, private game API, clocks, and legacy click/drag transport.
 - `sites/pychess.ts` and `sites/pychess-state.ts`: collect PyChess-owned board, accepted FEN, SAN, clock, and result state. Submit through `cg.selectSquare` and the site's legal user-move callback. Never fake trusted events, call `cg.move()`, force legal acceptance, or write to the socket.
-- `sites/lichess.ts` and `sites/lichess-bridge.ts`: support only standard Lichess Play against computer games at AI level 8. At document start, wrap `site.asset.loadEsmPage` and `site.asset.loadEsm` so the round initializer's returned controller can be captured. Read accepted steps and the active clock; submit through the controller's `pluginMove` path, with explicit promotion roles. Do not add API integration or direct socket writes. These private page internals can change with Lichess frontend updates.
+- `sites/lichess.ts` and `sites/lichess-bridge.ts`: support standard Lichess player rounds. At document start, wrap `site.asset.loadEsmPage` and `site.asset.loadEsm` so the round initializer's returned controller can be captured. Read accepted steps and the active clock; submit through the controller's `pluginMove` path, with explicit promotion roles. Do not add API integration or direct socket writes. These private page internals can change with Lichess frontend updates.
 - `board.ts`: own shared overlays, trusted-input revision, move serialization, and accepted-position confirmation at the requested ply. Keep gesture primitives in `board-input.ts`.
 - `index.ts`: mount the panel and prewarm the Stockfish worker without waiting for a Chess.com board selector. Automation stays disabled until the user turns it on.
 - `controller.ts`: own enable/disable, adapter subscriptions, snapshot identity and phase, human-interruption pause, and explicit resume/retry actions.
@@ -27,6 +27,14 @@ Project guidance for `super-chess-bot`.
 - `state.ts` and `settings.ts`: keep page game state authoritative and validate persisted values with Valibot.
 - `panel.tsx`, `panel.css`, and `ui.ts`: keep the panel in Shadow DOM. Rendering displays state; move execution stays in the controller and scheduler.
 
+## Site support matrix
+
+- Transports: Chess.com gestures (click/drag setting), PyChess square selection, Lichess controller `pluginMove`.
+- Promotion: Chess.com site chooser, PyChess q/r/b/n chooser + Ctrl override, Lichess explicit role. Live promotion verified on Chess.com and PyChess (queen); Lichess live promotion unverified.
+- Premove is off on all sites. Background ponder, opening book, and clock-aware budgets work on all sites.
+- The panel hides the move-method setting on PyChess/Lichess.
+- Standard chess only: variants, Chess960, and correspondence stay ineligible where the adapter checks them.
+
 ## Tests and verification
 
 - Run `bun run check` before committing. It runs Biome, strict TypeScript, Knip, Vitest, and the production build.
@@ -36,8 +44,8 @@ Project guidance for `super-chess-bot`.
 
 ## Browser and strength checks
 
-- Use a dedicated Chromium session and the production bundle installed through a userscript manager. Test Chess.com against a selected computer game, PyChess through **Play with AI**, and Lichess against its maximum level 8 AI; a puzzle, spectator page, or open lobby is not a player AI round.
-- For the PyChess level-7 acceptance setup, select CHESS, turn Chess960 and Random-Mover off, use real time, set minutes slider index 4 and increment 0 for 1+0, and select White by title. Confirm `Ready` and disabled automation before starting the clock.
+- Use a dedicated Chromium session and the production bundle installed through a userscript manager. Test Chess.com, PyChess, and Lichess player rounds; a puzzle, spectator page, or open lobby is not a player round.
+- For the PyChess acceptance setup, select CHESS, turn Chess960 off, use real time, set minutes slider index 4 and increment 0 for 1+0, and select White by title. Confirm `Ready` and disabled automation before starting the clock.
 - Cover orientation, promotion, enable/disable during search, new-game/reset, trusted human interruption, recovery, replay/live return, and accepted-position events. PyChess input must use legal square selection and confirmation from the accepted FEN/history.
 - For a minimum-time strength check, use the lowest supported move budget (100 ms) and a 1+0 game clock when available. Record the opponent's displayed rating, result, plies, bot budget, and our clock at start/end.
 - Report engine initialization, warmed search, input, and confirmation separately. A single game shows one result at that opponent's displayed rating; it does not establish a stable Elo rating or bullet reliability.
@@ -49,7 +57,7 @@ Project guidance for `super-chess-bot`.
 - Resolve the active board from rendered candidates, preferring one with the game's FEN API. Never use the first selector match without checking visibility and game ownership.
 - `attachToBoard(null)` must also clear the move watcher. Preserve the request to watch so a later board can reattach.
 - Serialize move input. Catch each mutation-listener error independently, and ignore UCI `info string` records when parsing search data.
-- `premoveEnabled` is a legacy persisted key for background pondering; migrate it to `ponderEnabled`. Pondering searches an exact predicted position and does not queue a move. Do not add speculative premove input based only on the PV: Chess.com can execute a queued move after an unexpected reply. Any future premove path needs a verified safe-response policy, a cancellation path, and tests for both site acceptance and fallback.
+- Pondering searches an exact predicted position and does not queue a move. Do not add speculative premove input based only on the PV: Chess.com can execute a queued move after an unexpected reply. Any future premove path needs a verified safe-response policy, a cancellation path, and tests for both site acceptance and fallback.
 - Keep completed ponder reuse one-entry and exact-match only. A mismatch in position, history, or depth must run a fresh search.
 
 ### Recorded minimum-budget sample (2026-10-11)

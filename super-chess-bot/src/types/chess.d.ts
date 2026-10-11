@@ -17,7 +17,6 @@ export interface BotState {
   statusInfo: string;
   recoveryAction: RecoveryAction | null;
   ponderEnabled: number;
-  autoRematch: number;
   moveMethod: 'click' | 'drag';
   onUpdateDisplay?: (playingAs: number) => void;
 }
@@ -29,7 +28,6 @@ export interface SettingsData {
   autoMove: number;
   openingBook: number;
   ponderEnabled: number;
-  autoRematch: number;
   moveMethod: 'click' | 'drag';
   menuPosition: { top: string; left: string } | null;
 }

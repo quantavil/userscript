@@ -21,12 +21,11 @@ const dependencies = vi.hoisted(() => {
   };
   const site = {
     id: 'pychess' as const,
-    capabilities: { input: 'selection' as const, autoRematch: false },
+    capabilities: { input: 'selection' as const },
     read: () => siteRead,
     subscribe: vi.fn(() => () => {}),
     submitMove: vi.fn(async (_request: unknown) => true),
     cancelInput: vi.fn(),
-    requestRematch: vi.fn(() => false),
   };
   return {
     analyze: vi.fn(),

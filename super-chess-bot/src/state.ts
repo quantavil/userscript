@@ -69,7 +69,6 @@ export const BotState: BotStateInterface = {
   statusInfo: 'Ready',
   recoveryAction: null,
   ponderEnabled: 1,
-  autoRematch: 0,
   moveMethod: 'click', // 'click' or 'drag'
 };
 
@@ -85,7 +84,6 @@ export const Settings = {
         autoMove: BotState.autoMove,
         openingBook: BotState.openingBook,
         ponderEnabled: BotState.ponderEnabled,
-        autoRematch: BotState.autoRematch,
         moveMethod: BotState.moveMethod,
         menuPosition: menuWrap ? { top: menuWrap.style.top, left: menuWrap.style.left } : null,
       };

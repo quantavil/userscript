@@ -195,7 +195,7 @@ function makeSiteFixture(startFen = PYCHESS_START) {
   const listeners = new Set<() => void>();
   const adapter: SiteAdapter = {
     id: 'pychess',
-    capabilities: { input: 'selection', autoRematch: false },
+    capabilities: { input: 'selection' },
     read: () => ({ kind: 'game', snapshot }),
     subscribe(listener) {
       listeners.add(listener);
@@ -205,9 +205,6 @@ function makeSiteFixture(startFen = PYCHESS_START) {
       return false;
     },
     cancelInput() {},
-    requestRematch() {
-      return false;
-    },
   };
   return {
     adapter,

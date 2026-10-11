@@ -3,7 +3,6 @@ import type { PositionHistory } from '../history.js';
 export type Color = 'w' | 'b';
 export interface SiteCapabilities {
   readonly input: 'gestures' | 'selection' | 'controller';
-  readonly autoRematch: boolean;
 }
 
 export interface GameSnapshot {
@@ -42,7 +41,6 @@ export interface SiteAdapter {
   /** Resolves when the adapter transport finishes; legacy transports may also await confirmation. */
   submitMove(request: MoveRequest): Promise<boolean>;
   cancelInput(): void;
-  requestRematch(): boolean;
 }
 
 export function pageWindow(): Window {

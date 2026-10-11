@@ -5,7 +5,7 @@ const dependencies = vi.hoisted(() => ({
   buildUI: vi.fn(),
   updateDisplay: vi.fn(),
   controllerInit: vi.fn(),
-  site: { id: 'pychess', capabilities: { input: 'selection', autoRematch: false } },
+  site: { id: 'pychess', capabilities: { input: 'selection' } },
   state: {
     hackEnabled: 0,
     statusInfo: 'Bot disabled',

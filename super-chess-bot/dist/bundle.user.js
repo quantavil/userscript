@@ -3,14 +3,13 @@
 // @namespace    http://tampermonkey.net/
 // @version      10.0.0
 // @author       quantavil
-// @description  Local Stockfish analysis and move automation for Chess.com computer games, PyChess AI, and Lichess AI level 8
+// @description  Local Stockfish analysis and move automation for Chess.com, PyChess, and Lichess standard games
 // @license      GPL-3.0-or-later
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=chess.com
 // @match        https://lichess.org/*
 // @match        https://www.lichess.org/*
-// @match        https://www.chess.com/play/computer*
-// @match        https://www.chess.com/game/*
-// @match        https://www.chess.com/play/online*
+// @match        https://chess.com/*
+// @match        https://www.chess.com/*
 // @match        https://www.pychess.org/*
 // @match        https://pychess.org/*
 // @resource     stockfish.js    https://unpkg.com/stockfish@19.0.1/bin/stockfish-19-lite-single.js
@@ -2023,7 +2022,6 @@
 		autoMove: 1,
 		openingBook: 1,
 		ponderEnabled: 1,
-		autoRematch: 0,
 		moveMethod: "click",
 		menuPosition: null
 	};
@@ -2040,8 +2038,6 @@
 		autoMove: optional(flagSchema),
 		openingBook: optional(flagSchema),
 		ponderEnabled: optional(flagSchema),
-		premoveEnabled: optional(flagSchema),
-		autoRematch: optional(flagSchema),
 		moveMethod: optional(picklist(["click", "drag"])),
 		menuPosition: optional(nullable(positionSchema))
 	});
@@ -2055,11 +2051,9 @@
 		}
 		const result = safeParse(savedSettingsSchema, saved);
 		if (!result.success) return { ...DEFAULT_SETTINGS };
-		const { premoveEnabled, ...currentSettings } = result.output;
 		return {
 			...DEFAULT_SETTINGS,
-			...currentSettings,
-			ponderEnabled: currentSettings.ponderEnabled ?? premoveEnabled ?? DEFAULT_SETTINGS.ponderEnabled,
+			...result.output,
 			hackEnabled: 0
 		};
 	}
@@ -2198,7 +2192,6 @@
 		statusInfo: "Ready",
 		recoveryAction: null,
 		ponderEnabled: 1,
-		autoRematch: 0,
 		moveMethod: "click"
 	};
 	var Settings = {
@@ -2212,7 +2205,6 @@
 					autoMove: BotState.autoMove,
 					openingBook: BotState.openingBook,
 					ponderEnabled: BotState.ponderEnabled,
-					autoRematch: BotState.autoRematch,
 					moveMethod: BotState.moveMethod,
 					menuPosition: menuWrap ? {
 						top: menuWrap.style.top,
@@ -3486,10 +3478,7 @@
 		};
 		return {
 			id: "chesscom",
-			capabilities: {
-				input: "gestures",
-				autoRematch: true
-			},
+			capabilities: { input: "gestures" },
 			read,
 			subscribe(listener) {
 				let stopObserving = () => {};
@@ -3568,12 +3557,6 @@
 			},
 			cancelInput() {
 				cancelPendingMove();
-			},
-			requestRematch() {
-				const button = page().document.querySelector("[data-cy=\"sidebar-game-over-rematch-button\"], [data-cy=\"game-over-modal-rematch-button\"]");
-				if (!button) return false;
-				button.click();
-				return true;
 			}
 		};
 	}
@@ -3819,18 +3802,9 @@
 				const data = round.data;
 				const game = data?.game;
 				const player = data?.player;
-				const opponent = data?.opponent;
-				if (!data || !game || !player || !opponent) return {
+				if (!data || !game || !player) return {
 					kind: "waiting",
 					reason: "Waiting for Lichess game state"
-				};
-				if (game.source !== "ai") return {
-					kind: "ineligible",
-					reason: "Lichess AI game is required"
-				};
-				if (opponent.ai !== 8) return {
-					kind: "ineligible",
-					reason: "Lichess AI level 8 is required"
 				};
 				if (game.variant?.key !== "standard") return {
 					kind: "ineligible",
@@ -3973,10 +3947,7 @@
 		const bridgeInstalled = installLichessControllerBridge(currentPage, instrumentRound);
 		return {
 			id: "lichess",
-			capabilities: {
-				input: "controller",
-				autoRematch: false
-			},
+			capabilities: { input: "controller" },
 			read: () => bridgeInstalled ? capture() : {
 				kind: "ineligible",
 				reason: "Lichess round hook is unavailable"
@@ -4010,10 +3981,7 @@
 					return false;
 				}
 			},
-			cancelInput() {},
-			requestRematch() {
-				return false;
-			}
+			cancelInput() {}
 		};
 	}
 	var STANDARD_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -4062,7 +4030,7 @@
 		if (!identity || typeof identity !== "object") return unavailable("PyChess game identity is unavailable");
 		if (!metadata.isRoundView) return {
 			kind: "waiting",
-			reason: "Waiting for PyChess AI game"
+			reason: "Waiting for PyChess game"
 		};
 		const urlGameId = pathGameId(metadata.pathname);
 		if (!metadata.gameId || !urlGameId || metadata.gameId !== urlGameId) return unavailable("PyChess game identity does not match the current URL");
@@ -4072,11 +4040,9 @@
 		if (!username || !whitePlayer || !blackPlayer || username !== whitePlayer && username !== blackPlayer) return unavailable("PyChess player identity is unavailable or conflicting");
 		if (username === whitePlayer && username === blackPlayer) return unavailable("PyChess player identity is ambiguous");
 		const playerColor = username === whitePlayer ? "w" : "b";
-		if ((playerColor === "w" ? blackPlayer : whitePlayer) !== "fairy-stockfish") return unavailable("PyChess Fairy-Stockfish game required");
 		if (metadata.variant?.trim().toLowerCase() !== "chess") return unavailable("PyChess chess variant required");
 		if (!["false", "0"].includes(metadata.chess960?.trim().toLowerCase() ?? "")) return unavailable("PyChess Chess960 is not supported");
 		if (!["false", "0"].includes(metadata.correspondence?.trim().toLowerCase() ?? "")) return unavailable("PyChess real-time game required");
-		if (!metadata.level || !/^\d+$/.test(metadata.level) || Number(metadata.level) < 0 || Number(metadata.level) > 8) return unavailable("PyChess AI level is invalid");
 		if (!board.element || !board.connected || !board.visible || !board.owned) return unavailable("PyChess board is disconnected, hidden, or not owned by this game");
 		if (board.width !== 8 || board.height !== 8) return unavailable("PyChess board is not 8×8");
 		const orientation = state.orientation;
@@ -4335,10 +4301,7 @@
 		};
 		return {
 			id: "pychess",
-			capabilities: {
-				input: "selection",
-				autoRematch: false
-			},
+			capabilities: { input: "selection" },
 			read: () => capture().read,
 			subscribe(listener) {
 				const currentPage = page();
@@ -4454,9 +4417,6 @@
 			},
 			cancelInput() {
 				cancelCurrentInput();
-			},
-			requestRematch() {
-				return false;
 			}
 		};
 	}
@@ -4510,7 +4470,6 @@
 				variant: dataset.variant || null,
 				chess960: dataset.chess960 || null,
 				correspondence: dataset.corr || null,
-				level: dataset.level || null,
 				initialFen: dataset.initialfen ?? null,
 				status: dataset.status ?? null,
 				initialResult: dataset.result ?? null
@@ -5689,7 +5648,6 @@
 	function getPanelCapabilityView(capabilities) {
 		const selectionInput = capabilities?.input === "selection";
 		return {
-			showAutoRematch: capabilities?.autoRematch !== false,
 			showMoveMethod: capabilities?.input === "gestures" || capabilities === void 0,
 			transportNote: selectionInput ? "Moves use legal square selection on this site." : capabilities?.input === "controller" ? "Moves use the active game controller." : null
 		};
@@ -5699,7 +5657,6 @@
 		autoMove: !!BotState.autoMove,
 		openingBook: !!BotState.openingBook,
 		ponder: !!BotState.ponderEnabled,
-		autoRematch: !!BotState.autoRematch,
 		depth: BotState.botPower,
 		moveTimeMs: BotState.moveTime,
 		moveMethod: BotState.moveMethod
@@ -5741,7 +5698,7 @@
 	function syncPanelSettings() {
 		const current = settingsSignal.value;
 		const next = readSettings();
-		if (current.enabled === next.enabled && current.autoMove === next.autoMove && current.openingBook === next.openingBook && current.ponder === next.ponder && current.autoRematch === next.autoRematch && current.depth === next.depth && current.moveTimeMs === next.moveTimeMs && current.moveMethod === next.moveMethod) return;
+		if (current.enabled === next.enabled && current.autoMove === next.autoMove && current.openingBook === next.openingBook && current.ponder === next.ponder && current.depth === next.depth && current.moveTimeMs === next.moveTimeMs && current.moveMethod === next.moveMethod) return;
 		settingsSignal.value = next;
 	}
 	function updatePanelAnalysis(next) {
@@ -5766,9 +5723,6 @@
 				break;
 			case "ponder":
 				BotState.ponderEnabled = value ? 1 : 0;
-				break;
-			case "autoRematch":
-				BotState.autoRematch = value ? 1 : 0;
 				break;
 			case "depth":
 				BotState.botPower = Number(value);
@@ -6058,11 +6012,6 @@
 										label: "Background ponder",
 										checked: settings.ponder,
 										onChange: (checked) => updateSetting("ponder", checked)
-									}),
-									capabilityView.showAutoRematch && u(Toggle, {
-										label: "Auto rematch",
-										checked: settings.autoRematch,
-										onChange: (checked) => updateSetting("autoRematch", checked)
 									})
 								]
 							}),
@@ -6572,7 +6521,6 @@
 		interval = null;
 		generation = 0;
 		ready = false;
-		rematchAttempted = false;
 		waitingKey = null;
 		identity = null;
 		board = null;
@@ -6751,9 +6699,6 @@
 				BotState.statusInfo = snapshot.phase === "replay" ? "Replay mode" : "Game finished";
 				ui.updateDisplay(pa());
 			}
-			if (snapshot.phase === "finished" && BotState.autoRematch && this.site?.capabilities.autoRematch) {
-				if (!this.rematchAttempted) this.rematchAttempted = this.site.requestRematch();
-			}
 			return true;
 		}
 		tick() {
@@ -6772,7 +6717,6 @@
 				this.identity = snapshot.identity;
 				this.lastFenSeen = "";
 				this.waitingKey = null;
-				this.rematchAttempted = false;
 				this.interruptedFen = null;
 				this.previousInputReady = null;
 				this.clearRecommendation();
@@ -6782,7 +6726,6 @@
 			if (this.handlePhase(snapshot)) return;
 			if (snapshot.identity === this.identity && snapshot.fen !== this.lastFenSeen && isMoveConfirmationPending(snapshot.identity)) return;
 			this.waitingKey = null;
-			this.rematchAttempted = false;
 			const ourTurn = snapshot.sideToMove === snapshot.playerColor;
 			const readinessRestored = this.previousInputReady === false && snapshot.inputReady && ourTurn;
 			this.previousInputReady = snapshot.inputReady;

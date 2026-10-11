@@ -132,7 +132,6 @@ function makePage() {
       variant: 'chess',
       chess960: 'False',
       corr: 'False',
-      level: '7',
       initialfen: '',
       status: '0',
       result: '*',

@@ -2,7 +2,7 @@
   "name": "super-chess-bot",
   "version": "10.0.0",
   "type": "module",
-  "description": "Local Stockfish analysis and move automation for Chess.com computer games, PyChess AI, and Lichess AI level 8",
+  "description": "Local Stockfish analysis and move automation for Chess.com, PyChess, and Lichess standard games",
   "scripts": {
     "build": "vite build",
     "dev": "vite",

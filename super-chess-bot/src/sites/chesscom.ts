@@ -144,7 +144,7 @@ export function createChesscomAdapter(page: () => Window = defaultPage): SiteAda
 
   return {
     id: 'chesscom',
-    capabilities: { input: 'gestures', autoRematch: true },
+    capabilities: { input: 'gestures' },
     read,
     subscribe(listener) {
       let stopObserving = () => {};
@@ -227,14 +227,6 @@ export function createChesscomAdapter(page: () => Window = defaultPage): SiteAda
     },
     cancelInput() {
       cancelPendingMove();
-    },
-    requestRematch() {
-      const button = page().document.querySelector<HTMLButtonElement>(
-        '[data-cy="sidebar-game-over-rematch-button"], [data-cy="game-over-modal-rematch-button"]',
-      );
-      if (!button) return false;
-      button.click();
-      return true;
     },
   };
 }

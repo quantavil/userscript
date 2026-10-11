@@ -1,6 +1,6 @@
 # Super Chess Bot
 
-A GPL-3.0-or-later browser userscript with local Stockfish analysis and confirmed move input on Chess.com computer games, PyChess Fairy-Stockfish games, and Lichess Play against computer at level 8. Engine strength and bullet performance depend on the device and move budget; this project does not claim a measured Elo.
+A GPL-3.0-or-later browser userscript with local Stockfish analysis and confirmed move input on Chess.com, PyChess, and Lichess standard games. Engine strength and bullet performance depend on the device and move budget; this project does not claim a measured Elo.
 
 ## Architecture
 
@@ -11,12 +11,12 @@ flowchart LR
     human[Human pointer or touch input]
   end
 
-  subgraph pychess[PyChess AI round]
+  subgraph pychess[PyChess round]
     cg[Chessground board]
     moves[Accepted SAN movelist and FEN]
   end
 
-  subgraph lichess[Lichess AI level 8]
+  subgraph lichess[Lichess round]
     round[Lichess round controller]
     accepted[Accepted round steps and clock]
   end
@@ -62,7 +62,7 @@ flowchart LR
 ```
 
 - **Engine:** pinned Stockfish 19 lite single-threaded WASM. The worker prewarms when the panel mounts, while automation stays disabled, so download and WASM compilation happen before the first game move. One worker survives normal searches and cancellation, preserving its transposition table. The userscript manager downloads pinned JS/WASM resources from unpkg; keep this host because jsDelivr rejects the full 205 MB npm package even for its small lite files. Search is local after initialization. No main-thread search fallback.
-- **Site adapters:** exact-host adapters provide the current accepted FEN, player color, orientation, phase, clock, history, and supported controls. Chess.com keeps its private game API and click/drag input inside its adapter. PyChess reads Chessground state plus the accepted SAN movelist, and uses legal `selectSquare` user moves. Lichess is limited to standard Play against computer games at AI level 8. Its adapter captures the round controller during page initialization and uses `pluginMove`; it does not call a Lichess API or write directly to the socket. This hook depends on private page internals and may need updates after Lichess frontend changes.
+- **Site adapters:** exact-host adapters provide the current accepted FEN, player color, orientation, phase, clock, history, and supported controls. Chess.com keeps its private game API and click/drag input inside its adapter. PyChess reads Chessground state plus the accepted SAN movelist, and uses legal `selectSquare` user moves. Lichess captures the round controller during page initialization and uses `pluginMove`; it does not call a Lichess API or write directly to the socket. This hook depends on private page internals and may need updates after Lichess frontend changes.
 - **Controller:** waits for engine readiness, owns a stable game/board identity and search revision, rejects obsolete results, and stops pending work when disabled. Replay and finished positions suspend analysis. Trusted board interaction pauses automation; a changed position resumes automatically, while an unchanged position offers Resume.
 - **Timing:** the configured move budget reserves input time once. PyChess and Lichess read the active player's clock from their round state; Chess.com keeps its current clock handling. Lichess move submission goes through the round controller's normal clock stop and move-send path. There is no second post-search thinking delay. A separate bounded confirmation checks the accepted position at the expected ply. Browser scheduling and engine stop latency can exceed the requested budget.
 - **Recovery:** trusted human board input cancels pending automation and pauses the bot. A changed position resumes analysis automatically; when the position stays the same, the panel offers Resume. Engine and unconfirmed-input failures offer Retry.
@@ -75,20 +75,35 @@ flowchart LR
 
 1. Install Tampermonkey or Violentmonkey in Chromium.
 2. Build and install `dist/bundle.user.js`. The userscript manager also fetches the two version-pinned engine resources.
-3. Choose a supported game: a Chess.com computer game, PyChess **Play with AI**, or Lichess **Play against computer** at level 8.
-4. On PyChess, keep **CHESS**, Chess960 off, Random-Mover off, and real-time play. The level range is 0–8; the acceptance target is Fairy-Stockfish level 7. For 1+0, set the minutes slider to index **4** (one minute), increment to 0, and select **White** by its title. The Puzzle of the day page is not an AI game.
+3. Choose a supported game: a Chess.com game, a PyChess round, or a Lichess round.
+4. On PyChess, keep **CHESS**, Chess960 off, and real-time play. For 1+0, set the minutes slider to index **4** (one minute), increment to 0, and select **White** by its title.
 5. Wait for the panel and Stockfish to report `Ready`, then enable the bot. It starts disabled on each page load. Choose auto move or analysis-only mode.
 6. Tune move budget against measured strength and latency on your device (slider allows 25–5000 ms in 25 ms steps; 50–100 ms is ideal for bullet). The default depth cap is 30, letting the time budget normally end a fresh search; achieved depth varies. A matching ponder search can make the response immediate after it reaches depth 12.
 
 For Lichess in Violentmonkey, enable **Settings → Advanced → Synchronous `<page>` mode** and reload Lichess after installing or updating the script. The controller bridge must run in the page context before Lichess initializes its round.
 
-PyChess support is limited to a live, owned 8×8 chess round where the signed-in or anonymous player identity matches White or Black and the opponent is Fairy-Stockfish. The adapter checks the game URL and id, player membership, variant, Chess960 setting, real-time mode, AI level, accepted six-field FEN, and legal SAN history. It submits moves through the board's legal square-selection path and waits for the server-confirmed FEN at the bot move's ply. When browsing an older move, input is suspended until the live position returns. A trusted board action pauses the bot and shows Resume when the accepted position has not changed.
+PyChess support covers a live, owned 8×8 chess round where the signed-in or anonymous player identity matches White or Black. The adapter checks the game URL and id, player membership, variant, Chess960 setting, real-time mode, accepted six-field FEN, and legal SAN history. It submits moves through the board's legal square-selection path and waits for the server-confirmed FEN at the bot move's ply. When browsing an older move, input is suspended until the live position returns. A trusted board action pauses the bot and shows Resume when the accepted position has not changed.
 
-Lichess support is limited to a live, standard chess game from **Play against computer** with the maximum AI level 8. The adapter verifies the AI game source, opponent level, player round, accepted FEN and SAN history, side to move, and legal destinations. It sends ordinary moves and explicit promotion roles through the round controller and waits for the accepted position. The active clock is read from the same round controller; the site's move path stops it and sends the move. No API integration is used.
+Lichess support covers a live, standard chess player round. The adapter verifies the player round, accepted FEN and SAN history, side to move, and legal destinations. It sends ordinary moves and explicit promotion roles through the round controller and waits for the accepted position. The active clock is read from the same round controller; the site's move path stops it and sends the move. No API integration is used.
 
-On PyChess the panel explains the legal square-selection transport; on Lichess it identifies the game-controller transport. Both hide the Chess.com gesture and rematch controls. Those stored Chess.com preferences are left as saved, so using the same userscript on Chess.com keeps its selected input method and rematch setting.
+On PyChess the panel explains the legal square-selection transport; on Lichess it identifies the game-controller transport. Both hide the Chess.com gesture control. The stored Chess.com preference is left as saved, so using the same userscript on Chess.com keeps its selected input method.
 
 Click input is the default. Drag input exists for boards that reject click input; promotion waits for the site's chooser. An unconfirmed move is not retried repeatedly against the same position. Change settings or advance the position to retry deliberately.
+
+## Site support
+
+| | Chess.com | PyChess | Lichess |
+| --- | --- | --- | --- |
+| Plays | any live game exposing the site board API (computer + online) | standard chess live rounds, any opponent | standard-chess player rounds, any opponent |
+| Move transport | click or drag (panel setting) | legal square selection | round-controller `pluginMove` |
+| Promotion | site chooser (queen verified live) | chooser q/r/b/n + Ctrl override (queen verified live; underpromotion with site auto-promote on unverified) | explicit role (unit-tested; live game unverified) |
+| Premove | off | off | off |
+| Background ponder | yes | yes | yes |
+| Opening book (plies 1–6) | yes | yes | yes |
+| Clock-aware budget | yes (page clock, else fixed budget) | yes (round clocks, else fixed budget) | yes (controller clock, else fixed budget) |
+| Replay / finished | terminal reload recovery | replay suspends input until live returns | replay suspends input until live returns |
+
+The engine only knows standard chess: non-chess variants, Chess960, and correspondence rounds stay ineligible on PyChess, and non-standard variants stay ineligible on Lichess. The bot starts disabled on every page load; trusted board input pauses it and offers Resume when the position is unchanged.
 
 ## Development
 
@@ -101,7 +116,7 @@ bun run check
 
 ## Browser verification
 
-Use `agent-browser` with a dedicated Chromium session and the production bundle installed through a userscript manager. Test board orientation, promotion, enable/disable during search, game reset, human interruption and recovery, and the position event path. Test Lichess only at AI level 8. The controller hook is version-sensitive; record when a live player route is unavailable.
+Use `agent-browser` with a dedicated Chromium session and the production bundle installed through a userscript manager. Test board orientation, promotion, enable/disable during search, game reset, human interruption and recovery, and the position event path. The controller hook is version-sensitive; record when a live player route is unavailable.
 
 The full game verified through an installed Violentmonkey manager, including the result, move list, and recording, is documented in [browser-verification.md](docs/browser-verification.md).
 

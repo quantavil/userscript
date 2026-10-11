@@ -169,7 +169,6 @@ describe('PyChess accepted game state', () => {
     ['variant other than chess', { metadata: { variant: 'atomic' } }],
     ['Chess960', { metadata: { chess960: 'True' } }],
     ['correspondence play', { metadata: { correspondence: 'True' } }],
-    ['invalid AI level', { metadata: { level: '9' } }],
     ['disconnected board', { board: { connected: false } }],
     ['foreign board', { board: { owned: false } }],
     ['non-eight-square board', { board: { width: 10 } }],
@@ -185,6 +184,14 @@ describe('PyChess accepted game state', () => {
     ],
   ])('rejects %s', (_name, changes) => {
     expect(parsePychessObservation(observation(changes), {})).not.toMatchObject({ kind: 'game' });
+  });
+
+  it('accepts any opponent, human or engine', () => {
+    const human = parsePychessObservation(observation({ metadata: { blackPlayer: 'Human-Opponent' } }), {});
+    expect(human.kind).toBe('game');
+
+    const engine = parsePychessObservation(observation(), {});
+    expect(engine.kind).toBe('game');
   });
 
   it('waits for accepted history when the movelist is truncated', () => {
@@ -212,7 +219,6 @@ function observation(changes: Record<string, unknown> = {}): PychessObservation 
       variant: 'chess',
       chess960: 'False',
       correspondence: 'False',
-      level: '7',
       initialFen: '',
       status: '0',
       initialResult: '*',

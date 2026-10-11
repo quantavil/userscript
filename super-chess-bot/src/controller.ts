@@ -29,7 +29,6 @@ class BotController {
   private interval: ReturnType<typeof setInterval> | null = null;
   private generation = 0;
   private ready = false;
-  private rematchAttempted = false;
   private waitingKey: string | null = null;
   private identity: object | null = null;
   private board: HTMLElement | null = null;
@@ -221,9 +220,6 @@ class BotController {
       BotState.statusInfo = snapshot.phase === 'replay' ? 'Replay mode' : 'Game finished';
       ui.updateDisplay(pa());
     }
-    if (snapshot.phase === 'finished' && BotState.autoRematch && this.site?.capabilities.autoRematch) {
-      if (!this.rematchAttempted) this.rematchAttempted = this.site.requestRematch();
-    }
     return true;
   }
 
@@ -243,7 +239,6 @@ class BotController {
       this.identity = snapshot.identity;
       this.lastFenSeen = '';
       this.waitingKey = null;
-      this.rematchAttempted = false;
       this.interruptedFen = null;
       this.previousInputReady = null;
       this.clearRecommendation();
@@ -258,7 +253,6 @@ class BotController {
     )
       return;
     this.waitingKey = null;
-    this.rematchAttempted = false;
 
     const ourTurn = snapshot.sideToMove === snapshot.playerColor;
     const readinessRestored = this.previousInputReady === false && snapshot.inputReady && ourTurn;

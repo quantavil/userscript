@@ -23,7 +23,7 @@ const deps = vi.hoisted(() => {
   const listeners = new Set<() => void>();
   const site = {
     id: 'pychess' as const,
-    capabilities: { input: 'selection' as 'selection' | 'gestures', autoRematch: false },
+    capabilities: { input: 'selection' as 'selection' | 'gestures' },
     read: () => siteRead,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
@@ -31,7 +31,6 @@ const deps = vi.hoisted(() => {
     },
     submitMove: vi.fn(async () => true),
     cancelInput: vi.fn(),
-    requestRematch: vi.fn(() => false),
   };
   return {
     warm: vi.fn(),
@@ -57,7 +56,6 @@ const deps = vi.hoisted(() => {
       moveTime: 100,
       autoMove: 1,
       ponderEnabled: 1,
-      autoRematch: 0,
       moveMethod: 'click' as const,
       bestMove: '-',
       currentEvaluation: '-',
@@ -163,11 +161,10 @@ beforeEach(() => {
   BotState.hackEnabled = 1;
   BotState.autoMove = 1;
   BotState.ponderEnabled = 1;
-  BotState.autoRematch = 0;
   BotState.bestMove = '-';
   BotState.currentEvaluation = '-';
   BotState.principalVariation = '-';
-  deps.site.capabilities = { input: 'selection', autoRematch: false };
+  deps.site.capabilities = { input: 'selection' };
 });
 
 afterEach(() => {
@@ -232,7 +229,7 @@ describe('controller lifecycle', () => {
   it('does not repeat cancellation while the adapter remains waiting', async () => {
     await startReadyController();
     deps.siteRead.kind = 'ineligible';
-    Object.assign(deps.siteRead, { reason: 'AI game required' });
+    Object.assign(deps.siteRead, { reason: 'Waiting for game' });
     clearActionMocks();
 
     controller.tick();
@@ -365,19 +362,5 @@ describe('controller lifecycle', () => {
     expect(BotState.recoveryAction).toBeNull();
     expect(deps.schedule).toHaveBeenLastCalledWith('main', 'start w - - 0 2');
     expect(BotState.statusInfo).toBe('Analyzing...');
-  });
-
-  it('requests rematch through the Chess.com capability only', async () => {
-    await startReadyController();
-    BotState.autoRematch = 1;
-    setRead({ phase: 'finished' });
-    controller.tick();
-    expect(deps.site.requestRematch).not.toHaveBeenCalled();
-
-    deps.site.capabilities = { input: 'gestures', autoRematch: true };
-    deps.site.requestRematch.mockReturnValueOnce(false).mockReturnValue(true);
-    controller.tick();
-    controller.tick();
-    expect(deps.site.requestRematch).toHaveBeenCalledTimes(2);
   });
 });

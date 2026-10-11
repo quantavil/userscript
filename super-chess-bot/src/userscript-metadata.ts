@@ -14,9 +14,8 @@ export const userscriptMetadata: MonkeyUserScript = {
   match: [
     'https://lichess.org/*',
     'https://www.lichess.org/*',
-    'https://www.chess.com/play/computer*',
-    'https://www.chess.com/game/*',
-    'https://www.chess.com/play/online*',
+    'https://chess.com/*',
+    'https://www.chess.com/*',
     'https://www.pychess.org/*',
     'https://pychess.org/*',
   ],

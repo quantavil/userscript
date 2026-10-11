@@ -24,7 +24,6 @@ export interface PychessObservation {
     variant: string | null;
     chess960: string | null;
     correspondence: string | null;
-    level: string | null;
     initialFen: string | null;
     status: string | null;
     initialResult: string | null;
@@ -95,7 +94,7 @@ function replayAcceptedHistory(startFen: string, sans: readonly string[]): Retur
 export function parsePychessObservation(observation: PychessObservation, identity: object): SiteRead {
   const { metadata, board, state } = observation;
   if (!identity || typeof identity !== 'object') return unavailable('PyChess game identity is unavailable');
-  if (!metadata.isRoundView) return { kind: 'waiting', reason: 'Waiting for PyChess AI game' };
+  if (!metadata.isRoundView) return { kind: 'waiting', reason: 'Waiting for PyChess game' };
   const urlGameId = pathGameId(metadata.pathname);
   if (!metadata.gameId || !urlGameId || metadata.gameId !== urlGameId)
     return unavailable('PyChess game identity does not match the current URL');
@@ -107,15 +106,11 @@ export function parsePychessObservation(observation: PychessObservation, identit
     return unavailable('PyChess player identity is unavailable or conflicting');
   if (username === whitePlayer && username === blackPlayer) return unavailable('PyChess player identity is ambiguous');
   const playerColor: Color = username === whitePlayer ? 'w' : 'b';
-  const opponent = playerColor === 'w' ? blackPlayer : whitePlayer;
-  if (opponent !== 'fairy-stockfish') return unavailable('PyChess Fairy-Stockfish game required');
   if (metadata.variant?.trim().toLowerCase() !== 'chess') return unavailable('PyChess chess variant required');
   if (!['false', '0'].includes(metadata.chess960?.trim().toLowerCase() ?? ''))
     return unavailable('PyChess Chess960 is not supported');
   if (!['false', '0'].includes(metadata.correspondence?.trim().toLowerCase() ?? ''))
     return unavailable('PyChess real-time game required');
-  if (!metadata.level || !/^\d+$/.test(metadata.level) || Number(metadata.level) < 0 || Number(metadata.level) > 8)
-    return unavailable('PyChess AI level is invalid');
   if (!board.element || !board.connected || !board.visible || !board.owned)
     return unavailable('PyChess board is disconnected, hidden, or not owned by this game');
   if (board.width !== 8 || board.height !== 8) return unavailable('PyChess board is not 8×8');

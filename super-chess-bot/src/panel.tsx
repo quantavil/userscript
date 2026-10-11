@@ -17,7 +17,6 @@ export interface PanelActions {
 }
 
 export interface PanelCapabilityView {
-  showAutoRematch: boolean;
   showMoveMethod: boolean;
   transportNote: string | null;
 }
@@ -25,7 +24,6 @@ export interface PanelCapabilityView {
 export function getPanelCapabilityView(capabilities?: SiteCapabilities): PanelCapabilityView {
   const selectionInput = capabilities?.input === 'selection';
   return {
-    showAutoRematch: capabilities?.autoRematch !== false,
     showMoveMethod: capabilities?.input === 'gestures' || capabilities === undefined,
     transportNote: selectionInput
       ? 'Moves use legal square selection on this site.'
@@ -40,7 +38,6 @@ interface PanelSettings {
   autoMove: boolean;
   openingBook: boolean;
   ponder: boolean;
-  autoRematch: boolean;
   depth: number;
   moveTimeMs: number;
   moveMethod: 'click' | 'drag';
@@ -66,7 +63,6 @@ const readSettings = (): PanelSettings => ({
   autoMove: !!BotState.autoMove,
   openingBook: !!BotState.openingBook,
   ponder: !!BotState.ponderEnabled,
-  autoRematch: !!BotState.autoRematch,
   depth: BotState.botPower,
   moveTimeMs: BotState.moveTime,
   moveMethod: BotState.moveMethod,
@@ -113,7 +109,6 @@ export function syncPanelSettings(): void {
     current.autoMove === next.autoMove &&
     current.openingBook === next.openingBook &&
     current.ponder === next.ponder &&
-    current.autoRematch === next.autoRematch &&
     current.depth === next.depth &&
     current.moveTimeMs === next.moveTimeMs &&
     current.moveMethod === next.moveMethod
@@ -155,9 +150,6 @@ export function updatePanelSetting<K extends keyof PanelSettings>(
       break;
     case 'ponder':
       BotState.ponderEnabled = value ? 1 : 0;
-      break;
-    case 'autoRematch':
-      BotState.autoRematch = value ? 1 : 0;
       break;
     case 'depth':
       BotState.botPower = Number(value);
@@ -476,13 +468,6 @@ function Panel({
                 checked={settings.ponder}
                 onChange={(checked) => updateSetting('ponder', checked)}
               />
-              {capabilityView.showAutoRematch && (
-                <Toggle
-                  label="Auto rematch"
-                  checked={settings.autoRematch}
-                  onChange={(checked) => updateSetting('autoRematch', checked)}
-                />
-              )}
             </div>
             {capabilityView.transportNote && <p class="panel-site-note">{capabilityView.transportNote}</p>}
 

@@ -76,12 +76,11 @@ describe('snapshot-derived compatibility helpers', () => {
     };
     setActiveSite({
       id: 'pychess',
-      capabilities: { input: 'selection', autoRematch: false },
+      capabilities: { input: 'selection' },
       read: () => ({ kind: 'game', snapshot }),
       subscribe: () => () => {},
       submitMove: async () => false,
       cancelInput() {},
-      requestRematch: () => false,
     });
 
     expect(getFen()).toBe(snapshot.fen);

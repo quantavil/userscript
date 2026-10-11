@@ -24,12 +24,10 @@ interface LichessStep {
 interface RoundData {
   game?: {
     id?: string;
-    source?: string;
     variant?: { key?: string };
     status?: { id?: number; name?: string };
   };
   player?: { color?: LichessColor; spectator?: boolean };
-  opponent?: { ai?: number };
   steps?: LichessStep[];
 }
 
@@ -203,7 +201,7 @@ function wrapMethod(target: Record<string, unknown>, key: string, after: () => v
   }
 }
 
-/** Read Lichess's current level-8 standard AI round and submit through its round controller. */
+/** Read any standard Lichess player round and submit through its round controller. */
 export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapter {
   const currentPage = page();
   const listeners = new Set<() => void>();
@@ -221,10 +219,7 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
       const data = round.data;
       const game = data?.game;
       const player = data?.player;
-      const opponent = data?.opponent;
-      if (!data || !game || !player || !opponent) return { kind: 'waiting', reason: 'Waiting for Lichess game state' };
-      if (game.source !== 'ai') return { kind: 'ineligible', reason: 'Lichess AI game is required' };
-      if (opponent.ai !== 8) return { kind: 'ineligible', reason: 'Lichess AI level 8 is required' };
+      if (!data || !game || !player) return { kind: 'waiting', reason: 'Waiting for Lichess game state' };
       if (game.variant?.key !== 'standard') return { kind: 'ineligible', reason: 'Lichess standard chess is required' };
       if (player.spectator === true) return { kind: 'ineligible', reason: 'Lichess player round is required' };
       if (typeof game.id !== 'string' || !game.id)
@@ -345,7 +340,7 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
 
   return {
     id: 'lichess',
-    capabilities: { input: 'controller', autoRematch: false },
+    capabilities: { input: 'controller' },
     read: () => (bridgeInstalled ? capture() : { kind: 'ineligible', reason: 'Lichess round hook is unavailable' }),
     subscribe(listener) {
       listeners.add(listener);
@@ -385,8 +380,5 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
       }
     },
     cancelInput() {},
-    requestRematch() {
-      return false;
-    },
   };
 }

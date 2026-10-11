@@ -8,7 +8,6 @@ export const DEFAULT_SETTINGS: SettingsData = {
   autoMove: 1,
   openingBook: 1,
   ponderEnabled: 1,
-  autoRematch: 0,
   moveMethod: 'click',
   menuPosition: null,
 };
@@ -28,9 +27,6 @@ const savedSettingsSchema = v.object({
   autoMove: v.optional(flagSchema),
   openingBook: v.optional(flagSchema),
   ponderEnabled: v.optional(flagSchema),
-  /** Legacy key written by earlier builds when background pondering was misnamed. */
-  premoveEnabled: v.optional(flagSchema),
-  autoRematch: v.optional(flagSchema),
   moveMethod: v.optional(v.picklist(['click', 'drag'])),
   menuPosition: v.optional(v.nullable(positionSchema)),
 });
@@ -49,11 +45,9 @@ export function loadSettings(serialized: string | null): SettingsData {
   const result = v.safeParse(savedSettingsSchema, saved);
   if (!result.success) return { ...DEFAULT_SETTINGS };
 
-  const { premoveEnabled, ...currentSettings } = result.output;
   return {
     ...DEFAULT_SETTINGS,
-    ...currentSettings,
-    ponderEnabled: currentSettings.ponderEnabled ?? premoveEnabled ?? DEFAULT_SETTINGS.ponderEnabled,
+    ...result.output,
     hackEnabled: 0,
   };
 }
