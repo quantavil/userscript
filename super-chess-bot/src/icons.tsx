@@ -134,16 +134,16 @@ function IconDualShields() {
     <svg
       width="22"
       height="18"
-      viewBox="0 0 24 20"
+      viewBox="0 0 28 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="1.7"
+      stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M6.5 2.5L2 4.5v5c0 4 2.8 6.5 4.5 7.5 1.7-1 4.5-3.5 4.5-7.5v-5L6.5 2.5z" />
-      <path d="M17.5 2.5L13 4.5v5c0 4 2.8 6.5 4.5 7.5 1.7-1 4.5-3.5 4.5-7.5v-5L17.5 2.5z" />
+      <path d="M8.5 21s6-3 6-7.5V6l-6-2.5L2.5 6v7.5C2.5 18 8.5 21 8.5 21z" />
+      <path d="M19.5 21s6-3 6-7.5V6l-6-2.5L13.5 6v7.5c0 4.5 6 7.5 6 7.5z" />
     </svg>
   );
 }
@@ -153,7 +153,7 @@ function IconShield() {
     <svg
       width="18"
       height="18"
-      viewBox="0 0 24 20"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       stroke-width="1.8"
@@ -161,7 +161,7 @@ function IconShield() {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M12 2L5 4.5v5.5c0 4.8 4.2 8 7 9.5 2.8-1.5 7-4.7 7-9.5V4.5L12 2z" />
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     </svg>
   );
 }
@@ -171,7 +171,7 @@ function IconScale() {
     <svg
       width="18"
       height="18"
-      viewBox="0 0 24 20"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       stroke-width="1.8"
@@ -179,8 +179,7 @@ function IconScale() {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M12 2v15M8 18h8M4 7h16" />
-      <path d="M4 7l-2.5 5.5h5L4 7zM20 7l-2.5 5.5h5L20 7z" />
+      <path d="M7 20h10M6 6l6-1 6 1M12 3v17M9 12l-3-6-3 6a3 3 0 0 0 6 0M21 12l-3-6-3 6a3 3 0 0 0 6 0" />
     </svg>
   );
 }
@@ -190,7 +189,7 @@ function IconSword() {
     <svg
       width="18"
       height="18"
-      viewBox="0 0 24 20"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       stroke-width="1.8"
@@ -198,7 +197,8 @@ function IconSword() {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M19 2.5L9 12.5M16 2.5h3v3M7 9.5l4 4M7.5 14l-3.5 3.5M3 18.5l-1 1M4.5 20l-2-2" />
+      <path d="M20 4v5l-9 7-4 4-3-3 4-4 7-9z" />
+      <path d="M6.5 11.5l6 6" />
     </svg>
   );
 }
@@ -208,7 +208,7 @@ function IconDualSwordsSparks() {
     <svg
       width="22"
       height="18"
-      viewBox="0 0 24 20"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       stroke-width="1.7"
@@ -216,9 +216,9 @@ function IconDualSwordsSparks() {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M4 3.5l16 16M14 17l4-4" />
-      <path d="M20 3.5L4 19.5M6 13l4 4" />
-      <path d="M13 1l-3 5h3.5L11.5 11l5-6h-3.5L14.5 1z" fill="currentColor" stroke="none" />
+      <path d="M4 4l16 16M15 19l4-4" />
+      <path d="M20 4L4 20M5 15l4 4" />
+      <path d="M13 2l-3 5h3.5L11.5 12l5-6h-3.5L14.5 2z" fill="currentColor" stroke="none" />
     </svg>
   );
 }

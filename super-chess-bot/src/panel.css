@@ -803,42 +803,6 @@
   transform: scale(1.05);
 }
 
-.panel-style-info {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 4px;
-  padding: 6px 8px;
-  background: var(--wood);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-}
-
-.panel-style-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 7px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--brass);
-  background: color-mix(in oklab, var(--brass) 12%, transparent);
-  border: 1px solid color-mix(in oklab, var(--brass) 30%, transparent);
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.panel-opening-style-desc {
-  min-height: 24px;
-  margin: 0;
-  padding: 0;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.35;
-  flex: 1 1 auto;
-}
-
 /* Activity */
 
 .panel-activity {

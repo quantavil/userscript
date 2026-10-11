@@ -83,3 +83,24 @@ Post-fix Chromium runs used White/Guest, 1+0, 100 ms per move, and depth cap 30.
 Both post-fix 3200 games completed, including one promotion. One warmed 2900 run started after the panel reported `Ready`; across 60 White move timestamps, Chess.com showed 13.4 seconds total, 0.2 seconds median, 0.3 seconds p95, and 1.6 seconds maximum. The initial White move had no separate timestamp. These UI stamps are rounded and include browser scheduling and move acceptance, not just engine search. The highest observed win is 3200 (2/2 games); this small, non-monotonic sample is not a calibrated Elo estimate. See [`docs/browser-verification.md`](docs/browser-verification.md) for the run notes and timing breakdown.
 
 The latest warmed 2900 run also completed, but used 36.3 seconds on our clock across 72 recorded move stamps (median 0.2 s, p95 1.3 s, maximum 1.5 s; the first move had no separate stamp). This conflicts with the earlier 13.4-second sample, so the under-5-second whole-game target is not met or demonstrated. Treat the clock samples as variable observations, not a guaranteed speedup.
+
+### Recorded Syzygy endgame tablebase latency sample (2026-10-12)
+
+Live REST lookups against `https://tablebase.lichess.ovh/standard` measured across 10 endgame placements (3 to 7 pieces):
+
+| Test Position | Pieces | FEN | Best Move | Outcome | Eval | Network Latency |
+| :--- | :---: | :--- | :---: | :---: | :---: | ---: |
+| KQK | 3 | `8/8/8/8/8/4k3/8/4K2Q w - - 0 1` | `h1d5` | win | `+M5 (Tablebase)` | 834.0 ms (cold TLS) |
+| KRK | 3 | `8/8/8/8/8/4k3/8/4K2R w - - 0 1` | `h1h4` | win | `+M10 (Tablebase)` | 162.9 ms |
+| KPK | 3 | `8/8/8/8/4k3/8/4P3/4K3 w - - 0 1` | `e2e3` | draw | `0.00 (Tablebase Draw)` | 161.6 ms |
+| KQKR | 4 | `8/8/8/8/8/4k1r1/8/4K2Q w - - 0 1` | `h1h6` | win | `+M23 (Tablebase)` | 262.6 ms |
+| KBBK | 4 | `8/8/8/8/8/4k3/8/4KB1B w - - 0 1` | `f1e2` | draw | `0.00 (Tablebase Draw)` | 219.4 ms |
+| KBNK | 4 | `8/8/8/8/8/4k3/8/4KB1N w - - 0 1` | `h1f2` | win | `+M31 (Tablebase)` | 164.2 ms |
+| Lucena Position | 5 | `1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1` | `c1d1` | win | `+M21 (Tablebase)` | 172.9 ms |
+| Philidor Position | 5 | `8/8/8/8/3k4/1r6/4K3/5R2 b - - 0 1` | `b3b2` | draw | `0.00 (Tablebase Draw)` | 238.3 ms |
+| KRPKRP | 6 | `8/8/4k3/4p3/4P3/4K3/8/r6R w - - 0 1` | `h1a1` | win | `+M13 (Tablebase)` | 214.6 ms |
+| 7-piece Complex | 7 | `8/8/2k5/3p4/3P4/2K5/1B6/1N3n2 w - - 0 1` | `b1d2` | win | `+M13 (Tablebase)` | 570.9 ms |
+
+- **Latency Summary**: Minimum: 161.6 ms · Median (p50): 219.4 ms · Mean: 300.1 ms · p95: 834.0 ms · In-memory LRU cache hit: <0.01 ms.
+- **Race Safety**: `scheduler.ts` executes tablebase lookups concurrently with Stockfish; if network exceeds the clock threshold (`remainingMs / 4`), local engine search returns immediately without stalling or flagging on time.
+

@@ -223,6 +223,12 @@ export function updatePanelSetting<K extends keyof PanelSettings>(
   else actions?.refreshSettings?.();
 }
 
+export function toggleGhostMode(actions?: PanelActions): boolean {
+  const next = !settingsSignal.value.ghostMode;
+  updatePanelSetting('ghostMode', next, actions);
+  return next;
+}
+
 /** True for any focusable text target, so typing never triggers a panel shortcut. */
 function isEditableTarget(target: unknown): boolean {
   if (!target || typeof target !== 'object') return false;
@@ -459,43 +465,31 @@ const OPENING_STYLES: {
   id: OpeningStyle;
   label: string;
   tooltip: string;
-  badge: string;
-  description: string;
 }[] = [
   {
     id: 'hyper-defensive',
     label: 'Hyper-Defensive',
-    tooltip: 'Hyper-Defensive (Berlin Wall, Petroff, Slav, Réti)',
-    badge: 'Fortress',
-    description: 'Ironclad fortresses & solid pawn structures (Berlin, Petroff, Slav)',
+    tooltip: 'Hyper-Defensive: Ironclad fortresses & solid pawn structures (Berlin, Petroff, Slav, Réti)',
   },
   {
     id: 'defensive',
     label: 'Defensive',
-    tooltip: 'Defensive (Caro-Kann, French, Queen’s Gambit Declined)',
-    badge: 'Solid',
-    description: 'Positional control & resilient structures (Caro-Kann, French, QGD)',
+    tooltip: 'Defensive: Positional control & resilient structures (Caro-Kann, French, QGD)',
   },
   {
     id: 'balanced',
     label: 'Balanced',
-    tooltip: 'Balanced (Classical GM mainlines & open games)',
-    badge: 'Classical',
-    description: 'Classical grandmaster mainlines & standard book (Ruy Lopez, Italian)',
+    tooltip: 'Balanced: Classical grandmaster mainlines & standard book (Ruy Lopez, Italian)',
   },
   {
     id: 'aggressive',
     label: 'Aggressive',
-    tooltip: 'Aggressive (King’s Gambit, Evans, Scotch, Smith-Morra)',
-    badge: 'Attacking',
-    description: 'Sharp tactical lines & active piece attacks (King’s Gambit, Scotch, Evans)',
+    tooltip: 'Aggressive: Sharp tactical lines & active piece attacks (King’s Gambit, Scotch, Evans)',
   },
   {
     id: 'hyper-aggressive',
-    label: 'Hyper-Aggressive',
-    tooltip: 'Hyper-Aggressive (Danish, Traxler, Stafford, Albin)',
-    badge: 'Gambit',
-    description: 'High-risk gambits & tactical fireworks (Danish, Traxler, Stafford)',
+    label: 'Hyper-Aggressive (Gambit)',
+    tooltip: 'Hyper-Aggressive: High-risk gambits & tactical fireworks (Danish, Traxler, Stafford)',
   },
 ];
 
@@ -826,15 +820,6 @@ function Panel({
                       </button>
                     ))}
                   </div>
-                  {(() => {
-                    const currentStyle = OPENING_STYLES.find((st) => st.id === settings.openingStyle);
-                    return (
-                      <div class="panel-style-info">
-                        <span class="panel-style-badge">{currentStyle?.badge}</span>
-                        <p class="panel-opening-style-desc">{currentStyle?.description}</p>
-                      </div>
-                    );
-                  })()}
                 </div>
               )}
               <Toggle

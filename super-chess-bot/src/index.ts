@@ -1,9 +1,39 @@
 import { controller } from './controller.js';
 import { warmEngine } from './engine/analysis.js';
+import { toggleGhostMode } from './panel.js';
 import { getSite } from './sites/index.js';
 import type { SiteCapabilities } from './sites/types.js';
 import { BotState, pa } from './state.js';
 import { buildUI, ui } from './ui.js';
+
+function registerMenuCommands(actions: {
+  setEnabled: (enabled: boolean) => void;
+  refreshSettings: () => void;
+  recover: () => void;
+}): void {
+  const register =
+    typeof GM_registerMenuCommand === 'function'
+      ? GM_registerMenuCommand
+      : typeof (window as unknown as { GM_registerMenuCommand?: typeof GM_registerMenuCommand })
+            .GM_registerMenuCommand === 'function'
+        ? (window as unknown as { GM_registerMenuCommand?: typeof GM_registerMenuCommand }).GM_registerMenuCommand
+        : null;
+
+  if (register) {
+    register('♟ Toggle Ghost Mode (Stream Safe) [Ctrl+Shift+G]', () => {
+      toggleGhostMode(actions);
+    });
+    register('♟ Toggle Bot Automation [E]', () => {
+      actions.setEnabled(!BotState.hackEnabled);
+    });
+    register('♟ Retry / Recover Position [R]', () => {
+      actions.recover();
+    });
+  }
+
+  const page = window as Window & { __SCB_TOGGLE_GHOST__?: () => boolean };
+  page.__SCB_TOGGLE_GHOST__ = () => toggleGhostMode(actions);
+}
 
 async function init(): Promise<void> {
   const page = window as Window & { __SCB_ACTIVE__?: boolean };
@@ -19,6 +49,7 @@ async function init(): Promise<void> {
       recover: () => controller.recover(),
     };
     await buildUI(actions, site?.capabilities as SiteCapabilities | undefined);
+    registerMenuCommands(actions);
     controller.init();
     if (!BotState.hackEnabled) {
       BotState.statusInfo = 'Preparing Stockfish...';

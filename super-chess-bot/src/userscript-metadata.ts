@@ -29,7 +29,7 @@ export function getUserscriptMetadata(target: BuildTarget = 'all'): MonkeyUserSc
         ],
     'run-at': 'document-start',
     'inject-into': 'page',
-    grant: ['GM_getResourceText', 'GM_getResourceURL', 'unsafeWindow'],
+    grant: ['GM_getResourceText', 'GM_getResourceURL', 'GM_registerMenuCommand', 'unsafeWindow'],
     resource: {
       'stockfish.js': `${stockfishResourceUrl}.js`,
       'stockfish.wasm': `${stockfishResourceUrl}.wasm`,
