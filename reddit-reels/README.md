@@ -4,7 +4,7 @@
 [![Runtime: Bun](https://img.shields.io/badge/Runtime-Bun-f472b6?logo=bun&logoColor=white)](https://bun.sh/)
 [![Build: Vite](https://img.shields.io/badge/Build-Vite%20%2B%20TypeScript-646cff?logo=vite&logoColor=white)](https://vitejs.dev/)
 
-A mobile-first userscript (**Violentmonkey** / **Tampermonkey**; Firefox Android, Kiwi, Safari/Orion, desktop) that turns any Reddit feed into a full-screen, swipeable reel: one post per screen, one stream with sound, Reddit video and RedGifs, native voting.
+A mobile-first userscript (**Violentmonkey** / **Tampermonkey**; Microsoft Edge, Firefox, Vivaldi, Helium, Firefox Android, Safari/Orion) that turns any Reddit feed into a full-screen, swipeable reel: one post per screen, one stream with sound, Reddit video and RedGifs, native voting.
 
 Tap the **Reels** button on a feed. The reel opens over Reddit; the phone's Back button (or ✕ / `Esc`) closes it and leaves you on the post you were watching.
 

@@ -16,7 +16,7 @@ Same code, two ways to run it. Pick one — don't install both, or you get two o
 
 ### Userscript
 
-Needs Tampermonkey or Violentmonkey. Works on any mobile browser that supports extensions: Firefox, Cromite, Kiwi, Orion, Edge.
+Needs Tampermonkey or Violentmonkey. Works on any browser that supports extensions: Microsoft Edge, Firefox, Vivaldi, Helium, Orion, Cromite, Safari.
 
 **[→ Install GlideVideo](https://raw.githubusercontent.com/quantavil/userscript/main/GlideVideo/dist/glidevideo.user.js)**
 

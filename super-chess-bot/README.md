@@ -69,11 +69,11 @@ flowchart LR
 - **History:** chessops reconstructs the selected SAN line into UCI history for repetition-aware search. Incomplete history falls back to the current FEN; repetition before that FEN cannot then be inferred.
 - **Opening book:** in-memory normalized EPD opening book covering plies 1–6 (~2 kB, zero new dependencies). Standard master lines (e.g. King's Pawn, Sicilian Defense, Smith-Morra, Queen's Gambit, Indian Defenses) resolve in <0.01 ms with 0 ms engine clock drain. The panel toggle can disable it to force pure engine calculation from move 1.
 - **Ponder:** enabled by default for new settings. The chosen move's principal variation predicts one opponent reply, then Stockfish searches the resulting position with UCI `go ponder` during the opponent's turn. An exact FEN and history match promotes that search; a completed ponder result is also reused only when FEN, history, and depth all match. A miss is stopped and drained before a fresh search. At depth 12 or higher the current best move is returned immediately; shallower searches get the normal foreground budget after `ponderhit`. This spends CPU while the opponent thinks and can use more battery. The panel toggle can disable it. Pondering analyzes a predicted reply; it does not queue a premove.
-- **UI:** Preact + Signals inside Shadow DOM with focused Hallmark workbench styles. The panel is draggable, logs are capped at 100 entries, stored settings are validated with Valibot (~1.5 kB), and keyboard hotkeys (`Ctrl+B` minimize, `E` toggle automation, `R` retry) enable rapid bullet play. The bot starts disabled each time.
+- **UI:** Preact + Signals inside Shadow DOM with focused Hallmark workbench styles. The panel is draggable on desktop, docks as a bottom-sheet on mobile (≤ 560 px), logs are capped at 100 entries, stored settings are validated with Valibot (~1.5 kB), and keyboard hotkeys (`Ctrl+B` minimize, `E` toggle automation, `R` retry) enable rapid bullet play. The bot starts disabled each time.
 
 ## Install and use
 
-1. Install Tampermonkey or Violentmonkey in Chromium.
+1. Install Tampermonkey or Violentmonkey in your browser: **Microsoft Edge**, **Firefox**, **Vivaldi**, **Helium**, **Google Chrome**, **Brave**, or mobile browsers (Firefox for Android + Violentmonkey, Safari + Userscripts, or Orion).
 2. Build and install `dist/bundle.user.js`. The userscript manager also fetches the two version-pinned engine resources.
 3. Choose a supported game: a Chess.com game, a PyChess round, or a Lichess round.
 4. On PyChess, keep **CHESS**, Chess960 off, and real-time play. For 1+0, set the minutes slider to index **4** (one minute), increment to 0, and select **White** by its title.

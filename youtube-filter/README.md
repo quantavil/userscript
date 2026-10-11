@@ -6,7 +6,7 @@
 
 ## 🚀 Installation
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/) (Chrome/Edge/Brave/Kiwi/Safari) or [Violentmonkey](https://violentmonkey.github.io/) (Firefox/Chromium).
+1. Install [Tampermonkey](https://www.tampermonkey.net/) (Microsoft Edge, Firefox, Vivaldi, Helium, Chrome, Brave, Safari) or [Violentmonkey](https://violentmonkey.github.io/) (Firefox/Chromium).
 2. Install from [`dist/youtube-filter.user.js`](dist/youtube-filter.user.js).
 3. Open or refresh [YouTube](https://www.youtube.com) (or [Mobile YouTube](https://m.youtube.com)).
 

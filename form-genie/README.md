@@ -17,16 +17,15 @@
   2. **Smart Heuristics**: Multi-token phrase scoring, transliterated Hindi support (*pita ka naam*, *sthai pata*), and option-list signals.
   3. **Optional Gemini AI Tier**: Off by default. Sends only field descriptors (never your data) to resolve ambiguous form layouts.
 - 🛠️ **Teach Mode & Custom Fields**: Create custom profile fields on the fly and map unrecognised inputs directly from an interactive on-page picker overlay.
-- 🌊 **Cascading Dropdowns & Split Fields**: Automatically handles dependent selects (State → District) with dynamic observation, split email domain dropdowns, and multi-part DOB selects (Day / Month / Year).
-- 📱 **Desktop & Mobile Support**: Designed for mouse and touch devices (Firefox Android + Violentmonkey, Kiwi, Safari Userscripts).
+- 📱 **Desktop & Mobile Support**: Designed for mouse and touch devices (Microsoft Edge, Firefox, Vivaldi, Helium, Safari Userscripts, Firefox for Android).
 
 ---
 
 ## 🚀 Installation
 
 ### 1. Install a Userscript Manager
-- **Desktop**: [Violentmonkey](https://violentmonkey.github.io/) (Recommended) or [Tampermonkey](https://www.tampermonkey.net/).
-- **Android**: Firefox for Android + Violentmonkey extension, or Kiwi Browser.
+- **Desktop**: [Violentmonkey](https://violentmonkey.github.io/) (Recommended) or [Tampermonkey](https://www.tampermonkey.net/) (Microsoft Edge, Firefox, Vivaldi, Helium, Chrome, Brave).
+- **Mobile**: Firefox for Android + Violentmonkey extension, or Safari + Userscripts extension.
 
 ### 2. Add Form Genie
 - Build `dist/form-genie.user.js` locally (see [Develop](#-development)) or install directly by opening `form-genie.user.js` in your browser.

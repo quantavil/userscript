@@ -77,16 +77,16 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 | **[impex-cube-dropdown](./impex-cube-dropdown)** | Transforms native select dropdowns into searchable, keyboard-friendly fuzzy dropdowns on Impex Cube portals. |
 | **[impex-cube-better-dates](./impex-cube-better-dates)** | Replaces ASP.NET calendars with a fast, manual-typing enabled, smart date picker on Impex Cube portals. |
 | **[floating-stopwatch](./floating-stopwatch)** | High-performance, tab-isolated floating stopwatch overlay with millisecond precision that persists seamlessly across page reloads. |
-| **[super-chess-bot](./super-chess-bot)** | Tournament-grade bullet and blitz chess analysis and move helper for Chess.com. |
+| **[super-chess-bot](./super-chess-bot)** | Local Stockfish 19 analysis and automated move play for Chess.com, PyChess, and Lichess standard games with mobile bottom-sheet and desktop panel. |
 
 ---
 
 ## 📥 Installation & Usage
 
 1. **Install a Userscript Manager** in your browser:
-   - [Tampermonkey](https://www.tampermonkey.net/) *(Recommended for Chromium & Safari)*
-   - [Violentmonkey](https://violentmonkey.github.io/) *(Recommended for Firefox & Chromium)*
-   - [FireMonkey](https://addons.mozilla.org/firefox/addon/firemonkey/) *(Lightweight alternative)*
+   - [Tampermonkey](https://www.tampermonkey.net/) *(Recommended for Microsoft Edge, Firefox, Vivaldi, Helium, Chrome & Safari)*
+   - [Violentmonkey](https://violentmonkey.github.io/) *(Recommended for Firefox, Microsoft Edge, Vivaldi, Helium & Chromium)*
+   - [FireMonkey](https://addons.mozilla.org/firefox/addon/firemonkey/) *(Lightweight alternative for Firefox)*
 
 2. **Install a Script**:
    - Navigate to any project folder linked above.
