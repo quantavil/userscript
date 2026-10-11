@@ -380,9 +380,8 @@ export function createPychessAdapter(page: () => Window = pageWindow): SiteAdapt
         const destinations = state.movable?.dests?.get(detail.from);
         if (!destinations) return false;
         const legalDestinations = new Set(Array.from(destinations, String));
-        const siteTargets = detail.toCandidates.filter((target) => legalDestinations.has(target));
-        if (siteTargets.length !== 1 || !siteTargets[0]) return false;
-        const to = siteTargets[0];
+        const to = detail.toCandidates.find((target) => legalDestinations.has(target));
+        if (!to) return false;
         if (detail.promotion && !state.stats) return false;
 
         const pending: PendingInput = {

@@ -372,11 +372,11 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
       const destinations = cgState.movable?.dests?.get?.(detail.from);
       if (!destinations) return false;
       const legalDestinations = new Set(Array.from(destinations, String));
-      const targets = detail.toCandidates.filter((candidate) => legalDestinations.has(candidate));
-      if (targets.length !== 1 || !targets[0]) return false;
+      const target = detail.toCandidates.find((candidate) => legalDestinations.has(candidate));
+      if (!target) return false;
       if (request.signal.aborted || !request.isCurrent() || round !== controller) return false;
       try {
-        pluginMove.call(controller, detail.from, targets[0], detail.promotionRole, true);
+        pluginMove.call(controller, detail.from, target, detail.promotionRole, true);
         return true;
       } catch {
         return false;

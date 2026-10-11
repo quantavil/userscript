@@ -103,6 +103,24 @@ describe('Lichess player-round adapter', () => {
     expect(castle.round.pluginMove).toHaveBeenCalledWith('e1', 'g1', undefined, true);
   });
 
+  it('submits standard castling when the round controller exposes both king destination and rook squares', async () => {
+    const castle = makeFixture({ fen: CASTLE_FEN, legalFrom: 'e1', legalTo: ['g1', 'h1'] });
+    await castle.captureRound();
+    const read = castle.adapter.read();
+    if (read.kind !== 'game') throw new Error('Expected a Lichess castling position');
+    await expect(castle.adapter.submitMove(makeRequest(read.snapshot, 'e1g1', AFTER_CASTLE))).resolves.toBe(true);
+    expect(castle.round.pluginMove).toHaveBeenCalledWith('e1', 'g1', undefined, true);
+  });
+
+  it('submits castling to the rook square when only the rook square is legal', async () => {
+    const castle = makeFixture({ fen: CASTLE_FEN, legalFrom: 'e1', legalTo: 'h1' });
+    await castle.captureRound();
+    const read = castle.adapter.read();
+    if (read.kind !== 'game') throw new Error('Expected a Lichess castling position');
+    await expect(castle.adapter.submitMove(makeRequest(read.snapshot, 'e1g1', AFTER_CASTLE))).resolves.toBe(true);
+    expect(castle.round.pluginMove).toHaveBeenCalledWith('e1', 'h1', undefined, true);
+  });
+
   it('refuses stale positions and destinations absent from the round controller legal moves', async () => {
     const stale = makeFixture();
     await stale.captureRound();
@@ -208,7 +226,7 @@ function makeFixture(
     promotionMove?: boolean;
     hasClock?: boolean;
     legalFrom?: string;
-    legalTo?: string;
+    legalTo?: string | string[];
   } = {},
 ) {
   const fen = options.fen ?? START_FEN;
@@ -222,14 +240,15 @@ function makeFixture(
   const steps = [{ ply: 0, fen, san: '', uci: '' }];
   let sideToMove = fen.split(' ')[1] === 'w' ? 'white' : 'black';
   let canMove = true;
+  const legalDestinations = Array.isArray(options.legalTo)
+    ? options.legalTo
+    : [options.legalTo ?? (promotion ? 'a8' : 'e4')];
   const state = {
     turnColor: sideToMove,
     orientation: 'white',
     movable: {
       color: 'white',
-      dests: new Map([
-        [options.legalFrom ?? (promotion ? 'a7' : 'e2'), [options.legalTo ?? (promotion ? 'a8' : 'e4')]],
-      ]),
+      dests: new Map([[options.legalFrom ?? (promotion ? 'a7' : 'e2'), legalDestinations]]),
     },
   };
   const handlers = {

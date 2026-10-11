@@ -122,6 +122,18 @@ describe('PyChess legal selection input', () => {
     expect(fixture.selectionCalls).toEqual(['e1', destination]);
   });
 
+  it('selects the standard destination when PyChess destinations include both king destination and rook squares', async () => {
+    const fixture = makePage({
+      fen: CASTLING_START,
+      initialFen: CASTLING_START,
+      destinations: new Map([['e1', ['g1', 'h1']]]),
+    });
+    const request = makeRequest(fixture, 'e1g1', 'r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1');
+
+    await expect(fixture.adapter.submitMove(request)).resolves.toBe(true);
+    expect(fixture.selectionCalls).toEqual(['e1', 'g1']);
+  });
+
   it('rejects a castle when the site destination map cannot represent the normalized move', async () => {
     const fixture = makePage({
       fen: CASTLING_START,
