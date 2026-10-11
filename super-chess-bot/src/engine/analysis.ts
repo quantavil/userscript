@@ -2,7 +2,7 @@ import { Chess } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { parseUci } from 'chessops/util';
 import type { Evaluation } from '../types/chess.js';
-import type { AnalysisResult, PositionHistory } from './uci-client.js';
+import type { AnalysisResult, MultiPvLine, PositionHistory } from './uci-client.js';
 import { engineWorker } from './worker-client.js';
 
 export type { AnalysisResult, PositionHistory } from './uci-client.js';
@@ -11,6 +11,7 @@ export interface BestLine {
   uci: string;
   pv: string;
   score: Evaluation;
+  multiPv?: MultiPvLine[];
 }
 
 export function warmEngine(): Promise<void> {
@@ -106,5 +107,6 @@ export function parseBestLine(data: unknown): BestLine | null {
     uci,
     pv: typeof result.pv === 'string' && result.pv.trim() ? result.pv.trim() : uci,
     score,
+    ...(result.multiPv && result.multiPv.length > 0 ? { multiPv: result.multiPv } : {}),
   };
 }

@@ -105,4 +105,23 @@ describe('panel view state', () => {
 
     expect(panel.updateAnalysis).toHaveBeenLastCalledWith(expect.objectContaining({ bestMove: 'e5' }));
   });
+
+  it('converts multiPv candidate lines to SAN against the accepted FEN', () => {
+    site.read.snapshot.fen = START_FEN;
+    BotState.multiPvLines = [
+      { multipv: 1, uci: 'e2e4', pv: 'e2e4 e7e5', evaluation: { cp: 50 }, depth: 14 },
+      { multipv: 2, uci: 'g1f3', pv: 'g1f3 d7d5', evaluation: { cp: 30 }, depth: 14 },
+    ];
+
+    ui.updateDisplay(1);
+
+    expect(panel.updateAnalysis).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        multiPvLines: [
+          expect.objectContaining({ multipv: 1, uci: 'e2e4', san: 'e4' }),
+          expect.objectContaining({ multipv: 2, uci: 'g1f3', san: 'Nf3' }),
+        ],
+      }),
+    );
+  });
 });

@@ -74,6 +74,30 @@ describe('UCI Stockfish client', () => {
     expect(constructions).toBe(1);
   });
 
+  it('parses MultiPV candidate lines and preserves evaluations against non-PV info lines', async () => {
+    const worker = new FakeUciWorker();
+    const client = new UciClient(() => worker);
+
+    const resultPromise = client.analyze(START_FEN, 12, 250);
+    await waitUntil(() => worker.commands.some((command) => command.startsWith('go ')));
+    expect(worker.commands).toContain('setoption name MultiPV value 3');
+
+    worker.emit('info depth 10 multipv 1 score cp 55 pv e2e4 e7e5');
+    worker.emit('info depth 10 multipv 2 score cp 30 pv d2d4 d7d5');
+    worker.emit('info depth 10 multipv 3 score cp -10 pv c2c4 c7c5');
+    // Non-PV currmove line should NOT corrupt line 2 or wipe its evaluation
+    worker.emit('info depth 11 multipv 2 currmove b1c3 currmovenumber 1');
+    worker.emit('bestmove e2e4');
+
+    const result = await resultPromise;
+    expect(result.success).toBe(true);
+    expect(result.bestmove).toBe('e2e4');
+    expect(result.multiPv).toHaveLength(3);
+    expect(result.multiPv?.[0]).toMatchObject({ multipv: 1, uci: 'e2e4', evaluation: { cp: 55 } });
+    expect(result.multiPv?.[1]).toMatchObject({ multipv: 2, uci: 'd2d4', evaluation: { cp: 30 } });
+    expect(result.multiPv?.[2]).toMatchObject({ multipv: 3, uci: 'c2c4', evaluation: { cp: -10 } });
+  });
+
   it('sends stop on cancellation, drains bestmove, then reuses the worker for the next search', async () => {
     const worker = new FakeUciWorker();
     let constructions = 0;

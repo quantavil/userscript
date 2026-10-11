@@ -74,6 +74,7 @@ vi.mock('../src/board.js', () => ({
   confirmSiteMove: dependencies.confirmMove,
   clearArrows: dependencies.clearArrows,
   drawArrow: dependencies.drawArrow,
+  drawMultiPvArrows: dependencies.drawArrow,
   cancelPendingMove: dependencies.cancelPending,
   getMoveRevision: () => 0,
 }));

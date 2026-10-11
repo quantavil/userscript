@@ -55,6 +55,12 @@ export function pa(): number {
   return getPlayerColor() === 'b' ? 2 : 1;
 }
 
+let menuPositionGetter: (() => { top: string; left: string } | null) | null = null;
+
+export function setMenuPositionGetter(getter: () => { top: string; left: string } | null): void {
+  menuPositionGetter = getter;
+}
+
 // Encapsulated state (avoid global pollution)
 export const BotState: BotStateInterface = {
   hackEnabled: 0,
@@ -70,13 +76,18 @@ export const BotState: BotStateInterface = {
   statusInfo: 'Ready',
   recoveryAction: null,
   ponderEnabled: 1,
+  targetElo: 0,
+  blunderShield: 1,
+  ghostMode: 0,
+  multiPvLines: undefined,
+  evalHistory: [],
 };
 
 // Settings persistence
 export const Settings = {
   save: debounce(() => {
     try {
-      const menuWrap = document.querySelector('#menuWrap') as HTMLElement | null;
+      const position = menuPositionGetter?.() ?? null;
       const settings: SettingsData = {
         hackEnabled: BotState.hackEnabled,
         botPower: BotState.botPower,
@@ -86,16 +97,19 @@ export const Settings = {
         openingBook: BotState.openingBook,
         openingStyle: BotState.openingStyle,
         ponderEnabled: BotState.ponderEnabled,
-        menuPosition: menuWrap ? { top: menuWrap.style.top, left: menuWrap.style.left } : null,
+        targetElo: BotState.targetElo,
+        blunderShield: BotState.blunderShield,
+        ghostMode: BotState.ghostMode,
+        menuPosition: position,
       };
-      localStorage.setItem('gabibot_settings', JSON.stringify(settings));
+      localStorage.setItem('scb_settings', JSON.stringify(settings));
     } catch (e) {
       console.warn('Failed to save settings:', e);
     }
   }, 200),
   load(): SettingsData | null {
     try {
-      const saved = localStorage.getItem('gabibot_settings');
+      const saved = localStorage.getItem('scb_settings');
       if (!saved) {
         BotState.hackEnabled = 0;
         return null;

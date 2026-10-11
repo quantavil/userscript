@@ -1,7 +1,7 @@
 import { Chess, normalizeMove } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { makeSquare, parseUci } from 'chessops/util';
-import { notifyBoardInput } from '../board.js';
+import { isBotOwnedNode, notifyBoardInput } from '../board.js';
 import { activateElement } from '../board-input.js';
 import { canonicalFen } from '../history.js';
 import {
@@ -105,7 +105,7 @@ function visible(element: HTMLElement): boolean {
 function isRelevantMutation(records: MutationRecord[]): boolean {
   return records.some((record) => {
     const target = mutationElement(record.target);
-    if (!target || target.closest('[data-gabibot-overlay], #menuWrap')) return false;
+    if (!target || isBotOwnedNode(target) || target.closest('[data-engine-layer], [data-scb-overlay]')) return false;
     if (target.closest('#mainboard, #movelist, .btn-controls')) return true;
     if (record.type === 'attributes' && record.attributeName === 'class' && target.matches('.clock')) return true;
     if (record.type !== 'childList') return false;

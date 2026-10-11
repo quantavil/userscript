@@ -6,9 +6,9 @@ import { BotState, pa } from './state.js';
 import { buildUI, ui } from './ui.js';
 
 async function init(): Promise<void> {
-  const page = window as Window & { __GABIBOT_RUNNING__?: boolean };
-  if (page.__GABIBOT_RUNNING__) return;
-  page.__GABIBOT_RUNNING__ = true;
+  const page = window as Window & { __SCB_ACTIVE__?: boolean };
+  if (page.__SCB_ACTIVE__) return;
+  page.__SCB_ACTIVE__ = true;
   try {
     BotState.onUpdateDisplay = (playingAs) => ui.updateDisplay(playingAs);
     const site = getSite();
@@ -44,7 +44,7 @@ async function init(): Promise<void> {
       return;
     }
   } catch (error) {
-    page.__GABIBOT_RUNNING__ = false;
+    page.__SCB_ACTIVE__ = false;
     BotState.statusInfo = error instanceof Error ? error.message : 'Initialization failed';
     BotState.recoveryAction = 'retry';
     ui.updateDisplay(1);

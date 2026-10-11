@@ -9,6 +9,8 @@ interface BoardContext {
   drawingBoard: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   evalBarWrap: HTMLDivElement;
+  whiteBar: HTMLElement;
+  blackBar: HTMLElement;
   detachListeners: () => void;
 }
 
@@ -32,13 +34,31 @@ function clearMoveWatcher(): void {
   boardMoveObserver = null;
 }
 
-function isBotOwnedNode(node: Node): boolean {
-  const candidate = node as Node & {
-    closest?: (selectors: string) => Element | null;
-    parentElement?: HTMLElement | null;
-  };
-  const element = typeof candidate.closest === 'function' ? (candidate as unknown as Element) : candidate.parentElement;
-  return !!element?.closest?.('[data-gabibot-overlay], #menuWrap');
+const OVERLAY_ATTR = 'data-engine-layer';
+const botOwnedNodes = new WeakSet<Node>();
+
+export function markBotNode<T extends Node>(node: T): T {
+  botOwnedNodes.add(node);
+  return node;
+}
+
+export function isBotOwnedNode(node: Node | null | undefined): boolean {
+  let curr: Node | null = node ?? null;
+  while (curr) {
+    if (botOwnedNodes.has(curr)) return true;
+    const el = curr as Element;
+    if (
+      typeof el.hasAttribute === 'function' &&
+      (el.hasAttribute(OVERLAY_ATTR) || el.hasAttribute('data-scb-overlay'))
+    ) {
+      return true;
+    }
+    if (typeof el.closest === 'function' && el.closest(`[${OVERLAY_ATTR}], [data-scb-overlay]`)) {
+      return true;
+    }
+    curr = curr.parentNode;
+  }
+  return false;
 }
 
 function isBotOwnedMutation(record: MutationRecord): boolean {
@@ -54,7 +74,7 @@ function notifyMutationListeners(): void {
     try {
       callback();
     } catch (error) {
-      console.error('GabiBot: Board mutation listener failed.', error);
+      console.error('Super Chess Bot: Board mutation listener failed.', error);
     }
   }
 }
@@ -105,25 +125,25 @@ export function attachToBoard(boardEl: HTMLElement | null): void {
   if (getComputedStyle(boardEl).position === 'static') boardEl.style.position = 'relative';
 
   const drawingBoard = document.createElement('canvas');
-  drawingBoard.id = 'arrowCanvas';
-  drawingBoard.setAttribute('data-gabibot-overlay', '');
+  markBotNode(drawingBoard);
   drawingBoard.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:100;';
+  if (BotState.ghostMode) drawingBoard.style.display = 'none';
   const ctx = drawingBoard.getContext('2d');
   if (!ctx) {
-    console.error('GabiBot: Failed to get 2D context.');
+    console.error('Super Chess Bot: Failed to get 2D context.');
     return;
   }
 
   const evalBarWrap = document.createElement('div');
-  evalBarWrap.id = 'evaluationBarWrap';
-  evalBarWrap.setAttribute('data-gabibot-overlay', '');
+  markBotNode(evalBarWrap);
   evalBarWrap.style.cssText =
     'position:absolute;height:100%;width:14px;left:-22px;top:0;background:#111;z-index:50;overflow:hidden;pointer-events:none;border-radius:4px;border:1px solid rgba(255,255,255,0.2);box-sizing:border-box;';
+  if (BotState.ghostMode) evalBarWrap.style.display = 'none';
   const whiteBar = document.createElement('div');
-  whiteBar.id = 'evaluationBarWhite';
+  markBotNode(whiteBar);
   whiteBar.style.cssText = 'position:absolute;left:0;right:0;bottom:0;height:50%;background:#f0d9b5;';
   const blackBar = document.createElement('div');
-  blackBar.id = 'evaluationBarBlack';
+  markBotNode(blackBar);
   blackBar.style.cssText = 'position:absolute;left:0;right:0;top:0;height:50%;background:#111;';
   evalBarWrap.appendChild(whiteBar);
   evalBarWrap.appendChild(blackBar);
@@ -152,6 +172,8 @@ export function attachToBoard(boardEl: HTMLElement | null): void {
     drawingBoard,
     ctx,
     evalBarWrap,
+    whiteBar,
+    blackBar,
     detachListeners() {
       for (const eventName of userInputEvents) {
         boardEl.removeEventListener(eventName, cancelPendingOnUserAction, true);
@@ -243,7 +265,7 @@ function getSquareCenterClientXY(square: string): Coordinates | null {
 
   const result = { x: offsetX + (x + 0.5) * tile, y: offsetY + (y + 0.5) * tile };
   if (Number.isNaN(result.x) || Number.isNaN(result.y)) {
-    console.warn(`GabiBot: Invalid coordinates for square ${square}. Board size: ${rect.width}x${rect.height}`);
+    console.warn(`Super Chess Bot: Invalid coordinates for square ${square}. Board size: ${rect.width}x${rect.height}`);
     return null;
   }
   return result;
@@ -258,6 +280,7 @@ function getSquareCenterCanvasXY(square: string): Coordinates | null {
 }
 
 export function drawArrow(uciFrom: string, uciTo: string, color: string, thickness: number): void {
+  if (BotState.ghostMode) return;
   if (!boardCtx || !uciFrom || !uciTo || uciFrom.length < 2 || uciTo.length < 2) return;
   const { drawingBoard, ctx } = boardCtx;
 
@@ -298,6 +321,38 @@ export function drawArrow(uciFrom: string, uciTo: string, color: string, thickne
   ctx.closePath();
   ctx.fillStyle = color;
   ctx.fill();
+}
+
+/** Draws alternative arrows for Multi-PV lines (#1 green, #2 cyan, #3 amber). */
+export function drawMultiPvArrows(lines: { uci: string }[]): void {
+  clearArrows();
+  if (BotState.ghostMode || !boardCtx || !lines || lines.length === 0) return;
+
+  const styles = [
+    { color: 'rgba(74, 222, 128, 0.85)', thickness: 4 }, // #1 Primary Green
+    { color: 'rgba(56, 189, 248, 0.75)', thickness: 3 }, // #2 Secondary Cyan
+    { color: 'rgba(251, 191, 36, 0.65)', thickness: 2.5 }, // #3 Tertiary Amber
+  ];
+
+  // Draw #3 first, then #2, then #1 on top
+  for (let i = Math.min(lines.length, styles.length) - 1; i >= 0; i--) {
+    const uci = lines[i]?.uci;
+    if (uci && uci.length >= 4) {
+      drawArrow(uci.slice(0, 2), uci.slice(2, 4), styles[i].color, styles[i].thickness);
+    }
+  }
+}
+
+export function setGhostMode(enabled: boolean): void {
+  if (!boardCtx) return;
+  if (enabled) {
+    boardCtx.drawingBoard.style.display = 'none';
+    boardCtx.evalBarWrap.style.display = 'none';
+    clearArrows();
+  } else {
+    boardCtx.drawingBoard.style.display = '';
+    boardCtx.evalBarWrap.style.display = '';
+  }
 }
 
 /** Confirm a site move only from the accepted position at its expected ply. */
@@ -391,8 +446,12 @@ function setStyleIfChanged(
 
 export function updateEvaluationBar(evaluation: string | number, _playingAs?: number): void {
   if (!boardCtx) return;
-  const whiteBar = boardCtx.evalBarWrap.querySelector('#evaluationBarWhite') as HTMLElement | null;
-  const blackBar = boardCtx.evalBarWrap.querySelector('#evaluationBarBlack') as HTMLElement | null;
+  if (BotState.ghostMode) {
+    boardCtx.evalBarWrap.style.display = 'none';
+    return;
+  }
+  boardCtx.evalBarWrap.style.display = '';
+  const { whiteBar, blackBar } = boardCtx;
   if (!whiteBar || !blackBar) return;
 
   let score = 0;

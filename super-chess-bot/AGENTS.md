@@ -56,7 +56,7 @@ Project guidance for `super-chess-bot`.
 
 ## Performance and audit notes
 
-- Board overlays and the panel carry `data-gabibot-overlay` / `#menuWrap` markers. The board observer must ignore their mutations so evaluation rendering cannot invalidate game state or trigger another board scan. Avoid writing a style value when it is already current.
+- Board overlays and the panel use cloaked nodes and `data-engine-layer` markers. The board observer ignores their mutations so evaluation rendering cannot invalidate game state or trigger another board scan. Avoid writing a style value when it is already current.
 - Resolve the active board from rendered candidates, preferring one with the game's FEN API. Never use the first selector match without checking visibility and game ownership.
 - `attachToBoard(null)` must also clear the move watcher. Preserve the request to watch so a later board can reattach.
 - Serialize move input. Catch each mutation-listener error independently, and ignore UCI `info string` records when parsing search data.

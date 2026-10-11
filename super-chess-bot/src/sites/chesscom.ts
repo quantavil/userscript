@@ -1,3 +1,4 @@
+import { isBotOwnedNode } from '../board.js';
 import { canonicalFen, readPositionHistory } from '../history.js';
 import { installChesscomControllerBridge, setCapturedChesscomController } from './chesscom-bridge.js';
 import {
@@ -66,7 +67,7 @@ function nodeContainsSelector(node: Node, selector: string): boolean {
 function isRelevantMutation(records: MutationRecord[]): boolean {
   return records.some((record) => {
     const target = mutationElement(record.target);
-    if (!target || target.closest('[data-gabibot-overlay], #menuWrap')) return false;
+    if (!target || isBotOwnedNode(target) || target.closest('[data-engine-layer], [data-scb-overlay]')) return false;
     const onBoard = !!closestOrSelf(target, BOARD_SELECTOR);
     const onClock = !!closestOrSelf(target, CLOCK_REGION_SELECTOR);
     const onResult = !!closestOrSelf(target, RESULT_SELECTOR);

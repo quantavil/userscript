@@ -195,6 +195,59 @@ describe('panel hotkeys and settings', () => {
 
     updatePanelSetting('timingMode', 'fixed');
     expect(BotState.timingMode).toBe('fixed');
+
+    updatePanelSetting('targetElo', 1500);
+    expect(BotState.targetElo).toBe(1500);
+
+    updatePanelSetting('blunderShield', true);
+    expect(BotState.blunderShield).toBe(1);
+
+    updatePanelSetting('ghostMode', true);
+    expect(BotState.ghostMode).toBe(1);
+  });
+
+  it('toggles ghost mode when pressing KeyG or Ctrl+Shift+G', () => {
+    updatePanelSetting('ghostMode', false);
+    expect(BotState.ghostMode).toBe(0);
+
+    handlePanelKeyDown(
+      { key: 'g', code: 'KeyG' },
+      { setEnabled: setEnabledMock, recover: recoverMock },
+      toggleMinimizedMock,
+    );
+    expect(BotState.ghostMode).toBe(1);
+
+    handlePanelKeyDown(
+      { key: 'G', code: 'KeyG', ctrlKey: true, shiftKey: true },
+      { setEnabled: setEnabledMock, recover: recoverMock },
+      toggleMinimizedMock,
+    );
+    expect(BotState.ghostMode).toBe(0);
+  });
+
+  it('toggles ghost mode and persists setting', () => {
+    updatePanelSetting('ghostMode', true);
+    expect(BotState.ghostMode).toBe(1);
+    expect(Settings.save).toHaveBeenCalled();
+
+    updatePanelSetting('ghostMode', false);
+    expect(BotState.ghostMode).toBe(0);
+  });
+
+  it('updates panel analysis with multiPv lines and eval history', () => {
+    updatePanelAnalysis({
+      status: 'Ready',
+      evaluation: '+0.50',
+      bestMove: 'e4',
+      principalVariation: 'e4 e5',
+      recoveryAction: null,
+      multiPvLines: [
+        { multipv: 1, uci: 'e2e4', evaluation: { cp: 50 }, depth: 20, pv: 'e2e4 e7e5' },
+        { multipv: 2, uci: 'd2d4', evaluation: { cp: 30 }, depth: 20, pv: 'd2d4 d7d5' },
+      ],
+      evalHistory: [0, 0.2, 0.5],
+    });
+    // Should run cleanly without errors
   });
 
   it('shows site-supported controls for each transport', () => {

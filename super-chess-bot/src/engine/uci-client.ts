@@ -8,12 +8,23 @@ interface AnalysisEvaluation {
   mate?: number;
 }
 
+export interface MultiPvLine {
+  multipv: number;
+  depth: number;
+  uci: string;
+  pv: string;
+  evaluation: AnalysisEvaluation;
+  nodes?: number;
+  time?: number;
+}
+
 interface AnalysisResultFields {
   depth: number;
   pv: string;
   evaluation: AnalysisEvaluation;
   nodes?: number;
   time?: number;
+  multiPv?: MultiPvLine[];
 }
 
 export type AnalysisResult =
@@ -66,6 +77,8 @@ interface SearchJob {
   searchStarted: boolean;
   stopSent: boolean;
   info: SearchInfo;
+  multiPvLines: Map<number, MultiPvLine>;
+  hasMultiPv: boolean;
   resultValue?: AnalysisResult;
   result?: Deferred<AnalysisResult>;
   searchTimer?: ReturnType<typeof setTimeout>;
@@ -135,13 +148,20 @@ function finiteInteger(raw: string | undefined): number | undefined {
   return Number.isSafeInteger(value) ? value : undefined;
 }
 
-function parseInfo(line: string, previous: SearchInfo): SearchInfo {
+function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchInfo {
   const tokens = line.trim().split(/\s+/);
   if (tokens[0] !== 'info' || tokens[1] === 'string') return previous;
-  const depth = finiteInteger(tokenValue(tokens, 'depth')) ?? previous.depth;
+  const multipvIndex = tokens.indexOf('multipv');
+  const hasMultipvToken = multipvIndex >= 0;
+  const multipv = hasMultipvToken ? (finiteInteger(tokens[multipvIndex + 1]) ?? 1) : 1;
+
+  const existingLine = job?.multiPvLines.get(multipv);
+  const depth =
+    finiteInteger(tokenValue(tokens, 'depth')) ?? (multipv === 1 ? previous.depth : (existingLine?.depth ?? 0));
+
   const cpIndex = tokens.indexOf('cp');
   const mateIndex = tokens.indexOf('mate');
-  let evaluation = previous.evaluation;
+  let evaluation: AnalysisEvaluation = multipv === 1 ? previous.evaluation : (existingLine?.evaluation ?? {});
   if (cpIndex >= 0) {
     const cp = finiteInteger(tokens[cpIndex + 1]);
     if (cp !== undefined) evaluation = { cp };
@@ -151,14 +171,36 @@ function parseInfo(line: string, previous: SearchInfo): SearchInfo {
   }
 
   const pvIndex = tokens.indexOf('pv');
-  const pv = pvIndex >= 0 ? tokens.slice(pvIndex + 1).join(' ') : previous.pv;
-  return {
-    depth,
-    pv,
-    evaluation,
-    nodes: finiteInteger(tokenValue(tokens, 'nodes')) ?? previous.nodes,
-    time: finiteInteger(tokenValue(tokens, 'time')) ?? previous.time,
-  };
+  const pv =
+    pvIndex >= 0 ? tokens.slice(pvIndex + 1).join(' ') : multipv === 1 ? previous.pv : (existingLine?.pv ?? '');
+
+  const nodes = finiteInteger(tokenValue(tokens, 'nodes')) ?? previous.nodes;
+  const time = finiteInteger(tokenValue(tokens, 'time')) ?? previous.time;
+
+  if (job && (hasMultipvToken || pvIndex >= 0)) {
+    if (hasMultipvToken) job.hasMultiPv = true;
+    const uci = pv ? (pv.split(/\s+/)[0] ?? '') : '';
+    job.multiPvLines.set(multipv, {
+      multipv,
+      depth,
+      uci,
+      pv,
+      evaluation,
+      ...(nodes !== undefined ? { nodes } : {}),
+      ...(time !== undefined ? { time } : {}),
+    });
+  }
+
+  if (multipv === 1) {
+    return {
+      depth,
+      pv,
+      evaluation,
+      nodes,
+      time,
+    };
+  }
+  return previous;
 }
 
 function positionCommand(fen: string, history?: PositionHistory): string {
@@ -301,6 +343,8 @@ export class UciClient {
       searchStarted: false,
       stopSent: false,
       info: { depth: 0, pv: '', evaluation: {} },
+      multiPvLines: new Map(),
+      hasMultiPv: false,
     };
     if (signal) this.attachAbort(job, signal);
     this.queue.push(job);
@@ -524,6 +568,7 @@ export class UciClient {
 
     const ready = deferred<void>();
     this.readyWaiter = ready;
+    this.send('setoption name MultiPV value 3');
     this.send('isready');
     try {
       await withTimeout(ready.promise, this.initTimeoutMs, 'Stockfish readiness');
@@ -600,7 +645,7 @@ export class UciClient {
     const job = this.active;
     if (!job?.searchStarted) return;
     if (message.startsWith('info ')) {
-      job.info = parseInfo(message, job.info);
+      job.info = parseInfo(message, job.info, job);
       return;
     }
     if (message.startsWith('bestmove ')) {
@@ -608,12 +653,17 @@ export class UciClient {
       if (job.stopTimer) clearTimeout(job.stopTimer);
       const bestmove = message.split(/\s+/)[1] ?? '';
       const terminal = bestmove === '(none)';
+      const multiPv =
+        job.hasMultiPv && job.multiPvLines.size > 0
+          ? Array.from(job.multiPvLines.values()).sort((a, b) => a.multipv - b.multipv)
+          : undefined;
       const common = {
         depth: job.info.depth,
         pv: job.info.pv,
         evaluation: job.info.evaluation,
         ...(job.info.nodes === undefined ? {} : { nodes: job.info.nodes }),
         ...(job.info.time === undefined ? {} : { time: job.info.time }),
+        ...(multiPv ? { multiPv } : {}),
       };
       job.resultValue = validBestMove(bestmove)
         ? { ...common, success: true, bestmove }

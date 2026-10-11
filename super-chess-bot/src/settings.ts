@@ -10,6 +10,9 @@ export const DEFAULT_SETTINGS: SettingsData = {
   openingBook: 1,
   openingStyle: 'balanced',
   ponderEnabled: 1,
+  targetElo: 0,
+  blunderShield: 1,
+  ghostMode: 0,
   menuPosition: null,
 };
 
@@ -32,6 +35,9 @@ const savedSettingsSchema = v.object({
   openingBook: v.optional(flagSchema),
   openingStyle: v.optional(openingStyleSchema),
   ponderEnabled: v.optional(flagSchema),
+  targetElo: v.optional(integerInRange(0, 3200)),
+  blunderShield: v.optional(flagSchema),
+  ghostMode: v.optional(flagSchema),
   menuPosition: v.optional(v.nullable(positionSchema)),
 });
 

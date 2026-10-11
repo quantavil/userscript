@@ -27,6 +27,9 @@ describe('loadSettings', () => {
       openingStyle: 'balanced',
       ponderEnabled: 1,
       timingMode: 'dynamic',
+      targetElo: 0,
+      blunderShield: 1,
+      ghostMode: 0,
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);
@@ -43,6 +46,9 @@ describe('loadSettings', () => {
       openingStyle: 'balanced',
       ponderEnabled: 1,
       timingMode: 'dynamic',
+      targetElo: 0,
+      blunderShield: 1,
+      ghostMode: 0,
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);
@@ -59,6 +65,9 @@ describe('loadSettings', () => {
       openingStyle: 'balanced',
       ponderEnabled: 1,
       timingMode: 'dynamic',
+      targetElo: 0,
+      blunderShield: 1,
+      ghostMode: 0,
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);

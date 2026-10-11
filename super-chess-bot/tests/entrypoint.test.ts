@@ -24,7 +24,7 @@ vi.mock('../src/ui.js', () => ({ buildUI: dependencies.buildUI, ui: { updateDisp
 describe('userscript startup', () => {
   beforeEach(() => {
     vi.resetModules();
-    vi.stubGlobal('window', { __GABIBOT_RUNNING__: false });
+    vi.stubGlobal('window', { __SCB_ACTIVE__: false });
     dependencies.warm.mockReset().mockResolvedValue(undefined);
     dependencies.buildUI.mockReset().mockResolvedValue(undefined);
     dependencies.updateDisplay.mockReset();

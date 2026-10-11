@@ -1853,6 +1853,9 @@
 		openingBook: 1,
 		openingStyle: "balanced",
 		ponderEnabled: 1,
+		targetElo: 0,
+		blunderShield: 1,
+		ghostMode: 0,
 		menuPosition: null
 	};
 	var flagSchema = union([literal(0), literal(1)]);
@@ -1878,6 +1881,9 @@
 		openingBook: optional(flagSchema),
 		openingStyle: optional(openingStyleSchema),
 		ponderEnabled: optional(flagSchema),
+		targetElo: optional(integerInRange(0, 3200)),
+		blunderShield: optional(flagSchema),
+		ghostMode: optional(flagSchema),
 		menuPosition: optional(nullable(positionSchema))
 	});
 	function loadSettings(serialized) {
@@ -2155,6 +2161,10 @@
 	function pa() {
 		return getPlayerColor() === "b" ? 2 : 1;
 	}
+	var menuPositionGetter = null;
+	function setMenuPositionGetter(getter) {
+		menuPositionGetter = getter;
+	}
 	var BotState = {
 		hackEnabled: 0,
 		botPower: 30,
@@ -2168,12 +2178,17 @@
 		principalVariation: "-",
 		statusInfo: "Ready",
 		recoveryAction: null,
-		ponderEnabled: 1
+		ponderEnabled: 1,
+		targetElo: 0,
+		blunderShield: 1,
+		ghostMode: 0,
+		multiPvLines: void 0,
+		evalHistory: []
 	};
 	var Settings = {
 		save: debounce(() => {
 			try {
-				const menuWrap = document.querySelector("#menuWrap");
+				const position = menuPositionGetter?.() ?? null;
 				const settings = {
 					hackEnabled: BotState.hackEnabled,
 					botPower: BotState.botPower,
@@ -2183,19 +2198,19 @@
 					openingBook: BotState.openingBook,
 					openingStyle: BotState.openingStyle,
 					ponderEnabled: BotState.ponderEnabled,
-					menuPosition: menuWrap ? {
-						top: menuWrap.style.top,
-						left: menuWrap.style.left
-					} : null
+					targetElo: BotState.targetElo,
+					blunderShield: BotState.blunderShield,
+					ghostMode: BotState.ghostMode,
+					menuPosition: position
 				};
-				localStorage.setItem("gabibot_settings", JSON.stringify(settings));
+				localStorage.setItem("scb_settings", JSON.stringify(settings));
 			} catch (e) {
 				console.warn("Failed to save settings:", e);
 			}
 		}, 200),
 		load() {
 			try {
-				const saved = localStorage.getItem("gabibot_settings");
+				const saved = localStorage.getItem("scb_settings");
 				if (!saved) {
 					BotState.hackEnabled = 0;
 					return null;
@@ -2225,9 +2240,22 @@
 		boardMoveObserver?.disconnect();
 		boardMoveObserver = null;
 	}
+	var OVERLAY_ATTR = "data-engine-layer";
+	var botOwnedNodes = new WeakSet();
+	function markBotNode(node) {
+		botOwnedNodes.add(node);
+		return node;
+	}
 	function isBotOwnedNode(node) {
-		const candidate = node;
-		return !!(typeof candidate.closest === "function" ? candidate : candidate.parentElement)?.closest?.("[data-gabibot-overlay], #menuWrap");
+		let curr = node ?? null;
+		while (curr) {
+			if (botOwnedNodes.has(curr)) return true;
+			const el = curr;
+			if (typeof el.hasAttribute === "function" && (el.hasAttribute(OVERLAY_ATTR) || el.hasAttribute("data-scb-overlay"))) return true;
+			if (typeof el.closest === "function" && el.closest(`[${OVERLAY_ATTR}], [data-scb-overlay]`)) return true;
+			curr = curr.parentNode;
+		}
+		return false;
 	}
 	function isBotOwnedMutation(record) {
 		if (isBotOwnedNode(record.target)) return true;
@@ -2240,7 +2268,7 @@
 		for (const callback of [...mutationListeners]) try {
 			callback();
 		} catch (error) {
-			console.error("GabiBot: Board mutation listener failed.", error);
+			console.error("Super Chess Bot: Board mutation listener failed.", error);
 		}
 	}
 	function attachMoveWatcher() {
@@ -2286,23 +2314,23 @@
 		if (!boardEl) return;
 		if (getComputedStyle(boardEl).position === "static") boardEl.style.position = "relative";
 		const drawingBoard = document.createElement("canvas");
-		drawingBoard.id = "arrowCanvas";
-		drawingBoard.setAttribute("data-gabibot-overlay", "");
+		markBotNode(drawingBoard);
 		drawingBoard.style.cssText = "position:absolute;top:0;left:0;pointer-events:none;z-index:100;";
+		if (BotState.ghostMode) drawingBoard.style.display = "none";
 		const ctx = drawingBoard.getContext("2d");
 		if (!ctx) {
-			console.error("GabiBot: Failed to get 2D context.");
+			console.error("Super Chess Bot: Failed to get 2D context.");
 			return;
 		}
 		const evalBarWrap = document.createElement("div");
-		evalBarWrap.id = "evaluationBarWrap";
-		evalBarWrap.setAttribute("data-gabibot-overlay", "");
+		markBotNode(evalBarWrap);
 		evalBarWrap.style.cssText = "position:absolute;height:100%;width:14px;left:-22px;top:0;background:#111;z-index:50;overflow:hidden;pointer-events:none;border-radius:4px;border:1px solid rgba(255,255,255,0.2);box-sizing:border-box;";
+		if (BotState.ghostMode) evalBarWrap.style.display = "none";
 		const whiteBar = document.createElement("div");
-		whiteBar.id = "evaluationBarWhite";
+		markBotNode(whiteBar);
 		whiteBar.style.cssText = "position:absolute;left:0;right:0;bottom:0;height:50%;background:#f0d9b5;";
 		const blackBar = document.createElement("div");
-		blackBar.id = "evaluationBarBlack";
+		markBotNode(blackBar);
 		blackBar.style.cssText = "position:absolute;left:0;right:0;top:0;height:50%;background:#111;";
 		evalBarWrap.appendChild(whiteBar);
 		evalBarWrap.appendChild(blackBar);
@@ -2327,6 +2355,8 @@
 			drawingBoard,
 			ctx,
 			evalBarWrap,
+			whiteBar,
+			blackBar,
 			detachListeners() {
 				for (const eventName of userInputEvents) boardEl.removeEventListener(eventName, cancelPendingOnUserAction, true);
 				ro.disconnect();
@@ -2399,7 +2429,7 @@
 			y: offsetY + (y + .5) * tile
 		};
 		if (Number.isNaN(result.x) || Number.isNaN(result.y)) {
-			console.warn(`GabiBot: Invalid coordinates for square ${square}. Board size: ${rect.width}x${rect.height}`);
+			console.warn(`Super Chess Bot: Invalid coordinates for square ${square}. Board size: ${rect.width}x${rect.height}`);
 			return null;
 		}
 		return result;
@@ -2415,6 +2445,7 @@
 		};
 	}
 	function drawArrow(uciFrom, uciTo, color, thickness) {
+		if (BotState.ghostMode) return;
 		if (!boardCtx || !uciFrom || !uciTo || uciFrom.length < 2 || uciTo.length < 2) return;
 		const { drawingBoard, ctx } = boardCtx;
 		const a = getSquareCenterCanvasXY(uciFrom);
@@ -2445,6 +2476,39 @@
 		ctx.closePath();
 		ctx.fillStyle = color;
 		ctx.fill();
+	}
+	function drawMultiPvArrows(lines) {
+		clearArrows();
+		if (BotState.ghostMode || !boardCtx || !lines || lines.length === 0) return;
+		const styles = [
+			{
+				color: "rgba(74, 222, 128, 0.85)",
+				thickness: 4
+			},
+			{
+				color: "rgba(56, 189, 248, 0.75)",
+				thickness: 3
+			},
+			{
+				color: "rgba(251, 191, 36, 0.65)",
+				thickness: 2.5
+			}
+		];
+		for (let i = Math.min(lines.length, styles.length) - 1; i >= 0; i--) {
+			const uci = lines[i]?.uci;
+			if (uci && uci.length >= 4) drawArrow(uci.slice(0, 2), uci.slice(2, 4), styles[i].color, styles[i].thickness);
+		}
+	}
+	function setGhostMode(enabled) {
+		if (!boardCtx) return;
+		if (enabled) {
+			boardCtx.drawingBoard.style.display = "none";
+			boardCtx.evalBarWrap.style.display = "none";
+			clearArrows();
+		} else {
+			boardCtx.drawingBoard.style.display = "";
+			boardCtx.evalBarWrap.style.display = "";
+		}
 	}
 	function confirmSiteMove(request, adapter, timeout = 1e3) {
 		const expectedFen = canonicalFen(request.expectedFen);
@@ -2521,8 +2585,12 @@
 	}
 	function updateEvaluationBar(evaluation, _playingAs) {
 		if (!boardCtx) return;
-		const whiteBar = boardCtx.evalBarWrap.querySelector("#evaluationBarWhite");
-		const blackBar = boardCtx.evalBarWrap.querySelector("#evaluationBarBlack");
+		if (BotState.ghostMode) {
+			boardCtx.evalBarWrap.style.display = "none";
+			return;
+		}
+		boardCtx.evalBarWrap.style.display = "";
+		const { whiteBar, blackBar } = boardCtx;
 		if (!whiteBar || !blackBar) return;
 		let score = 0;
 		if (typeof evaluation === "string") {
@@ -2608,13 +2676,17 @@
 		const value = Number(raw);
 		return Number.isSafeInteger(value) ? value : void 0;
 	}
-	function parseInfo(line, previous) {
+	function parseInfo(line, previous, job) {
 		const tokens = line.trim().split(/\s+/);
 		if (tokens[0] !== "info" || tokens[1] === "string") return previous;
-		const depth = finiteInteger(tokenValue(tokens, "depth")) ?? previous.depth;
+		const multipvIndex = tokens.indexOf("multipv");
+		const hasMultipvToken = multipvIndex >= 0;
+		const multipv = hasMultipvToken ? finiteInteger(tokens[multipvIndex + 1]) ?? 1 : 1;
+		const existingLine = job?.multiPvLines.get(multipv);
+		const depth = finiteInteger(tokenValue(tokens, "depth")) ?? (multipv === 1 ? previous.depth : existingLine?.depth ?? 0);
 		const cpIndex = tokens.indexOf("cp");
 		const mateIndex = tokens.indexOf("mate");
-		let evaluation = previous.evaluation;
+		let evaluation = multipv === 1 ? previous.evaluation : existingLine?.evaluation ?? {};
 		if (cpIndex >= 0) {
 			const cp = finiteInteger(tokens[cpIndex + 1]);
 			if (cp !== void 0) evaluation = { cp };
@@ -2623,13 +2695,30 @@
 			if (mate !== void 0) evaluation = { mate };
 		}
 		const pvIndex = tokens.indexOf("pv");
-		return {
+		const pv = pvIndex >= 0 ? tokens.slice(pvIndex + 1).join(" ") : multipv === 1 ? previous.pv : existingLine?.pv ?? "";
+		const nodes = finiteInteger(tokenValue(tokens, "nodes")) ?? previous.nodes;
+		const time = finiteInteger(tokenValue(tokens, "time")) ?? previous.time;
+		if (job && (hasMultipvToken || pvIndex >= 0)) {
+			if (hasMultipvToken) job.hasMultiPv = true;
+			const uci = pv ? pv.split(/\s+/)[0] ?? "" : "";
+			job.multiPvLines.set(multipv, {
+				multipv,
+				depth,
+				uci,
+				pv,
+				evaluation,
+				...nodes !== void 0 ? { nodes } : {},
+				...time !== void 0 ? { time } : {}
+			});
+		}
+		if (multipv === 1) return {
 			depth,
-			pv: pvIndex >= 0 ? tokens.slice(pvIndex + 1).join(" ") : previous.pv,
+			pv,
 			evaluation,
-			nodes: finiteInteger(tokenValue(tokens, "nodes")) ?? previous.nodes,
-			time: finiteInteger(tokenValue(tokens, "time")) ?? previous.time
+			nodes,
+			time
 		};
+		return previous;
 	}
 	function positionCommand(fen, history) {
 		if (history && typeof history.startFen === "string" && history.startFen.length > 0 && !/[\r\n]/.test(history.startFen) && Array.isArray(history.moves) && history.moves.every((move) => /^[a-h][1-8][a-h][1-8][nbrq]?$/.test(move))) {
@@ -2728,7 +2817,9 @@
 					depth: 0,
 					pv: "",
 					evaluation: {}
-				}
+				},
+				multiPvLines: new Map(),
+				hasMultiPv: false
 			};
 			if (signal) this.attachAbort(job, signal);
 			this.queue.push(job);
@@ -2926,6 +3017,7 @@
 			}
 			const ready = deferred();
 			this.readyWaiter = ready;
+			this.send("setoption name MultiPV value 3");
 			this.send("isready");
 			try {
 				await withTimeout(ready.promise, this.initTimeoutMs, "Stockfish readiness");
@@ -2996,7 +3088,7 @@
 			const job = this.active;
 			if (!job?.searchStarted) return;
 			if (message.startsWith("info ")) {
-				job.info = parseInfo(message, job.info);
+				job.info = parseInfo(message, job.info, job);
 				return;
 			}
 			if (message.startsWith("bestmove ")) {
@@ -3004,12 +3096,14 @@
 				if (job.stopTimer) clearTimeout(job.stopTimer);
 				const bestmove = message.split(/\s+/)[1] ?? "";
 				const terminal = bestmove === "(none)";
+				const multiPv = job.hasMultiPv && job.multiPvLines.size > 0 ? Array.from(job.multiPvLines.values()).sort((a, b) => a.multipv - b.multipv) : void 0;
 				const common = {
 					depth: job.info.depth,
 					pv: job.info.pv,
 					evaluation: job.info.evaluation,
 					...job.info.nodes === void 0 ? {} : { nodes: job.info.nodes },
-					...job.info.time === void 0 ? {} : { time: job.info.time }
+					...job.info.time === void 0 ? {} : { time: job.info.time },
+					...multiPv ? { multiPv } : {}
 				};
 				job.resultValue = validBestMove(bestmove) ? {
 					...common,
@@ -3204,7 +3298,8 @@
 		return {
 			uci,
 			pv: typeof result.pv === "string" && result.pv.trim() ? result.pv.trim() : uci,
-			score
+			score,
+			...result.multiPv && result.multiPv.length > 0 ? { multiPv: result.multiPv } : {}
 		};
 	}
 	var DEFAULT_BRIDGE_ERROR$1 = "Chess.com board controller not captured. Enable synchronous page-context injection in your userscript manager, then reload.";
@@ -3245,7 +3340,7 @@
 	function isRelevantMutation$1(records) {
 		return records.some((record) => {
 			const target = mutationElement(record.target);
-			if (!target || target.closest("[data-gabibot-overlay], #menuWrap")) return false;
+			if (!target || isBotOwnedNode(target) || target.closest("[data-engine-layer], [data-scb-overlay]")) return false;
 			const onBoard = !!closestOrSelf(target, BOARD_SELECTOR);
 			const onClock = !!closestOrSelf(target, CLOCK_REGION_SELECTOR);
 			const onResult = !!closestOrSelf(target, RESULT_SELECTOR);
@@ -4143,7 +4238,7 @@
 	function isRelevantMutation(records) {
 		return records.some((record) => {
 			const target = mutationElement(record.target);
-			if (!target || target.closest("[data-gabibot-overlay], #menuWrap")) return false;
+			if (!target || isBotOwnedNode(target) || target.closest("[data-engine-layer], [data-scb-overlay]")) return false;
 			if (target.closest("#mainboard, #movelist, .btn-controls")) return true;
 			if (record.type === "attributes" && record.attributeName === "class" && target.matches(".clock")) return true;
 			if (record.type !== "childList") return false;
@@ -4541,7 +4636,7 @@
 		const sanText = typeof san === "string" ? san : String(san ?? "");
 		return whiteToMove ? `${moveNumber}. ${sanText}` : `${moveNumber}... ${sanText}`;
 	}
-	var panel_default = ":host{--ink:#1b1a17;--well:#151411;--wood:#252420;--wood-raised:#302e28;--line:#3b3932;--paper:#efe9dc;--muted:#a8a193;--brass:#d9a94f;--sage:#8fb996;--brick:#d8826b;--serif:\"Iowan Old Style\", \"Palatino Linotype\", Palatino, \"Book Antiqua\", Georgia, serif;--sans:system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif;--radius:14px;--radius-control:8px;--target:40px;--ease:cubic-bezier(.2, .7, .2, 1);all:initial;z-index:9999999;width:min(380px,100vw - 24px);color:var(--paper);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font:13px / 1.45 var(--sans);-webkit-font-smoothing:antialiased;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}.panel button{font:inherit;color:inherit}.panel :is(button,input):focus-visible,.panel-log:focus-visible{outline:2px solid var(--brass);outline-offset:2px}.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--ink);overflow:hidden;box-shadow:0 16px 40px #0000006b}.panel-bar{cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:60px;padding:8px 8px 8px 12px;display:flex}.panel[data-state=open] .panel-bar{border-bottom:1px solid var(--line)}:host(.dragging) .panel-bar{cursor:grabbing}.panel-mark{border-radius:var(--radius-control);background:var(--wood-raised);width:32px;height:32px;color:var(--brass);flex:none;place-items:center;display:grid}.panel-mark-icon{display:block}.panel-bar-text{flex-direction:column;flex:auto;gap:3px;min-width:0;display:flex}.panel-title{letter-spacing:-.005em;white-space:nowrap;flex-shrink:0;font-size:14px;font-weight:600}.panel-status,.panel-summary{min-width:0;color:var(--muted);align-items:center;gap:7px;font-size:12px;display:flex}.panel-status-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-summary b{color:var(--paper);font:600 17px / 1 var(--serif)}.panel-summary>span:last-child{color:var(--brass);font-variant-numeric:tabular-nums}.panel-dot{background:var(--muted);border-radius:50%;flex:none;width:7px;height:7px}.panel[data-tone=ready] .panel-dot{background:var(--sage)}.panel[data-tone=working] .panel-dot{background:var(--sage);animation:panel-pulse 1.6s var(--ease) infinite}.panel[data-tone=paused] .panel-dot{background:var(--brass)}.panel[data-tone=error] .panel-dot{background:var(--brick)}.panel[data-tone=error] .panel-status{color:var(--brick)}.panel[data-tone=paused] .panel-status{color:var(--brass)}@keyframes panel-pulse{0%,to{box-shadow:0 0 #8fb99680}50%{box-shadow:0 0 0 5px #8fb99600}}.panel-icon{width:var(--target);height:var(--target);border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);cursor:pointer;flex:none;place-items:center;display:grid}.panel-icon:hover{background:var(--wood-raised)}.panel-chevron{transition:transform .18s var(--ease)}.panel[data-state=collapsed] .panel-chevron{transform:rotate(180deg)}.panel-enable{min-height:var(--target);border:1px solid var(--line);background:var(--wood);cursor:pointer;border-radius:999px;flex:none;align-items:center;gap:8px;padding:0 10px 0 12px;font-size:12px;font-weight:500;display:inline-flex}.panel-enable:hover{background:var(--wood-raised)}.panel-enable-state{min-width:18px;color:var(--muted);font-variant-numeric:tabular-nums}.panel-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line))}.panel-enable[aria-pressed=true] .panel-enable-state{color:var(--sage)}.panel-enable-wide{border-radius:var(--radius-control);justify-content:space-between;width:100%;padding:0 12px;font-size:13px}.panel-enable-action{align-items:center;gap:8px;display:inline-flex}.panel-quick-enable{border:1px solid var(--line);background:var(--wood);min-height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), border-color .14s var(--ease), color .14s var(--ease);border-radius:999px;flex:none;align-items:center;gap:6px;padding:0 6px 0 8px;font-size:11px;font-weight:500;display:inline-flex}.panel-quick-enable:hover{background:var(--wood-raised);color:var(--paper)}.panel-quick-state{min-width:16px;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600}.panel-quick-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line));color:var(--sage)}.panel-quick-enable[aria-pressed=true] .panel-quick-state{color:var(--sage)}.panel-switch{flex:none;align-items:center;width:34px;height:20px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{background:var(--line);transition:background .16s var(--ease);border-radius:999px;position:absolute;inset:0}.panel-switch-knob{background:var(--muted);pointer-events:none;width:14px;height:14px;transition:transform .16s var(--ease), background .16s var(--ease);border-radius:50%;position:absolute;top:3px;left:3px}.panel-enable .panel-switch-knob,.panel-quick-enable .panel-switch-knob{background:var(--paper)}.panel-switch-input:checked~.panel-switch-track,.panel-enable[aria-pressed=true] .panel-switch-track,.panel-quick-enable[aria-pressed=true] .panel-switch-track{background:var(--sage)}.panel-switch-input:checked~.panel-switch-knob,.panel-enable[aria-pressed=true] .panel-switch-knob,.panel-quick-enable[aria-pressed=true] .panel-switch-knob{background:var(--ink);transform:translate(14px)}.panel-body{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(76vh,680px);animation:panel-rise .18s var(--ease);overflow:auto}@keyframes panel-rise{0%{opacity:0;transform:translateY(-4px)}}.panel-hero{padding:14px 16px}.panel-move-row{justify-content:space-between;align-items:baseline;gap:12px;display:flex}.panel-move{overflow-wrap:anywhere;color:var(--paper);font:600 36px / 1.05 var(--serif);letter-spacing:.01em}.panel-score{color:var(--brass);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600}.panel-line{color:var(--muted);font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap;margin:6px 0 0;font-size:12px;overflow:hidden}.panel-notice{border-radius:var(--radius-control);background:var(--wood);box-shadow:inset 0 0 0 1px var(--line);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;margin-top:12px;padding:10px 12px;font-size:12px;display:grid}.panel-notice p{margin:0}.panel-notice[data-kind=retry]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brick) 60%, transparent)}.panel-notice[data-kind=resume]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brass) 60%, transparent)}.panel-button{min-height:var(--target);border:1px solid var(--brass);border-radius:var(--radius-control);background:var(--brass);color:var(--ink);white-space:nowrap;cursor:pointer;padding:0 14px;font-size:13px;font-weight:600}.panel-button:hover{filter:brightness(1.06)}.panel-settings{border-top:1px solid var(--line);gap:2px;padding:12px 16px 16px;display:grid}.panel-toggles{margin-top:6px;display:grid}.panel-toggle{cursor:pointer;justify-content:space-between;align-items:center;gap:12px;min-height:44px;display:flex}.panel-note{color:var(--muted);margin:4px 0 0;font-size:12px}.panel-field{gap:6px;padding:8px 0 4px;display:grid}.panel-field-head{justify-content:space-between;align-items:baseline;gap:10px;display:flex}.panel-field-head output{font-variant-numeric:tabular-nums;font-weight:600}.panel-field-label{color:var(--muted);font-size:12px}.panel-field-hint{color:var(--muted);margin-top:2px;font-size:11px;line-height:1.35;display:block}.panel-range{appearance:none;cursor:pointer;width:100%;height:28px;accent-color:var(--brass);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-moz-range-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px;margin-top:-8px}.panel-range::-moz-range-thumb{border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px}.panel-segmented{border-radius:var(--radius-control);background:var(--wood);grid-auto-columns:1fr;grid-auto-flow:column;gap:4px;padding:4px;display:grid}.panel-segment{min-height:var(--target);color:var(--muted);cursor:pointer;background:0 0;border:0;border-radius:6px;font-weight:500}.panel-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-timing-row{justify-content:space-between;align-items:center;gap:12px;padding:8px 0 4px;display:flex}.panel-timing-label{color:var(--paper);font-size:13px;font-weight:500}.panel-timing-segmented{border-radius:var(--radius-control);background:var(--wood);border:1px solid var(--line);grid-auto-columns:minmax(78px,1fr);grid-auto-flow:column;gap:3px;padding:3px;display:inline-grid}.panel-timing-segment{min-height:28px;color:var(--muted);transition:background .14s var(--ease), color .14s var(--ease);border-radius:6px;justify-content:center;align-items:center;gap:6px;padding:0 10px;font-size:11px;font-weight:500;display:inline-flex}.panel-timing-segment svg{width:13px;height:13px;color:var(--muted);transition:color .14s var(--ease);flex-shrink:0;display:block}.panel-timing-segment:hover,.panel-timing-segment:hover svg{color:var(--paper)}.panel-timing-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-timing-segment[aria-pressed=true] svg{color:var(--brass)}.panel-opening-style-section{gap:6px;padding:2px 0 4px;display:grid}.panel-opening-style-picker{grid-auto-columns:1fr;grid-auto-flow:column}.panel-opening-style-picker .panel-segment{min-height:34px;transition:background .14s var(--ease), color .14s var(--ease);justify-content:center;align-items:center;padding:0;display:flex}.panel-opening-style-picker .panel-segment svg{color:var(--muted);transition:color .14s var(--ease), transform .14s var(--ease);display:block}.panel-opening-style-picker .panel-segment:hover svg{color:var(--paper);transform:scale(1.08)}.panel-opening-style-picker .panel-segment[aria-pressed=true] svg{color:var(--brass);transform:scale(1.05)}.panel-style-info{background:var(--wood);border:1px solid var(--line);border-radius:var(--radius-control);align-items:flex-start;gap:8px;margin-top:4px;padding:6px 8px;display:flex}.panel-style-badge{text-transform:uppercase;letter-spacing:.04em;color:var(--brass);background:color-mix(in oklab, var(--brass) 12%, transparent);border:1px solid color-mix(in oklab, var(--brass) 30%, transparent);border-radius:4px;flex-shrink:0;align-items:center;padding:2px 7px;font-size:10px;font-weight:600;display:inline-flex}.panel-opening-style-desc{min-height:24px;color:var(--muted);flex:auto;margin:0;padding:0;font-size:11px;line-height:1.35}.panel-activity{border-top:1px solid var(--line);background:var(--well)}.panel-activity-head{justify-content:space-between;align-items:center;gap:8px;min-height:44px;padding:0 8px 0 16px;display:flex}.panel-disclosure{min-height:var(--target);cursor:pointer;background:0 0;border:0;align-items:center;gap:8px;padding:0;font-size:13px;font-weight:600;display:inline-flex}.panel-count{background:var(--wood-raised);min-width:24px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:center;border-radius:999px;padding:2px 6px;font-size:11px}.panel-activity-actions{gap:4px;display:flex}.panel-icon-btn{border-radius:var(--radius-control);width:32px;height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), color .14s var(--ease);background:0 0;border:0;justify-content:center;align-items:center;display:inline-flex}.panel-icon-btn:hover{background:var(--wood-raised);color:var(--paper)}.panel-icon-btn.is-success{color:var(--sage)}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;gap:6px;min-height:80px;max-height:240px;padding:2px 16px 14px;display:grid;overflow:auto}.panel-log-empty{color:var(--muted);margin:0;font-size:12px}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:44px minmax(0,1fr);gap:8px;margin:0;font-size:12px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--muted);font-variant-numeric:tabular-nums}.log-text-info{color:var(--paper)}.log-text-status{color:var(--muted)}.log-text-move{color:var(--sage)}.log-text-warn{color:var(--brass)}.log-text-error{color:var(--brick)}.log-text-opponent{color:#cfc7b5}@media (pointer:coarse){:host{--target:48px}.panel-range::-webkit-slider-runnable-track{height:6px}.panel-range::-webkit-slider-thumb{width:28px;height:28px;margin-top:-11px}.panel-range::-moz-range-thumb{width:28px;height:28px}.panel-icon-btn{width:44px;height:44px}}@media (width<=560px){:host{width:100%;inset:auto 0 0!important}.panel{padding-bottom:env(safe-area-inset-bottom,0px);border-bottom:0;border-left:0;border-right:0;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px #0000005c}.panel-bar{cursor:default;touch-action:manipulation;gap:8px;padding:8px 8px 8px 10px}.panel-body{-webkit-overflow-scrolling:touch;max-height:min(70vh,580px)}.panel-log{-webkit-overflow-scrolling:touch;max-height:180px}}@media (width<=380px){.panel-title{font-size:13px}.panel-quick-enable{gap:4px;padding:0 4px 0 6px}.panel-notice{grid-template-columns:1fr;gap:8px}}@media (prefers-reduced-motion:reduce){.panel *,.panel :before,.panel :after{transition-duration:1ms!important;animation-duration:1ms!important;animation-iteration-count:1!important}}";
+	var panel_default = ":host{--ink:#1b1a17;--well:#151411;--wood:#252420;--wood-raised:#302e28;--line:#3b3932;--paper:#efe9dc;--muted:#a8a193;--brass:#d9a94f;--sage:#8fb996;--brick:#d8826b;--serif:\"Iowan Old Style\", \"Palatino Linotype\", Palatino, \"Book Antiqua\", Georgia, serif;--sans:system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif;--radius:14px;--radius-control:8px;--target:40px;--ease:cubic-bezier(.2, .7, .2, 1);all:initial;z-index:9999999;width:min(380px,100vw - 24px);color:var(--paper);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font:13px / 1.45 var(--sans);-webkit-font-smoothing:antialiased;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}.panel button{font:inherit;color:inherit}.panel :is(button,input):focus-visible,.panel-log:focus-visible{outline:2px solid var(--brass);outline-offset:2px}.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--ink);overflow:hidden;box-shadow:0 16px 40px #0000006b}.panel-bar{cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:60px;padding:8px 8px 8px 12px;display:flex}.panel[data-state=open] .panel-bar{border-bottom:1px solid var(--line)}:host(.dragging) .panel-bar{cursor:grabbing}.panel-mark{border-radius:var(--radius-control);background:var(--wood-raised);width:32px;height:32px;color:var(--brass);flex:none;place-items:center;display:grid}.panel-mark-icon{display:block}.panel-bar-text{flex-direction:column;flex:auto;gap:3px;min-width:0;display:flex}.panel-title{letter-spacing:-.005em;white-space:nowrap;flex-shrink:0;font-size:14px;font-weight:600}.panel-status,.panel-summary{min-width:0;color:var(--muted);align-items:center;gap:7px;font-size:12px;display:flex}.panel-status-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-summary b{color:var(--paper);font:600 17px / 1 var(--serif)}.panel-summary>span:last-child{color:var(--brass);font-variant-numeric:tabular-nums}.panel-dot{background:var(--muted);border-radius:50%;flex:none;width:7px;height:7px}.panel[data-tone=ready] .panel-dot{background:var(--sage)}.panel[data-tone=working] .panel-dot{background:var(--sage);animation:panel-pulse 1.6s var(--ease) infinite}.panel[data-tone=paused] .panel-dot{background:var(--brass)}.panel[data-tone=error] .panel-dot{background:var(--brick)}.panel[data-tone=error] .panel-status{color:var(--brick)}.panel[data-tone=paused] .panel-status{color:var(--brass)}@keyframes panel-pulse{0%,to{box-shadow:0 0 #8fb99680}50%{box-shadow:0 0 0 5px #8fb99600}}.panel-icon{width:var(--target);height:var(--target);border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);cursor:pointer;flex:none;place-items:center;display:grid}.panel-icon:hover{background:var(--wood-raised)}.panel-ghost-toggle{color:var(--muted);transition:color .14s var(--ease), border-color .14s var(--ease), background .14s var(--ease)}.panel-ghost-toggle:hover{color:var(--paper)}.panel-ghost-toggle.is-active{border-color:color-mix(in oklab, var(--sage) 55%, var(--line));color:var(--sage);background:color-mix(in oklab, var(--sage) 12%, var(--wood))}.panel-chevron{transition:transform .18s var(--ease)}.panel[data-state=collapsed] .panel-chevron{transform:rotate(180deg)}.panel-enable{min-height:var(--target);border:1px solid var(--line);background:var(--wood);cursor:pointer;border-radius:999px;flex:none;align-items:center;gap:8px;padding:0 10px 0 12px;font-size:12px;font-weight:500;display:inline-flex}.panel-enable:hover{background:var(--wood-raised)}.panel-enable-state{min-width:18px;color:var(--muted);font-variant-numeric:tabular-nums}.panel-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line))}.panel-enable[aria-pressed=true] .panel-enable-state{color:var(--sage)}.panel-enable-wide{border-radius:var(--radius-control);justify-content:space-between;width:100%;padding:0 12px;font-size:13px}.panel-enable-action{align-items:center;gap:8px;display:inline-flex}.panel-quick-enable{border:1px solid var(--line);background:var(--wood);min-height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), border-color .14s var(--ease), color .14s var(--ease);border-radius:999px;flex:none;align-items:center;gap:6px;padding:0 6px 0 8px;font-size:11px;font-weight:500;display:inline-flex}.panel-quick-enable:hover{background:var(--wood-raised);color:var(--paper)}.panel-quick-state{min-width:16px;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600}.panel-quick-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line));color:var(--sage)}.panel-quick-enable[aria-pressed=true] .panel-quick-state{color:var(--sage)}.panel-switch{flex:none;align-items:center;width:34px;height:20px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{background:var(--line);transition:background .16s var(--ease);border-radius:999px;position:absolute;inset:0}.panel-switch-knob{background:var(--muted);pointer-events:none;width:14px;height:14px;transition:transform .16s var(--ease), background .16s var(--ease);border-radius:50%;position:absolute;top:3px;left:3px}.panel-enable .panel-switch-knob,.panel-quick-enable .panel-switch-knob{background:var(--paper)}.panel-switch-input:checked~.panel-switch-track,.panel-enable[aria-pressed=true] .panel-switch-track,.panel-quick-enable[aria-pressed=true] .panel-switch-track{background:var(--sage)}.panel-switch-input:checked~.panel-switch-knob,.panel-enable[aria-pressed=true] .panel-switch-knob,.panel-quick-enable[aria-pressed=true] .panel-switch-knob{background:var(--ink);transform:translate(14px)}.panel-body{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(76vh,680px);animation:panel-rise .18s var(--ease);overflow:auto}@keyframes panel-rise{0%{opacity:0;transform:translateY(-4px)}}.panel-hero{padding:14px 16px}.panel-move-row{justify-content:space-between;align-items:baseline;gap:12px;display:flex}.panel-move{overflow-wrap:anywhere;color:var(--paper);font:600 36px / 1.05 var(--serif);letter-spacing:.01em}.panel-score{color:var(--brass);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600}.panel-line{color:var(--muted);font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap;margin:6px 0 0;font-size:12px;overflow:hidden}.panel-multipv-list{border-top:1px dashed var(--line);flex-direction:column;gap:4px;margin-top:10px;padding-top:8px;display:flex}.panel-multipv-row{background:var(--well);font-variant-numeric:tabular-nums;border-radius:4px;grid-template-columns:24px 44px 50px 1fr;align-items:center;gap:6px;padding:3px 6px;font-size:11px;display:grid}.panel-multipv-row[data-rank=\"1\"]{border-left:2px solid var(--sage)}.panel-multipv-row[data-rank=\"2\"]{border-left:2px solid #50b4ff}.panel-multipv-row[data-rank=\"3\"]{border-left:2px solid #ffb432}.panel-multipv-badge{color:var(--muted);font-weight:600}.panel-multipv-move{color:var(--paper);font-weight:600;font-family:var(--serif)}.panel-multipv-eval{color:var(--brass);font-weight:500}.panel-multipv-pv{color:var(--muted);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-trend{border-radius:var(--radius-control);background:var(--well);border:1px solid var(--line);margin-top:10px;padding:8px 10px}.panel-trend-head{justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;display:flex}.panel-trend-title{color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:500}.panel-trend-val{color:var(--brass);font-variant-numeric:tabular-nums;font-weight:600}.panel-trend-svg{width:100%;height:32px;display:block;overflow:visible}.panel-notice{border-radius:var(--radius-control);background:var(--wood);box-shadow:inset 0 0 0 1px var(--line);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;margin-top:12px;padding:10px 12px;font-size:12px;display:grid}.panel-notice p{margin:0}.panel-notice[data-kind=retry]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brick) 60%, transparent)}.panel-notice[data-kind=resume]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brass) 60%, transparent)}.panel-button{min-height:var(--target);border:1px solid var(--brass);border-radius:var(--radius-control);background:var(--brass);color:var(--ink);white-space:nowrap;cursor:pointer;padding:0 14px;font-size:13px;font-weight:600}.panel-button:hover{filter:brightness(1.06)}.panel-settings{border-top:1px solid var(--line);gap:2px;padding:12px 16px 16px;display:grid}.panel-toggles{margin-top:6px;display:grid}.panel-toggle{cursor:pointer;justify-content:space-between;align-items:center;gap:12px;min-height:44px;display:flex}.panel-note{color:var(--muted);margin:4px 0 0;font-size:12px}.panel-field{gap:6px;padding:8px 0 4px;display:grid}.panel-field-head{justify-content:space-between;align-items:baseline;gap:10px;display:flex}.panel-field-head output{font-variant-numeric:tabular-nums;font-weight:600}.panel-field-label{color:var(--muted);font-size:12px}.panel-field-hint{color:var(--muted);margin-top:2px;font-size:11px;line-height:1.35;display:block}.panel-range{appearance:none;cursor:pointer;width:100%;height:28px;accent-color:var(--brass);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-moz-range-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px;margin-top:-8px}.panel-range::-moz-range-thumb{border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px}.panel-segmented{border-radius:var(--radius-control);background:var(--wood);grid-auto-columns:1fr;grid-auto-flow:column;gap:4px;padding:4px;display:grid}.panel-segment{min-height:var(--target);color:var(--muted);cursor:pointer;background:0 0;border:0;border-radius:6px;font-weight:500}.panel-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-timing-row{justify-content:space-between;align-items:center;gap:12px;padding:8px 0 4px;display:flex}.panel-timing-label{color:var(--paper);font-size:13px;font-weight:500}.panel-timing-segmented{border-radius:var(--radius-control);background:var(--wood);border:1px solid var(--line);grid-auto-columns:minmax(78px,1fr);grid-auto-flow:column;gap:3px;padding:3px;display:inline-grid}.panel-timing-segment{min-height:28px;color:var(--muted);transition:background .14s var(--ease), color .14s var(--ease);border-radius:6px;justify-content:center;align-items:center;gap:6px;padding:0 10px;font-size:11px;font-weight:500;display:inline-flex}.panel-timing-segment svg{width:13px;height:13px;color:var(--muted);transition:color .14s var(--ease);flex-shrink:0;display:block}.panel-timing-segment:hover,.panel-timing-segment:hover svg{color:var(--paper)}.panel-timing-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-timing-segment[aria-pressed=true] svg{color:var(--brass)}.panel-opening-style-section{gap:6px;padding:2px 0 4px;display:grid}.panel-opening-style-picker{grid-auto-columns:1fr;grid-auto-flow:column}.panel-opening-style-picker .panel-segment{min-height:34px;transition:background .14s var(--ease), color .14s var(--ease);justify-content:center;align-items:center;padding:0;display:flex}.panel-opening-style-picker .panel-segment svg{color:var(--muted);transition:color .14s var(--ease), transform .14s var(--ease);display:block}.panel-opening-style-picker .panel-segment:hover svg{color:var(--paper);transform:scale(1.08)}.panel-opening-style-picker .panel-segment[aria-pressed=true] svg{color:var(--brass);transform:scale(1.05)}.panel-style-info{background:var(--wood);border:1px solid var(--line);border-radius:var(--radius-control);align-items:flex-start;gap:8px;margin-top:4px;padding:6px 8px;display:flex}.panel-style-badge{text-transform:uppercase;letter-spacing:.04em;color:var(--brass);background:color-mix(in oklab, var(--brass) 12%, transparent);border:1px solid color-mix(in oklab, var(--brass) 30%, transparent);border-radius:4px;flex-shrink:0;align-items:center;padding:2px 7px;font-size:10px;font-weight:600;display:inline-flex}.panel-opening-style-desc{min-height:24px;color:var(--muted);flex:auto;margin:0;padding:0;font-size:11px;line-height:1.35}.panel-activity{border-top:1px solid var(--line);background:var(--well)}.panel-activity-head{justify-content:space-between;align-items:center;gap:8px;min-height:44px;padding:0 8px 0 16px;display:flex}.panel-disclosure{min-height:var(--target);cursor:pointer;background:0 0;border:0;align-items:center;gap:8px;padding:0;font-size:13px;font-weight:600;display:inline-flex}.panel-count{background:var(--wood-raised);min-width:24px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:center;border-radius:999px;padding:2px 6px;font-size:11px}.panel-activity-actions{gap:4px;display:flex}.panel-icon-btn{border-radius:var(--radius-control);width:32px;height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), color .14s var(--ease);background:0 0;border:0;justify-content:center;align-items:center;display:inline-flex}.panel-icon-btn:hover{background:var(--wood-raised);color:var(--paper)}.panel-icon-btn.is-success{color:var(--sage)}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;gap:6px;min-height:80px;max-height:240px;padding:2px 16px 14px;display:grid;overflow:auto}.panel-log-empty{color:var(--muted);margin:0;font-size:12px}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:44px minmax(0,1fr);gap:8px;margin:0;font-size:12px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--muted);font-variant-numeric:tabular-nums}.log-text-info{color:var(--paper)}.log-text-status{color:var(--muted)}.log-text-move{color:var(--sage)}.log-text-warn{color:var(--brass)}.log-text-error{color:var(--brick)}.log-text-opponent{color:#cfc7b5}@media (pointer:coarse){:host{--target:48px}.panel-range::-webkit-slider-runnable-track{height:6px}.panel-range::-webkit-slider-thumb{width:28px;height:28px;margin-top:-11px}.panel-range::-moz-range-thumb{width:28px;height:28px}.panel-icon-btn{width:44px;height:44px}}@media (width<=560px){:host{width:100%;inset:auto 0 0!important}.panel{padding-bottom:env(safe-area-inset-bottom,0px);border-bottom:0;border-left:0;border-right:0;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px #0000005c}.panel-bar{cursor:default;touch-action:manipulation;gap:8px;padding:8px 8px 8px 10px}.panel-body{-webkit-overflow-scrolling:touch;max-height:min(70vh,580px)}.panel-log{-webkit-overflow-scrolling:touch;max-height:180px}}@media (width<=380px){.panel-title{font-size:13px}.panel-quick-enable{gap:4px;padding:0 4px 0 6px}.panel-notice{grid-template-columns:1fr;gap:8px}}@media (prefers-reduced-motion:reduce){.panel *,.panel :before,.panel :after{transition-duration:1ms!important;animation-duration:1ms!important;animation-iteration-count:1!important}}";
 	var n$1;
 	var t$2;
 	var i$2;
@@ -5870,12 +5965,26 @@
 			children: u("polygon", { points: "13 2 3 14 12 14 11 22 21 10 12 10 13 2" })
 		});
 	}
+	function GhostIcon() {
+		return u("svg", {
+			width: "14",
+			height: "14",
+			viewBox: "0 0 24 24",
+			fill: "none",
+			stroke: "currentColor",
+			"stroke-width": "1.8",
+			"stroke-linecap": "round",
+			"stroke-linejoin": "round",
+			"aria-hidden": "true",
+			children: [u("path", { d: "M9 10h.01M15 10h.01" }), u("path", { d: "M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z" })]
+		});
+	}
 	function getPanelCapabilityView(capabilities) {
 		return { transportNote: capabilities?.input === "selection" ? "Moves use legal square selection on this site." : capabilities?.input === "controller" ? "Moves use the active game controller." : null };
 	}
 	var EDGE_MARGIN = 8;
 	var DOCK_QUERY = "(max-width: 560px)";
-	var COLLAPSED_KEY = "gabibot_panel_collapsed";
+	var COLLAPSED_KEY = "scb_panel_collapsed";
 	var LOG_STICK_PX = 16;
 	var COPY_FEEDBACK_MS = 1400;
 	var EDITABLE_TAGS = new Set([
@@ -5891,7 +6000,10 @@
 		ponder: !!BotState.ponderEnabled,
 		timingMode: BotState.timingMode,
 		depth: BotState.botPower,
-		moveTimeMs: BotState.moveTime
+		moveTimeMs: BotState.moveTime,
+		targetElo: BotState.targetElo,
+		blunderShield: !!BotState.blunderShield,
+		ghostMode: !!BotState.ghostMode
 	});
 	var settingsSignal = y$1(readSettings());
 	var analysisSignal = y$1({
@@ -5899,7 +6011,9 @@
 		evaluation: BotState.currentEvaluation,
 		bestMove: BotState.bestMove,
 		principalVariation: BotState.principalVariation,
-		recoveryAction: BotState.recoveryAction
+		recoveryAction: BotState.recoveryAction,
+		multiPvLines: BotState.multiPvLines,
+		evalHistory: BotState.evalHistory
 	});
 	var logsSignal = y$1([]);
 	var nextLogId = 0;
@@ -5912,7 +6026,16 @@
 		opponent: "log-text-opponent"
 	};
 	function shallowEqual(a, b) {
-		return Object.keys(b).every((key) => a[key] === b[key]);
+		return Object.keys(b).every((key) => {
+			const valA = a[key];
+			const valB = b[key];
+			if (valA === valB) return true;
+			if (Array.isArray(valA) && Array.isArray(valB)) {
+				if (valA.length !== valB.length) return false;
+				return valA.every((v, i) => v === valB[i]);
+			}
+			return false;
+		});
 	}
 	function appendPanelLog(text, type = "info") {
 		const entry = {
@@ -5962,7 +6085,18 @@
 			case "depth":
 				BotState.botPower = Number(value);
 				break;
-			case "moveTimeMs": BotState.moveTime = Number(value);
+			case "moveTimeMs":
+				BotState.moveTime = Number(value);
+				break;
+			case "targetElo":
+				BotState.targetElo = Number(value);
+				break;
+			case "blunderShield":
+				BotState.blunderShield = value ? 1 : 0;
+				break;
+			case "ghostMode":
+				BotState.ghostMode = value ? 1 : 0;
+				setGhostMode(!!value);
 		}
 	}
 	function updatePanelSetting(key, value, actions) {
@@ -5980,11 +6114,17 @@
 		const element = target;
 		return element.isContentEditable === true || EDITABLE_TAGS.has((element.tagName ?? "").toUpperCase());
 	}
-	function handlePanelKeyDown(event, actions = {}, toggleCollapsed) {
+	function handlePanelKeyDown(event, actions = {}, toggleCollapsed, toggleGhostMode) {
 		if (isEditableTarget(event.composedPath ? event.composedPath()[0] : event.target)) return;
 		if (event.key?.toLowerCase() === "b" && event.ctrlKey && !event.metaKey) {
 			event.preventDefault?.();
 			toggleCollapsed?.();
+			return;
+		}
+		if (event.code === "KeyG" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey || event.key?.toLowerCase() === "g" && event.ctrlKey && event.shiftKey) {
+			event.preventDefault?.();
+			if (toggleGhostMode) toggleGhostMode();
+			else updatePanelSetting("ghostMode", !settingsSignal.value.ghostMode, actions);
 			return;
 		}
 		if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -6202,6 +6342,70 @@
 			})]
 		});
 	}
+	function EvalTrendGraph({ history }) {
+		if (!history || history.length < 2) return null;
+		const width = 240;
+		const height = 32;
+		const zeroY = height / 2;
+		const maxEval = 6;
+		const coords = history.map((val, idx) => {
+			return {
+				x: idx / (history.length - 1) * width,
+				y: zeroY - Math.max(-6, Math.min(maxEval, val)) / maxEval * (height / 2 - 4)
+			};
+		});
+		const pathD = coords.reduce((acc, pt, i) => `${acc} ${i === 0 ? "M" : "L"} ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`, "");
+		const areaD = `${pathD} L ${coords[coords.length - 1].x.toFixed(1)},${zeroY} L ${coords[0].x.toFixed(1)},${zeroY} Z`;
+		const latest = coords[coords.length - 1];
+		const latestVal = history[history.length - 1];
+		const latestFormatted = latestVal > 0 ? `+${latestVal.toFixed(1)}` : latestVal.toFixed(1);
+		return u("div", {
+			class: "panel-trend",
+			children: [u("div", {
+				class: "panel-trend-head",
+				children: [u("span", {
+					class: "panel-trend-title",
+					children: "Eval Trend"
+				}), u("span", {
+					class: "panel-trend-val",
+					children: latestFormatted
+				})]
+			}), u("svg", {
+				class: "panel-trend-svg",
+				viewBox: `0 0 ${width} ${height}`,
+				preserveAspectRatio: "none",
+				"aria-hidden": "true",
+				children: [
+					u("line", {
+						x1: "0",
+						y1: zeroY,
+						x2: width,
+						y2: zeroY,
+						stroke: "var(--line)",
+						"stroke-dasharray": "3 3",
+						"stroke-width": "1"
+					}),
+					u("path", {
+						d: areaD,
+						fill: "rgba(217, 169, 79, 0.12)"
+					}),
+					u("path", {
+						d: pathD,
+						fill: "none",
+						stroke: "var(--brass)",
+						"stroke-width": "1.75",
+						"stroke-linejoin": "round"
+					}),
+					u("circle", {
+						cx: latest.x,
+						cy: latest.y,
+						r: "2.5",
+						fill: "var(--brass)"
+					})
+				]
+			})]
+		});
+	}
 	function Panel({ host, actions, capabilities }) {
 		const settings = settingsSignal.value;
 		const analysis = analysisSignal.value;
@@ -6223,11 +6427,14 @@
 			};
 		};
 		A(() => {
-			const handleKeyDown = (event) => handlePanelKeyDown(event, actions, () => setCollapsed((value) => !value));
+			const handleKeyDown = (event) => handlePanelKeyDown(event, actions, () => setCollapsed((value) => !value), () => updatePanelSetting("ghostMode", !settingsSignal.value.ghostMode, actions));
 			window.addEventListener("keydown", handleKeyDown);
 			return () => window.removeEventListener("keydown", handleKeyDown);
 		}, [actions]);
 		A(() => storeCollapsed(collapsed), [collapsed]);
+		A(() => {
+			if (host) host.style.display = settings.ghostMode ? "none" : "";
+		}, [host, settings.ghostMode]);
 		A(() => {
 			const keepOnScreen = () => {
 				if (isDocked()) return;
@@ -6337,6 +6544,15 @@
 							})]
 						})]
 					}),
+					u("button", {
+						type: "button",
+						class: `panel-icon panel-ghost-toggle ${settings.ghostMode ? "is-active" : ""}`,
+						"aria-pressed": settings.ghostMode,
+						"aria-label": settings.ghostMode ? "Disable ghost mode (G)" : "Enable ghost mode (G)",
+						title: settings.ghostMode ? "Ghost mode active (G / Ctrl+Shift+G)" : "Enable stream-safe ghost mode (G / Ctrl+Shift+G)",
+						onClick: () => updateSetting("ghostMode", !settings.ghostMode),
+						children: u(GhostIcon, {})
+					}),
 					collapsed && u(QuickEnableButton, {
 						enabled: settings.enabled,
 						onToggle: (next) => updateSetting("enabled", next)
@@ -6377,6 +6593,36 @@
 								title: analysis.principalVariation,
 								children: line
 							}),
+							analysis.multiPvLines && analysis.multiPvLines.length > 1 && u("div", {
+								class: "panel-multipv-list",
+								children: analysis.multiPvLines.slice(0, 3).map((pvLine) => {
+									const lineScore = typeof pvLine.evaluation.mate === "number" ? `M${pvLine.evaluation.mate}` : typeof pvLine.evaluation.cp === "number" ? pvLine.evaluation.cp > 0 ? `+${(pvLine.evaluation.cp / 100).toFixed(2)}` : (pvLine.evaluation.cp / 100).toFixed(2) : "—";
+									return u("div", {
+										class: "panel-multipv-row",
+										"data-rank": pvLine.multipv,
+										children: [
+											u("span", {
+												class: "panel-multipv-badge",
+												children: ["#", pvLine.multipv]
+											}),
+											u("span", {
+												class: "panel-multipv-move",
+												children: pvLine.san || pvLine.uci
+											}),
+											u("span", {
+												class: "panel-multipv-eval",
+												children: lineScore
+											}),
+											u("span", {
+												class: "panel-multipv-pv",
+												title: pvLine.pv,
+												children: pvLine.pv
+											})
+										]
+									}, pvLine.multipv);
+								})
+							}),
+							u(EvalTrendGraph, { history: analysis.evalHistory }),
 							analysis.recoveryAction && u(RecoveryNotice, {
 								kind: analysis.recoveryAction,
 								onRecover: () => actions.recover?.()
@@ -6490,6 +6736,28 @@
 								hint: settings.timingMode === "dynamic" ? "Adaptive: scales down for forced moves & adds human micro-delays" : "Fixed: calculates for full duration on every move",
 								onPreview: (value) => previewSlider("moveTimeMs", value),
 								onCommit: (value) => updateSetting("moveTimeMs", value)
+							}),
+							u(Slider, {
+								id: "bot-elo",
+								label: "Target Elo",
+								value: settings.targetElo,
+								min: 0,
+								max: 3200,
+								step: 50,
+								format: (v) => v === 0 ? "Max (3200+)" : `${v} Elo`,
+								hint: "Boltzmann human throttling (0 = unrestricted engine strength)",
+								onPreview: (value) => previewSlider("targetElo", value),
+								onCommit: (value) => updateSetting("targetElo", value)
+							}),
+							settings.targetElo > 0 && u(Toggle, {
+								label: "Blunder shield",
+								checked: settings.blunderShield,
+								onChange: (next) => updateSetting("blunderShield", next)
+							}),
+							u(Toggle, {
+								label: "Stream-safe ghost mode",
+								checked: settings.ghostMode,
+								onChange: (next) => updateSetting("ghostMode", next)
 							})
 						]
 					}),
@@ -6593,7 +6861,15 @@
 				evaluation: BotState.currentEvaluation,
 				bestMove: suggestedMove,
 				principalVariation: BotState.principalVariation,
-				recoveryAction: BotState.recoveryAction
+				recoveryAction: BotState.recoveryAction,
+				...BotState.multiPvLines ? { multiPvLines: BotState.multiPvLines.map((line) => {
+					const sanVal = fen && line.uci ? uciToSan(fen, line.uci) : line.uci;
+					return {
+						...line,
+						san: typeof sanVal === "string" ? sanVal : line.uci
+					};
+				}) } : {},
+				...BotState.evalHistory && BotState.evalHistory.length > 0 ? { evalHistory: BotState.evalHistory } : {}
 			});
 			updateEvaluationBar(BotState.currentEvaluation, playingAs);
 		}
@@ -6601,8 +6877,7 @@
 	async function buildUI(actions = {}, capabilities) {
 		if (ui.menuWrap) return;
 		const host = document.createElement("div");
-		host.id = "menuWrap";
-		host.setAttribute("aria-label", "Super Chess Bot panel");
+		markBotNode(host);
 		host.style.top = "20px";
 		host.style.right = "20px";
 		const saved = Settings.load();
@@ -6612,7 +6887,8 @@
 			host.style.left = saved.menuPosition.left || "";
 			host.style.right = saved.menuPosition.left ? "auto" : "20px";
 		}
-		const shadowRoot = host.attachShadow({ mode: "open" });
+		if (BotState.ghostMode) host.style.display = "none";
+		const shadowRoot = host.attachShadow({ mode: "closed" });
 		const style = document.createElement("style");
 		style.textContent = panel_default;
 		const appRoot = document.createElement("div");
@@ -6620,6 +6896,10 @@
 		shadowRoot.append(style, appRoot);
 		document.body.appendChild(host);
 		ui.menuWrap = host;
+		setMenuPositionGetter(() => ui.menuWrap ? {
+			top: ui.menuWrap.style.top,
+			left: ui.menuWrap.style.left
+		} : null);
 		mountPanel(appRoot, host, {
 			...actions,
 			clearConsole: () => ui.clearConsole()
@@ -7948,6 +8228,222 @@
 		}
 		return candidates[0][0];
 	}
+	var TABLEBASE_API = "https://tablebase.lichess.ovh/standard";
+	var DEFAULT_TIMEOUT_MS = 2e3;
+	function countPiecesOnBoard(fen) {
+		if (!fen) return 32;
+		const boardPart = fen.split(" ")[0] ?? "";
+		let count = 0;
+		for (const ch of boardPart) if (/[pnbrqkPNBRQK]/.test(ch)) count++;
+		return count;
+	}
+	function isTablebaseEligible(fen) {
+		if (!fen || typeof fen !== "string") return false;
+		const boardPart = fen.split(" ")[0] ?? "";
+		if ((boardPart.match(/\//g) || []).length !== 7) return false;
+		if (!boardPart.includes("k") || !boardPart.includes("K")) return false;
+		return countPiecesOnBoard(fen) <= 7;
+	}
+	async function lookupTablebase(fen, signal, timeoutMs = DEFAULT_TIMEOUT_MS) {
+		if (!isTablebaseEligible(fen)) return null;
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), timeoutMs);
+		const onAbort = () => controller.abort();
+		signal?.addEventListener("abort", onAbort, { once: true });
+		try {
+			const url = `${TABLEBASE_API}?fen=${encodeURIComponent(fen)}`;
+			const response = await fetch(url, { signal: controller.signal });
+			if (!response.ok) return null;
+			const data = await response.json();
+			if (!data.moves || data.moves.length === 0) return null;
+			const best = pickBestTablebaseMove(data.moves);
+			if (!best?.uci) return null;
+			const category = data.category ?? "unknown";
+			const dtz = data.dtz ?? null;
+			const dtm = data.dtm ?? null;
+			const wdl = data.wdl;
+			let cp = 0;
+			let mate;
+			let displayEval = "0.00 (Tablebase Draw)";
+			if (best.checkmate) {
+				mate = 1;
+				displayEval = "+M1 (Checkmate)";
+			} else if (category === "win" || category === "maybe-win") {
+				mate = Math.max(1, Math.ceil((dtm !== null && dtm !== void 0 ? Math.abs(dtm) : dtz !== null ? Math.abs(dtz) : 2) / 2));
+				displayEval = `+M${mate} (Tablebase)`;
+			} else if (category === "loss" || category === "maybe-loss") {
+				mate = -Math.max(1, Math.ceil((dtm !== null && dtm !== void 0 ? Math.abs(dtm) : dtz !== null ? Math.abs(dtz) : 2) / 2));
+				displayEval = `-M${Math.abs(mate)} (Tablebase)`;
+			} else {
+				cp = 0;
+				displayEval = "0.00 (Tablebase Draw)";
+			}
+			return {
+				success: true,
+				category,
+				dtz,
+				dtm,
+				...wdl !== void 0 ? { wdl } : {},
+				bestMove: best.uci,
+				pv: best.uci,
+				evaluation: mate !== void 0 ? { mate } : { cp },
+				displayEval
+			};
+		} catch {
+			return null;
+		} finally {
+			clearTimeout(timer);
+			signal?.removeEventListener("abort", onAbort);
+		}
+	}
+	function moveOutcomeRank(move) {
+		if (move.checkmate) return 6;
+		const cat = move.category;
+		if (cat === "loss") return 5;
+		if (cat === "blessed-loss") return 4;
+		if (cat === "draw") return 3;
+		if (cat === "cursed-win") return 2;
+		if (cat === "win") return 1;
+		if (move.wdl === -2) return 5;
+		if (move.wdl === -1) return 4;
+		if (move.wdl === 0) return 3;
+		if (move.wdl === 1) return 2;
+		if (move.wdl === 2) return 1;
+		return 0;
+	}
+	function pickBestTablebaseMove(moves) {
+		if (!moves || moves.length === 0) return null;
+		return [...moves].sort((a, b) => {
+			const rankA = moveOutcomeRank(a);
+			const rankB = moveOutcomeRank(b);
+			if (rankA !== rankB) return rankB - rankA;
+			if (rankA >= 4) return (a.dtm !== null && a.dtm !== void 0 ? Math.abs(a.dtm) : a.dtz !== null ? Math.abs(a.dtz) : 999) - (b.dtm !== null && b.dtm !== void 0 ? Math.abs(b.dtm) : b.dtz !== null ? Math.abs(b.dtz) : 999);
+			if (rankA <= 2) {
+				const distA = a.dtm !== null && a.dtm !== void 0 ? Math.abs(a.dtm) : a.dtz !== null ? Math.abs(a.dtz) : 0;
+				return (b.dtm !== null && b.dtm !== void 0 ? Math.abs(b.dtm) : b.dtz !== null ? Math.abs(b.dtz) : 0) - distA;
+			}
+			return 0;
+		})[0] ?? null;
+	}
+	function scoreToCentipawns(line) {
+		if (typeof line.evaluation.mate === "number") return line.evaluation.mate > 0 ? 1e4 - line.evaluation.mate * 100 : -1e4 - line.evaluation.mate * 100;
+		return line.evaluation.cp ?? 0;
+	}
+	function selectThrottledMove(lines, options) {
+		if (!lines || lines.length === 0) return {
+			uci: "",
+			rank: 1,
+			cpLoss: 0,
+			shieldApplied: false
+		};
+		const bestLine = lines[0];
+		const bestUci = bestLine.uci || (bestLine.pv ? bestLine.pv.split(/\s+/)[0] : "");
+		if (!options.targetElo || options.targetElo <= 0 || lines.length === 1) return {
+			uci: bestUci,
+			rank: 1,
+			cpLoss: 0,
+			shieldApplied: false
+		};
+		const { targetElo, blunderShield, randomFn = Math.random } = options;
+		const bestScore = scoreToCentipawns(bestLine);
+		const normalizedElo = Math.min(1, Math.max(0, (targetElo - 800) / 2e3));
+		const temperature = Math.max(12, Math.round(160 * (1 - normalizedElo)));
+		const maxAllowedCpLoss = blunderShield ? Math.min(150, Math.max(45, (1 - normalizedElo) * 150)) : 400;
+		let shieldTriggered = false;
+		const eligibleCandidates = [];
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i];
+			if (!(line.uci || (line.pv ? line.pv.split(/\s+/)[0] : ""))) continue;
+			const score = scoreToCentipawns(line);
+			const cpLoss = Math.max(0, bestScore - score);
+			if (blunderShield && i > 0) {
+				if (typeof line.evaluation.mate === "number" && line.evaluation.mate < 0) {
+					shieldTriggered = true;
+					continue;
+				}
+				if (cpLoss > maxAllowedCpLoss) {
+					shieldTriggered = true;
+					continue;
+				}
+			}
+			const weight = Math.exp(-cpLoss / temperature);
+			eligibleCandidates.push({
+				line,
+				rank: i + 1,
+				cpLoss,
+				weight
+			});
+		}
+		if (eligibleCandidates.length === 0) return {
+			uci: bestUci,
+			rank: 1,
+			cpLoss: 0,
+			shieldApplied: shieldTriggered
+		};
+		const totalWeight = eligibleCandidates.reduce((acc, c) => acc + c.weight, 0);
+		const r = randomFn() * totalWeight;
+		let running = 0;
+		for (const candidate of eligibleCandidates) {
+			running += candidate.weight;
+			if (r <= running) return {
+				uci: candidate.line.uci || (candidate.line.pv ? candidate.line.pv.split(/\s+/)[0] : ""),
+				rank: candidate.rank,
+				cpLoss: candidate.cpLoss,
+				shieldApplied: shieldTriggered
+			};
+		}
+		return {
+			uci: bestUci,
+			rank: 1,
+			cpLoss: 0,
+			shieldApplied: shieldTriggered
+		};
+	}
+	function sampleExGaussian(mu, sigma, tau, randomFn = Math.random) {
+		const u1 = Math.max(1e-7, randomFn());
+		const u2 = Math.max(1e-7, randomFn());
+		const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+		const normal = mu + Math.max(0, sigma) * z;
+		const u3 = Math.max(1e-7, randomFn());
+		const exponential = -Math.max(0, tau) * Math.log(u3);
+		return Math.max(0, normal + exponential);
+	}
+	function computeShannonEntropy(candidateCentipawns) {
+		if (!candidateCentipawns || candidateCentipawns.length <= 1) return 0;
+		const validScores = candidateCentipawns.filter((s) => Number.isFinite(s));
+		if (validScores.length <= 1) return 0;
+		const T = 75;
+		const maxScore = Math.max(...validScores);
+		const exponentials = validScores.map((score) => Math.exp((score - maxScore) / T));
+		const sumExp = exponentials.reduce((acc, val) => acc + val, 0);
+		if (sumExp <= 0) return 0;
+		const probabilities = exponentials.map((exp) => exp / sumExp);
+		let entropy = 0;
+		for (const p of probabilities) if (p > 1e-7) entropy -= p * Math.log(p);
+		const maxEntropy = Math.log(validScores.length);
+		return maxEntropy > 0 ? Math.min(1, Math.max(0, entropy / maxEntropy)) : 0;
+	}
+	function calculateMoveDelay(options) {
+		const { baseTimeMs, remainingMs, legalMovesCount, candidateScores, randomFn } = options;
+		const movesCount = legalMovesCount ?? 20;
+		if (movesCount <= 1) {
+			const mu = Math.min(120, Math.max(25, baseTimeMs * .25));
+			return boundDelay(sampleExGaussian(mu, mu * .2, mu * .15, randomFn), remainingMs, baseTimeMs);
+		}
+		const branchingFactor = Math.min(1, Math.max(0, Math.log(Math.max(1, movesCount)) / Math.log(35)));
+		const complexity = .55 * (candidateScores ? computeShannonEntropy(candidateScores) : .5) + .45 * branchingFactor;
+		return boundDelay(sampleExGaussian(baseTimeMs * (.35 + .45 * complexity), baseTimeMs * (.1 + .15 * complexity), baseTimeMs * (.2 + .6 * complexity), randomFn), remainingMs, baseTimeMs);
+	}
+	function boundDelay(delay, remainingMs, baseTimeMs) {
+		let bounded = Math.max(25, delay);
+		if (remainingMs !== null && remainingMs > 0) {
+			const clockCeiling = Math.max(25, Math.floor(remainingMs / 25));
+			bounded = Math.min(bounded, clockCeiling);
+		}
+		const maxCeiling = Math.max(100, baseTimeMs * 3);
+		bounded = Math.min(bounded, maxCeiling);
+		return Math.round(bounded);
+	}
 	var revision = 0;
 	var active = null;
 	var processed = null;
@@ -8059,6 +8555,8 @@
 			const bookMove = kind === "main" && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
 			let result;
 			let best = null;
+			let isTablebase = false;
+			let tbDisplay = "";
 			if (bookMove) {
 				result = {
 					success: true,
@@ -8073,16 +8571,56 @@
 					score: { cp: 20 }
 				};
 			} else {
-				result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
+				const isTbEligible = kind === "main" && hasLegalMoves(fen) !== false && isTablebaseEligible(fen);
+				let tbResult = null;
+				if (isTbEligible) {
+					const tbTimeout = Math.min(1500, Math.max(100, Math.floor((snapshot.remainingMs ?? 6e4) / 4)));
+					const tbPromise = lookupTablebase(fen, ctrl.signal, tbTimeout).catch(() => null);
+					const analysisPromise = getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
+					const winner = await Promise.race([tbPromise.then((tb) => tb?.success ? {
+						kind: "tb",
+						tb
+					} : null), analysisPromise.then((analysis) => ({
+						kind: "analysis",
+						analysis
+					}))]);
+					if (winner?.kind === "tb") {
+						tbResult = winner.tb;
+						result = {
+							success: true,
+							bestmove: tbResult.bestMove,
+							depth: 99,
+							pv: tbResult.pv,
+							evaluation: tbResult.evaluation
+						};
+					} else if (winner?.kind === "analysis") {
+						result = winner.analysis;
+						const graceMs = Math.min(200, Math.max(0, Math.floor((snapshot.remainingMs ?? 6e4) / 20)));
+						if (graceMs > 0) {
+							const fastTb = await Promise.race([tbPromise, delayMs(graceMs, ctrl.signal).then(() => null)]);
+							if (fastTb?.success) tbResult = fastTb;
+						}
+					} else result = await analysisPromise;
+				} else result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
 				if (!current()) return;
-				best = parseBestLine(result);
-				if (!best) {
-					if (result.bestmove === "(none)" && hasLegalMoves(fen) === false) {
-						BotState.statusInfo = "Terminal position";
-						ui.updateDisplay(pa());
-						return;
+				if (tbResult?.success) {
+					isTablebase = true;
+					tbDisplay = tbResult.displayEval;
+					best = {
+						uci: tbResult.bestMove,
+						pv: tbResult.pv,
+						score: tbResult.evaluation
+					};
+				} else {
+					best = parseBestLine(result);
+					if (!best) {
+						if (result.bestmove === "(none)" && hasLegalMoves(fen) === false) {
+							BotState.statusInfo = "Terminal position";
+							ui.updateDisplay(pa());
+							return;
+						}
+						throw new Error("Engine returned no legal move");
 					}
-					throw new Error("Engine returned no legal move");
 				}
 			}
 			if (kind !== "main") {
@@ -8095,6 +8633,14 @@
 					ponderPosition(predicted, BotState.botPower, predictedHistory);
 				}
 				return;
+			}
+			if (!bookMove && !isTablebase && best.multiPv && best.multiPv.length > 1 && BotState.targetElo > 0) {
+				const throttled = selectThrottledMove(best.multiPv, {
+					targetElo: BotState.targetElo,
+					blunderShield: !!BotState.blunderShield,
+					sideToMove: snapshot.sideToMove
+				});
+				if (throttled.uci && throttled.uci !== best.uci) best.uci = throttled.uci;
 			}
 			const currentPosition = matchingSnapshot(site, identity, fen);
 			const nextFen = predictFen(fen, best.uci);
@@ -8116,15 +8662,43 @@
 			};
 			BotState.bestMove = best.uci;
 			BotState.principalVariation = best.pv;
-			BotState.currentEvaluation = bookMove ? "Book" : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
-			BotState.statusInfo = bookMove ? `Ready · Book · ${Math.round(performance.now() - started)} ms` : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
-			clearArrows();
-			drawArrow(best.uci.slice(0, 2), best.uci.slice(2, 4), "rgba(100,255,100,0.7)", 3);
+			BotState.multiPvLines = best.multiPv?.map((line) => ({
+				...line,
+				evaluation: scoreForWhite(line.evaluation, snapshot.sideToMove)
+			}));
+			BotState.currentEvaluation = bookMove ? "Book" : isTablebase ? tbDisplay : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
+			if (!bookMove) {
+				const whiteScore = scoreForWhite(best.score, snapshot.sideToMove);
+				let numEval = 0;
+				if (typeof whiteScore.mate === "number") numEval = whiteScore.mate > 0 ? 10 : -10;
+				else if (typeof whiteScore.cp === "number") numEval = whiteScore.cp / 100;
+				BotState.evalHistory = [...BotState.evalHistory ?? [], numEval].slice(-40);
+			}
+			BotState.statusInfo = bookMove ? `Ready · Book · ${Math.round(performance.now() - started)} ms` : isTablebase ? `Ready · Tablebase · ${Math.round(performance.now() - started)} ms` : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
+			if (best.multiPv && best.multiPv.length > 0) drawMultiPvArrows(best.multiPv);
+			else {
+				clearArrows();
+				drawArrow(best.uci.slice(0, 2), best.uci.slice(2, 4), "rgba(100,255,100,0.7)", 3);
+			}
 			ui.updateDisplay(pa());
 			if (!BotState.autoMove || !current() || !currentPosition?.inputReady) return;
-			if (bookMove && BotState.timingMode === "dynamic") {
-				await delayMs(Math.min(250, Math.max(45, Math.round(budget * .25))), ctrl.signal);
-				if (!current()) return;
+			if (BotState.timingMode === "dynamic") {
+				const candidateScores = best.multiPv?.map((line) => {
+					if (typeof line.evaluation.mate === "number") return line.evaluation.mate > 0 ? 1e3 : -1e3;
+					return line.evaluation.cp ?? 0;
+				});
+				const delay = calculateMoveDelay({
+					baseTimeMs: bookMove ? 150 : budget,
+					remainingMs: snapshot.remainingMs,
+					legalMovesCount: countLegalMoves(fen),
+					candidateScores
+				});
+				const elapsed = performance.now() - started;
+				const remainingWait = Math.max(0, delay - elapsed);
+				if (remainingWait > 0) {
+					await delayMs(remainingWait, ctrl.signal);
+					if (!current()) return;
+				}
 			}
 			const requestController = new AbortController();
 			const abortRequest = () => requestController.abort();
@@ -8442,8 +9016,8 @@
 	var controller = new BotController();
 	async function init() {
 		const page = window;
-		if (page.__GABIBOT_RUNNING__) return;
-		page.__GABIBOT_RUNNING__ = true;
+		if (page.__SCB_ACTIVE__) return;
+		page.__SCB_ACTIVE__ = true;
 		try {
 			BotState.onUpdateDisplay = (playingAs) => ui.updateDisplay(playingAs);
 			const site = getSite();
@@ -8473,7 +9047,7 @@
 				return;
 			}
 		} catch (error) {
-			page.__GABIBOT_RUNNING__ = false;
+			page.__SCB_ACTIVE__ = false;
 			BotState.statusInfo = error instanceof Error ? error.message : "Initialization failed";
 			BotState.recoveryAction = "retry";
 			ui.updateDisplay(1);

@@ -9,6 +9,15 @@ export type OpeningStyle = 'hyper-defensive' | 'defensive' | 'balanced' | 'aggre
 
 export type TimingMode = 'dynamic' | 'fixed';
 
+export interface CandidateLine {
+  multipv: number;
+  uci: string;
+  san?: string;
+  evaluation: Evaluation;
+  depth: number;
+  pv: string;
+}
+
 export interface BotState {
   hackEnabled: number;
   botPower: number;
@@ -23,6 +32,11 @@ export interface BotState {
   statusInfo: string;
   recoveryAction: RecoveryAction | null;
   ponderEnabled: number;
+  targetElo: number;
+  blunderShield: number;
+  ghostMode: number;
+  multiPvLines?: CandidateLine[];
+  evalHistory?: number[];
   onUpdateDisplay?: (playingAs: number) => void;
 }
 
@@ -35,5 +49,8 @@ export interface SettingsData {
   openingBook: number;
   openingStyle: OpeningStyle;
   ponderEnabled: number;
+  targetElo: number;
+  blunderShield: number;
+  ghostMode: number;
   menuPosition: { top: string; left: string } | null;
 }

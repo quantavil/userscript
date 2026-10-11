@@ -184,7 +184,11 @@ function makePage() {
           if (kind === 'movelist' && selector.includes('#movelist')) return {};
           if (kind === 'animation' && selector.includes('#mainboard')) return {};
           if (kind === 'resultText' && selector.includes('#movelist')) return {};
-          if (kind === 'overlay' && selector.includes('[data-gabibot-overlay]')) return {};
+          if (
+            kind === 'overlay' &&
+            (selector.includes('[data-engine-layer]') || selector.includes('[data-scb-overlay]'))
+          )
+            return {};
           return null;
         },
         matches: (selector: string) => kind === 'clock' && selector === '.clock',

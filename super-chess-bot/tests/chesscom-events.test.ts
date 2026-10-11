@@ -186,7 +186,8 @@ function fakeElement(options: { board?: boolean; overlay?: boolean; clockRoot?: 
     matches: (selector: string) => options.board === true && selector.includes('.board'),
     querySelector: () => null,
     closest(selector: string) {
-      if (options.overlay && selector.includes('data-gabibot-overlay')) return current;
+      if (options.overlay && (selector.includes('data-engine-layer') || selector.includes('data-scb-overlay')))
+        return current;
       if (options.board && selector.includes('.board')) return current;
       if (options.clockRoot && selector.includes('.clock-player-turn')) return options.clockRoot;
       if (options.clockRoot === true && selector.includes('.clock-player-turn')) return current;

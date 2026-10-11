@@ -1,4 +1,4 @@
-import { updateEvaluationBar } from './board.js';
+import { markBotNode, updateEvaluationBar } from './board.js';
 import { uciToSan } from './engine/san.js';
 import panelCss from './panel.css?inline';
 import {
@@ -12,7 +12,7 @@ import {
 } from './panel.js';
 import { readSite } from './sites/index.js';
 import type { SiteCapabilities } from './sites/types.js';
-import { BotState, Settings } from './state.js';
+import { BotState, Settings, setMenuPositionGetter } from './state.js';
 
 interface UI {
   /** Shadow DOM host. Its inline position is persisted by Settings.save(). */
@@ -77,6 +77,18 @@ export const ui: UI = {
       bestMove: suggestedMove,
       principalVariation: BotState.principalVariation,
       recoveryAction: BotState.recoveryAction,
+      ...(BotState.multiPvLines
+        ? {
+            multiPvLines: BotState.multiPvLines.map((line) => {
+              const sanVal = fen && line.uci ? uciToSan(fen, line.uci) : line.uci;
+              return {
+                ...line,
+                san: typeof sanVal === 'string' ? sanVal : line.uci,
+              };
+            }),
+          }
+        : {}),
+      ...(BotState.evalHistory && BotState.evalHistory.length > 0 ? { evalHistory: BotState.evalHistory } : {}),
     });
     updateEvaluationBar(BotState.currentEvaluation, playingAs);
   },
@@ -86,8 +98,7 @@ export async function buildUI(actions: PanelActions = {}, capabilities?: SiteCap
   if (ui.menuWrap) return;
 
   const host = document.createElement('div');
-  host.id = 'menuWrap';
-  host.setAttribute('aria-label', 'Super Chess Bot panel');
+  markBotNode(host);
   host.style.top = '20px';
   host.style.right = '20px';
 
@@ -98,8 +109,11 @@ export async function buildUI(actions: PanelActions = {}, capabilities?: SiteCap
     host.style.left = saved.menuPosition.left || '';
     host.style.right = saved.menuPosition.left ? 'auto' : '20px';
   }
+  if (BotState.ghostMode) {
+    host.style.display = 'none';
+  }
 
-  const shadowRoot = host.attachShadow({ mode: 'open' });
+  const shadowRoot = host.attachShadow({ mode: 'closed' });
   const style = document.createElement('style');
   style.textContent = panelCss;
   const appRoot = document.createElement('div');
@@ -108,6 +122,7 @@ export async function buildUI(actions: PanelActions = {}, capabilities?: SiteCap
 
   document.body.appendChild(host);
   ui.menuWrap = host;
+  setMenuPositionGetter(() => (ui.menuWrap ? { top: ui.menuWrap.style.top, left: ui.menuWrap.style.left } : null));
   mountPanel(
     appRoot,
     host,

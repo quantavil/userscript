@@ -1,4 +1,11 @@
-import { cancelPendingMove, clearArrows, confirmSiteMove, drawArrow, getMoveRevision } from '../board.js';
+import {
+  cancelPendingMove,
+  clearArrows,
+  confirmSiteMove,
+  drawArrow,
+  drawMultiPvArrows,
+  getMoveRevision,
+} from '../board.js';
 import { getSite } from '../sites/index.js';
 import type { GameSnapshot, MoveRequest, SiteAdapter } from '../sites/types.js';
 import { BotState, pa } from '../state.js';
@@ -17,6 +24,9 @@ import {
 } from './analysis.js';
 import { lookupBookMove } from './book.js';
 import { formatMove } from './san.js';
+import { isTablebaseEligible, lookupTablebase, type TablebaseResponse } from './tablebase.js';
+import { selectThrottledMove } from './throttle.js';
+import { calculateMoveDelay } from './timing.js';
 
 let revision = 0;
 let active: AbortController | null = null;
@@ -155,6 +165,8 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     const bookMove = kind === 'main' && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
     let result: AnalysisResult;
     let best: BestLine | null = null;
+    let isTablebase = false;
+    let tbDisplay = '';
 
     if (bookMove) {
       result = {
@@ -170,16 +182,62 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
         score: { cp: 20 },
       };
     } else {
-      result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
-      if (!current()) return;
-      best = parseBestLine(result);
-      if (!best) {
-        if (result.bestmove === '(none)' && hasLegalMoves(fen) === false) {
-          BotState.statusInfo = 'Terminal position';
-          ui.updateDisplay(pa());
-          return;
+      const isTbEligible = kind === 'main' && hasLegalMoves(fen) !== false && isTablebaseEligible(fen);
+      let tbResult: TablebaseResponse | null = null;
+
+      if (isTbEligible) {
+        const tbTimeout = Math.min(1500, Math.max(100, Math.floor((snapshot.remainingMs ?? 60000) / 4)));
+        const tbPromise = lookupTablebase(fen, ctrl.signal, tbTimeout).catch(() => null);
+        const analysisPromise = getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
+
+        const winner = await Promise.race([
+          tbPromise.then((tb) => (tb?.success ? { kind: 'tb' as const, tb } : null)),
+          analysisPromise.then((analysis) => ({ kind: 'analysis' as const, analysis })),
+        ]);
+
+        if (winner?.kind === 'tb') {
+          tbResult = winner.tb;
+          result = {
+            success: true,
+            bestmove: tbResult.bestMove,
+            depth: 99,
+            pv: tbResult.pv,
+            evaluation: tbResult.evaluation,
+          };
+        } else if (winner?.kind === 'analysis') {
+          result = winner.analysis;
+          const graceMs = Math.min(200, Math.max(0, Math.floor((snapshot.remainingMs ?? 60000) / 20)));
+          if (graceMs > 0) {
+            const fastTb = await Promise.race([tbPromise, delayMs(graceMs, ctrl.signal).then(() => null)]);
+            if (fastTb?.success) tbResult = fastTb;
+          }
+        } else {
+          result = await analysisPromise;
         }
-        throw new Error('Engine returned no legal move');
+      } else {
+        result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
+      }
+
+      if (!current()) return;
+
+      if (tbResult?.success) {
+        isTablebase = true;
+        tbDisplay = tbResult.displayEval;
+        best = {
+          uci: tbResult.bestMove,
+          pv: tbResult.pv,
+          score: tbResult.evaluation,
+        };
+      } else {
+        best = parseBestLine(result);
+        if (!best) {
+          if (result.bestmove === '(none)' && hasLegalMoves(fen) === false) {
+            BotState.statusInfo = 'Terminal position';
+            ui.updateDisplay(pa());
+            return;
+          }
+          throw new Error('Engine returned no legal move');
+        }
       }
     }
     if (kind !== 'main') {
@@ -190,6 +248,18 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       }
       return;
     }
+
+    if (!bookMove && !isTablebase && best.multiPv && best.multiPv.length > 1 && BotState.targetElo > 0) {
+      const throttled = selectThrottledMove(best.multiPv, {
+        targetElo: BotState.targetElo,
+        blunderShield: !!BotState.blunderShield,
+        sideToMove: snapshot.sideToMove,
+      });
+      if (throttled.uci && throttled.uci !== best.uci) {
+        best.uci = throttled.uci;
+      }
+    }
+
     const currentPosition = matchingSnapshot(site, identity, fen);
     const nextFen = predictFen(fen, best.uci);
     if (!nextFen || fen.split(' ')[1] !== snapshot.playerColor)
@@ -208,19 +278,57 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
 
     BotState.bestMove = best.uci;
     BotState.principalVariation = best.pv;
-    BotState.currentEvaluation = bookMove ? 'Book' : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
+    BotState.multiPvLines = best.multiPv?.map((line) => ({
+      ...line,
+      evaluation: scoreForWhite(line.evaluation, snapshot.sideToMove),
+    }));
+    BotState.currentEvaluation = bookMove
+      ? 'Book'
+      : isTablebase
+        ? tbDisplay
+        : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
+    if (!bookMove) {
+      const whiteScore = scoreForWhite(best.score, snapshot.sideToMove);
+      let numEval = 0;
+      if (typeof whiteScore.mate === 'number') {
+        numEval = whiteScore.mate > 0 ? 10 : -10;
+      } else if (typeof whiteScore.cp === 'number') {
+        numEval = whiteScore.cp / 100;
+      }
+      BotState.evalHistory = [...(BotState.evalHistory ?? []), numEval].slice(-40);
+    }
     BotState.statusInfo = bookMove
       ? `Ready · Book · ${Math.round(performance.now() - started)} ms`
-      : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
-    clearArrows();
-    drawArrow(best.uci.slice(0, 2), best.uci.slice(2, 4), 'rgba(100,255,100,0.7)', 3);
+      : isTablebase
+        ? `Ready · Tablebase · ${Math.round(performance.now() - started)} ms`
+        : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
+
+    if (best.multiPv && best.multiPv.length > 0) {
+      drawMultiPvArrows(best.multiPv);
+    } else {
+      clearArrows();
+      drawArrow(best.uci.slice(0, 2), best.uci.slice(2, 4), 'rgba(100,255,100,0.7)', 3);
+    }
     ui.updateDisplay(pa());
     if (!BotState.autoMove || !current() || !currentPosition?.inputReady) return;
 
-    if (bookMove && BotState.timingMode === 'dynamic') {
-      const delay = Math.min(250, Math.max(45, Math.round(budget * 0.25)));
-      await delayMs(delay, ctrl.signal);
-      if (!current()) return;
+    if (BotState.timingMode === 'dynamic') {
+      const candidateScores = best.multiPv?.map((line) => {
+        if (typeof line.evaluation.mate === 'number') return line.evaluation.mate > 0 ? 1000 : -1000;
+        return line.evaluation.cp ?? 0;
+      });
+      const delay = calculateMoveDelay({
+        baseTimeMs: bookMove ? 150 : budget,
+        remainingMs: snapshot.remainingMs,
+        legalMovesCount: countLegalMoves(fen),
+        candidateScores,
+      });
+      const elapsed = performance.now() - started;
+      const remainingWait = Math.max(0, delay - elapsed);
+      if (remainingWait > 0) {
+        await delayMs(remainingWait, ctrl.signal);
+        if (!current()) return;
+      }
     }
 
     const requestController = new AbortController();

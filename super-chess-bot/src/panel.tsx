@@ -3,12 +3,14 @@ import { signal } from '@preact/signals';
 import type { TargetedPointerEvent } from 'preact';
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { setGhostMode } from './board.js';
 import {
   BrainIcon,
   CheckIcon,
   Chevron,
   ClearIcon,
   CopyIcon,
+  GhostIcon,
   KnightIcon,
   LightningIcon,
   OpeningStyleIcon,
@@ -16,7 +18,7 @@ import {
 } from './icons.js';
 import type { SiteCapabilities } from './sites/types.js';
 import { BotState, Settings } from './state.js';
-import type { OpeningStyle, RecoveryAction, TimingMode } from './types/chess.js';
+import type { CandidateLine, OpeningStyle, RecoveryAction, TimingMode } from './types/chess.js';
 
 export type PanelLogType = 'info' | 'status' | 'error' | 'warn' | 'move' | 'opponent';
 
@@ -51,6 +53,9 @@ interface PanelSettings {
   timingMode: TimingMode;
   depth: number;
   moveTimeMs: number;
+  targetElo: number;
+  blunderShield: boolean;
+  ghostMode: boolean;
 }
 
 export interface PanelAnalysis {
@@ -59,6 +64,8 @@ export interface PanelAnalysis {
   bestMove: string;
   principalVariation: string;
   recoveryAction: RecoveryAction | null;
+  multiPvLines?: CandidateLine[];
+  evalHistory?: number[];
 }
 
 interface PanelLog {
@@ -76,6 +83,7 @@ interface PanelKeyEvent {
   ctrlKey?: boolean;
   metaKey?: boolean;
   altKey?: boolean;
+  shiftKey?: boolean;
   composedPath?: () => unknown[];
   target?: unknown;
   preventDefault?: () => void;
@@ -83,7 +91,7 @@ interface PanelKeyEvent {
 
 const EDGE_MARGIN = 8;
 const DOCK_QUERY = '(max-width: 560px)';
-const COLLAPSED_KEY = 'gabibot_panel_collapsed';
+const COLLAPSED_KEY = 'scb_panel_collapsed';
 const MAX_LOG_ENTRIES = 100;
 const LOG_STICK_PX = 16;
 const COPY_FEEDBACK_MS = 1400;
@@ -98,6 +106,9 @@ const readSettings = (): PanelSettings => ({
   timingMode: BotState.timingMode,
   depth: BotState.botPower,
   moveTimeMs: BotState.moveTime,
+  targetElo: BotState.targetElo,
+  blunderShield: !!BotState.blunderShield,
+  ghostMode: !!BotState.ghostMode,
 });
 
 const settingsSignal = signal<PanelSettings>(readSettings());
@@ -107,6 +118,8 @@ const analysisSignal = signal<PanelAnalysis>({
   bestMove: BotState.bestMove,
   principalVariation: BotState.principalVariation,
   recoveryAction: BotState.recoveryAction,
+  multiPvLines: BotState.multiPvLines,
+  evalHistory: BotState.evalHistory,
 });
 const logsSignal = signal<PanelLog[]>([]);
 let nextLogId = 0;
@@ -120,9 +133,18 @@ const logTextClass: Record<PanelLogType, string> = {
   opponent: 'log-text-opponent',
 };
 
-/** Field-by-field equality over the keys of `b`; used to skip no-op signal writes. */
+/** Field-by-field equality over the keys of `b`; handles arrays and skips no-op signal writes. */
 function shallowEqual<T extends object>(a: T, b: T): boolean {
-  return (Object.keys(b) as (keyof T)[]).every((key) => a[key] === b[key]);
+  return (Object.keys(b) as (keyof T)[]).every((key) => {
+    const valA = a[key];
+    const valB = b[key];
+    if (valA === valB) return true;
+    if (Array.isArray(valA) && Array.isArray(valB)) {
+      if (valA.length !== valB.length) return false;
+      return valA.every((v, i) => v === valB[i]);
+    }
+    return false;
+  });
 }
 
 export function appendPanelLog(text: string, type: PanelLogType = 'info'): void {
@@ -176,6 +198,16 @@ function writeBotState<K extends keyof PanelSettings>(key: K, value: PanelSettin
     case 'moveTimeMs':
       BotState.moveTime = Number(value);
       break;
+    case 'targetElo':
+      BotState.targetElo = Number(value);
+      break;
+    case 'blunderShield':
+      BotState.blunderShield = value ? 1 : 0;
+      break;
+    case 'ghostMode':
+      BotState.ghostMode = value ? 1 : 0;
+      setGhostMode(!!value);
+      break;
   }
 }
 
@@ -202,6 +234,7 @@ export function handlePanelKeyDown(
   event: PanelKeyEvent,
   actions: PanelActions = {},
   toggleCollapsed?: () => void,
+  toggleGhostMode?: () => void,
 ): void {
   const target = event.composedPath ? event.composedPath()[0] : event.target;
   if (isEditableTarget(target)) return;
@@ -209,6 +242,18 @@ export function handlePanelKeyDown(
   if (event.key?.toLowerCase() === 'b' && event.ctrlKey && !event.metaKey) {
     event.preventDefault?.();
     toggleCollapsed?.();
+    return;
+  }
+  if (
+    (event.code === 'KeyG' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) ||
+    (event.key?.toLowerCase() === 'g' && event.ctrlKey && event.shiftKey)
+  ) {
+    event.preventDefault?.();
+    if (toggleGhostMode) {
+      toggleGhostMode();
+    } else {
+      updatePanelSetting('ghostMode', !settingsSignal.value.ghostMode, actions);
+    }
     return;
   }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -470,6 +515,48 @@ function RecoveryNotice({ kind, onRecover }: { kind: RecoveryAction; onRecover: 
   );
 }
 
+function EvalTrendGraph({ history }: { history?: number[] }) {
+  if (!history || history.length < 2) return null;
+
+  const width = 240;
+  const height = 32;
+  const zeroY = height / 2;
+  const maxEval = 6;
+
+  const coords = history.map((val, idx) => {
+    const x = (idx / (history.length - 1)) * width;
+    const clamped = Math.max(-maxEval, Math.min(maxEval, val));
+    const y = zeroY - (clamped / maxEval) * (height / 2 - 4);
+    return { x, y };
+  });
+
+  const pathD = coords.reduce(
+    (acc, pt, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`,
+    '',
+  );
+  const lastX = coords[coords.length - 1].x.toFixed(1);
+  const firstX = coords[0].x.toFixed(1);
+  const areaD = `${pathD} L ${lastX},${zeroY} L ${firstX},${zeroY} Z`;
+  const latest = coords[coords.length - 1];
+  const latestVal = history[history.length - 1];
+  const latestFormatted = latestVal > 0 ? `+${latestVal.toFixed(1)}` : latestVal.toFixed(1);
+
+  return (
+    <div class="panel-trend">
+      <div class="panel-trend-head">
+        <span class="panel-trend-title">Eval Trend</span>
+        <span class="panel-trend-val">{latestFormatted}</span>
+      </div>
+      <svg class="panel-trend-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+        <line x1="0" y1={zeroY} x2={width} y2={zeroY} stroke="var(--line)" stroke-dasharray="3 3" stroke-width="1" />
+        <path d={areaD} fill="rgba(217, 169, 79, 0.12)" />
+        <path d={pathD} fill="none" stroke="var(--brass)" stroke-width="1.75" stroke-linejoin="round" />
+        <circle cx={latest.x} cy={latest.y} r="2.5" fill="var(--brass)" />
+      </svg>
+    </div>
+  );
+}
+
 function Panel({
   host,
   actions,
@@ -495,18 +582,29 @@ function Panel({
   const toggleCollapsed = () => setCollapsed((value) => !value);
   const updateSetting = <K extends keyof PanelSettings>(key: K, value: PanelSettings[K]) =>
     updatePanelSetting(key, value, actions);
-  const previewSlider = (key: 'depth' | 'moveTimeMs', value: number) => {
+  const previewSlider = (key: 'depth' | 'moveTimeMs' | 'targetElo', value: number) => {
     settingsSignal.value = { ...settingsSignal.value, [key]: value };
   };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) =>
-      handlePanelKeyDown(event, actions, () => setCollapsed((value) => !value));
+      handlePanelKeyDown(
+        event,
+        actions,
+        () => setCollapsed((value) => !value),
+        () => updatePanelSetting('ghostMode', !settingsSignal.value.ghostMode, actions),
+      );
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [actions]);
 
   useEffect(() => storeCollapsed(collapsed), [collapsed]);
+
+  useEffect(() => {
+    if (host) {
+      host.style.display = settings.ghostMode ? 'none' : '';
+    }
+  }, [host, settings.ghostMode]);
 
   useEffect(() => {
     const keepOnScreen = () => {
@@ -624,6 +722,20 @@ function Panel({
             </span>
           )}
         </div>
+        <button
+          type="button"
+          class={`panel-icon panel-ghost-toggle ${settings.ghostMode ? 'is-active' : ''}`}
+          aria-pressed={settings.ghostMode}
+          aria-label={settings.ghostMode ? 'Disable ghost mode (G)' : 'Enable ghost mode (G)'}
+          title={
+            settings.ghostMode
+              ? 'Ghost mode active (G / Ctrl+Shift+G)'
+              : 'Enable stream-safe ghost mode (G / Ctrl+Shift+G)'
+          }
+          onClick={() => updateSetting('ghostMode', !settings.ghostMode)}
+        >
+          <GhostIcon />
+        </button>
         {collapsed && (
           <QuickEnableButton enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />
         )}
@@ -654,6 +766,31 @@ function Panel({
             <p class="panel-line" title={analysis.principalVariation}>
               {line}
             </p>
+            {analysis.multiPvLines && analysis.multiPvLines.length > 1 && (
+              <div class="panel-multipv-list">
+                {analysis.multiPvLines.slice(0, 3).map((pvLine) => {
+                  const lineScore =
+                    typeof pvLine.evaluation.mate === 'number'
+                      ? `M${pvLine.evaluation.mate}`
+                      : typeof pvLine.evaluation.cp === 'number'
+                        ? pvLine.evaluation.cp > 0
+                          ? `+${(pvLine.evaluation.cp / 100).toFixed(2)}`
+                          : (pvLine.evaluation.cp / 100).toFixed(2)
+                        : '—';
+                  return (
+                    <div key={pvLine.multipv} class="panel-multipv-row" data-rank={pvLine.multipv}>
+                      <span class="panel-multipv-badge">#{pvLine.multipv}</span>
+                      <span class="panel-multipv-move">{pvLine.san || pvLine.uci}</span>
+                      <span class="panel-multipv-eval">{lineScore}</span>
+                      <span class="panel-multipv-pv" title={pvLine.pv}>
+                        {pvLine.pv}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <EvalTrendGraph history={analysis.evalHistory} />
             {analysis.recoveryAction && (
               <RecoveryNotice kind={analysis.recoveryAction} onRecover={() => actions.recover?.()} />
             )}
@@ -762,6 +899,30 @@ function Panel({
               }
               onPreview={(value) => previewSlider('moveTimeMs', value)}
               onCommit={(value) => updateSetting('moveTimeMs', value)}
+            />
+            <Slider
+              id="bot-elo"
+              label="Target Elo"
+              value={settings.targetElo}
+              min={0}
+              max={3200}
+              step={50}
+              format={(v) => (v === 0 ? 'Max (3200+)' : `${v} Elo`)}
+              hint="Boltzmann human throttling (0 = unrestricted engine strength)"
+              onPreview={(value) => previewSlider('targetElo', value)}
+              onCommit={(value) => updateSetting('targetElo', value)}
+            />
+            {settings.targetElo > 0 && (
+              <Toggle
+                label="Blunder shield"
+                checked={settings.blunderShield}
+                onChange={(next) => updateSetting('blunderShield', next)}
+              />
+            )}
+            <Toggle
+              label="Stream-safe ghost mode"
+              checked={settings.ghostMode}
+              onChange={(next) => updateSetting('ghostMode', next)}
             />
           </section>
 

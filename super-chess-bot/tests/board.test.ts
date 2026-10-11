@@ -229,6 +229,7 @@ function setupMockBoard(flipped = false, playerColor = 'w') {
     fill: () => ctxCalls.push('fill'),
     stroke: () => ctxCalls.push('stroke'),
     closePath: () => ctxCalls.push('closePath'),
+    clearRect: () => ctxCalls.push('clearRect'),
     set strokeStyle(_v: string) {},
     set fillStyle(_v: string) {},
     set lineWidth(_v: number) {},
@@ -282,8 +283,21 @@ function setupMockBoard(flipped = false, playerColor = 'w') {
   vi.spyOn(state, 'getPlayerColor').mockReturnValue(playerColor);
 
   board.attachToBoard(mockBoard as unknown as HTMLElement);
-  return { whiteBar, blackBar, ctxCalls };
+  return { whiteBar, blackBar, evalBarWrap, mockCanvas, ctxCalls };
 }
+
+describe('ghost mode overlay cloaking', () => {
+  it('hides canvas and eval bar when ghost mode is enabled and restores when disabled', () => {
+    const { evalBarWrap, mockCanvas } = setupMockBoard(false, 'w');
+    board.setGhostMode(true);
+    expect(mockCanvas.style.display).toBe('none');
+    expect(evalBarWrap.style.display).toBe('none');
+
+    board.setGhostMode(false);
+    expect(mockCanvas.style.display).toBe('');
+    expect(evalBarWrap.style.display).toBe('');
+  });
+});
 
 describe('evaluation bar', () => {
   it('anchors white bar to bottom when board is not flipped', () => {

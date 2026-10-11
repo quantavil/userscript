@@ -203,6 +203,24 @@
   background: var(--wood-raised);
 }
 
+.panel-ghost-toggle {
+  color: var(--muted);
+  transition:
+    color 140ms var(--ease),
+    border-color 140ms var(--ease),
+    background 140ms var(--ease);
+}
+
+.panel-ghost-toggle:hover {
+  color: var(--paper);
+}
+
+.panel-ghost-toggle.is-active {
+  border-color: color-mix(in oklab, var(--sage) 55%, var(--line));
+  color: var(--sage);
+  background: color-mix(in oklab, var(--sage) 12%, var(--wood));
+}
+
 .panel-chevron {
   transition: transform 180ms var(--ease);
 }
@@ -412,6 +430,100 @@
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Multi-PV Candidate Rows */
+.panel-multipv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+.panel-multipv-row {
+  display: grid;
+  grid-template-columns: 24px 44px 50px 1fr;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--well);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-multipv-row[data-rank="1"] {
+  border-left: 2px solid var(--sage);
+}
+
+.panel-multipv-row[data-rank="2"] {
+  border-left: 2px solid #50b4ff;
+}
+
+.panel-multipv-row[data-rank="3"] {
+  border-left: 2px solid #ffb432;
+}
+
+.panel-multipv-badge {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.panel-multipv-move {
+  color: var(--paper);
+  font-weight: 600;
+  font-family: var(--serif);
+}
+
+.panel-multipv-eval {
+  color: var(--brass);
+  font-weight: 500;
+}
+
+.panel-multipv-pv {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Evaluation Trend Momentum Graph */
+.panel-trend {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: var(--well);
+  border: 1px solid var(--line);
+}
+
+.panel-trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+
+.panel-trend-title {
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.panel-trend-val {
+  color: var(--brass);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-trend-svg {
+  display: block;
+  width: 100%;
+  height: 32px;
+  overflow: visible;
 }
 
 .panel-notice {
