@@ -508,7 +508,8 @@ function makePromotionSquares(
   onPromotion: () => void,
 ): PromotionSquare[] {
   return specs.map(({ role, color, visible }, index) => {
-    const roleClass = ({ q: 'queen', r: 'rook', b: 'bishop', n: 'knight' } as Record<string, string>)[role] ?? role;
+    const roleClass =
+      ({ q: 'q-piece', r: 'r-piece', b: 'b-piece', n: 'n-piece' } as Record<string, string>)[role] ?? role;
     const square: PromotionSquare = {
       visible,
       isConnected: true,

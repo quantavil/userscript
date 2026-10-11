@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getAnalysis, parseBestLine, predictFen, resetEngine, warmEngine } from '../src/engine/analysis.js';
 import { formatMove, uciToSan } from '../src/engine/san.js';
 import { UciClient, type UciWorkerLike } from '../src/engine/uci-client.js';
+import { replaySanLine } from '../src/history.js';
 
 class FakeUciWorker implements UciWorkerLike {
   onmessage: ((event: MessageEvent<string>) => void) | null = null;
@@ -137,6 +138,22 @@ describe('UCI Stockfish client', () => {
     worker.emit('info depth 6 score cp 10 nodes 40 time 10 pv b8c6');
     worker.emit('bestmove b8c6');
     await expect(resultPromise).resolves.toMatchObject({ bestmove: 'b8c6' });
+  });
+
+  it('serializes replayed standard castling history with king destination squares', async () => {
+    const startFen = 'r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1';
+    const line = replaySanLine(startFen, ['O-O', 'O-O-O']);
+    expect(line).toBeDefined();
+
+    const worker = new FakeUciWorker();
+    const client = new UciClient(() => worker);
+    const resultPromise = client.analyze(line?.fens.at(-1) ?? startFen, 8, 100, undefined, line?.history);
+    await waitUntil(() => worker.commands.some((command) => command.startsWith('go ')));
+
+    expect(worker.commands).toContain(`position fen ${startFen} moves e8g8 e1c1`);
+    worker.emit('info depth 8 score cp 10 nodes 40 time 10 pv a1a2');
+    worker.emit('bestmove a1a2');
+    await expect(resultPromise).resolves.toMatchObject({ bestmove: 'a1a2' });
   });
 
   it('promotes a matching ponder search and returns its already searched move', async () => {

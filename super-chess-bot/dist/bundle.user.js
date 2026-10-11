@@ -1532,6 +1532,14 @@
 		};
 	};
 	var comparable = (fen) => fen.split(" ").filter((_, i) => i !== 3).join(" ");
+	function makeEngineUci(position, move) {
+		if ("from" in move && move.from === position.board.kingOf(position.turn)) {
+			const rooks = position.castles.rook[position.turn];
+			const side = move.to === rooks.a ? "a" : move.to === rooks.h ? "h" : void 0;
+			if (side) return makeSquare(move.from) + makeSquare(kingCastlesTo(position.turn, side));
+		}
+		return makeUci(move);
+	}
 	function canonicalFen(fen) {
 		if (typeof fen !== "string" || fen.trim().split(/\s+/).length !== 6) return null;
 		try {
@@ -1558,7 +1566,7 @@
 				if (typeof san !== "string" || !san.trim()) return void 0;
 				const move = parseSan(position.value, san.trim());
 				if (!move) return void 0;
-				moves.push(makeUci(move));
+				moves.push(makeEngineUci(position.value, move));
 				position.value.play(move);
 				const fen = makeFen(position.value.toSetup());
 				if (!canonicalFen(fen)) return void 0;
@@ -1590,7 +1598,7 @@
 				if (typeof san !== "string") return void 0;
 				const move = parseSan(position.value, san);
 				if (!move) return void 0;
-				moves.push(makeUci(move));
+				moves.push(makeEngineUci(position.value, move));
 				position.value.play(move);
 				if (comparable(makeFen(position.value.toSetup())) === comparable(currentFen)) return {
 					startFen: fens[0],
@@ -3590,10 +3598,10 @@
 		return typeof unsafeWindow === "undefined" ? window : unsafeWindow;
 	}
 	var PROMOTION_ROLE = {
-		q: "queen",
-		r: "rook",
-		b: "bishop",
-		n: "knight"
+		q: "q-piece",
+		r: "r-piece",
+		b: "b-piece",
+		n: "n-piece"
 	};
 	var INPUT_TIMEOUT_MS = 1e3;
 	function cleanFen(fen) {

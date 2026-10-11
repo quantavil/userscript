@@ -1,7 +1,7 @@
 import { Chess } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { parseSan } from 'chessops/san';
-import { makeUci } from 'chessops/util';
+import { kingCastlesTo, makeSquare, makeUci } from 'chessops/util';
 
 export interface PositionHistory {
   startFen: string;
@@ -16,6 +16,16 @@ const comparable = (fen: string) =>
     .split(' ')
     .filter((_, i) => i !== 3)
     .join(' ');
+
+/** chessops stores castling moves as king-to-rook; orthodox UCI uses the king destination. */
+function makeEngineUci(position: Chess, move: Parameters<typeof makeUci>[0]): string {
+  if ('from' in move && move.from === position.board.kingOf(position.turn)) {
+    const rooks = position.castles.rook[position.turn];
+    const side = move.to === rooks.a ? 'a' : move.to === rooks.h ? 'h' : undefined;
+    if (side) return makeSquare(move.from) + makeSquare(kingCastlesTo(position.turn, side));
+  }
+  return makeUci(move);
+}
 
 /** Canonicalise a complete chess FEN, retaining only legal en passant rights. */
 export function canonicalFen(fen: string): string | null {
@@ -49,7 +59,7 @@ export function replaySanLine(
       if (typeof san !== 'string' || !san.trim()) return undefined;
       const move = parseSan(position.value, san.trim());
       if (!move) return undefined;
-      moves.push(makeUci(move));
+      moves.push(makeEngineUci(position.value, move));
       position.value.play(move);
       const fen = makeFen(position.value.toSetup());
       if (!canonicalFen(fen)) return undefined;
@@ -77,7 +87,7 @@ export function readPositionHistory(game: HistorySource, currentFen: string): Po
       if (typeof san !== 'string') return undefined;
       const move = parseSan(position.value, san);
       if (!move) return undefined;
-      moves.push(makeUci(move));
+      moves.push(makeEngineUci(position.value, move));
       position.value.play(move);
       if (comparable(makeFen(position.value.toSetup())) === comparable(currentFen)) return { startFen: fens[0], moves };
     }

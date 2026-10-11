@@ -55,10 +55,10 @@ interface PendingInput {
 }
 
 const PROMOTION_ROLE: Record<string, string> = {
-  q: 'queen',
-  r: 'rook',
-  b: 'bishop',
-  n: 'knight',
+  q: 'q-piece',
+  r: 'r-piece',
+  b: 'b-piece',
+  n: 'n-piece',
 };
 
 const INPUT_TIMEOUT_MS = 1000;
