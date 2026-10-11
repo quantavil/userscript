@@ -284,6 +284,114 @@ function statusTone(analysis: PanelAnalysis, enabled: boolean): Tone {
   return enabled ? 'ready' : 'idle';
 }
 
+function KnightIcon() {
+  return (
+    <svg
+      class="panel-mark-icon"
+      viewBox="0 0 45 45"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path
+        d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21"
+        fill="currentColor"
+        stroke="currentColor"
+        stroke-width="1.5"
+      />
+      <path
+        d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.04-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4 1-4-4 0-2 6-12 6-12 0 0 1.89-1.9 2-3.5-.73-.99-.5-2-.5-3 1-1 3 2.5 3 2.5l2 0s.78-1.99 2.5-3c1 0 1 3 1 3z"
+        fill="currentColor"
+        stroke="currentColor"
+        stroke-width="1.5"
+      />
+      <circle cx="15" cy="14" r="1.5" fill="var(--ink)" stroke="none" />
+      <path d="M14 39v2h24v-2" stroke="currentColor" stroke-width="1.5" />
+    </svg>
+  );
+}
+
+function PowerIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 2v4.5" />
+      <path d="M4.2 4.5a5.5 5.5 0 1 0 7.6 0" />
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="5" y="5" width="8" height="8" rx="1.5" />
+      <path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.5 8.5l3 3 6-6" />
+    </svg>
+  );
+}
+
+function ClearIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2.5 4.5h11" />
+      <path d="M6 2.5h4" />
+      <path d="M4.5 4.5l.8 8.4a1.2 1.2 0 0 0 1.2 1.1h3a1.2 1.2 0 0 0 1.2-1.1l.8-8.4" />
+      <path d="M7 7.5v3.5M9 7.5v3.5" />
+    </svg>
+  );
+}
+
 function Chevron() {
   return (
     <svg class="panel-chevron" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
@@ -299,20 +407,34 @@ function Chevron() {
   );
 }
 
-function EnableButton({
-  enabled,
-  wide = false,
-  onToggle,
-}: {
-  enabled: boolean;
-  wide?: boolean;
-  onToggle: (enabled: boolean) => void;
-}) {
+function QuickEnableButton({ enabled, onToggle }: { enabled: boolean; onToggle: (enabled: boolean) => void }) {
   return (
     <button
       type="button"
-      class={wide ? 'panel-enable panel-enable-wide' : 'panel-enable'}
+      class="panel-quick-enable"
       aria-pressed={enabled}
+      aria-label={enabled ? 'Disable bot (E)' : 'Enable bot (E)'}
+      title={enabled ? 'Disable bot (E)' : 'Enable bot (E)'}
+      onClick={() => onToggle(!enabled)}
+    >
+      <PowerIcon />
+      <span class="panel-quick-state">{enabled ? 'On' : 'Off'}</span>
+      <span class="panel-switch" aria-hidden="true">
+        <span class="panel-switch-track" />
+        <span class="panel-switch-knob" />
+      </span>
+    </button>
+  );
+}
+
+function EnableButton({ enabled, onToggle }: { enabled: boolean; onToggle: (enabled: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      class="panel-enable panel-enable-wide"
+      aria-pressed={enabled}
+      aria-label={enabled ? 'Disable bot (E)' : 'Enable bot (E)'}
+      title={enabled ? 'Disable bot (E)' : 'Enable bot (E)'}
       onClick={() => onToggle(!enabled)}
     >
       <span class="panel-enable-label">Enable bot</span>
@@ -575,15 +697,21 @@ function Panel({
     >
       <header class="panel-bar" onPointerDown={beginDrag}>
         <span class="panel-mark" aria-hidden="true">
-          ♞
+          <KnightIcon />
         </span>
         <div class="panel-bar-text">
           <strong class="panel-title">Super Chess Bot</strong>
           {collapsed ? (
             <span class="panel-summary">
               <span class="panel-dot" aria-hidden="true" />
-              <b>{move}</b>
-              <span>{evaluation}</span>
+              {move !== '—' ? (
+                <>
+                  <b>{move}</b>
+                  <span>{evaluation}</span>
+                </>
+              ) : (
+                <span class="panel-status-text">{analysis.status || 'Ready'}</span>
+              )}
             </span>
           ) : (
             <span class="panel-status" title={analysis.status}>
@@ -592,7 +720,9 @@ function Panel({
             </span>
           )}
         </div>
-        {collapsed && <EnableButton enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />}
+        {collapsed && (
+          <QuickEnableButton enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />
+        )}
         <button
           type="button"
           class="panel-icon"
@@ -626,7 +756,7 @@ function Panel({
           </section>
 
           <section class="panel-settings" aria-label="Bot settings">
-            <EnableButton wide enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />
+            <EnableButton enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />
             <div class="panel-toggles">
               <Toggle
                 label="Auto move"
@@ -695,19 +825,21 @@ function Panel({
                 <div class="panel-activity-actions">
                   <button
                     type="button"
-                    class="panel-text-button"
-                    aria-label={copied ? 'Log copied' : 'Copy log'}
+                    class={`panel-icon-btn ${copied ? 'is-success' : ''}`}
+                    aria-label={copied ? 'Log copied to clipboard' : 'Copy log'}
+                    title={copied ? 'Copied!' : 'Copy log'}
                     onClick={copyLogs}
                   >
-                    {copied ? 'Copied' : 'Copy'}
+                    {copied ? <CheckIcon /> : <CopyIcon />}
                   </button>
                   <button
                     type="button"
-                    class="panel-text-button"
+                    class="panel-icon-btn"
                     aria-label="Clear log"
+                    title="Clear log"
                     onClick={() => actions.clearConsole?.()}
                   >
-                    Clear
+                    <ClearIcon />
                   </button>
                 </div>
               )}
