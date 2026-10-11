@@ -88,7 +88,7 @@ function readSite(): SiteRead;
 
 `PositionHistory` remains the existing exported type from `history.ts`. Adapter selection initializes once in startup. Both factories accept `page: () => Window`, defaulting to an internal reader for `unsafeWindow` (or `window` outside a userscript); tests inject their existing fake page/document fixtures. Stable identity belongs to the game + board/controller instance, not each read's object allocation.
 
-- [ ] Add tests: exact Chess.com hostname selection and reject `pychess.org.example.test`; repeated Chess.com reads retain identity; hidden boards are skipped; board/game replacement changes identity; Move subscriptions detach; existing click/drag and promotion behavior is preserved. Positive PyChess selection is added with its factory in Task 2.
+- [x] Add tests: exact Chess.com hostname selection and reject `pychess.org.example.test`; repeated Chess.com reads retain identity; hidden boards are skipped; board/game replacement changes identity; Move subscriptions detach; existing click/drag and promotion behavior is preserved. Positive PyChess selection is added with its factory in Task 2.
 
 ```ts
 it('selects only an exact supported host', () => {
@@ -96,10 +96,10 @@ it('selects only an exact supported host', () => {
   expect(selectSite('pychess.org.example.test')).toBeNull();
 });
 ```
-- [ ] Run `bun run test -- tests/sites.test.ts tests/state.test.ts tests/adapter.test.ts tests/board-input.test.ts`; confirm new assertions fail before implementing the boundary.
-- [ ] Define the contract and `createChesscomAdapter()`. Move site-specific selection/private API/clock/rematch/promotion logic into it. Extract existing gesture bodies to `board-input.ts` with injected board/square-coordinate readers and guard; keep their event targeting and cancellation behavior. Adapt state helpers and board watcher/transport wrappers without changing controller scheduling yet. `sites` may depend on gesture/history helpers; those helpers must not import `board.ts` or active-site state.
-- [ ] Run the focused tests, then `bun run check`. Existing behavior passes and no cyclic site/board imports appear in the changed files. Do not register incomplete PyChess support in userscript matches yet.
-- [ ] Commit only this task's subproject files: `refactor(chess): isolate site state and move transport`.
+- [x] Run `bun run test -- tests/sites.test.ts tests/state.test.ts tests/adapter.test.ts tests/board-input.test.ts`; confirm new assertions fail before implementing the boundary.
+- [x] Define the contract and `createChesscomAdapter()`. Move site-specific selection/private API/clock/rematch/promotion logic into it. Extract existing gesture bodies to `board-input.ts` with injected board/square-coordinate readers and guard; keep their event targeting and cancellation behavior. Adapt state helpers and board watcher/transport wrappers without changing controller scheduling yet. `sites` may depend on gesture/history helpers; those helpers must not import `board.ts` or active-site state.
+- [x] Run the focused tests, then `bun run check`. Existing behavior passes and no cyclic site/board imports appear in the changed files. Do not register incomplete PyChess support in userscript matches yet.
+- [x] Commit only this task's subproject files: `refactor(chess): isolate site state and move transport`.
 
 ## Task 2: Parse accepted PyChess state, history, events, and clocks
 

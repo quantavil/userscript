@@ -1,3 +1,5 @@
+import type { Coordinates } from './board-input.js';
+import { activateElement, simulateClickMove, simulateDragMove } from './board-input.js';
 import { findPromotionOption } from './promotion.js';
 import {
   BotState,
@@ -18,11 +20,6 @@ interface BoardContext {
   ctx: CanvasRenderingContext2D;
   evalBarWrap: HTMLDivElement;
   detachListeners: () => void;
-}
-
-interface Coordinates {
-  x: number;
-  y: number;
 }
 
 let boardCtx: BoardContext | null = null;
@@ -337,19 +334,6 @@ export function drawArrow(uciFrom: string, uciTo: string, color: string, thickne
   ctx.fill();
 }
 
-function dispatchPointerOrMouse(el: Element | null, type: string, opts: PointerEventInit, usePointer: boolean): void {
-  if (!el) return;
-  const mouseType = type.replace('pointer', 'mouse');
-  if (usePointer) {
-    try {
-      el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, ...opts }));
-      el.dispatchEvent(new MouseEvent(mouseType, { bubbles: true, cancelable: true, composed: true, ...opts }));
-      return;
-    } catch {}
-  }
-  el.dispatchEvent(new MouseEvent(mouseType, { bubbles: true, cancelable: true, composed: true, ...opts }));
-}
-
 function getTargetAt(x: number, y: number): Element {
   return document.elementFromPoint(x, y) || boardCtx?.boardEl || document.body;
 }
@@ -359,99 +343,6 @@ function getMoveCoordinates(from: string, to: string): { a: Coordinates; b: Coor
   const b = getSquareCenterClientXY(to);
   if (!a || !b) return null;
   return { a, b };
-}
-
-function createPointerOpts(x: number, y: number, buttons: number): PointerEventInit {
-  return {
-    clientX: x,
-    clientY: y,
-    screenX: x + (typeof window !== 'undefined' ? window.screenX || 0 : 0),
-    screenY: y + (typeof window !== 'undefined' ? window.screenY || 0 : 0),
-    buttons,
-    pointerId: 1,
-    pointerType: 'mouse',
-    isPrimary: true,
-    bubbles: true,
-    cancelable: true,
-    composed: true,
-  };
-}
-
-function pressAt(el: Element, x: number, y: number, usePointer: boolean): void {
-  dispatchPointerOrMouse(el, usePointer ? 'pointerdown' : 'mousedown', createPointerOpts(x, y, 1), usePointer);
-}
-
-function releaseAt(el: Element, x: number, y: number, usePointer: boolean): void {
-  dispatchPointerOrMouse(el, usePointer ? 'pointerup' : 'mouseup', createPointerOpts(x, y, 0), usePointer);
-}
-
-function clickAt(el: Element, x: number, y: number): void {
-  el.dispatchEvent(
-    new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y }),
-  );
-}
-
-async function simulateClickMove(from: string, to: string, guard: () => boolean = () => true): Promise<boolean> {
-  const coords = getMoveCoordinates(from, to);
-  if (!coords || !guard()) return false;
-  const { a, b } = coords;
-  const usePointer = !!window.PointerEvent;
-
-  const startEl = getTargetAt(a.x, a.y);
-
-  pressAt(startEl, a.x, a.y, usePointer);
-  await sleep(2);
-  releaseAt(startEl, a.x, a.y, usePointer);
-  clickAt(startEl, a.x, a.y);
-
-  await sleep(4);
-
-  if (!guard()) return false;
-  const endEl = getTargetAt(b.x, b.y);
-  pressAt(endEl, b.x, b.y, usePointer);
-  await sleep(2);
-  releaseAt(endEl, b.x, b.y, usePointer);
-  clickAt(endEl, b.x, b.y);
-
-  return true;
-}
-
-async function simulateDragMove(from: string, to: string, guard: () => boolean = () => true): Promise<boolean> {
-  const coords = getMoveCoordinates(from, to);
-  if (!coords || !guard()) return false;
-  const { a, b } = coords;
-  const usePointer = !!window.PointerEvent;
-
-  const startEl = getTargetAt(a.x, a.y);
-
-  // Dispatch down
-  pressAt(startEl, a.x, a.y, usePointer);
-
-  // Critical delay for UI to register the "grab"
-  await sleep(4);
-
-  // Drag steps
-  const steps = 2;
-  for (let i = 1; i <= steps; i++) {
-    const t = i / steps;
-    const mx = a.x + (b.x - a.x) * t;
-    const my = a.y + (b.y - a.y) * t;
-
-    const stepTarget = getTargetAt(mx, my);
-    const moveOpts = createPointerOpts(mx, my, 1);
-    dispatchPointerOrMouse(stepTarget, usePointer ? 'pointermove' : 'mousemove', moveOpts, usePointer);
-    await sleep(4);
-  }
-
-  // Release at the start when canceled; never drop an obsolete move.
-  if (!guard()) {
-    releaseAt(startEl, a.x, a.y, usePointer);
-    return false;
-  }
-  const endEl = getTargetAt(b.x, b.y);
-  releaseAt(endEl, b.x, b.y, usePointer);
-
-  return true;
 }
 
 export async function waitForFenChange(
@@ -534,26 +425,7 @@ async function maybeSelectPromotion(prefer = 'q', guard: () => boolean = () => t
       return style.display !== 'none' && style.visibility !== 'hidden';
     }) as HTMLElement[];
   const tryClick = async (el: HTMLElement): Promise<boolean> => {
-    try {
-      const rect = el.getBoundingClientRect();
-      if (!rect.width || !rect.height) return false;
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
-      const target = getTargetAt(x, y);
-      if (target !== el && !el.contains(target)) return false;
-      const usePointer = !!window.PointerEvent;
-      pressAt(target, x, y, usePointer);
-      await sleep(2);
-      if (!guard()) {
-        releaseAt(target, x, y, usePointer);
-        return false;
-      }
-      releaseAt(target, x, y, usePointer);
-      clickAt(target, x, y);
-      return true;
-    } catch {
-      return false;
-    }
+    return activateElement(el, getTargetAt, guard);
   };
   const start = Date.now();
   while (Date.now() - start < 1000) {
@@ -610,8 +482,8 @@ export async function executeMove(
     confirmation = waitForFenChange(analysisFen, 1000, expectedFen, confirmationController.signal);
     const sent =
       BotState.moveMethod === 'drag'
-        ? await simulateDragMove(from, to, guard)
-        : await simulateClickMove(from, to, guard);
+        ? await simulateDragMove(from, to, { getMoveCoordinates, getTargetAt, guard })
+        : await simulateClickMove(from, to, { getMoveCoordinates, getTargetAt, guard });
     if (!sent) return false;
     if (promotionChar && guard() && !(await maybeSelectPromotion(promotionChar, guard))) return false;
     const accepted = await confirmation;

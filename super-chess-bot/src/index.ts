@@ -1,7 +1,8 @@
 import { attachToBoard } from './board.js';
 import { controller } from './controller.js';
 import { warmEngine } from './engine/analysis.js';
-import { BotState, getBoard, pa } from './state.js';
+import { getSite, readSite } from './sites/index.js';
+import { BotState, pa } from './state.js';
 import { buildUI, ui } from './ui.js';
 import { waitForElement } from './utils.js';
 
@@ -34,9 +35,15 @@ async function init(): Promise<void> {
         ui.updateDisplay(pa());
       },
     );
+    if (!getSite()) {
+      BotState.statusInfo = 'Unsupported site';
+      ui.updateDisplay(pa());
+      controller.init();
+      return;
+    }
     await waitForElement('wc-chess-board, chess-board, .board');
-    const board = getBoard();
-    if (board) attachToBoard(board);
+    const observation = readSite();
+    if (observation.kind === 'game') attachToBoard(observation.snapshot.board);
     controller.init();
   } catch (error) {
     page.__GABIBOT_RUNNING__ = false;
