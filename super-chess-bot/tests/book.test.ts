@@ -1,9 +1,29 @@
-import { Chess } from 'chessops/chess';
-import { parseFen } from 'chessops/fen';
+import { Chess, normalizeMove } from 'chessops/chess';
+import { makeFen, parseFen } from 'chessops/fen';
+import { makeSanAndPlay, parseSan } from 'chessops/san';
 import { parseUci } from 'chessops/util';
 import { describe, expect, it } from 'vitest';
 import { type CandidateMove, EPD_BOOK, lookupBookMove, normalizeEpd } from '../src/engine/book.js';
 import type { OpeningStyle } from '../src/types/chess.js';
+
+const STYLES: OpeningStyle[] = ['hyper-defensive', 'defensive', 'balanced', 'aggressive', 'hyper-aggressive'];
+
+/** Build a real position from a SAN line so expectations never carry a hand-written FEN. */
+function positionAfter(sanLine: string): Chess {
+  let position = Chess.default();
+  for (const san of sanLine.split(' ').filter(Boolean)) {
+    const move = parseSan(position, san);
+    if (!move) throw new Error(`illegal SAN "${san}" in test line "${sanLine}"`);
+    const next = position.clone();
+    makeSanAndPlay(next, move);
+    position = next;
+  }
+  return position;
+}
+
+function fenAfter(sanLine: string): string {
+  return makeFen(positionAfter(sanLine).toSetup());
+}
 
 describe('opening book', () => {
   it('normalizes 6-part FEN strings into 4-part EPD strings', () => {
@@ -92,8 +112,6 @@ describe('opening book', () => {
   });
 
   it('ensures all EPD positions and candidate moves across all styles in EPD_BOOK are structurally valid', () => {
-    const styles: OpeningStyle[] = ['hyper-defensive', 'defensive', 'balanced', 'aggressive', 'hyper-aggressive'];
-
     for (const [epd, entry] of Object.entries(EPD_BOOK)) {
       // Validate EPD can be parsed as a chess position
       const fullFen = `${epd} 0 1`;
@@ -110,7 +128,7 @@ describe('opening book', () => {
         candidateLists.push(entry);
       } else {
         if (entry.default) candidateLists.push(entry.default);
-        for (const style of styles) {
+        for (const style of STYLES) {
           const list = entry[style];
           if (list) candidateLists.push(list);
         }
@@ -137,5 +155,170 @@ describe('opening book', () => {
     expect(lookupBookMove(`${nimzoEpd} 0 2`)).toBeDefined();
     expect(lookupBookMove(`${nimzoEpd} 5 10`)).toBeDefined();
     expect(lookupBookMove(nimzoEpd)).toBeDefined();
+  });
+
+  it('ignores the en passant field, so every host FEN convention resolves the same move', () => {
+    // Chess.com returns the raw controller FEN, which keeps the ep square after any
+    // double push; the Lichess and PyChess adapters pass canonicalFen(), which only
+    // keeps it when a capture is actually available. Both must hit the same entry.
+    const withEp = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+    const withoutEp = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+    for (const style of STYLES) {
+      for (let roll = 0; roll < 8; roll++) {
+        const rng = () => roll / 8;
+        expect(lookupBookMove(withEp, style, rng)).toBe(lookupBookMove(withoutEp, style, rng));
+      }
+    }
+    // An ep square that a capture could actually use is still matched.
+    const capturableEp = 'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2';
+    expect(lookupBookMove(capturableEp, 'defensive', () => 0)).toBe('e4d5');
+  });
+
+  it('only contains moves that are legal in the position they belong to', () => {
+    for (const [epd, entry] of Object.entries(EPD_BOOK)) {
+      const parsed = parseFen(`${epd} 0 1`);
+      expect(parsed.isOk).toBe(true);
+      if (!parsed.isOk) continue;
+      const position = Chess.fromSetup(parsed.value);
+      expect(position.isOk).toBe(true);
+      if (position.isErr) continue;
+
+      const lists: CandidateMove[][] = Array.isArray(entry)
+        ? [entry]
+        : [entry.default ?? [], ...STYLES.map((style) => entry[style] ?? [])].filter((list) => list.length > 0);
+
+      for (const list of lists) {
+        for (const [uci] of list) {
+          const move = parseUci(uci);
+          expect(move).toBeDefined();
+          expect(position.value.isLegal(move as never)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('ensures no candidate move in EPD_BOOK is an en passant capture', () => {
+    // Normalizing away the ep field in bookKey() is safe only while no candidate
+    // move is an en passant capture. If an ep capture is ever added, it could be
+    // played in transposed positions where the capture is illegal.
+    for (const [epd, entry] of Object.entries(EPD_BOOK)) {
+      const parsed = parseFen(`${epd} 0 1`);
+      if (!parsed.isOk) continue;
+      const position = Chess.fromSetup(parsed.value);
+      if (position.isErr) continue;
+      const pos = position.value;
+
+      const lists: CandidateMove[][] = Array.isArray(entry)
+        ? [entry]
+        : [entry.default ?? [], ...STYLES.map((style) => entry[style] ?? [])].filter((list) => list.length > 0);
+
+      for (const list of lists) {
+        for (const [uci] of list) {
+          const move = parseUci(uci);
+          if (!move) continue;
+          const isEpCapture =
+            pos.epSquare !== undefined &&
+            'from' in move &&
+            move.to === pos.epSquare &&
+            pos.board.get(move.from)?.role === 'pawn';
+          expect(isEpCapture, `candidate ${uci} in "${epd}" is an en passant capture`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('answers every first move for every style, so no opening family ends at ply 1', () => {
+    // Regression guard: each White first move must have at least one book reply in every
+    // style. 1.c4 and 1.Nf3 used to have no follow-up at all in any style.
+    const afterFirstMove = ['e4', 'd4', 'c4', 'Nf3'];
+    for (const style of STYLES) {
+      for (const line of afterFirstMove) {
+        const fen = fenAfter(line);
+        const move = lookupBookMove(fen, style, () => 0);
+        expect(move, `${style} has no reply after 1.${line}`).not.toBeNull();
+        const position = positionAfter(line);
+        expect(position.isLegal(parseUci(move as string) as never)).toBe(true);
+      }
+    }
+  });
+
+  it('keeps the mainline hub positions the book is expected to cover', () => {
+    const bookKeys = new Set(
+      Object.keys(EPD_BOOK).map((epd) => normalizeEpd(`${epd} 0 1`).split(' ').slice(0, 3).join(' ')),
+    );
+    const hubs: Array<[string, string]> = [
+      ['Najdorf hub', 'e4 c5 Nf3 d6 d4 cxd4 Nxd4 a6 Nc3'],
+      ['Open Sicilian 4...Nf6 bridge', 'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6'],
+      ['Caro-Kann 3.Nc3 hub', 'e4 c6 d4 d5 Nc3'],
+      ['French 3.Nc3 hub', 'e4 e6 d4 d5 Nc3'],
+      ['Philidor 1...Nf6', 'e4 Nf6'],
+      ['London 2.Nf3 hub', 'd4 d5 Nf3'],
+      ['London System 3.Bf4', 'd4 d5 Nf3 Nf6 Bf4'],
+      ['Benoni 2...c5 hub', 'd4 Nf6 c4 c5'],
+      ['Modern Benoni 4.Nc3', 'd4 Nf6 c4 c5 d5 e6 Nc3'],
+      ['Nimzo 3...Bb4 hub', 'd4 Nf6 c4 e6 Nc3 Bb4'],
+      ["King's Indian 3...Bg7 hub", 'd4 Nf6 c4 g6 Nc3 Bg7'],
+      ['QGD 3...Nf6 hub', 'd4 d5 c4 e6 Nc3 Nf6'],
+      ['Slav 2...c6', 'd4 d5 c4 c6'],
+      ['English 1.c4 e5', 'c4 e5'],
+      ['Symmetrical English 1...c5', 'c4 c5'],
+      ['Reti 1.Nf3 d5', 'Nf3 d5'],
+      ['Reti 1.Nf3 Nf6', 'Nf3 Nf6'],
+      ['Ruy Lopez Closed 3...a6', 'e4 e5 Nf3 Nc6 Bb5 a6'],
+      ['Giuoco Pianissimo 4.d3', 'e4 e5 Nf3 Nc6 Bc4 Bc5 d3'],
+      ['Scotch 4.Nxd4', 'e4 e5 Nf3 Nc6 d4 exd4 Nxd4'],
+    ];
+    for (const [label, line] of hubs) {
+      const key = normalizeEpd(fenAfter(line)).split(' ').slice(0, 3).join(' ');
+      expect(bookKeys.has(key), `missing book hub: ${label} (${key})`).toBe(true);
+    }
+  });
+
+  it('keeps the mean book depth per style above the ply-1 floor', () => {
+    // The regression this guards: matching the host en passant field exactly left only
+    // the start position in the book on Lichess and PyChess, so the mean exit ply was 1.
+    const depths: Record<string, number[]> = {};
+    for (const style of STYLES) depths[style] = [];
+
+    const walk = (
+      style: OpeningStyle,
+      position: Chess,
+      ply: number,
+      ancestors: Set<string>,
+      budget: { left: number },
+    ) => {
+      if (budget.left-- <= 0) return;
+      const fen = makeFen(position.toSetup());
+      const move = lookupBookMove(fen, style, () => 0);
+      const key = normalizeEpd(fen);
+      if (!move || ancestors.has(key)) {
+        depths[style].push(ply);
+        return;
+      }
+      const next = new Set(ancestors);
+      next.add(key);
+      const nextPosition = position.clone();
+      nextPosition.play(normalizeMove(position, parseUci(move) as never) as never);
+      walk(style, nextPosition, ply + 1, next, budget);
+    };
+
+    for (const firstMove of ['e2e4', 'd2d4', 'c2c4', 'g1f3']) {
+      for (const style of STYLES) {
+        const start = positionAfter('');
+        const afterFirst = start.clone();
+        afterFirst.play(normalizeMove(start, parseUci(firstMove) as never) as never);
+        walk(style, afterFirst, 1, new Set(), { left: 4000 });
+      }
+    }
+
+    for (const style of STYLES) {
+      const samples = depths[style];
+      expect(samples.length, `no depth samples for ${style}`).toBeGreaterThan(0);
+      // The floor leaves room for individual branch changes: following the
+      // highest-weighted move from each of the four first moves currently lands
+      // between 3.75 and 5.25 plies. Before the ep fix this metric was 1.0-1.5.
+      const mean = samples.reduce((sum, value) => sum + value, 0) / samples.length;
+      expect(mean, `${style} mean book depth fell to ${mean.toFixed(2)}`).toBeGreaterThanOrEqual(3);
+    }
   });
 });
