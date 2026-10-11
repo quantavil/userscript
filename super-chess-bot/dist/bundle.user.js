@@ -56,1227 +56,365 @@
 		}
 		return null;
 	}
-	function jsonStringifyReplacer(_, value) {
-		if (typeof value === "bigint") return value.toString();
-		return value;
-	}
-	var Cached = class {
-		constructor(getter) {
-			this._getter = getter;
-			this._value = void 0;
-		}
-		get value() {
-			const getter = this._getter;
-			if (getter !== void 0) {
-				this._value = getter();
-				this._getter = void 0;
-			}
-			return this._value;
-		}
+	var DEFAULT_CONFIG = {
+		lang: void 0,
+		message: void 0,
+		abortEarly: void 0,
+		abortPipeEarly: void 0
 	};
-	function cached(getter) {
-		return new Cached(getter);
-	}
-	function nullish(input) {
-		return input === null || input === void 0;
-	}
-	function cleanRegex(source) {
-		const start = source.startsWith("^") ? 1 : 0;
-		const end = source.endsWith("$") ? source.length - 1 : source.length;
-		return source.slice(start, end);
-	}
-	function assignProp(target, prop, value) {
-		Object.defineProperty(target, prop, {
-			value,
-			writable: true,
-			enumerable: true,
-			configurable: true
-		});
-	}
-	var captureStackTrace = "captureStackTrace" in Error ? Error.captureStackTrace : (..._args) => {};
-	function isObject(data) {
-		return typeof data === "object" && data !== null && !Array.isArray(data);
-	}
-	function escapeRegex(str) {
-		return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	}
-	function clone(inst, def, params) {
-		const cl = new inst._zod.constr(def ?? inst._zod.def);
-		if (!def || params?.parent) cl._zod.parent = inst;
-		return cl;
-	}
-	function normalizeParams(_params) {
-		const params = _params;
-		if (!params) return {};
-		if (typeof params === "string") return { error: () => params };
-		if (params?.message !== void 0) {
-			if (params?.error !== void 0) throw new Error("Cannot specify both `message` and `error` params");
-			params.error = params.message;
-		}
-		delete params.message;
-		if (typeof params.error === "string") return {
-			...params,
-			error: () => params.error
-		};
-		return params;
-	}
-	function optionalKeys(shape) {
-		return Object.keys(shape).filter((k) => {
-			return shape[k]._zod.optin !== void 0 && shape[k]._zod.optout === "optional";
-		});
-	}
-	var NUMBER_FORMAT_RANGES = (() => ({
-		safeint: [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
-		int32: [-2147483648, 2147483647],
-		uint32: [0, 4294967295],
-		float32: [-34028234663852886e22, 34028234663852886e22],
-		float64: [-Number.MAX_VALUE, Number.MAX_VALUE]
-	}))();
-	function aborted(x, startIndex = 0) {
-		if (x.aborted === true) return true;
-		for (let i = startIndex; i < x.issues.length; i++) if (x.issues[i]?.continue !== true) return true;
-		return false;
-	}
-	function explicitlyAborted(x, startIndex = 0) {
-		if (x.aborted === true) return true;
-		for (let i = startIndex; i < x.issues.length; i++) if (x.issues[i]?.continue === false) return true;
-		return false;
-	}
-	function prefixIssues(path, issues) {
-		return issues.map((iss) => {
-			var _a;
-			(_a = iss).path ?? (_a.path = []);
-			iss.path.unshift(path);
-			return iss;
-		});
-	}
-	function unwrapMessage(message) {
-		return typeof message === "string" ? message : message?.message;
-	}
-	function attachSchema(issues, start, inst) {
-		var _a;
-		for (let i = start; i < issues.length; i++) (_a = issues[i]).schema ?? (_a.schema = inst);
-	}
-	function finalizeIssue(iss, ctx, config) {
-		var _a;
-		const traits = iss.inst?._zod?.traits;
-		if (traits?.has("$ZodType")) {
-			if (traits.has("$ZodCheck")) (_a = iss).schema ?? (_a.schema = iss.inst);
-			else iss.schema = iss.inst;
-		}
-		const schemaError = iss.schema !== iss.inst ? iss.schema?._zod.def?.error : void 0;
-		const message = iss.message ? iss.message : unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(schemaError?.(iss)) ?? unwrapMessage(ctx?.error?.(iss)) ?? unwrapMessage(config.customError?.(iss)) ?? unwrapMessage(config.localeError?.(iss)) ?? "Invalid input";
-		const full = {};
-		for (const k of Object.keys(iss)) {
-			if (k === "inst" || k === "schema" || k === "continue" || k === "input" || k === "__proto__") continue;
-			full[k] = iss[k];
-		}
-		full.path ?? (full.path = []);
-		full.message = message;
-		if (ctx?.reportInput) full.input = iss.input;
-		return full;
-	}
-	var highSurrogate = /[\uD800-\uDBFF]/;
-	function codePointLength(str) {
-		const units = str.length;
-		if (!highSurrogate.test(str)) return units;
-		let count = units;
-		for (let i = 0; i < units - 1; i++) if ((str.charCodeAt(i) & 64512) === 55296 && (str.charCodeAt(i + 1) & 64512) === 56320) {
-			count--;
-			i++;
-		}
-		return count;
-	}
-	function getLengthableOrigin(input) {
-		if (Array.isArray(input)) return "array";
-		if (typeof input === "string") return "string";
-		return "unknown";
-	}
-	function members(proto, table) {
-		for (const key in table) {
-			const desc = Object.getOwnPropertyDescriptor(table, key);
-			if (desc.get) Object.defineProperty(proto, key, {
-				...desc,
-				enumerable: false
-			});
-			else defineBound(proto, key, desc.value);
-		}
-	}
-	function own(inst, key, value, enumerable = true) {
-		Object.defineProperty(inst, key, {
-			configurable: true,
-			writable: true,
-			enumerable,
-			value
-		});
-		return value;
-	}
-	function hide(inst, key, value) {
-		return own(inst, key, value, false);
-	}
-	function defineBound(proto, key, fn) {
-		Object.defineProperty(proto, key, {
-			configurable: true,
-			get() {
-				return this == null ? fn : own(this, key, fn.bind(this));
-			},
-			set(value) {
-				own(this, key, value);
-			}
-		});
-	}
-	function claim(inst, sentinel) {
-		const proto = Object.getPrototypeOf(inst);
-		return sentinel in proto ? void 0 : proto;
-	}
-	var installing;
-	var broke = false;
-	var breaker = {
-		configurable: true,
-		get() {
-			broke = true;
-		}
-	};
-	function defineLazyInternal(inst, key, compute) {
-		const proto = Object.getPrototypeOf(inst._zod);
-		if (key in proto && installing !== inst._zod) {
-			installing = void 0;
-			return;
-		}
-		installing = inst._zod;
-		Object.defineProperty(proto, key, {
-			configurable: true,
-			get() {
-				Object.defineProperty(this, key, breaker);
-				const outer = broke;
-				broke = false;
-				try {
-					const value = compute(this);
-					if (broke) delete this[key];
-					else Object.defineProperty(this, key, {
-						configurable: true,
-						writable: true,
-						value
-					});
-					broke = broke || outer;
-					return value;
-				} catch (err) {
-					delete this[key];
-					broke = broke || outer;
-					throw err;
-				}
-			},
-			set(value) {
-				Object.defineProperty(this, key, {
-					configurable: true,
-					writable: true,
-					value
-				});
-			}
-		});
-	}
-	function installLazyProp(inst, key, make, enumerable) {
-		const proto = claim(inst, key);
-		if (!proto) return;
-		Object.defineProperty(proto, key, {
-			configurable: true,
-			get() {
-				const desc = {
-					configurable: true,
-					writable: true,
-					enumerable,
-					value: void 0
-				};
-				Object.defineProperty(this, key, desc);
-				desc.value = make(this);
-				Object.defineProperty(this, key, desc);
-				return desc.value;
-			},
-			set(value) {
-				Object.defineProperty(this, key, {
-					configurable: true,
-					writable: true,
-					enumerable,
-					value
-				});
-			}
-		});
-	}
-	var _a;
-	var _zodDesc = {
-		value: void 0,
-		enumerable: false
-	};
-	var _E = "captureStackTrace" in Error ? Error : null;
-	function newError(Definition) {
-		const E = _E;
-		if (E) {
-			const saved = E.stackTraceLimit;
-			if (typeof saved === "number") {
-				try {
-					E.stackTraceLimit = 0;
-				} catch {
-					_E = null;
-					return new Definition();
-				}
-				try {
-					return new Definition();
-				} finally {
-					E.stackTraceLimit = saved;
-				}
-			}
-		}
-		return new Definition();
-	}
-	function $constructor(name, initializer, proto, params) {
-		const zodProto = {};
-		function Internals(def) {
-			this.def = def;
-			this.constr = _;
-			this.traits = new Set();
-		}
-		Internals.prototype = zodProto;
-		const protoMembers = proto;
-		const initialized = protoMembers && new WeakSet();
-		function init(inst, def) {
-			if (!inst._zod) {
-				_zodDesc.value = new Internals(def);
-				try {
-					Object.defineProperty(inst, "_zod", _zodDesc);
-				} finally {
-					_zodDesc.value = void 0;
-				}
-			} else if (inst._zod.traits.has(name)) return;
-			inst._zod.traits.add(name);
-			initializer(inst, def);
-			if (initialized) {
-				const own = Object.getPrototypeOf(inst);
-				const ctorProto = inst._zod.constr.prototype;
-				let up = own;
-				while (up && up !== ctorProto) up = Object.getPrototypeOf(up);
-				const target = up ?? own;
-				if (!initialized.has(target)) {
-					initialized.add(target);
-					members(target, protoMembers);
-				}
-			}
-			const proto = _.prototype;
-			for (const k in proto) {
-				if (!Object.prototype.hasOwnProperty.call(proto, k)) continue;
-				if (!(k in inst)) inst[k] = proto[k].bind(inst);
-			}
-		}
-		const Parent = params?.Parent ?? Object;
-		class Definition extends Parent {}
-		Object.defineProperty(Definition, "name", { value: name });
-		function _(def) {
-			const inst = params?.Parent ? newError(Definition) : this;
-			init(inst, def);
-			const deferred = inst._zod.deferred;
-			if (deferred) {
-				for (const fn of deferred) fn();
-				inst._zod.deferred = void 0;
-			}
-			const pp = globalThis.__zod_globalConfig?.postProcessor;
-			if (pp) pp(inst);
-			return inst;
-		}
-		Object.defineProperty(_, "init", { value: init });
-		Object.defineProperty(_, Symbol.hasInstance, { value: (inst) => {
-			if (params?.Parent && inst instanceof params.Parent) return true;
-			return inst?._zod?.traits?.has(name);
-		} });
-		Object.defineProperty(_, "name", { value: name });
-		return _;
-	}
-	var $ZodAsyncError = class extends Error {
-		constructor() {
-			super(`Encountered Promise during synchronous parse. Use .parseAsync() instead.`);
-		}
-	};
-	(_a = globalThis).__zod_globalConfig ?? (_a.__zod_globalConfig = {});
-	var globalConfig = globalThis.__zod_globalConfig;
-	function config(newConfig) {
-		if (newConfig) Object.assign(globalConfig, newConfig);
-		return globalConfig;
-	}
-	function _getMessage() {
-		const internals = this._zod;
-		internals.message ?? (internals.message = JSON.stringify(internals.def, jsonStringifyReplacer, 2));
-		return internals.message;
-	}
-	function _setMessage(value) {
-		this._zod.message = value;
-	}
-	var _messageDesc = {
-		get: _getMessage,
-		set: _setMessage,
-		enumerable: true,
-		configurable: true
-	};
-	var _issuesDesc = {
-		value: void 0,
-		enumerable: false
-	};
-	var _installedToString = new WeakSet([Object.prototype, Error.prototype]);
-	var initializer = (inst, def) => {
-		inst.name = "$ZodError";
-		_issuesDesc.value = def;
-		Object.defineProperty(inst, "issues", _issuesDesc);
-		_issuesDesc.value = void 0;
-		Object.defineProperty(inst, "message", _messageDesc);
-		const proto = Object.getPrototypeOf(inst);
-		if (!_installedToString.has(proto)) {
-			_installedToString.add(proto);
-			Object.defineProperty(proto, "toString", {
-				configurable: true,
-				enumerable: false,
-				get() {
-					const value = () => this.message;
-					Object.defineProperty(this, "toString", {
-						value,
-						configurable: true,
-						writable: true
-					});
-					return value;
-				},
-				set(value) {
-					Object.defineProperty(this, "toString", {
-						value,
-						configurable: true,
-						writable: true
-					});
-				}
-			});
-		}
-	};
-	$constructor("$ZodError", initializer);
-	var $ZodRealError = $constructor("$ZodError", initializer, void 0, { Parent: Error });
-	var _parse = (_Err) => {
-		const fn = (schema, value, _ctx, _params) => {
-			const ctx = _ctx ? {
-				..._ctx,
-				async: false
-			} : { async: false };
-			const result = schema._zod.run({
-				value,
-				issues: []
-			}, ctx);
-			if (result instanceof Promise) throw new $ZodAsyncError();
-			if (result.issues.length) {
-				const e = new ((_params?.Err) ?? _Err)(result.issues.map((iss) => finalizeIssue(iss, ctx, config())));
-				captureStackTrace(e, _params?.callee ?? fn);
-				throw e;
-			}
-			return result.value;
-		};
-		return fn;
-	};
-	var parse = _parse($ZodRealError);
-	var _parseAsync = (_Err) => {
-		const fn = async (schema, value, _ctx, params) => {
-			const ctx = _ctx ? {
-				..._ctx,
-				async: true
-			} : { async: true };
-			let result = schema._zod.run({
-				value,
-				issues: []
-			}, ctx);
-			if (result instanceof Promise) result = await result;
-			if (result.issues.length) {
-				const e = new ((params?.Err) ?? _Err)(result.issues.map((iss) => finalizeIssue(iss, ctx, config())));
-				captureStackTrace(e, params?.callee ?? fn);
-				throw e;
-			}
-			return result.value;
-		};
-		return fn;
-	};
-	var parseAsync = _parseAsync($ZodRealError);
-	var _safeParse = (_Err) => (schema, value, _ctx) => {
-		const ctx = _ctx ? {
-			..._ctx,
-			async: false
-		} : { async: false };
-		const result = schema._zod.run({
-			value,
-			issues: []
-		}, ctx);
-		if (result instanceof Promise) throw new $ZodAsyncError();
-		return result.issues.length ? failure(_Err, result.issues, ctx) : {
-			success: true,
-			data: result.value
-		};
-	};
-	var safeParse = _safeParse($ZodRealError);
-	function failure(Err, issues, ctx) {
-		let error;
+	function getGlobalConfig(config$1) {
+		if (!config$1 && true) return DEFAULT_CONFIG;
 		return {
-			success: false,
-			get error() {
-				if (!error) {
-					error = new Err(issues.map((iss) => finalizeIssue(iss, ctx, config())));
-					issues = void 0;
-					ctx = void 0;
-				}
-				return error;
-			},
-			set error(e) {
-				error = e;
-				issues = void 0;
-				ctx = void 0;
+			lang: config$1?.lang ?? void 0,
+			message: config$1?.message,
+			abortEarly: config$1?.abortEarly ?? void 0,
+			abortPipeEarly: config$1?.abortPipeEarly ?? void 0
+		};
+	}
+	function _stringify(input) {
+		const type = typeof input;
+		if (type === "string") return `"${input}"`;
+		if (type === "number" || type === "bigint" || type === "boolean") return `${input}`;
+		if (type === "object" || type === "function") return (input && Object.getPrototypeOf(input)?.constructor?.name) ?? "null";
+		return type;
+	}
+	function _addIssue(context, label, dataset, config$1, other) {
+		const input = other && "input" in other ? other.input : dataset.value;
+		const expected = other?.expected ?? context.expects ?? null;
+		const received = other?.received ?? _stringify(input);
+		const issue = {
+			kind: context.kind,
+			type: context.type,
+			input,
+			expected,
+			received,
+			message: `Invalid ${label}: ${expected ? `Expected ${expected} but r` : "R"}eceived ${received}`,
+			requirement: context.requirement,
+			path: other?.path,
+			issues: other?.issues,
+			lang: config$1.lang,
+			abortEarly: config$1.abortEarly,
+			abortPipeEarly: config$1.abortPipeEarly
+		};
+		const isSchema = context.kind === "schema";
+		const message$1 = other?.message ?? context.message ?? (context.reference, issue.lang, void 0) ?? (isSchema ? (issue.lang, void 0) : null) ?? config$1.message ?? (issue.lang, void 0);
+		if (message$1 !== void 0) issue.message = typeof message$1 === "function" ? message$1(issue) : message$1;
+		if (isSchema) dataset.typed = false;
+		if (dataset.issues) dataset.issues.push(issue);
+		else dataset.issues = [issue];
+	}
+	function _isSameValueZero(value1, value2) {
+		return value1 === value2 || Number.isNaN(value1) && Number.isNaN(value2);
+	}
+	function _joinExpects(values$1, separator) {
+		const list = [...new Set(values$1)];
+		if (list.length > 1) return `(${list.join(` ${separator} `)})`;
+		return list[0] ?? "never";
+	}
+	function _standardSchema(schema) {
+		schema["~standard"] = {
+			version: 1,
+			vendor: "valibot",
+			validate: (value$1) => schema["~run"]({ value: value$1 }, getGlobalConfig())
+		};
+		return schema;
+	}
+	function integer(message$1) {
+		return {
+			kind: "validation",
+			type: "integer",
+			reference: integer,
+			async: false,
+			expects: null,
+			requirement: Number.isInteger,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (dataset.typed && !this.requirement(dataset.value)) _addIssue(this, "integer", dataset, config$1);
+				return dataset;
 			}
 		};
 	}
-	var _safeParseAsync = (_Err) => async (schema, value, _ctx) => {
-		const ctx = _ctx ? {
-			..._ctx,
-			async: true
-		} : { async: true };
-		let result = schema._zod.run({
-			value,
-			issues: []
-		}, ctx);
-		if (result instanceof Promise) result = await result;
-		return result.issues.length ? failure(_Err, result.issues, ctx) : {
-			success: true,
-			data: result.value
-		};
-	};
-	var safeParseAsync = _safeParseAsync($ZodRealError);
-	var anyString = /^[\s\S]{0,}$/;
-	var number$1 = /^-?\d+(?:\.\d+)?$/;
-	var $ZodCheck = $constructor("$ZodCheck", (inst, def) => {
-		var _a;
-		inst._zod ?? (inst._zod = {});
-		inst._zod.def = def;
-		(_a = inst._zod).onattach ?? (_a.onattach = []);
-	});
-	var _whenHasLength = (payload) => {
-		const val = payload.value;
-		return !nullish(val) && val.length !== void 0;
-	};
-	var numericOriginMap = {
-		number: "number",
-		bigint: "bigint",
-		object: "date"
-	};
-	var $ZodCheckLessThan = $constructor("$ZodCheckLessThan", (inst, def) => {
-		$ZodCheck.init(inst, def);
-		const origin = numericOriginMap[typeof def.value];
-		inst._zod.check = (payload) => {
-			if (def.inclusive ? payload.value <= def.value : payload.value < def.value) return;
-			payload.issues.push({
-				origin: numericOriginMap[typeof payload.value] ?? origin,
-				code: "too_big",
-				maximum: typeof def.value === "object" ? def.value.getTime() : def.value,
-				input: payload.value,
-				inclusive: def.inclusive,
-				inst,
-				continue: !def.abort
-			});
-		};
-	});
-	var $ZodCheckGreaterThan = $constructor("$ZodCheckGreaterThan", (inst, def) => {
-		$ZodCheck.init(inst, def);
-		const origin = numericOriginMap[typeof def.value];
-		inst._zod.check = (payload) => {
-			if (def.inclusive ? payload.value >= def.value : payload.value > def.value) return;
-			payload.issues.push({
-				origin: numericOriginMap[typeof payload.value] ?? origin,
-				code: "too_small",
-				minimum: typeof def.value === "object" ? def.value.getTime() : def.value,
-				input: payload.value,
-				inclusive: def.inclusive,
-				inst,
-				continue: !def.abort
-			});
-		};
-	});
-	var $ZodCheckNumberFormat = $constructor("$ZodCheckNumberFormat", (inst, def) => {
-		$ZodCheck.init(inst, def);
-		def.format = def.format || "float64";
-		const isInt = def.format?.includes("int");
-		const origin = isInt ? "int" : "number";
-		const [minimum, maximum] = NUMBER_FORMAT_RANGES[def.format];
-		inst._zod.check = (payload) => {
-			const input = payload.value;
-			if (isInt) {
-				if (!Number.isInteger(input)) {
-					payload.issues.push({
-						expected: origin,
-						format: def.format,
-						code: "invalid_type",
-						continue: false,
-						input,
-						inst
-					});
-					return;
-				}
-				if (!Number.isSafeInteger(input)) {
-					if (input > 0) payload.issues.push({
-						input,
-						code: "too_big",
-						maximum: Number.MAX_SAFE_INTEGER,
-						note: "Integers must be within the safe integer range.",
-						inst,
-						origin,
-						inclusive: true,
-						continue: !def.abort
-					});
-					else payload.issues.push({
-						input,
-						code: "too_small",
-						minimum: Number.MIN_SAFE_INTEGER,
-						note: "Integers must be within the safe integer range.",
-						inst,
-						origin,
-						inclusive: true,
-						continue: !def.abort
-					});
-					return;
-				}
+	function maxLength(requirement, message$1) {
+		return {
+			kind: "validation",
+			type: "max_length",
+			reference: maxLength,
+			async: false,
+			expects: `<=${requirement}`,
+			requirement,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (dataset.typed && dataset.value.length > this.requirement) _addIssue(this, "length", dataset, config$1, { received: `${dataset.value.length}` });
+				return dataset;
 			}
-			if (input < minimum) payload.issues.push({
-				origin: "number",
-				input,
-				code: "too_small",
-				minimum,
-				inclusive: true,
-				inst,
-				continue: !def.abort
-			});
-			if (input > maximum) payload.issues.push({
-				origin: "number",
-				input,
-				code: "too_big",
-				maximum,
-				inclusive: true,
-				inst,
-				continue: !def.abort
-			});
 		};
-	});
-	var $ZodCheckMaxLength = $constructor("$ZodCheckMaxLength", (inst, def) => {
-		var _a;
-		$ZodCheck.init(inst, def);
-		(_a = inst._zod.def).when ?? (_a.when = _whenHasLength);
-		inst._zod.check = (payload) => {
-			const input = payload.value;
-			const units = input.length;
-			if ((typeof input === "string" && units > def.maximum ? codePointLength(input) : units) <= def.maximum) return;
-			const origin = getLengthableOrigin(input);
-			payload.issues.push({
-				origin,
-				code: "too_big",
-				maximum: def.maximum,
-				inclusive: true,
-				input,
-				inst,
-				continue: !def.abort
-			});
+	}
+	function maxValue(requirement, message$1) {
+		return {
+			kind: "validation",
+			type: "max_value",
+			reference: maxValue,
+			async: false,
+			expects: `<=${requirement instanceof Date ? requirement.toJSON() : _stringify(requirement)}`,
+			requirement,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (dataset.typed && !(dataset.value <= this.requirement)) _addIssue(this, "value", dataset, config$1, { received: dataset.value instanceof Date ? dataset.value.toJSON() : _stringify(dataset.value) });
+				return dataset;
+			}
 		};
-	});
-	var version = {
-		major: 4,
-		minor: 6,
-		patch: 5
-	};
-	var $ZodType = $constructor("$ZodType", (inst, def) => {
-		var _a;
-		inst ?? (inst = {});
-		inst._zod.def = def;
-		inst._zod.bag = inst._zod.bag || {};
-		inst._zod.version = version;
-		const defChecks = inst._zod.def.checks;
-		const checks = inst._zod.traits.has("$ZodCheck") ? [inst, ...defChecks ?? []] : defChecks?.length ? [...defChecks] : [];
-		for (const ch of checks) for (const fn of ch._zod.onattach) fn(inst);
-		if (checks.length === 0) {
-			(_a = inst._zod).deferred ?? (_a.deferred = []);
-			inst._zod.deferred?.push(() => {
-				inst._zod.run = inst._zod.parse;
-			});
-		} else {
-			const runChecks = (payload, checks, ctx) => {
-				if (payload.memo) return payload;
-				let isAborted = aborted(payload);
-				let asyncResult;
-				for (const ch of checks) {
-					if (ch._zod.def.when) {
-						if (explicitlyAborted(payload)) continue;
-						if (!ch._zod.def.when(payload)) continue;
-					} else if (isAborted) continue;
-					const currLen = payload.issues.length;
-					const _ = ch._zod.check(payload);
-					if (_ instanceof Promise && ctx?.async === false) throw new $ZodAsyncError();
-					if (asyncResult || _ instanceof Promise) asyncResult = (asyncResult ?? Promise.resolve()).then(async () => {
-						await _;
-						if (payload.issues.length === currLen) return;
-						attachSchema(payload.issues, currLen, inst);
-						if (!isAborted) isAborted = aborted(payload, currLen);
-					});
-					else {
-						if (payload.issues.length === currLen) continue;
-						attachSchema(payload.issues, currLen, inst);
-						if (!isAborted) isAborted = aborted(payload, currLen);
+	}
+	function minValue(requirement, message$1) {
+		return {
+			kind: "validation",
+			type: "min_value",
+			reference: minValue,
+			async: false,
+			expects: `>=${requirement instanceof Date ? requirement.toJSON() : _stringify(requirement)}`,
+			requirement,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (dataset.typed && !(dataset.value >= this.requirement)) _addIssue(this, "value", dataset, config$1, { received: dataset.value instanceof Date ? dataset.value.toJSON() : _stringify(dataset.value) });
+				return dataset;
+			}
+		};
+	}
+	function getFallback(schema, dataset, config$1) {
+		return typeof schema.fallback === "function" ? schema.fallback(dataset, config$1) : schema.fallback;
+	}
+	function getDefault(schema, dataset, config$1) {
+		return typeof schema.default === "function" ? schema.default(dataset, config$1) : schema.default;
+	}
+	function literal(literal_, message$1) {
+		return _standardSchema({
+			kind: "schema",
+			type: "literal",
+			reference: literal,
+			expects: _stringify(literal_),
+			async: false,
+			literal: literal_,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (_isSameValueZero(dataset.value, this.literal)) dataset.typed = true;
+				else _addIssue(this, "type", dataset, config$1);
+				return dataset;
+			}
+		});
+	}
+	function nullable(wrapped, default_) {
+		return _standardSchema({
+			kind: "schema",
+			type: "nullable",
+			reference: nullable,
+			expects: `(${wrapped.expects} | null)`,
+			async: false,
+			wrapped,
+			default: default_,
+			"~run"(dataset, config$1) {
+				if (dataset.value === null) {
+					if (this.default !== void 0) dataset.value = getDefault(this, dataset, config$1);
+					if (dataset.value === null) {
+						dataset.typed = true;
+						return dataset;
 					}
 				}
-				if (asyncResult) return asyncResult.then(() => {
-					return payload;
-				});
-				return payload;
-			};
-			const handleCanaryResult = (canary, payload, ctx) => {
-				if (aborted(canary)) {
-					canary.aborted = true;
-					return canary;
-				}
-				const checkResult = runChecks(payload, checks, ctx);
-				if (checkResult instanceof Promise) {
-					if (ctx.async === false) throw new $ZodAsyncError();
-					return checkResult.then((checkResult) => inst._zod.parse(checkResult, ctx));
-				}
-				return inst._zod.parse(checkResult, ctx);
-			};
-			inst._zod.run = (payload, ctx) => {
-				if (ctx.skipChecks) return inst._zod.parse(payload, ctx);
-				if (ctx.direction === "backward") {
-					const canary = inst._zod.parse({
-						value: payload.value,
-						issues: []
-					}, {
-						...ctx,
-						skipChecks: true
-					});
-					if (canary instanceof Promise) return canary.then((canary) => {
-						return handleCanaryResult(canary, payload, ctx);
-					});
-					return handleCanaryResult(canary, payload, ctx);
-				}
-				const result = inst._zod.parse(payload, ctx);
-				if (result instanceof Promise) {
-					if (ctx.async === false) throw new $ZodAsyncError();
-					return result.then((result) => runChecks(result, checks, ctx));
-				}
-				return runChecks(result, checks, ctx);
-			};
-		}
-	}, {
-		get "~standard"() {
-			return hide(this, "~standard", standardProps(this));
-		},
-		set "~standard"(value) {
-			own(this, "~standard", value);
-		}
-	});
-	var toStandardResult = (r, ctx) => r.issues.length ? { issues: r.issues.map((iss) => finalizeIssue(iss, ctx, config())) } : { value: r.value };
-	async function validateAsync(inst, value) {
-		const ctx = { async: true };
-		return toStandardResult(await inst._zod.run({
-			value,
-			issues: []
-		}, ctx), ctx);
-	}
-	function standardProps(inst) {
-		return {
-			validate: (value) => {
-				const ctx = { async: false };
-				try {
-					const r = inst._zod.run({
-						value,
-						issues: []
-					}, ctx);
-					if (!(r instanceof Promise)) return toStandardResult(r, ctx);
-				} catch (_) {}
-				return validateAsync(inst, value);
-			},
-			vendor: "zod",
-			version: 1
-		};
-	}
-	var $ZodString = $constructor("$ZodString", (inst, def) => {
-		$ZodType.init(inst, def);
-		inst._zod.pattern = def.pattern ?? anyString;
-		inst._zod.parse = (payload, _) => {
-			if (def.coerce) try {
-				payload.value = String(payload.value);
-			} catch (_) {}
-			if (typeof payload.value === "string") return payload;
-			payload.issues.push({
-				expected: "string",
-				code: "invalid_type",
-				input: payload.value,
-				inst
-			});
-			return payload;
-		};
-	});
-	var $ZodNumber = $constructor("$ZodNumber", (inst, def) => {
-		$ZodType.init(inst, def);
-		inst._zod.pattern = number$1;
-		inst._zod.parse = (payload, _ctx) => {
-			if (def.coerce) try {
-				payload.value = Number(payload.value);
-			} catch (_) {}
-			const input = payload.value;
-			if (typeof input === "number" && !Number.isNaN(input) && Number.isFinite(input)) return payload;
-			const received = typeof input === "number" ? Number.isNaN(input) ? "NaN" : !Number.isFinite(input) ? String(input) : void 0 : void 0;
-			payload.issues.push({
-				expected: "number",
-				code: "invalid_type",
-				input,
-				inst,
-				...received ? { received } : {}
-			});
-			return payload;
-		};
-	});
-	var $ZodNumberFormat = $constructor("$ZodNumberFormat", (inst, def) => {
-		$ZodCheckNumberFormat.init(inst, def);
-		$ZodNumber.init(inst, def);
-	});
-	function handlePropertyResult(result, final, key, input, optin, optout) {
-		const isPresent = key in input;
-		const isOptionalOut = optout === "optional";
-		if (!isPresent && isOptionalOut && optin === "optional") return;
-		if (result.issues.length) {
-			if (optin !== void 0 && isOptionalOut && !isPresent) return;
-			final.issues.push(...prefixIssues(key, result.issues));
-		}
-		if (!isPresent && optin === void 0) {
-			if (!result.issues.length) final.issues.push({
-				code: "invalid_type",
-				expected: "nonoptional",
-				input: void 0,
-				path: [key]
-			});
-			return;
-		}
-		if (result.value === void 0) {
-			if (isPresent || optin === "defaulted" && !isOptionalOut) final.value[key] = void 0;
-		} else final.value[key] = result.value;
-	}
-	var NO_SYMBOL_KEYS = [];
-	function normalizeDef(def) {
-		const keys = Object.keys(def.shape);
-		const ownSymbols = Object.getOwnPropertySymbols(def.shape);
-		const symbolKeys = ownSymbols.length ? ownSymbols : NO_SYMBOL_KEYS;
-		const allKeys = symbolKeys.length ? [...keys, ...symbolKeys] : keys;
-		for (const k of allKeys) if (!def.shape?.[k]?._zod?.traits?.has("$ZodType")) throw new Error(`Invalid element at key "${String(k)}": expected a Zod schema`);
-		const okeys = optionalKeys(def.shape);
-		return {
-			...def,
-			allKeys,
-			symbolKeys,
-			keySet: new Set(keys),
-			numKeys: keys.length,
-			optionalKeys: new Set(okeys)
-		};
-	}
-	function handleCatchall(proms, input, payload, ctx, def, inst, abortEarly) {
-		const unrecognized = [];
-		const keySet = def.keySet;
-		const _catchall = def.catchall._zod;
-		const t = _catchall.def.type;
-		const optin = _catchall.optin;
-		const optout = _catchall.optout;
-		let seen = 0;
-		for (const key in input) {
-			if (abortEarly && payload.issues.length !== seen) {
-				if (aborted(payload, seen)) break;
-				seen = payload.issues.length;
-			}
-			if (keySet.has(key)) continue;
-			if (key === "__proto__") {
-				if (t === "never") unrecognized.push(key);
-				continue;
-			}
-			if (t === "never") {
-				unrecognized.push(key);
-				continue;
-			}
-			const r = _catchall.run({
-				value: input[key],
-				issues: []
-			}, ctx);
-			if (r instanceof Promise) proms.push(r.then((r) => handlePropertyResult(r, payload, key, input, optin, optout)));
-			else handlePropertyResult(r, payload, key, input, optin, optout);
-		}
-		if (unrecognized.length) payload.issues.push({
-			code: "unrecognized_keys",
-			keys: unrecognized,
-			input,
-			inst,
-			continue: true
-		});
-		if (!proms.length) return payload;
-		return Promise.all(proms).then(() => {
-			return payload;
-		});
-	}
-	var $ZodObject = $constructor("$ZodObject", (inst, def) => {
-		$ZodType.init(inst, def);
-		const desc = Object.getOwnPropertyDescriptor(def, "shape");
-		const sh = desc?.get ? desc.get.raw : def.shape ?? {};
-		if (sh) {
-			const get = () => {
-				const newSh = { ...sh };
-				Object.defineProperty(def, "shape", { value: newSh });
-				get.raw = newSh;
-				return newSh;
-			};
-			get.raw = sh;
-			Object.defineProperty(def, "shape", { get });
-		}
-		const _normalized = cached(() => normalizeDef(def));
-		defineLazyInternal(inst, "propValues", (zod) => {
-			const shape = zod.def.shape;
-			const propValues = {};
-			for (const key in shape) {
-				const field = shape[key]._zod;
-				if (field.values) {
-					if (!Object.prototype.hasOwnProperty.call(propValues, key)) assignProp(propValues, key, new Set());
-					for (const v of field.values) propValues[key].add(v);
-					if (field.optin !== void 0) propValues[key].add(void 0);
-				}
-			}
-			return propValues;
-		});
-		const isObject$2 = isObject;
-		const catchall = def.catchall;
-		let value;
-		const memo = globalConfig.memoizer;
-		memo?.attach(inst);
-		inst._zod.parse = (payload, ctx) => {
-			value ?? (value = _normalized.value);
-			const input = payload.value;
-			if (!isObject$2(input)) {
-				payload.issues.push({
-					expected: "object",
-					code: "invalid_type",
-					input,
-					inst
-				});
-				return payload;
-			}
-			payload.value = memo ? memo.alloc(inst, payload, {}, ctx) : {};
-			const proms = [];
-			const shape = value.shape;
-			const abortEarly = ctx?.abortEarly;
-			let seen = payload.issues.length;
-			for (const key of value.allKeys) {
-				if (abortEarly && payload.issues.length !== seen) {
-					if (aborted(payload, seen)) break;
-					seen = payload.issues.length;
-				}
-				if (key === "__proto__") continue;
-				const el = shape[key];
-				const optin = el._zod.optin;
-				const optout = el._zod.optout;
-				const r = el._zod.run({
-					value: input[key],
-					issues: []
-				}, ctx);
-				if (r instanceof Promise) proms.push(r.then((r) => handlePropertyResult(r, payload, key, input, optin, optout)));
-				else handlePropertyResult(r, payload, key, input, optin, optout);
-			}
-			if (!catchall) return proms.length ? Promise.all(proms).then(() => payload) : payload;
-			return handleCatchall(proms, input, payload, ctx, _normalized.value, inst, abortEarly === true);
-		};
-	});
-	function handleUnionResults(results, final, inst, ctx) {
-		for (const result of results) if (result.issues.length === 0) {
-			final.value = result.value;
-			return final;
-		}
-		const nonaborted = results.filter((r) => !aborted(r));
-		if (nonaborted.length === 1) {
-			final.value = nonaborted[0].value;
-			return nonaborted[0];
-		}
-		final.issues.push({
-			code: "invalid_union",
-			input: final.value,
-			inst,
-			errors: results.map((result) => result.issues.map((iss) => finalizeIssue(iss, ctx, config())))
-		});
-		return final;
-	}
-	var $ZodUnion = $constructor("$ZodUnion", (inst, def) => {
-		$ZodType.init(inst, def);
-		defineLazyInternal(inst, "optin", (zod) => zod.def.options.some((o) => o._zod.optin === "defaulted") ? "defaulted" : zod.def.options.some((o) => o._zod.optin !== void 0) ? "optional" : void 0);
-		defineLazyInternal(inst, "optout", (zod) => zod.def.options.some((o) => o._zod.optout === "optional") ? "optional" : void 0);
-		defineLazyInternal(inst, "values", (zod) => {
-			if (zod.def.options.every((o) => o._zod.values)) return new Set(zod.def.options.flatMap((option) => Array.from(option._zod.values)));
-		});
-		defineLazyInternal(inst, "pattern", (zod) => {
-			if (zod.def.options.every((o) => o._zod.pattern)) {
-				const patterns = zod.def.options.map((o) => o._zod.pattern);
-				return new RegExp(`^(${patterns.map((p) => cleanRegex(p.source)).join("|")})$`);
+				return this.wrapped["~run"](dataset, config$1);
 			}
 		});
-		const first = def.options.length === 1 ? def.options[0]._zod.run : null;
-		inst._zod.parse = (payload, ctx) => {
-			if (first) return first(payload, ctx);
-			let async = false;
-			const results = [];
-			for (const option of def.options) {
-				const result = option._zod.run({
-					value: payload.value,
-					issues: []
-				}, ctx);
-				if (result instanceof Promise) {
-					results.push(result);
-					async = true;
-				} else {
-					if (result.issues.length === 0) return result;
-					results.push(result);
-				}
-			}
-			if (!async) return handleUnionResults(results, payload, inst, ctx);
-			return Promise.all(results).then((results) => {
-				return handleUnionResults(results, payload, inst, ctx);
-			});
-		};
-	});
-	var $ZodLiteral = $constructor("$ZodLiteral", (inst, def) => {
-		$ZodType.init(inst, def);
-		const values = new Set(def.values);
-		inst._zod.values = values;
-		defineLazyInternal(inst, "pattern", (zod) => {
-			const vals = zod.def.values;
-			return new RegExp(vals.length ? `^(${vals.map((o) => typeof o === "string" ? escapeRegex(o) : o ? escapeRegex(o.toString()) : String(o)).join("|")})$` : "^[^\\s\\S]$");
-		});
-		inst._zod.parse = (payload, _ctx) => {
-			const input = payload.value;
-			if (values.has(input)) return payload;
-			payload.issues.push({
-				code: "invalid_value",
-				values: def.values,
-				input,
-				inst
-			});
-			return payload;
-		};
-	});
-	function handleOptionalResult(payload, result) {
-		payload.value = result.issues.length ? void 0 : result.value;
-		return payload;
 	}
-	var $ZodOptional = $constructor("$ZodOptional", (inst, def) => {
-		$ZodType.init(inst, def);
-		defineLazyInternal(inst, "optin", (zod) => zod.def.innerType._zod.optin === "defaulted" ? "defaulted" : "optional");
-		inst._zod.optout = "optional";
-		defineLazyInternal(inst, "values", (zod) => {
-			const values = zod.def.innerType._zod.values;
-			return values ? new Set([...values, void 0]) : void 0;
-		});
-		defineLazyInternal(inst, "pattern", (zod) => {
-			const pattern = zod.def.innerType._zod.pattern;
-			return pattern ? new RegExp(`^(${cleanRegex(pattern.source)})?$`) : void 0;
-		});
-		inst._zod.parse = (payload, ctx) => {
-			if (payload.value === void 0) {
-				if (def.innerType._zod.optin !== "defaulted") return payload;
-				const result = def.innerType._zod.run({
-					value: payload.value,
-					issues: []
-				}, ctx);
-				if (result instanceof Promise) return result.then((result) => handleOptionalResult(payload, result));
-				return handleOptionalResult(payload, result);
-			}
-			return def.innerType._zod.run(payload, ctx);
-		};
-	});
-	var $ZodNullable = $constructor("$ZodNullable", (inst, def) => {
-		$ZodType.init(inst, def);
-		defineLazyInternal(inst, "optin", (zod) => zod.def.innerType._zod.optin);
-		defineLazyInternal(inst, "optout", (zod) => zod.def.innerType._zod.optout);
-		defineLazyInternal(inst, "pattern", (zod) => {
-			const pattern = zod.def.innerType._zod.pattern;
-			return pattern ? new RegExp(`^(${cleanRegex(pattern.source)}|null)$`) : void 0;
-		});
-		defineLazyInternal(inst, "values", (zod) => {
-			return zod.def.innerType._zod.values ? new Set([...zod.def.innerType._zod.values, null]) : void 0;
-		});
-		inst._zod.parse = (payload, ctx) => {
-			if (payload.value === null) return payload;
-			return def.innerType._zod.run(payload, ctx);
-		};
-	});
-	function snapshotChecks(def) {
-		if (def.checks) def.checks = [...def.checks];
-		return def;
-	}
-	function _string(Class, params) {
-		return new Class(snapshotChecks({
-			type: "string",
-			...normalizeParams(params)
-		}));
-	}
-	function _number(Class, params) {
-		return new Class(snapshotChecks({
+	function number(message$1) {
+		return _standardSchema({
+			kind: "schema",
 			type: "number",
-			checks: [],
-			...normalizeParams(params)
-		}));
-	}
-	function _int(Class, params) {
-		return new Class({
-			type: "number",
-			check: "number_format",
-			abort: false,
-			format: "safeint",
-			...normalizeParams(params)
+			reference: number,
+			expects: "number",
+			async: false,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (typeof dataset.value === "number" && !isNaN(dataset.value)) dataset.typed = true;
+				else _addIssue(this, "type", dataset, config$1);
+				return dataset;
+			}
 		});
 	}
-	function _lte(value, params) {
-		return new $ZodCheckLessThan({
-			check: "less_than",
-			...normalizeParams(params),
-			value,
-			inclusive: true
-		});
-	}
-	function _gte(value, params) {
-		return new $ZodCheckGreaterThan({
-			check: "greater_than",
-			...normalizeParams(params),
-			value,
-			inclusive: true
-		});
-	}
-	function _maxLength(maximum, params) {
-		return new $ZodCheckMaxLength({
-			check: "max_length",
-			...normalizeParams(params),
-			maximum
-		});
-	}
-	var ZodMiniType = $constructor("ZodMiniType", (inst, def) => {
-		if (!inst._zod) throw new Error("Uninitialized schema in ZodMiniType.");
-		$ZodType.init(inst, def);
-		inst.def = def;
-		inst.type = def.type;
-	}, {
-		get with() {
-			return this.check;
-		},
-		set with(value) {
-			own(this, "with", value);
-		},
-		parse(data, params) {
-			return parse(this, data, params, { callee: this.parse });
-		},
-		parseAsync(data, params) {
-			return parseAsync(this, data, params, { callee: this.parseAsync });
-		},
-		safeParse(data, params) {
-			return safeParse(this, data, params);
-		},
-		safeParseAsync(data, params) {
-			return safeParseAsync(this, data, params);
-		},
-		check(...checks) {
-			const def = this.def;
-			return this.clone({
-				...def,
-				checks: [...def.checks ?? [], ...checks.map((ch) => typeof ch === "function" ? { _zod: {
-					check: ch,
-					def: { check: "custom" },
-					onattach: []
-				} } : ch)]
-			}, { parent: true });
-		},
-		clone(_def, params) {
-			return clone(this, _def, params);
-		},
-		brand() {
-			return this;
-		},
-		register(reg, meta) {
-			reg.add(this, meta);
-			return this;
-		},
-		apply(fn, ...args) {
-			return args.length === 0 ? fn(this) : fn(this, ...args);
-		}
-	});
-	var ZodMiniString = $constructor("ZodMiniString", (inst, def) => {
-		$ZodString.init(inst, def);
-		ZodMiniType.init(inst, def);
-	});
-	function string(params) {
-		return _string(ZodMiniString, params);
-	}
-	var ZodMiniNumber = $constructor("ZodMiniNumber", (inst, def) => {
-		$ZodNumber.init(inst, def);
-		ZodMiniType.init(inst, def);
-	});
-	function number(params) {
-		return _number(ZodMiniNumber, params);
-	}
-	var ZodMiniNumberFormat = $constructor("ZodMiniNumberFormat", (inst, def) => {
-		$ZodNumberFormat.init(inst, def);
-		ZodMiniNumber.init(inst, def);
-	});
-	function int(params) {
-		return _int(ZodMiniNumberFormat, params);
-	}
-	var ZodMiniObject = $constructor("ZodMiniObject", (inst, def) => {
-		$ZodObject.init(inst, def);
-		ZodMiniType.init(inst, def);
-		installLazyProp(inst, "shape", (self) => self._zod.def.shape, false);
-	});
-	function object(shape, params) {
-		return new ZodMiniObject({
+	function object(entries$1, message$1) {
+		return _standardSchema({
+			kind: "schema",
 			type: "object",
-			shape: shape ?? {},
-			...normalizeParams(params)
+			reference: object,
+			expects: "Object",
+			async: false,
+			entries: entries$1,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				const input = dataset.value;
+				if (input && typeof input === "object") {
+					dataset.typed = true;
+					dataset.value = {};
+					for (const key in this.entries) {
+						const valueSchema = this.entries[key];
+						if (key in input || (valueSchema.type === "exact_optional" || valueSchema.type === "optional" || valueSchema.type === "nullish") && valueSchema.default !== void 0) {
+							const value$1 = key in input ? input[key] : getDefault(valueSchema);
+							const valueDataset = valueSchema["~run"]({ value: value$1 }, config$1);
+							if (valueDataset.issues) {
+								const pathItem = {
+									type: "object",
+									origin: "value",
+									input,
+									key,
+									value: value$1
+								};
+								for (const issue of valueDataset.issues) {
+									if (issue.path) issue.path.unshift(pathItem);
+									else issue.path = [pathItem];
+									dataset.issues?.push(issue);
+								}
+								if (!dataset.issues) dataset.issues = valueDataset.issues;
+								if (config$1.abortEarly) {
+									dataset.typed = false;
+									break;
+								}
+							}
+							if (!valueDataset.typed) dataset.typed = false;
+							dataset.value[key] = valueDataset.value;
+						} else if (valueSchema.fallback !== void 0) dataset.value[key] = getFallback(valueSchema);
+						else if (valueSchema.type !== "exact_optional" && valueSchema.type !== "optional" && valueSchema.type !== "nullish") {
+							_addIssue(this, "key", dataset, config$1, {
+								input: void 0,
+								expected: `"${key}"`,
+								path: [{
+									type: "object",
+									origin: "key",
+									input,
+									key,
+									value: input[key]
+								}]
+							});
+							if (config$1.abortEarly) break;
+						}
+					}
+				} else _addIssue(this, "type", dataset, config$1);
+				return dataset;
+			}
 		});
 	}
-	var ZodMiniUnion = $constructor("ZodMiniUnion", (inst, def) => {
-		$ZodUnion.init(inst, def);
-		ZodMiniType.init(inst, def);
-	});
-	function union(options, params) {
-		return new ZodMiniUnion({
-			type: "union",
-			options,
-			...normalizeParams(params)
-		});
-	}
-	var ZodMiniLiteral = $constructor("ZodMiniLiteral", (inst, def) => {
-		$ZodLiteral.init(inst, def);
-		ZodMiniType.init(inst, def);
-	});
-	function literal(value, params) {
-		return new ZodMiniLiteral({
-			type: "literal",
-			values: Array.isArray(value) ? value : [value],
-			...normalizeParams(params)
-		});
-	}
-	var ZodMiniOptional = $constructor("ZodMiniOptional", (inst, def) => {
-		$ZodOptional.init(inst, def);
-		ZodMiniType.init(inst, def);
-	});
-	function optional(innerType) {
-		return new ZodMiniOptional({
+	function optional(wrapped, default_) {
+		return _standardSchema({
+			kind: "schema",
 			type: "optional",
-			innerType
+			reference: optional,
+			expects: `(${wrapped.expects} | undefined)`,
+			async: false,
+			wrapped,
+			default: default_,
+			"~run"(dataset, config$1) {
+				if (dataset.value === void 0) {
+					if (this.default !== void 0) dataset.value = getDefault(this, dataset, config$1);
+					if (dataset.value === void 0) {
+						dataset.typed = true;
+						return dataset;
+					}
+				}
+				return this.wrapped["~run"](dataset, config$1);
+			}
 		});
 	}
-	var ZodMiniNullable = $constructor("ZodMiniNullable", (inst, def) => {
-		$ZodNullable.init(inst, def);
-		ZodMiniType.init(inst, def);
-	});
-	function nullable(innerType) {
-		return new ZodMiniNullable({
-			type: "nullable",
-			innerType
+	function picklist(options, message$1) {
+		return _standardSchema({
+			kind: "schema",
+			type: "picklist",
+			reference: picklist,
+			expects: _joinExpects(options.map(_stringify), "|"),
+			async: false,
+			options,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (this.options.includes(dataset.value)) dataset.typed = true;
+				else _addIssue(this, "type", dataset, config$1);
+				return dataset;
+			}
 		});
+	}
+	function string(message$1) {
+		return _standardSchema({
+			kind: "schema",
+			type: "string",
+			reference: string,
+			expects: "string",
+			async: false,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (typeof dataset.value === "string") dataset.typed = true;
+				else _addIssue(this, "type", dataset, config$1);
+				return dataset;
+			}
+		});
+	}
+	function _subIssues(datasets) {
+		let issues;
+		if (datasets) for (const dataset of datasets) if (issues) for (const issue of dataset.issues) issues.push(issue);
+		else issues = dataset.issues;
+		return issues;
+	}
+	function union(options, message$1) {
+		return _standardSchema({
+			kind: "schema",
+			type: "union",
+			reference: union,
+			expects: _joinExpects(options.map((option) => option.expects), "|"),
+			async: false,
+			options,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				let validDataset;
+				let typedDatasets;
+				let untypedDatasets;
+				for (const schema of this.options) {
+					const optionDataset = schema["~run"]({ value: dataset.value }, config$1);
+					if (optionDataset.typed) if (optionDataset.issues) if (typedDatasets) typedDatasets.push(optionDataset);
+					else typedDatasets = [optionDataset];
+					else {
+						validDataset = optionDataset;
+						break;
+					}
+					else if (untypedDatasets) untypedDatasets.push(optionDataset);
+					else untypedDatasets = [optionDataset];
+				}
+				if (validDataset) return validDataset;
+				if (typedDatasets) {
+					if (typedDatasets.length === 1) return typedDatasets[0];
+					_addIssue(this, "type", dataset, config$1, { issues: _subIssues(typedDatasets) });
+					dataset.typed = true;
+				} else if (untypedDatasets?.length === 1) return untypedDatasets[0];
+				else _addIssue(this, "type", dataset, config$1, { issues: _subIssues(untypedDatasets) });
+				return dataset;
+			}
+		});
+	}
+	function pipe(...pipe$1) {
+		return _standardSchema({
+			...pipe$1[0],
+			pipe: pipe$1,
+			"~run"(dataset, config$1) {
+				for (const item of pipe$1) if (item.kind !== "metadata") {
+					if (dataset.issues && (item.kind === "schema" || item.kind === "transformation")) {
+						dataset.typed = false;
+						break;
+					}
+					if (!dataset.issues || !config$1.abortEarly && !config$1.abortPipeEarly) dataset = item["~run"](dataset, config$1);
+				}
+				return dataset;
+			}
+		});
+	}
+	function safeParse(schema, input, config$1) {
+		const dataset = schema["~run"]({ value: input }, getGlobalConfig(config$1));
+		return {
+			typed: dataset.typed,
+			success: !dataset.issues,
+			output: dataset.value,
+			issues: dataset.issues
+		};
 	}
 	var DEFAULT_SETTINGS = {
 		hackEnabled: 0,
@@ -1289,10 +427,10 @@
 		menuPosition: null
 	};
 	var flagSchema = union([literal(0), literal(1)]);
-	var integerInRange = (minimum, maximum) => number().check(int(), _gte(minimum), _lte(maximum));
+	var integerInRange = (minimum, maximum) => pipe(number(), integer(), minValue(minimum), maxValue(maximum));
 	var positionSchema = object({
-		top: string().check(_maxLength(32)),
-		left: string().check(_maxLength(32))
+		top: pipe(string(), maxLength(32)),
+		left: pipe(string(), maxLength(32))
 	});
 	var savedSettingsSchema = object({
 		hackEnabled: optional(flagSchema),
@@ -1302,7 +440,7 @@
 		ponderEnabled: optional(flagSchema),
 		premoveEnabled: optional(flagSchema),
 		autoRematch: optional(flagSchema),
-		moveMethod: optional(union([literal("click"), literal("drag")])),
+		moveMethod: optional(picklist(["click", "drag"])),
 		menuPosition: optional(nullable(positionSchema))
 	});
 	function loadSettings(serialized) {
@@ -1315,7 +453,7 @@
 		}
 		const result = safeParse(savedSettingsSchema, saved);
 		if (!result.success) return { ...DEFAULT_SETTINGS };
-		const { premoveEnabled, ...currentSettings } = result.data;
+		const { premoveEnabled, ...currentSettings } = result.output;
 		return {
 			...DEFAULT_SETTINGS,
 			...currentSettings,
@@ -1575,13 +713,13 @@
 		const evalBarWrap = document.createElement("div");
 		evalBarWrap.id = "evaluationBarWrap";
 		evalBarWrap.setAttribute("data-gabibot-overlay", "");
-		evalBarWrap.style.cssText = "position:absolute;height:100%;width:14px;left:-22px;top:0;background:#111;z-index:50;overflow:hidden;pointer-events:none;border-radius:4px;";
+		evalBarWrap.style.cssText = "position:absolute;height:100%;width:14px;left:-22px;top:0;background:#111;z-index:50;overflow:hidden;pointer-events:none;border-radius:4px;border:1px solid rgba(255,255,255,0.2);box-sizing:border-box;";
 		const whiteBar = document.createElement("div");
 		whiteBar.id = "evaluationBarWhite";
-		whiteBar.style.cssText = "position:absolute;top:0;left:0;right:0;height:50%;background:#f0d9b5;";
+		whiteBar.style.cssText = "position:absolute;left:0;right:0;bottom:0;height:50%;background:#f0d9b5;";
 		const blackBar = document.createElement("div");
 		blackBar.id = "evaluationBarBlack";
-		blackBar.style.cssText = "position:absolute;bottom:0;left:0;right:0;height:50%;background:#111;";
+		blackBar.style.cssText = "position:absolute;left:0;right:0;top:0;height:50%;background:#111;";
 		evalBarWrap.appendChild(whiteBar);
 		evalBarWrap.appendChild(blackBar);
 		boardEl.appendChild(evalBarWrap);
@@ -1596,6 +734,7 @@
 		ro.observe(boardEl);
 		const cancelPendingOnUserAction = (event) => {
 			if (!event.isTrusted) return;
+			if ("button" in event && typeof event.button === "number" && event.button !== 0) return;
 			cancelPendingMove();
 			boardInputListeners.forEach((listener) => {
 				listener();
@@ -1724,30 +863,34 @@
 		const b = getSquareCenterCanvasXY(uciTo);
 		if (!a || !b) return;
 		const tile = Math.min(drawingBoard.width, drawingBoard.height) / 8;
+		const angle = Math.atan2(b.y - a.y, b.x - a.x);
+		const headLength = Math.max(14, tile * .35);
+		const headAngle = Math.PI / 6;
+		ctx.beginPath();
+		ctx.arc(a.x, a.y, Math.max(4, thickness * 1.2), 0, 2 * Math.PI);
+		ctx.fillStyle = color;
+		ctx.fill();
+		const shaftEndX = b.x - headLength * .6 * Math.cos(angle);
+		const shaftEndY = b.y - headLength * .6 * Math.sin(angle);
 		ctx.beginPath();
 		ctx.moveTo(a.x, a.y);
-		ctx.lineTo(b.x, b.y);
-		ctx.lineWidth = thickness;
+		ctx.lineTo(shaftEndX, shaftEndY);
+		ctx.lineWidth = Math.max(thickness, 4);
 		ctx.strokeStyle = color;
 		ctx.lineCap = "round";
 		ctx.stroke();
 		ctx.beginPath();
-		ctx.arc(a.x, a.y, tile / 7, 0, 2 * Math.PI);
-		ctx.fillStyle = color.replace("0.7", "0.3");
+		ctx.moveTo(b.x, b.y);
+		ctx.lineTo(b.x - headLength * Math.cos(angle - headAngle), b.y - headLength * Math.sin(angle - headAngle));
+		ctx.lineTo(b.x - headLength * .5 * Math.cos(angle), b.y - headLength * .5 * Math.sin(angle));
+		ctx.lineTo(b.x - headLength * Math.cos(angle + headAngle), b.y - headLength * Math.sin(angle + headAngle));
+		ctx.closePath();
+		ctx.fillStyle = color;
 		ctx.fill();
-		ctx.strokeStyle = color;
-		ctx.lineWidth = 2;
-		ctx.stroke();
-		ctx.beginPath();
-		ctx.arc(b.x, b.y, tile / 5, 0, 2 * Math.PI);
-		ctx.fillStyle = color.replace("0.7", "0.5");
-		ctx.fill();
-		ctx.strokeStyle = color;
-		ctx.lineWidth = 2;
-		ctx.stroke();
 	}
 	function dispatchPointerOrMouse(el, type, opts, usePointer) {
 		if (!el) return;
+		const mouseType = type.replace("pointer", "mouse");
 		if (usePointer) try {
 			el.dispatchEvent(new PointerEvent(type, {
 				bubbles: true,
@@ -1755,9 +898,15 @@
 				composed: true,
 				...opts
 			}));
+			el.dispatchEvent(new MouseEvent(mouseType, {
+				bubbles: true,
+				cancelable: true,
+				composed: true,
+				...opts
+			}));
 			return;
 		} catch {}
-		el.dispatchEvent(new MouseEvent(type.replace("pointer", "mouse"), {
+		el.dispatchEvent(new MouseEvent(mouseType, {
 			bubbles: true,
 			cancelable: true,
 			composed: true,
@@ -1780,6 +929,8 @@
 		return {
 			clientX: x,
 			clientY: y,
+			screenX: x + (typeof window !== "undefined" ? window.screenX || 0 : 0),
+			screenY: y + (typeof window !== "undefined" ? window.screenY || 0 : 0),
 			buttons,
 			pointerId: 1,
 			pointerType: "mouse",
@@ -1810,13 +961,13 @@
 		const { a, b } = coords;
 		const usePointer = !!window.PointerEvent;
 		const startEl = getTargetAt(a.x, a.y);
-		const endEl = getTargetAt(b.x, b.y);
 		pressAt(startEl, a.x, a.y, usePointer);
 		await sleep(2);
 		releaseAt(startEl, a.x, a.y, usePointer);
 		clickAt(startEl, a.x, a.y);
 		await sleep(4);
 		if (!guard()) return false;
+		const endEl = getTargetAt(b.x, b.y);
 		pressAt(endEl, b.x, b.y, usePointer);
 		await sleep(2);
 		releaseAt(endEl, b.x, b.y, usePointer);
@@ -1868,8 +1019,26 @@
 				resolve(accepted);
 			};
 			const check = () => {
-				const fen = getFen(getGame());
-				if (fen && fen !== prevFen) finish(!expectedFen || fen.split(" ").filter((_, i) => i !== 3).join(" ") === expectedFen.split(" ").filter((_, i) => i !== 3).join(" "));
+				const game = getGame();
+				const fen = getFen(game);
+				if (fen && fen !== prevFen) {
+					if (!expectedFen) {
+						finish(true);
+						return;
+					}
+					const comparable = (f) => f.split(" ").filter((_, i) => i !== 3).join(" ");
+					const expectedComp = comparable(expectedFen);
+					if (comparable(fen) === expectedComp) {
+						finish(true);
+						return;
+					}
+					const history = game?.getHistoryFENs?.();
+					if (Array.isArray(history) && history.some((h) => typeof h === "string" && comparable(h) === expectedComp)) {
+						finish(true);
+						return;
+					}
+					finish(false);
+				}
 			};
 			const onAbort = () => {
 				check();
@@ -1990,8 +1159,21 @@
 		const maxScore = 5;
 		const whitePercent = 50 + Math.max(-5, Math.min(maxScore, score)) / maxScore * 50;
 		const blackPercent = 100 - whitePercent;
-		setStyleIfChanged(whiteBar, "height", `${whitePercent}%`);
-		setStyleIfChanged(blackBar, "height", `${blackPercent}%`);
+		if (isBoardFlipped()) {
+			setStyleIfChanged(blackBar, "bottom", "0");
+			setStyleIfChanged(blackBar, "top", "auto");
+			setStyleIfChanged(blackBar, "height", `${blackPercent}%`);
+			setStyleIfChanged(whiteBar, "top", "0");
+			setStyleIfChanged(whiteBar, "bottom", "auto");
+			setStyleIfChanged(whiteBar, "height", `${whitePercent}%`);
+		} else {
+			setStyleIfChanged(whiteBar, "bottom", "0");
+			setStyleIfChanged(whiteBar, "top", "auto");
+			setStyleIfChanged(whiteBar, "height", `${whitePercent}%`);
+			setStyleIfChanged(blackBar, "top", "0");
+			setStyleIfChanged(blackBar, "bottom", "auto");
+			setStyleIfChanged(blackBar, "height", `${blackPercent}%`);
+		}
 		const ourEval = getPlayerColor(getGame()) === "w" ? score : -score;
 		if (ourEval < -2) setStyleIfChanged(boardCtx.evalBarWrap, "borderColor", "rgba(255, 100, 100, 0.5)");
 		else if (ourEval > 2) setStyleIfChanged(boardCtx.evalBarWrap, "borderColor", "rgba(100, 255, 100, 0.5)");
@@ -4057,7 +3239,7 @@
 		const sanText = typeof san === "string" ? san : String(san ?? "");
 		return whiteToMove ? `${moveNumber}. ${sanText}` : `${moveNumber}... ${sanText}`;
 	}
-	var panel_default = "/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties{@supports (((-webkit-hyphens:none)) and (not (margin-trim:inline))) or ((-moz-orient:inline) and (not (color:rgb(from red r g b)))){*,:before,:after,::backdrop{--tw-translate-x:0;--tw-translate-y:0;--tw-translate-z:0;--tw-rotate-x:initial;--tw-rotate-y:initial;--tw-rotate-z:initial;--tw-skew-x:initial;--tw-skew-y:initial;--tw-border-style:solid;--tw-leading:initial;--tw-font-weight:initial;--tw-ordinal:initial;--tw-slashed-zero:initial;--tw-numeric-figure:initial;--tw-numeric-spacing:initial;--tw-numeric-fraction:initial;--tw-shadow:0 0 #0000;--tw-shadow-color:initial;--tw-shadow-alpha:100%;--tw-inset-shadow:0 0 #0000;--tw-inset-shadow-color:initial;--tw-inset-shadow-alpha:100%;--tw-ring-color:initial;--tw-ring-shadow:0 0 #0000;--tw-inset-ring-color:initial;--tw-inset-ring-shadow:0 0 #0000;--tw-ring-inset:initial;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-offset-shadow:0 0 #0000;--tw-outline-style:solid;--tw-blur:initial;--tw-brightness:initial;--tw-contrast:initial;--tw-grayscale:initial;--tw-hue-rotate:initial;--tw-invert:initial;--tw-opacity:initial;--tw-saturate:initial;--tw-sepia:initial;--tw-drop-shadow:initial;--tw-drop-shadow-color:initial;--tw-drop-shadow-alpha:100%;--tw-drop-shadow-size:initial;--tw-backdrop-blur:initial;--tw-backdrop-brightness:initial;--tw-backdrop-contrast:initial;--tw-backdrop-grayscale:initial;--tw-backdrop-hue-rotate:initial;--tw-backdrop-invert:initial;--tw-backdrop-opacity:initial;--tw-backdrop-saturate:initial;--tw-backdrop-sepia:initial}}}@layer theme{:root,:host{--font-sans:-apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--font-serif:ui-serif, Georgia, Cambria, \"Times New Roman\", Times, serif;--font-mono:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;--spacing:.25rem;--font-weight-normal:400;--font-weight-semibold:600;--radius-lg:.5rem;--ease-out:cubic-bezier(.16, 1, .3, 1);--default-transition-duration:.15s;--default-transition-timing-function:cubic-bezier(.4, 0, .2, 1);--default-font-family:var(--font-sans);--default-mono-font-family:var(--font-mono);--color-panel:oklch(22% .025 160);--color-panel-header:oklch(25.5% .03 158);--color-panel-card:oklch(27.5% .03 158);--color-panel-border:oklch(40.5% .025 158);--color-panel-line:oklch(34% .022 158);--color-panel-muted:oklch(73% .022 157);--color-panel-text:oklch(94% .015 140);--color-panel-accent:oklch(84% .105 126);--color-panel-console:oklch(19% .02 158);--color-panel-control:oklch(25.5% .022 158);--color-panel-control-hover:oklch(32% .028 157);--color-panel-good:oklch(83% .105 126);--color-panel-warning:oklch(82% .105 82);--color-panel-error:oklch(78% .11 35);--color-panel-opponent:oklch(79% .07 73);--color-panel-shadow:oklch(8% .01 158/.48);--dur-short:.16s}}@layer base{*,:after,:before,::backdrop{box-sizing:border-box;border:0 solid;margin:0;padding:0}::file-selector-button{box-sizing:border-box;border:0 solid;margin:0;padding:0}html,:host{-webkit-text-size-adjust:100%;tab-size:4;line-height:1.5;font-family:var(--default-font-family,-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", \"Noto Sans\", Arial, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\");font-feature-settings:var(--default-font-feature-settings,normal);font-variation-settings:var(--default-font-variation-settings,normal);-webkit-tap-highlight-color:transparent}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,samp,pre{font-family:var(--default-mono-font-family,ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace);font-feature-settings:var(--default-mono-font-feature-settings,normal);font-variation-settings:var(--default-mono-font-variation-settings,normal);font-size:1em}small{font-size:80%}sub,sup{vertical-align:baseline;font-size:75%;line-height:0;position:relative}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}:-moz-focusring:where(:not(iframe)){outline:auto}progress{vertical-align:baseline}summary{display:list-item}ol,ul,menu{list-style:none}img,svg,video,canvas,audio,iframe,embed,object{vertical-align:middle;display:block}img,video{max-width:100%;height:auto}button,input,select,optgroup,textarea{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}::file-selector-button{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}:where(select:is([multiple],[size])) optgroup{font-weight:bolder}:where(select:is([multiple],[size])) optgroup option{padding-inline-start:20px}::file-selector-button{margin-inline-end:4px}::placeholder{opacity:1}@supports (not ((-webkit-appearance:-apple-pay-button))) or (contain-intrinsic-size:1px){::placeholder{color:currentColor}@supports (color:color-mix(in lab, red, red)){::placeholder{color:color-mix(in oklab, currentcolor 50%, transparent)}}}textarea{resize:vertical}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-date-and-time-value{min-height:1lh;text-align:inherit}::-webkit-datetime-edit{display:inline-flex}::-webkit-datetime-edit-fields-wrapper{padding:0}::-webkit-datetime-edit{padding-block:0}::-webkit-datetime-edit-year-field{padding-block:0}::-webkit-datetime-edit-month-field{padding-block:0}::-webkit-datetime-edit-day-field{padding-block:0}::-webkit-datetime-edit-hour-field{padding-block:0}::-webkit-datetime-edit-minute-field{padding-block:0}::-webkit-datetime-edit-second-field{padding-block:0}::-webkit-datetime-edit-millisecond-field{padding-block:0}::-webkit-datetime-edit-meridiem-field{padding-block:0}::-webkit-calendar-picker-indicator{line-height:1}:-moz-ui-invalid{box-shadow:none}button,input:where([type=button],[type=reset],[type=submit]){appearance:button}::file-selector-button{appearance:button}::-webkit-inner-spin-button{height:auto}::-webkit-outer-spin-button{height:auto}[hidden]:where(:not([hidden=until-found])){display:none!important}}@layer components;@layer utilities{.pointer-events-none{pointer-events:none}.collapse{visibility:collapse}.visible{visibility:visible}.absolute{position:absolute}.fixed{position:fixed}.relative{position:relative}.static{position:static}.inset-0{inset:0}.top-1{top:var(--spacing)}.left-0{left:0}.isolate{isolation:isolate}.z-10{z-index:10}.float-left{float:left}.container{width:100%}@media (width>=40rem){.container{max-width:40rem}}@media (width>=48rem){.container{max-width:48rem}}@media (width>=64rem){.container{max-width:64rem}}@media (width>=80rem){.container{max-width:80rem}}@media (width>=96rem){.container{max-width:96rem}}.m-0{margin:0}.mt-1{margin-top:var(--spacing)}.mt-2{margin-top:calc(var(--spacing) * 2)}.mt-px{margin-top:1px}.mb-1{margin-bottom:var(--spacing)}.block{display:block}.contents{display:contents}.flex{display:flex}.grid{display:grid}.hidden{display:none}.inline{display:inline}.inline-flex{display:inline-flex}.table{display:table}.size-1{width:var(--spacing);height:var(--spacing)}.size-7{width:calc(var(--spacing) * 7);height:calc(var(--spacing) * 7)}.h-4{height:calc(var(--spacing) * 4)}.h-full{height:100%}.max-h-28{max-height:calc(var(--spacing) * 28)}.min-h-8{min-height:calc(var(--spacing) * 8)}.min-h-11{min-height:calc(var(--spacing) * 11)}.w-0{width:0}.w-full{width:100%}.min-w-0{min-width:0}.flex-1{flex:1}.flex-shrink{flex-shrink:1}.shrink-0{flex-shrink:0}.-translate-y-1{--tw-translate-y:calc(var(--spacing) * -1);translate:var(--tw-translate-x) var(--tw-translate-y)}.transform{transform:var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,)}.cursor-pointer{cursor:pointer}.resize{resize:both}.appearance-none{appearance:none}.flex-col{flex-direction:column}.place-items-center{place-items:center}.items-baseline{align-items:baseline}.items-center{align-items:center}.justify-between{justify-content:space-between}.gap-0{gap:0}.gap-1{gap:var(--spacing)}.gap-2{gap:calc(var(--spacing) * 2)}.gap-3{gap:calc(var(--spacing) * 3)}.gap-px{gap:1px}.truncate{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.overflow-auto{overflow:auto}.overflow-hidden{overflow:hidden}.rounded{border-radius:.25rem}.rounded-full{border-radius:2147483647px}.rounded-lg{border-radius:var(--radius-lg)}.rounded-r{border-top-right-radius:.25rem;border-bottom-right-radius:.25rem}.border{border-style:var(--tw-border-style);border-width:1px}.border-0{border-style:var(--tw-border-style);border-width:0}.border-t{border-top-style:var(--tw-border-style);border-top-width:1px}.border-b{border-bottom-style:var(--tw-border-style);border-bottom-width:1px}.border-panel-border{border-color:var(--color-panel-border)}.border-panel-line{border-color:var(--color-panel-line)}.border-transparent{border-color:#0000}.bg-panel{background-color:var(--color-panel)}.bg-panel-accent{background-color:var(--color-panel-accent)}.bg-panel-card{background-color:var(--color-panel-card)}.bg-panel-console{background-color:var(--color-panel-console)}.bg-panel-header{background-color:var(--color-panel-header)}.bg-transparent{background-color:#0000}.p-0{padding:0}.px-1{padding-inline:var(--spacing)}.px-2{padding-inline:calc(var(--spacing) * 2)}.px-3{padding-inline:calc(var(--spacing) * 3)}.py-1{padding-block:var(--spacing)}.pb-2{padding-bottom:calc(var(--spacing) * 2)}.font-mono{font-family:var(--font-mono)}.font-serif{font-family:var(--font-serif)}.leading-none{--tw-leading:1;line-height:1}.font-normal{--tw-font-weight:var(--font-weight-normal);font-weight:var(--font-weight-normal)}.font-semibold{--tw-font-weight:var(--font-weight-semibold);font-weight:var(--font-weight-semibold)}.text-panel-muted{color:var(--color-panel-muted)}.text-panel-text{color:var(--color-panel-text)}.tabular-nums{--tw-numeric-spacing:tabular-nums;font-variant-numeric:var(--tw-ordinal,) var(--tw-slashed-zero,) var(--tw-numeric-figure,) var(--tw-numeric-spacing,) var(--tw-numeric-fraction,)}.opacity-0{opacity:0}.shadow-sm{--tw-shadow:0 1px 3px 0 var(--tw-shadow-color,#0000001a), 0 1px 2px -1px var(--tw-shadow-color,#0000001a);box-shadow:var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)}.outline{outline-style:var(--tw-outline-style);outline-width:1px}.blur{--tw-blur:blur(8px);filter:var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,)}.backdrop-filter{-webkit-backdrop-filter:var(--tw-backdrop-blur,) var(--tw-backdrop-brightness,) var(--tw-backdrop-contrast,) var(--tw-backdrop-grayscale,) var(--tw-backdrop-hue-rotate,) var(--tw-backdrop-invert,) var(--tw-backdrop-opacity,) var(--tw-backdrop-saturate,) var(--tw-backdrop-sepia,);backdrop-filter:var(--tw-backdrop-blur,) var(--tw-backdrop-brightness,) var(--tw-backdrop-contrast,) var(--tw-backdrop-grayscale,) var(--tw-backdrop-hue-rotate,) var(--tw-backdrop-invert,) var(--tw-backdrop-opacity,) var(--tw-backdrop-saturate,) var(--tw-backdrop-sepia,)}.transition{transition-property:color,background-color,border-color,outline-color,text-decoration-color,fill,stroke,--tw-gradient-from,--tw-gradient-via,--tw-gradient-to,opacity,box-shadow,transform,translate,scale,rotate,filter,-webkit-backdrop-filter,backdrop-filter,display,content-visibility,overlay,pointer-events;transition-timing-function:var(--tw-ease,var(--default-transition-timing-function));transition-duration:var(--tw-duration,var(--default-transition-duration))}.transition-colors{transition-property:color,background-color,border-color,outline-color,text-decoration-color,fill,stroke,--tw-gradient-from,--tw-gradient-via,--tw-gradient-to;transition-timing-function:var(--tw-ease,var(--default-transition-timing-function));transition-duration:var(--tw-duration,var(--default-transition-duration))}.transition-transform{transition-property:transform,translate,scale,rotate;transition-timing-function:var(--tw-ease,var(--default-transition-timing-function));transition-duration:var(--tw-duration,var(--default-transition-duration))}.select-none{-webkit-user-select:none;user-select:none}}:host{all:initial;z-index:9999999;width:min(336px,100vw - 16px);color:var(--color-panel-text);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font-family:var(--font-sans);-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.4;display:block;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}:host button,:host input{font:inherit}.panel-shell{border:1px solid var(--color-panel-border);background:var(--color-panel);box-shadow:0 14px 38px var(--color-panel-shadow), 0 2px 8px var(--color-panel-shadow);border-radius:14px;overflow:hidden}.panel-header{border-bottom:1px solid var(--color-panel-line);background:var(--color-panel-header);cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:58px;padding:9px 10px;display:flex}:host(.dragging) .panel-header{cursor:grabbing}.panel-brandmark{border:1px solid var(--color-panel-border);background:var(--color-panel-card);width:30px;height:30px;color:var(--color-panel-accent);border-radius:8px;flex:none;place-items:center;font-family:Georgia,serif;font-size:21px;line-height:1;display:grid}.panel-brand{flex-direction:column;flex:auto;gap:1px;min-width:0;display:flex}.panel-title{color:var(--color-panel-text);letter-spacing:.01em;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:650;overflow:hidden}.panel-state{min-width:0;color:var(--color-panel-muted);align-items:center;gap:7px;font-size:11px;display:flex}.panel-state-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-state-dot{background:var(--color-panel-muted);border-radius:50%;flex:none;width:7px;height:7px}.panel-state[data-tone=working] .panel-state-dot,.panel-state[data-tone=ready] .panel-state-dot{background:var(--color-panel-good);box-shadow:0 0 0 3px #b6d48829}@supports (color:color-mix(in lab, red, red)){.panel-state[data-tone=working] .panel-state-dot,.panel-state[data-tone=ready] .panel-state-dot{box-shadow:0 0 0 3px color-mix(in oklab, var(--color-panel-good) 16%, transparent)}}.panel-state[data-tone=paused] .panel-state-dot,.panel-state[data-tone=paused] .panel-state-text{color:var(--color-panel-warning)}.panel-state[data-tone=paused] .panel-state-dot{background:var(--color-panel-warning)}.panel-state[data-tone=error] .panel-state-dot,.panel-state[data-tone=error] .panel-state-text{color:var(--color-panel-error)}.panel-state[data-tone=error] .panel-state-dot{background:var(--color-panel-error)}.panel-icon-button,.panel-action-button,.panel-quiet-button,.panel-segment{border:1px solid var(--color-panel-border);color:var(--color-panel-text);cursor:pointer;transition:transform var(--dur-short) var(--ease-out)}.panel-icon-button{background:var(--color-panel-control);border-radius:8px;flex:none;place-items:center;width:40px;height:40px;font-size:18px;line-height:1;display:grid}.panel-icon-button:hover,.panel-quiet-button:hover,.panel-segment:hover{border-color:var(--color-panel-muted);background:var(--color-panel-control-hover)}.panel-action-button{border-color:var(--color-panel-accent);background:var(--color-panel-accent);min-height:40px;color:var(--color-panel);border-radius:7px;flex:none;padding:0 10px;font-size:11px;font-weight:700}.panel-action-button:hover{border-color:var(--color-panel-text);background:var(--color-panel-text)}.panel-quiet-button{border-color:var(--color-panel-line);background:var(--color-panel-control);min-width:42px;min-height:30px;color:var(--color-panel-muted);border-radius:6px;padding:2px 7px;font-size:10px;font-weight:500}.panel-icon-button:focus-visible,.panel-action-button:focus-visible,.panel-quiet-button:focus-visible,.panel-segment:focus-visible,.panel-range:focus-visible{outline:2px solid var(--color-panel-accent);outline-offset:3px}.panel-icon-button:active,.panel-action-button:active,.panel-quiet-button:active,.panel-segment:active{transform:translateY(1px)}.panel-icon-button:disabled,.panel-action-button:disabled,.panel-quiet-button:disabled,.panel-segment:disabled{cursor:not-allowed;opacity:.55}.panel-scroll{overscroll-behavior:contain;scrollbar-color:var(--color-panel-border) var(--color-panel-console);scrollbar-width:thin;max-height:min(78vh,720px);overflow:auto}.panel-analysis{border:1px solid var(--color-panel-line);background:var(--color-panel-card);border-radius:9px;margin:10px 10px 4px;padding:10px 11px 9px 13px;position:relative}.panel-analysis:before{background:var(--color-panel-accent);content:\"\";border-radius:0 3px 3px 0;width:2px;position:absolute;inset:9px auto 9px 0}.panel-analysis-heading,.panel-setting-heading,.panel-activity-heading{justify-content:space-between;align-items:center;gap:10px;display:flex}.panel-eyebrow,.panel-setting-heading,.panel-method legend{color:var(--color-panel-muted);font-size:11px}.panel-evaluation,.panel-setting-heading output{color:var(--color-panel-accent);font-variant-numeric:tabular-nums;font-size:11px;font-weight:650}.panel-best-move{color:var(--color-panel-text);font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:.035em;margin-top:1px;font-size:24px;font-weight:650;line-height:1.25}.panel-line{color:var(--color-panel-muted);font-family:var(--font-mono);text-overflow:ellipsis;white-space:nowrap;margin-top:4px;font-size:10px;overflow:hidden}.panel-recovery{border-top:1px solid var(--color-panel-line);color:var(--color-panel-muted);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:9px;margin-top:9px;padding-top:9px;font-size:11px;display:grid}.panel-recovery[data-kind=resume]{color:var(--color-panel-warning)}.panel-recovery[data-kind=retry]{color:var(--color-panel-error)}.panel-controls{padding:6px 14px 12px}.panel-section-heading{color:var(--color-panel-muted);letter-spacing:.075em;text-transform:uppercase;margin:1px 0 3px;font-size:10px;font-weight:700}.panel-toggle-list{gap:0;display:grid}.panel-toggle{min-height:44px;color:var(--color-panel-text);cursor:pointer;justify-content:space-between;align-items:center;gap:12px;font-size:12px;display:flex}.panel-switch{flex:none;justify-content:center;align-items:center;width:44px;height:38px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{border:1px solid var(--color-panel-border);background:var(--color-panel-control-hover);border-radius:999px;width:34px;height:19px}.panel-switch-thumb{background:var(--color-panel-muted);width:13px;height:13px;box-shadow:0 1px 2px var(--color-panel-shadow);pointer-events:none;transition:transform var(--dur-short) var(--ease-out);border-radius:50%;position:absolute;top:50%;left:7px;transform:translateY(-50%)}.panel-switch-input:checked~.panel-switch-track{border-color:var(--color-panel-good);background:#7b9260}@supports (color:color-mix(in lab, red, red)){.panel-switch-input:checked~.panel-switch-track{background:color-mix(in oklab, var(--color-panel-good) 62%, var(--color-panel-control))}}.panel-switch-input:checked~.panel-switch-thumb{background:var(--color-panel-text);transform:translate(15px,-50%)}.panel-switch-input:focus-visible~.panel-switch-track{outline:2px solid var(--color-panel-accent);outline-offset:3px}.panel-switch-input:disabled~.panel-switch-track,.panel-switch-input:disabled~.panel-switch-thumb{cursor:not-allowed;opacity:.55}.panel-slider{padding-top:8px}.panel-range{appearance:none;cursor:pointer;width:100%;height:27px;accent-color:var(--color-panel-accent);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--color-panel-border);border-radius:3px;height:3px}.panel-range::-moz-range-track{background:var(--color-panel-border);border-radius:3px;height:3px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--color-panel);background:var(--color-panel-accent);width:13px;height:13px;box-shadow:0 0 0 1px var(--color-panel-muted);border-radius:50%;margin-top:-5px}.panel-range::-moz-range-thumb{border:2px solid var(--color-panel);background:var(--color-panel-accent);width:13px;height:13px;box-shadow:0 0 0 1px var(--color-panel-muted);border-radius:50%}.panel-method{border:0;justify-content:space-between;align-items:center;gap:10px;min-width:0;margin:7px 0 0;padding:0;display:flex}.panel-method legend{float:left;padding:0}.panel-segmented{border:1px solid var(--color-panel-line);background:var(--color-panel-console);border-radius:7px;flex:none;gap:3px;padding:3px;display:flex}.panel-segment{min-width:52px;min-height:38px;color:var(--color-panel-muted);background:0 0;border-color:#0000;border-radius:5px;padding:3px 8px;font-size:11px}.panel-segment[aria-pressed=true]{border-color:var(--color-panel-border);background:var(--color-panel-control-hover);color:var(--color-panel-text)}.panel-activity{border-top:1px solid var(--color-panel-line);background:var(--color-panel-console)}.panel-activity-heading{min-height:34px;color:var(--color-panel-muted);padding:3px 11px;font-size:11px;font-weight:650}.panel-activity-actions{gap:5px;display:flex}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--color-panel-border) var(--color-panel-console);scrollbar-width:thin;flex-direction:column;gap:3px;min-height:54px;max-height:128px;padding:5px 11px 10px;display:flex;overflow:auto}.panel-log:focus-visible{outline:2px solid var(--color-panel-accent);outline-offset:-2px}.panel-log-empty{color:var(--color-panel-muted);opacity:.78;margin:0;font-size:10px;line-height:1.5}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:48px minmax(0,1fr);gap:7px;margin:0;font-size:10px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--color-panel-muted);font-variant-numeric:tabular-nums;opacity:.78}.log-text-info,.log-text-move{color:var(--color-panel-good)}.log-text-status{color:var(--color-panel-muted)}.log-text-error{color:var(--color-panel-error)}.log-text-warn{color:var(--color-panel-warning)}.log-text-opponent{color:var(--color-panel-opponent)}@media (width<=360px){.panel-analysis{margin-left:8px;margin-right:8px}.panel-controls{padding-left:11px;padding-right:11px}.panel-method{gap:5px}.panel-method legend{font-size:10px}}@media (prefers-reduced-motion:reduce){.panel-icon-button,.panel-action-button,.panel-quiet-button,.panel-segment,.panel-switch-track,.panel-switch-thumb{transition-duration:1ms}}@property --tw-translate-x{syntax:\"*\";inherits:false;initial-value:0}@property --tw-translate-y{syntax:\"*\";inherits:false;initial-value:0}@property --tw-translate-z{syntax:\"*\";inherits:false;initial-value:0}@property --tw-rotate-x{syntax:\"*\";inherits:false}@property --tw-rotate-y{syntax:\"*\";inherits:false}@property --tw-rotate-z{syntax:\"*\";inherits:false}@property --tw-skew-x{syntax:\"*\";inherits:false}@property --tw-skew-y{syntax:\"*\";inherits:false}@property --tw-border-style{syntax:\"*\";inherits:false;initial-value:solid}@property --tw-leading{syntax:\"*\";inherits:false}@property --tw-font-weight{syntax:\"*\";inherits:false}@property --tw-ordinal{syntax:\"*\";inherits:false}@property --tw-slashed-zero{syntax:\"*\";inherits:false}@property --tw-numeric-figure{syntax:\"*\";inherits:false}@property --tw-numeric-spacing{syntax:\"*\";inherits:false}@property --tw-numeric-fraction{syntax:\"*\";inherits:false}@property --tw-shadow{syntax:\"*\";inherits:false;initial-value:0 0 #0000}@property --tw-shadow-color{syntax:\"*\";inherits:false}@property --tw-shadow-alpha{syntax:\"<percentage>\";inherits:false;initial-value:100%}@property --tw-inset-shadow{syntax:\"*\";inherits:false;initial-value:0 0 #0000}@property --tw-inset-shadow-color{syntax:\"*\";inherits:false}@property --tw-inset-shadow-alpha{syntax:\"<percentage>\";inherits:false;initial-value:100%}@property --tw-ring-color{syntax:\"*\";inherits:false}@property --tw-ring-shadow{syntax:\"*\";inherits:false;initial-value:0 0 #0000}@property --tw-inset-ring-color{syntax:\"*\";inherits:false}@property --tw-inset-ring-shadow{syntax:\"*\";inherits:false;initial-value:0 0 #0000}@property --tw-ring-inset{syntax:\"*\";inherits:false}@property --tw-ring-offset-width{syntax:\"<length>\";inherits:false;initial-value:0}@property --tw-ring-offset-color{syntax:\"*\";inherits:false;initial-value:#fff}@property --tw-ring-offset-shadow{syntax:\"*\";inherits:false;initial-value:0 0 #0000}@property --tw-outline-style{syntax:\"*\";inherits:false;initial-value:solid}@property --tw-blur{syntax:\"*\";inherits:false}@property --tw-brightness{syntax:\"*\";inherits:false}@property --tw-contrast{syntax:\"*\";inherits:false}@property --tw-grayscale{syntax:\"*\";inherits:false}@property --tw-hue-rotate{syntax:\"*\";inherits:false}@property --tw-invert{syntax:\"*\";inherits:false}@property --tw-opacity{syntax:\"*\";inherits:false}@property --tw-saturate{syntax:\"*\";inherits:false}@property --tw-sepia{syntax:\"*\";inherits:false}@property --tw-drop-shadow{syntax:\"*\";inherits:false}@property --tw-drop-shadow-color{syntax:\"*\";inherits:false}@property --tw-drop-shadow-alpha{syntax:\"<percentage>\";inherits:false;initial-value:100%}@property --tw-drop-shadow-size{syntax:\"*\";inherits:false}@property --tw-backdrop-blur{syntax:\"*\";inherits:false}@property --tw-backdrop-brightness{syntax:\"*\";inherits:false}@property --tw-backdrop-contrast{syntax:\"*\";inherits:false}@property --tw-backdrop-grayscale{syntax:\"*\";inherits:false}@property --tw-backdrop-hue-rotate{syntax:\"*\";inherits:false}@property --tw-backdrop-invert{syntax:\"*\";inherits:false}@property --tw-backdrop-opacity{syntax:\"*\";inherits:false}@property --tw-backdrop-saturate{syntax:\"*\";inherits:false}@property --tw-backdrop-sepia{syntax:\"*\";inherits:false}";
+	var panel_default = ":host{--color-panel:oklch(22% .025 160);--color-panel-header:oklch(25.5% .03 158);--color-panel-card:oklch(27.5% .03 158);--color-panel-border:oklch(40.5% .025 158);--color-panel-line:oklch(34% .022 158);--color-panel-muted:oklch(73% .022 157);--color-panel-text:oklch(94% .015 140);--color-panel-accent:oklch(84% .105 126);--color-panel-console:oklch(19% .02 158);--color-panel-control:oklch(25.5% .022 158);--color-panel-control-hover:oklch(32% .028 157);--color-panel-good:oklch(83% .105 126);--color-panel-warning:oklch(82% .105 82);--color-panel-error:oklch(78% .11 35);--color-panel-opponent:oklch(79% .07 73);--color-panel-shadow:oklch(8% .01 158/.48);--ease-out:cubic-bezier(.16, 1, .3, 1);--dur-short:.16s;--font-sans:-apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--font-mono:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;all:initial;z-index:9999999;width:min(336px,100vw - 16px);color:var(--color-panel-text);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font-family:var(--font-sans);-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.4;display:block;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}:host button,:host input{font:inherit}.panel-shell{border:1px solid var(--color-panel-border);background:var(--color-panel);box-shadow:0 14px 38px var(--color-panel-shadow), 0 2px 8px var(--color-panel-shadow);border-radius:14px;overflow:hidden}.panel-header{border-bottom:1px solid var(--color-panel-line);background:var(--color-panel-header);cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:58px;padding:9px 10px;display:flex}:host(.dragging) .panel-header{cursor:grabbing}.panel-brandmark{border:1px solid var(--color-panel-border);background:var(--color-panel-card);width:30px;height:30px;color:var(--color-panel-accent);border-radius:8px;flex:none;place-items:center;font-family:Georgia,serif;font-size:21px;line-height:1;display:grid}.panel-brand{flex-direction:column;flex:auto;gap:1px;min-width:0;display:flex}.panel-title{color:var(--color-panel-text);letter-spacing:.01em;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:650;overflow:hidden}.panel-state{min-width:0;color:var(--color-panel-muted);align-items:center;gap:7px;font-size:11px;display:flex}.panel-state-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-state-dot{background:var(--color-panel-muted);border-radius:50%;flex:none;width:7px;height:7px}.panel-state[data-tone=working] .panel-state-dot,.panel-state[data-tone=ready] .panel-state-dot{background:var(--color-panel-good);box-shadow:0 0 0 3px color-mix(in oklab, var(--color-panel-good) 16%, transparent)}.panel-state[data-tone=paused] .panel-state-dot,.panel-state[data-tone=paused] .panel-state-text{color:var(--color-panel-warning)}.panel-state[data-tone=paused] .panel-state-dot{background:var(--color-panel-warning)}.panel-state[data-tone=error] .panel-state-dot,.panel-state[data-tone=error] .panel-state-text{color:var(--color-panel-error)}.panel-state[data-tone=error] .panel-state-dot{background:var(--color-panel-error)}.panel-icon-button,.panel-action-button,.panel-quiet-button,.panel-segment{border:1px solid var(--color-panel-border);color:var(--color-panel-text);cursor:pointer;transition:transform var(--dur-short) var(--ease-out)}.panel-icon-button{background:var(--color-panel-control);border-radius:8px;flex:none;place-items:center;width:40px;height:40px;font-size:18px;line-height:1;display:grid}.panel-icon-button:hover,.panel-quiet-button:hover,.panel-segment:hover{border-color:var(--color-panel-muted);background:var(--color-panel-control-hover)}.panel-action-button{border-color:var(--color-panel-accent);background:var(--color-panel-accent);min-height:40px;color:var(--color-panel);border-radius:7px;flex:none;padding:0 10px;font-size:11px;font-weight:700}.panel-action-button:hover{border-color:var(--color-panel-text);background:var(--color-panel-text)}.panel-quiet-button{border-color:var(--color-panel-line);background:var(--color-panel-control);min-width:42px;min-height:30px;color:var(--color-panel-muted);border-radius:6px;padding:2px 7px;font-size:10px;font-weight:500}.panel-icon-button:focus-visible,.panel-action-button:focus-visible,.panel-quiet-button:focus-visible,.panel-segment:focus-visible,.panel-range:focus-visible{outline:2px solid var(--color-panel-accent);outline-offset:3px}.panel-icon-button:active,.panel-action-button:active,.panel-quiet-button:active,.panel-segment:active{transform:translateY(1px)}.panel-icon-button:disabled,.panel-action-button:disabled,.panel-quiet-button:disabled,.panel-segment:disabled{cursor:not-allowed;opacity:.55}.panel-scroll{overscroll-behavior:contain;scrollbar-color:var(--color-panel-border) var(--color-panel-console);scrollbar-width:thin;max-height:min(78vh,720px);overflow:auto}.panel-analysis{border:1px solid var(--color-panel-line);background:var(--color-panel-card);border-radius:9px;margin:10px 10px 4px;padding:10px 11px 9px 13px;position:relative}.panel-analysis:before{background:var(--color-panel-accent);content:\"\";border-radius:0 3px 3px 0;width:2px;position:absolute;inset:9px auto 9px 0}.panel-analysis-heading,.panel-setting-heading,.panel-activity-heading{justify-content:space-between;align-items:center;gap:10px;display:flex}.panel-eyebrow,.panel-setting-heading,.panel-method legend{color:var(--color-panel-muted);font-size:11px}.panel-evaluation{color:var(--color-panel-accent);font-variant-numeric:tabular-nums;font-size:14px;font-weight:700}.panel-setting-heading output{color:var(--color-panel-accent);font-variant-numeric:tabular-nums;font-size:11px;font-weight:650}.panel-best-move{color:var(--color-panel-text);font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:.035em;margin-top:1px;font-size:24px;font-weight:650;line-height:1.25}.panel-line{color:var(--color-panel-muted);font-family:var(--font-mono);text-overflow:ellipsis;white-space:nowrap;margin-top:4px;font-size:10px;overflow:hidden}.panel-recovery{border-top:1px solid var(--color-panel-line);color:var(--color-panel-muted);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:9px;margin-top:9px;padding-top:9px;font-size:11px;display:grid}.panel-recovery[data-kind=resume]{color:var(--color-panel-warning)}.panel-recovery[data-kind=retry]{color:var(--color-panel-error)}.panel-controls{padding:6px 14px 12px}.panel-section-heading{color:var(--color-panel-muted);letter-spacing:.075em;text-transform:uppercase;margin:1px 0 3px;font-size:10px;font-weight:700}.panel-toggle-list{gap:0;display:grid}.panel-toggle{min-height:44px;color:var(--color-panel-text);cursor:pointer;justify-content:space-between;align-items:center;gap:12px;font-size:12px;display:flex}.panel-switch{flex:none;justify-content:center;align-items:center;width:44px;height:38px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{border:1px solid var(--color-panel-border);background:var(--color-panel-control-hover);border-radius:999px;width:34px;height:19px}.panel-switch-thumb{background:var(--color-panel-muted);width:13px;height:13px;box-shadow:0 1px 2px var(--color-panel-shadow);pointer-events:none;transition:transform var(--dur-short) var(--ease-out);border-radius:50%;position:absolute;top:50%;left:7px;transform:translateY(-50%)}.panel-switch-input:checked~.panel-switch-track{border-color:var(--color-panel-good);background:color-mix(in oklab, var(--color-panel-good) 62%, var(--color-panel-control))}.panel-switch-input:checked~.panel-switch-thumb{background:var(--color-panel-text);transform:translate(15px,-50%)}.panel-switch-input:focus-visible~.panel-switch-track{outline:2px solid var(--color-panel-accent);outline-offset:3px}.panel-switch-input:disabled~.panel-switch-track,.panel-switch-input:disabled~.panel-switch-thumb{cursor:not-allowed;opacity:.55}.panel-slider{padding-top:8px}.panel-range{appearance:none;cursor:pointer;width:100%;height:27px;accent-color:var(--color-panel-accent);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--color-panel-border);border-radius:3px;height:3px}.panel-range::-moz-range-track{background:var(--color-panel-border);border-radius:3px;height:3px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--color-panel);background:var(--color-panel-accent);width:13px;height:13px;box-shadow:0 0 0 1px var(--color-panel-muted);border-radius:50%;margin-top:-5px}.panel-range::-moz-range-thumb{border:2px solid var(--color-panel);background:var(--color-panel-accent);width:13px;height:13px;box-shadow:0 0 0 1px var(--color-panel-muted);border-radius:50%}.panel-method{border:0;justify-content:space-between;align-items:center;gap:10px;min-width:0;margin:7px 0 0;padding:0;display:flex}.panel-method legend{float:left;padding:0}.panel-segmented{border:1px solid var(--color-panel-line);background:var(--color-panel-console);border-radius:7px;flex:none;gap:3px;padding:3px;display:flex}.panel-segment{min-width:52px;min-height:38px;color:var(--color-panel-muted);background:0 0;border-color:#0000;border-radius:5px;padding:3px 8px;font-size:11px}.panel-segment[aria-pressed=true]{border-color:var(--color-panel-border);background:var(--color-panel-control-hover);color:var(--color-panel-text)}.panel-activity{border-top:1px solid var(--color-panel-line);background:var(--color-panel-console)}.panel-activity-heading{min-height:34px;color:var(--color-panel-muted);padding:3px 11px;font-size:11px;font-weight:650}.panel-activity-actions{gap:5px;display:flex}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--color-panel-border) var(--color-panel-console);scrollbar-width:thin;flex-direction:column;gap:3px;min-height:54px;max-height:128px;padding:5px 11px 10px;display:flex;overflow:auto}.panel-log:focus-visible{outline:2px solid var(--color-panel-accent);outline-offset:-2px}.panel-log-empty{color:var(--color-panel-muted);opacity:.78;margin:0;font-size:10px;line-height:1.5}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:48px minmax(0,1fr);gap:7px;margin:0;font-size:10px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--color-panel-muted);font-variant-numeric:tabular-nums;opacity:.78}.log-text-info,.log-text-move{color:var(--color-panel-good)}.log-text-status{color:var(--color-panel-muted)}.log-text-error{color:var(--color-panel-error)}.log-text-warn{color:var(--color-panel-warning)}.log-text-opponent{color:var(--color-panel-opponent)}@media (width<=360px){.panel-analysis{margin-left:8px;margin-right:8px}.panel-controls{padding-left:11px;padding-right:11px}.panel-method{gap:5px}.panel-method legend{font-size:10px}}@media (prefers-reduced-motion:reduce){.panel-icon-button,.panel-action-button,.panel-quiet-button,.panel-segment,.panel-switch-track,.panel-switch-thumb{transition-duration:1ms}}";
 	var n$1;
 	var t$2;
 	var i$2;
@@ -5202,6 +4384,55 @@
 		if (current.status === next.status && current.evaluation === next.evaluation && current.bestMove === next.bestMove && current.principalVariation === next.principalVariation && current.recoveryAction === next.recoveryAction) return;
 		analysisSignal.value = next;
 	}
+	function updatePanelSetting(key, value, actions) {
+		const next = {
+			...settingsSignal.value,
+			[key]: value
+		};
+		switch (key) {
+			case "enabled":
+				BotState.hackEnabled = value ? 1 : 0;
+				break;
+			case "autoMove":
+				BotState.autoMove = value ? 1 : 0;
+				break;
+			case "ponder":
+				BotState.ponderEnabled = value ? 1 : 0;
+				break;
+			case "autoRematch":
+				BotState.autoRematch = value ? 1 : 0;
+				break;
+			case "depth":
+				BotState.botPower = Number(value);
+				break;
+			case "moveTimeMs":
+				BotState.moveTime = Number(value);
+				break;
+			case "moveMethod": BotState.moveMethod = value;
+		}
+		settingsSignal.value = next;
+		Settings.save();
+		if (key === "enabled") actions?.setEnabled?.(!!value);
+		else actions?.refreshSettings?.();
+	}
+	function handlePanelKeyDown(event, actions = {}, toggleMinimized) {
+		const target = event.composedPath ? event.composedPath()[0] : event.target;
+		if (typeof HTMLInputElement !== "undefined" && target instanceof HTMLInputElement || typeof HTMLTextAreaElement !== "undefined" && target instanceof HTMLTextAreaElement || typeof HTMLElement !== "undefined" && target instanceof HTMLElement && target.isContentEditable || target && typeof target === "object" && ("isContentEditable" in target || target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+		if (event.key.toLowerCase() === "b" && event.ctrlKey && !event.metaKey) {
+			event.preventDefault?.();
+			toggleMinimized?.();
+			return;
+		}
+		if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+			if (event.code === "KeyE") {
+				event.preventDefault?.();
+				updatePanelSetting("enabled", !settingsSignal.value.enabled, actions);
+			} else if (event.code === "KeyR" && analysisSignal.value.recoveryAction !== null) {
+				event.preventDefault?.();
+				actions.recover?.();
+			}
+		}
+	}
 	function mountPanel(root, host, actions) {
 		G$1(u(Panel, {
 			host,
@@ -5254,15 +4485,11 @@
 		const copyTimer = T(null);
 		A(() => {
 			const handleKeyDown = (event) => {
-				const target = event.composedPath()[0];
-				if (event.key.toLowerCase() === "b" && event.ctrlKey && !event.metaKey && !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLElement && target.isContentEditable)) {
-					event.preventDefault();
-					setMinimized((value) => !value);
-				}
+				handlePanelKeyDown(event, actions, () => setMinimized((value) => !value));
 			};
 			window.addEventListener("keydown", handleKeyDown);
 			return () => window.removeEventListener("keydown", handleKeyDown);
-		}, []);
+		}, [actions]);
 		A(() => {
 			const clampToViewport = () => {
 				const rect = host.getBoundingClientRect();
@@ -5295,35 +4522,7 @@
 			if (log && stickToBottom.current) log.scrollTop = log.scrollHeight;
 		}, [logs]);
 		const updateSetting = (key, value) => {
-			const next = {
-				...settingsSignal.value,
-				[key]: value
-			};
-			switch (key) {
-				case "enabled":
-					BotState.hackEnabled = value ? 1 : 0;
-					break;
-				case "autoMove":
-					BotState.autoMove = value ? 1 : 0;
-					break;
-				case "ponder":
-					BotState.ponderEnabled = value ? 1 : 0;
-					break;
-				case "autoRematch":
-					BotState.autoRematch = value ? 1 : 0;
-					break;
-				case "depth":
-					BotState.botPower = Number(value);
-					break;
-				case "moveTimeMs":
-					BotState.moveTime = Number(value);
-					break;
-				case "moveMethod": BotState.moveMethod = value;
-			}
-			settingsSignal.value = next;
-			Settings.save();
-			if (key === "enabled") actions.setEnabled?.(!!value);
-			else actions.refreshSettings?.();
+			updatePanelSetting(key, value, actions);
 		};
 		const beginDrag = (event) => {
 			if (event.button !== 0 || event.target.closest("button, input, a")) return;
@@ -5694,9 +4893,11 @@
 		const configured = Math.max(10, BotState.moveTime);
 		const clock = document.querySelector(".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time")?.textContent?.trim();
 		let remaining = Infinity;
-		if (clock && /^\d+:\d{2}(?:\.\d+)?$/.test(clock)) {
-			const [minutes, seconds] = clock.split(":").map(Number);
-			remaining = (minutes * 60 + seconds) * 1e3;
+		if (clock) {
+			if (/^\d+:\d{2}(?:\.\d+)?$/.test(clock)) {
+				const [minutes, seconds] = clock.split(":").map(Number);
+				remaining = (minutes * 60 + seconds) * 1e3;
+			} else if (/^\d+(?:\.\d+)?$/.test(clock)) remaining = Number(clock) * 1e3;
 		}
 		return Math.max(1, Math.floor(Math.min(configured, remaining / 40) - 12));
 	}
@@ -5735,7 +4936,14 @@
 			const result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
 			if (!current()) return;
 			const best = parseBestLine(result);
-			if (!best) throw new Error("Engine returned no legal move");
+			if (!best) {
+				if (result?.bestmove === "(none)") {
+					BotState.statusInfo = "Terminal position";
+					ui.updateDisplay(pa());
+					return;
+				}
+				throw new Error("Engine returned no legal move");
+			}
 			if (kind !== "main") {
 				const predicted = predictFen(fen, best.uci);
 				if (predicted) {

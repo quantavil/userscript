@@ -8,7 +8,7 @@ Project guidance for `super-chess-bot`.
 - Build the TypeScript userscript with Vite and `vite-plugin-monkey`; the installable output is `dist/bundle.user.js`.
 - Keep the package, userscript metadata, and project license at GPL-3.0-or-later. Preserve Stockfish's upstream license notice.
 - Stockfish JS and WASM are loaded as version-pinned userscript resources. Keep engine loading in the worker adapter; do not add a page-thread search fallback.
-- Keep runtime dependencies small and prefer `chessops`, Preact + Signals, and Zod Mini for the capabilities they already provide.
+- Keep runtime dependencies small and prefer `chessops`, Preact + Signals, and Valibot for the capabilities they already provide.
 
 ## Architecture boundaries
 
@@ -19,7 +19,7 @@ Project guidance for `super-chess-bot`.
 - `engine/uci-client.ts`: serialize UCI searches, promote a matching `go ponder` search, reuse a completed result only for an exact FEN/history/depth match, and drain canceled `bestmove` responses before starting a different position. Match both FEN and UCI history because repetition state affects evaluation. UCI messages have no request IDs, so do not attach a late response to a newer position.
 - `engine/worker-client.ts`: load pinned userscript resources and manage the persistent worker. Terminate it only for recovery.
 - `history.ts` and `engine/san.ts`: use chessops for legal history, notation, and position validation; do not recreate chess rules or a search engine.
-- `state.ts` and `settings.ts`: keep page game state authoritative and validate persisted values with Zod Mini.
+- `state.ts` and `settings.ts`: keep page game state authoritative and validate persisted values with Valibot.
 - `panel.tsx`, `panel.css`, and `ui.ts`: keep the panel in Shadow DOM. Rendering displays state; move execution stays in the controller and scheduler.
 
 ## Tests and verification

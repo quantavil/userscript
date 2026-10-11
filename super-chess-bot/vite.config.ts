@@ -1,4 +1,3 @@
-import tailwindcss from '@tailwindcss/vite';
 import stockfishPkg from 'stockfish/package.json' with { type: 'json' };
 import { defineConfig } from 'vite';
 import monkey from 'vite-plugin-monkey';
@@ -9,7 +8,6 @@ const stockfishResourceUrl = `https://unpkg.com/stockfish@${stockfishPkg.version
 
 export default defineConfig({
   plugins: [
-    tailwindcss(),
     monkey({
       entry: 'src/index.ts',
       userscript: {

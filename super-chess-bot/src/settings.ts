@@ -1,4 +1,4 @@
-import * as z from 'zod/mini';
+import * as v from 'valibot';
 import type { SettingsData } from './types/chess';
 
 export const DEFAULT_SETTINGS: SettingsData = {
@@ -12,24 +12,25 @@ export const DEFAULT_SETTINGS: SettingsData = {
   menuPosition: null,
 };
 
-const flagSchema = z.union([z.literal(0), z.literal(1)]);
-const integerInRange = (minimum: number, maximum: number) => z.number().check(z.int(), z.gte(minimum), z.lte(maximum));
-const positionSchema = z.object({
-  top: z.string().check(z.maxLength(32)),
-  left: z.string().check(z.maxLength(32)),
+const flagSchema = v.union([v.literal(0), v.literal(1)]);
+const integerInRange = (minimum: number, maximum: number) =>
+  v.pipe(v.number(), v.integer(), v.minValue(minimum), v.maxValue(maximum));
+const positionSchema = v.object({
+  top: v.pipe(v.string(), v.maxLength(32)),
+  left: v.pipe(v.string(), v.maxLength(32)),
 });
 
-const savedSettingsSchema = z.object({
-  hackEnabled: z.optional(flagSchema),
-  botPower: z.optional(integerInRange(1, 30)),
-  moveTime: z.optional(integerInRange(100, 10_000)),
-  autoMove: z.optional(flagSchema),
-  ponderEnabled: z.optional(flagSchema),
+const savedSettingsSchema = v.object({
+  hackEnabled: v.optional(flagSchema),
+  botPower: v.optional(integerInRange(1, 30)),
+  moveTime: v.optional(integerInRange(100, 10_000)),
+  autoMove: v.optional(flagSchema),
+  ponderEnabled: v.optional(flagSchema),
   /** Legacy key written by earlier builds when background pondering was misnamed. */
-  premoveEnabled: z.optional(flagSchema),
-  autoRematch: z.optional(flagSchema),
-  moveMethod: z.optional(z.union([z.literal('click'), z.literal('drag')])),
-  menuPosition: z.optional(z.nullable(positionSchema)),
+  premoveEnabled: v.optional(flagSchema),
+  autoRematch: v.optional(flagSchema),
+  moveMethod: v.optional(v.picklist(['click', 'drag'])),
+  menuPosition: v.optional(v.nullable(positionSchema)),
 });
 
 /** Parse persisted JSON, filling old partial settings and failing closed on invalid data. */
@@ -43,10 +44,10 @@ export function loadSettings(serialized: string | null): SettingsData {
     return { ...DEFAULT_SETTINGS };
   }
 
-  const result = z.safeParse(savedSettingsSchema, saved);
+  const result = v.safeParse(savedSettingsSchema, saved);
   if (!result.success) return { ...DEFAULT_SETTINGS };
 
-  const { premoveEnabled, ...currentSettings } = result.data;
+  const { premoveEnabled, ...currentSettings } = result.output;
   return {
     ...DEFAULT_SETTINGS,
     ...currentSettings,

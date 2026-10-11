@@ -114,6 +114,85 @@ export function updatePanelAnalysis(next: PanelAnalysis): void {
   analysisSignal.value = next;
 }
 
+export function updatePanelSetting<K extends keyof PanelSettings>(
+  key: K,
+  value: PanelSettings[K],
+  actions?: PanelActions,
+): void {
+  const next = { ...settingsSignal.value, [key]: value };
+  switch (key) {
+    case 'enabled':
+      BotState.hackEnabled = value ? 1 : 0;
+      break;
+    case 'autoMove':
+      BotState.autoMove = value ? 1 : 0;
+      break;
+    case 'ponder':
+      BotState.ponderEnabled = value ? 1 : 0;
+      break;
+    case 'autoRematch':
+      BotState.autoRematch = value ? 1 : 0;
+      break;
+    case 'depth':
+      BotState.botPower = Number(value);
+      break;
+    case 'moveTimeMs':
+      BotState.moveTime = Number(value);
+      break;
+    case 'moveMethod':
+      BotState.moveMethod = value as PanelSettings['moveMethod'];
+      break;
+  }
+  settingsSignal.value = next;
+  Settings.save();
+
+  if (key === 'enabled') actions?.setEnabled?.(!!value);
+  else actions?.refreshSettings?.();
+}
+
+export function handlePanelKeyDown(
+  event: {
+    key: string;
+    code: string;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    altKey?: boolean;
+    composedPath?: () => unknown[];
+    target?: unknown;
+    preventDefault?: () => void;
+  },
+  actions: PanelActions = {},
+  toggleMinimized?: () => void,
+): void {
+  const target = event.composedPath ? event.composedPath()[0] : event.target;
+  if (
+    (typeof HTMLInputElement !== 'undefined' && target instanceof HTMLInputElement) ||
+    (typeof HTMLTextAreaElement !== 'undefined' && target instanceof HTMLTextAreaElement) ||
+    (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && target.isContentEditable) ||
+    (target &&
+      typeof target === 'object' &&
+      ('isContentEditable' in target ||
+        (target as { tagName?: string }).tagName === 'INPUT' ||
+        (target as { tagName?: string }).tagName === 'TEXTAREA'))
+  ) {
+    return;
+  }
+  if (event.key.toLowerCase() === 'b' && event.ctrlKey && !event.metaKey) {
+    event.preventDefault?.();
+    toggleMinimized?.();
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+    if (event.code === 'KeyE') {
+      event.preventDefault?.();
+      updatePanelSetting('enabled', !settingsSignal.value.enabled, actions);
+    } else if (event.code === 'KeyR' && analysisSignal.value.recoveryAction !== null) {
+      event.preventDefault?.();
+      actions.recover?.();
+    }
+  }
+}
+
 export function mountPanel(root: HTMLElement, host: HTMLDivElement, actions: PanelActions): void {
   render(<Panel host={host} actions={actions} />, root);
 }
@@ -172,24 +251,11 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.composedPath()[0];
-      if (
-        event.key.toLowerCase() === 'b' &&
-        event.ctrlKey &&
-        !event.metaKey &&
-        !(
-          target instanceof HTMLInputElement ||
-          target instanceof HTMLTextAreaElement ||
-          (target instanceof HTMLElement && target.isContentEditable)
-        )
-      ) {
-        event.preventDefault();
-        setMinimized((value) => !value);
-      }
+      handlePanelKeyDown(event, actions, () => setMinimized((value) => !value));
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [actions]);
 
   useEffect(() => {
     const clampToViewport = () => {
@@ -229,35 +295,7 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
   }, [logs]);
 
   const updateSetting = <K extends keyof PanelSettings>(key: K, value: PanelSettings[K]) => {
-    const next = { ...settingsSignal.value, [key]: value };
-    switch (key) {
-      case 'enabled':
-        BotState.hackEnabled = value ? 1 : 0;
-        break;
-      case 'autoMove':
-        BotState.autoMove = value ? 1 : 0;
-        break;
-      case 'ponder':
-        BotState.ponderEnabled = value ? 1 : 0;
-        break;
-      case 'autoRematch':
-        BotState.autoRematch = value ? 1 : 0;
-        break;
-      case 'depth':
-        BotState.botPower = Number(value);
-        break;
-      case 'moveTimeMs':
-        BotState.moveTime = Number(value);
-        break;
-      case 'moveMethod':
-        BotState.moveMethod = value as PanelSettings['moveMethod'];
-        break;
-    }
-    settingsSignal.value = next;
-    Settings.save();
-
-    if (key === 'enabled') actions.setEnabled?.(!!value);
-    else actions.refreshSettings?.();
+    updatePanelSetting(key, value, actions);
   };
 
   const beginDrag = (event: TargetedPointerEvent<HTMLElement>) => {

@@ -52,7 +52,7 @@ flowchart LR
 - **Recovery:** trusted human board input cancels pending automation and pauses the bot. A changed position resumes analysis automatically; when the position stays the same, the panel offers Resume. Engine and unconfirmed-input failures offer Retry.
 - **History:** chessops reconstructs the selected SAN line into UCI history for repetition-aware search. Incomplete history falls back to the current FEN; repetition before that FEN cannot then be inferred.
 - **Ponder:** enabled by default for new settings. The chosen move's principal variation predicts one opponent reply, then Stockfish searches the resulting position with UCI `go ponder` during the opponent's turn. An exact FEN and history match promotes that search; a completed ponder result is also reused only when FEN, history, and depth all match. A miss is stopped and drained before a fresh search. At depth 12 or higher the current best move is returned immediately; shallower searches get the normal foreground budget after `ponderhit`. This spends CPU while the opponent thinks and can use more battery. The panel toggle can disable it. Pondering analyzes a predicted reply; it does not queue a premove.
-- **UI:** Preact + Signals inside Shadow DOM, with Tailwind 4 compiled during the build. The panel is draggable, logs are capped at 100 entries, and stored settings are validated with Zod Mini. The bot starts disabled each time.
+- **UI:** Preact + Signals inside Shadow DOM with focused Hallmark workbench styles. The panel is draggable, logs are capped at 100 entries, stored settings are validated with Valibot (~1.5 kB), and keyboard hotkeys (`Ctrl+B` minimize, `E` toggle automation, `R` retry) enable rapid bullet play. The bot starts disabled each time.
 
 ## Install and use
 
