@@ -10,7 +10,9 @@ import {
   syncPanelSettings,
   updatePanelAnalysis,
 } from './panel.js';
-import { BotState, getFen, getGame, Settings } from './state.js';
+import { readSite } from './sites/index.js';
+import type { SiteCapabilities } from './sites/types.js';
+import { BotState, Settings } from './state.js';
 
 interface UI {
   /** Shadow DOM host. Its inline position is persisted by Settings.save(). */
@@ -49,8 +51,8 @@ export const ui: UI = {
 
   updateDisplay(playingAs) {
     syncPanelSettings();
-    const game = getGame();
-    const fen = getFen(game);
+    const read = readSite();
+    const fen = read.kind === 'game' ? read.snapshot.fen : null;
     const san = fen && BotState.bestMove !== '-' ? uciToSan(fen, BotState.bestMove) : BotState.bestMove;
     const suggestedMove = typeof san === 'string' ? san : BotState.bestMove;
     if (BotState.statusInfo !== this.lastStatus) {
@@ -80,7 +82,7 @@ export const ui: UI = {
   },
 };
 
-export async function buildUI(actions: PanelActions = {}): Promise<void> {
+export async function buildUI(actions: PanelActions = {}, capabilities?: SiteCapabilities): Promise<void> {
   if (ui.menuWrap) return;
 
   const host = document.createElement('div');
@@ -106,8 +108,13 @@ export async function buildUI(actions: PanelActions = {}): Promise<void> {
 
   document.body.appendChild(host);
   ui.menuWrap = host;
-  mountPanel(appRoot, host, {
-    ...actions,
-    clearConsole: () => ui.clearConsole(),
-  });
+  mountPanel(
+    appRoot,
+    host,
+    {
+      ...actions,
+      clearConsole: () => ui.clearConsole(),
+    },
+    capabilities,
+  );
 }

@@ -6,6 +6,24 @@ const panel = vi.hoisted(() => ({
   updateAnalysis: vi.fn(),
   syncSettings: vi.fn(),
 }));
+const site = vi.hoisted(() => ({
+  read: {
+    kind: 'game' as 'game' | 'waiting' | 'ineligible',
+    snapshot: {
+      identity: {},
+      gameId: 'test-game',
+      board: {} as HTMLElement,
+      fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+      playerColor: 'w' as 'w' | 'b',
+      sideToMove: 'b' as 'w' | 'b',
+      orientation: 'white' as 'white' | 'black',
+      phase: 'live' as 'live' | 'replay' | 'finished',
+      inputReady: false,
+      remainingMs: null,
+      history: { startFen: '', moves: [] },
+    },
+  },
+}));
 
 vi.mock('../src/board.js', () => ({ updateEvaluationBar: vi.fn() }));
 vi.mock('../src/panel.js', () => ({
@@ -15,6 +33,7 @@ vi.mock('../src/panel.js', () => ({
   syncPanelSettings: panel.syncSettings,
   updatePanelAnalysis: panel.updateAnalysis,
 }));
+vi.mock('../src/sites/index.js', () => ({ readSite: () => site.read }));
 
 import { BotState, invalidateGameCache } from '../src/state.js';
 import { ui } from '../src/ui.js';
@@ -22,6 +41,8 @@ import { ui } from '../src/ui.js';
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 beforeEach(() => {
+  site.read.kind = 'game';
+  site.read.snapshot.fen = START_FEN;
   const game = { getFEN: () => START_FEN, getPlayingAs: () => 1 };
   vi.stubGlobal('document', {
     querySelector: (selector: string) => (selector.includes('board') ? { game } : null),
@@ -74,5 +95,14 @@ describe('panel view state', () => {
     expect(panel.updateAnalysis).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: 'Stockfish worker crashed', recoveryAction: 'retry' }),
     );
+  });
+
+  it('converts the suggested move against the adapter accepted FEN', () => {
+    site.read.snapshot.fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+    BotState.bestMove = 'e7e5';
+
+    ui.updateDisplay(1);
+
+    expect(panel.updateAnalysis).toHaveBeenLastCalledWith(expect.objectContaining({ bestMove: 'e5' }));
   });
 });

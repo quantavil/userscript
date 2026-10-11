@@ -3,6 +3,7 @@ import { signal } from '@preact/signals';
 import type { TargetedPointerEvent } from 'preact';
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import type { SiteCapabilities } from './sites/types.js';
 import { BotState, Settings } from './state.js';
 import type { RecoveryAction } from './types/chess.js';
 
@@ -13,6 +14,21 @@ export interface PanelActions {
   refreshSettings?: () => void;
   clearConsole?: () => void;
   recover?: () => void;
+}
+
+export interface PanelCapabilityView {
+  showAutoRematch: boolean;
+  showMoveMethod: boolean;
+  transportNote: string | null;
+}
+
+export function getPanelCapabilityView(capabilities?: SiteCapabilities): PanelCapabilityView {
+  const selectionInput = capabilities?.input === 'selection';
+  return {
+    showAutoRematch: capabilities?.autoRematch !== false,
+    showMoveMethod: !selectionInput,
+    transportNote: selectionInput ? 'Moves use legal square selection on this site.' : null,
+  };
 }
 
 interface PanelSettings {
@@ -193,8 +209,13 @@ export function handlePanelKeyDown(
   }
 }
 
-export function mountPanel(root: HTMLElement, host: HTMLDivElement, actions: PanelActions): void {
-  render(<Panel host={host} actions={actions} />, root);
+export function mountPanel(
+  root: HTMLElement,
+  host: HTMLDivElement,
+  actions: PanelActions,
+  capabilities?: SiteCapabilities,
+): void {
+  render(<Panel host={host} actions={actions} capabilities={capabilities} />, root);
 }
 
 function formatBudget(milliseconds: number): string {
@@ -238,11 +259,20 @@ function Toggle({
   );
 }
 
-function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions }) {
+function Panel({
+  host,
+  actions,
+  capabilities,
+}: {
+  host: HTMLDivElement;
+  actions: PanelActions;
+  capabilities?: SiteCapabilities;
+}) {
   // Read signals directly in the component; a parallel useState copy only adds synchronization work.
   const settings = settingsSignal.value;
   const analysis = analysisSignal.value;
   const logs = logsSignal.value;
+  const capabilityView = getPanelCapabilityView(capabilities);
   const [minimized, setMinimized] = useState(false);
   const [copied, setCopied] = useState(false);
   const logElement = useRef<HTMLDivElement | null>(null);
@@ -429,12 +459,15 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
                 checked={settings.ponder}
                 onChange={(checked) => updateSetting('ponder', checked)}
               />
-              <Toggle
-                label="Auto rematch"
-                checked={settings.autoRematch}
-                onChange={(checked) => updateSetting('autoRematch', checked)}
-              />
+              {capabilityView.showAutoRematch && (
+                <Toggle
+                  label="Auto rematch"
+                  checked={settings.autoRematch}
+                  onChange={(checked) => updateSetting('autoRematch', checked)}
+                />
+              )}
             </div>
+            {capabilityView.transportNote && <p class="panel-site-note">{capabilityView.transportNote}</p>}
 
             <div class="panel-slider">
               <div class="panel-setting-heading">
@@ -471,27 +504,29 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
               />
             </div>
 
-            <fieldset class="panel-method">
-              <legend>Move input method</legend>
-              <div class="panel-segmented">
-                <button
-                  class="panel-segment"
-                  type="button"
-                  aria-pressed={settings.moveMethod === 'click'}
-                  onClick={() => updateSetting('moveMethod', 'click')}
-                >
-                  Click
-                </button>
-                <button
-                  class="panel-segment"
-                  type="button"
-                  aria-pressed={settings.moveMethod === 'drag'}
-                  onClick={() => updateSetting('moveMethod', 'drag')}
-                >
-                  Drag
-                </button>
-              </div>
-            </fieldset>
+            {capabilityView.showMoveMethod && (
+              <fieldset class="panel-method">
+                <legend>Move input method</legend>
+                <div class="panel-segmented">
+                  <button
+                    class="panel-segment"
+                    type="button"
+                    aria-pressed={settings.moveMethod === 'click'}
+                    onClick={() => updateSetting('moveMethod', 'click')}
+                  >
+                    Click
+                  </button>
+                  <button
+                    class="panel-segment"
+                    type="button"
+                    aria-pressed={settings.moveMethod === 'drag'}
+                    onClick={() => updateSetting('moveMethod', 'drag')}
+                  >
+                    Drag
+                  </button>
+                </div>
+              </fieldset>
+            )}
           </section>
 
           <section class="panel-activity" aria-label="Activity log">

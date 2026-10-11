@@ -1,19 +1,60 @@
 import { DEFAULT_SETTINGS, loadSettings } from './settings.js';
+import { getActiveSite } from './sites/active.js';
+import {
+  GAME_CACHE_TTL,
+  getBoard,
+  getFen as getChesscomFen,
+  getPlayerColor as getChesscomPlayerColor,
+  getSideToMove as getChesscomSideToMove,
+  getGame,
+  invalidateGameCache,
+  isBoardFlipped as isChesscomBoardFlipped,
+  isPlayersTurn as isChesscomPlayersTurn,
+} from './sites/chesscom-state.js';
 import type { BotState as BotStateInterface, SettingsData } from './types/chess';
 import { debounce } from './utils.js';
 
-export {
-  GAME_CACHE_TTL,
-  getBoard,
-  getFen,
-  getGame,
-  getPlayerColor,
-  getSideToMove,
-  invalidateGameCache,
-  isBoardFlipped,
-  isPlayersTurn,
-  pa,
-} from './sites/chesscom-state.js';
+export { GAME_CACHE_TTL, getBoard, getGame, invalidateGameCache };
+
+function snapshot() {
+  try {
+    const read = getActiveSite()?.read();
+    return read?.kind === 'game' ? read.snapshot : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getFen(...args: [] | [game: Parameters<typeof getChesscomFen>[0]]): string | null {
+  if (args.length > 0) return getChesscomFen(args[0]);
+  return snapshot()?.fen ?? getChesscomFen(getGame());
+}
+
+export function getPlayerColor(...args: [] | [game: Parameters<typeof getChesscomPlayerColor>[0]]): string {
+  if (args.length > 0) return getChesscomPlayerColor(args[0]);
+  return snapshot()?.playerColor ?? getChesscomPlayerColor(getGame());
+}
+
+export function getSideToMove(...args: [] | [game: Parameters<typeof getChesscomSideToMove>[0]]): string | null {
+  if (args.length > 0) return getChesscomSideToMove(args[0]);
+  return snapshot()?.sideToMove ?? getChesscomSideToMove(getGame());
+}
+
+export function isPlayersTurn(...args: [] | [game: Parameters<typeof isChesscomPlayersTurn>[0]]): boolean {
+  if (args.length > 0) return isChesscomPlayersTurn(args[0]);
+  const current = snapshot();
+  return current ? current.playerColor === current.sideToMove : isChesscomPlayersTurn(getGame());
+}
+
+export function isBoardFlipped(): boolean {
+  const current = snapshot();
+  return current ? current.orientation === 'black' : isChesscomBoardFlipped();
+}
+
+export function pa(): number {
+  const color = snapshot()?.playerColor;
+  return color === 'b' ? 2 : color === 'w' ? 1 : getChesscomPlayerColor(getGame()) === 'b' ? 2 : 1;
+}
 
 // Encapsulated state (avoid global pollution)
 export const BotState: BotStateInterface = {

@@ -14,10 +14,11 @@ import {
   isPlayersTurn,
   pa,
 } from './state.js';
-import { debounce, sleep } from './utils.js';
+import { sleep } from './utils.js';
 
 interface BoardContext {
   boardEl: HTMLElement;
+  orientation: 'white' | 'black';
   drawingBoard: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   evalBarWrap: HTMLDivElement;
@@ -25,7 +26,7 @@ interface BoardContext {
 }
 
 let boardCtx: BoardContext | null = null;
-let domObserver: MutationObserver | null = null;
+let observedOrientation: 'white' | 'black' | null = null;
 let moveRevision = 0;
 let moveExecutionActive = false;
 const pendingMoveConfirmations = new Set<AbortController>();
@@ -169,6 +170,7 @@ export function attachToBoard(boardEl: HTMLElement | null): void {
 
   boardCtx = {
     boardEl,
+    orientation: observedOrientation ?? (isBoardFlipped() ? 'black' : 'white'),
     drawingBoard,
     ctx,
     evalBarWrap,
@@ -195,39 +197,21 @@ export function attachToBoard(boardEl: HTMLElement | null): void {
   attachMoveWatcher();
 }
 
+export function setBoardOrientation(orientation: 'white' | 'black'): void {
+  observedOrientation = orientation;
+  if (boardCtx) boardCtx.orientation = orientation;
+}
+
+function isAttachedBoardFlipped(): boolean {
+  return boardCtx ? boardCtx.orientation === 'black' : isBoardFlipped();
+}
+
 function detachFromBoard(): void {
   if (!boardCtx) return;
   try {
     boardCtx.detachListeners();
   } catch {}
   boardCtx = null;
-}
-
-export function startDomBoardWatcher(): void {
-  if (domObserver)
-    try {
-      domObserver.disconnect();
-    } catch {}
-  const syncBoard = debounce(() => {
-    const newBoard = getBoard();
-    if (!newBoard) {
-      if (boardCtx) attachToBoard(null);
-      else clearMoveWatcher();
-      return;
-    }
-    if (!boardCtx || boardCtx.boardEl !== newBoard) {
-      attachToBoard(newBoard);
-    }
-  }, 200);
-  domObserver = new MutationObserver((records) => {
-    if (records.some((record) => !isBotOwnedMutation(record))) syncBoard();
-  });
-  domObserver.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class', 'style', 'hidden'],
-  });
 }
 
 // --- Efficient Move Watcher (Replaces Polling) ---
@@ -272,7 +256,7 @@ function getSquareCenterClientXY(square: string): Coordinates | null {
   const offsetY = rect.top + (rect.height - size) / 2;
   let x = file,
     y = 8 - rank;
-  if (isBoardFlipped()) {
+  if (isAttachedBoardFlipped()) {
     x = 7 - x;
     y = 7 - y;
   }
@@ -612,7 +596,7 @@ export function updateEvaluationBar(evaluation: string | number, _playingAs?: nu
   const whitePercent = 50 + (clampedScore / maxScore) * 50;
   const blackPercent = 100 - whitePercent;
 
-  const flipped = isBoardFlipped();
+  const flipped = isAttachedBoardFlipped();
   if (flipped) {
     setStyleIfChanged(blackBar, 'bottom', '0');
     setStyleIfChanged(blackBar, 'top', 'auto');
@@ -629,7 +613,7 @@ export function updateEvaluationBar(evaluation: string | number, _playingAs?: nu
     setStyleIfChanged(blackBar, 'height', `${blackPercent}%`);
   }
 
-  const ourColor = getPlayerColor(getGame());
+  const ourColor = _playingAs === 2 ? 'b' : _playingAs === 1 ? 'w' : getPlayerColor();
   const ourEval = ourColor === 'w' ? score : -score;
 
   if (ourEval < -2) {

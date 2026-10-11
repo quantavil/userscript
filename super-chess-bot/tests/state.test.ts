@@ -1,9 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getBoard, getGame, invalidateGameCache } from '../src/state.js';
+import { setActiveSite } from '../src/sites/active.js';
+import {
+  getBoard,
+  getFen,
+  getGame,
+  getPlayerColor,
+  invalidateGameCache,
+  isBoardFlipped,
+  isPlayersTurn,
+  pa,
+} from '../src/state.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();
   invalidateGameCache();
+  setActiveSite(null);
 });
 
 function makeBoard(game: unknown, { visible = true, size = 400 } = {}) {
@@ -46,5 +57,37 @@ describe('active Chess.com board selection', () => {
 
     expect(getBoard()).toBe(active);
     expect(getGame()).toBe(game);
+  });
+});
+
+describe('snapshot-derived compatibility helpers', () => {
+  it('uses the active site snapshot for color, turn, FEN, and orientation', () => {
+    const snapshot = {
+      identity: {},
+      gameId: 'pychess-one',
+      board: {} as HTMLElement,
+      fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+      playerColor: 'b' as const,
+      sideToMove: 'b' as const,
+      orientation: 'black' as const,
+      phase: 'live' as const,
+      inputReady: true,
+      remainingMs: 60_000,
+    };
+    setActiveSite({
+      id: 'pychess',
+      capabilities: { input: 'selection', autoRematch: false },
+      read: () => ({ kind: 'game', snapshot }),
+      subscribe: () => () => {},
+      submitMove: async () => false,
+      cancelInput() {},
+      requestRematch: () => false,
+    });
+
+    expect(getFen()).toBe(snapshot.fen);
+    expect(getPlayerColor()).toBe('b');
+    expect(isPlayersTurn()).toBe(true);
+    expect(isBoardFlipped()).toBe(true);
+    expect(pa()).toBe(2);
   });
 });

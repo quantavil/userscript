@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { handlePanelKeyDown, updatePanelAnalysis, updatePanelSetting } from '../src/panel.js';
+import { getPanelCapabilityView, handlePanelKeyDown, updatePanelAnalysis, updatePanelSetting } from '../src/panel.js';
 import { BotState, Settings } from '../src/state.js';
 
 describe('panel hotkeys and settings', () => {
@@ -113,5 +113,23 @@ describe('panel hotkeys and settings', () => {
 
     updatePanelSetting('moveMethod', 'drag');
     expect(BotState.moveMethod).toBe('drag');
+  });
+
+  it('shows site-supported controls without changing hidden saved settings', () => {
+    BotState.autoRematch = 1;
+    BotState.moveMethod = 'drag';
+
+    expect(getPanelCapabilityView({ input: 'selection', autoRematch: false })).toEqual({
+      showAutoRematch: false,
+      showMoveMethod: false,
+      transportNote: 'Moves use legal square selection on this site.',
+    });
+    expect(BotState.autoRematch).toBe(1);
+    expect(BotState.moveMethod).toBe('drag');
+    expect(getPanelCapabilityView({ input: 'gestures', autoRematch: true })).toEqual({
+      showAutoRematch: true,
+      showMoveMethod: true,
+      transportNote: null,
+    });
   });
 });

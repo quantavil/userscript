@@ -346,6 +346,18 @@ describe('evaluation bar', () => {
     expect(whiteBar.style.bottom).toBe('auto');
     expect(whiteBar.style.height).toBe('65%');
   });
+
+  it('updates the attached overlay orientation from the site snapshot', () => {
+    const { whiteBar, blackBar } = setupMockBoard(false, 'b');
+    board.setBoardOrientation('black');
+
+    board.updateEvaluationBar('+1.50', 2);
+
+    expect(blackBar.style.bottom).toBe('0');
+    expect(blackBar.style.height).toBe('35%');
+    expect(whiteBar.style.top).toBe('0');
+    expect(whiteBar.style.height).toBe('65%');
+  });
 });
 
 describe('arrow rendering', () => {
@@ -356,5 +368,13 @@ describe('arrow rendering', () => {
     expect(ctxCalls).toContain('closePath');
     expect(ctxCalls.filter((c) => c === 'fill').length).toBe(2);
     expect(ctxCalls.filter((c) => c === 'stroke').length).toBe(1);
+  });
+
+  it('uses the latest site orientation to place arrow coordinates', () => {
+    const { ctxCalls } = setupMockBoard(false, 'b');
+    board.setBoardOrientation('black');
+    board.drawArrow('e2', 'e4', 'rgba(255,170,0,0.8)', 6);
+
+    expect(ctxCalls).toContain('moveTo(175,75)');
   });
 });

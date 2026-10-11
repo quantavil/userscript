@@ -1,10 +1,9 @@
-import { attachToBoard } from './board.js';
 import { controller } from './controller.js';
 import { warmEngine } from './engine/analysis.js';
-import { getSite, readSite } from './sites/index.js';
+import { getSite } from './sites/index.js';
+import type { SiteCapabilities } from './sites/types.js';
 import { BotState, pa } from './state.js';
 import { buildUI, ui } from './ui.js';
-import { waitForElement } from './utils.js';
 
 async function init(): Promise<void> {
   const page = window as Window & { __GABIBOT_RUNNING__?: boolean };
@@ -12,11 +11,14 @@ async function init(): Promise<void> {
   page.__GABIBOT_RUNNING__ = true;
   try {
     BotState.onUpdateDisplay = (playingAs) => ui.updateDisplay(playingAs);
-    await buildUI({
-      setEnabled: (enabled) => controller.setEnabled(enabled),
+    const site = getSite();
+    const actions = {
+      setEnabled: (enabled: boolean) => controller.setEnabled(enabled),
       refreshSettings: () => controller.refreshSettings(),
       recover: () => controller.recover(),
-    });
+    };
+    await buildUI(actions, site?.capabilities as SiteCapabilities | undefined);
+    controller.init();
     if (!BotState.hackEnabled) {
       BotState.statusInfo = 'Preparing Stockfish...';
       ui.updateDisplay(pa());
@@ -35,16 +37,11 @@ async function init(): Promise<void> {
         ui.updateDisplay(pa());
       },
     );
-    if (!getSite()) {
+    if (!site) {
       BotState.statusInfo = 'Unsupported site';
       ui.updateDisplay(pa());
-      controller.init();
       return;
     }
-    await waitForElement('wc-chess-board, chess-board, .board');
-    const observation = readSite();
-    if (observation.kind === 'game') attachToBoard(observation.snapshot.board);
-    controller.init();
   } catch (error) {
     page.__GABIBOT_RUNNING__ = false;
     BotState.statusInfo = error instanceof Error ? error.message : 'Initialization failed';

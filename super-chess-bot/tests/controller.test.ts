@@ -1,23 +1,94 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const deps = vi.hoisted(() => ({
-  warm: vi.fn(),
-  schedule: vi.fn(),
-  cancel: vi.fn(),
-  update: vi.fn(),
-  clearArrows: vi.fn(),
-  cancelPending: vi.fn(),
-  resetEngine: vi.fn(),
-  clearConsole: vi.fn(),
-  boardInput: new Set<() => void>(),
-}));
+const deps = vi.hoisted(() => {
+  const board = { boardId: 'board-one' } as unknown as HTMLElement;
+  const snapshot = {
+    identity: {},
+    gameId: 'game-one',
+    board,
+    fen: 'start w - - 0 1',
+    playerColor: 'w' as 'w' | 'b',
+    sideToMove: 'w' as 'w' | 'b',
+    orientation: 'white' as 'white' | 'black',
+    phase: 'live' as 'live' | 'replay' | 'finished',
+    inputReady: true,
+    remainingMs: 60_000,
+    history: { startFen: 'start w - - 0 1', moves: [] as string[] },
+    confirmedFens: ['start w - - 0 1'],
+  };
+  const siteRead: { kind: 'game' | 'waiting' | 'ineligible'; snapshot: typeof snapshot; reason?: string } = {
+    kind: 'game',
+    snapshot,
+  };
+  const listeners = new Set<() => void>();
+  const site = {
+    id: 'pychess' as const,
+    capabilities: { input: 'selection' as 'selection' | 'gestures', autoRematch: false },
+    read: () => siteRead,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    submitMove: vi.fn(async () => true),
+    cancelInput: vi.fn(),
+    requestRematch: vi.fn(() => false),
+  };
+  return {
+    warm: vi.fn(),
+    schedule: vi.fn(),
+    cancel: vi.fn(),
+    update: vi.fn(),
+    clearArrows: vi.fn(),
+    cancelPending: vi.fn(),
+    attachToBoard: vi.fn(),
+    setBoardOrientation: vi.fn(),
+    resetEngine: vi.fn(),
+    clearConsole: vi.fn(),
+    boardInput: new Set<() => void>(),
+    confirmationListeners: new Set<() => void>(),
+    pendingIdentity: null as object | null,
+    snapshot,
+    siteRead,
+    listeners,
+    site,
+    state: {
+      hackEnabled: 1,
+      botPower: 20,
+      moveTime: 100,
+      autoMove: 1,
+      ponderEnabled: 1,
+      autoRematch: 0,
+      moveMethod: 'click' as const,
+      bestMove: '-',
+      currentEvaluation: '-',
+      principalVariation: '-',
+      statusInfo: 'Ready',
+      recoveryAction: null as 'resume' | 'retry' | null,
+    },
+  };
+});
 
 vi.mock('../src/engine/analysis.js', () => ({ warmEngine: deps.warm, resetEngine: deps.resetEngine }));
-vi.mock('../src/engine/scheduler.js', () => ({ scheduleAnalysis: deps.schedule, cancelAnalysis: deps.cancel }));
+vi.mock('../src/engine/scheduler.js', () => ({
+  scheduleAnalysis: deps.schedule,
+  cancelAnalysis: deps.cancel,
+  isMoveConfirmationPending: (identity: object) => deps.pendingIdentity === identity,
+  onMoveConfirmationSettled: (listener: () => void) => {
+    deps.confirmationListeners.add(listener);
+    return () => deps.confirmationListeners.delete(listener);
+  },
+}));
+vi.mock('../src/sites/index.js', () => ({ getSite: () => deps.site, readSite: () => deps.site.read() }));
+vi.mock('../src/state.js', () => ({
+  BotState: deps.state,
+  pa: () => 1,
+  Settings: { save: vi.fn() },
+}));
 vi.mock('../src/board.js', () => ({
+  attachToBoard: deps.attachToBoard,
+  setBoardOrientation: deps.setBoardOrientation,
   clearArrows: deps.clearArrows,
   cancelPendingMove: deps.cancelPending,
-  startDomBoardWatcher: () => {},
   startMoveWatcher: () => {},
   stopMoveWatcher: () => {},
   onBoardMutation: () => () => true,
@@ -31,14 +102,6 @@ vi.mock('../src/ui.js', () => ({ ui: { updateDisplay: deps.update, clearConsole:
 import { controller } from '../src/controller.js';
 import { BotState } from '../src/state.js';
 
-let fen = 'position w - - 0 1';
-const game = {
-  getFEN: () => fen,
-  getPlayingAs: () => 1,
-  isGameOver: () => false,
-};
-const board: { game: typeof game | null } = { game };
-
 async function startReadyController(): Promise<void> {
   deps.warm.mockResolvedValue(undefined);
   await controller.start();
@@ -46,9 +109,12 @@ async function startReadyController(): Promise<void> {
 
 function clearActionMocks(): void {
   deps.cancel.mockClear();
+  deps.site.cancelInput.mockClear();
   deps.cancelPending.mockClear();
   deps.clearArrows.mockClear();
   deps.update.mockClear();
+  deps.attachToBoard.mockClear();
+  deps.resetEngine.mockClear();
 }
 
 function setStaleAnalysis(): void {
@@ -67,21 +133,41 @@ function expectAnalysisCleared(): void {
   expect(BotState.principalVariation).toBe('-');
 }
 
+function setRead(changes: Partial<typeof deps.snapshot>): void {
+  Object.assign(deps.snapshot, changes);
+}
+
 beforeEach(() => {
-  fen = 'position w - - 0 1';
-  board.game = game;
-  vi.stubGlobal('document', {
-    querySelector: (selector: string) => (selector.includes('board') ? board : null),
+  Object.assign(deps.snapshot, {
+    identity: {},
+    gameId: 'game-one',
+    board: { boardId: 'board-one' } as unknown as HTMLElement,
+    fen: 'start w - - 0 1',
+    playerColor: 'w',
+    sideToMove: 'w',
+    orientation: 'white',
+    phase: 'live',
+    inputReady: true,
+    remainingMs: 60_000,
+    history: { startFen: 'start w - - 0 1', moves: [] },
+    confirmedFens: ['start w - - 0 1'],
   });
+  deps.siteRead.snapshot = deps.snapshot;
+  deps.siteRead.kind = 'game';
+  deps.pendingIdentity = null;
+  deps.confirmationListeners.clear();
   controller.stop();
   vi.clearAllMocks();
   deps.warm.mockResolvedValue(undefined);
   deps.cancel.mockImplementation(() => deps.cancelPending());
   BotState.hackEnabled = 1;
+  BotState.autoMove = 1;
+  BotState.ponderEnabled = 1;
   BotState.autoRematch = 0;
   BotState.bestMove = '-';
   BotState.currentEvaluation = '-';
   BotState.principalVariation = '-';
+  deps.site.capabilities = { input: 'selection', autoRematch: false };
 });
 
 afterEach(() => {
@@ -90,25 +176,15 @@ afterEach(() => {
 });
 
 describe('controller lifecycle', () => {
-  it('retries rematch when the button renders after game over', async () => {
-    await startReadyController();
-    const click = vi.fn();
-    let buttonVisible = false;
-    BotState.autoRematch = 1;
-    vi.stubGlobal('document', {
-      querySelector: (selector: string) => {
-        if (selector.includes('board')) return board;
-        if (selector === '.game-over-modal-content') return {};
-        return buttonVisible ? { click } : null;
-      },
-    });
-    controller.tick();
-    expect(click).not.toHaveBeenCalled();
-    buttonVisible = true;
-    controller.tick();
-    controller.tick();
-    expect(click).toHaveBeenCalledOnce();
+  it('mounts the overlay on the adapter snapshot board and prewarms while disabled', async () => {
+    BotState.hackEnabled = 0;
+    await controller.start();
+
+    expect(deps.attachToBoard).toHaveBeenCalledWith(deps.snapshot.board);
+    expect(deps.state.hackEnabled).toBe(0);
+    expect(deps.schedule).not.toHaveBeenCalled();
   });
+
   it('does not start searching before warmup completes', async () => {
     let ready: () => void = () => {};
     deps.warm.mockImplementation(
@@ -136,54 +212,118 @@ describe('controller lifecycle', () => {
     expect(deps.schedule).not.toHaveBeenCalled();
   });
 
-  it('cancels pending work and clears the analysis when the game disappears', async () => {
+  it('cancels old work and reports a waiting state', async () => {
     await startReadyController();
     setStaleAnalysis();
     clearActionMocks();
-    board.game = null;
+    deps.siteRead.kind = 'waiting';
+    Object.assign(deps.siteRead, { reason: 'Waiting for PyChess game' });
 
     controller.tick();
 
-    expect(deps.cancel).toHaveBeenCalledTimes(1);
-    expect(deps.cancelPending).toHaveBeenCalledTimes(1);
-    expect(deps.clearArrows).toHaveBeenCalledTimes(1);
+    expect(deps.cancel).toHaveBeenCalledOnce();
+    expect(deps.site.cancelInput).toHaveBeenCalledOnce();
+    expect(deps.clearArrows).toHaveBeenCalledOnce();
     expectAnalysisCleared();
-    expect(BotState.statusInfo).toBe('Waiting for board');
-    expect(deps.update).toHaveBeenCalledTimes(1);
+    expect(BotState.statusInfo).toBe('Waiting for PyChess game');
+    expect(deps.attachToBoard).toHaveBeenLastCalledWith(null);
   });
 
-  it('does not repeat cancellation while the game remains absent', async () => {
+  it('does not repeat cancellation while the adapter remains waiting', async () => {
     await startReadyController();
-    board.game = null;
+    deps.siteRead.kind = 'ineligible';
+    Object.assign(deps.siteRead, { reason: 'AI game required' });
     clearActionMocks();
 
     controller.tick();
     controller.tick();
 
-    expect(deps.cancel).toHaveBeenCalledTimes(1);
-    expect(deps.cancelPending).toHaveBeenCalledTimes(1);
-    expect(deps.clearArrows).toHaveBeenCalledTimes(1);
-    expect(deps.update).toHaveBeenCalledTimes(1);
+    expect(deps.cancel).toHaveBeenCalledOnce();
+    expect(deps.clearArrows).toHaveBeenCalledOnce();
   });
 
-  it('clears the previous move and evaluation when the position changes', async () => {
+  it.each(['replay', 'finished'] as const)('cancels when the unchanged position enters %s', async (phase) => {
     await startReadyController();
-    setStaleAnalysis();
     clearActionMocks();
-    fen = 'position b - - 0 1';
+    setRead({ phase });
 
     controller.tick();
 
-    expectAnalysisCleared();
-    expect(deps.cancel).toHaveBeenCalledWith(fen);
-    expect(deps.cancelPending).toHaveBeenCalledTimes(1);
-    expect(deps.clearArrows).toHaveBeenCalledTimes(1);
-    expect(deps.update).toHaveBeenCalledTimes(1);
-    expect(deps.schedule).toHaveBeenLastCalledWith('ponder', fen);
+    expect(deps.cancel).toHaveBeenCalledOnce();
+    expect(deps.site.cancelInput).toHaveBeenCalledOnce();
+    expect(BotState.statusInfo).toBe(phase === 'replay' ? 'Replay mode' : 'Game finished');
+    expect(deps.schedule).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reset the engine when the adapter allocates a new snapshot object', async () => {
+    await startReadyController();
+    const before = deps.resetEngine.mock.calls.length;
+    clearActionMocks();
+    deps.siteRead.snapshot = { ...deps.siteRead.snapshot };
+
+    controller.tick();
+
+    expect(deps.resetEngine).toHaveBeenCalledTimes(before);
+    expect(deps.cancel).not.toHaveBeenCalled();
+  });
+
+  it('resets the engine when game or board identity changes', async () => {
+    await startReadyController();
+    const identity = {};
+    const nextBoard = { boardId: 'board-two' } as unknown as HTMLElement;
+    deps.siteRead.snapshot = { ...deps.siteRead.snapshot, identity, board: nextBoard, gameId: 'game-two' };
+
+    controller.tick();
+
+    expect(deps.resetEngine).toHaveBeenCalledOnce();
+    expect(deps.attachToBoard).toHaveBeenLastCalledWith(nextBoard);
+    expect(deps.cancel).toHaveBeenCalled();
+  });
+
+  it('schedules ponder from the accepted opponent-to-move position', async () => {
+    await startReadyController();
+    clearActionMocks();
+    setRead({ fen: 'start b - - 0 1', sideToMove: 'b', inputReady: false });
+
+    controller.tick();
+
+    expect(deps.schedule).toHaveBeenLastCalledWith('ponder', 'start b - - 0 1');
     expect(BotState.statusInfo).toBe('Waiting for opponent');
   });
 
-  it('clears the previous move and evaluation when stopped', async () => {
+  it('does not cancel a pending same-position search when input readiness temporarily drops', async () => {
+    await startReadyController();
+    const scheduled = deps.schedule.mock.calls.length;
+    clearActionMocks();
+    setRead({ inputReady: false });
+
+    controller.tick();
+
+    expect(deps.cancel).not.toHaveBeenCalled();
+    expect(deps.site.cancelInput).not.toHaveBeenCalled();
+    expect(deps.schedule).toHaveBeenCalledTimes(scheduled);
+  });
+
+  it('waits for pending move confirmation before reconciling the accepted next position', async () => {
+    await startReadyController();
+    deps.schedule.mockClear();
+    clearActionMocks();
+    deps.pendingIdentity = deps.snapshot.identity;
+    setRead({ fen: 'after b - - 0 1', sideToMove: 'b', inputReady: false });
+
+    controller.tick();
+
+    expect(deps.cancel).not.toHaveBeenCalled();
+    expect(deps.schedule).not.toHaveBeenCalled();
+
+    deps.pendingIdentity = null;
+    for (const listener of deps.confirmationListeners) listener();
+
+    expect(deps.cancel).toHaveBeenCalledOnce();
+    expect(deps.schedule).toHaveBeenLastCalledWith('ponder', 'after b - - 0 1');
+  });
+
+  it('cancels pending work and clears the analysis when stopped', async () => {
     await startReadyController();
     setStaleAnalysis();
     clearActionMocks();
@@ -191,13 +331,12 @@ describe('controller lifecycle', () => {
     controller.stop();
 
     expectAnalysisCleared();
-    expect(deps.cancel).toHaveBeenCalledTimes(1);
-    expect(deps.cancelPending).toHaveBeenCalledTimes(1);
-    expect(deps.clearArrows).toHaveBeenCalledTimes(1);
+    expect(deps.cancel).toHaveBeenCalledOnce();
+    expect(deps.site.cancelInput).toHaveBeenCalledOnce();
     expect(BotState.statusInfo).toBe('Bot disabled');
   });
 
-  it('pauses after a human board interruption and explicitly recovers on the same position', async () => {
+  it('pauses after trusted board input and explicitly resumes on the same position', async () => {
     await startReadyController();
     const searchesBeforeInterrupt = deps.schedule.mock.calls.length;
 
@@ -213,31 +352,32 @@ describe('controller lifecycle', () => {
 
     expect(BotState.recoveryAction).toBeNull();
     expect(deps.schedule).toHaveBeenCalledTimes(searchesBeforeInterrupt + 1);
-    expect(deps.schedule).toHaveBeenLastCalledWith('main', fen);
+    expect(deps.schedule).toHaveBeenLastCalledWith('main', 'start w - - 0 1');
   });
 
-  it('automatically resumes after the human changes the board position', async () => {
+  it('automatically resumes after a human move changes the accepted FEN', async () => {
     await startReadyController();
     interruptWithBoardInput();
-    fen = 'position w - - 0 2';
+    setRead({ fen: 'start w - - 0 2', sideToMove: 'w', inputReady: true });
 
     controller.tick();
 
     expect(BotState.recoveryAction).toBeNull();
-    expect(deps.schedule).toHaveBeenLastCalledWith('main', fen);
+    expect(deps.schedule).toHaveBeenLastCalledWith('main', 'start w - - 0 2');
     expect(BotState.statusInfo).toBe('Analyzing...');
   });
 
-  it('reinitializes Stockfish before retrying an engine failure', async () => {
+  it('requests rematch through the Chess.com capability only', async () => {
     await startReadyController();
-    BotState.recoveryAction = 'retry';
-    deps.resetEngine.mockClear();
-    const searchesBeforeRetry = deps.schedule.mock.calls.length;
+    BotState.autoRematch = 1;
+    setRead({ phase: 'finished' });
+    controller.tick();
+    expect(deps.site.requestRematch).not.toHaveBeenCalled();
 
-    controller.recover();
-
-    expect(deps.resetEngine).toHaveBeenCalledOnce();
-    expect(BotState.recoveryAction).toBeNull();
-    expect(deps.schedule).toHaveBeenCalledTimes(searchesBeforeRetry + 1);
+    deps.site.capabilities = { input: 'gestures', autoRematch: true };
+    deps.site.requestRematch.mockReturnValueOnce(false).mockReturnValue(true);
+    controller.tick();
+    controller.tick();
+    expect(deps.site.requestRematch).toHaveBeenCalledTimes(2);
   });
 });

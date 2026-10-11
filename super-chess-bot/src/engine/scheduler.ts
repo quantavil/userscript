@@ -1,6 +1,7 @@
-import { cancelPendingMove, clearArrows, drawArrow, executeMove, getMoveRevision } from '../board.js';
-import { readPositionHistory } from '../history.js';
-import { BotState, getFen, getGame, getPlayerColor, pa } from '../state.js';
+import { cancelPendingMove, clearArrows, confirmSiteMove, drawArrow, getMoveRevision } from '../board.js';
+import { getSite } from '../sites/index.js';
+import type { GameSnapshot, MoveRequest, SiteAdapter } from '../sites/types.js';
+import { BotState, pa } from '../state.js';
 import type { Evaluation } from '../types/chess';
 import { ui } from '../ui.js';
 import { scoreToDisplay } from '../utils.js';
@@ -10,8 +11,10 @@ import { formatMove } from './san.js';
 
 let revision = 0;
 let active: AbortController | null = null;
-let processed = '';
+let processed: { kind: string; fen: string; identity: object } | null = null;
 let anticipatedPonder: { fromFen: string; targetFen: string; history?: PositionHistory } | null = null;
+let pendingConfirmation: { identity: object; requestController: AbortController } | null = null;
+const confirmationSettledListeners = new Set<() => void>();
 
 function scoreForWhite(score: Evaluation, sideToMove: string | undefined): Evaluation {
   if (sideToMove !== 'b') return score;
@@ -21,68 +24,96 @@ function scoreForWhite(score: Evaluation, sideToMove: string | undefined): Evalu
   };
 }
 
+function matchingSnapshot(site: SiteAdapter, identity: object, fen: string): GameSnapshot | null {
+  const read = site.read();
+  if (
+    read.kind !== 'game' ||
+    read.snapshot.identity !== identity ||
+    read.snapshot.fen !== fen ||
+    read.snapshot.phase !== 'live'
+  )
+    return null;
+  return read.snapshot;
+}
+
+export function isMoveConfirmationPending(identity: object): boolean {
+  return pendingConfirmation?.identity === identity && !pendingConfirmation.requestController.signal.aborted;
+}
+
+export function onMoveConfirmationSettled(listener: () => void): () => void {
+  confirmationSettledListeners.add(listener);
+  return () => confirmationSettledListeners.delete(listener);
+}
+
 export function cancelAnalysis(preservePonderFen?: string): void {
   revision++;
   active?.abort();
   active = null;
-  processed = '';
+  processed = null;
+  if (pendingConfirmation) pendingConfirmation.requestController.abort();
+  pendingConfirmation = null;
   if (!anticipatedPonder || anticipatedPonder.fromFen !== preservePonderFen) anticipatedPonder = null;
   cancelPonder(preservePonderFen);
   cancelPendingMove();
 }
 
-function searchBudget(): number {
-  // Reserve input time once. Confirmation has its own bounded timeout.
+function searchBudget(snapshot: GameSnapshot): number {
   const configured = Math.max(10, BotState.moveTime);
-  const clock = document
-    .querySelector('.clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time')
-    ?.textContent?.trim();
-  let remaining = Infinity;
-  if (clock) {
-    if (/^\d+:\d{2}(?:\.\d+)?$/.test(clock)) {
-      const [minutes, seconds] = clock.split(':').map(Number);
-      remaining = (minutes * 60 + seconds) * 1000;
-    } else if (/^\d+(?:\.\d+)?$/.test(clock)) {
-      remaining = Number(clock) * 1000;
-    }
-  }
-  return Math.max(1, Math.floor(Math.min(configured, remaining / 40) - 12));
+  if (snapshot.remainingMs === null) return configured;
+  return Math.max(1, Math.floor(Math.min(configured, snapshot.remainingMs / 40) - 12));
+}
+
+function requestPly(snapshot: GameSnapshot): number | null {
+  return snapshot.history ? snapshot.history.moves.length + 1 : null;
+}
+
+function requestHistory(snapshot: GameSnapshot): PositionHistory | undefined {
+  return snapshot.history ? { startFen: snapshot.history.startFen, moves: [...snapshot.history.moves] } : undefined;
 }
 
 export async function scheduleAnalysis(kind: string, fen: string): Promise<void> {
-  const key = `${kind}:${fen}`;
-  if (!BotState.hackEnabled || key === processed) return;
-  const game = getGame();
-  if (!game) return;
+  const site = getSite();
+  if (!BotState.hackEnabled || !site) return;
+  const read = site.read();
+  if (read.kind !== 'game') return;
+  const snapshot = read.snapshot;
+  if (snapshot.phase !== 'live' || snapshot.fen !== fen) return;
+  if (kind === 'main' && snapshot.sideToMove !== snapshot.playerColor) return;
+  if (kind === 'main' && !snapshot.inputReady) return;
+  const wasProcessed = processed?.kind === kind && processed.fen === fen && processed.identity === snapshot.identity;
+  if (wasProcessed) return;
+
   active?.abort();
   if (kind !== 'main' && !BotState.ponderEnabled) {
     cancelPonder();
     anticipatedPonder = null;
-    processed = key;
+    processed = { kind, fen, identity: snapshot.identity };
     return;
   }
   cancelPonder(fen);
   const id = ++revision;
   const ctrl = new AbortController();
   active = ctrl;
-  processed = key;
+  processed = { kind, fen, identity: snapshot.identity };
   const inputRevision = getMoveRevision();
+  const identity = snapshot.identity;
   const positionIsCurrent = () =>
-    id === revision && !ctrl.signal.aborted && !!BotState.hackEnabled && getGame() === game && getFen(game) === fen;
+    id === revision && !ctrl.signal.aborted && !!BotState.hackEnabled && !!matchingSnapshot(site, identity, fen);
   const current = () => positionIsCurrent() && inputRevision === getMoveRevision();
   if (!current()) return;
   try {
     const started = performance.now();
-    const budget = searchBudget();
+    const budget = kind === 'main' ? searchBudget(snapshot) : Math.max(10, BotState.moveTime);
     BotState.statusInfo = kind === 'main' ? 'Analyzing...' : 'Pondering...';
     ui.updateDisplay(pa());
-    const history = readPositionHistory(game, fen);
+    const history = requestHistory(snapshot);
 
     const anticipated = anticipatedPonder;
-    if (kind !== 'main' && anticipated?.fromFen === fen) {
+    if (kind !== 'main') {
       anticipatedPonder = null;
-      if (ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history)) return;
-    } else if (kind === 'main') {
+      if (anticipated?.fromFen === fen && ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history))
+        return;
+    } else {
       anticipatedPonder = null;
     }
 
@@ -105,8 +136,9 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       }
       return;
     }
+    const currentPosition = matchingSnapshot(site, identity, fen);
     const nextFen = predictFen(fen, best.uci);
-    if (!nextFen || fen.split(' ')[1] !== getPlayerColor(game))
+    if (!nextFen || fen.split(' ')[1] !== snapshot.playerColor)
       throw new Error('Engine move failed position validation');
 
     const pvMoves = best.pv.split(/\s+/);
@@ -122,21 +154,51 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
 
     BotState.bestMove = best.uci;
     BotState.principalVariation = best.pv;
-    BotState.currentEvaluation = scoreToDisplay(scoreForWhite(best.score, fen.split(' ')[1]));
+    BotState.currentEvaluation = scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
     BotState.statusInfo = `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
     clearArrows();
     drawArrow(best.uci.slice(0, 2), best.uci.slice(2, 4), 'rgba(100,255,100,0.7)', 3);
     ui.updateDisplay(pa());
-    if (!BotState.autoMove || !current()) return;
-    const accepted = await executeMove(
-      best.uci.slice(0, 2),
-      best.uci.slice(2, 4),
-      fen,
-      best.uci[4],
-      result.depth,
-      undefined,
-      nextFen,
-    );
+    if (!BotState.autoMove || !current() || !currentPosition?.inputReady) return;
+
+    const requestController = new AbortController();
+    const abortRequest = () => requestController.abort();
+    ctrl.signal.addEventListener('abort', abortRequest, { once: true });
+    const moveRequest: MoveRequest = {
+      identity,
+      fromFen: fen,
+      uci: best.uci,
+      expectedFen: nextFen,
+      expectedPly: requestPly(snapshot),
+      signal: requestController.signal,
+      isCurrent: () => current() && matchingSnapshot(site, identity, fen)?.inputReady === true,
+    };
+    pendingConfirmation = { identity, requestController };
+    const confirmation = confirmSiteMove(moveRequest, site);
+    let initiated = false;
+    let accepted = false;
+    try {
+      initiated = await site.submitMove(moveRequest);
+      if (!initiated) {
+        requestController.abort();
+        accepted = false;
+      } else {
+        accepted = await confirmation;
+      }
+    } finally {
+      ctrl.signal.removeEventListener('abort', abortRequest);
+      requestController.abort();
+      if (pendingConfirmation?.requestController === requestController) {
+        pendingConfirmation = null;
+        for (const listener of [...confirmationSettledListeners]) {
+          try {
+            listener();
+          } catch (error) {
+            console.error('Super Chess Bot: confirmation listener failed.', error);
+          }
+        }
+      }
+    }
     if (accepted) {
       BotState.recoveryAction = null;
       ui.log(formatMove(fen, best.uci), 'move');
@@ -151,9 +213,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
         BotState.statusInfo = 'Paused after board interaction';
       } else {
         BotState.recoveryAction = 'retry';
-        if (!/^Move (?:input failed|not confirmed)/i.test(BotState.statusInfo)) {
-          BotState.statusInfo = 'Move was not confirmed';
-        }
+        BotState.statusInfo = initiated ? 'Move was not confirmed' : 'Move input failed';
       }
       ui.updateDisplay(pa());
     }
@@ -166,8 +226,6 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     BotState.recoveryAction = 'retry';
     BotState.statusInfo = error instanceof Error ? error.message : 'Engine failed';
     ui.updateDisplay(pa());
-    // No retry loop for the same position. Settings changes or a new position
-    // explicitly reset ownership, allowing a controlled retry.
   } finally {
     if (active === ctrl) active = null;
   }

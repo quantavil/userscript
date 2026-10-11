@@ -95,8 +95,6 @@ export const isPlayersTurn = (game: ChessGame | null | undefined): boolean => {
   return me === sideToMove;
 };
 
-export const pa = (): number => getGame()?.getPlayingAs?.() ?? 1;
-
 export function isBoardFlipped(): boolean {
   const el = getBoard();
   let flipped = false;

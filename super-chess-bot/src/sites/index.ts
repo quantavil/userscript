@@ -1,3 +1,4 @@
+import { setActiveSite } from './active.js';
 import { createChesscomAdapter } from './chesscom.js';
 import { createPychessAdapter } from './pychess.js';
 import { pageWindow, type SiteAdapter, type SiteRead } from './types.js';
@@ -11,7 +12,10 @@ export function selectSite(hostname: string): SiteAdapter | null {
 }
 
 export function getSite(): SiteAdapter | null {
-  if (activeSite === undefined) activeSite = selectSite(pageWindow().location.hostname);
+  if (activeSite === undefined) {
+    activeSite = selectSite(pageWindow().location.hostname);
+    setActiveSite(activeSite);
+  }
   return activeSite;
 }
 

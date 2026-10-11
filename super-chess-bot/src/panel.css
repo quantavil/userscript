@@ -351,6 +351,14 @@
   gap: 0;
 }
 
+.panel-site-note {
+  margin: 8px 0 2px;
+  border-left: 2px solid var(--color-panel-accent);
+  padding-left: 9px;
+  color: var(--color-panel-muted);
+  font-size: 11px;
+}
+
 .panel-toggle {
   display: flex;
   min-height: 44px;
