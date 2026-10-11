@@ -2,7 +2,7 @@
 
 ## Production checks
 
-`bun run check` passed after the PyChess castling-history and promotion-selector fixes: Biome, strict TypeScript, Knip, all 166 tests, and the Vite production build. The generated userscript is 218.49 kB (54.38 kB gzip). Stockfish's pinned worker and WASM remain manager resources.
+The initial `bun run check` after the PyChess castling-history and promotion-selector fixes passed Biome, strict TypeScript, Knip, all 166 tests, and the Vite production build. A follow-up review fix pass also passed the complete check with 175 tests; the current generated userscript is 219.61 kB (54.73 kB gzip). Stockfish's pinned worker and WASM remain manager resources.
 
 ## PyChess production verification
 
@@ -19,7 +19,7 @@ The browser log showed engine evaluation/PV output followed by accepted SAN prog
 ### Additional live probes
 
 - In the earlier production run with the castling-history fix already installed, the bot's `13.O-O` was accepted at ply 25. The AI later played `23...O-O-O` at ply 46, and the bot continued. A regression test now verifies orthodox castling history reaches Stockfish as `e8g8 e1c1` rather than chessops' king-to-rook encoding.
-- Black-side game [`thh5mOEQ`](https://www.pychess.org/thh5mOEQ) began with the AI playing `1.d4`. After flipping the board orientation to White, the bot correctly played `1...Nf6` as Black. This probe used a temporary 5,000 ms budget with pondering off, so it is not a timing sample. It continued to 130 plies and ended when White timed out; the bot had 0.2 seconds and White 0:14.
+- Black-side game [`thh5mOEQ`](https://www.pychess.org/thh5mOEQ) began with the AI playing `1.d4`. After flipping the board orientation to White, the bot correctly played `1...Nf6` as Black. This probe used a temporary 5,000 ms budget with pondering off, so it is not a timing sample. It continued to 130 plies; the recorded end clocks and termination are inconsistent, so this probe makes no claim about either.
 - In active replay game [`yjSeh6qD`](https://www.pychess.org/yjSeh6qD), stepping back to the initial position showed `Replay mode` and no bot move. Fast-forwarding to the live position returned the panel to analysis. This verifies replay suspension and return to live play.
 - Crazyhouse AI game [`XKihdyLv`](https://www.pychess.org/XKihdyLv) displayed `PyChess chess variant required` and received no userscript move. On `/?any` without an identified AI round, the panel showed `Waiting for PyChess AI game` and did not move.
 - Reloading the completed acceptance game restored its final FEN, history, and result with the bot disabled and panel `Ready`. This is terminal-game reload recovery only; it does not verify a live reconnect.

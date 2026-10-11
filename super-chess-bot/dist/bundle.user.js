@@ -2107,6 +2107,20 @@
 			return null;
 		}
 	};
+	function getRemainingMs(doc) {
+		const text = doc.querySelector(".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time")?.textContent?.trim();
+		if (!text) return null;
+		let seconds;
+		const minutesAndSeconds = /^(\d+):(\d{2}(?:\.\d+)?)$/.exec(text);
+		if (minutesAndSeconds) {
+			const minutes = Number(minutesAndSeconds[1]);
+			const remainder = Number(minutesAndSeconds[2]);
+			if (!Number.isFinite(minutes) || !Number.isFinite(remainder) || remainder >= 60) return null;
+			seconds = minutes * 60 + remainder;
+		} else if (/^\d+(?:\.\d+)?$/.test(text)) seconds = Number(text);
+		else return null;
+		return Number.isFinite(seconds) ? Math.round(seconds * 1e3) : null;
+	}
 	var getPlayerColor$1 = (game) => {
 		try {
 			return game?.getPlayingAs?.() === 2 ? "b" : "w";
@@ -2328,12 +2342,7 @@
 		const ro = new ResizeObserver(resizeCanvas);
 		ro.observe(boardEl);
 		const cancelPendingOnUserAction = (event) => {
-			if (!event.isTrusted) return;
-			if ("button" in event && typeof event.button === "number" && event.button !== 0) return;
-			cancelPendingMove();
-			boardInputListeners.forEach((listener) => {
-				listener();
-			});
+			notifyBoardInput(event);
 		};
 		const userInputEvents = typeof PointerEvent === "undefined" ? ["mousedown", "touchstart"] : ["pointerdown"];
 		for (const eventName of userInputEvents) boardEl.addEventListener(eventName, cancelPendingOnUserAction, true);
@@ -2382,6 +2391,12 @@
 	function onBoardInput(cb) {
 		boardInputListeners.add(cb);
 		return () => boardInputListeners.delete(cb);
+	}
+	function notifyBoardInput(event) {
+		if (!event.isTrusted) return;
+		if ("button" in event && typeof event.button === "number" && event.button !== 0) return;
+		cancelPendingMove();
+		for (const listener of [...boardInputListeners]) listener();
 	}
 	function startMoveWatcher() {
 		moveWatcherRequested = true;
@@ -3382,7 +3397,7 @@
 					orientation,
 					phase,
 					inputReady: phase === "live" && sideToMove === playerColor,
-					remainingMs: null,
+					remainingMs: getRemainingMs(doc),
 					...history ? { history } : {},
 					...confirmedFens ? { confirmedFens } : {}
 				}
@@ -3559,9 +3574,10 @@
 		};
 		const renderedResult = observation.result.text?.trim() ?? "";
 		const terminalResult = TERMINAL_RESULTS.has(renderedResult) || renderedResult === "*";
-		const initialStatus = Number(metadata.status);
+		const rawInitialStatus = metadata.status?.trim();
+		const initialStatus = rawInitialStatus ? Number(rawInitialStatus) : NaN;
 		const initialResult = metadata.initialResult?.trim() ?? "";
-		const initialTerminal = Number.isInteger(initialStatus) && initialStatus < 0 && TERMINAL_RESULTS.has(initialResult);
+		const initialTerminal = Number.isInteger(initialStatus) && initialStatus >= 0 && TERMINAL_RESULTS.has(initialResult);
 		const finished = observation.result.postgame && terminalResult || initialTerminal;
 		const latestPly = orderedMoves.length;
 		const phase = finished ? "finished" : activePly < latestPly ? "replay" : "live";
@@ -3703,7 +3719,12 @@
 		let trustedEventNames = [];
 		let pendingInput = null;
 		const onTrustedInput = (event) => {
-			if (event.isTrusted) trustedRevision++;
+			if (!event.isTrusted) return;
+			if ("button" in event && typeof event.button === "number" && event.button !== 0) return;
+			trustedRevision++;
+			const board = page().cg?.state?.dom?.elements?.board;
+			const target = event.target;
+			if (!board || !target || !board.contains(target)) notifyBoardInput(event);
 		};
 		const bindTrustedBoard = (board) => {
 			const mainboard = board && typeof board.closest === "function" ? board.closest("#mainboard") : null;

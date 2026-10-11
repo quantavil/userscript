@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { onBoardInput } from '../src/board.js';
 import { createPychessAdapter } from '../src/sites/pychess.js';
 import type { MoveRequest } from '../src/sites/types.js';
 
@@ -231,6 +232,37 @@ describe('PyChess promotion selection', () => {
     expect(second.chooserCancelled).toBe(false);
     await expect(trustedSubmission).resolves.toBe(false);
   });
+
+  it('keeps pending promotion input after trusted right-button drawing input', async () => {
+    vi.useFakeTimers();
+    const startFen = '7k/P7/8/8/8/8/8/7K w - - 0 1';
+    const fixture = makePage({
+      fen: startFen,
+      initialFen: startFen,
+      destinations: new Map([['a7', ['a8']]]),
+      promotions: [{ role: 'n', color: 'white', visible: true }],
+    });
+    const request = makeRequest(fixture, 'a7a8n', 'N6k/8/8/8/8/8/8/7K b - - 0 1');
+
+    const submission = fixture.adapter.submitMove(request);
+    fixture.emitTrustedInput(2);
+    await vi.advanceTimersByTimeAsync(20);
+
+    await expect(submission).resolves.toBe(true);
+    expect(fixture.promotionClicks).toEqual(['n']);
+  });
+
+  it('forwards a trusted promotion-chooser action to the shared pause listener', () => {
+    const fixture = makePage();
+    const pause = vi.fn();
+    const unsubscribe = onBoardInput(pause);
+    fixture.adapter.read();
+
+    fixture.emitTrustedInput(0, 'promotion');
+
+    expect(pause).toHaveBeenCalledOnce();
+    unsubscribe();
+  });
 });
 
 async function verifyPromotion(role: string, expectedFen: string, autoPromote: boolean, initialCtrlKey: boolean) {
@@ -278,6 +310,21 @@ function makePage(options: PageOptions = {}) {
   let selected: string | undefined;
   const selectionCalls: Array<string | null> = [];
   const promotionClicks: string[] = [];
+  const mainboardListeners = new Map<string, Set<(event: Event) => void>>();
+  const mainboard = {
+    addEventListener(name: string, listener: EventListenerOrEventListenerObject) {
+      const listeners = mainboardListeners.get(name) ?? new Set<(event: Event) => void>();
+      listeners.add(listener as (event: Event) => void);
+      mainboardListeners.set(name, listeners);
+    },
+    removeEventListener(name: string, listener: EventListenerOrEventListenerObject) {
+      mainboardListeners.get(name)?.delete(listener as (event: Event) => void);
+    },
+    dispatchEvent(event: Event) {
+      for (const listener of mainboardListeners.get(event.type) ?? []) listener(event);
+      return true;
+    },
+  };
   const promotionSpecs =
     options.promotions ?? ['q', 'r', 'b', 'n'].map((role) => ({ role, color: 'white' as const, visible: true }));
   let ctrlKeyDuringPromotion = false;
@@ -285,6 +332,8 @@ function makePage(options: PageOptions = {}) {
   const boardListeners = new Map<string, Set<(event: Event) => void>>();
 
   const board = {
+    parentElement: mainboard,
+    contains: (target: unknown) => target === board,
     isConnected: true,
     ownerDocument: { defaultView: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) } },
     getClientRects: () => [{ width: 400, height: 400 }],
@@ -468,8 +517,13 @@ function makePage(options: PageOptions = {}) {
     replaceCg() {
       page.cg = { ...cg, state };
     },
-    emitTrustedInput() {
-      board.dispatchEvent({ type: 'mousedown', isTrusted: true } as Event);
+    emitTrustedInput(button = 0, target: 'board' | 'promotion' = 'board') {
+      mainboard.dispatchEvent({
+        type: 'mousedown',
+        isTrusted: true,
+        button,
+        target: target === 'board' ? board : promotionRoot,
+      } as unknown as Event);
     },
     setExpected(uci: string, expectedFen: string) {
       expectedUci = uci;

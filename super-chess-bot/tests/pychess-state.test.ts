@@ -127,10 +127,20 @@ describe('PyChess accepted game state', () => {
     if (result.kind === 'game') expect(result.snapshot.phase).toBe('finished');
   });
 
-  it('recognizes a terminal reload from its initial result and status', () => {
-    const result = parsePychessObservation(observation({ metadata: { initialResult: '0-1', status: '-2' } }), {});
+  it('recognizes a terminal reload from a nonnegative status and terminal result', () => {
+    const result = parsePychessObservation(observation({ metadata: { initialResult: '0-1', status: '0' } }), {});
 
     expect(result).toMatchObject({ kind: 'game', snapshot: { phase: 'finished' } });
+  });
+
+  it.each([
+    ['negative live status', '-2'],
+    ['missing status', null],
+    ['malformed status', 'running'],
+  ] as const)('does not infer a terminal reload from a stale result and %s', (_label, status) => {
+    const result = parsePychessObservation(observation({ metadata: { initialResult: '0-1', status } }), {});
+
+    expect(result).toMatchObject({ kind: 'game', snapshot: { phase: 'live' } });
   });
 
   it('accepts an aborted result only when postgame UI is present', () => {

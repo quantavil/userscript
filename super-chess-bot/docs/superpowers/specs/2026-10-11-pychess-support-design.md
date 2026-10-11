@@ -21,9 +21,9 @@ Use **`cg.selectSquare(from)` then `cg.selectSquare(to)`**, without forcing an i
 
 This revises the original visible-event requirement to visible-board square selection through the site's legal user-move path. It adds no raw socket sender or replacement move callback. Chess.com's click/drag transport continues to apply there.
 
-### Defensive DOM Fallback
+### Unsupported Chessground API
 
-If a future site update removes `unsafeWindow.cg` or heavily obfuscates the state object, the bot must fall back to synthetic DOM events. Because `event.isTrusted` is a read-only native getter, it cannot be overridden directly on the event object. The required fallback is an `EventTarget.prototype.addEventListener` proxy injected before site scripts execute. This proxy intercepts strictly defined interaction events (pointer, touch, click) to prevent performance degradation, wrapping them in a `Proxy` that returns `true` for `isTrusted`. This is a defensive measure and remains dormant while `cg` is accessible.
+If a future site update removes or obscures `unsafeWindow.cg`, suspend move automation with a recoverable unsupported-state message. Do not synthesize trusted events or patch `EventTarget.prototype`; add another input path only after validating that it reaches PyChess's legal move and promotion flow without bypassing the site's checks.
 
 ## Architecture and file boundaries
 
@@ -31,7 +31,7 @@ Add a narrow typed `SiteAdapter` contract under `src/sites/` for game snapshots,
 
 Snapshots include a stable identity token for the game/controller/board instance, game ID, accepted full FEN, player color, side to move, orientation, phase (`live`, `replay`, or `finished`), input readiness, board element, optional replayable history and confirmed FEN sequence, and optional remaining player clock in milliseconds. Unavailable/ineligible reads carry a specific reason. Freshly allocated snapshots must not be mistaken for new games.
 
-`controller.ts`, `engine/scheduler.ts`, `state.ts`, `ui.ts`, and `index.ts` consume the adapter without host-specific DOM reads. `board.ts` retains overlays, geometry, serialised execution, revision cancellation, and bounded confirmation. Extract reusable gestures to `board-input.ts` where needed to avoid a `board.ts <-> sites` cycle. House the `EventTarget` proxy injection logic for the synthetic DOM fallback here. Retain shared promotion parsing and chessops history utilities.
+`controller.ts`, `engine/scheduler.ts`, `state.ts`, `ui.ts`, and `index.ts` consume the adapter without host-specific DOM reads. `board.ts` retains overlays, geometry, serialised execution, revision cancellation, and bounded confirmation. Extract reusable gestures to `board-input.ts` where needed to avoid a `board.ts <-> sites` cycle. Retain shared promotion parsing and chessops history utilities.
 
 Use **local `main`**, preserving these documents when refreshing. That baseline already uses **Valibot**, newer input guards, panel hotkeys, and overlay fixes. Preserve them and the pinned Stockfish worker resources. Add no engine, UI, schema, or browser automation dependency. All integration edits stay inside `super-chess-bot/`.
 

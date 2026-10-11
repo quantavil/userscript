@@ -1,6 +1,6 @@
 import { cancelPendingMove, executeMove } from '../board.js';
 import { readPositionHistory } from '../history.js';
-import { getBoard, getFen } from './chesscom-state.js';
+import { getBoard, getFen, getRemainingMs } from './chesscom-state.js';
 import type { Color, GameSnapshot, MoveRequest, SiteAdapter, SiteRead } from './types.js';
 
 interface ChessGame {
@@ -70,7 +70,7 @@ export function createChesscomAdapter(page: () => Window = defaultPage): SiteAda
       orientation,
       phase,
       inputReady: phase === 'live' && sideToMove === playerColor,
-      remainingMs: null,
+      remainingMs: getRemainingMs(doc),
       ...(history ? { history } : {}),
       ...(confirmedFens ? { confirmedFens } : {}),
     };

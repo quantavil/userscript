@@ -190,6 +190,7 @@ The pending request's `isCurrent` checks identity, accepted source FEN, settings
 - [ ] Underpromotion with saved auto-promote on: not verified. The anonymous custom-FEN AI setup requires login; no custom fixture was available. Promotion unit tests cover q/r/b/n selection and Ctrl metadata restoration, but do not replace this browser check.
 - [x] Recorded game URLs, AI level, settings, outcomes, plies, start/end clocks, worker readiness, and limitations. The 1+0 game used about 18 seconds of the bot clock (1:00 to 0:42); per-move engine search, submission, and accepted-confirmation durations were not separately instrumented and remain unmeasured. The research time-out is not counted as acceptance or an engine result.
 - [x] Fixed observed castling-history and promotion-selector issues with regression coverage; `bun run check` passed after the changes. Reviewed the feature diff and confirmed only `super-chess-bot/` changed.
+- [x] Follow-up review fixes restored Chess.com active-clock budgeting, corrected PyChess terminal reload detection, routed promotion-chooser clicks to the shared pause handler, and kept right-click drawing from interrupting promotion. Regressions are covered by tests; the final `bun run check` passed with 175 tests.
 - [x] Commit the browser evidence once accurate: `docs(chess): record PyChess AI browser verification`.
 
 ## Completion criteria and execution handoff

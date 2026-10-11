@@ -76,6 +76,29 @@ export const getFen = (game: ChessGame | null | undefined): string | null => {
   }
 };
 
+/** Read the clock marked active by Chess.com and normalize it for the shared scheduler. */
+export function getRemainingMs(doc: Pick<Document, 'querySelector'>): number | null {
+  const text = doc
+    .querySelector<HTMLElement>('.clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time')
+    ?.textContent?.trim();
+  if (!text) return null;
+
+  let seconds: number;
+  const minutesAndSeconds = /^(\d+):(\d{2}(?:\.\d+)?)$/.exec(text);
+  if (minutesAndSeconds) {
+    const minutes = Number(minutesAndSeconds[1]);
+    const remainder = Number(minutesAndSeconds[2]);
+    if (!Number.isFinite(minutes) || !Number.isFinite(remainder) || remainder >= 60) return null;
+    seconds = minutes * 60 + remainder;
+  } else if (/^\d+(?:\.\d+)?$/.test(text)) {
+    seconds = Number(text);
+  } else {
+    return null;
+  }
+
+  return Number.isFinite(seconds) ? Math.round(seconds * 1000) : null;
+}
+
 export const getPlayerColor = (game: ChessGame | null | undefined): string => {
   try {
     return game?.getPlayingAs?.() === 2 ? 'b' : 'w';

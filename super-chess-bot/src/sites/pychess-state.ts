@@ -148,9 +148,10 @@ export function parsePychessObservation(observation: PychessObservation, identit
 
   const renderedResult = observation.result.text?.trim() ?? '';
   const terminalResult = TERMINAL_RESULTS.has(renderedResult) || renderedResult === '*';
-  const initialStatus = Number(metadata.status);
+  const rawInitialStatus = metadata.status?.trim();
+  const initialStatus = rawInitialStatus ? Number(rawInitialStatus) : Number.NaN;
   const initialResult = metadata.initialResult?.trim() ?? '';
-  const initialTerminal = Number.isInteger(initialStatus) && initialStatus < 0 && TERMINAL_RESULTS.has(initialResult);
+  const initialTerminal = Number.isInteger(initialStatus) && initialStatus >= 0 && TERMINAL_RESULTS.has(initialResult);
   const finished = (observation.result.postgame && terminalResult) || initialTerminal;
   const latestPly = orderedMoves.length;
   const phase = finished ? 'finished' : activePly < latestPly ? 'replay' : 'live';

@@ -54,6 +54,24 @@ describe('site adapter selection', () => {
     unsubscribe();
     expect(off).toHaveBeenCalledWith('Move', on.mock.calls[0][1]);
   });
+
+  it.each([
+    ['0:01.0', 1_000],
+    ['2:30.5', 150_500],
+    ['42.25', 42_250],
+  ])('exposes the active Chess.com clock %s as remaining milliseconds', (clockText, expectedMs) => {
+    const page = makePage(() => [makeBoard()], clockText);
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+
+    expect(adapter.read()).toMatchObject({ kind: 'game', snapshot: { remainingMs: expectedMs } });
+  });
+
+  it('ignores malformed active Chess.com clock text', () => {
+    const page = makePage(() => [makeBoard()], '0:60.0');
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+
+    expect(adapter.read()).toMatchObject({ kind: 'game', snapshot: { remainingMs: null } });
+  });
 });
 
 describe('userscript package metadata', () => {
@@ -95,12 +113,15 @@ function makeGame() {
   return { getFEN: () => START_FEN, getPlayingAs: () => 1, isGameOver: () => false };
 }
 
-function makePage(boards: () => unknown[]) {
+function makePage(boards: () => unknown[], clockText: string | null = null) {
   return {
     location: { hostname: 'www.chess.com' },
     document: {
       body: {},
-      querySelector: (selector: string) => (selector.includes('game-over') ? null : (boards()[0] ?? null)),
+      querySelector: (selector: string) => {
+        if (selector.includes('clock-player-turn')) return clockText === null ? null : { textContent: clockText };
+        return selector.includes('game-over') ? null : (boards()[0] ?? null);
+      },
       querySelectorAll: () => boards(),
     },
     MutationObserver: class {

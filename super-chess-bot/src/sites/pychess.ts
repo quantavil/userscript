@@ -1,6 +1,7 @@
 import { Chess, normalizeMove } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { makeSquare, parseUci } from 'chessops/util';
+import { notifyBoardInput } from '../board.js';
 import { activateElement } from '../board-input.js';
 import { canonicalFen } from '../history.js';
 import {
@@ -168,7 +169,13 @@ export function createPychessAdapter(page: () => Window = pageWindow): SiteAdapt
   let pendingInput: PendingInput | null = null;
 
   const onTrustedInput = (event: Event) => {
-    if (event.isTrusted) trustedRevision++;
+    if (!event.isTrusted) return;
+    if ('button' in event && typeof (event as MouseEvent).button === 'number' && (event as MouseEvent).button !== 0)
+      return;
+    trustedRevision++;
+    const board = (page() as PychessPage).cg?.state?.dom?.elements?.board;
+    const target = event.target as Node | null;
+    if (!board || !target || !board.contains(target)) notifyBoardInput(event);
   };
   const bindTrustedBoard = (board: HTMLElement | null) => {
     const mainboard =

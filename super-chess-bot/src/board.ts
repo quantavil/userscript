@@ -156,14 +156,7 @@ export function attachToBoard(boardEl: HTMLElement | null): void {
   ro.observe(boardEl);
 
   const cancelPendingOnUserAction = (event: Event) => {
-    if (!event.isTrusted) return;
-    if ('button' in event && typeof (event as MouseEvent).button === 'number' && (event as MouseEvent).button !== 0) {
-      return;
-    }
-    cancelPendingMove();
-    boardInputListeners.forEach((listener) => {
-      listener();
-    });
+    notifyBoardInput(event);
   };
   const userInputEvents = typeof PointerEvent === 'undefined' ? ['mousedown', 'touchstart'] : ['pointerdown'];
   for (const eventName of userInputEvents) boardEl.addEventListener(eventName, cancelPendingOnUserAction, true);
@@ -224,6 +217,16 @@ export function onBoardMutation(cb: () => void): () => boolean {
 export function onBoardInput(cb: () => void): () => boolean {
   boardInputListeners.add(cb);
   return () => boardInputListeners.delete(cb);
+}
+
+/** Share trusted left-button/touch input with adapters that watch a larger input region. */
+export function notifyBoardInput(event: Event): void {
+  if (!event.isTrusted) return;
+  if ('button' in event && typeof (event as MouseEvent).button === 'number' && (event as MouseEvent).button !== 0) {
+    return;
+  }
+  cancelPendingMove();
+  for (const listener of [...boardInputListeners]) listener();
 }
 
 export function startMoveWatcher(): void {
