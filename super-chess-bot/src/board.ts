@@ -1,6 +1,8 @@
 import type { Coordinates } from './board-input.js';
 import { activateElement, simulateClickMove, simulateDragMove } from './board-input.js';
+import { canonicalFen } from './history.js';
 import { findPromotionOption } from './promotion.js';
+import type { MoveRequest, SiteAdapter, SiteRead } from './sites/types.js';
 import {
   BotState,
   getBoard,
@@ -407,6 +409,78 @@ export async function waitForFenChange(
       if (!done) frame = requestAnimationFrame(poll);
     };
     poll();
+  });
+}
+
+/** Confirm a site move only from the accepted position at its expected ply. */
+export function confirmSiteMove(request: MoveRequest, adapter: SiteAdapter, timeout = 1000): Promise<boolean> {
+  const expectedFen = canonicalFen(request.expectedFen);
+  if (
+    !expectedFen ||
+    (request.expectedPly !== null && (!Number.isInteger(request.expectedPly) || request.expectedPly < 0))
+  )
+    return Promise.resolve(false);
+
+  return new Promise((resolve) => {
+    let done = false;
+    let unsubscribe: (() => void) | null = null;
+    let unsubscribeWhenReady = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (accepted: boolean) => {
+      if (done) return;
+      done = true;
+      if (unsubscribe) {
+        try {
+          unsubscribe();
+        } catch {}
+      } else unsubscribeWhenReady = true;
+      request.signal.removeEventListener('abort', onAbort);
+      if (timer) clearTimeout(timer);
+      resolve(accepted);
+    };
+    const check = () => {
+      if (done) return;
+      let current: SiteRead;
+      try {
+        current = adapter.read();
+      } catch {
+        finish(false);
+        return;
+      }
+      if (current.kind !== 'game') return;
+      if (current.snapshot.identity !== request.identity) {
+        finish(false);
+        return;
+      }
+      if (request.expectedPly !== null) {
+        const confirmed = current.snapshot.confirmedFens?.[request.expectedPly];
+        if (typeof confirmed !== 'string') return;
+        finish(canonicalFen(confirmed) === expectedFen);
+        return;
+      }
+      const currentFen = canonicalFen(current.snapshot.fen);
+      if (currentFen === expectedFen) finish(true);
+    };
+    const onAbort = () => {
+      check();
+      if (!done) finish(false);
+    };
+
+    try {
+      unsubscribe = adapter.subscribe(check);
+      if (unsubscribeWhenReady) {
+        unsubscribe();
+        unsubscribe = null;
+      }
+    } catch {
+      finish(false);
+      return;
+    }
+    if (done) return;
+    request.signal.addEventListener('abort', onAbort, { once: true });
+    timer = setTimeout(() => finish(false), Math.max(0, timeout));
+    check();
+    if (request.signal.aborted && !done) onAbort();
   });
 }
 
