@@ -106,6 +106,79 @@ describe('panel hotkeys and settings', () => {
     expect(toggleMinimizedMock).toHaveBeenCalledOnce();
   });
 
+  it.each(['BODY', 'BUTTON', 'CG-BOARD'])('keeps shortcuts active on ordinary %s elements', (tagName) => {
+    updatePanelSetting('enabled', false);
+    vi.clearAllMocks();
+    const target = { tagName, isContentEditable: false };
+    const actions = { setEnabled: setEnabledMock, recover: recoverMock };
+
+    handlePanelKeyDown({ key: 'e', code: 'KeyE', target }, actions, toggleMinimizedMock);
+    expect(setEnabledMock).toHaveBeenCalledWith(true);
+
+    updatePanelAnalysis({
+      status: 'Stockfish worker crashed',
+      evaluation: '-',
+      bestMove: '-',
+      principalVariation: '-',
+      recoveryAction: 'retry',
+    });
+    handlePanelKeyDown({ key: 'r', code: 'KeyR', target }, actions, toggleMinimizedMock);
+    expect(recoverMock).toHaveBeenCalledOnce();
+
+    handlePanelKeyDown({ key: 'b', code: 'KeyB', ctrlKey: true, target }, actions, toggleMinimizedMock);
+    expect(toggleMinimizedMock).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['INPUT', false],
+    ['TEXTAREA', false],
+    ['SELECT', false],
+    ['DIV', true],
+  ])('suppresses shortcuts on editable %s targets', (tagName, isContentEditable) => {
+    const target = { tagName, isContentEditable };
+    updatePanelAnalysis({
+      status: 'Stockfish worker crashed',
+      evaluation: '-',
+      bestMove: '-',
+      principalVariation: '-',
+      recoveryAction: 'retry',
+    });
+
+    handlePanelKeyDown(
+      { key: 'e', code: 'KeyE', target },
+      { setEnabled: setEnabledMock, recover: recoverMock },
+      toggleMinimizedMock,
+    );
+    handlePanelKeyDown(
+      { key: 'r', code: 'KeyR', target },
+      { setEnabled: setEnabledMock, recover: recoverMock },
+      toggleMinimizedMock,
+    );
+    handlePanelKeyDown(
+      { key: 'b', code: 'KeyB', ctrlKey: true, target },
+      { setEnabled: setEnabledMock, recover: recoverMock },
+      toggleMinimizedMock,
+    );
+
+    expect(BotState.hackEnabled).toBe(0);
+    expect(setEnabledMock).not.toHaveBeenCalled();
+    expect(recoverMock).not.toHaveBeenCalled();
+    expect(toggleMinimizedMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the composed-path target when a shortcut crosses a shadow root', () => {
+    updatePanelSetting('enabled', false);
+    vi.clearAllMocks();
+    const target = { tagName: 'BUTTON', isContentEditable: false };
+    handlePanelKeyDown(
+      { key: 'e', code: 'KeyE', target: { tagName: 'INPUT' }, composedPath: () => [target] },
+      { setEnabled: setEnabledMock },
+      toggleMinimizedMock,
+    );
+
+    expect(setEnabledMock).toHaveBeenCalledWith(true);
+  });
+
   it('updates panel settings directly and persists them', () => {
     updatePanelSetting('depth', 25);
     expect(BotState.botPower).toBe(25);
@@ -130,6 +203,11 @@ describe('panel hotkeys and settings', () => {
       showAutoRematch: true,
       showMoveMethod: true,
       transportNote: null,
+    });
+    expect(getPanelCapabilityView({ input: 'controller', autoRematch: false })).toEqual({
+      showAutoRematch: false,
+      showMoveMethod: false,
+      transportNote: 'Moves use the active game controller.',
     });
   });
 });

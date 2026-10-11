@@ -42,4 +42,23 @@ describe('userscript startup', () => {
     await vi.waitFor(() => expect(dependencies.state.statusInfo).toBe('Ready'));
     await vi.waitFor(() => expect(dependencies.controllerInit).toHaveBeenCalledOnce());
   });
+
+  it('waits for the document body when the userscript starts at document-start', async () => {
+    let ready: (() => void) | undefined;
+    vi.stubGlobal('document', {
+      body: null,
+      readyState: 'loading',
+      addEventListener: (_event: string, callback: () => void) => {
+        ready = callback;
+      },
+    });
+
+    await import('../src/index.js');
+    expect(dependencies.buildUI).not.toHaveBeenCalled();
+    expect(dependencies.warm).not.toHaveBeenCalled();
+
+    ready?.();
+    await vi.waitFor(() => expect(dependencies.buildUI).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(dependencies.warm).toHaveBeenCalledOnce());
+  });
 });

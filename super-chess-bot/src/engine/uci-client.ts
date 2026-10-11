@@ -8,15 +8,17 @@ interface AnalysisEvaluation {
   mate?: number;
 }
 
-export interface AnalysisResult {
-  success: boolean;
+interface AnalysisResultFields {
   depth: number;
-  bestmove: string;
   pv: string;
   evaluation: AnalysisEvaluation;
   nodes?: number;
   time?: number;
 }
+
+export type AnalysisResult =
+  | (AnalysisResultFields & { success: true; bestmove: string })
+  | (AnalysisResultFields & { success: false; bestmove: '' | '(none)' });
 
 export interface UciWorkerLike {
   onmessage: ((event: MessageEvent<string>) => void) | null;
@@ -334,9 +336,8 @@ export class UciClient {
     try {
       this.send('ponderhit');
       job.searchTimer = safeTimeout(() => {
-        job.timeoutReason = new Error(`Stockfish search exceeded ${job.timeLimit + this.searchTimeoutSlackMs} ms`);
         this.stopActiveSearch(job);
-      }, job.timeLimit + this.searchTimeoutSlackMs);
+      }, job.timeLimit);
     } catch (error) {
       job.result?.reject(error);
       this.destroyWorker();
@@ -606,15 +607,17 @@ export class UciClient {
       if (job.searchTimer) clearTimeout(job.searchTimer);
       if (job.stopTimer) clearTimeout(job.stopTimer);
       const bestmove = message.split(/\s+/)[1] ?? '';
-      job.resultValue = {
-        success: validBestMove(bestmove),
+      const terminal = bestmove === '(none)';
+      const common = {
         depth: job.info.depth,
-        bestmove: validBestMove(bestmove) ? bestmove : '',
         pv: job.info.pv,
         evaluation: job.info.evaluation,
         ...(job.info.nodes === undefined ? {} : { nodes: job.info.nodes }),
         ...(job.info.time === undefined ? {} : { time: job.info.time }),
       };
+      job.resultValue = validBestMove(bestmove)
+        ? { ...common, success: true, bestmove }
+        : { ...common, success: false, bestmove: terminal ? '(none)' : '' };
       job.result?.resolve(job.resultValue);
     }
   }

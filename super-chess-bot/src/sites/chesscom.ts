@@ -19,6 +19,71 @@ interface ChessBoard extends HTMLElement {
 }
 
 let nextGameId = 0;
+const BOARD_SELECTOR = 'wc-chess-board, chess-board, .board';
+const CLOCK_REGION_SELECTOR = '.clock-player-turn';
+const CLOCK_SELECTOR = '.clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time';
+const RESULT_SELECTOR = '.game-over-modal-content';
+
+function readFingerprint(result: SiteRead): { identity: object | null; value: string } {
+  if (result.kind !== 'game') return { identity: null, value: JSON.stringify([result.kind, result.reason]) };
+  const snapshot = result.snapshot;
+  return {
+    identity: snapshot.identity,
+    value: JSON.stringify([
+      snapshot.gameId,
+      snapshot.fen,
+      snapshot.playerColor,
+      snapshot.sideToMove,
+      snapshot.orientation,
+      snapshot.phase,
+      snapshot.inputReady,
+      snapshot.remainingMs,
+      snapshot.history?.startFen,
+      snapshot.history?.moves,
+      snapshot.confirmedFens,
+    ]),
+  };
+}
+
+function closestOrSelf(element: Element, selector: string): Element | null {
+  return element.matches(selector) ? element : element.closest(selector);
+}
+
+function mutationElement(target: Node): Element | null {
+  return target.nodeType === 1
+    ? (target as Element)
+    : ((target as Node & { parentElement?: Element | null }).parentElement ?? null);
+}
+
+function nodeContainsSelector(node: Node, selector: string): boolean {
+  const element = mutationElement(node);
+  return !!element && (element.matches(selector) || !!element.querySelector(selector));
+}
+
+function isRelevantMutation(records: MutationRecord[]): boolean {
+  return records.some((record) => {
+    const target = mutationElement(record.target);
+    if (!target || target.closest('[data-gabibot-overlay], #menuWrap')) return false;
+    const onBoard = !!closestOrSelf(target, BOARD_SELECTOR);
+    const onClock = !!closestOrSelf(target, CLOCK_REGION_SELECTOR);
+    const onResult = !!closestOrSelf(target, RESULT_SELECTOR);
+
+    if (record.type === 'attributes') {
+      if (record.attributeName === 'orientation' || record.attributeName === 'data-game-id') return onBoard;
+      if (record.attributeName === 'class') return onBoard || onClock || onResult;
+      return false;
+    }
+    if (record.type === 'characterData') return onClock || onResult;
+    if (record.type !== 'childList') return false;
+    if (onClock || onResult) return true;
+    return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some(
+      (node) =>
+        nodeContainsSelector(node, BOARD_SELECTOR) ||
+        nodeContainsSelector(node, CLOCK_SELECTOR) ||
+        nodeContainsSelector(node, RESULT_SELECTOR),
+    );
+  });
+}
 
 export function createChesscomAdapter(page: () => Window = defaultPage): SiteAdapter {
   let currentBoard: ChessBoard | null = null;
@@ -88,13 +153,14 @@ export function createChesscomAdapter(page: () => Window = defaultPage): SiteAda
       let moveListener: (() => void) | null = null;
       let queued = false;
       let active = true;
+      const initial = read();
+      let previous = readFingerprint(initial);
       const detachGame = () => {
         if (observedGame && moveListener) observedGame.off?.('Move', moveListener);
         observedGame = null;
         moveListener = null;
       };
-      const bind = () => {
-        const result = read();
+      const bind = (result: SiteRead) => {
         const board = result.kind === 'game' ? (result.snapshot.board as ChessBoard) : null;
         const game = board?.game ?? null;
         if (board === observedBoard && game === observedGame) return;
@@ -108,18 +174,23 @@ export function createChesscomAdapter(page: () => Window = defaultPage): SiteAda
       };
       const notify = () => {
         if (!active) return;
-        bind();
+        const result = read();
+        bind(result);
+        const next = readFingerprint(result);
+        if (next.identity === previous.identity && next.value === previous.value) return;
+        previous = next;
         try {
           listener();
         } catch (error) {
           console.error('Super Chess Bot: site listener failed.', error);
         }
       };
-      bind();
+      bind(initial);
       const doc = page().document;
       const Observer = (page() as Window & { MutationObserver?: typeof MutationObserver }).MutationObserver;
       if (doc.body && Observer) {
-        const observer = new Observer(() => {
+        const observer = new Observer((records) => {
+          if (!isRelevantMutation(records)) return;
           if (queued) return;
           queued = true;
           queueMicrotask(() => {
@@ -127,7 +198,13 @@ export function createChesscomAdapter(page: () => Window = defaultPage): SiteAda
             notify();
           });
         });
-        observer.observe(doc.body, { childList: true, subtree: true, attributes: true });
+        observer.observe(doc.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['class', 'orientation', 'data-game-id'],
+          characterData: true,
+        });
         stopObserving = () => observer.disconnect();
       }
       return () => {

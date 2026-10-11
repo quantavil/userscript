@@ -6,7 +6,7 @@ import type { Evaluation } from '../types/chess';
 import { ui } from '../ui.js';
 import { scoreToDisplay } from '../utils.js';
 import type { PositionHistory } from './analysis.js';
-import { cancelPonder, getAnalysis, parseBestLine, ponderPosition, predictFen } from './analysis.js';
+import { cancelPonder, getAnalysis, hasLegalMoves, parseBestLine, ponderPosition, predictFen } from './analysis.js';
 import { formatMove } from './san.js';
 
 let revision = 0;
@@ -121,7 +121,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     if (!current()) return;
     const best = parseBestLine(result);
     if (!best) {
-      if ((result as { bestmove?: string })?.bestmove === '(none)') {
+      if (result.bestmove === '(none)' && hasLegalMoves(fen) === false) {
         BotState.statusInfo = 'Terminal position';
         ui.updateDisplay(pa());
         return;

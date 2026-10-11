@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getAnalysis, parseBestLine, predictFen, resetEngine, warmEngine } from '../src/engine/analysis.js';
+import {
+  getAnalysis,
+  hasLegalMoves,
+  parseBestLine,
+  predictFen,
+  resetEngine,
+  warmEngine,
+} from '../src/engine/analysis.js';
 import { formatMove, uciToSan } from '../src/engine/san.js';
 import { UciClient, type UciWorkerLike } from '../src/engine/uci-client.js';
 import { replaySanLine } from '../src/history.js';
@@ -218,6 +225,35 @@ describe('UCI Stockfish client', () => {
     await expect(pondering).resolves.toMatchObject({ bestmove: 'd2d4', depth: 8 });
   });
 
+  it('stops a promoted shallow ponder at the foreground budget and accepts its drained move', async () => {
+    const worker = new FakeUciWorker();
+    const client = new UciClient(() => worker, { searchTimeoutSlackMs: 5_000, stopTimeoutMs: 500 });
+    const background = new AbortController();
+    const pondering = client.ponder(START_FEN, 30, background.signal);
+    await waitUntil(() => worker.commands.includes('go ponder depth 30'));
+    worker.emit('info depth 4 score cp 8 nodes 80 time 20 pv e2e4');
+
+    vi.useFakeTimers();
+    const foreground = client.analyze(START_FEN, 30, 100);
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(worker.commands).toContain('stop');
+    worker.emit('info depth 8 score cp 12 nodes 200 time 55 pv d2d4');
+    worker.emit('bestmove d2d4');
+    await expect(foreground).resolves.toMatchObject({ bestmove: 'd2d4', depth: 8 });
+    await expect(pondering).resolves.toMatchObject({ bestmove: 'd2d4', depth: 8 });
+  });
+
+  it('preserves UCI bestmove none as a terminal marker', async () => {
+    const worker = new FakeUciWorker();
+    const client = new UciClient(() => worker);
+    const resultPromise = client.analyze(START_FEN, 8, 500);
+    await waitUntil(() => worker.commands.some((command) => command.startsWith('go ')));
+    worker.emit('bestmove (none)');
+
+    await expect(resultPromise).resolves.toMatchObject({ success: false, bestmove: '(none)' });
+  });
+
   it('cancels a promoted ponder when the foreground owner aborts', async () => {
     const worker = new FakeUciWorker();
     const client = new UciClient(() => worker, { stopTimeoutMs: 500 });
@@ -314,9 +350,16 @@ class FakeStockfishWorker {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('Stockfish analysis API', () => {
+  it('checks terminal positions and malformed FENs with chessops', () => {
+    expect(hasLegalMoves(START_FEN)).toBe(true);
+    expect(hasLegalMoves('7k/6Q1/6K1/8/8/8/8/8 b - - 0 1')).toBe(false);
+    expect(hasLegalMoves('not a fen')).toBeNull();
+  });
+
   it('fails clearly when worker support is unavailable instead of searching on the page thread', async () => {
     vi.stubGlobal('Worker', undefined);
     await expect(warmEngine()).rejects.toThrow('Web Worker');

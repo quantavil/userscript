@@ -17,6 +17,13 @@ describe('site adapter selection', () => {
     expect(selectSite('pychess.org.example.test')).toBeNull();
   });
 
+  it('selects Lichess only on its exact hostnames', () => {
+    const page = { document: { getElementById: () => null } } as unknown as Window;
+    expect(selectSite('lichess.org', () => page)?.id).toBe('lichess');
+    expect(selectSite('www.lichess.org', () => page)?.id).toBe('lichess');
+    expect(selectSite('lichess.org.example.test')).toBeNull();
+  });
+
   it('keeps a stable game identity and changes it when the board is replaced', () => {
     const first = makeBoard();
     const second = makeBoard();
@@ -75,14 +82,18 @@ describe('site adapter selection', () => {
 });
 
 describe('userscript package metadata', () => {
-  it('includes both sites while preserving GPL and pinned Stockfish resources', () => {
+  it('includes supported sites and document-start timing while preserving GPL and pinned Stockfish resources', () => {
     expect(userscriptMetadata.match).toEqual([
+      'https://lichess.org/*',
+      'https://www.lichess.org/*',
       'https://www.chess.com/play/computer*',
       'https://www.chess.com/game/*',
       'https://www.chess.com/play/online*',
       'https://www.pychess.org/*',
       'https://pychess.org/*',
     ]);
+    expect(userscriptMetadata['run-at']).toBe('document-start');
+    expect(userscriptMetadata['inject-into']).toBe('page');
     expect(userscriptMetadata.license).toBe('GPL-3.0-or-later');
     expect(pkg.license).toBe('GPL-3.0-or-later');
     expect(userscriptMetadata.description).toBe(pkg.description);

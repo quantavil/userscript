@@ -3,9 +3,11 @@
 // @namespace    http://tampermonkey.net/
 // @version      10.0.0
 // @author       quantavil
-// @description  Local Stockfish analysis and move automation for Chess.com computer games and PyChess AI
+// @description  Local Stockfish analysis and move automation for Chess.com computer games, PyChess AI, and Lichess AI level 8
 // @license      GPL-3.0-or-later
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=chess.com
+// @match        https://lichess.org/*
+// @match        https://www.lichess.org/*
 // @match        https://www.chess.com/play/computer*
 // @match        https://www.chess.com/game/*
 // @match        https://www.chess.com/play/online*
@@ -16,6 +18,8 @@
 // @grant        GM_getResourceText
 // @grant        GM_getResourceURL
 // @grant        unsafeWindow
+// @inject-into  page
+// @run-at       document-start
 // ==/UserScript==
 
 (function() {
@@ -2064,7 +2068,7 @@
 	function getActiveSite() {
 		return activeSite$1;
 	}
-	var BOARD_SELECTOR = "wc-chess-board, chess-board, .board";
+	var BOARD_SELECTOR$1 = "wc-chess-board, chess-board, .board";
 	var cachedGame = null;
 	var cachedGameTimestamp = 0;
 	function pageDocument() {
@@ -2089,7 +2093,7 @@
 		return rect ? rect.width * rect.height : 0;
 	}
 	function getBoard(doc = pageDocument()) {
-		const visible = (typeof doc.querySelectorAll === "function" ? Array.from(doc.querySelectorAll(BOARD_SELECTOR)) : [doc.querySelector(BOARD_SELECTOR)].filter((board) => !!board)).filter(isVisibleBoard);
+		const visible = (typeof doc.querySelectorAll === "function" ? Array.from(doc.querySelectorAll(BOARD_SELECTOR$1)) : [doc.querySelector(BOARD_SELECTOR$1)].filter((board) => !!board)).filter(isVisibleBoard);
 		visible.sort((a, b) => Number(hasGameApi(b)) - Number(hasGameApi(a)) || boardArea(b) - boardArea(a));
 		return visible[0] ?? null;
 	}
@@ -2921,9 +2925,8 @@
 			try {
 				this.send("ponderhit");
 				job.searchTimer = safeTimeout(() => {
-					job.timeoutReason = new Error(`Stockfish search exceeded ${job.timeLimit + this.searchTimeoutSlackMs} ms`);
 					this.stopActiveSearch(job);
-				}, job.timeLimit + this.searchTimeoutSlackMs);
+				}, job.timeLimit);
 			} catch (error) {
 				job.result?.reject(error);
 				this.destroyWorker();
@@ -3164,14 +3167,22 @@
 				if (job.searchTimer) clearTimeout(job.searchTimer);
 				if (job.stopTimer) clearTimeout(job.stopTimer);
 				const bestmove = message.split(/\s+/)[1] ?? "";
-				job.resultValue = {
-					success: validBestMove(bestmove),
+				const terminal = bestmove === "(none)";
+				const common = {
 					depth: job.info.depth,
-					bestmove: validBestMove(bestmove) ? bestmove : "",
 					pv: job.info.pv,
 					evaluation: job.info.evaluation,
 					...job.info.nodes === void 0 ? {} : { nodes: job.info.nodes },
 					...job.info.time === void 0 ? {} : { time: job.info.time }
+				};
+				job.resultValue = validBestMove(bestmove) ? {
+					...common,
+					success: true,
+					bestmove
+				} : {
+					...common,
+					success: false,
+					bestmove: terminal ? "(none)" : ""
 				};
 				job.result?.resolve(job.resultValue);
 			}
@@ -3302,6 +3313,17 @@
 	function getAnalysis(fen, depth, timeLimit, signal, history) {
 		return engineWorker.analyze(fen, depth, timeLimit, signal, history);
 	}
+	function hasLegalMoves(fen) {
+		try {
+			const setup = parseFen(fen);
+			if (setup.isErr) return null;
+			const position = Chess.fromSetup(setup.value);
+			if (position.isErr) return null;
+			return position.value.hasDests();
+		} catch {
+			return null;
+		}
+	}
 	function ponderPosition(fen, depth, history) {
 		return engineWorker.ponder(fen, depth, history);
 	}
@@ -3339,6 +3361,61 @@
 		};
 	}
 	var nextGameId = 0;
+	var BOARD_SELECTOR = "wc-chess-board, chess-board, .board";
+	var CLOCK_REGION_SELECTOR = ".clock-player-turn";
+	var CLOCK_SELECTOR = ".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time";
+	var RESULT_SELECTOR = ".game-over-modal-content";
+	function readFingerprint(result) {
+		if (result.kind !== "game") return {
+			identity: null,
+			value: JSON.stringify([result.kind, result.reason])
+		};
+		const snapshot = result.snapshot;
+		return {
+			identity: snapshot.identity,
+			value: JSON.stringify([
+				snapshot.gameId,
+				snapshot.fen,
+				snapshot.playerColor,
+				snapshot.sideToMove,
+				snapshot.orientation,
+				snapshot.phase,
+				snapshot.inputReady,
+				snapshot.remainingMs,
+				snapshot.history?.startFen,
+				snapshot.history?.moves,
+				snapshot.confirmedFens
+			])
+		};
+	}
+	function closestOrSelf(element, selector) {
+		return element.matches(selector) ? element : element.closest(selector);
+	}
+	function mutationElement$1(target) {
+		return target.nodeType === 1 ? target : target.parentElement ?? null;
+	}
+	function nodeContainsSelector(node, selector) {
+		const element = mutationElement$1(node);
+		return !!element && (element.matches(selector) || !!element.querySelector(selector));
+	}
+	function isRelevantMutation$1(records) {
+		return records.some((record) => {
+			const target = mutationElement$1(record.target);
+			if (!target || target.closest("[data-gabibot-overlay], #menuWrap")) return false;
+			const onBoard = !!closestOrSelf(target, BOARD_SELECTOR);
+			const onClock = !!closestOrSelf(target, CLOCK_REGION_SELECTOR);
+			const onResult = !!closestOrSelf(target, RESULT_SELECTOR);
+			if (record.type === "attributes") {
+				if (record.attributeName === "orientation" || record.attributeName === "data-game-id") return onBoard;
+				if (record.attributeName === "class") return onBoard || onClock || onResult;
+				return false;
+			}
+			if (record.type === "characterData") return onClock || onResult;
+			if (record.type !== "childList") return false;
+			if (onClock || onResult) return true;
+			return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some((node) => nodeContainsSelector(node, BOARD_SELECTOR) || nodeContainsSelector(node, CLOCK_SELECTOR) || nodeContainsSelector(node, RESULT_SELECTOR));
+		});
+	}
 	function createChesscomAdapter(page = defaultPage) {
 		let currentBoard = null;
 		let currentGame = null;
@@ -3417,13 +3494,14 @@
 				let moveListener = null;
 				let queued = false;
 				let active = true;
+				const initial = read();
+				let previous = readFingerprint(initial);
 				const detachGame = () => {
 					if (observedGame && moveListener) observedGame.off?.("Move", moveListener);
 					observedGame = null;
 					moveListener = null;
 				};
-				const bind = () => {
-					const result = read();
+				const bind = (result) => {
 					const board = result.kind === "game" ? result.snapshot.board : null;
 					const game = board?.game ?? null;
 					if (board === observedBoard && game === observedGame) return;
@@ -3437,18 +3515,23 @@
 				};
 				const notify = () => {
 					if (!active) return;
-					bind();
+					const result = read();
+					bind(result);
+					const next = readFingerprint(result);
+					if (next.identity === previous.identity && next.value === previous.value) return;
+					previous = next;
 					try {
 						listener();
 					} catch (error) {
 						console.error("Super Chess Bot: site listener failed.", error);
 					}
 				};
-				bind();
+				bind(initial);
 				const doc = page().document;
 				const Observer = page().MutationObserver;
 				if (doc.body && Observer) {
-					const observer = new Observer(() => {
+					const observer = new Observer((records) => {
+						if (!isRelevantMutation$1(records)) return;
 						if (queued) return;
 						queued = true;
 						queueMicrotask(() => {
@@ -3459,7 +3542,13 @@
 					observer.observe(doc.body, {
 						childList: true,
 						subtree: true,
-						attributes: true
+						attributes: true,
+						attributeFilter: [
+							"class",
+							"orientation",
+							"data-game-id"
+						],
+						characterData: true
 					});
 					stopObserving = () => observer.disconnect();
 				}
@@ -3486,6 +3575,442 @@
 	}
 	function defaultPage() {
 		return typeof unsafeWindow === "undefined" ? window : unsafeWindow;
+	}
+	function isObject(value) {
+		return typeof value === "object" && value !== null || typeof value === "function";
+	}
+	function installLichessControllerBridge(page, onController) {
+		const hookedSites = new WeakSet();
+		const hookedAssets = new WeakMap();
+		const wrapAsset = (asset) => {
+			if (!isObject(asset)) return asset;
+			const cached = hookedAssets.get(asset);
+			if (cached) return cached;
+			const originalPageInitializer = Reflect.get(asset, "loadEsmPage");
+			const roundInitializer = Reflect.get(asset, "loadEsm");
+			if (typeof originalPageInitializer !== "function" || typeof roundInitializer !== "function") return asset;
+			const wrappedAsset = Object.create(asset);
+			const wrappedRoundInitializer = (name, ...args) => {
+				const result = Reflect.apply(roundInitializer, asset, [name, ...args]);
+				const options = args[0];
+				const usesNpmModule = isObject(options) && Reflect.get(options, "npm") === true;
+				if (name !== "round" || usesNpmModule) return result;
+				return Promise.resolve(result).then((controller) => {
+					try {
+						onController(controller);
+					} catch {}
+					return controller;
+				});
+			};
+			Object.defineProperty(wrappedAsset, "loadEsm", {
+				configurable: true,
+				enumerable: true,
+				value: wrappedRoundInitializer
+			});
+			Object.defineProperty(wrappedAsset, "loadEsmPage", {
+				configurable: true,
+				enumerable: true,
+				value(name, ...args) {
+					if (name !== "round") return Reflect.apply(originalPageInitializer, asset, [name, ...args]);
+					const initElement = page.document.getElementById("page-init-data");
+					const initOptions = initElement ? JSON.parse(initElement.innerHTML) : void 0;
+					initElement?.remove();
+					return Reflect.apply(wrappedRoundInitializer, wrappedAsset, [name, { init: initOptions }]);
+				}
+			});
+			hookedAssets.set(asset, wrappedAsset);
+			return wrappedAsset;
+		};
+		const hookSite = (site) => {
+			if (!isObject(site)) return false;
+			if (hookedSites.has(site)) return true;
+			let asset = wrapAsset(Reflect.get(site, "asset"));
+			const descriptor = Object.getOwnPropertyDescriptor(site, "asset");
+			if (descriptor?.configurable === false) {
+				if (!descriptor.writable || !Reflect.set(site, "asset", asset)) return false;
+				hookedSites.add(site);
+				return true;
+			}
+			try {
+				Object.defineProperty(site, "asset", {
+					configurable: true,
+					enumerable: descriptor?.enumerable ?? true,
+					get: () => asset,
+					set: (next) => {
+						asset = wrapAsset(next);
+					}
+				});
+				hookedSites.add(site);
+				return true;
+			} catch {
+				return false;
+			}
+		};
+		let currentSite;
+		try {
+			currentSite = Reflect.get(page, "site");
+			const descriptor = Object.getOwnPropertyDescriptor(page, "site");
+			if (descriptor?.configurable === false) return hookSite(currentSite);
+			Object.defineProperty(page, "site", {
+				configurable: true,
+				enumerable: descriptor?.enumerable ?? true,
+				get: () => currentSite,
+				set: (next) => {
+					currentSite = next;
+					hookSite(next);
+				}
+			});
+		} catch {
+			return hookSite(currentSite);
+		}
+		if (currentSite !== void 0) hookSite(currentSite);
+		return true;
+	}
+	function pageWindow() {
+		return typeof unsafeWindow === "undefined" ? window : unsafeWindow;
+	}
+	var PROMOTION_ROLE$1 = {
+		queen: "queen",
+		rook: "rook",
+		bishop: "bishop",
+		knight: "knight"
+	};
+	var DEFAULT_BRIDGE_ERROR = "Lichess round controller not captured. Enable synchronous page-context injection in your userscript manager, then reload.";
+	function lichessColor(color) {
+		return color === "w" ? "white" : "black";
+	}
+	function engineColor(color) {
+		if (color === "white") return "w";
+		if (color === "black") return "b";
+		return null;
+	}
+	function visibleBoard(board) {
+		try {
+			if (!board.isConnected || board.getClientRects().length === 0) return false;
+			const rect = board.getBoundingClientRect();
+			if (rect.width <= 0 || rect.height <= 0) return false;
+			const style = board.ownerDocument.defaultView?.getComputedStyle(board);
+			return style?.display !== "none" && style?.visibility !== "hidden";
+		} catch {
+			return false;
+		}
+	}
+	function stepFen(round, phase) {
+		const lastPly = round.lastPly?.();
+		const currentPly = phase === "replay" && Number.isInteger(round.ply) ? round.ply : lastPly;
+		if (Number.isInteger(currentPly) && round.stepAt) try {
+			const step = round.stepAt(currentPly);
+			if (step && typeof step.fen === "string") return step;
+		} catch {
+			return null;
+		}
+		const steps = round.data?.steps;
+		const step = steps?.[steps.length - 1];
+		return step && typeof step.fen === "string" ? step : null;
+	}
+	function matchesStepFen(storedFen, expectedFen) {
+		if (typeof storedFen !== "string") return false;
+		const trimmed = storedFen.trim();
+		const fullFen = canonicalFen(trimmed);
+		if (fullFen) return fullFen === expectedFen;
+		return !/\s/.test(trimmed) && trimmed === expectedFen.split(" ")[0];
+	}
+	function buildHistoryFor(data, selectedStep) {
+		const steps = data.steps;
+		if (!steps?.length || steps[0]?.ply !== 0) return void 0;
+		const selectedIndex = steps.findIndex((step) => step.ply === selectedStep.ply);
+		if (selectedIndex < 0) return void 0;
+		const selectedSteps = steps.slice(0, selectedIndex + 1);
+		if (selectedSteps.some((step, index) => step.ply !== index)) return void 0;
+		const startFen = canonicalFen(selectedSteps[0]?.fen ?? "");
+		if (!startFen) return void 0;
+		const replay = replaySanLine(startFen, selectedSteps.slice(1).map((step) => step.san));
+		if (!replay) return void 0;
+		if (replay.fens.some((position, index) => !matchesStepFen(selectedSteps[index]?.fen, position))) return void 0;
+		const fen = replay.fens.at(-1);
+		if (!fen || !matchesStepFen(selectedStep.fen, fen)) return void 0;
+		return {
+			fen,
+			history: replay.history,
+			confirmedFens: replay.fens
+		};
+	}
+	function createHistoryReader() {
+		let cachedData = null;
+		let cachedSteps;
+		let cachedInput = "";
+		let cachedResult;
+		let hasCache = false;
+		return (data, selectedStep) => {
+			const steps = data.steps;
+			const selectedIndex = steps?.findIndex((step) => step.ply === selectedStep.ply) ?? -1;
+			const input = JSON.stringify([
+				selectedStep.ply,
+				selectedStep.fen,
+				selectedIndex >= 0 ? steps?.slice(0, selectedIndex + 1).map((step) => [
+					step.ply,
+					step.fen,
+					step.san
+				]) : null
+			]);
+			if (hasCache && data === cachedData && steps === cachedSteps && input === cachedInput) return cachedResult;
+			cachedData = data;
+			cachedSteps = steps;
+			cachedInput = input;
+			cachedResult = buildHistoryFor(data, selectedStep);
+			hasCache = true;
+			return cachedResult;
+		};
+	}
+	function moveDetails$1(request) {
+		const sourceFen = canonicalFen(request.fromFen);
+		const expectedFen = canonicalFen(request.expectedFen);
+		if (!sourceFen || !expectedFen) return null;
+		const setup = parseFen(sourceFen);
+		if (setup.isErr) return null;
+		const position = Chess.fromSetup(setup.value);
+		if (position.isErr) return null;
+		const move = parseUci(request.uci);
+		if (!move || !("from" in move) || !position.value.isLegal(move)) return null;
+		const normalized = normalizeMove(position.value, move);
+		const from = makeSquare(move.from);
+		const toCandidates = [...new Set([makeSquare(move.to), makeSquare(normalized.to)])];
+		position.value.play(move);
+		if (canonicalFen(makeFen(position.value.toSetup())) !== expectedFen) return null;
+		const promotionRole = move.promotion ? PROMOTION_ROLE$1[move.promotion] : void 0;
+		if (move.promotion && !promotionRole) return null;
+		return {
+			from,
+			toCandidates,
+			...promotionRole ? { promotionRole } : {}
+		};
+	}
+	function wrapMethod(target, key, after) {
+		const original = target[key];
+		if (typeof original !== "function") return;
+		try {
+			target[key] = function(...args) {
+				const result = Reflect.apply(original, this, args);
+				queueMicrotask(after);
+				return result;
+			};
+		} catch {}
+	}
+	function createLichessAdapter(page = pageWindow) {
+		const currentPage = page();
+		const listeners = new Set();
+		let round = null;
+		let lastRound = null;
+		let lastGameId = null;
+		let lastBoard = null;
+		let identity = {};
+		let previousFingerprint = "";
+		const readHistory = createHistoryReader();
+		const capture = () => {
+			if (!round) return {
+				kind: "waiting",
+				reason: DEFAULT_BRIDGE_ERROR
+			};
+			try {
+				const data = round.data;
+				const game = data?.game;
+				const player = data?.player;
+				const opponent = data?.opponent;
+				if (!data || !game || !player || !opponent) return {
+					kind: "waiting",
+					reason: "Waiting for Lichess game state"
+				};
+				if (game.source !== "ai") return {
+					kind: "ineligible",
+					reason: "Lichess AI game is required"
+				};
+				if (opponent.ai !== 8) return {
+					kind: "ineligible",
+					reason: "Lichess AI level 8 is required"
+				};
+				if (game.variant?.key !== "standard") return {
+					kind: "ineligible",
+					reason: "Lichess standard chess is required"
+				};
+				if (player.spectator === true) return {
+					kind: "ineligible",
+					reason: "Lichess player round is required"
+				};
+				if (typeof game.id !== "string" || !game.id) return {
+					kind: "waiting",
+					reason: "Waiting for Lichess game identity"
+				};
+				const statusId = game.status?.id;
+				if (typeof statusId !== "number" || !Number.isFinite(statusId)) return {
+					kind: "waiting",
+					reason: "Waiting for Lichess game status"
+				};
+				if (statusId < 20) return {
+					kind: "waiting",
+					reason: "Lichess game has not started"
+				};
+				const board = currentPage.document.querySelector(".round__app .cg-wrap");
+				if (!board || !visibleBoard(board)) return {
+					kind: "waiting",
+					reason: "Waiting for Lichess chessboard"
+				};
+				const playerColor = engineColor(player.color);
+				const orientation = round.chessground?.state?.orientation;
+				if (!playerColor || orientation !== "white" && orientation !== "black") return {
+					kind: "ineligible",
+					reason: "Lichess player color or board orientation is unavailable"
+				};
+				const replaying = round.replaying?.() === true;
+				const phase = statusId >= 25 ? "finished" : replaying ? "replay" : "live";
+				if (phase === "live" && round.isPlaying?.() !== true) return {
+					kind: "ineligible",
+					reason: "Lichess player round is required"
+				};
+				const selectedStep = stepFen(round, phase);
+				if (!selectedStep) return {
+					kind: "ineligible",
+					reason: "Lichess accepted FEN is unavailable"
+				};
+				const history = readHistory(data, selectedStep);
+				const fen = canonicalFen(selectedStep.fen) ?? history?.fen ?? null;
+				if (!fen) return {
+					kind: "ineligible",
+					reason: "Lichess accepted FEN is unavailable"
+				};
+				const sideToMove = fen.split(" ")[1];
+				if (sideToMove !== "w" && sideToMove !== "b") return {
+					kind: "ineligible",
+					reason: "Lichess side to move is unavailable"
+				};
+				const gameId = game.id;
+				if (round !== lastRound || gameId !== lastGameId || board !== lastBoard) {
+					lastRound = round;
+					lastGameId = gameId;
+					lastBoard = board;
+					identity = {};
+				}
+				const cgState = round.chessground?.state;
+				const canMove = round.canMove?.() === true;
+				const inputReady = phase === "live" && sideToMove === playerColor && canMove && cgState?.turnColor === lichessColor(playerColor) && cgState.movable?.color === lichessColor(playerColor) && !cgState.selected && !round.loading && !round.redirecting && !round.toSubmit;
+				let remainingMs = null;
+				try {
+					const clock = round.clock?.millisOf?.(lichessColor(playerColor));
+					if (typeof clock === "number" && Number.isFinite(clock) && clock >= 0) remainingMs = clock;
+				} catch {}
+				return {
+					kind: "game",
+					snapshot: {
+						identity,
+						gameId,
+						board,
+						fen,
+						playerColor,
+						sideToMove,
+						orientation,
+						phase,
+						inputReady,
+						remainingMs,
+						...history ? {
+							history: history.history,
+							confirmedFens: history.confirmedFens
+						} : {}
+					}
+				};
+			} catch {
+				return {
+					kind: "waiting",
+					reason: "Waiting for Lichess game state"
+				};
+			}
+		};
+		const fingerprint = (read) => read.kind === "game" ? JSON.stringify([
+			read.snapshot.gameId,
+			read.snapshot.fen,
+			read.snapshot.playerColor,
+			read.snapshot.orientation,
+			read.snapshot.phase,
+			read.snapshot.inputReady,
+			read.snapshot.history?.moves
+		]) : JSON.stringify([read.kind, read.reason]);
+		const notify = () => {
+			const next = capture();
+			const nextFingerprint = fingerprint(next);
+			if (next.kind === "game" && lastNotifiedIdentity !== next.snapshot.identity) {
+				lastNotifiedIdentity = next.snapshot.identity;
+				previousFingerprint = "";
+			}
+			if (nextFingerprint === previousFingerprint) return;
+			previousFingerprint = nextFingerprint;
+			for (const listener of [...listeners]) try {
+				listener();
+			} catch (error) {
+				console.error("Super Chess Bot: Lichess listener failed.", error);
+			}
+		};
+		let lastNotifiedIdentity = null;
+		const instrumentRound = (controller) => {
+			if (!controller || typeof controller !== "object") return;
+			round = controller;
+			const target = round;
+			for (const method of [
+				"jump",
+				"flipNow",
+				"reload"
+			]) wrapMethod(target, method, notify);
+			const handlers = round.socket?.handlers;
+			if (handlers) for (const method of [
+				"move",
+				"drop",
+				"endData",
+				"reload"
+			]) wrapMethod(handlers, method, notify);
+			notify();
+		};
+		const bridgeInstalled = installLichessControllerBridge(currentPage, instrumentRound);
+		return {
+			id: "lichess",
+			capabilities: {
+				input: "controller",
+				autoRematch: false
+			},
+			read: () => bridgeInstalled ? capture() : {
+				kind: "ineligible",
+				reason: "Lichess round hook is unavailable"
+			},
+			subscribe(listener) {
+				listeners.add(listener);
+				const current = capture();
+				previousFingerprint = fingerprint(current);
+				if (current.kind === "game") lastNotifiedIdentity = current.snapshot.identity;
+				return () => listeners.delete(listener);
+			},
+			async submitMove(request) {
+				const current = capture();
+				if (request.signal.aborted || request.isCurrent() !== true || current.kind !== "game" || current.snapshot.identity !== request.identity || canonicalFen(current.snapshot.fen) !== canonicalFen(request.fromFen) || !current.snapshot.inputReady) return false;
+				const controller = round;
+				const cgState = controller?.chessground?.state;
+				const pluginMove = controller?.pluginMove;
+				if (!controller || !cgState || typeof pluginMove !== "function") return false;
+				const detail = moveDetails$1(request);
+				if (!detail) return false;
+				const destinations = cgState.movable?.dests?.get?.(detail.from);
+				if (!destinations) return false;
+				const legalDestinations = new Set(Array.from(destinations, String));
+				const targets = detail.toCandidates.filter((candidate) => legalDestinations.has(candidate));
+				if (targets.length !== 1 || !targets[0]) return false;
+				if (request.signal.aborted || !request.isCurrent() || round !== controller) return false;
+				try {
+					pluginMove.call(controller, detail.from, targets[0], detail.promotionRole, true);
+					return true;
+				} catch {
+					return false;
+				}
+			},
+			cancelInput() {},
+			requestRematch() {
+				return false;
+			}
+		};
 	}
 	var STANDARD_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 	var TERMINAL_RESULTS = new Set([
@@ -3609,9 +4134,6 @@
 				confirmedFens: replay.fens
 			}
 		};
-	}
-	function pageWindow() {
-		return typeof unsafeWindow === "undefined" ? window : unsafeWindow;
 	}
 	var PROMOTION_ROLE = {
 		q: "q-piece",
@@ -4016,9 +4538,10 @@
 		};
 	}
 	var activeSite;
-	function selectSite(hostname) {
+	function selectSite(hostname, page) {
 		if (hostname === "chess.com" || hostname === "www.chess.com") return createChesscomAdapter();
 		if (hostname === "pychess.org" || hostname === "www.pychess.org") return createPychessAdapter();
+		if (hostname === "lichess.org" || hostname === "www.lichess.org") return createLichessAdapter(page);
 		return null;
 	}
 	function getSite() {
@@ -5163,8 +5686,8 @@
 		const selectionInput = capabilities?.input === "selection";
 		return {
 			showAutoRematch: capabilities?.autoRematch !== false,
-			showMoveMethod: !selectionInput,
-			transportNote: selectionInput ? "Moves use legal square selection on this site." : null
+			showMoveMethod: capabilities?.input === "gestures" || capabilities === void 0,
+			transportNote: selectionInput ? "Moves use legal square selection on this site." : capabilities?.input === "controller" ? "Moves use the active game controller." : null
 		};
 	}
 	var readSettings = () => ({
@@ -5254,7 +5777,8 @@
 	}
 	function handlePanelKeyDown(event, actions = {}, toggleMinimized) {
 		const target = event.composedPath ? event.composedPath()[0] : event.target;
-		if (typeof HTMLInputElement !== "undefined" && target instanceof HTMLInputElement || typeof HTMLTextAreaElement !== "undefined" && target instanceof HTMLTextAreaElement || typeof HTMLElement !== "undefined" && target instanceof HTMLElement && target.isContentEditable || target && typeof target === "object" && ("isContentEditable" in target || target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+		const targetElement = target && typeof target === "object" ? target : null;
+		if (typeof HTMLInputElement !== "undefined" && target instanceof HTMLInputElement || typeof HTMLTextAreaElement !== "undefined" && target instanceof HTMLTextAreaElement || typeof HTMLSelectElement !== "undefined" && target instanceof HTMLSelectElement || typeof HTMLElement !== "undefined" && target instanceof HTMLElement && target.isContentEditable || targetElement?.isContentEditable === true || targetElement?.tagName === "INPUT" || targetElement?.tagName === "TEXTAREA" || targetElement?.tagName === "SELECT") return;
 		if (event.key.toLowerCase() === "b" && event.ctrlKey && !event.metaKey) {
 			event.preventDefault?.();
 			toggleMinimized?.();
@@ -5813,7 +6337,7 @@
 			if (!current()) return;
 			const best = parseBestLine(result);
 			if (!best) {
-				if (result?.bestmove === "(none)") {
+				if (result.bestmove === "(none)" && hasLegalMoves(fen) === false) {
 					BotState.statusInfo = "Terminal position";
 					ui.updateDisplay(pa());
 					return;
@@ -6181,6 +6705,7 @@
 		try {
 			BotState.onUpdateDisplay = (playingAs) => ui.updateDisplay(playingAs);
 			const site = getSite();
+			await waitForDocumentBody();
 			await buildUI({
 				setEnabled: (enabled) => controller.setEnabled(enabled),
 				refreshSettings: () => controller.refreshSettings(),
@@ -6211,6 +6736,10 @@
 			BotState.recoveryAction = "retry";
 			ui.updateDisplay(1);
 		}
+	}
+	function waitForDocumentBody() {
+		if (typeof document === "undefined" || document.body || document.readyState !== "loading") return Promise.resolve();
+		return new Promise((resolve) => document.addEventListener("DOMContentLoaded", () => resolve(), { once: true }));
 	}
 	init();
 })();

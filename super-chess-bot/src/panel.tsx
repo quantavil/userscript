@@ -26,8 +26,12 @@ export function getPanelCapabilityView(capabilities?: SiteCapabilities): PanelCa
   const selectionInput = capabilities?.input === 'selection';
   return {
     showAutoRematch: capabilities?.autoRematch !== false,
-    showMoveMethod: !selectionInput,
-    transportNote: selectionInput ? 'Moves use legal square selection on this site.' : null,
+    showMoveMethod: capabilities?.input === 'gestures' || capabilities === undefined,
+    transportNote: selectionInput
+      ? 'Moves use legal square selection on this site.'
+      : capabilities?.input === 'controller'
+        ? 'Moves use the active game controller.'
+        : null,
   };
 }
 
@@ -181,15 +185,17 @@ export function handlePanelKeyDown(
   toggleMinimized?: () => void,
 ): void {
   const target = event.composedPath ? event.composedPath()[0] : event.target;
+  const targetElement =
+    target && typeof target === 'object' ? (target as { tagName?: string; isContentEditable?: boolean }) : null;
   if (
     (typeof HTMLInputElement !== 'undefined' && target instanceof HTMLInputElement) ||
     (typeof HTMLTextAreaElement !== 'undefined' && target instanceof HTMLTextAreaElement) ||
+    (typeof HTMLSelectElement !== 'undefined' && target instanceof HTMLSelectElement) ||
     (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && target.isContentEditable) ||
-    (target &&
-      typeof target === 'object' &&
-      ('isContentEditable' in target ||
-        (target as { tagName?: string }).tagName === 'INPUT' ||
-        (target as { tagName?: string }).tagName === 'TEXTAREA'))
+    targetElement?.isContentEditable === true ||
+    targetElement?.tagName === 'INPUT' ||
+    targetElement?.tagName === 'TEXTAREA' ||
+    targetElement?.tagName === 'SELECT'
   ) {
     return;
   }

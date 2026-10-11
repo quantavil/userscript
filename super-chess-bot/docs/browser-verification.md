@@ -2,7 +2,31 @@
 
 ## Production checks
 
-The initial `bun run check` after the PyChess castling-history and promotion-selector fixes passed Biome, strict TypeScript, Knip, all 166 tests, and the Vite production build. A follow-up review fix pass also passed the complete check with 175 tests; the current generated userscript is 219.61 kB (54.73 kB gzip). Stockfish's pinned worker and WASM remain manager resources.
+The earlier PyChess castling-history and promotion-selector changes passed full checks with 166 tests, then 175 tests after a review pass. The initial Super Chess Bot audit check passed with 191 tests in 17 files. After the Lichess history-cache regression fix, `bun run check` passed Biome, strict TypeScript, Knip, 207 tests in 19 files, and the Vite production build. The bundle is 238.68 kB (58.67 kB gzip). Stockfish's pinned worker and WASM remain manager resources.
+
+## Current audit-build browser checks
+
+Earlier Chess.com and PyChess audit-build probes used a temporary agent-browser page harness that supplied the userscript resource APIs and Stockfish resources; those probes were not manager-installed tests. The Lichess result below is from the final bundle installed through Violentmonkey.
+
+- **Chess.com:** selected Maximum (3200), White, and 1+0. Both clocks displayed 1:00 at start. The panel and worker reached `Ready`; settings were 100 ms, depth 30, background pondering on. The bot submitted accepted legal moves through `27.Nf3` (27 White moves). Most UI move stamps were 0.1–0.3 seconds; `1.e4` showed 38.4 seconds because this interval included setup and engine startup, so it is not a search-time measurement. Automation was then disabled. The guest clock later reached 0:00 and the page showed `0-1` on time with Maximum at 0:36. This interrupted run is not a strength result.
+- **PyChess:** entered through **Play with AI**, CHESS, level 8. The default 5+3 real-time clock was active; the panel was Ready before enabling and legal moves were accepted through `10.O-O-O Qc7`. During the run the clocks showed 5:15 and 5:28, consistent with the incremented clock control. It was a partial game and did not reach a promotion.
+- **Lichess:** the final bundle was installed through Violentmonkey 2.49.0 in the existing Vivaldi browser session. Synchronous `<page>` mode was enabled. A standard **Play against computer** game at AI level 8, White, 5+0 ([`TBMVyZvA`](https://lichess.org/TBMVyZvA)) reached `Ready`; with auto move, 100 ms move budget, depth 30, and pondering enabled, the bot submitted 15 accepted White moves through `15.Bd2`, and Stockfish level 8 replied through `15...Nb4`. The activity log showed accepted SAN for each bot move and no controller or accepted-FEN error. Both clocks began at 5:00; at stop, White showed 4:56 and Black 4:12, with White to move. Automation was disabled after capture. This verifies ordinary move submission, repeated accepted-position reads, and live clock behavior. No promotion arose in this game.
+
+## Lichess regression and live verification
+
+The first live failure appeared after several accepted moves as `Lichess accepted FEN is unavailable`. The earlier test covered only a two-move line. A new regression exposed a stale-cache path when an accepted step's contents change in place: reconstruction fails while SAN is incomplete, and the old cache keeps that failure after SAN becomes available. The history cache now keys on the selected step and accepted steps' ply, FEN, and SAN values. The regression failed before that change and passed after it; the final manager-installed run above then continued through 15 bot moves with AI replies.
+
+The Violentmonkey setting is user-level: **Settings → Advanced → Synchronous `<page>` mode** must be enabled, and Lichess must be reloaded after installing or updating the bundle. The adapter uses Lichess's current private round controller and `pluginMove`; it does not make API calls or write directly to the socket. Lichess may change those frontend internals.
+
+Live promotion remains unverified on Lichess. Unit tests cover explicit underpromotion-role submission; the live game did not reach a promotion position. The active 5+0 clock was observed in the browser, and unit tests cover missing or unavailable clock data falling back safely.
+
+## Lichess adapter implementation and current verification
+
+The userscript starts at `document-start` and wraps the page's `site.asset.loadEsmPage` and `site.asset.loadEsm` methods. For the `round` module, it uses Lichess's existing `loadEsm('round', { init })` method so it can capture the `RoundController` returned by `initModule`. The adapter accepts only standard Play against computer games with opponent AI level 8 and a participating player. It reads accepted FENs and SAN history from the controller's recorded steps, reads the active player's clock when the controller exposes it, validates UCI and legal destinations, and submits through `pluginMove` with the chosen promotion role. This is private frontend coupling and can need changes after a Lichess update.
+
+The controller path is supported by Lichess's current source: [round initializer](https://github.com/lichess-org/lila/blob/master/ui/round/src/round.ts), [asset loader](https://github.com/lichess-org/lila/blob/master/ui/site/src/asset.ts), and [round controller move/clock implementation](https://github.com/lichess-org/lila/blob/master/ui/round/src/ctrl.ts). The live level-8 game above confirms ordinary move acceptance and clock behavior with a manager-installed bundle. Queen promotion and underpromotion remain unverified in a Lichess browser game.
+
+The previous manager-installed promotion results below remain valid historical evidence for the PyChess promotion selector, but do not count as fresh current-build manager verification. Queen promotion worked in the completed earlier PyChess game; underpromotion with site auto-promote enabled remains unverified in a live browser.
 
 ## PyChess production verification
 

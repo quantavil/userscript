@@ -12,6 +12,7 @@ async function init(): Promise<void> {
   try {
     BotState.onUpdateDisplay = (playingAs) => ui.updateDisplay(playingAs);
     const site = getSite();
+    await waitForDocumentBody();
     const actions = {
       setEnabled: (enabled: boolean) => controller.setEnabled(enabled),
       refreshSettings: () => controller.refreshSettings(),
@@ -49,4 +50,10 @@ async function init(): Promise<void> {
     ui.updateDisplay(1);
   }
 }
+
+function waitForDocumentBody(): Promise<void> {
+  if (typeof document === 'undefined' || document.body || document.readyState !== 'loading') return Promise.resolve();
+  return new Promise((resolve) => document.addEventListener('DOMContentLoaded', () => resolve(), { once: true }));
+}
+
 void init();

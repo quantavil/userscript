@@ -2,7 +2,7 @@ import type { PositionHistory } from '../history.js';
 
 export type Color = 'w' | 'b';
 export interface SiteCapabilities {
-  readonly input: 'gestures' | 'selection';
+  readonly input: 'gestures' | 'selection' | 'controller';
   readonly autoRematch: boolean;
 }
 
@@ -35,7 +35,7 @@ export interface MoveRequest {
 }
 
 export interface SiteAdapter {
-  readonly id: 'chesscom' | 'pychess';
+  readonly id: 'chesscom' | 'pychess' | 'lichess';
   readonly capabilities: SiteCapabilities;
   read(): SiteRead;
   subscribe(listener: () => void): () => void;

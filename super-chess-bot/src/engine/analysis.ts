@@ -31,6 +31,19 @@ export function getAnalysis(
   return engineWorker.analyze(fen, depth, timeLimit, signal, history);
 }
 
+/** Return legal-move availability for a standard chess FEN; null means it could not be validated. */
+export function hasLegalMoves(fen: string): boolean | null {
+  try {
+    const setup = parseFen(fen);
+    if (setup.isErr) return null;
+    const position = Chess.fromSetup(setup.value);
+    if (position.isErr) return null;
+    return position.value.hasDests();
+  } catch {
+    return null;
+  }
+}
+
 /** Search the most likely reply while the opponent is thinking. */
 export function ponderPosition(fen: string, depth: number, history?: PositionHistory): boolean {
   return engineWorker.ponder(fen, depth, history);

@@ -30,6 +30,7 @@ const dependencies = vi.hoisted(() => {
   };
   return {
     analyze: vi.fn(),
+    hasLegalMoves: vi.fn(() => true),
     confirmMove: vi.fn(async () => true),
     ponderPosition: vi.fn(),
     cancelPonder: vi.fn(),
@@ -77,6 +78,7 @@ vi.mock('../src/board.js', () => ({
 vi.mock('../src/ui.js', () => ({ ui: { log: dependencies.log, updateDisplay: dependencies.update } }));
 vi.mock('../src/engine/analysis.js', () => ({
   getAnalysis: dependencies.analyze,
+  hasLegalMoves: dependencies.hasLegalMoves,
   predictFen: dependencies.predictFen,
   resetEngine: dependencies.resetEngine,
   cancelPonder: dependencies.cancelPonder,
@@ -85,6 +87,33 @@ vi.mock('../src/engine/analysis.js', () => ({
 }));
 
 import { cancelAnalysis, scheduleAnalysis } from '../src/engine/scheduler.js';
+import { UciClient, type UciWorkerLike } from '../src/engine/uci-client.js';
+
+class SchedulerUciWorker implements UciWorkerLike {
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: ((event: ErrorEvent) => void) | null = null;
+  commands: string[] = [];
+
+  postMessage(command: string): void {
+    this.commands.push(command);
+    if (command === 'uci') queueMicrotask(() => this.emit('uciok'));
+    if (command === 'isready') queueMicrotask(() => this.emit('readyok'));
+  }
+
+  terminate(): void {}
+
+  emit(line: string): void {
+    this.onmessage?.({ data: line } as MessageEvent<string>);
+  }
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error('Condition was not reached');
+}
 
 function setPosition(changes: Partial<typeof dependencies.snapshot>): void {
   Object.assign(dependencies.snapshot, changes);
@@ -93,6 +122,7 @@ function setPosition(changes: Partial<typeof dependencies.snapshot>): void {
 
 function validBestMove() {
   dependencies.analyze.mockResolvedValue({ success: true, bestmove: 'e2e4', depth: 10 });
+  dependencies.hasLegalMoves.mockReturnValue(true);
   dependencies.parseBestLine.mockReturnValue({ uci: 'e2e4', pv: dependencies.pv, score: dependencies.score });
 }
 
@@ -125,6 +155,7 @@ beforeEach(() => {
     statusInfo: 'Ready',
     recoveryAction: null,
   });
+  dependencies.hasLegalMoves.mockReturnValue(true);
   dependencies.score = { cp: 10 };
   dependencies.pv = 'e2e4';
   dependencies.site.submitMove.mockResolvedValue(true);
@@ -368,15 +399,41 @@ describe('site-backed search and execution', () => {
     });
   });
 
-  it('handles terminal checkmate/stalemate positions without a retry error', async () => {
-    setPosition({ inputReady: true });
-    dependencies.analyze.mockResolvedValue({ success: false, bestmove: '(none)', depth: 10 });
+  it('passes a UCI bestmove none response through to a verified terminal position', async () => {
+    const mateFen = '7k/6Q1/6K1/8/8/8/8/8 b - - 0 1';
+    const worker = new SchedulerUciWorker();
+    const client = new UciClient(() => worker);
+    setPosition({
+      fen: mateFen,
+      playerColor: 'b',
+      sideToMove: 'b',
+      inputReady: true,
+    });
+    dependencies.hasLegalMoves.mockReturnValue(false);
+    dependencies.analyze.mockImplementation((fen, depth, budget, signal, history) =>
+      client.analyze(fen, depth, budget, signal, history),
+    );
     dependencies.parseBestLine.mockReturnValue(null);
 
-    await scheduleAnalysis('main', dependencies.snapshot.fen);
+    const running = scheduleAnalysis('main', dependencies.snapshot.fen);
+    await waitFor(() => worker.commands.some((command) => command.startsWith('go ')));
+    worker.emit('bestmove (none)');
+    await running;
 
     expect(dependencies.state.statusInfo).toBe('Terminal position');
     expect(dependencies.state.recoveryAction).toBeNull();
+    expect(dependencies.site.submitMove).not.toHaveBeenCalled();
+  });
+
+  it('reports bestmove none as an engine error when the position still has legal moves', async () => {
+    dependencies.analyze.mockResolvedValue({ success: false, bestmove: '(none)', depth: 10 });
+    dependencies.parseBestLine.mockReturnValue(null);
+    dependencies.hasLegalMoves.mockReturnValue(true);
+
+    await scheduleAnalysis('main', dependencies.snapshot.fen);
+
+    expect(dependencies.state.statusInfo).toBe('Engine returned no legal move');
+    expect(dependencies.state.recoveryAction).toBe('retry');
     expect(dependencies.site.submitMove).not.toHaveBeenCalled();
   });
 });

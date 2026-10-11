@@ -12,12 +12,16 @@ export const userscriptMetadata: MonkeyUserScript = {
   description: pkg.description,
   author: 'quantavil',
   match: [
+    'https://lichess.org/*',
+    'https://www.lichess.org/*',
     'https://www.chess.com/play/computer*',
     'https://www.chess.com/game/*',
     'https://www.chess.com/play/online*',
     'https://www.pychess.org/*',
     'https://pychess.org/*',
   ],
+  'run-at': 'document-start',
+  'inject-into': 'page',
   grant: ['GM_getResourceText', 'GM_getResourceURL', 'unsafeWindow'],
   resource: {
     'stockfish.js': `${stockfishResourceUrl}.js`,
