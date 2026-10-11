@@ -31,7 +31,7 @@ Project guidance for `super-chess-bot`.
 - `engine/worker-client.ts`: load pinned userscript resources and manage the persistent worker. Terminate it only for recovery.
 - `history.ts` and `engine/san.ts`: use chessops for legal history, notation, and position validation; do not recreate chess rules or a search engine.
 - `state.ts` and `settings.ts`: keep page game state authoritative and validate persisted values with Valibot (`scb_settings`).
-- `panel.tsx`, `panel.css`, and `ui.ts`: keep the panel in closed Shadow DOM. Support Stream-Safe Ghost Mode (`setGhostMode`, `Ctrl+Shift+G` / `KeyG`) hiding all canvas overlays, eval bars, and floating controls. Include interactive SVG `<EvalTrendGraph />` displaying centipawn momentum trajectory. Rendering displays state; move execution stays in the controller and scheduler.
+- `panel.tsx`, `panel.css`, and `ui.ts`: keep the panel in closed Shadow DOM. Support Stream-Safe Ghost Mode (`setGhostMode`) hiding all canvas overlays, eval bars, and floating controls. Include interactive SVG `<EvalTrendGraph />` displaying centipawn momentum trajectory, header Guide (`?`), and Auto-retry resilience. Rendering displays state; move execution stays in the controller and scheduler.
 
 ## Site support matrix
 

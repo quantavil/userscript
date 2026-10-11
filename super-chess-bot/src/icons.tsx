@@ -132,9 +132,9 @@ export function Chevron() {
 function IconDualShields() {
   return (
     <svg
-      width="22"
+      width="18"
       height="18"
-      viewBox="0 0 28 24"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       stroke-width="1.8"
@@ -142,8 +142,9 @@ function IconDualShields() {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M8.5 21s6-3 6-7.5V6l-6-2.5L2.5 6v7.5C2.5 18 8.5 21 8.5 21z" />
-      <path d="M19.5 21s6-3 6-7.5V6l-6-2.5L13.5 6v7.5c0 4.5 6 7.5 6 7.5z" />
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="M12 18s5-2.5 5-6.5V7.5l-5-2-5 2V11.5c0 4 5 6.5 5 6.5z" />
+      <path d="M12 9v5M9.5 11.5h5" />
     </svg>
   );
 }
@@ -197,8 +198,10 @@ function IconSword() {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M20 4v5l-9 7-4 4-3-3 4-4 7-9z" />
-      <path d="M6.5 11.5l6 6" />
+      <path d="m11 19-6-6" />
+      <path d="m5 21-2-2" />
+      <path d="m8 16-4 4" />
+      <path d="M9.5 17.5 20.414 6.586A2 2 0 0 0 21 5.172V3h-2.172a2 2 0 0 0-1.414.586L6.5 14.5" />
     </svg>
   );
 }
@@ -206,19 +209,24 @@ function IconSword() {
 function IconDualSwordsSparks() {
   return (
     <svg
-      width="22"
+      width="18"
       height="18"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="1.7"
+      stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M4 4l16 16M15 19l4-4" />
-      <path d="M20 4L4 20M5 15l4 4" />
-      <path d="M13 2l-3 5h3.5L11.5 12l5-6h-3.5L14.5 2z" fill="currentColor" stroke="none" />
+      <path d="m13 19 6-6" />
+      <path d="M14.5 17.5 3.586 6.586A2 2 0 0 1 3 5.172V3h2.172a2 2 0 0 1 1.414.586L17.5 14.5" />
+      <path d="m14.828 6.172 2.586-2.586A2 2 0 0 1 18.828 3H21v2.172a2 2 0 0 1-.586 1.414l-2.586 2.586" />
+      <path d="m16 16 4 4" />
+      <path d="m19 21 2-2" />
+      <path d="m5 14 4 4" />
+      <path d="m5 21-2-2" />
+      <path d="m7.5 16.5-3.5 3.5" />
     </svg>
   );
 }
@@ -290,6 +298,26 @@ export function GhostIcon() {
     >
       <path d="M9 10h.01M15 10h.01" />
       <path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z" />
+    </svg>
+  );
+}
+
+export function HelpIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <path d="M12 17h.01" />
     </svg>
   );
 }

@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS: SettingsData = {
   targetElo: 0,
   blunderShield: 1,
   ghostMode: 0,
+  autoRetry: 1,
   menuPosition: null,
 };
 
@@ -38,6 +39,7 @@ const savedSettingsSchema = v.object({
   targetElo: v.optional(integerInRange(0, 3200)),
   blunderShield: v.optional(flagSchema),
   ghostMode: v.optional(flagSchema),
+  autoRetry: v.optional(flagSchema),
   menuPosition: v.optional(v.nullable(positionSchema)),
 });
 

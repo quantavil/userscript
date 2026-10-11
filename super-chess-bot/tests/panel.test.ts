@@ -1,182 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getPanelCapabilityView, handlePanelKeyDown, updatePanelAnalysis, updatePanelSetting } from '../src/panel.js';
+import { getPanelCapabilityView, toggleGhostMode, updatePanelAnalysis, updatePanelSetting } from '../src/panel.js';
 import { BotState, Settings } from '../src/state.js';
 
-describe('panel hotkeys and settings', () => {
-  let recoverMock: () => void;
+describe('panel settings and state management', () => {
   let setEnabledMock: (enabled: boolean) => void;
-  let toggleMinimizedMock: () => void;
+  let refreshSettingsMock: () => void;
 
   beforeEach(() => {
-    recoverMock = vi.fn();
     setEnabledMock = vi.fn();
-    toggleMinimizedMock = vi.fn();
+    refreshSettingsMock = vi.fn();
     BotState.hackEnabled = 0;
+    BotState.autoMove = 1;
+    BotState.autoRetry = 1;
+    BotState.ghostMode = 0;
     vi.spyOn(Settings, 'save').mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  it('toggles enabled state when pressing KeyE', () => {
-    expect(BotState.hackEnabled).toBe(0);
-
-    handlePanelKeyDown(
-      { key: 'e', code: 'KeyE' },
-      { setEnabled: setEnabledMock, recover: recoverMock },
-      toggleMinimizedMock,
-    );
-
-    expect(BotState.hackEnabled).toBe(1);
-    expect(setEnabledMock).toHaveBeenCalledWith(true);
-
-    handlePanelKeyDown(
-      { key: 'e', code: 'KeyE' },
-      { setEnabled: setEnabledMock, recover: recoverMock },
-      toggleMinimizedMock,
-    );
-
-    expect(BotState.hackEnabled).toBe(0);
-    expect(setEnabledMock).toHaveBeenCalledWith(false);
-  });
-
-  it('does not toggle when typing KeyE inside an input or textarea', () => {
-    const inputTarget = { tagName: 'INPUT' };
-    handlePanelKeyDown(
-      { key: 'e', code: 'KeyE', target: inputTarget },
-      { setEnabled: setEnabledMock, recover: recoverMock },
-      toggleMinimizedMock,
-    );
-    expect(BotState.hackEnabled).toBe(0);
-    expect(setEnabledMock).not.toHaveBeenCalled();
-
-    const textareaTarget = { tagName: 'TEXTAREA' };
-    handlePanelKeyDown(
-      { key: 'e', code: 'KeyE', target: textareaTarget },
-      { setEnabled: setEnabledMock, recover: recoverMock },
-      toggleMinimizedMock,
-    );
-    expect(BotState.hackEnabled).toBe(0);
-  });
-
-  it('triggers recovery action when pressing KeyR and recoveryAction is available', () => {
-    updatePanelAnalysis({
-      status: 'Stockfish worker crashed',
-      evaluation: '-',
-      bestMove: '-',
-      principalVariation: '-',
-      recoveryAction: 'retry',
-    });
-
-    handlePanelKeyDown(
-      { key: 'r', code: 'KeyR' },
-      { setEnabled: setEnabledMock, recover: recoverMock },
-      toggleMinimizedMock,
-    );
-
-    expect(recoverMock).toHaveBeenCalledOnce();
-  });
-
-  it('ignores KeyR when there is no recovery action', () => {
-    updatePanelAnalysis({
-      status: 'Ready',
-      evaluation: '0.00',
-      bestMove: 'e4',
-      principalVariation: 'e4',
-      recoveryAction: null,
-    });
-
-    handlePanelKeyDown(
-      { key: 'r', code: 'KeyR' },
-      { setEnabled: setEnabledMock, recover: recoverMock },
-      toggleMinimizedMock,
-    );
-
-    expect(recoverMock).not.toHaveBeenCalled();
-  });
-
-  it('toggles minimized when pressing Ctrl+B', () => {
-    handlePanelKeyDown(
-      { key: 'b', code: 'KeyB', ctrlKey: true },
-      { setEnabled: setEnabledMock, recover: recoverMock },
-      toggleMinimizedMock,
-    );
-
-    expect(toggleMinimizedMock).toHaveBeenCalledOnce();
-  });
-
-  it.each(['BODY', 'BUTTON', 'CG-BOARD'])('keeps shortcuts active on ordinary %s elements', (tagName) => {
-    updatePanelSetting('enabled', false);
-    vi.clearAllMocks();
-    const target = { tagName, isContentEditable: false };
-    const actions = { setEnabled: setEnabledMock, recover: recoverMock };
-
-    handlePanelKeyDown({ key: 'e', code: 'KeyE', target }, actions, toggleMinimizedMock);
-    expect(setEnabledMock).toHaveBeenCalledWith(true);
-
-    updatePanelAnalysis({
-      status: 'Stockfish worker crashed',
-      evaluation: '-',
-      bestMove: '-',
-      principalVariation: '-',
-      recoveryAction: 'retry',
-    });
-    handlePanelKeyDown({ key: 'r', code: 'KeyR', target }, actions, toggleMinimizedMock);
-    expect(recoverMock).toHaveBeenCalledOnce();
-
-    handlePanelKeyDown({ key: 'b', code: 'KeyB', ctrlKey: true, target }, actions, toggleMinimizedMock);
-    expect(toggleMinimizedMock).toHaveBeenCalledOnce();
-  });
-
-  it.each([
-    ['INPUT', false],
-    ['TEXTAREA', false],
-    ['SELECT', false],
-    ['DIV', true],
-  ])('suppresses shortcuts on editable %s targets', (tagName, isContentEditable) => {
-    const target = { tagName, isContentEditable };
-    updatePanelAnalysis({
-      status: 'Stockfish worker crashed',
-      evaluation: '-',
-      bestMove: '-',
-      principalVariation: '-',
-      recoveryAction: 'retry',
-    });
-
-    handlePanelKeyDown(
-      { key: 'e', code: 'KeyE', target },
-      { setEnabled: setEnabledMock, recover: recoverMock },
-      toggleMinimizedMock,
-    );
-    handlePanelKeyDown(
-      { key: 'r', code: 'KeyR', target },
-      { setEnabled: setEnabledMock, recover: recoverMock },
-      toggleMinimizedMock,
-    );
-    handlePanelKeyDown(
-      { key: 'b', code: 'KeyB', ctrlKey: true, target },
-      { setEnabled: setEnabledMock, recover: recoverMock },
-      toggleMinimizedMock,
-    );
-
-    expect(BotState.hackEnabled).toBe(0);
-    expect(setEnabledMock).not.toHaveBeenCalled();
-    expect(recoverMock).not.toHaveBeenCalled();
-    expect(toggleMinimizedMock).not.toHaveBeenCalled();
-  });
-
-  it('uses the composed-path target when a shortcut crosses a shadow root', () => {
-    updatePanelSetting('enabled', false);
-    vi.clearAllMocks();
-    const target = { tagName: 'BUTTON', isContentEditable: false };
-    handlePanelKeyDown(
-      { key: 'e', code: 'KeyE', target: { tagName: 'INPUT' }, composedPath: () => [target] },
-      { setEnabled: setEnabledMock },
-      toggleMinimizedMock,
-    );
-
-    expect(setEnabledMock).toHaveBeenCalledWith(true);
   });
 
   it('updates panel settings directly and persists them', () => {
@@ -204,33 +45,44 @@ describe('panel hotkeys and settings', () => {
 
     updatePanelSetting('ghostMode', true);
     expect(BotState.ghostMode).toBe(1);
+
+    updatePanelSetting('autoRetry', false);
+    expect(BotState.autoRetry).toBe(0);
+
+    updatePanelSetting('autoRetry', true);
+    expect(BotState.autoRetry).toBe(1);
   });
 
-  it('toggles ghost mode when pressing KeyG or Ctrl+Shift+G', () => {
-    updatePanelSetting('ghostMode', false);
-    expect(BotState.ghostMode).toBe(0);
+  it('notifies actions when toggling enabled setting', () => {
+    const actions = { setEnabled: setEnabledMock, refreshSettings: refreshSettingsMock };
+    updatePanelSetting('enabled', true, actions);
+    expect(BotState.hackEnabled).toBe(1);
+    expect(setEnabledMock).toHaveBeenCalledWith(true);
+    expect(Settings.save).toHaveBeenCalled();
 
-    handlePanelKeyDown(
-      { key: 'g', code: 'KeyG' },
-      { setEnabled: setEnabledMock, recover: recoverMock },
-      toggleMinimizedMock,
-    );
-    expect(BotState.ghostMode).toBe(1);
+    updatePanelSetting('enabled', false, actions);
+    expect(BotState.hackEnabled).toBe(0);
+    expect(setEnabledMock).toHaveBeenCalledWith(false);
+  });
 
-    handlePanelKeyDown(
-      { key: 'G', code: 'KeyG', ctrlKey: true, shiftKey: true },
-      { setEnabled: setEnabledMock, recover: recoverMock },
-      toggleMinimizedMock,
-    );
-    expect(BotState.ghostMode).toBe(0);
+  it('calls refreshSettings on non-enabled setting change', () => {
+    const actions = { setEnabled: setEnabledMock, refreshSettings: refreshSettingsMock };
+    updatePanelSetting('autoMove', false, actions);
+    expect(BotState.autoMove).toBe(0);
+    expect(refreshSettingsMock).toHaveBeenCalledOnce();
   });
 
   it('toggles ghost mode and persists setting', () => {
-    updatePanelSetting('ghostMode', true);
+    updatePanelSetting('ghostMode', false);
+    expect(BotState.ghostMode).toBe(0);
+
+    const toggledOn = toggleGhostMode();
+    expect(toggledOn).toBe(true);
     expect(BotState.ghostMode).toBe(1);
     expect(Settings.save).toHaveBeenCalled();
 
-    updatePanelSetting('ghostMode', false);
+    const toggledOff = toggleGhostMode();
+    expect(toggledOff).toBe(false);
     expect(BotState.ghostMode).toBe(0);
   });
 

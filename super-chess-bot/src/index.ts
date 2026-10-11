@@ -20,14 +20,11 @@ function registerMenuCommands(actions: {
         : null;
 
   if (register) {
-    register('♟ Toggle Ghost Mode (Stream Safe) [Ctrl+Shift+G]', () => {
+    register('♟ Toggle Ghost Mode', () => {
       toggleGhostMode(actions);
     });
-    register('♟ Toggle Bot Automation [E]', () => {
+    register('♟ Toggle Bot Automation', () => {
       actions.setEnabled(!BotState.hackEnabled);
-    });
-    register('♟ Retry / Recover Position [R]', () => {
-      actions.recover();
     });
   }
 

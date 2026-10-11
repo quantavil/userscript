@@ -79,6 +79,7 @@ export const BotState: BotStateInterface = {
   targetElo: 0,
   blunderShield: 1,
   ghostMode: 0,
+  autoRetry: 1,
   multiPvLines: undefined,
   evalHistory: [],
 };
@@ -100,6 +101,7 @@ export const Settings = {
         targetElo: BotState.targetElo,
         blunderShield: BotState.blunderShield,
         ghostMode: BotState.ghostMode,
+        autoRetry: BotState.autoRetry,
         menuPosition: position,
       };
       localStorage.setItem('scb_settings', JSON.stringify(settings));

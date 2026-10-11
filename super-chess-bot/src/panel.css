@@ -221,6 +221,24 @@
   background: color-mix(in oklab, var(--sage) 12%, var(--wood));
 }
 
+.panel-help-toggle {
+  color: var(--muted);
+  transition:
+    color 140ms var(--ease),
+    border-color 140ms var(--ease),
+    background 140ms var(--ease);
+}
+
+.panel-help-toggle:hover {
+  color: var(--paper);
+}
+
+.panel-help-toggle.is-active {
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--line));
+  color: var(--brass);
+  background: color-mix(in oklab, var(--brass) 12%, var(--wood));
+}
+
 .panel-chevron {
   transition: transform 180ms var(--ease);
 }
@@ -395,6 +413,97 @@
     opacity: 0;
     transform: translateY(-4px);
   }
+}
+
+/* Guide */
+
+.panel-guide {
+  display: flex;
+  max-height: min(76vh, 680px);
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 16px 16px;
+  scrollbar-color: var(--line) transparent;
+  scrollbar-width: thin;
+  animation: panel-rise 180ms var(--ease);
+}
+
+.panel-guide-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.panel-guide-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--paper);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.panel-guide-title svg {
+  color: var(--brass);
+}
+
+.panel-guide-close {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--wood);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background 140ms var(--ease),
+    color 140ms var(--ease);
+}
+
+.panel-guide-close:hover {
+  background: var(--wood-raised);
+  color: var(--paper);
+}
+
+.panel-guide-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel-guide-heading {
+  color: var(--brass);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.panel-guide-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--wood);
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.panel-guide-item strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.panel-guide-item p {
+  margin: 0;
+  color: var(--muted);
 }
 
 .panel-hero {
@@ -983,7 +1092,8 @@
     touch-action: manipulation;
   }
 
-  .panel-body {
+  .panel-body,
+  .panel-guide {
     max-height: min(70vh, 580px);
     -webkit-overflow-scrolling: touch;
   }

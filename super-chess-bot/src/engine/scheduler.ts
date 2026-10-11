@@ -384,6 +384,9 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       } else {
         BotState.recoveryAction = 'retry';
         BotState.statusInfo = initiated ? 'Move was not confirmed' : 'Move input failed';
+        if (BotState.autoRetry && BotState.hackEnabled) {
+          triggerAutoRetry(fen);
+        }
       }
       ui.updateDisplay(pa());
     }
@@ -395,8 +398,23 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     BotState.principalVariation = '-';
     BotState.recoveryAction = 'retry';
     BotState.statusInfo = error instanceof Error ? error.message : 'Engine failed';
+    if (BotState.autoRetry && BotState.hackEnabled) {
+      triggerAutoRetry(fen);
+    }
     ui.updateDisplay(pa());
   } finally {
     if (active === ctrl) active = null;
   }
+}
+
+function triggerAutoRetry(failedFen: string): void {
+  setTimeout(() => {
+    if (BotState.recoveryAction === 'retry' && BotState.hackEnabled) {
+      if (processed?.fen === failedFen) {
+        processed = null;
+      }
+      BotState.recoveryAction = null;
+      void scheduleAnalysis('main', failedFen);
+    }
+  }, 300);
 }

@@ -11,6 +11,7 @@ import {
   ClearIcon,
   CopyIcon,
   GhostIcon,
+  HelpIcon,
   KnightIcon,
   LightningIcon,
   OpeningStyleIcon,
@@ -47,6 +48,7 @@ export function getPanelCapabilityView(capabilities?: SiteCapabilities): PanelCa
 interface PanelSettings {
   enabled: boolean;
   autoMove: boolean;
+  autoRetry: boolean;
   openingBook: boolean;
   openingStyle: OpeningStyle;
   ponder: boolean;
@@ -77,25 +79,12 @@ interface PanelLog {
 
 type Tone = 'error' | 'paused' | 'working' | 'ready' | 'idle';
 
-interface PanelKeyEvent {
-  key?: string;
-  code: string;
-  ctrlKey?: boolean;
-  metaKey?: boolean;
-  altKey?: boolean;
-  shiftKey?: boolean;
-  composedPath?: () => unknown[];
-  target?: unknown;
-  preventDefault?: () => void;
-}
-
 const EDGE_MARGIN = 8;
 const DOCK_QUERY = '(max-width: 560px)';
 const COLLAPSED_KEY = 'scb_panel_collapsed';
 const MAX_LOG_ENTRIES = 100;
 const LOG_STICK_PX = 16;
 const COPY_FEEDBACK_MS = 1400;
-const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
 const readSettings = (): PanelSettings => ({
   enabled: !!BotState.hackEnabled,
@@ -109,6 +98,7 @@ const readSettings = (): PanelSettings => ({
   targetElo: BotState.targetElo,
   blunderShield: !!BotState.blunderShield,
   ghostMode: !!BotState.ghostMode,
+  autoRetry: !!BotState.autoRetry,
 });
 
 const settingsSignal = signal<PanelSettings>(readSettings());
@@ -208,6 +198,9 @@ function writeBotState<K extends keyof PanelSettings>(key: K, value: PanelSettin
       BotState.ghostMode = value ? 1 : 0;
       setGhostMode(!!value);
       break;
+    case 'autoRetry':
+      BotState.autoRetry = value ? 1 : 0;
+      break;
   }
 }
 
@@ -227,49 +220,6 @@ export function toggleGhostMode(actions?: PanelActions): boolean {
   const next = !settingsSignal.value.ghostMode;
   updatePanelSetting('ghostMode', next, actions);
   return next;
-}
-
-/** True for any focusable text target, so typing never triggers a panel shortcut. */
-function isEditableTarget(target: unknown): boolean {
-  if (!target || typeof target !== 'object') return false;
-  const element = target as { tagName?: string; isContentEditable?: boolean };
-  return element.isContentEditable === true || EDITABLE_TAGS.has((element.tagName ?? '').toUpperCase());
-}
-
-export function handlePanelKeyDown(
-  event: PanelKeyEvent,
-  actions: PanelActions = {},
-  toggleCollapsed?: () => void,
-  toggleGhostMode?: () => void,
-): void {
-  const target = event.composedPath ? event.composedPath()[0] : event.target;
-  if (isEditableTarget(target)) return;
-
-  if (event.key?.toLowerCase() === 'b' && event.ctrlKey && !event.metaKey) {
-    event.preventDefault?.();
-    toggleCollapsed?.();
-    return;
-  }
-  if (
-    (event.code === 'KeyG' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) ||
-    (event.key?.toLowerCase() === 'g' && event.ctrlKey && event.shiftKey)
-  ) {
-    event.preventDefault?.();
-    if (toggleGhostMode) {
-      toggleGhostMode();
-    } else {
-      updatePanelSetting('ghostMode', !settingsSignal.value.ghostMode, actions);
-    }
-    return;
-  }
-  if (event.ctrlKey || event.metaKey || event.altKey) return;
-  if (event.code === 'KeyE') {
-    event.preventDefault?.();
-    updatePanelSetting('enabled', !settingsSignal.value.enabled, actions);
-  } else if (event.code === 'KeyR' && analysisSignal.value.recoveryAction !== null) {
-    event.preventDefault?.();
-    actions.recover?.();
-  }
 }
 
 /* Position helpers. The panel floats on desktop and docks to the bottom edge on narrow screens (see CSS). */
@@ -351,8 +301,8 @@ function QuickEnableButton({ enabled, onToggle }: { enabled: boolean; onToggle: 
       type="button"
       class="panel-quick-enable"
       aria-pressed={enabled}
-      aria-label={enabled ? 'Disable bot (E)' : 'Enable bot (E)'}
-      title={enabled ? 'Disable bot (E)' : 'Enable bot (E)'}
+      aria-label={enabled ? 'Disable bot' : 'Enable bot'}
+      title={enabled ? 'Disable bot' : 'Enable bot'}
       onClick={() => onToggle(!enabled)}
     >
       <PowerIcon />
@@ -371,8 +321,8 @@ function EnableButton({ enabled, onToggle }: { enabled: boolean; onToggle: (enab
       type="button"
       class="panel-enable panel-enable-wide"
       aria-pressed={enabled}
-      aria-label={enabled ? 'Disable bot (E)' : 'Enable bot (E)'}
-      title={enabled ? 'Disable bot (E)' : 'Enable bot (E)'}
+      aria-label={enabled ? 'Disable bot' : 'Enable bot'}
+      title={enabled ? 'Disable bot' : 'Enable bot'}
       onClick={() => onToggle(!enabled)}
     >
       <span class="panel-enable-label">Enable bot</span>
@@ -551,46 +501,100 @@ function EvalTrendGraph({ history }: { history?: number[] }) {
   );
 }
 
-function Panel({
-  host,
-  actions,
-  capabilities,
-}: {
-  host: HTMLDivElement;
-  actions: PanelActions;
-  capabilities?: SiteCapabilities;
-}) {
+function PanelGuide({ onClose }: { onClose: () => void }) {
+  return (
+    <section class="panel-guide" aria-label="Super Chess Bot Guide">
+      <div class="panel-guide-head">
+        <span class="panel-guide-title">
+          <HelpIcon />
+          <span>Quick Guide & Controls</span>
+        </span>
+        <button type="button" class="panel-guide-close" aria-label="Close guide" title="Close guide" onClick={onClose}>
+          <ClearIcon />
+        </button>
+      </div>
+
+      <div class="panel-guide-section">
+        <span class="panel-guide-heading">Automation & Recovery</span>
+        <div class="panel-guide-item">
+          <strong>Auto Move & Auto Retry</strong>
+          <p>
+            When Auto Move is on, moves are played automatically. Auto Retry handles site input drops and network blips
+            with an immediate, smooth resync.
+          </p>
+        </div>
+        <div class="panel-guide-item">
+          <strong>Background Ponder</strong>
+          <p>Anticipates the opponent's reply and searches during their clock for instant, natural moves.</p>
+        </div>
+      </div>
+
+      <div class="panel-guide-section">
+        <span class="panel-guide-heading">Human Stealth & Pacing</span>
+        <div class="panel-guide-item">
+          <strong>Dynamic vs Fixed Timing</strong>
+          <p>
+            Dynamic timing uses Ex-Gaussian entropy distributions to scale thinking times with tactical complexity.
+            Fixed timing respects strict clock budgets.
+          </p>
+        </div>
+        <div class="panel-guide-item">
+          <strong>Target Elo & Blunder Shield</strong>
+          <p>
+            Boltzmann throttling naturally blends moves to a target rating (0 = full engine strength 3200+). The Blunder
+            Shield prevents catastrophic tactical blunders.
+          </p>
+        </div>
+        <div class="panel-guide-item">
+          <strong>Stream-Safe Ghost Mode</strong>
+          <p>
+            Hides all board arrows, evaluation bars, and floating controls for clean streaming and recording. Toggle
+            with the ghost icon or userscript menu.
+          </p>
+        </div>
+      </div>
+
+      <div class="panel-guide-section">
+        <span class="panel-guide-heading">Opening & Endgame Power</span>
+        <div class="panel-guide-item">
+          <strong>Opening Repertoire</strong>
+          <p>Choose from 5 styles: Hyper-Defensive, Defensive, Balanced, Aggressive, or Hyper-Aggressive (Gambits).</p>
+        </div>
+        <div class="panel-guide-item">
+          <strong>Multi-PV & Syzygy 7-Piece</strong>
+          <p>
+            Displays the top 3 alternative candidate lines and queries Lichess Syzygy tablebases in 7-piece endgames for
+            instant optimal play.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions; capabilities?: SiteCapabilities }) {
   // Signals are read during render; a parallel useState copy would only add a synchronization step.
   const settings = settingsSignal.value;
   const analysis = analysisSignal.value;
   const logs = logsSignal.value;
-  const capabilityView = getPanelCapabilityView(capabilities);
   const tone = statusTone(analysis, settings.enabled);
   const [collapsed, setCollapsed] = useState(() => readStoredCollapsed() ?? isDocked());
+  const [helpOpen, setHelpOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(() => !isDocked());
   const [copied, setCopied] = useState(false);
   const logElement = useRef<HTMLDivElement | null>(null);
   const stickToBottom = useRef(true);
   const copyTimer = useRef<number | null>(null);
 
-  const toggleCollapsed = () => setCollapsed((value) => !value);
+  const toggleCollapsed = () => {
+    setCollapsed((value) => !value);
+    setHelpOpen(false);
+  };
   const updateSetting = <K extends keyof PanelSettings>(key: K, value: PanelSettings[K]) =>
     updatePanelSetting(key, value, actions);
   const previewSlider = (key: 'depth' | 'moveTimeMs' | 'targetElo', value: number) => {
     settingsSignal.value = { ...settingsSignal.value, [key]: value };
   };
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) =>
-      handlePanelKeyDown(
-        event,
-        actions,
-        () => setCollapsed((value) => !value),
-        () => updatePanelSetting('ghostMode', !settingsSignal.value.ghostMode, actions),
-      );
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [actions]);
 
   useEffect(() => storeCollapsed(collapsed), [collapsed]);
 
@@ -720,15 +724,21 @@ function Panel({
           type="button"
           class={`panel-icon panel-ghost-toggle ${settings.ghostMode ? 'is-active' : ''}`}
           aria-pressed={settings.ghostMode}
-          aria-label={settings.ghostMode ? 'Disable ghost mode (G)' : 'Enable ghost mode (G)'}
-          title={
-            settings.ghostMode
-              ? 'Ghost mode active (G / Ctrl+Shift+G)'
-              : 'Enable stream-safe ghost mode (G / Ctrl+Shift+G)'
-          }
+          aria-label={settings.ghostMode ? 'Disable ghost mode' : 'Enable ghost mode'}
+          title={settings.ghostMode ? 'Ghost mode active' : 'Enable stream-safe ghost mode'}
           onClick={() => updateSetting('ghostMode', !settings.ghostMode)}
         >
           <GhostIcon />
+        </button>
+        <button
+          type="button"
+          class={`panel-icon panel-help-toggle ${helpOpen ? 'is-active' : ''}`}
+          aria-expanded={helpOpen}
+          aria-label="Bot guide"
+          title="Bot guide"
+          onClick={() => setHelpOpen((v) => !v)}
+        >
+          <HelpIcon />
         </button>
         {collapsed && (
           <QuickEnableButton enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />
@@ -739,241 +749,238 @@ function Panel({
           aria-expanded={!collapsed}
           aria-controls="panel-body"
           aria-label={collapsed ? 'Show panel' : 'Hide panel'}
-          title={collapsed ? 'Show panel (Ctrl+B)' : 'Hide panel (Ctrl+B)'}
+          title={collapsed ? 'Show panel' : 'Hide panel'}
           onClick={toggleCollapsed}
         >
           <Chevron />
         </button>
       </header>
 
-      {!collapsed && (
-        <div class="panel-body" id="panel-body">
-          <section class="panel-hero" aria-label="Suggested move">
-            <div class="panel-move-row">
-              <output class="panel-move" aria-label="Suggested move">
-                {move}
-              </output>
-              <output class="panel-score" aria-label="Evaluation">
-                {evaluation}
-              </output>
-            </div>
-            <p class="panel-line" title={analysis.principalVariation}>
-              {line}
-            </p>
-            {analysis.multiPvLines && analysis.multiPvLines.length > 1 && (
-              <div class="panel-multipv-list">
-                {analysis.multiPvLines.slice(0, 3).map((pvLine) => {
-                  const lineScore =
-                    typeof pvLine.evaluation.mate === 'number'
-                      ? `M${pvLine.evaluation.mate}`
-                      : typeof pvLine.evaluation.cp === 'number'
-                        ? pvLine.evaluation.cp > 0
-                          ? `+${(pvLine.evaluation.cp / 100).toFixed(2)}`
-                          : (pvLine.evaluation.cp / 100).toFixed(2)
-                        : '—';
-                  return (
-                    <div key={pvLine.multipv} class="panel-multipv-row" data-rank={pvLine.multipv}>
-                      <span class="panel-multipv-badge">#{pvLine.multipv}</span>
-                      <span class="panel-multipv-move">{pvLine.san || pvLine.uci}</span>
-                      <span class="panel-multipv-eval">{lineScore}</span>
-                      <span class="panel-multipv-pv" title={pvLine.pv}>
-                        {pvLine.pv}
-                      </span>
+      {helpOpen ? (
+        <PanelGuide onClose={() => setHelpOpen(false)} />
+      ) : (
+        !collapsed && (
+          <div class="panel-body" id="panel-body">
+            <section class="panel-hero" aria-label="Suggested move">
+              <div class="panel-move-row">
+                <output class="panel-move" aria-label="Suggested move">
+                  {move}
+                </output>
+                <output class="panel-score" aria-label="Evaluation">
+                  {evaluation}
+                </output>
+              </div>
+              <p class="panel-line" title={analysis.principalVariation}>
+                {line}
+              </p>
+              {analysis.multiPvLines && analysis.multiPvLines.length > 1 && (
+                <div class="panel-multipv-list">
+                  {analysis.multiPvLines.slice(0, 3).map((pvLine) => {
+                    const lineScore =
+                      typeof pvLine.evaluation.mate === 'number'
+                        ? `M${pvLine.evaluation.mate}`
+                        : typeof pvLine.evaluation.cp === 'number'
+                          ? pvLine.evaluation.cp > 0
+                            ? `+${(pvLine.evaluation.cp / 100).toFixed(2)}`
+                            : (pvLine.evaluation.cp / 100).toFixed(2)
+                          : '—';
+                    return (
+                      <div key={pvLine.multipv} class="panel-multipv-row" data-rank={pvLine.multipv}>
+                        <span class="panel-multipv-badge">#{pvLine.multipv}</span>
+                        <span class="panel-multipv-move">{pvLine.san || pvLine.uci}</span>
+                        <span class="panel-multipv-eval">{lineScore}</span>
+                        <span class="panel-multipv-pv" title={pvLine.pv}>
+                          {pvLine.pv}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <EvalTrendGraph history={analysis.evalHistory} />
+              {analysis.recoveryAction && (
+                <RecoveryNotice kind={analysis.recoveryAction} onRecover={() => actions.recover?.()} />
+              )}
+            </section>
+
+            <section class="panel-settings" aria-label="Bot settings">
+              <EnableButton enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />
+              <div class="panel-toggles">
+                <Toggle
+                  label="Auto move"
+                  checked={settings.autoMove}
+                  onChange={(next) => updateSetting('autoMove', next)}
+                />
+                <Toggle
+                  label="Auto retry"
+                  checked={settings.autoRetry}
+                  onChange={(next) => updateSetting('autoRetry', next)}
+                />
+                <Toggle
+                  label="Opening book"
+                  checked={settings.openingBook}
+                  onChange={(next) => updateSetting('openingBook', next)}
+                />
+                {settings.openingBook && (
+                  <div class="panel-opening-style-section">
+                    <div class="panel-segmented panel-opening-style-picker">
+                      {OPENING_STYLES.map((st) => (
+                        <button
+                          key={st.id}
+                          type="button"
+                          class="panel-segment"
+                          aria-pressed={settings.openingStyle === st.id}
+                          aria-label={st.label}
+                          title={st.tooltip}
+                          onClick={() => updateSetting('openingStyle', st.id)}
+                        >
+                          <OpeningStyleIcon style={st.id} />
+                        </button>
+                      ))}
                     </div>
-                  );
-                })}
-              </div>
-            )}
-            <EvalTrendGraph history={analysis.evalHistory} />
-            {analysis.recoveryAction && (
-              <RecoveryNotice kind={analysis.recoveryAction} onRecover={() => actions.recover?.()} />
-            )}
-          </section>
-
-          <section class="panel-settings" aria-label="Bot settings">
-            <EnableButton enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />
-            <div class="panel-toggles">
-              <Toggle
-                label="Auto move"
-                checked={settings.autoMove}
-                onChange={(next) => updateSetting('autoMove', next)}
-              />
-              <Toggle
-                label="Opening book"
-                checked={settings.openingBook}
-                onChange={(next) => updateSetting('openingBook', next)}
-              />
-              {settings.openingBook && (
-                <div class="panel-opening-style-section">
-                  <div class="panel-segmented panel-opening-style-picker">
-                    {OPENING_STYLES.map((st) => (
-                      <button
-                        key={st.id}
-                        type="button"
-                        class="panel-segment"
-                        aria-pressed={settings.openingStyle === st.id}
-                        aria-label={st.label}
-                        title={st.tooltip}
-                        onClick={() => updateSetting('openingStyle', st.id)}
-                      >
-                        <OpeningStyleIcon style={st.id} />
-                      </button>
-                    ))}
                   </div>
-                </div>
-              )}
-              <Toggle
-                label="Background ponder"
-                checked={settings.ponder}
-                onChange={(next) => updateSetting('ponder', next)}
-              />
-            </div>
-            {capabilityView.transportNote && <p class="panel-note">{capabilityView.transportNote}</p>}
-
-            <div class="panel-timing-row">
-              <span class="panel-timing-label">Timing mode</span>
-              <div class="panel-segmented panel-timing-segmented">
-                <button
-                  type="button"
-                  class="panel-segment panel-timing-segment"
-                  aria-pressed={settings.timingMode === 'dynamic'}
-                  aria-label="Dynamic timing"
-                  title="Dynamic: adaptive thinking time, natural pacing on forced moves & opening book"
-                  onClick={() => updateSetting('timingMode', 'dynamic')}
-                >
-                  <BrainIcon />
-                  <span>Dynamic</span>
-                </button>
-                <button
-                  type="button"
-                  class="panel-segment panel-timing-segment"
-                  aria-pressed={settings.timingMode === 'fixed'}
-                  aria-label="Fixed timing"
-                  title="Fixed: rigid full-budget thinking time per move"
-                  onClick={() => updateSetting('timingMode', 'fixed')}
-                >
-                  <LightningIcon />
-                  <span>Fixed</span>
-                </button>
+                )}
+                <Toggle
+                  label="Background ponder"
+                  checked={settings.ponder}
+                  onChange={(next) => updateSetting('ponder', next)}
+                />
               </div>
-            </div>
 
-            <Slider
-              id="bot-depth"
-              label="Depth cap"
-              value={settings.depth}
-              min={1}
-              max={30}
-              step={1}
-              format={String}
-              onPreview={(value) => previewSlider('depth', value)}
-              onCommit={(value) => updateSetting('depth', value)}
-            />
-            <Slider
-              id="move-budget"
-              label={settings.timingMode === 'dynamic' ? 'Move budget' : 'Move time'}
-              value={settings.moveTimeMs}
-              min={25}
-              max={5000}
-              step={25}
-              format={formatBudget}
-              hint={
-                settings.timingMode === 'dynamic'
-                  ? 'Adaptive: scales down for forced moves & adds human micro-delays'
-                  : 'Fixed: calculates for full duration on every move'
-              }
-              onPreview={(value) => previewSlider('moveTimeMs', value)}
-              onCommit={(value) => updateSetting('moveTimeMs', value)}
-            />
-            <Slider
-              id="bot-elo"
-              label="Target Elo"
-              value={settings.targetElo}
-              min={0}
-              max={3200}
-              step={50}
-              format={(v) => (v === 0 ? 'Max (3200+)' : `${v} Elo`)}
-              hint="Boltzmann human throttling (0 = unrestricted engine strength)"
-              onPreview={(value) => previewSlider('targetElo', value)}
-              onCommit={(value) => updateSetting('targetElo', value)}
-            />
-            {settings.targetElo > 0 && (
-              <Toggle
-                label="Blunder shield"
-                checked={settings.blunderShield}
-                onChange={(next) => updateSetting('blunderShield', next)}
-              />
-            )}
-            <Toggle
-              label="Stream-safe ghost mode"
-              checked={settings.ghostMode}
-              onChange={(next) => updateSetting('ghostMode', next)}
-            />
-          </section>
-
-          <section class="panel-activity" aria-label="Activity log">
-            <div class="panel-activity-head">
-              <button
-                type="button"
-                class="panel-disclosure"
-                aria-expanded={activityOpen}
-                aria-controls="panel-log"
-                onClick={() => setActivityOpen((value) => !value)}
-              >
-                Activity
-                <span class="panel-count">{logs.length}</span>
-              </button>
-              {activityOpen && (
-                <div class="panel-activity-actions">
+              <div class="panel-timing-row">
+                <span class="panel-timing-label">Timing mode</span>
+                <div class="panel-segmented panel-timing-segmented">
                   <button
                     type="button"
-                    class={`panel-icon-btn ${copied ? 'is-success' : ''}`}
-                    aria-label={copied ? 'Log copied to clipboard' : 'Copy log'}
-                    title={copied ? 'Copied!' : 'Copy log'}
-                    onClick={copyLogs}
+                    class="panel-segment panel-timing-segment"
+                    aria-pressed={settings.timingMode === 'dynamic'}
+                    aria-label="Dynamic timing"
+                    title="Dynamic: adaptive thinking time, natural pacing on forced moves & opening book"
+                    onClick={() => updateSetting('timingMode', 'dynamic')}
                   >
-                    {copied ? <CheckIcon /> : <CopyIcon />}
+                    <BrainIcon />
+                    <span>Dynamic</span>
                   </button>
                   <button
                     type="button"
-                    class="panel-icon-btn"
-                    aria-label="Clear log"
-                    title="Clear log"
-                    onClick={() => actions.clearConsole?.()}
+                    class="panel-segment panel-timing-segment"
+                    aria-pressed={settings.timingMode === 'fixed'}
+                    aria-label="Fixed timing"
+                    title="Fixed: rigid full-budget thinking time per move"
+                    onClick={() => updateSetting('timingMode', 'fixed')}
                   >
-                    <ClearIcon />
+                    <LightningIcon />
+                    <span>Fixed</span>
                   </button>
                 </div>
+              </div>
+
+              <Slider
+                id="bot-depth"
+                label="Depth cap"
+                value={settings.depth}
+                min={1}
+                max={30}
+                step={1}
+                format={String}
+                onPreview={(value) => previewSlider('depth', value)}
+                onCommit={(value) => updateSetting('depth', value)}
+              />
+              <Slider
+                id="move-budget"
+                label={settings.timingMode === 'dynamic' ? 'Move budget' : 'Move time'}
+                value={settings.moveTimeMs}
+                min={25}
+                max={5000}
+                step={25}
+                format={formatBudget}
+                onPreview={(value) => previewSlider('moveTimeMs', value)}
+                onCommit={(value) => updateSetting('moveTimeMs', value)}
+              />
+              <Slider
+                id="bot-elo"
+                label="Target Elo"
+                value={settings.targetElo}
+                min={0}
+                max={3200}
+                step={50}
+                format={(v) => (v === 0 ? 'Max (3200+)' : `${v} Elo`)}
+                onPreview={(value) => previewSlider('targetElo', value)}
+                onCommit={(value) => updateSetting('targetElo', value)}
+              />
+              {settings.targetElo > 0 && (
+                <Toggle
+                  label="Blunder shield"
+                  checked={settings.blunderShield}
+                  onChange={(next) => updateSetting('blunderShield', next)}
+                />
               )}
-            </div>
-            {activityOpen && (
-              <div
-                id="panel-log"
-                ref={logElement}
-                class="panel-log"
-                role="log"
-                aria-label="Engine activity"
-                aria-live="off"
-                tabIndex={0}
-                onScroll={() => {
-                  const log = logElement.current;
-                  if (log) stickToBottom.current = log.scrollHeight - log.scrollTop - log.clientHeight < LOG_STICK_PX;
-                }}
-              >
-                {logs.length === 0 ? (
-                  <p class="panel-log-empty">Moves and engine updates will appear here.</p>
-                ) : (
-                  logs.map((entry) => (
-                    <p key={entry.id} class={`panel-log-entry ${logTextClass[entry.type]}`}>
-                      <time>{entry.time}</time>
-                      <span>{entry.text}</span>
-                    </p>
-                  ))
+            </section>
+
+            <section class="panel-activity" aria-label="Activity log">
+              <div class="panel-activity-head">
+                <button
+                  type="button"
+                  class="panel-disclosure"
+                  aria-expanded={activityOpen}
+                  aria-controls="panel-log"
+                  onClick={() => setActivityOpen((value) => !value)}
+                >
+                  Activity
+                  <span class="panel-count">{logs.length}</span>
+                </button>
+                {activityOpen && (
+                  <div class="panel-activity-actions">
+                    <button
+                      type="button"
+                      class={`panel-icon-btn ${copied ? 'is-success' : ''}`}
+                      aria-label={copied ? 'Log copied to clipboard' : 'Copy log'}
+                      title={copied ? 'Copied!' : 'Copy log'}
+                      onClick={copyLogs}
+                    >
+                      {copied ? <CheckIcon /> : <CopyIcon />}
+                    </button>
+                    <button
+                      type="button"
+                      class="panel-icon-btn"
+                      aria-label="Clear log"
+                      title="Clear log"
+                      onClick={() => actions.clearConsole?.()}
+                    >
+                      <ClearIcon />
+                    </button>
+                  </div>
                 )}
               </div>
-            )}
-          </section>
-        </div>
+              {activityOpen && (
+                <div
+                  id="panel-log"
+                  ref={logElement}
+                  class="panel-log"
+                  role="log"
+                  aria-label="Engine activity"
+                  aria-live="off"
+                  tabIndex={0}
+                  onScroll={() => {
+                    const log = logElement.current;
+                    if (log) stickToBottom.current = log.scrollHeight - log.scrollTop - log.clientHeight < LOG_STICK_PX;
+                  }}
+                >
+                  {logs.length === 0 ? (
+                    <p class="panel-log-empty">Moves and engine updates will appear here.</p>
+                  ) : (
+                    logs.map((entry) => (
+                      <p key={entry.id} class={`panel-log-entry ${logTextClass[entry.type]}`}>
+                        <time>{entry.time}</time>
+                        <span>{entry.text}</span>
+                      </p>
+                    ))
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+        )
       )}
     </aside>
   );
