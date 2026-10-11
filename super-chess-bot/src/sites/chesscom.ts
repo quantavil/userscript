@@ -1,6 +1,15 @@
-import { cancelPendingMove, executeMove } from '../board.js';
-import { readPositionHistory } from '../history.js';
-import { getBoard, getFen, getRemainingMs } from './chesscom-state.js';
+import { canonicalFen, readPositionHistory } from '../history.js';
+import { installChesscomControllerBridge, setCapturedChesscomController } from './chesscom-bridge.js';
+import {
+  type ChessGame,
+  getBoard,
+  getFen,
+  getOrientation,
+  getRemainingMs,
+  getSideToMove,
+  isLegalChesscomMove,
+  resetStuckPromotionWindow,
+} from './chesscom-state.js';
 import {
   type Color,
   type GameSnapshot,
@@ -11,20 +20,12 @@ import {
   type SiteRead,
 } from './types.js';
 
-interface ChessGame {
-  id?: string | number;
-  getFEN?: () => string;
-  getPlayingAs?: () => number;
-  isGameOver?: () => boolean;
-  getHistoryFENs?: () => unknown;
-  getHistorySANs?: () => unknown;
-  on?: (event: string, listener: () => void) => void;
-  off?: (event: string, listener: () => void) => void;
-}
-
 interface ChessBoard extends HTMLElement {
   game?: ChessGame | null;
 }
+
+const DEFAULT_BRIDGE_ERROR =
+  'Chess.com board controller not captured. Enable synchronous page-context injection in your userscript manager, then reload.';
 
 let nextGameId = 0;
 const BOARD_SELECTOR = 'wc-chess-board, chess-board, .board';
@@ -71,7 +72,7 @@ function isRelevantMutation(records: MutationRecord[]): boolean {
     const onResult = !!closestOrSelf(target, RESULT_SELECTOR);
 
     if (record.type === 'attributes') {
-      if (record.attributeName === 'orientation' || record.attributeName === 'data-game-id') return onBoard;
+      if (record.attributeName === 'data-game-id') return onBoard;
       if (record.attributeName === 'class') return onBoard || onClock || onResult;
       return false;
     }
@@ -87,25 +88,33 @@ function isRelevantMutation(records: MutationRecord[]): boolean {
   });
 }
 
+/** Read Chess.com through its captured board controller and submit moves through it. */
 export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdapter {
   let currentBoard: ChessBoard | null = null;
   let currentGame: ChessGame | null = null;
   let currentIdentity: object | null = null;
   let currentGameId = '';
+  let controller: ChessGame | null = null;
+  let bridgeInstalled = false;
 
   const read = (): SiteRead => {
+    if (!ensureBridge()) return { kind: 'ineligible', reason: 'Chess.com controller hook is unavailable' };
     const doc = page().document;
     const board = getBoard(doc) as ChessBoard | null;
     if (!board) return { kind: 'waiting', reason: 'Waiting for board' };
-    const game = board.game;
-    if (!game || typeof game.getFEN !== 'function') return { kind: 'waiting', reason: 'Waiting for game state' };
+    const liveGame = (board.game ?? null) as ChessGame | null;
+    if (liveGame && typeof liveGame.getFEN === 'function' && liveGame !== controller) {
+      controller = liveGame;
+      setCapturedChesscomController(liveGame);
+    }
+    const game = controller ?? liveGame;
+    if (!game || typeof game.getFEN !== 'function') return { kind: 'waiting', reason: DEFAULT_BRIDGE_ERROR };
     const fen = getFen(game);
     if (!fen) return { kind: 'ineligible', reason: 'Chess.com position is unavailable' };
-    const fields = fen.split(' ');
-    if (fields.length < 2 || (fields[1] !== 'w' && fields[1] !== 'b')) {
+    const sideToMove = getSideToMove(game);
+    if (sideToMove !== 'w' && sideToMove !== 'b') {
       return { kind: 'ineligible', reason: 'Chess.com position is malformed' };
     }
-    const sideToMove = fields[1] as Color;
     const playingAs = game.getPlayingAs?.();
     if (playingAs !== 1 && playingAs !== 2)
       return { kind: 'ineligible', reason: 'Chess.com player color is unavailable' };
@@ -119,9 +128,10 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
       currentGameId = declaredId == null ? `chesscom-${++nextGameId}` : String(declaredId);
     }
 
-    const orientation =
-      board.getAttribute('orientation') === 'black' || board.classList.contains('flipped') ? 'black' : 'white';
+    const orientation = getOrientation(game);
     const phase = game.isGameOver?.() || doc.querySelector('.game-over-modal-content') ? 'finished' : 'live';
+    const controllerState = game.getState?.();
+    const settled = controllerState === undefined || controllerState === 'Idle';
     const history = readPositionHistory(game, fen);
     const confirmedFensRaw = game.getHistoryFENs?.();
     const confirmedFens = Array.isArray(confirmedFensRaw)
@@ -136,7 +146,7 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
       sideToMove,
       orientation,
       phase,
-      inputReady: phase === 'live' && sideToMove === playerColor,
+      inputReady: phase === 'live' && sideToMove === playerColor && settled,
       remainingMs: getRemainingMs(doc),
       ...(history ? { history } : {}),
       ...(confirmedFens ? { confirmedFens } : {}),
@@ -144,37 +154,93 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
     return { kind: 'game', snapshot };
   };
 
+  const fingerprint = (read: SiteRead): string =>
+    read.kind === 'game'
+      ? JSON.stringify([
+          read.snapshot.gameId,
+          read.snapshot.fen,
+          read.snapshot.playerColor,
+          read.snapshot.sideToMove,
+          read.snapshot.orientation,
+          read.snapshot.phase,
+          read.snapshot.inputReady,
+          read.snapshot.history?.moves,
+        ])
+      : JSON.stringify([read.kind, read.reason]);
+
+  const notify = () => {
+    const next = read();
+    const nextFingerprint = fingerprint(next);
+    if (next.kind === 'game' && lastNotifiedIdentity !== next.snapshot.identity) {
+      lastNotifiedIdentity = next.snapshot.identity;
+      previousFingerprint = '';
+    }
+    if (nextFingerprint === previousFingerprint) return;
+    previousFingerprint = nextFingerprint;
+    for (const listener of [...listeners]) {
+      try {
+        listener();
+      } catch (error) {
+        console.error('Super Chess Bot: site listener failed.', error);
+      }
+    }
+  };
+  let lastNotifiedIdentity: object | null = null;
+  let previousFingerprint = '';
+  const listeners = new Set<() => void>();
+
+  const instrumentController = (captured: unknown) => {
+    if (!captured || typeof captured !== 'object') return;
+    controller = captured as ChessGame;
+    notify();
+  };
+
+  const ensureBridge = (): boolean => {
+    if (bridgeInstalled) return true;
+    try {
+      bridgeInstalled = installChesscomControllerBridge(
+        page() as Window & { customElements?: CustomElementRegistry | undefined },
+        instrumentController,
+      );
+    } catch {
+      bridgeInstalled = false;
+    }
+    return bridgeInstalled;
+  };
+
+  ensureBridge();
+
   return {
     id: 'chesscom',
-    capabilities: { input: 'gestures' },
-    read,
+    capabilities: { input: 'controller' },
+    read: () => read(),
     subscribe(listener) {
+      listeners.add(listener);
       let stopObserving = () => {};
-      let observedBoard: ChessBoard | null = null;
       let observedGame: ChessGame | null = null;
       let moveListener: (() => void) | null = null;
       let queued = false;
       let active = true;
       const initial = read();
       let previous = readFingerprint(initial);
+      previousFingerprint = fingerprint(initial);
+      if (initial.kind === 'game') lastNotifiedIdentity = initial.snapshot.identity;
       const detachGame = () => {
         if (observedGame && moveListener) observedGame.off?.('Move', moveListener);
         observedGame = null;
         moveListener = null;
       };
       const bind = (result: SiteRead) => {
-        const board = result.kind === 'game' ? (result.snapshot.board as ChessBoard) : null;
-        const game = board?.game ?? null;
-        if (board === observedBoard && game === observedGame) return;
+        const game = result.kind === 'game' ? currentGame : null;
+        if (game === observedGame) return;
         detachGame();
-        observedBoard = board;
         if (game && typeof game.on === 'function' && typeof game.off === 'function') {
           observedGame = game;
-          moveListener = notify;
+          moveListener = notifySubscribed;
           game.on('Move', moveListener);
         }
       };
-      const notify = () => {
+      const notifySubscribed = () => {
         if (!active) return;
         const result = read();
         bind(result);
@@ -197,38 +263,53 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
           queued = true;
           queueMicrotask(() => {
             queued = false;
-            notify();
+            notifySubscribed();
           });
         });
         observer.observe(doc.body, {
           childList: true,
           subtree: true,
           attributes: true,
-          attributeFilter: ['class', 'orientation', 'data-game-id'],
+          attributeFilter: ['class', 'data-game-id'],
           characterData: true,
         });
         stopObserving = () => observer.disconnect();
       }
       return () => {
         active = false;
+        listeners.delete(listener);
         stopObserving();
         detachGame();
       };
     },
     async submitMove(request: MoveRequest) {
       if (request.signal.aborted || !request.isCurrent()) return false;
-      return executeMove(
-        request.uci.slice(0, 2),
-        request.uci.slice(2, 4),
-        request.fromFen,
-        request.uci[4],
-        undefined,
-        undefined,
-        request.expectedFen,
-      );
+      if (currentGame) resetStuckPromotionWindow(currentGame);
+      const current = read();
+      if (
+        current.kind !== 'game' ||
+        current.snapshot.identity !== request.identity ||
+        canonicalFen(current.snapshot.fen) !== canonicalFen(request.fromFen) ||
+        !current.snapshot.inputReady
+      )
+        return false;
+      const game = currentGame;
+      if (!game || typeof game.move !== 'function') return false;
+      const uci = request.uci;
+      if (typeof uci !== 'string' || uci.length < 4) return false;
+      const from = uci.slice(0, 2);
+      const to = uci.slice(2, 4);
+      const promotionChar = uci.length > 4 ? uci[4].toLowerCase() : '';
+      const promotion = /^[qrbn]$/.test(promotionChar) ? promotionChar : undefined;
+      if (!isLegalChesscomMove(game, from, to)) return false;
+      if (request.signal.aborted || !request.isCurrent() || currentGame !== game) return false;
+      try {
+        const result = game.move({ from, to, ...(promotion ? { promotion } : {}) });
+        return result?.type === 'Move';
+      } catch {
+        return false;
+      }
     },
-    cancelInput() {
-      cancelPendingMove();
-    },
+    cancelInput() {},
   };
 }

@@ -189,26 +189,15 @@ describe('panel hotkeys and settings', () => {
 
     updatePanelSetting('moveTimeMs', 50);
     expect(BotState.moveTime).toBe(50);
-
-    updatePanelSetting('moveMethod', 'drag');
-    expect(BotState.moveMethod).toBe('drag');
   });
 
-  it('shows site-supported controls without changing hidden saved settings', () => {
-    BotState.moveMethod = 'drag';
-
+  it('shows site-supported controls for each transport', () => {
     expect(getPanelCapabilityView({ input: 'selection' })).toEqual({
-      showMoveMethod: false,
       transportNote: 'Moves use legal square selection on this site.',
     });
-    expect(BotState.moveMethod).toBe('drag');
-    expect(getPanelCapabilityView({ input: 'gestures' })).toEqual({
-      showMoveMethod: true,
-      transportNote: null,
-    });
     expect(getPanelCapabilityView({ input: 'controller' })).toEqual({
-      showMoveMethod: false,
       transportNote: 'Moves use the active game controller.',
     });
+    expect(getPanelCapabilityView(undefined)).toEqual({ transportNote: null });
   });
 });

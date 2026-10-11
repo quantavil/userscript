@@ -68,7 +68,6 @@ export const BotState: BotStateInterface = {
   statusInfo: 'Ready',
   recoveryAction: null,
   ponderEnabled: 1,
-  moveMethod: 'click', // 'click' or 'drag'
 };
 
 // Settings persistence
@@ -83,7 +82,6 @@ export const Settings = {
         autoMove: BotState.autoMove,
         openingBook: BotState.openingBook,
         ponderEnabled: BotState.ponderEnabled,
-        moveMethod: BotState.moveMethod,
         menuPosition: menuWrap ? { top: menuWrap.style.top, left: menuWrap.style.left } : null,
       };
       localStorage.setItem('gabibot_settings', JSON.stringify(settings));

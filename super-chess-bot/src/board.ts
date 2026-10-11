@@ -1,20 +1,7 @@
 import type { Coordinates } from './board-input.js';
-import { activateElement, simulateClickMove, simulateDragMove } from './board-input.js';
 import { canonicalFen } from './history.js';
-import { findPromotionOption } from './promotion.js';
 import type { MoveRequest, SiteAdapter, SiteRead } from './sites/types.js';
-import {
-  BotState,
-  getBoard,
-  getFen,
-  getGame,
-  getPlayerColor,
-  invalidateGameCache,
-  isBoardFlipped,
-  isPlayersTurn,
-  pa,
-} from './state.js';
-import { sleep } from './utils.js';
+import { BotState, getBoard, getGame, getPlayerColor, invalidateGameCache, isBoardFlipped, pa } from './state.js';
 
 interface BoardContext {
   boardEl: HTMLElement;
@@ -28,8 +15,6 @@ interface BoardContext {
 let boardCtx: BoardContext | null = null;
 let observedOrientation: 'white' | 'black' | null = null;
 let moveRevision = 0;
-let moveExecutionActive = false;
-const pendingMoveConfirmations = new Set<AbortController>();
 const boardInputListeners = new Set<() => void>();
 
 // Move Watcher State
@@ -315,82 +300,6 @@ export function drawArrow(uciFrom: string, uciTo: string, color: string, thickne
   ctx.fill();
 }
 
-function getTargetAt(x: number, y: number): Element {
-  return document.elementFromPoint(x, y) || boardCtx?.boardEl || document.body;
-}
-
-function getMoveCoordinates(from: string, to: string): { a: Coordinates; b: Coordinates } | null {
-  const a = getSquareCenterClientXY(from);
-  const b = getSquareCenterClientXY(to);
-  if (!a || !b) return null;
-  return { a, b };
-}
-
-export async function waitForFenChange(
-  prevFen: string,
-  timeout = 1000,
-  expectedFen?: string,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (signal?.aborted) {
-      resolve(false);
-      return;
-    }
-    let done = false;
-    let unsubscribe = () => {};
-    let frame: number | undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const finish = (accepted: boolean) => {
-      if (done) return;
-      done = true;
-      unsubscribe();
-      signal?.removeEventListener('abort', onAbort);
-      if (timer) clearTimeout(timer);
-      if (frame !== undefined) cancelAnimationFrame(frame);
-      resolve(accepted);
-    };
-    const check = () => {
-      const game = getGame();
-      const fen = getFen(game);
-      if (fen && fen !== prevFen) {
-        if (!expectedFen) {
-          finish(true);
-          return;
-        }
-        const comparable = (f: string) =>
-          f
-            .split(' ')
-            .filter((_, i) => i !== 3)
-            .join(' ');
-        const expectedComp = comparable(expectedFen);
-        if (comparable(fen) === expectedComp) {
-          finish(true);
-          return;
-        }
-        const history = game?.getHistoryFENs?.();
-        if (Array.isArray(history) && history.some((h) => typeof h === 'string' && comparable(h) === expectedComp)) {
-          finish(true);
-          return;
-        }
-        finish(false);
-      }
-    };
-    const onAbort = () => {
-      check();
-      if (!done) finish(false);
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-    unsubscribe = onBoardMutation(check);
-    timer = setTimeout(() => finish(false), timeout);
-    const poll = () => {
-      check();
-      if (!done) frame = requestAnimationFrame(poll);
-    };
-    poll();
-  });
-}
-
 /** Confirm a site move only from the accepted position at its expected ply. */
 export function confirmSiteMove(request: MoveRequest, adapter: SiteAdapter, timeout = 1000): Promise<boolean> {
   const expectedFen = canonicalFen(request.expectedFen);
@@ -465,38 +374,8 @@ export function confirmSiteMove(request: MoveRequest, adapter: SiteAdapter, time
   });
 }
 
-async function maybeSelectPromotion(prefer = 'q', guard: () => boolean = () => true): Promise<boolean> {
-  if (!/^[qrbn]$/i.test(prefer)) return false;
-  const getCandidates = () =>
-    Array.from(
-      document.querySelectorAll(
-        '[data-test-element*="promotion"], [class*="promotion"] [class*="piece"], [class*="promotion"] button, .promotion-piece',
-      ),
-    ).filter((el) => {
-      const option = el as HTMLElement;
-      // Chess.com keeps its promotion choices mounted while the picker is closed.
-      if (option.getClientRects().length === 0) return false;
-      const style = getComputedStyle(option);
-      return style.display !== 'none' && style.visibility !== 'hidden';
-    }) as HTMLElement[];
-  const tryClick = async (el: HTMLElement): Promise<boolean> => {
-    return activateElement(el, getTargetAt, guard);
-  };
-  const start = Date.now();
-  while (Date.now() - start < 1000) {
-    if (!guard()) return false;
-    const nodes = getCandidates();
-    const match = findPromotionOption(nodes, prefer);
-    if (match && guard() && (await tryClick(match))) return true;
-    await sleep(60);
-  }
-  return false;
-}
-
 export function cancelPendingMove(): void {
   moveRevision++;
-  for (const controller of pendingMoveConfirmations) controller.abort();
-  pendingMoveConfirmations.clear();
 }
 export function getMoveRevision(): number {
   return moveRevision;
@@ -508,54 +387,6 @@ function setStyleIfChanged(
   value: string,
 ): void {
   if (element.style[property] !== value) element.style[property] = value;
-}
-
-export async function executeMove(
-  from: string,
-  to: string,
-  analysisFen: string,
-  promotionChar?: string | null,
-  _depth?: number,
-  _tickCallback?: () => void,
-  expectedFen?: string,
-): Promise<boolean> {
-  if (moveExecutionActive) return false;
-  const revision = moveRevision;
-  const game = getGame();
-  if (!BotState.hackEnabled || !BotState.autoMove || !game || !isPlayersTurn(game) || getFen(game) !== analysisFen)
-    return false;
-  moveExecutionActive = true;
-  const confirmationController = new AbortController();
-  pendingMoveConfirmations.add(confirmationController);
-  const guard = () =>
-    revision === moveRevision && !!BotState.hackEnabled && !!BotState.autoMove && getFen(getGame()) === analysisFen;
-  let confirmation: Promise<boolean> | undefined;
-  try {
-    BotState.statusInfo = 'Submitting move...';
-    BotState.onUpdateDisplay?.(pa());
-    // Subscribe before dispatch so a fast move and reply cannot skip confirmation.
-    confirmation = waitForFenChange(analysisFen, 1000, expectedFen, confirmationController.signal);
-    const sent =
-      BotState.moveMethod === 'drag'
-        ? await simulateDragMove(from, to, { getMoveCoordinates, getTargetAt, guard })
-        : await simulateClickMove(from, to, { getMoveCoordinates, getTargetAt, guard });
-    if (!sent) return false;
-    if (promotionChar && guard() && !(await maybeSelectPromotion(promotionChar, guard))) return false;
-    const accepted = await confirmation;
-    if (revision === moveRevision) {
-      BotState.statusInfo = accepted ? 'Move confirmed' : 'Move not confirmed; waiting for position change';
-      BotState.onUpdateDisplay?.(pa());
-    }
-    return accepted;
-  } finally {
-    confirmationController.abort();
-    pendingMoveConfirmations.delete(confirmationController);
-    moveExecutionActive = false;
-    if (revision === moveRevision && BotState.statusInfo === 'Submitting move...') {
-      BotState.statusInfo = 'Move input failed';
-      BotState.onUpdateDisplay?.(pa());
-    }
-  }
 }
 
 export function updateEvaluationBar(evaluation: string | number, _playingAs?: number): void {

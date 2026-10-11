@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { attachToBoard, onBoardMutation, startMoveWatcher, stopMoveWatcher } from '../src/board.js';
+import { resetCapturedChesscomController } from '../src/sites/chesscom-bridge.js';
 import { invalidateGameCache, isBoardFlipped } from '../src/state.js';
 
 afterEach(() => {
@@ -7,6 +8,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   invalidateGameCache();
+  resetCapturedChesscomController();
 });
 describe('board position subscription', () => {
   it('notifies immediately from Move and detaches the subscription', () => {
@@ -133,18 +135,31 @@ describe('board position subscription', () => {
     expect(disconnect).toHaveBeenCalled();
   });
 
-  it('reads board orientation changes immediately', () => {
-    let orientation = 'white';
+  it('reads board orientation from the captured controller options', () => {
+    let flipped = false;
+    const game = {
+      getFEN: () => 'position',
+      getPlayingAs: () => 1,
+      getOptions: () => ({ flipped }),
+    };
+    vi.stubGlobal('document', boardDocument([visibleBoard(game)]));
+    vi.spyOn(Date, 'now').mockReturnValue(10_000);
+
+    expect(isBoardFlipped()).toBe(false);
+    flipped = true;
+    expect(isBoardFlipped()).toBe(true);
+  });
+
+  it('ignores DOM orientation attributes without controller options', () => {
     const board = {
-      getAttribute: (name: string) => (name === 'orientation' ? orientation : null),
-      classList: { contains: () => false },
+      game: { getFEN: () => 'position', getPlayingAs: () => 1 },
+      getAttribute: (name: string) => (name === 'orientation' ? 'black' : null),
+      classList: { contains: () => true },
     };
     vi.stubGlobal('document', boardDocument([board]));
     vi.spyOn(Date, 'now').mockReturnValue(10_000);
 
     expect(isBoardFlipped()).toBe(false);
-    orientation = 'black';
-    expect(isBoardFlipped()).toBe(true);
   });
 });
 

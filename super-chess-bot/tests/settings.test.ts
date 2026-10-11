@@ -25,7 +25,6 @@ describe('loadSettings', () => {
       autoMove: 1,
       openingBook: 1,
       ponderEnabled: 1,
-      moveMethod: 'click',
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);
@@ -40,7 +39,6 @@ describe('loadSettings', () => {
       autoMove: 1,
       openingBook: 1,
       ponderEnabled: 1,
-      moveMethod: 'click',
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);
@@ -55,7 +53,6 @@ describe('loadSettings', () => {
       autoMove: 1,
       openingBook: 1,
       ponderEnabled: 1,
-      moveMethod: 'click',
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);

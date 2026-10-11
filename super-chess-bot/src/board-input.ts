@@ -5,12 +5,6 @@ export interface Coordinates {
   y: number;
 }
 
-export interface BoardInputContext {
-  getMoveCoordinates(from: string, to: string): { a: Coordinates; b: Coordinates } | null;
-  getTargetAt(x: number, y: number): Element;
-  guard?: () => boolean;
-}
-
 function dispatchPointerOrMouse(el: Element | null, type: string, opts: PointerEventInit, usePointer: boolean): void {
   if (!el) return;
   const mouseType = type.replace('pointer', 'mouse');
@@ -52,61 +46,6 @@ function clickAt(el: Element, x: number, y: number): void {
   el.dispatchEvent(
     new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y }),
   );
-}
-
-export async function simulateClickMove(from: string, to: string, context: BoardInputContext): Promise<boolean> {
-  const coords = context.getMoveCoordinates(from, to);
-  const guard = context.guard ?? (() => true);
-  if (!coords || !guard()) return false;
-  const { a, b } = coords;
-  const usePointer = !!window.PointerEvent;
-  const startEl = context.getTargetAt(a.x, a.y);
-
-  pressAt(startEl, a.x, a.y, usePointer);
-  await sleep(2);
-  releaseAt(startEl, a.x, a.y, usePointer);
-  clickAt(startEl, a.x, a.y);
-  await sleep(4);
-
-  if (!guard()) return false;
-  const endEl = context.getTargetAt(b.x, b.y);
-  pressAt(endEl, b.x, b.y, usePointer);
-  await sleep(2);
-  releaseAt(endEl, b.x, b.y, usePointer);
-  clickAt(endEl, b.x, b.y);
-  return true;
-}
-
-export async function simulateDragMove(from: string, to: string, context: BoardInputContext): Promise<boolean> {
-  const coords = context.getMoveCoordinates(from, to);
-  const guard = context.guard ?? (() => true);
-  if (!coords || !guard()) return false;
-  const { a, b } = coords;
-  const usePointer = !!window.PointerEvent;
-  const startEl = context.getTargetAt(a.x, a.y);
-  pressAt(startEl, a.x, a.y, usePointer);
-  await sleep(4);
-
-  for (let i = 1; i <= 2; i++) {
-    const t = i / 2;
-    const x = a.x + (b.x - a.x) * t;
-    const y = a.y + (b.y - a.y) * t;
-    const stepTarget = context.getTargetAt(x, y);
-    dispatchPointerOrMouse(
-      stepTarget,
-      usePointer ? 'pointermove' : 'mousemove',
-      createPointerOpts(x, y, 1),
-      usePointer,
-    );
-    await sleep(4);
-  }
-  if (!guard()) {
-    releaseAt(startEl, a.x, a.y, usePointer);
-    return false;
-  }
-  const endEl = context.getTargetAt(b.x, b.y);
-  releaseAt(endEl, b.x, b.y, usePointer);
-  return true;
 }
 
 export async function activateElement(

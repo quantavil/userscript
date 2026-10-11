@@ -8,7 +8,6 @@ export const DEFAULT_SETTINGS: SettingsData = {
   autoMove: 1,
   openingBook: 1,
   ponderEnabled: 1,
-  moveMethod: 'click',
   menuPosition: null,
 };
 
@@ -27,7 +26,6 @@ const savedSettingsSchema = v.object({
   autoMove: v.optional(flagSchema),
   openingBook: v.optional(flagSchema),
   ponderEnabled: v.optional(flagSchema),
-  moveMethod: v.optional(v.picklist(['click', 'drag'])),
   menuPosition: v.optional(v.nullable(positionSchema)),
 });
 

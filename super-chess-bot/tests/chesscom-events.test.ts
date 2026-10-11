@@ -1,8 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createChesscomAdapter } from '../src/sites/chesscom.js';
+import { resetCapturedChesscomController } from '../src/sites/chesscom-bridge.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+
+afterEach(() => {
+  resetCapturedChesscomController();
+});
 
 describe('Chess.com adapter events', () => {
   it('ignores bot overlays and unrelated body mutations', async () => {
@@ -149,6 +154,9 @@ function makeGame(readFen: () => string = () => START_FEN) {
     id: 'game-one',
     getFEN: readFen,
     getPlayingAs: () => 1,
+    getTurn: () => (readFen().split(' ')[1] === 'b' ? 2 : 1),
+    getOptions: () => ({ flipped: false, isWhiteOnBottom: true, id: 'game-one' }),
+    getState: () => 'Idle',
     isGameOver: () => false,
     on: (_event: string, listener: () => void) => {
       moveListener = listener;

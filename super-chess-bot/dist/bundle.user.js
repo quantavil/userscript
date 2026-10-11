@@ -23,139 +23,6 @@
 
 (function() {
 	"use strict";
-	function debounce(fn, wait = 150) {
-		let t = null;
-		return (...args) => {
-			if (t !== null) clearTimeout(t);
-			t = setTimeout(() => fn(...args), wait);
-		};
-	}
-	var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-	function scoreToDisplay(score) {
-		if (typeof score?.mate === "number" && score.mate !== 0) return `M${score.mate}`;
-		if (typeof score?.cp === "number") return (score.cp / 100).toFixed(2);
-		return "-";
-	}
-	function dispatchPointerOrMouse(el, type, opts, usePointer) {
-		if (!el) return;
-		const mouseType = type.replace("pointer", "mouse");
-		if (usePointer) try {
-			el.dispatchEvent(new PointerEvent(type, {
-				bubbles: true,
-				cancelable: true,
-				composed: true,
-				...opts
-			}));
-			el.dispatchEvent(new MouseEvent(mouseType, {
-				bubbles: true,
-				cancelable: true,
-				composed: true,
-				...opts
-			}));
-			return;
-		} catch {}
-		el.dispatchEvent(new MouseEvent(mouseType, {
-			bubbles: true,
-			cancelable: true,
-			composed: true,
-			...opts
-		}));
-	}
-	function createPointerOpts(x, y, buttons) {
-		return {
-			clientX: x,
-			clientY: y,
-			screenX: x + (typeof window !== "undefined" ? window.screenX || 0 : 0),
-			screenY: y + (typeof window !== "undefined" ? window.screenY || 0 : 0),
-			buttons,
-			pointerId: 1,
-			pointerType: "mouse",
-			isPrimary: true,
-			bubbles: true,
-			cancelable: true,
-			composed: true
-		};
-	}
-	function pressAt(el, x, y, usePointer) {
-		dispatchPointerOrMouse(el, usePointer ? "pointerdown" : "mousedown", createPointerOpts(x, y, 1), usePointer);
-	}
-	function releaseAt(el, x, y, usePointer) {
-		dispatchPointerOrMouse(el, usePointer ? "pointerup" : "mouseup", createPointerOpts(x, y, 0), usePointer);
-	}
-	function clickAt(el, x, y) {
-		el.dispatchEvent(new MouseEvent("click", {
-			bubbles: true,
-			cancelable: true,
-			composed: true,
-			clientX: x,
-			clientY: y
-		}));
-	}
-	async function simulateClickMove(from, to, context) {
-		const coords = context.getMoveCoordinates(from, to);
-		const guard = context.guard ?? (() => true);
-		if (!coords || !guard()) return false;
-		const { a, b } = coords;
-		const usePointer = !!window.PointerEvent;
-		const startEl = context.getTargetAt(a.x, a.y);
-		pressAt(startEl, a.x, a.y, usePointer);
-		await sleep(2);
-		releaseAt(startEl, a.x, a.y, usePointer);
-		clickAt(startEl, a.x, a.y);
-		await sleep(4);
-		if (!guard()) return false;
-		const endEl = context.getTargetAt(b.x, b.y);
-		pressAt(endEl, b.x, b.y, usePointer);
-		await sleep(2);
-		releaseAt(endEl, b.x, b.y, usePointer);
-		clickAt(endEl, b.x, b.y);
-		return true;
-	}
-	async function simulateDragMove(from, to, context) {
-		const coords = context.getMoveCoordinates(from, to);
-		const guard = context.guard ?? (() => true);
-		if (!coords || !guard()) return false;
-		const { a, b } = coords;
-		const usePointer = !!window.PointerEvent;
-		const startEl = context.getTargetAt(a.x, a.y);
-		pressAt(startEl, a.x, a.y, usePointer);
-		await sleep(4);
-		for (let i = 1; i <= 2; i++) {
-			const t = i / 2;
-			const x = a.x + (b.x - a.x) * t;
-			const y = a.y + (b.y - a.y) * t;
-			dispatchPointerOrMouse(context.getTargetAt(x, y), usePointer ? "pointermove" : "mousemove", createPointerOpts(x, y, 1), usePointer);
-			await sleep(4);
-		}
-		if (!guard()) {
-			releaseAt(startEl, a.x, a.y, usePointer);
-			return false;
-		}
-		releaseAt(context.getTargetAt(b.x, b.y), b.x, b.y, usePointer);
-		return true;
-	}
-	async function activateElement(element, getTargetAt, guard) {
-		try {
-			const rect = element.getBoundingClientRect();
-			if (!rect.width || !rect.height) return false;
-			const x = rect.left + rect.width / 2;
-			const y = rect.top + rect.height / 2;
-			const target = getTargetAt(x, y);
-			if (target !== element && !element.contains(target)) return false;
-			const usePointer = !!window.PointerEvent;
-			pressAt(target, x, y, usePointer);
-			await sleep(2);
-			if (!guard()) {
-				releaseAt(target, x, y, usePointer);
-				return false;
-			}
-			releaseAt(target, x, y, usePointer);
-			clickAt(target, x, y);
-			return true;
-		} catch {
-			return false;
-		}
-	}
 	var _Result = class {
 		unwrap(ok, err) {
 			const r = this._chain((value) => Result.ok(ok ? ok(value) : value), (error) => err ? Result.ok(err(error)) : Result.err(error));
@@ -1617,44 +1484,6 @@
 			return;
 		}
 	}
-	var pieceNames = {
-		q: "queen",
-		r: "rook",
-		b: "bishop",
-		n: "knight"
-	};
-	function pieceFromToken(token) {
-		const value = token.toLowerCase();
-		if (value === "q" || value === "r" || value === "b" || value === "n") return value;
-		if (/^[wb][qrbn]$/.test(value)) return value[1];
-		return Object.entries(pieceNames).find(([, name]) => name === value)?.[0] ?? null;
-	}
-	function promotionPieceFromLabel(label) {
-		if (typeof label !== "string") return null;
-		const tokens = label.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-		const pieces = new Set(tokens.map(pieceFromToken).filter((piece) => piece !== null));
-		return pieces.size === 1 ? pieces.values().next().value ?? null : null;
-	}
-	function findPromotionOption(options, requested) {
-		const piece = promotionPieceFromLabel(requested);
-		if (!piece) return null;
-		for (const option of options) {
-			const className = typeof option.className === "string" ? option.className : option.className?.baseVal;
-			if ([
-				option.dataset?.piece,
-				option.dataset?.pieceType,
-				option.dataset?.testElement,
-				option.getAttribute?.("data-piece"),
-				option.getAttribute?.("data-piece-type"),
-				option.getAttribute?.("data-test-element"),
-				option.getAttribute?.("aria-label"),
-				option.getAttribute?.("title"),
-				className,
-				option.textContent
-			].some((label) => promotionPieceFromLabel(label) === piece)) return option;
-		}
-		return null;
-	}
 	var DEFAULT_CONFIG = {
 		lang: void 0,
 		message: void 0,
@@ -1918,22 +1747,6 @@
 			}
 		});
 	}
-	function picklist(options, message$1) {
-		return _standardSchema({
-			kind: "schema",
-			type: "picklist",
-			reference: picklist,
-			expects: _joinExpects(options.map(_stringify), "|"),
-			async: false,
-			options,
-			message: message$1,
-			"~run"(dataset, config$1) {
-				if (this.options.includes(dataset.value)) dataset.typed = true;
-				else _addIssue(this, "type", dataset, config$1);
-				return dataset;
-			}
-		});
-	}
 	function string(message$1) {
 		return _standardSchema({
 			kind: "schema",
@@ -2022,7 +1835,6 @@
 		autoMove: 1,
 		openingBook: 1,
 		ponderEnabled: 1,
-		moveMethod: "click",
 		menuPosition: null
 	};
 	var flagSchema = union([literal(0), literal(1)]);
@@ -2038,7 +1850,6 @@
 		autoMove: optional(flagSchema),
 		openingBook: optional(flagSchema),
 		ponderEnabled: optional(flagSchema),
-		moveMethod: optional(picklist(["click", "drag"])),
 		menuPosition: optional(nullable(positionSchema))
 	});
 	function loadSettings(serialized) {
@@ -2064,6 +1875,104 @@
 	function getActiveSite() {
 		return activeSite$1;
 	}
+	function isObject$1(value) {
+		return typeof value === "object" && value !== null || typeof value === "function";
+	}
+	var capturedController = null;
+	var wrappedPrototypes = new WeakSet();
+	var hookedRegistries = new WeakSet();
+	function getCapturedChesscomController() {
+		return capturedController ?? null;
+	}
+	function setCapturedChesscomController(controller) {
+		if (!isObject$1(controller)) return;
+		capturedController = controller;
+	}
+	function installChesscomControllerBridge(page, onController) {
+		const notify = (controller) => {
+			if (!isObject$1(controller)) return;
+			capturedController = controller;
+			try {
+				onController(controller);
+			} catch {}
+		};
+		const controllerFrom = (owner, result) => {
+			if (isObject$1(result)) {
+				const nested = Reflect.get(result, "game");
+				if (isObject$1(nested)) return nested;
+				if (typeof Reflect.get(result, "getFEN") === "function") return result;
+			}
+			return owner?.game ?? result;
+		};
+		const wrapPrototype = (proto) => {
+			if (!isObject$1(proto) || wrappedPrototypes.has(proto)) return;
+			wrappedPrototypes.add(proto);
+			const originalInit = Reflect.get(proto, "init");
+			if (typeof originalInit === "function") {
+				const init = originalInit;
+				try {
+					Object.defineProperty(proto, "init", {
+						configurable: true,
+						writable: true,
+						value(...args) {
+							const result = Reflect.apply(init, this, args);
+							try {
+								notify(controllerFrom(this, result));
+							} catch {}
+							return result;
+						}
+					});
+				} catch {}
+			}
+			const originalCreateGame = Reflect.get(proto, "createGame");
+			if (typeof originalCreateGame === "function") {
+				const createGame = originalCreateGame;
+				try {
+					Object.defineProperty(proto, "createGame", {
+						configurable: true,
+						writable: true,
+						value(...args) {
+							const result = Reflect.apply(createGame, this, args);
+							try {
+								notify(controllerFrom(this, result));
+							} catch {}
+							return result;
+						}
+					});
+				} catch {}
+			}
+		};
+		const wrapConstructor = (candidate) => {
+			if (!isObject$1(candidate)) return;
+			const prototype = Reflect.get(candidate, "prototype");
+			if (isObject$1(prototype)) wrapPrototype(prototype);
+		};
+		try {
+			const registry = page.customElements;
+			if (registry && typeof registry.define === "function" && !hookedRegistries.has(registry)) {
+				hookedRegistries.add(registry);
+				const originalDefine = registry.define.bind(registry);
+				try {
+					registry.define = ((name, ctor, options) => {
+						try {
+							if (name === "wc-chess-board") wrapConstructor(ctor);
+						} catch {}
+						return originalDefine(name, ctor, options);
+					});
+				} catch {}
+			}
+		} catch {}
+		try {
+			wrapConstructor(page.customElements?.get?.("wc-chess-board"));
+		} catch {}
+		try {
+			const boards = page.document?.querySelectorAll?.("wc-chess-board");
+			if (boards) for (const board of Array.from(boards)) try {
+				if (isObject$1(board?.game)) notify(board.game);
+			} catch {}
+		} catch {}
+		return true;
+	}
 	function pageWindow() {
 		return typeof unsafeWindow === "undefined" ? window : unsafeWindow;
 	}
@@ -2073,6 +1982,7 @@
 	function mutationElement(target) {
 		return target.nodeType === 1 ? target : target.parentElement ?? null;
 	}
+	var PROMOTION_CHOOSER_STATE = "PomotionAreaShowing";
 	var BOARD_SELECTOR$1 = "wc-chess-board, chess-board, .board";
 	var cachedGame = null;
 	var cachedGameTimestamp = 0;
@@ -2100,13 +2010,15 @@
 		return visible[0] ?? null;
 	}
 	function getGame() {
+		const captured = getCapturedChesscomController();
+		if (captured && typeof captured.getFEN === "function") return captured;
 		const now = Date.now();
 		if (cachedGame && now - cachedGameTimestamp < 100) return cachedGame;
 		cachedGame = getBoard(pageDocument())?.game || null;
 		cachedGameTimestamp = now;
 		return cachedGame;
 	}
-	var getFen$1 = (game) => {
+	var getFen = (game) => {
 		try {
 			return game?.getFEN ? game.getFEN() : null;
 		} catch {
@@ -2135,27 +2047,65 @@
 		}
 	};
 	var getSideToMove = (game) => {
-		const fen = getFen$1(game);
+		try {
+			const turn = game?.getTurn?.();
+			if (turn === 1) return "w";
+			if (turn === 2) return "b";
+		} catch {}
+		const fen = getFen(game);
 		return fen ? fen.split(" ")[1] || null : null;
 	};
-	var isPlayersTurn$1 = (game) => {
-		return getPlayerColor$1(game) === getSideToMove(game);
+	var getOrientation = (game) => {
+		try {
+			const options = game?.getOptions?.();
+			if (options) {
+				if (typeof options.flipped === "boolean") return options.flipped ? "black" : "white";
+				if (typeof options.isWhiteOnBottom === "boolean") return options.isWhiteOnBottom ? "white" : "black";
+			}
+		} catch {}
+		try {
+			return game?.getPlayingAs?.() === 2 ? "black" : "white";
+		} catch {
+			return "white";
+		}
 	};
 	function isBoardFlipped$1() {
-		const el = getBoard();
-		let flipped = false;
+		return getOrientation(getGame()) === "black";
+	}
+	function isLegalChesscomMove(game, from, to) {
 		try {
-			const attr = el?.getAttribute?.("orientation");
-			if (attr === "black") flipped = true;
-			else if (attr === "white") flipped = false;
-			else if (el?.classList?.contains("flipped")) flipped = true;
-			else if (getGame()?.getPlayingAs?.() === 2) flipped = true;
+			const checker = game?.isLegalMove;
+			if (typeof checker !== "function") return false;
+			return checker.call(game, {
+				from,
+				to
+			}) === true;
+		} catch {
+			return false;
+		}
+	}
+	function resetStuckPromotionWindow(game) {
+		try {
+			if (game?.getState?.() !== PROMOTION_CHOOSER_STATE) return;
+			game?.getRenderer?.()?.closePromotionWindow?.();
 		} catch {}
-		return flipped;
 	}
 	function invalidateGameCache() {
 		cachedGame = null;
 		cachedGameTimestamp = 0;
+	}
+	function debounce(fn, wait = 150) {
+		let t = null;
+		return (...args) => {
+			if (t !== null) clearTimeout(t);
+			t = setTimeout(() => fn(...args), wait);
+		};
+	}
+	var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+	function scoreToDisplay(score) {
+		if (typeof score?.mate === "number" && score.mate !== 0) return `M${score.mate}`;
+		if (typeof score?.cp === "number") return (score.cp / 100).toFixed(2);
+		return "-";
 	}
 	function snapshot() {
 		try {
@@ -2165,18 +2115,9 @@
 			return null;
 		}
 	}
-	function getFen(...args) {
-		if (args.length > 0) return getFen$1(args[0]);
-		return snapshot()?.fen ?? getFen$1(getGame());
-	}
 	function getPlayerColor(...args) {
 		if (args.length > 0) return getPlayerColor$1(args[0]);
 		return snapshot()?.playerColor ?? getPlayerColor$1(getGame());
-	}
-	function isPlayersTurn(...args) {
-		if (args.length > 0) return isPlayersTurn$1(args[0]);
-		const current = snapshot();
-		return current ? current.playerColor === current.sideToMove : isPlayersTurn$1(getGame());
 	}
 	function isBoardFlipped() {
 		const current = snapshot();
@@ -2196,8 +2137,7 @@
 		principalVariation: "-",
 		statusInfo: "Ready",
 		recoveryAction: null,
-		ponderEnabled: 1,
-		moveMethod: "click"
+		ponderEnabled: 1
 	};
 	var Settings = {
 		save: debounce(() => {
@@ -2210,7 +2150,6 @@
 					autoMove: BotState.autoMove,
 					openingBook: BotState.openingBook,
 					ponderEnabled: BotState.ponderEnabled,
-					moveMethod: BotState.moveMethod,
 					menuPosition: menuWrap ? {
 						top: menuWrap.style.top,
 						left: menuWrap.style.left
@@ -2240,8 +2179,6 @@
 	var boardCtx = null;
 	var observedOrientation = null;
 	var moveRevision = 0;
-	var moveExecutionActive = false;
-	var pendingMoveConfirmations = new Set();
 	var boardInputListeners = new Set();
 	var boardMoveObserver = null;
 	var mutationListeners = new Set();
@@ -2476,73 +2413,6 @@
 		ctx.fillStyle = color;
 		ctx.fill();
 	}
-	function getTargetAt(x, y) {
-		return document.elementFromPoint(x, y) || boardCtx?.boardEl || document.body;
-	}
-	function getMoveCoordinates(from, to) {
-		const a = getSquareCenterClientXY(from);
-		const b = getSquareCenterClientXY(to);
-		if (!a || !b) return null;
-		return {
-			a,
-			b
-		};
-	}
-	async function waitForFenChange(prevFen, timeout = 1e3, expectedFen, signal) {
-		return new Promise((resolve) => {
-			if (signal?.aborted) {
-				resolve(false);
-				return;
-			}
-			let done = false;
-			let unsubscribe = () => {};
-			let frame;
-			let timer;
-			const finish = (accepted) => {
-				if (done) return;
-				done = true;
-				unsubscribe();
-				signal?.removeEventListener("abort", onAbort);
-				if (timer) clearTimeout(timer);
-				if (frame !== void 0) cancelAnimationFrame(frame);
-				resolve(accepted);
-			};
-			const check = () => {
-				const game = getGame();
-				const fen = getFen(game);
-				if (fen && fen !== prevFen) {
-					if (!expectedFen) {
-						finish(true);
-						return;
-					}
-					const comparable = (f) => f.split(" ").filter((_, i) => i !== 3).join(" ");
-					const expectedComp = comparable(expectedFen);
-					if (comparable(fen) === expectedComp) {
-						finish(true);
-						return;
-					}
-					const history = game?.getHistoryFENs?.();
-					if (Array.isArray(history) && history.some((h) => typeof h === "string" && comparable(h) === expectedComp)) {
-						finish(true);
-						return;
-					}
-					finish(false);
-				}
-			};
-			const onAbort = () => {
-				check();
-				if (!done) finish(false);
-			};
-			signal?.addEventListener("abort", onAbort, { once: true });
-			unsubscribe = onBoardMutation(check);
-			timer = setTimeout(() => finish(false), timeout);
-			const poll = () => {
-				check();
-				if (!done) frame = requestAnimationFrame(poll);
-			};
-			poll();
-		});
-	}
 	function confirmSiteMove(request, adapter, timeout = 1e3) {
 		const expectedFen = canonicalFen(request.expectedFen);
 		if (!expectedFen || request.expectedPly !== null && (!Number.isInteger(request.expectedPly) || request.expectedPly < 0)) return Promise.resolve(false);
@@ -2607,76 +2477,14 @@
 			if (request.signal.aborted && !done) onAbort();
 		});
 	}
-	async function maybeSelectPromotion(prefer = "q", guard = () => true) {
-		if (!/^[qrbn]$/i.test(prefer)) return false;
-		const getCandidates = () => Array.from(document.querySelectorAll("[data-test-element*=\"promotion\"], [class*=\"promotion\"] [class*=\"piece\"], [class*=\"promotion\"] button, .promotion-piece")).filter((el) => {
-			const option = el;
-			if (option.getClientRects().length === 0) return false;
-			const style = getComputedStyle(option);
-			return style.display !== "none" && style.visibility !== "hidden";
-		});
-		const tryClick = async (el) => {
-			return activateElement(el, getTargetAt, guard);
-		};
-		const start = Date.now();
-		while (Date.now() - start < 1e3) {
-			if (!guard()) return false;
-			const match = findPromotionOption(getCandidates(), prefer);
-			if (match && guard() && await tryClick(match)) return true;
-			await sleep(60);
-		}
-		return false;
-	}
 	function cancelPendingMove() {
 		moveRevision++;
-		for (const controller of pendingMoveConfirmations) controller.abort();
-		pendingMoveConfirmations.clear();
 	}
 	function getMoveRevision() {
 		return moveRevision;
 	}
 	function setStyleIfChanged(element, property, value) {
 		if (element.style[property] !== value) element.style[property] = value;
-	}
-	async function executeMove(from, to, analysisFen, promotionChar, _depth, _tickCallback, expectedFen) {
-		if (moveExecutionActive) return false;
-		const revision = moveRevision;
-		const game = getGame();
-		if (!BotState.hackEnabled || !BotState.autoMove || !game || !isPlayersTurn(game) || getFen(game) !== analysisFen) return false;
-		moveExecutionActive = true;
-		const confirmationController = new AbortController();
-		pendingMoveConfirmations.add(confirmationController);
-		const guard = () => revision === moveRevision && !!BotState.hackEnabled && !!BotState.autoMove && getFen(getGame()) === analysisFen;
-		let confirmation;
-		try {
-			BotState.statusInfo = "Submitting move...";
-			BotState.onUpdateDisplay?.(pa());
-			confirmation = waitForFenChange(analysisFen, 1e3, expectedFen, confirmationController.signal);
-			if (!(BotState.moveMethod === "drag" ? await simulateDragMove(from, to, {
-				getMoveCoordinates,
-				getTargetAt,
-				guard
-			}) : await simulateClickMove(from, to, {
-				getMoveCoordinates,
-				getTargetAt,
-				guard
-			}))) return false;
-			if (promotionChar && guard() && !await maybeSelectPromotion(promotionChar, guard)) return false;
-			const accepted = await confirmation;
-			if (revision === moveRevision) {
-				BotState.statusInfo = accepted ? "Move confirmed" : "Move not confirmed; waiting for position change";
-				BotState.onUpdateDisplay?.(pa());
-			}
-			return accepted;
-		} finally {
-			confirmationController.abort();
-			pendingMoveConfirmations.delete(confirmationController);
-			moveExecutionActive = false;
-			if (revision === moveRevision && BotState.statusInfo === "Submitting move...") {
-				BotState.statusInfo = "Move input failed";
-				BotState.onUpdateDisplay?.(pa());
-			}
-		}
 	}
 	function updateEvaluationBar(evaluation, _playingAs) {
 		if (!boardCtx) return;
@@ -3353,6 +3161,7 @@
 			score
 		};
 	}
+	var DEFAULT_BRIDGE_ERROR$1 = "Chess.com board controller not captured. Enable synchronous page-context injection in your userscript manager, then reload.";
 	var nextGameId = 0;
 	var BOARD_SELECTOR = "wc-chess-board, chess-board, .board";
 	var CLOCK_REGION_SELECTOR = ".clock-player-turn";
@@ -3396,7 +3205,7 @@
 			const onClock = !!closestOrSelf(target, CLOCK_REGION_SELECTOR);
 			const onResult = !!closestOrSelf(target, RESULT_SELECTOR);
 			if (record.type === "attributes") {
-				if (record.attributeName === "orientation" || record.attributeName === "data-game-id") return onBoard;
+				if (record.attributeName === "data-game-id") return onBoard;
 				if (record.attributeName === "class") return onBoard || onClock || onResult;
 				return false;
 			}
@@ -3411,29 +3220,39 @@
 		let currentGame = null;
 		let currentIdentity = null;
 		let currentGameId = "";
+		let controller = null;
+		let bridgeInstalled = false;
 		const read = () => {
+			if (!ensureBridge()) return {
+				kind: "ineligible",
+				reason: "Chess.com controller hook is unavailable"
+			};
 			const doc = page().document;
 			const board = getBoard(doc);
 			if (!board) return {
 				kind: "waiting",
 				reason: "Waiting for board"
 			};
-			const game = board.game;
+			const liveGame = board.game ?? null;
+			if (liveGame && typeof liveGame.getFEN === "function" && liveGame !== controller) {
+				controller = liveGame;
+				setCapturedChesscomController(liveGame);
+			}
+			const game = controller ?? liveGame;
 			if (!game || typeof game.getFEN !== "function") return {
 				kind: "waiting",
-				reason: "Waiting for game state"
+				reason: DEFAULT_BRIDGE_ERROR$1
 			};
-			const fen = getFen$1(game);
+			const fen = getFen(game);
 			if (!fen) return {
 				kind: "ineligible",
 				reason: "Chess.com position is unavailable"
 			};
-			const fields = fen.split(" ");
-			if (fields.length < 2 || fields[1] !== "w" && fields[1] !== "b") return {
+			const sideToMove = getSideToMove(game);
+			if (sideToMove !== "w" && sideToMove !== "b") return {
 				kind: "ineligible",
 				reason: "Chess.com position is malformed"
 			};
-			const sideToMove = fields[1];
 			const playingAs = game.getPlayingAs?.();
 			if (playingAs !== 1 && playingAs !== 2) return {
 				kind: "ineligible",
@@ -3447,8 +3266,10 @@
 				const declaredId = game.id ?? board.getAttribute("data-game-id");
 				currentGameId = declaredId == null ? `chesscom-${++nextGameId}` : String(declaredId);
 			}
-			const orientation = board.getAttribute("orientation") === "black" || board.classList.contains("flipped") ? "black" : "white";
+			const orientation = getOrientation(game);
 			const phase = game.isGameOver?.() || doc.querySelector(".game-over-modal-content") ? "finished" : "live";
+			const controllerState = game.getState?.();
+			const settled = controllerState === void 0 || controllerState === "Idle";
 			const history = readPositionHistory(game, fen);
 			const confirmedFensRaw = game.getHistoryFENs?.();
 			const confirmedFens = Array.isArray(confirmedFensRaw) ? confirmedFensRaw.filter((item) => typeof item === "string") : void 0;
@@ -3463,44 +3284,87 @@
 					sideToMove,
 					orientation,
 					phase,
-					inputReady: phase === "live" && sideToMove === playerColor,
+					inputReady: phase === "live" && sideToMove === playerColor && settled,
 					remainingMs: getRemainingMs(doc),
 					...history ? { history } : {},
 					...confirmedFens ? { confirmedFens } : {}
 				}
 			};
 		};
+		const fingerprint = (read) => read.kind === "game" ? JSON.stringify([
+			read.snapshot.gameId,
+			read.snapshot.fen,
+			read.snapshot.playerColor,
+			read.snapshot.sideToMove,
+			read.snapshot.orientation,
+			read.snapshot.phase,
+			read.snapshot.inputReady,
+			read.snapshot.history?.moves
+		]) : JSON.stringify([read.kind, read.reason]);
+		const notify = () => {
+			const next = read();
+			const nextFingerprint = fingerprint(next);
+			if (next.kind === "game" && lastNotifiedIdentity !== next.snapshot.identity) {
+				lastNotifiedIdentity = next.snapshot.identity;
+				previousFingerprint = "";
+			}
+			if (nextFingerprint === previousFingerprint) return;
+			previousFingerprint = nextFingerprint;
+			for (const listener of [...listeners]) try {
+				listener();
+			} catch (error) {
+				console.error("Super Chess Bot: site listener failed.", error);
+			}
+		};
+		let lastNotifiedIdentity = null;
+		let previousFingerprint = "";
+		const listeners = new Set();
+		const instrumentController = (captured) => {
+			if (!captured || typeof captured !== "object") return;
+			controller = captured;
+			notify();
+		};
+		const ensureBridge = () => {
+			if (bridgeInstalled) return true;
+			try {
+				bridgeInstalled = installChesscomControllerBridge(page(), instrumentController);
+			} catch {
+				bridgeInstalled = false;
+			}
+			return bridgeInstalled;
+		};
+		ensureBridge();
 		return {
 			id: "chesscom",
-			capabilities: { input: "gestures" },
-			read,
+			capabilities: { input: "controller" },
+			read: () => read(),
 			subscribe(listener) {
+				listeners.add(listener);
 				let stopObserving = () => {};
-				let observedBoard = null;
 				let observedGame = null;
 				let moveListener = null;
 				let queued = false;
 				let active = true;
 				const initial = read();
 				let previous = readFingerprint(initial);
+				previousFingerprint = fingerprint(initial);
+				if (initial.kind === "game") lastNotifiedIdentity = initial.snapshot.identity;
 				const detachGame = () => {
 					if (observedGame && moveListener) observedGame.off?.("Move", moveListener);
 					observedGame = null;
 					moveListener = null;
 				};
 				const bind = (result) => {
-					const board = result.kind === "game" ? result.snapshot.board : null;
-					const game = board?.game ?? null;
-					if (board === observedBoard && game === observedGame) return;
+					const game = result.kind === "game" ? currentGame : null;
+					if (game === observedGame) return;
 					detachGame();
-					observedBoard = board;
 					if (game && typeof game.on === "function" && typeof game.off === "function") {
 						observedGame = game;
-						moveListener = notify;
+						moveListener = notifySubscribed;
 						game.on("Move", moveListener);
 					}
 				};
-				const notify = () => {
+				const notifySubscribed = () => {
 					if (!active) return;
 					const result = read();
 					bind(result);
@@ -3523,35 +3387,51 @@
 						queued = true;
 						queueMicrotask(() => {
 							queued = false;
-							notify();
+							notifySubscribed();
 						});
 					});
 					observer.observe(doc.body, {
 						childList: true,
 						subtree: true,
 						attributes: true,
-						attributeFilter: [
-							"class",
-							"orientation",
-							"data-game-id"
-						],
+						attributeFilter: ["class", "data-game-id"],
 						characterData: true
 					});
 					stopObserving = () => observer.disconnect();
 				}
 				return () => {
 					active = false;
+					listeners.delete(listener);
 					stopObserving();
 					detachGame();
 				};
 			},
 			async submitMove(request) {
 				if (request.signal.aborted || !request.isCurrent()) return false;
-				return executeMove(request.uci.slice(0, 2), request.uci.slice(2, 4), request.fromFen, request.uci[4], void 0, void 0, request.expectedFen);
+				if (currentGame) resetStuckPromotionWindow(currentGame);
+				const current = read();
+				if (current.kind !== "game" || current.snapshot.identity !== request.identity || canonicalFen(current.snapshot.fen) !== canonicalFen(request.fromFen) || !current.snapshot.inputReady) return false;
+				const game = currentGame;
+				if (!game || typeof game.move !== "function") return false;
+				const uci = request.uci;
+				if (typeof uci !== "string" || uci.length < 4) return false;
+				const from = uci.slice(0, 2);
+				const to = uci.slice(2, 4);
+				const promotionChar = uci.length > 4 ? uci[4].toLowerCase() : "";
+				const promotion = /^[qrbn]$/.test(promotionChar) ? promotionChar : void 0;
+				if (!isLegalChesscomMove(game, from, to)) return false;
+				if (request.signal.aborted || !request.isCurrent() || currentGame !== game) return false;
+				try {
+					return game.move({
+						from,
+						to,
+						...promotion ? { promotion } : {}
+					})?.type === "Move";
+				} catch {
+					return false;
+				}
 			},
-			cancelInput() {
-				cancelPendingMove();
-			}
+			cancelInput() {}
 		};
 	}
 	function isObject(value) {
@@ -3972,6 +3852,83 @@
 			},
 			cancelInput() {}
 		};
+	}
+	function dispatchPointerOrMouse(el, type, opts, usePointer) {
+		if (!el) return;
+		const mouseType = type.replace("pointer", "mouse");
+		if (usePointer) try {
+			el.dispatchEvent(new PointerEvent(type, {
+				bubbles: true,
+				cancelable: true,
+				composed: true,
+				...opts
+			}));
+			el.dispatchEvent(new MouseEvent(mouseType, {
+				bubbles: true,
+				cancelable: true,
+				composed: true,
+				...opts
+			}));
+			return;
+		} catch {}
+		el.dispatchEvent(new MouseEvent(mouseType, {
+			bubbles: true,
+			cancelable: true,
+			composed: true,
+			...opts
+		}));
+	}
+	function createPointerOpts(x, y, buttons) {
+		return {
+			clientX: x,
+			clientY: y,
+			screenX: x + (typeof window !== "undefined" ? window.screenX || 0 : 0),
+			screenY: y + (typeof window !== "undefined" ? window.screenY || 0 : 0),
+			buttons,
+			pointerId: 1,
+			pointerType: "mouse",
+			isPrimary: true,
+			bubbles: true,
+			cancelable: true,
+			composed: true
+		};
+	}
+	function pressAt(el, x, y, usePointer) {
+		dispatchPointerOrMouse(el, usePointer ? "pointerdown" : "mousedown", createPointerOpts(x, y, 1), usePointer);
+	}
+	function releaseAt(el, x, y, usePointer) {
+		dispatchPointerOrMouse(el, usePointer ? "pointerup" : "mouseup", createPointerOpts(x, y, 0), usePointer);
+	}
+	function clickAt(el, x, y) {
+		el.dispatchEvent(new MouseEvent("click", {
+			bubbles: true,
+			cancelable: true,
+			composed: true,
+			clientX: x,
+			clientY: y
+		}));
+	}
+	async function activateElement(element, getTargetAt, guard) {
+		try {
+			const rect = element.getBoundingClientRect();
+			if (!rect.width || !rect.height) return false;
+			const x = rect.left + rect.width / 2;
+			const y = rect.top + rect.height / 2;
+			const target = getTargetAt(x, y);
+			if (target !== element && !element.contains(target)) return false;
+			const usePointer = !!window.PointerEvent;
+			pressAt(target, x, y, usePointer);
+			await sleep(2);
+			if (!guard()) {
+				releaseAt(target, x, y, usePointer);
+				return false;
+			}
+			releaseAt(target, x, y, usePointer);
+			clickAt(target, x, y);
+			return true;
+		} catch {
+			return false;
+		}
 	}
 	var STANDARD_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 	var TERMINAL_RESULTS = new Set([
@@ -5632,11 +5589,7 @@
 		return (u || i) && (p.__source = u, p.__self = i), n$1.vnode && n$1.vnode(p), p;
 	}
 	function getPanelCapabilityView(capabilities) {
-		const selectionInput = capabilities?.input === "selection";
-		return {
-			showMoveMethod: capabilities?.input === "gestures" || capabilities === void 0,
-			transportNote: selectionInput ? "Moves use legal square selection on this site." : capabilities?.input === "controller" ? "Moves use the active game controller." : null
-		};
+		return { transportNote: capabilities?.input === "selection" ? "Moves use legal square selection on this site." : capabilities?.input === "controller" ? "Moves use the active game controller." : null };
 	}
 	var EDGE_MARGIN = 8;
 	var DOCK_QUERY = "(max-width: 560px)";
@@ -5648,21 +5601,13 @@
 		"TEXTAREA",
 		"SELECT"
 	]);
-	var MOVE_METHODS = [{
-		value: "click",
-		label: "Click"
-	}, {
-		value: "drag",
-		label: "Drag"
-	}];
 	var readSettings = () => ({
 		enabled: !!BotState.hackEnabled,
 		autoMove: !!BotState.autoMove,
 		openingBook: !!BotState.openingBook,
 		ponder: !!BotState.ponderEnabled,
 		depth: BotState.botPower,
-		moveTimeMs: BotState.moveTime,
-		moveMethod: BotState.moveMethod
+		moveTimeMs: BotState.moveTime
 	});
 	var settingsSignal = y$1(readSettings());
 	var analysisSignal = y$1({
@@ -5727,10 +5672,7 @@
 			case "depth":
 				BotState.botPower = Number(value);
 				break;
-			case "moveTimeMs":
-				BotState.moveTime = Number(value);
-				break;
-			case "moveMethod": BotState.moveMethod = value;
+			case "moveTimeMs": BotState.moveTime = Number(value);
 		}
 	}
 	function updatePanelSetting(key, value, actions) {
@@ -6036,26 +5978,6 @@
 			})]
 		});
 	}
-	function Segmented({ label, value, options, onSelect }) {
-		return u("div", {
-			class: "panel-field",
-			children: [u("span", {
-				class: "panel-field-label",
-				children: label
-			}), u("div", {
-				class: "panel-segmented",
-				role: "group",
-				"aria-label": label,
-				children: options.map((option) => u("button", {
-					type: "button",
-					class: "panel-segment",
-					"aria-pressed": value === option.value,
-					onClick: () => onSelect(option.value),
-					children: option.label
-				}, option.value))
-			})]
-		});
-	}
 	function RecoveryNotice({ kind, onRecover }) {
 		const resume = kind === "resume";
 		return u("div", {
@@ -6304,12 +6226,6 @@
 								format: formatBudget,
 								onPreview: (value) => previewSlider("moveTimeMs", value),
 								onCommit: (value) => updateSetting("moveTimeMs", value)
-							}),
-							capabilityView.showMoveMethod && u(Segmented, {
-								label: "Move input",
-								value: settings.moveMethod,
-								options: MOVE_METHODS,
-								onSelect: (value) => updateSetting("moveMethod", value)
 							})
 						]
 					}),

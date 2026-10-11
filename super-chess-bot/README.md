@@ -54,7 +54,7 @@ flowchart LR
   stockfish -->|info and bestmove| worker --> uci --> analysis --> scheduler
   scheduler -->|candidate move| rules
   rules -->|validated move| adapter
-  adapter -->|Chess.com click or drag| board
+  adapter -->|Chess.com controller move| board
   adapter -->|PyChess legal square selection| cg
   adapter -->|Lichess pluginMove| round
   board -->|changed FEN| adapter
@@ -62,7 +62,7 @@ flowchart LR
 ```
 
 - **Engine:** pinned Stockfish 19 lite single-threaded WASM. The worker prewarms when the panel mounts, while automation stays disabled, so download and WASM compilation happen before the first game move. One worker survives normal searches and cancellation, preserving its transposition table. The userscript manager downloads pinned JS/WASM resources from unpkg; keep this host because jsDelivr rejects the full 205 MB npm package even for its small lite files. Search is local after initialization. No main-thread search fallback.
-- **Site adapters:** exact-host adapters provide the current accepted FEN, player color, orientation, phase, clock, history, and supported controls. Chess.com keeps its private game API and click/drag input inside its adapter. PyChess reads Chessground state plus the accepted SAN movelist, and uses legal `selectSquare` user moves. Lichess captures the round controller during page initialization and uses `pluginMove`; it does not call a Lichess API or write directly to the socket. This hook depends on private page internals and may need updates after Lichess frontend changes.
+- **Site adapters:** exact-host adapters provide the current accepted FEN, player color, orientation, phase, clock, history, and supported controls. Chess.com captures the board controller during page initialization and submits through `controller.move` with an explicit lowercase promotion character; it does not synthesize pointer input or touch the promotion chooser DOM. PyChess reads Chessground state plus the accepted SAN movelist, and uses legal `selectSquare` user moves. Lichess captures the round controller during page initialization and uses `pluginMove`; it does not call a Lichess API or write directly to the socket. The Chess.com and Lichess hooks depend on private page internals and may need updates after frontend changes.
 - **Controller:** waits for engine readiness, owns a stable game/board identity and search revision, rejects obsolete results, and stops pending work when disabled. Replay and finished positions suspend analysis. Trusted board interaction pauses automation; a changed position resumes automatically, while an unchanged position offers Resume.
 - **Timing:** the configured move budget reserves input time once. PyChess and Lichess read the active player's clock from their round state; Chess.com keeps its current clock handling. Lichess move submission goes through the round controller's normal clock stop and move-send path. There is no second post-search thinking delay. A separate bounded confirmation checks the accepted position at the expected ply. Browser scheduling and engine stop latency can exceed the requested budget.
 - **Recovery:** trusted human board input cancels pending automation and pauses the bot. A changed position resumes analysis automatically; when the position stays the same, the panel offers Resume. Engine and unconfirmed-input failures offer Retry.
@@ -86,17 +86,17 @@ PyChess support covers a live, owned 8×8 chess round where the signed-in or ano
 
 Lichess support covers a live, standard chess player round. The adapter verifies the player round, accepted FEN and SAN history, side to move, and legal destinations. It sends ordinary moves and explicit promotion roles through the round controller and waits for the accepted position. The active clock is read from the same round controller; the site's move path stops it and sends the move. No API integration is used.
 
-On PyChess the panel explains the legal square-selection transport; on Lichess it identifies the game-controller transport. Both hide the Chess.com gesture control. The stored Chess.com preference is left as saved, so using the same userscript on Chess.com keeps its selected input method.
+On PyChess the panel explains the legal square-selection transport; on Lichess and Chess.com it identifies the game-controller transport. There is no input-method setting; moves always go through the site controller or legal selection path.
 
-Click input is the default. Drag input exists for boards that reject click input; promotion waits for the site's chooser. An unconfirmed move is not retried repeatedly against the same position. Change settings or advance the position to retry deliberately.
+Chess.com submits through the board controller with an explicit lowercase promotion character and reads success synchronously from the `Move`/`IllegalMove` result; a stuck `PomotionAreaShowing` chooser is reset through the renderer's close method. An unconfirmed move is not retried repeatedly against the same position. Change settings or advance the position to retry deliberately.
 
 ## Site support
 
 | | Chess.com | PyChess | Lichess |
 | --- | --- | --- | --- |
 | Plays | any live game exposing the site board API (computer + online) | standard chess live rounds, any opponent | standard-chess player rounds, any opponent |
-| Move transport | click or drag (panel setting) | legal square selection | round-controller `pluginMove` |
-| Promotion | site chooser (queen verified live) | chooser q/r/b/n + Ctrl override (queen verified live; underpromotion with site auto-promote on unverified) | explicit role (unit-tested; live game unverified) |
+| Move transport | board-controller `move` | legal square selection | round-controller `pluginMove` |
+| Promotion | explicit lowercase character (controller API verified; live-game confirmation pending) | chooser q/r/b/n + Ctrl override (queen verified live; underpromotion with site auto-promote on unverified) | explicit role (unit-tested; live game unverified) |
 | Premove | off | off | off |
 | Background ponder | yes | yes | yes |
 | Opening book (plies 1–6) | yes | yes | yes |
@@ -116,7 +116,7 @@ bun run check
 
 ## Browser verification
 
-Use `agent-browser` with a dedicated Chromium session and the production bundle installed through a userscript manager. Test board orientation, promotion, enable/disable during search, game reset, human interruption and recovery, and the position event path. The controller hook is version-sensitive; record when a live player route is unavailable.
+Use `agent-browser` with a dedicated Chromium session and the production bundle installed through a userscript manager. Test board orientation, promotion, enable/disable during search, game reset, human interruption and recovery, and the position event path. The controller hook is version-sensitive; record when a live player route is unavailable. Recorded Chess.com game samples predate the controller transport and used gesture input; re-verify live before claiming current-build results.
 
 The full game verified through an installed Violentmonkey manager, including the result, move list, and recording, is documented in [browser-verification.md](docs/browser-verification.md).
 

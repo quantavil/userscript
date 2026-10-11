@@ -2,7 +2,7 @@ import type { PositionHistory } from '../history.js';
 
 export type Color = 'w' | 'b';
 export interface SiteCapabilities {
-  readonly input: 'gestures' | 'selection' | 'controller';
+  readonly input: 'selection' | 'controller';
 }
 
 export interface GameSnapshot {

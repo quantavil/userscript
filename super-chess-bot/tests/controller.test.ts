@@ -23,7 +23,7 @@ const deps = vi.hoisted(() => {
   const listeners = new Set<() => void>();
   const site = {
     id: 'pychess' as const,
-    capabilities: { input: 'selection' as 'selection' | 'gestures' },
+    capabilities: { input: 'selection' as const },
     read: () => siteRead,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
@@ -56,7 +56,6 @@ const deps = vi.hoisted(() => {
       moveTime: 100,
       autoMove: 1,
       ponderEnabled: 1,
-      moveMethod: 'click' as const,
       bestMove: '-',
       currentEvaluation: '-',
       principalVariation: '-',

@@ -13,10 +13,10 @@ Project guidance for `super-chess-bot`.
 ## Architecture boundaries
 
 - `sites/types.ts` and `sites/index.ts`: define normalized snapshots and select adapters only for exact supported hostnames.
-- `sites/chesscom.ts` and `sites/chesscom-state.ts`: isolate Chess.com selectors, private game API, clocks, and legacy click/drag transport.
+- `sites/chesscom.ts`, `sites/chesscom-state.ts`, and `sites/chesscom-bridge.ts`: at document start, wrap the `wc-chess-board` custom element's `init`/`createGame` to capture the board controller, mirroring the Lichess bridge. Read FEN, turn, color, orientation, and legality from the controller API (`getFEN`, `getTurn`, `getPlayingAs`, `getOptions`, `isLegalMove`); keep clocks DOM-scraped. Submit through `controller.move` with an object payload and lowercase promotion, reading synchronous `Move`/`IllegalMove` results; reset a stuck `PomotionAreaShowing` chooser via the renderer. No synthetic pointer input or promotion-chooser DOM handling. These private page internals can change with Chess.com frontend updates.
 - `sites/pychess.ts` and `sites/pychess-state.ts`: collect PyChess-owned board, accepted FEN, SAN, clock, and result state. Submit through `cg.selectSquare` and the site's legal user-move callback. Never fake trusted events, call `cg.move()`, force legal acceptance, or write to the socket.
 - `sites/lichess.ts` and `sites/lichess-bridge.ts`: support standard Lichess player rounds. At document start, wrap `site.asset.loadEsmPage` and `site.asset.loadEsm` so the round initializer's returned controller can be captured. Read accepted steps and the active clock; submit through the controller's `pluginMove` path, with explicit promotion roles. Do not add API integration or direct socket writes. These private page internals can change with Lichess frontend updates.
-- `board.ts`: own shared overlays, trusted-input revision, move serialization, and accepted-position confirmation at the requested ply. Keep gesture primitives in `board-input.ts`.
+- `board.ts`: own shared overlays, trusted-input revision, move serialization, and accepted-position confirmation at the requested ply. Keep the `activateElement` chooser helper in `board-input.ts` for PyChess promotion.
 - `index.ts`: mount the panel and prewarm the Stockfish worker without waiting for a Chess.com board selector. Automation stays disabled until the user turns it on.
 - `controller.ts`: own enable/disable, adapter subscriptions, snapshot identity and phase, human-interruption pause, and explicit resume/retry actions.
 - `engine/scheduler.ts`: schedule one current-position search from accepted FEN/history and adapter clock, reject stale identity/FEN results, and confirm move execution before reporting success. Carry exact position/history into ponder reuse; do not queue speculative premove chains or repeatedly retry an unchanged position.
@@ -29,10 +29,10 @@ Project guidance for `super-chess-bot`.
 
 ## Site support matrix
 
-- Transports: Chess.com gestures (click/drag setting), PyChess square selection, Lichess controller `pluginMove`.
-- Promotion: Chess.com site chooser, PyChess q/r/b/n chooser + Ctrl override, Lichess explicit role. Live queen promotion verified on all three sites, including Lichess ([iYTQx601](https://lichess.org/iYTQx601), `2.a8=Q`, `11.Qb8#`).
+- Transports: Chess.com controller `move`, PyChess square selection, Lichess controller `pluginMove`.
+- Promotion: Chess.com explicit lowercase character, PyChess q/r/b/n chooser + Ctrl override, Lichess explicit role. Live queen promotion verified on PyChess and Lichess ([iYTQx601](https://lichess.org/iYTQx601), `2.a8=Q`, `11.Qb8#`); Chess.com controller promotion is API-verified and awaits live-game confirmation (recorded Chess.com wins used the retired gesture transport).
 - Premove is off on all sites. Background ponder, opening book, and clock-aware budgets work on all sites.
-- The panel hides the move-method setting on PyChess/Lichess.
+- The panel shows a transport note per site; there is no input-method setting.
 - Standard chess and From-Position custom starts are eligible. Other variants, Chess960, and correspondence stay ineligible where the adapter checks them.
 
 ## Tests and verification

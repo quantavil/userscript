@@ -1,11 +1,18 @@
 import stockfishPackage from 'stockfish/package.json' with { type: 'json' };
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import pkg from '../package.json' with { type: 'json' };
 import { createChesscomAdapter } from '../src/sites/chesscom.js';
+import { resetCapturedChesscomController } from '../src/sites/chesscom-bridge.js';
 import { selectSite } from '../src/sites/index.js';
 import { userscriptMetadata } from '../src/userscript-metadata.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+const PROMO_FEN = '7k/P7/8/8/8/8/8/K7 w - - 0 1';
+
+afterEach(() => {
+  resetCapturedChesscomController();
+});
 
 describe('site adapter selection', () => {
   it('selects only exact Chess.com hostnames', () => {
@@ -79,6 +86,143 @@ describe('site adapter selection', () => {
 
     expect(adapter.read()).toMatchObject({ kind: 'game', snapshot: { remainingMs: null } });
   });
+
+  it('exposes the controller transport capability', () => {
+    const page = makePage(() => [makeBoard()]);
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+
+    expect(adapter.capabilities).toEqual({ input: 'controller' });
+  });
+
+  it('reads orientation from controller options instead of DOM attributes', () => {
+    const board = makeBoard({ game: makeGame({ flipped: true }) });
+    const page = makePage(() => [board]);
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+
+    expect(adapter.read()).toMatchObject({ kind: 'game', snapshot: { orientation: 'black' } });
+  });
+});
+
+describe('Chess.com controller move submission', () => {
+  it('submits through controller.move with an object payload and reports Move success', async () => {
+    const game = makeControllerGame();
+    const board = makeBoard({ game });
+    const page = makePage(() => [board]);
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+    const read = adapter.read();
+    expect(read.kind).toBe('game');
+    if (read.kind !== 'game') return;
+
+    const submitted = await adapter.submitMove(makeMoveRequest(read.snapshot.identity, START_FEN, 'e2e4', AFTER_E4));
+
+    expect(submitted).toBe(true);
+    expect(game.isLegalMove).toHaveBeenCalledWith({ from: 'e2', to: 'e4' });
+    expect(game.move).toHaveBeenCalledWith({ from: 'e2', to: 'e4' });
+  });
+
+  it('lowercases the promotion character in the object payload', async () => {
+    const game = makeControllerGame({ fen: PROMO_FEN });
+    const board = makeBoard({ game });
+    const page = makePage(() => [board]);
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+    const read = adapter.read();
+    expect(read.kind).toBe('game');
+    if (read.kind !== 'game') return;
+
+    const submitted = await adapter.submitMove(
+      makeMoveRequest(read.snapshot.identity, PROMO_FEN, 'a7a8Q', 'Q6k/8/8/8/8/8/8/K7 b - - 0 1'),
+    );
+
+    expect(submitted).toBe(true);
+    expect(game.move).toHaveBeenCalledWith({ from: 'a7', to: 'a8', promotion: 'q' });
+  });
+
+  it('reports failure for IllegalMove results without DOM promotion handling', async () => {
+    const game = makeControllerGame({ moveResult: { type: 'IllegalMove' } });
+    const board = makeBoard({ game });
+    const page = makePage(() => [board]);
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+    const read = adapter.read();
+    expect(read.kind).toBe('game');
+    if (read.kind !== 'game') return;
+
+    const submitted = await adapter.submitMove(makeMoveRequest(read.snapshot.identity, START_FEN, 'e2e4', AFTER_E4));
+
+    expect(submitted).toBe(false);
+    expect(game.move).toHaveBeenCalledOnce();
+  });
+
+  it('skips submission when the controller reports the move illegal', async () => {
+    const game = makeControllerGame({ legal: false });
+    const board = makeBoard({ game });
+    const page = makePage(() => [board]);
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+    const read = adapter.read();
+    expect(read.kind).toBe('game');
+    if (read.kind !== 'game') return;
+
+    const submitted = await adapter.submitMove(makeMoveRequest(read.snapshot.identity, START_FEN, 'e2e5', AFTER_E4));
+
+    expect(submitted).toBe(false);
+    expect(game.move).not.toHaveBeenCalled();
+  });
+
+  it('resets a stuck promotion chooser before submitting', async () => {
+    let state = 'PomotionAreaShowing';
+    let closed = false;
+    const game = makeControllerGame({
+      state: () => state,
+      renderer: {
+        closePromotionWindow: () => {
+          closed = true;
+          state = 'Idle';
+        },
+      },
+    });
+    const board = makeBoard({ game });
+    const page = makePage(() => [board]);
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+    const read = adapter.read();
+    expect(read.kind).toBe('game');
+    if (read.kind !== 'game') return;
+    expect(read.snapshot.inputReady).toBe(false);
+
+    const submitted = await adapter.submitMove(makeMoveRequest(read.snapshot.identity, START_FEN, 'e2e4', AFTER_E4));
+
+    expect(closed).toBe(true);
+    expect(submitted).toBe(true);
+    expect(game.move).toHaveBeenCalledWith({ from: 'e2', to: 'e4' });
+  });
+
+  it('rejects moves for a stale position without touching the controller', async () => {
+    const game = makeControllerGame();
+    const board = makeBoard({ game });
+    const page = makePage(() => [board]);
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+    const read = adapter.read();
+    expect(read.kind).toBe('game');
+    if (read.kind !== 'game') return;
+
+    const submitted = await adapter.submitMove(makeMoveRequest({}, START_FEN, 'e2e4', AFTER_E4));
+
+    expect(submitted).toBe(false);
+    expect(game.move).not.toHaveBeenCalled();
+  });
+
+  it('rejects moves when the accepted FEN no longer matches', async () => {
+    const game = makeControllerGame();
+    const board = makeBoard({ game });
+    const page = makePage(() => [board]);
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+    const read = adapter.read();
+    expect(read.kind).toBe('game');
+    if (read.kind !== 'game') return;
+
+    const submitted = await adapter.submitMove(makeMoveRequest(read.snapshot.identity, AFTER_E4, 'e7e5', AFTER_E4));
+
+    expect(submitted).toBe(false);
+    expect(game.move).not.toHaveBeenCalled();
+  });
 });
 
 describe('userscript package metadata', () => {
@@ -119,8 +263,56 @@ function makeBoard({ visible = true, game = makeGame() }: { visible?: boolean; g
   };
 }
 
-function makeGame() {
-  return { getFEN: () => START_FEN, getPlayingAs: () => 1, isGameOver: () => false };
+function makeGame({ flipped = false }: { flipped?: boolean } = {}) {
+  return {
+    getFEN: () => START_FEN,
+    getPlayingAs: () => 1,
+    getTurn: () => 1,
+    getOptions: () => ({ flipped, isWhiteOnBottom: !flipped, id: 'play-computer' }),
+    getState: () => 'Idle',
+    isGameOver: () => false,
+  };
+}
+
+function makeControllerGame({
+  fen = START_FEN,
+  legal = true,
+  moveResult = { type: 'Move' },
+  state = () => 'Idle',
+  renderer = {},
+}: {
+  fen?: string;
+  legal?: boolean;
+  moveResult?: { type: string };
+  state?: () => string;
+  renderer?: object;
+} = {}) {
+  return {
+    getFEN: () => fen,
+    getPlayingAs: () => 1,
+    getTurn: () => (fen.split(' ')[1] === 'b' ? 2 : 1),
+    getOptions: () => ({ flipped: false, isWhiteOnBottom: true, id: 'play-computer' }),
+    getState: state,
+    isGameOver: () => false,
+    isLegalMove: vi.fn(() => legal),
+    move: vi.fn(() => moveResult),
+    getHistoryFENs: () => [START_FEN],
+    getRenderer: () => renderer,
+    on: vi.fn(),
+    off: vi.fn(),
+  };
+}
+
+function makeMoveRequest(identity: object, fromFen: string, uci: string, expectedFen: string) {
+  return {
+    identity,
+    fromFen,
+    uci,
+    expectedFen,
+    expectedPly: 1,
+    signal: new AbortController().signal,
+    isCurrent: () => true,
+  };
 }
 
 function makePage(boards: () => unknown[], clockText: string | null = null) {

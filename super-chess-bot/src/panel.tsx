@@ -17,14 +17,12 @@ export interface PanelActions {
 }
 
 export interface PanelCapabilityView {
-  showMoveMethod: boolean;
   transportNote: string | null;
 }
 
 export function getPanelCapabilityView(capabilities?: SiteCapabilities): PanelCapabilityView {
   const selectionInput = capabilities?.input === 'selection';
   return {
-    showMoveMethod: capabilities?.input === 'gestures' || capabilities === undefined,
     transportNote: selectionInput
       ? 'Moves use legal square selection on this site.'
       : capabilities?.input === 'controller'
@@ -40,7 +38,6 @@ interface PanelSettings {
   ponder: boolean;
   depth: number;
   moveTimeMs: number;
-  moveMethod: 'click' | 'drag';
 }
 
 export interface PanelAnalysis {
@@ -78,10 +75,6 @@ const MAX_LOG_ENTRIES = 100;
 const LOG_STICK_PX = 16;
 const COPY_FEEDBACK_MS = 1400;
 const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
-const MOVE_METHODS = [
-  { value: 'click', label: 'Click' },
-  { value: 'drag', label: 'Drag' },
-] as const;
 
 const readSettings = (): PanelSettings => ({
   enabled: !!BotState.hackEnabled,
@@ -90,7 +83,6 @@ const readSettings = (): PanelSettings => ({
   ponder: !!BotState.ponderEnabled,
   depth: BotState.botPower,
   moveTimeMs: BotState.moveTime,
-  moveMethod: BotState.moveMethod,
 });
 
 const settingsSignal = signal<PanelSettings>(readSettings());
@@ -162,9 +154,6 @@ function writeBotState<K extends keyof PanelSettings>(key: K, value: PanelSettin
       break;
     case 'moveTimeMs':
       BotState.moveTime = Number(value);
-      break;
-    case 'moveMethod':
-      BotState.moveMethod = value as PanelSettings['moveMethod'];
       break;
   }
 }
@@ -518,38 +507,6 @@ function Slider({
   );
 }
 
-function Segmented<T extends string>({
-  label,
-  value,
-  options,
-  onSelect,
-}: {
-  label: string;
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onSelect: (value: T) => void;
-}) {
-  return (
-    <div class="panel-field">
-      <span class="panel-field-label">{label}</span>
-      {/* biome-ignore lint/a11y/useSemanticElements: Segmented buttons in a group */}
-      <div class="panel-segmented" role="group" aria-label={label}>
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            class="panel-segment"
-            aria-pressed={value === option.value}
-            onClick={() => onSelect(option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function RecoveryNotice({ kind, onRecover }: { kind: RecoveryAction; onRecover: () => void }) {
   const resume = kind === 'resume';
   return (
@@ -798,15 +755,6 @@ function Panel({
               onPreview={(value) => previewSlider('moveTimeMs', value)}
               onCommit={(value) => updateSetting('moveTimeMs', value)}
             />
-
-            {capabilityView.showMoveMethod && (
-              <Segmented
-                label="Move input"
-                value={settings.moveMethod}
-                options={MOVE_METHODS}
-                onSelect={(value) => updateSetting('moveMethod', value)}
-              />
-            )}
           </section>
 
           <section class="panel-activity" aria-label="Activity log">

@@ -15,38 +15,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('board move confirmation', () => {
-  it('resolves when polling sees a changed FEN', async () => {
-    let currentFen = 'fen1';
-    vi.spyOn(state, 'getGame').mockImplementation(() => ({ getFEN: () => currentFen }));
-
-    const confirmation = board.waitForFenChange('fen1', 1000);
-    await vi.advanceTimersByTimeAsync(16);
-    currentFen = 'fen2';
-    await vi.advanceTimersByTimeAsync(16);
-
-    await expect(confirmation).resolves.toBe(true);
-  });
-
-  it('confirms move when current FEN has advanced past expectedFen but expectedFen is in getHistoryFENs', async () => {
-    let currentFen = 'fen1';
-    const historyFENs = ['fen1'];
-    vi.spyOn(state, 'getGame').mockImplementation(() => ({
-      getFEN: () => currentFen,
-      getHistoryFENs: () => historyFENs,
-    }));
-
-    const confirmation = board.waitForFenChange('fen1', 1000, 'fen2');
-    await vi.advanceTimersByTimeAsync(16);
-    // Opponent moved immediately: current FEN jumped from fen1 directly to fen3, but fen2 is recorded in history
-    historyFENs.push('fen2', 'fen3');
-    currentFen = 'fen3';
-    await vi.advanceTimersByTimeAsync(16);
-
-    await expect(confirmation).resolves.toBe(true);
-  });
-});
-
 const PYCHESS_START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const PYCHESS_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
 const PYCHESS_E4_C5 = 'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
