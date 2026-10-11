@@ -2,13 +2,34 @@
 
 ## Production checks
 
-`bun run check` passed after the audit fixes: Biome, strict TypeScript, Knip, all 76 tests, and the Vite production build. The generated userscript is 181.53 kB (46.08 kB gzip) — down from 218.73 kB (54.68 kB gzip) after replacing Zod with Valibot and pruning Tailwind CSS. Stockfish's pinned worker and WASM remain manager resources.
+`bun run check` passed after the PyChess castling-history and promotion-selector fixes: Biome, strict TypeScript, Knip, all 166 tests, and the Vite production build. The generated userscript is 218.49 kB (54.38 kB gzip). Stockfish's pinned worker and WASM remain manager resources.
 
-## PyChess production verification target
+## PyChess production verification
 
-The research and transport observations are recorded in [pychess-research.md](pychess-research.md). That game was created through **Play with AI**, but the userscript was not installed; its two-ply time-out is not a bot acceptance result.
+The game was opened from `https://www.pychess.org/?any` through **Play with AI**, never Puzzle of the Day. The production bundle was installed through Violentmonkey in the dedicated `pychess-acceptance-5ee8055d5e97` Chromium 155 session. The manager stored the 218,478-byte built script, including the PyChess promotion classes `q-piece`, `r-piece`, `b-piece`, and `n-piece`. The separate research observations are in [pychess-research.md](pychess-research.md); the research game's time-out is not counted as a bot result.
 
-For production acceptance, install `dist/bundle.user.js` through a userscript manager in a dedicated Chromium profile. Open `https://www.pychess.org/?any`, choose **Play with AI**, and verify CHESS, Chess960 off, Random-Mover off, real-time mode, Fairy-Stockfish level 7, White, and 1+0 (minutes slider index 4, increment 0). Confirm the panel and worker are `Ready` while automation is disabled, then start the AI game and enable the bot. Record the accepted movelist, clocks, search and confirmation timings, and result separately. Also probe Black/orientation changes, replay/live return, trusted interruption and Resume, disable during search, reconnect, game replacement, castling, and promotion. Do not count setup input, a transport probe, or a timed-out idle game as bot play.
+### Promotion regression and corrected acceptance
+
+The first installed-bundle regression game, [`vUxrXFGZ`](https://www.pychess.org/vUxrXFGZ), isolated the promotion failure. At ply 108, after `54...b3`, White had a pawn on h7 and the engine PV was `h7h8q`; PyChess did not accept the move and the bot timed out, 0–1. Inspection showed that the adapter searched for classes named `queen`, `rook`, `bishop`, and `knight`, while PyChess renders the chooser as `q-piece`, `r-piece`, `b-piece`, and `n-piece`. The selector map and test fixture were corrected to those site classes.
+
+After rebuilding and replacing the installed script, the corrected production bundle completed [`e4Hl3cG8`](https://www.pychess.org/e4Hl3cG8): **1–0 by checkmate, 76.Qh2#**, 151 plies. The setup was CHESS, empty custom FEN and alternate start, Chess960 off, Random-Mover off, real time, 1+0 (minute slider index 4, increment 0), Fairy-Stockfish level 7, White. Before the game, the panel and worker reported `Ready`, automation was disabled, and settings were 100 ms move budget, depth 30, pondering on. Both clocks showed 1:00 at start. Accepted promotions were `58...g1=Q`, `59.a8=Q`, and `75.b8=Q`; the bot finished with 0:42 and Black with 0:02.3. The bot therefore used about 18 seconds of its clock over the game, subject to the site's clock display rounding.
+
+The browser log showed engine evaluation/PV output followed by accepted SAN progression. It did not separately time engine search, square selection/submission, and server confirmation for each move. The 100 ms value is the configured search budget, not an observed end-to-end move latency. No Elo or bullet-strength conclusion follows from this single game.
+
+### Additional live probes
+
+- In the earlier production run with the castling-history fix already installed, the bot's `13.O-O` was accepted at ply 25. The AI later played `23...O-O-O` at ply 46, and the bot continued. A regression test now verifies orthodox castling history reaches Stockfish as `e8g8 e1c1` rather than chessops' king-to-rook encoding.
+- Black-side game [`thh5mOEQ`](https://www.pychess.org/thh5mOEQ) began with the AI playing `1.d4`. After flipping the board orientation to White, the bot correctly played `1...Nf6` as Black. This probe used a temporary 5,000 ms budget with pondering off, so it is not a timing sample. It continued to 130 plies and ended when White timed out; the bot had 0.2 seconds and White 0:14.
+- In active replay game [`yjSeh6qD`](https://www.pychess.org/yjSeh6qD), stepping back to the initial position showed `Replay mode` and no bot move. Fast-forwarding to the live position returned the panel to analysis. This verifies replay suspension and return to live play.
+- Crazyhouse AI game [`XKihdyLv`](https://www.pychess.org/XKihdyLv) displayed `PyChess chess variant required` and received no userscript move. On `/?any` without an identified AI round, the panel showed `Waiting for PyChess AI game` and did not move.
+- Reloading the completed acceptance game restored its final FEN, history, and result with the bot disabled and panel `Ready`. This is terminal-game reload recovery only; it does not verify a live reconnect.
+
+### Remaining browser checks
+
+- Disabling during a deliberately long search was attempted, but observation occurred after the game had advanced to ply 9; cancellation of that specific search is inconclusive.
+- Trusted left-button/touch interruption and explicit Resume were not verified.
+- Live reconnect and active game/board replacement were not verified. The terminal reload probe above does not cover them.
+- The acceptance site had saved auto-promote off. Promotion tests cover q/r/b/n chooser selection and Ctrl metadata restoration, and browser acceptance covers queen promotion, but underpromotion with auto-promote on remains unverified. Anonymous custom-FEN setup is login-restricted, so no custom-FEN underpromotion fixture was available.
 
 ## Chromium game run
 
