@@ -4,6 +4,12 @@
 
 `bun run check` passed after the audit fixes: Biome, strict TypeScript, Knip, all 76 tests, and the Vite production build. The generated userscript is 181.53 kB (46.08 kB gzip) — down from 218.73 kB (54.68 kB gzip) after replacing Zod with Valibot and pruning Tailwind CSS. Stockfish's pinned worker and WASM remain manager resources.
 
+## PyChess production verification target
+
+The research and transport observations are recorded in [pychess-research.md](pychess-research.md). That game was created through **Play with AI**, but the userscript was not installed; its two-ply time-out is not a bot acceptance result.
+
+For production acceptance, install `dist/bundle.user.js` through a userscript manager in a dedicated Chromium profile. Open `https://www.pychess.org/?any`, choose **Play with AI**, and verify CHESS, Chess960 off, Random-Mover off, real-time mode, Fairy-Stockfish level 7, White, and 1+0 (minutes slider index 4, increment 0). Confirm the panel and worker are `Ready` while automation is disabled, then start the AI game and enable the bot. Record the accepted movelist, clocks, search and confirmation timings, and result separately. Also probe Black/orientation changes, replay/live return, trusted interruption and Resume, disable during search, reconnect, game replacement, castling, and promotion. Do not count setup input, a transport probe, or a timed-out idle game as bot play.
+
 ## Chromium game run
 
 - Chromium 153 using `agent-browser` automation with the optimized production bundle.

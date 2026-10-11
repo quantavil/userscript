@@ -12,10 +12,13 @@ Project guidance for `super-chess-bot`.
 
 ## Architecture boundaries
 
-- `board.ts`: isolate Chess.com selectors and private API access; watch Move events with a DOM fallback; own simulated click/drag input and FEN confirmation; detach listeners when the board changes.
-- `index.ts`: mount the panel and prewarm the Stockfish worker before the game starts. Automation stays disabled until the user turns it on.
-- `controller.ts`: own enable/disable, readiness, game lifecycle, current FEN, human-interruption pause, and explicit resume/retry actions.
-- `engine/scheduler.ts`: schedule one current-position search, allocate the move deadline, reject stale results, validate candidate moves, and use the main principal variation to predict one opponent reply. Carry the exact resulting FEN and replayable history into the ponder search; do not queue speculative premove chains or repeatedly retry an unchanged position.
+- `sites/types.ts` and `sites/index.ts`: define normalized snapshots and select adapters only for exact supported hostnames.
+- `sites/chesscom.ts` and `sites/chesscom-state.ts`: isolate Chess.com selectors, private game API, clocks, rematch, and legacy click/drag transport.
+- `sites/pychess.ts` and `sites/pychess-state.ts`: collect PyChess-owned board, accepted FEN, SAN, clock, and result state. Submit through `cg.selectSquare` and the site's legal user-move callback. Never fake trusted events, call `cg.move()`, force legal acceptance, or write to the socket.
+- `board.ts`: own shared overlays, trusted-input revision, move serialization, and accepted-position confirmation at the requested ply. Keep gesture primitives in `board-input.ts`.
+- `index.ts`: mount the panel and prewarm the Stockfish worker without waiting for a Chess.com board selector. Automation stays disabled until the user turns it on.
+- `controller.ts`: own enable/disable, adapter subscriptions, snapshot identity and phase, human-interruption pause, and explicit resume/retry actions.
+- `engine/scheduler.ts`: schedule one current-position search from accepted FEN/history and adapter clock, reject stale identity/FEN results, and confirm move execution before reporting success. Carry exact position/history into ponder reuse; do not queue speculative premove chains or repeatedly retry an unchanged position.
 - `engine/uci-client.ts`: serialize UCI searches, promote a matching `go ponder` search, reuse a completed result only for an exact FEN/history/depth match, and drain canceled `bestmove` responses before starting a different position. Match both FEN and UCI history because repetition state affects evaluation. UCI messages have no request IDs, so do not attach a late response to a newer position.
 - `engine/worker-client.ts`: load pinned userscript resources and manage the persistent worker. Terminate it only for recovery.
 - `history.ts` and `engine/san.ts`: use chessops for legal history, notation, and position validation; do not recreate chess rules or a search engine.
@@ -31,8 +34,9 @@ Project guidance for `super-chess-bot`.
 
 ## Browser and strength checks
 
-- Use a dedicated Chromium session and the production bundle installed through a userscript manager. Test only a selected Chess.com computer game.
-- Cover orientation, promotion, enable/disable during search, new-game/reset, trusted human interruption, recovery, and the board position event path.
+- Use a dedicated Chromium session and the production bundle installed through a userscript manager. Test Chess.com against a selected computer game and PyChess through **Play with AI**; a puzzle or open lobby is not an AI round.
+- For the PyChess level-7 acceptance setup, select CHESS, turn Chess960 and Random-Mover off, use real time, set minutes slider index 4 and increment 0 for 1+0, and select White by title. Confirm `Ready` and disabled automation before starting the clock.
+- Cover orientation, promotion, enable/disable during search, new-game/reset, trusted human interruption, recovery, replay/live return, and accepted-position events. PyChess input must use legal square selection and confirmation from the accepted FEN/history.
 - For a minimum-time strength check, use the lowest supported move budget (100 ms) and a 1+0 game clock when available. Record the opponent's displayed rating, result, plies, bot budget, and our clock at start/end.
 - Report engine initialization, warmed search, input, and confirmation separately. A single game shows one result at that opponent's displayed rating; it does not establish a stable Elo rating or bullet reliability.
 - Browser tests are for inspection and verification and are not part of the bot's move loop.

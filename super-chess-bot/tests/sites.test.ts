@@ -1,6 +1,9 @@
+import stockfishPackage from 'stockfish/package.json' with { type: 'json' };
 import { describe, expect, it, vi } from 'vitest';
+import pkg from '../package.json' with { type: 'json' };
 import { createChesscomAdapter } from '../src/sites/chesscom.js';
 import { selectSite } from '../src/sites/index.js';
+import { userscriptMetadata } from '../src/userscript-metadata.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -50,6 +53,27 @@ describe('site adapter selection', () => {
     expect(on).toHaveBeenCalledWith('Move', expect.any(Function));
     unsubscribe();
     expect(off).toHaveBeenCalledWith('Move', on.mock.calls[0][1]);
+  });
+});
+
+describe('userscript package metadata', () => {
+  it('includes both sites while preserving GPL and pinned Stockfish resources', () => {
+    expect(userscriptMetadata.match).toEqual([
+      'https://www.chess.com/play/computer*',
+      'https://www.chess.com/game/*',
+      'https://www.chess.com/play/online*',
+      'https://www.pychess.org/*',
+      'https://pychess.org/*',
+    ]);
+    expect(userscriptMetadata.license).toBe('GPL-3.0-or-later');
+    expect(pkg.license).toBe('GPL-3.0-or-later');
+    expect(userscriptMetadata.description).toBe(pkg.description);
+
+    const worker = `https://unpkg.com/stockfish@${stockfishPackage.version}/bin/stockfish-${stockfishPackage.buildVersion}-lite-single`;
+    expect(userscriptMetadata.resource).toEqual({
+      'stockfish.js': `${worker}.js`,
+      'stockfish.wasm': `${worker}.wasm`,
+    });
   });
 });
 

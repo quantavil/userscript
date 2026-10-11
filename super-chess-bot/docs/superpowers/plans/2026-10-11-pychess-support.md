@@ -166,10 +166,10 @@ The pending request's `isCurrent` checks identity, accepted source FEN, settings
 
 **Files:** Modify `vite.config.ts`, `package.json`, `README.md`, `AGENTS.md`, `docs/browser-verification.md`, `dist/bundle.user.js`; add packaging assertions to `tests/sites.test.ts` or `tests/entrypoint.test.ts`.
 
-- [ ] Add metadata assertions: original Chess.com matches remain; both exact PyChess hosts are included; GPL and version-pinned Stockfish resources remain. No new dependencies.
-- [ ] Update userscript/package description, add `https://www.pychess.org/*` and `https://pychess.org/*` matches, and document both supported sites. Explain PyChess AI eligibility, selection transport, 1+0 slider index 4, level-7 acceptance, enabled-off startup, and replay/recovery. Update only subproject AGENTS with the adapter boundary and AI browser checks. Do not rewrite previous Chess.com results.
-- [ ] Run `bun run check`; inspect `dist/bundle.user.js` matches/resources/license and run `git diff --check`. Confirm all feature-diff paths are under `super-chess-bot/`.
-- [ ] Commit the validated package/docs/artifact: `feat(chess): package PyChess AI support`.
+- [x] Add metadata assertions: original Chess.com matches remain; both exact PyChess hosts are included; GPL and version-pinned Stockfish resources remain. No new dependencies.
+- [x] Update userscript/package description, add `https://www.pychess.org/*` and `https://pychess.org/*` matches, and document both supported sites. Explain PyChess AI eligibility, selection transport, 1+0 slider index 4, level-7 acceptance, enabled-off startup, and replay/recovery. Update only subproject AGENTS with the adapter boundary and AI browser checks. Do not rewrite previous Chess.com results.
+- [x] Run `bun run check`; inspect `dist/bundle.user.js` matches/resources/license and run `git diff --check`. Confirm all feature-diff paths are under `super-chess-bot/`.
+- [x] Commit the validated package/docs/artifact: `feat(chess): package PyChess AI support`.
 
 ## Task 6: Verify the production userscript in the actual AI flow
 

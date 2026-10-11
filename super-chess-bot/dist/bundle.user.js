@@ -3,12 +3,14 @@
 // @namespace    http://tampermonkey.net/
 // @version      10.0.0
 // @author       quantavil
-// @description  Local Stockfish analysis and move automation for Chess.com computer games
+// @description  Local Stockfish analysis and move automation for Chess.com computer games and PyChess AI
 // @license      GPL-3.0-or-later
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=chess.com
 // @match        https://www.chess.com/play/computer*
 // @match        https://www.chess.com/game/*
 // @match        https://www.chess.com/play/online*
+// @match        https://www.pychess.org/*
+// @match        https://pychess.org/*
 // @resource     stockfish.js    https://unpkg.com/stockfish@19.0.1/bin/stockfish-19-lite-single.js
 // @resource     stockfish.wasm  https://unpkg.com/stockfish@19.0.1/bin/stockfish-19-lite-single.wasm
 // @grant        GM_getResourceText
@@ -18,449 +20,6 @@
 
 (function() {
 	"use strict";
-	var pieceNames = {
-		q: "queen",
-		r: "rook",
-		b: "bishop",
-		n: "knight"
-	};
-	function pieceFromToken(token) {
-		const value = token.toLowerCase();
-		if (value === "q" || value === "r" || value === "b" || value === "n") return value;
-		if (/^[wb][qrbn]$/.test(value)) return value[1];
-		return Object.entries(pieceNames).find(([, name]) => name === value)?.[0] ?? null;
-	}
-	function promotionPieceFromLabel(label) {
-		if (typeof label !== "string") return null;
-		const tokens = label.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-		const pieces = new Set(tokens.map(pieceFromToken).filter((piece) => piece !== null));
-		return pieces.size === 1 ? pieces.values().next().value ?? null : null;
-	}
-	function findPromotionOption(options, requested) {
-		const piece = promotionPieceFromLabel(requested);
-		if (!piece) return null;
-		for (const option of options) {
-			const className = typeof option.className === "string" ? option.className : option.className?.baseVal;
-			if ([
-				option.dataset?.piece,
-				option.dataset?.pieceType,
-				option.dataset?.testElement,
-				option.getAttribute?.("data-piece"),
-				option.getAttribute?.("data-piece-type"),
-				option.getAttribute?.("data-test-element"),
-				option.getAttribute?.("aria-label"),
-				option.getAttribute?.("title"),
-				className,
-				option.textContent
-			].some((label) => promotionPieceFromLabel(label) === piece)) return option;
-		}
-		return null;
-	}
-	var DEFAULT_CONFIG = {
-		lang: void 0,
-		message: void 0,
-		abortEarly: void 0,
-		abortPipeEarly: void 0
-	};
-	function getGlobalConfig(config$1) {
-		if (!config$1 && true) return DEFAULT_CONFIG;
-		return {
-			lang: config$1?.lang ?? void 0,
-			message: config$1?.message,
-			abortEarly: config$1?.abortEarly ?? void 0,
-			abortPipeEarly: config$1?.abortPipeEarly ?? void 0
-		};
-	}
-	function _stringify(input) {
-		const type = typeof input;
-		if (type === "string") return `"${input}"`;
-		if (type === "number" || type === "bigint" || type === "boolean") return `${input}`;
-		if (type === "object" || type === "function") return (input && Object.getPrototypeOf(input)?.constructor?.name) ?? "null";
-		return type;
-	}
-	function _addIssue(context, label, dataset, config$1, other) {
-		const input = other && "input" in other ? other.input : dataset.value;
-		const expected = other?.expected ?? context.expects ?? null;
-		const received = other?.received ?? _stringify(input);
-		const issue = {
-			kind: context.kind,
-			type: context.type,
-			input,
-			expected,
-			received,
-			message: `Invalid ${label}: ${expected ? `Expected ${expected} but r` : "R"}eceived ${received}`,
-			requirement: context.requirement,
-			path: other?.path,
-			issues: other?.issues,
-			lang: config$1.lang,
-			abortEarly: config$1.abortEarly,
-			abortPipeEarly: config$1.abortPipeEarly
-		};
-		const isSchema = context.kind === "schema";
-		const message$1 = other?.message ?? context.message ?? (context.reference, issue.lang, void 0) ?? (isSchema ? (issue.lang, void 0) : null) ?? config$1.message ?? (issue.lang, void 0);
-		if (message$1 !== void 0) issue.message = typeof message$1 === "function" ? message$1(issue) : message$1;
-		if (isSchema) dataset.typed = false;
-		if (dataset.issues) dataset.issues.push(issue);
-		else dataset.issues = [issue];
-	}
-	function _isSameValueZero(value1, value2) {
-		return value1 === value2 || Number.isNaN(value1) && Number.isNaN(value2);
-	}
-	function _joinExpects(values$1, separator) {
-		const list = [...new Set(values$1)];
-		if (list.length > 1) return `(${list.join(` ${separator} `)})`;
-		return list[0] ?? "never";
-	}
-	function _standardSchema(schema) {
-		schema["~standard"] = {
-			version: 1,
-			vendor: "valibot",
-			validate: (value$1) => schema["~run"]({ value: value$1 }, getGlobalConfig())
-		};
-		return schema;
-	}
-	function integer(message$1) {
-		return {
-			kind: "validation",
-			type: "integer",
-			reference: integer,
-			async: false,
-			expects: null,
-			requirement: Number.isInteger,
-			message: message$1,
-			"~run"(dataset, config$1) {
-				if (dataset.typed && !this.requirement(dataset.value)) _addIssue(this, "integer", dataset, config$1);
-				return dataset;
-			}
-		};
-	}
-	function maxLength(requirement, message$1) {
-		return {
-			kind: "validation",
-			type: "max_length",
-			reference: maxLength,
-			async: false,
-			expects: `<=${requirement}`,
-			requirement,
-			message: message$1,
-			"~run"(dataset, config$1) {
-				if (dataset.typed && dataset.value.length > this.requirement) _addIssue(this, "length", dataset, config$1, { received: `${dataset.value.length}` });
-				return dataset;
-			}
-		};
-	}
-	function maxValue(requirement, message$1) {
-		return {
-			kind: "validation",
-			type: "max_value",
-			reference: maxValue,
-			async: false,
-			expects: `<=${requirement instanceof Date ? requirement.toJSON() : _stringify(requirement)}`,
-			requirement,
-			message: message$1,
-			"~run"(dataset, config$1) {
-				if (dataset.typed && !(dataset.value <= this.requirement)) _addIssue(this, "value", dataset, config$1, { received: dataset.value instanceof Date ? dataset.value.toJSON() : _stringify(dataset.value) });
-				return dataset;
-			}
-		};
-	}
-	function minValue(requirement, message$1) {
-		return {
-			kind: "validation",
-			type: "min_value",
-			reference: minValue,
-			async: false,
-			expects: `>=${requirement instanceof Date ? requirement.toJSON() : _stringify(requirement)}`,
-			requirement,
-			message: message$1,
-			"~run"(dataset, config$1) {
-				if (dataset.typed && !(dataset.value >= this.requirement)) _addIssue(this, "value", dataset, config$1, { received: dataset.value instanceof Date ? dataset.value.toJSON() : _stringify(dataset.value) });
-				return dataset;
-			}
-		};
-	}
-	function getFallback(schema, dataset, config$1) {
-		return typeof schema.fallback === "function" ? schema.fallback(dataset, config$1) : schema.fallback;
-	}
-	function getDefault(schema, dataset, config$1) {
-		return typeof schema.default === "function" ? schema.default(dataset, config$1) : schema.default;
-	}
-	function literal(literal_, message$1) {
-		return _standardSchema({
-			kind: "schema",
-			type: "literal",
-			reference: literal,
-			expects: _stringify(literal_),
-			async: false,
-			literal: literal_,
-			message: message$1,
-			"~run"(dataset, config$1) {
-				if (_isSameValueZero(dataset.value, this.literal)) dataset.typed = true;
-				else _addIssue(this, "type", dataset, config$1);
-				return dataset;
-			}
-		});
-	}
-	function nullable(wrapped, default_) {
-		return _standardSchema({
-			kind: "schema",
-			type: "nullable",
-			reference: nullable,
-			expects: `(${wrapped.expects} | null)`,
-			async: false,
-			wrapped,
-			default: default_,
-			"~run"(dataset, config$1) {
-				if (dataset.value === null) {
-					if (this.default !== void 0) dataset.value = getDefault(this, dataset, config$1);
-					if (dataset.value === null) {
-						dataset.typed = true;
-						return dataset;
-					}
-				}
-				return this.wrapped["~run"](dataset, config$1);
-			}
-		});
-	}
-	function number(message$1) {
-		return _standardSchema({
-			kind: "schema",
-			type: "number",
-			reference: number,
-			expects: "number",
-			async: false,
-			message: message$1,
-			"~run"(dataset, config$1) {
-				if (typeof dataset.value === "number" && !isNaN(dataset.value)) dataset.typed = true;
-				else _addIssue(this, "type", dataset, config$1);
-				return dataset;
-			}
-		});
-	}
-	function object(entries$1, message$1) {
-		return _standardSchema({
-			kind: "schema",
-			type: "object",
-			reference: object,
-			expects: "Object",
-			async: false,
-			entries: entries$1,
-			message: message$1,
-			"~run"(dataset, config$1) {
-				const input = dataset.value;
-				if (input && typeof input === "object") {
-					dataset.typed = true;
-					dataset.value = {};
-					for (const key in this.entries) {
-						const valueSchema = this.entries[key];
-						if (key in input || (valueSchema.type === "exact_optional" || valueSchema.type === "optional" || valueSchema.type === "nullish") && valueSchema.default !== void 0) {
-							const value$1 = key in input ? input[key] : getDefault(valueSchema);
-							const valueDataset = valueSchema["~run"]({ value: value$1 }, config$1);
-							if (valueDataset.issues) {
-								const pathItem = {
-									type: "object",
-									origin: "value",
-									input,
-									key,
-									value: value$1
-								};
-								for (const issue of valueDataset.issues) {
-									if (issue.path) issue.path.unshift(pathItem);
-									else issue.path = [pathItem];
-									dataset.issues?.push(issue);
-								}
-								if (!dataset.issues) dataset.issues = valueDataset.issues;
-								if (config$1.abortEarly) {
-									dataset.typed = false;
-									break;
-								}
-							}
-							if (!valueDataset.typed) dataset.typed = false;
-							dataset.value[key] = valueDataset.value;
-						} else if (valueSchema.fallback !== void 0) dataset.value[key] = getFallback(valueSchema);
-						else if (valueSchema.type !== "exact_optional" && valueSchema.type !== "optional" && valueSchema.type !== "nullish") {
-							_addIssue(this, "key", dataset, config$1, {
-								input: void 0,
-								expected: `"${key}"`,
-								path: [{
-									type: "object",
-									origin: "key",
-									input,
-									key,
-									value: input[key]
-								}]
-							});
-							if (config$1.abortEarly) break;
-						}
-					}
-				} else _addIssue(this, "type", dataset, config$1);
-				return dataset;
-			}
-		});
-	}
-	function optional(wrapped, default_) {
-		return _standardSchema({
-			kind: "schema",
-			type: "optional",
-			reference: optional,
-			expects: `(${wrapped.expects} | undefined)`,
-			async: false,
-			wrapped,
-			default: default_,
-			"~run"(dataset, config$1) {
-				if (dataset.value === void 0) {
-					if (this.default !== void 0) dataset.value = getDefault(this, dataset, config$1);
-					if (dataset.value === void 0) {
-						dataset.typed = true;
-						return dataset;
-					}
-				}
-				return this.wrapped["~run"](dataset, config$1);
-			}
-		});
-	}
-	function picklist(options, message$1) {
-		return _standardSchema({
-			kind: "schema",
-			type: "picklist",
-			reference: picklist,
-			expects: _joinExpects(options.map(_stringify), "|"),
-			async: false,
-			options,
-			message: message$1,
-			"~run"(dataset, config$1) {
-				if (this.options.includes(dataset.value)) dataset.typed = true;
-				else _addIssue(this, "type", dataset, config$1);
-				return dataset;
-			}
-		});
-	}
-	function string(message$1) {
-		return _standardSchema({
-			kind: "schema",
-			type: "string",
-			reference: string,
-			expects: "string",
-			async: false,
-			message: message$1,
-			"~run"(dataset, config$1) {
-				if (typeof dataset.value === "string") dataset.typed = true;
-				else _addIssue(this, "type", dataset, config$1);
-				return dataset;
-			}
-		});
-	}
-	function _subIssues(datasets) {
-		let issues;
-		if (datasets) for (const dataset of datasets) if (issues) for (const issue of dataset.issues) issues.push(issue);
-		else issues = dataset.issues;
-		return issues;
-	}
-	function union(options, message$1) {
-		return _standardSchema({
-			kind: "schema",
-			type: "union",
-			reference: union,
-			expects: _joinExpects(options.map((option) => option.expects), "|"),
-			async: false,
-			options,
-			message: message$1,
-			"~run"(dataset, config$1) {
-				let validDataset;
-				let typedDatasets;
-				let untypedDatasets;
-				for (const schema of this.options) {
-					const optionDataset = schema["~run"]({ value: dataset.value }, config$1);
-					if (optionDataset.typed) if (optionDataset.issues) if (typedDatasets) typedDatasets.push(optionDataset);
-					else typedDatasets = [optionDataset];
-					else {
-						validDataset = optionDataset;
-						break;
-					}
-					else if (untypedDatasets) untypedDatasets.push(optionDataset);
-					else untypedDatasets = [optionDataset];
-				}
-				if (validDataset) return validDataset;
-				if (typedDatasets) {
-					if (typedDatasets.length === 1) return typedDatasets[0];
-					_addIssue(this, "type", dataset, config$1, { issues: _subIssues(typedDatasets) });
-					dataset.typed = true;
-				} else if (untypedDatasets?.length === 1) return untypedDatasets[0];
-				else _addIssue(this, "type", dataset, config$1, { issues: _subIssues(untypedDatasets) });
-				return dataset;
-			}
-		});
-	}
-	function pipe(...pipe$1) {
-		return _standardSchema({
-			...pipe$1[0],
-			pipe: pipe$1,
-			"~run"(dataset, config$1) {
-				for (const item of pipe$1) if (item.kind !== "metadata") {
-					if (dataset.issues && (item.kind === "schema" || item.kind === "transformation")) {
-						dataset.typed = false;
-						break;
-					}
-					if (!dataset.issues || !config$1.abortEarly && !config$1.abortPipeEarly) dataset = item["~run"](dataset, config$1);
-				}
-				return dataset;
-			}
-		});
-	}
-	function safeParse(schema, input, config$1) {
-		const dataset = schema["~run"]({ value: input }, getGlobalConfig(config$1));
-		return {
-			typed: dataset.typed,
-			success: !dataset.issues,
-			output: dataset.value,
-			issues: dataset.issues
-		};
-	}
-	var DEFAULT_SETTINGS = {
-		hackEnabled: 0,
-		botPower: 30,
-		moveTime: 100,
-		autoMove: 1,
-		ponderEnabled: 1,
-		autoRematch: 0,
-		moveMethod: "click",
-		menuPosition: null
-	};
-	var flagSchema = union([literal(0), literal(1)]);
-	var integerInRange = (minimum, maximum) => pipe(number(), integer(), minValue(minimum), maxValue(maximum));
-	var positionSchema = object({
-		top: pipe(string(), maxLength(32)),
-		left: pipe(string(), maxLength(32))
-	});
-	var savedSettingsSchema = object({
-		hackEnabled: optional(flagSchema),
-		botPower: optional(integerInRange(1, 30)),
-		moveTime: optional(integerInRange(100, 1e4)),
-		autoMove: optional(flagSchema),
-		ponderEnabled: optional(flagSchema),
-		premoveEnabled: optional(flagSchema),
-		autoRematch: optional(flagSchema),
-		moveMethod: optional(picklist(["click", "drag"])),
-		menuPosition: optional(nullable(positionSchema))
-	});
-	function loadSettings(serialized) {
-		if (serialized === null) return { ...DEFAULT_SETTINGS };
-		let saved;
-		try {
-			saved = JSON.parse(serialized);
-		} catch {
-			return { ...DEFAULT_SETTINGS };
-		}
-		const result = safeParse(savedSettingsSchema, saved);
-		if (!result.success) return { ...DEFAULT_SETTINGS };
-		const { premoveEnabled, ...currentSettings } = result.output;
-		return {
-			...DEFAULT_SETTINGS,
-			...currentSettings,
-			ponderEnabled: currentSettings.ponderEnabled ?? premoveEnabled ?? DEFAULT_SETTINGS.ponderEnabled,
-			hackEnabled: 0
-		};
-	}
 	function debounce(fn, wait = 150) {
 		let t = null;
 		return (...args) => {
@@ -469,424 +28,10 @@
 		};
 	}
 	var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-	async function waitForElement(selector, timeout = 15e3) {
-		return new Promise((resolve, reject) => {
-			const existing = document.querySelector(selector);
-			if (existing) return resolve(existing);
-			let timeoutId;
-			const obs = new MutationObserver(() => {
-				const el = document.querySelector(selector);
-				if (el) {
-					clearTimeout(timeoutId);
-					obs.disconnect();
-					resolve(el);
-				}
-			});
-			obs.observe(document.body, {
-				childList: true,
-				subtree: true
-			});
-			timeoutId = setTimeout(() => {
-				obs.disconnect();
-				reject(new Error(`Element ${selector} not found within ${timeout}ms`));
-			}, timeout);
-		});
-	}
 	function scoreToDisplay(score) {
 		if (typeof score?.mate === "number" && score.mate !== 0) return `M${score.mate}`;
 		if (typeof score?.cp === "number") return (score.cp / 100).toFixed(2);
 		return "-";
-	}
-	var BotState = {
-		hackEnabled: 0,
-		botPower: 30,
-		moveTime: 100,
-		autoMove: 1,
-		currentEvaluation: "-",
-		bestMove: "-",
-		principalVariation: "-",
-		statusInfo: "Ready",
-		recoveryAction: null,
-		ponderEnabled: 1,
-		autoRematch: 0,
-		moveMethod: "click"
-	};
-	var Settings = {
-		save: debounce(() => {
-			try {
-				const menuWrap = document.querySelector("#menuWrap");
-				const settings = {
-					hackEnabled: BotState.hackEnabled,
-					botPower: BotState.botPower,
-					moveTime: BotState.moveTime,
-					autoMove: BotState.autoMove,
-					ponderEnabled: BotState.ponderEnabled,
-					autoRematch: BotState.autoRematch,
-					moveMethod: BotState.moveMethod,
-					menuPosition: menuWrap ? {
-						top: menuWrap.style.top,
-						left: menuWrap.style.left
-					} : null
-				};
-				localStorage.setItem("gabibot_settings", JSON.stringify(settings));
-			} catch (e) {
-				console.warn("Failed to save settings:", e);
-			}
-		}, 200),
-		load() {
-			try {
-				const saved = localStorage.getItem("gabibot_settings");
-				if (!saved) {
-					BotState.hackEnabled = 0;
-					return null;
-				}
-				const settings = loadSettings(saved);
-				Object.assign(BotState, settings, { hackEnabled: 0 });
-				return settings;
-			} catch {
-				Object.assign(BotState, DEFAULT_SETTINGS, { hackEnabled: 0 });
-				return { ...DEFAULT_SETTINGS };
-			}
-		}
-	};
-	var BOARD_SELECTOR = "wc-chess-board, chess-board, .board";
-	function pageDocument() {
-		return typeof unsafeWindow === "undefined" ? document : unsafeWindow.document;
-	}
-	function hasGameApi(board) {
-		return typeof board.game?.getFEN === "function";
-	}
-	function isVisibleBoard(board) {
-		try {
-			const style = (board.ownerDocument?.defaultView)?.getComputedStyle(board) ?? (typeof getComputedStyle === "function" ? getComputedStyle(board) : null);
-			if (style?.display === "none" || style?.visibility === "hidden" || style?.visibility === "collapse") return false;
-			if (typeof board.getClientRects === "function" && board.getClientRects().length === 0) return false;
-			const rect = board.getBoundingClientRect?.();
-			return !rect || rect.width > 0 && rect.height > 0;
-		} catch {
-			return false;
-		}
-	}
-	function boardArea(board) {
-		const rect = board.getBoundingClientRect?.();
-		return rect ? rect.width * rect.height : 0;
-	}
-	var cachedGame = null;
-	var cachedGameTimestamp = 0;
-	function getBoard(doc = pageDocument()) {
-		const visible = (typeof doc.querySelectorAll === "function" ? Array.from(doc.querySelectorAll(BOARD_SELECTOR)) : [doc.querySelector(BOARD_SELECTOR)].filter((board) => !!board)).filter(isVisibleBoard);
-		visible.sort((a, b) => Number(hasGameApi(b)) - Number(hasGameApi(a)) || boardArea(b) - boardArea(a));
-		return visible[0] ?? null;
-	}
-	var getGame = () => {
-		const now = Date.now();
-		if (cachedGame && now - cachedGameTimestamp < 100) return cachedGame;
-		cachedGame = getBoard(pageDocument())?.game || null;
-		cachedGameTimestamp = now;
-		return cachedGame;
-	};
-	var getFen = (game) => {
-		try {
-			return game?.getFEN ? game.getFEN() : null;
-		} catch {
-			return null;
-		}
-	};
-	var getPlayerColor = (game) => {
-		try {
-			return game?.getPlayingAs?.() === 2 ? "b" : "w";
-		} catch {
-			return "w";
-		}
-	};
-	var getSideToMove = (game) => {
-		const fen = getFen(game);
-		return fen ? fen.split(" ")[1] || null : null;
-	};
-	var isPlayersTurn = (game) => {
-		return getPlayerColor(game) === getSideToMove(game);
-	};
-	var pa = () => getGame()?.getPlayingAs?.() ?? 1;
-	function isBoardFlipped() {
-		const el = getBoard();
-		let flipped = false;
-		try {
-			const attr = el?.getAttribute?.("orientation");
-			if (attr === "black") flipped = true;
-			else if (attr === "white") flipped = false;
-			else if (el?.classList?.contains("flipped")) flipped = true;
-			else if (getGame()?.getPlayingAs?.() === 2) flipped = true;
-		} catch {}
-		return flipped;
-	}
-	function invalidateGameCache() {
-		cachedGame = null;
-		cachedGameTimestamp = 0;
-	}
-	var boardCtx = null;
-	var domObserver = null;
-	var moveRevision = 0;
-	var moveExecutionActive = false;
-	var pendingMoveConfirmations = new Set();
-	var boardInputListeners = new Set();
-	var boardMoveObserver = null;
-	var mutationListeners = new Set();
-	var unsubscribeGame = null;
-	var watcherRevision = 0;
-	var moveWatcherRequested = false;
-	function clearMoveWatcher() {
-		watcherRevision++;
-		unsubscribeGame?.();
-		unsubscribeGame = null;
-		boardMoveObserver?.disconnect();
-		boardMoveObserver = null;
-	}
-	function isBotOwnedNode(node) {
-		const candidate = node;
-		return !!(typeof candidate.closest === "function" ? candidate : candidate.parentElement)?.closest?.("[data-gabibot-overlay], #menuWrap");
-	}
-	function isBotOwnedMutation(record) {
-		if (isBotOwnedNode(record.target)) return true;
-		if (record.type !== "childList") return false;
-		const changedNodes = [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)];
-		return changedNodes.length > 0 && changedNodes.every(isBotOwnedNode);
-	}
-	function notifyMutationListeners() {
-		invalidateGameCache();
-		for (const callback of [...mutationListeners]) try {
-			callback();
-		} catch (error) {
-			console.error("GabiBot: Board mutation listener failed.", error);
-		}
-	}
-	function attachMoveWatcher() {
-		if (!moveWatcherRequested) return;
-		const board = getBoard();
-		if (!board) return;
-		const game = getGame();
-		const revision = watcherRevision;
-		const notify = () => {
-			if (revision !== watcherRevision) return;
-			notifyMutationListeners();
-		};
-		if (typeof game?.on === "function" && typeof game?.off === "function") {
-			game.on("Move", notify);
-			const off = game.off.bind(game);
-			unsubscribeGame = () => off("Move", notify);
-		}
-		let queued = false;
-		boardMoveObserver = new MutationObserver((records) => {
-			if (!records.some((record) => !isBotOwnedMutation(record))) return;
-			if (queued) return;
-			queued = true;
-			queueMicrotask(() => {
-				queued = false;
-				notify();
-			});
-		});
-		boardMoveObserver.observe(board, {
-			childList: true,
-			subtree: true,
-			attributes: true,
-			attributeFilter: [
-				"class",
-				"style",
-				"data-piece"
-			]
-		});
-	}
-	function attachToBoard(boardEl) {
-		invalidateGameCache();
-		detachFromBoard();
-		clearMoveWatcher();
-		if (!boardEl) return;
-		if (getComputedStyle(boardEl).position === "static") boardEl.style.position = "relative";
-		const drawingBoard = document.createElement("canvas");
-		drawingBoard.id = "arrowCanvas";
-		drawingBoard.setAttribute("data-gabibot-overlay", "");
-		drawingBoard.style.cssText = "position:absolute;top:0;left:0;pointer-events:none;z-index:100;";
-		const ctx = drawingBoard.getContext("2d");
-		if (!ctx) {
-			console.error("GabiBot: Failed to get 2D context.");
-			return;
-		}
-		const evalBarWrap = document.createElement("div");
-		evalBarWrap.id = "evaluationBarWrap";
-		evalBarWrap.setAttribute("data-gabibot-overlay", "");
-		evalBarWrap.style.cssText = "position:absolute;height:100%;width:14px;left:-22px;top:0;background:#111;z-index:50;overflow:hidden;pointer-events:none;border-radius:4px;border:1px solid rgba(255,255,255,0.2);box-sizing:border-box;";
-		const whiteBar = document.createElement("div");
-		whiteBar.id = "evaluationBarWhite";
-		whiteBar.style.cssText = "position:absolute;left:0;right:0;bottom:0;height:50%;background:#f0d9b5;";
-		const blackBar = document.createElement("div");
-		blackBar.id = "evaluationBarBlack";
-		blackBar.style.cssText = "position:absolute;left:0;right:0;top:0;height:50%;background:#111;";
-		evalBarWrap.appendChild(whiteBar);
-		evalBarWrap.appendChild(blackBar);
-		boardEl.appendChild(evalBarWrap);
-		boardEl.appendChild(drawingBoard);
-		const resizeCanvas = () => {
-			const rect = boardEl.getBoundingClientRect();
-			drawingBoard.width = rect.width;
-			drawingBoard.height = rect.height;
-		};
-		resizeCanvas();
-		const ro = new ResizeObserver(resizeCanvas);
-		ro.observe(boardEl);
-		const cancelPendingOnUserAction = (event) => {
-			if (!event.isTrusted) return;
-			if ("button" in event && typeof event.button === "number" && event.button !== 0) return;
-			cancelPendingMove();
-			boardInputListeners.forEach((listener) => {
-				listener();
-			});
-		};
-		const userInputEvents = typeof PointerEvent === "undefined" ? ["mousedown", "touchstart"] : ["pointerdown"];
-		for (const eventName of userInputEvents) boardEl.addEventListener(eventName, cancelPendingOnUserAction, true);
-		boardCtx = {
-			boardEl,
-			drawingBoard,
-			ctx,
-			evalBarWrap,
-			detachListeners() {
-				for (const eventName of userInputEvents) try {
-					boardEl.removeEventListener(eventName, cancelPendingOnUserAction, true);
-				} catch {}
-				try {
-					ro.disconnect();
-				} catch {}
-				try {
-					drawingBoard.remove();
-				} catch {}
-				try {
-					evalBarWrap.remove();
-				} catch {}
-			}
-		};
-		if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-		attachMoveWatcher();
-	}
-	function detachFromBoard() {
-		if (!boardCtx) return;
-		try {
-			boardCtx.detachListeners();
-		} catch {}
-		boardCtx = null;
-	}
-	function startDomBoardWatcher() {
-		if (domObserver) try {
-			domObserver.disconnect();
-		} catch {}
-		const syncBoard = debounce(() => {
-			const newBoard = getBoard();
-			if (!newBoard) {
-				if (boardCtx) attachToBoard(null);
-				else clearMoveWatcher();
-				return;
-			}
-			if (!boardCtx || boardCtx.boardEl !== newBoard) attachToBoard(newBoard);
-		}, 200);
-		domObserver = new MutationObserver((records) => {
-			if (records.some((record) => !isBotOwnedMutation(record))) syncBoard();
-		});
-		domObserver.observe(document.body, {
-			childList: true,
-			subtree: true,
-			attributes: true,
-			attributeFilter: [
-				"class",
-				"style",
-				"hidden"
-			]
-		});
-	}
-	function onBoardMutation(cb) {
-		mutationListeners.add(cb);
-		return () => mutationListeners.delete(cb);
-	}
-	function onBoardInput(cb) {
-		boardInputListeners.add(cb);
-		return () => boardInputListeners.delete(cb);
-	}
-	function startMoveWatcher() {
-		moveWatcherRequested = true;
-		clearMoveWatcher();
-		attachMoveWatcher();
-	}
-	function stopMoveWatcher() {
-		moveWatcherRequested = false;
-		clearMoveWatcher();
-	}
-	function clearArrows() {
-		if (!boardCtx) return;
-		const { drawingBoard, ctx } = boardCtx;
-		ctx.clearRect(0, 0, drawingBoard.width, drawingBoard.height);
-	}
-	function getSquareCenterClientXY(square) {
-		if (!boardCtx || !square || square.length < 2) return null;
-		const file = "abcdefgh".indexOf(square[0]);
-		const rank = parseInt(square[1], 10);
-		if (file < 0 || Number.isNaN(rank)) return null;
-		const rect = boardCtx.boardEl.getBoundingClientRect();
-		const size = Math.min(rect.width, rect.height);
-		const tile = size / 8;
-		const offsetX = rect.left + (rect.width - size) / 2;
-		const offsetY = rect.top + (rect.height - size) / 2;
-		let x = file, y = 8 - rank;
-		if (isBoardFlipped()) {
-			x = 7 - x;
-			y = 7 - y;
-		}
-		const result = {
-			x: offsetX + (x + .5) * tile,
-			y: offsetY + (y + .5) * tile
-		};
-		if (Number.isNaN(result.x) || Number.isNaN(result.y)) {
-			console.warn(`GabiBot: Invalid coordinates for square ${square}. Board size: ${rect.width}x${rect.height}`);
-			return null;
-		}
-		return result;
-	}
-	function getSquareCenterCanvasXY(square) {
-		if (!boardCtx || !square || square.length < 2) return null;
-		const p = getSquareCenterClientXY(square);
-		if (!p) return null;
-		const rect = boardCtx.boardEl.getBoundingClientRect();
-		return {
-			x: p.x - rect.left,
-			y: p.y - rect.top
-		};
-	}
-	function drawArrow(uciFrom, uciTo, color, thickness) {
-		if (!boardCtx || !uciFrom || !uciTo || uciFrom.length < 2 || uciTo.length < 2) return;
-		const { drawingBoard, ctx } = boardCtx;
-		const a = getSquareCenterCanvasXY(uciFrom);
-		const b = getSquareCenterCanvasXY(uciTo);
-		if (!a || !b) return;
-		const tile = Math.min(drawingBoard.width, drawingBoard.height) / 8;
-		const angle = Math.atan2(b.y - a.y, b.x - a.x);
-		const headLength = Math.max(14, tile * .35);
-		const headAngle = Math.PI / 6;
-		ctx.beginPath();
-		ctx.arc(a.x, a.y, Math.max(4, thickness * 1.2), 0, 2 * Math.PI);
-		ctx.fillStyle = color;
-		ctx.fill();
-		const shaftEndX = b.x - headLength * .6 * Math.cos(angle);
-		const shaftEndY = b.y - headLength * .6 * Math.sin(angle);
-		ctx.beginPath();
-		ctx.moveTo(a.x, a.y);
-		ctx.lineTo(shaftEndX, shaftEndY);
-		ctx.lineWidth = Math.max(thickness, 4);
-		ctx.strokeStyle = color;
-		ctx.lineCap = "round";
-		ctx.stroke();
-		ctx.beginPath();
-		ctx.moveTo(b.x, b.y);
-		ctx.lineTo(b.x - headLength * Math.cos(angle - headAngle), b.y - headLength * Math.sin(angle - headAngle));
-		ctx.lineTo(b.x - headLength * .5 * Math.cos(angle), b.y - headLength * .5 * Math.sin(angle));
-		ctx.lineTo(b.x - headLength * Math.cos(angle + headAngle), b.y - headLength * Math.sin(angle + headAngle));
-		ctx.closePath();
-		ctx.fillStyle = color;
-		ctx.fill();
 	}
 	function dispatchPointerOrMouse(el, type, opts, usePointer) {
 		if (!el) return;
@@ -912,18 +57,6 @@
 			composed: true,
 			...opts
 		}));
-	}
-	function getTargetAt(x, y) {
-		return document.elementFromPoint(x, y) || boardCtx?.boardEl || document.body;
-	}
-	function getMoveCoordinates(from, to) {
-		const a = getSquareCenterClientXY(from);
-		const b = getSquareCenterClientXY(to);
-		if (!a || !b) return null;
-		return {
-			a,
-			b
-		};
 	}
 	function createPointerOpts(x, y, buttons) {
 		return {
@@ -955,229 +88,70 @@
 			clientY: y
 		}));
 	}
-	async function simulateClickMove(from, to, guard = () => true) {
-		const coords = getMoveCoordinates(from, to);
+	async function simulateClickMove(from, to, context) {
+		const coords = context.getMoveCoordinates(from, to);
+		const guard = context.guard ?? (() => true);
 		if (!coords || !guard()) return false;
 		const { a, b } = coords;
 		const usePointer = !!window.PointerEvent;
-		const startEl = getTargetAt(a.x, a.y);
+		const startEl = context.getTargetAt(a.x, a.y);
 		pressAt(startEl, a.x, a.y, usePointer);
 		await sleep(2);
 		releaseAt(startEl, a.x, a.y, usePointer);
 		clickAt(startEl, a.x, a.y);
 		await sleep(4);
 		if (!guard()) return false;
-		const endEl = getTargetAt(b.x, b.y);
+		const endEl = context.getTargetAt(b.x, b.y);
 		pressAt(endEl, b.x, b.y, usePointer);
 		await sleep(2);
 		releaseAt(endEl, b.x, b.y, usePointer);
 		clickAt(endEl, b.x, b.y);
 		return true;
 	}
-	async function simulateDragMove(from, to, guard = () => true) {
-		const coords = getMoveCoordinates(from, to);
+	async function simulateDragMove(from, to, context) {
+		const coords = context.getMoveCoordinates(from, to);
+		const guard = context.guard ?? (() => true);
 		if (!coords || !guard()) return false;
 		const { a, b } = coords;
 		const usePointer = !!window.PointerEvent;
-		const startEl = getTargetAt(a.x, a.y);
+		const startEl = context.getTargetAt(a.x, a.y);
 		pressAt(startEl, a.x, a.y, usePointer);
 		await sleep(4);
-		const steps = 2;
-		for (let i = 1; i <= steps; i++) {
-			const t = i / steps;
-			const mx = a.x + (b.x - a.x) * t;
-			const my = a.y + (b.y - a.y) * t;
-			const stepTarget = getTargetAt(mx, my);
-			const moveOpts = createPointerOpts(mx, my, 1);
-			dispatchPointerOrMouse(stepTarget, usePointer ? "pointermove" : "mousemove", moveOpts, usePointer);
+		for (let i = 1; i <= 2; i++) {
+			const t = i / 2;
+			const x = a.x + (b.x - a.x) * t;
+			const y = a.y + (b.y - a.y) * t;
+			dispatchPointerOrMouse(context.getTargetAt(x, y), usePointer ? "pointermove" : "mousemove", createPointerOpts(x, y, 1), usePointer);
 			await sleep(4);
 		}
 		if (!guard()) {
 			releaseAt(startEl, a.x, a.y, usePointer);
 			return false;
 		}
-		releaseAt(getTargetAt(b.x, b.y), b.x, b.y, usePointer);
+		releaseAt(context.getTargetAt(b.x, b.y), b.x, b.y, usePointer);
 		return true;
 	}
-	async function waitForFenChange(prevFen, timeout = 1e3, expectedFen, signal) {
-		return new Promise((resolve) => {
-			if (signal?.aborted) {
-				resolve(false);
-				return;
-			}
-			let done = false;
-			let unsubscribe = () => {};
-			let frame;
-			let timer;
-			const finish = (accepted) => {
-				if (done) return;
-				done = true;
-				unsubscribe();
-				signal?.removeEventListener("abort", onAbort);
-				if (timer) clearTimeout(timer);
-				if (frame !== void 0) cancelAnimationFrame(frame);
-				resolve(accepted);
-			};
-			const check = () => {
-				const game = getGame();
-				const fen = getFen(game);
-				if (fen && fen !== prevFen) {
-					if (!expectedFen) {
-						finish(true);
-						return;
-					}
-					const comparable = (f) => f.split(" ").filter((_, i) => i !== 3).join(" ");
-					const expectedComp = comparable(expectedFen);
-					if (comparable(fen) === expectedComp) {
-						finish(true);
-						return;
-					}
-					const history = game?.getHistoryFENs?.();
-					if (Array.isArray(history) && history.some((h) => typeof h === "string" && comparable(h) === expectedComp)) {
-						finish(true);
-						return;
-					}
-					finish(false);
-				}
-			};
-			const onAbort = () => {
-				check();
-				if (!done) finish(false);
-			};
-			signal?.addEventListener("abort", onAbort, { once: true });
-			unsubscribe = onBoardMutation(check);
-			timer = setTimeout(() => finish(false), timeout);
-			const poll = () => {
-				check();
-				if (!done) frame = requestAnimationFrame(poll);
-			};
-			poll();
-		});
-	}
-	async function maybeSelectPromotion(prefer = "q", guard = () => true) {
-		if (!/^[qrbn]$/i.test(prefer)) return false;
-		const getCandidates = () => Array.from(document.querySelectorAll("[data-test-element*=\"promotion\"], [class*=\"promotion\"] [class*=\"piece\"], [class*=\"promotion\"] button, .promotion-piece")).filter((el) => {
-			const option = el;
-			if (option.getClientRects().length === 0) return false;
-			const style = getComputedStyle(option);
-			return style.display !== "none" && style.visibility !== "hidden";
-		});
-		const tryClick = async (el) => {
-			try {
-				const rect = el.getBoundingClientRect();
-				if (!rect.width || !rect.height) return false;
-				const x = rect.left + rect.width / 2;
-				const y = rect.top + rect.height / 2;
-				const target = getTargetAt(x, y);
-				if (target !== el && !el.contains(target)) return false;
-				const usePointer = !!window.PointerEvent;
-				pressAt(target, x, y, usePointer);
-				await sleep(2);
-				if (!guard()) {
-					releaseAt(target, x, y, usePointer);
-					return false;
-				}
+	async function activateElement(element, getTargetAt, guard) {
+		try {
+			const rect = element.getBoundingClientRect();
+			if (!rect.width || !rect.height) return false;
+			const x = rect.left + rect.width / 2;
+			const y = rect.top + rect.height / 2;
+			const target = getTargetAt(x, y);
+			if (target !== element && !element.contains(target)) return false;
+			const usePointer = !!window.PointerEvent;
+			pressAt(target, x, y, usePointer);
+			await sleep(2);
+			if (!guard()) {
 				releaseAt(target, x, y, usePointer);
-				clickAt(target, x, y);
-				return true;
-			} catch {
 				return false;
 			}
-		};
-		const start = Date.now();
-		while (Date.now() - start < 1e3) {
-			if (!guard()) return false;
-			const match = findPromotionOption(getCandidates(), prefer);
-			if (match && guard() && await tryClick(match)) return true;
-			await sleep(60);
+			releaseAt(target, x, y, usePointer);
+			clickAt(target, x, y);
+			return true;
+		} catch {
+			return false;
 		}
-		return false;
-	}
-	function cancelPendingMove() {
-		moveRevision++;
-		for (const controller of pendingMoveConfirmations) controller.abort();
-		pendingMoveConfirmations.clear();
-	}
-	function getMoveRevision() {
-		return moveRevision;
-	}
-	function setStyleIfChanged(element, property, value) {
-		if (element.style[property] !== value) element.style[property] = value;
-	}
-	async function executeMove(from, to, analysisFen, promotionChar, _depth, _tickCallback, expectedFen) {
-		if (moveExecutionActive) return false;
-		const revision = moveRevision;
-		const game = getGame();
-		if (!BotState.hackEnabled || !BotState.autoMove || !game || !isPlayersTurn(game) || getFen(game) !== analysisFen) return false;
-		moveExecutionActive = true;
-		const confirmationController = new AbortController();
-		pendingMoveConfirmations.add(confirmationController);
-		const guard = () => revision === moveRevision && !!BotState.hackEnabled && !!BotState.autoMove && getFen(getGame()) === analysisFen;
-		let confirmation;
-		try {
-			BotState.statusInfo = "Submitting move...";
-			BotState.onUpdateDisplay?.(pa());
-			confirmation = waitForFenChange(analysisFen, 1e3, expectedFen, confirmationController.signal);
-			if (!(BotState.moveMethod === "drag" ? await simulateDragMove(from, to, guard) : await simulateClickMove(from, to, guard))) return false;
-			if (promotionChar && guard() && !await maybeSelectPromotion(promotionChar, guard)) return false;
-			const accepted = await confirmation;
-			if (revision === moveRevision) {
-				BotState.statusInfo = accepted ? "Move confirmed" : "Move not confirmed; waiting for position change";
-				BotState.onUpdateDisplay?.(pa());
-			}
-			return accepted;
-		} finally {
-			confirmationController.abort();
-			pendingMoveConfirmations.delete(confirmationController);
-			moveExecutionActive = false;
-			if (revision === moveRevision && BotState.statusInfo === "Submitting move...") {
-				BotState.statusInfo = "Move input failed";
-				BotState.onUpdateDisplay?.(pa());
-			}
-		}
-	}
-	function updateEvaluationBar(evaluation, _playingAs) {
-		if (!boardCtx) return;
-		const whiteBar = boardCtx.evalBarWrap.querySelector("#evaluationBarWhite");
-		const blackBar = boardCtx.evalBarWrap.querySelector("#evaluationBarBlack");
-		if (!whiteBar || !blackBar) return;
-		let score = 0;
-		if (typeof evaluation === "string") {
-			if (evaluation === "-" || evaluation === "Error") {
-				setStyleIfChanged(whiteBar, "height", "50%");
-				setStyleIfChanged(blackBar, "height", "50%");
-				return;
-			}
-			if (evaluation.includes("M")) score = parseInt(evaluation.replace("M", "").replace("+", ""), 10) > 0 ? 10 : -10;
-			else score = parseFloat(evaluation);
-		} else score = evaluation;
-		if (Number.isNaN(score)) {
-			setStyleIfChanged(whiteBar, "height", "50%");
-			setStyleIfChanged(blackBar, "height", "50%");
-			return;
-		}
-		const maxScore = 5;
-		const whitePercent = 50 + Math.max(-5, Math.min(maxScore, score)) / maxScore * 50;
-		const blackPercent = 100 - whitePercent;
-		if (isBoardFlipped()) {
-			setStyleIfChanged(blackBar, "bottom", "0");
-			setStyleIfChanged(blackBar, "top", "auto");
-			setStyleIfChanged(blackBar, "height", `${blackPercent}%`);
-			setStyleIfChanged(whiteBar, "top", "0");
-			setStyleIfChanged(whiteBar, "bottom", "auto");
-			setStyleIfChanged(whiteBar, "height", `${whitePercent}%`);
-		} else {
-			setStyleIfChanged(whiteBar, "bottom", "0");
-			setStyleIfChanged(whiteBar, "top", "auto");
-			setStyleIfChanged(whiteBar, "height", `${whitePercent}%`);
-			setStyleIfChanged(blackBar, "top", "0");
-			setStyleIfChanged(blackBar, "bottom", "auto");
-			setStyleIfChanged(blackBar, "height", `${blackPercent}%`);
-		}
-		const ourEval = getPlayerColor(getGame()) === "w" ? score : -score;
-		if (ourEval < -2) setStyleIfChanged(boardCtx.evalBarWrap, "borderColor", "rgba(255, 100, 100, 0.5)");
-		else if (ourEval > 2) setStyleIfChanged(boardCtx.evalBarWrap, "borderColor", "rgba(100, 255, 100, 0.5)");
-		else setStyleIfChanged(boardCtx.evalBarWrap, "borderColor", "rgba(255, 255, 255, 0.2)");
 	}
 	var _Result = class {
 		unwrap(ok, err) {
@@ -2460,6 +1434,1271 @@
 		...setup.remainingChecks ? [makeRemainingChecks(setup.remainingChecks)] : [],
 		...(opts === null || opts === void 0 ? void 0 : opts.epd) ? [] : [Math.max(0, Math.min(setup.halfmoves, 9999)), Math.max(1, Math.min(setup.fullmoves, 9999))]
 	].join(" ");
+	var makeSanWithoutSuffix = (pos, move) => {
+		let san = "";
+		if (isDrop(move)) {
+			if (move.role !== "pawn") san = roleToChar(move.role).toUpperCase();
+			san += "@" + makeSquare(move.to);
+		} else {
+			const role = pos.board.getRole(move.from);
+			if (!role) return "--";
+			if (role === "king" && (pos.board[pos.turn].has(move.to) || Math.abs(move.to - move.from) === 2)) san = move.to > move.from ? "O-O" : "O-O-O";
+			else {
+				const capture = pos.board.occupied.has(move.to) || role === "pawn" && squareFile(move.from) !== squareFile(move.to);
+				if (role !== "pawn") {
+					san = roleToChar(role).toUpperCase();
+					let others;
+					if (role === "king") others = kingAttacks(move.to).intersect(pos.board.king);
+					else if (role === "queen") others = queenAttacks(move.to, pos.board.occupied).intersect(pos.board.queen);
+					else if (role === "rook") others = rookAttacks(move.to, pos.board.occupied).intersect(pos.board.rook);
+					else if (role === "bishop") others = bishopAttacks(move.to, pos.board.occupied).intersect(pos.board.bishop);
+					else others = knightAttacks(move.to).intersect(pos.board.knight);
+					others = others.intersect(pos.board[pos.turn]).without(move.from);
+					if (others.nonEmpty()) {
+						const ctx = pos.ctx();
+						for (const from of others) if (!pos.dests(from, ctx).has(move.to)) others = others.without(from);
+						if (others.nonEmpty()) {
+							let row = false;
+							let column = others.intersects(SquareSet.fromRank(squareRank(move.from)));
+							if (others.intersects(SquareSet.fromFile(squareFile(move.from)))) row = true;
+							else column = true;
+							if (column) san += FILE_NAMES[squareFile(move.from)];
+							if (row) san += RANK_NAMES[squareRank(move.from)];
+						}
+					}
+				} else if (capture) san = FILE_NAMES[squareFile(move.from)];
+				if (capture) san += "x";
+				san += makeSquare(move.to);
+				if (move.promotion) san += "=" + roleToChar(move.promotion).toUpperCase();
+			}
+		}
+		return san;
+	};
+	var makeSanAndPlay = (pos, move) => {
+		var _a;
+		const san = makeSanWithoutSuffix(pos, move);
+		pos.play(move);
+		if ((_a = pos.outcome()) === null || _a === void 0 ? void 0 : _a.winner) return san + "#";
+		if (pos.isCheck()) return san + "+";
+		return san;
+	};
+	var parseSan = (pos, san) => {
+		const ctx = pos.ctx();
+		const match = san.match(/^([NBRQK])?([a-h])?([1-8])?[-x]?([a-h][1-8])(?:=?([nbrqkNBRQK]))?[+#]?$/);
+		if (!match) {
+			let castlingSide;
+			if (san === "O-O" || san === "O-O+" || san === "O-O#") castlingSide = "h";
+			else if (san === "O-O-O" || san === "O-O-O+" || san === "O-O-O#") castlingSide = "a";
+			if (castlingSide) {
+				const rook = pos.castles.rook[pos.turn][castlingSide];
+				if (!defined(ctx.king) || !defined(rook) || !pos.dests(ctx.king, ctx).has(rook)) return;
+				return {
+					from: ctx.king,
+					to: rook
+				};
+			}
+			const match = san.match(/^([pnbrqkPNBRQK])?@([a-h][1-8])[+#]?$/);
+			if (!match) return;
+			const move = {
+				role: match[1] ? charToRole(match[1]) : "pawn",
+				to: parseSquare(match[2])
+			};
+			return pos.isLegal(move, ctx) ? move : void 0;
+		}
+		const role = match[1] ? charToRole(match[1]) : "pawn";
+		const to = parseSquare(match[4]);
+		const promotion = match[5] ? charToRole(match[5]) : void 0;
+		if (!!promotion !== (role === "pawn" && SquareSet.backranks().has(to))) return;
+		if (promotion === "king" && pos.rules !== "antichess") return;
+		let candidates = pos.board.pieces(pos.turn, role);
+		if (role === "pawn" && !match[2]) candidates = candidates.intersect(SquareSet.fromFile(squareFile(to)));
+		else if (match[2]) candidates = candidates.intersect(SquareSet.fromFile(match[2].charCodeAt(0) - "a".charCodeAt(0)));
+		if (match[3]) candidates = candidates.intersect(SquareSet.fromRank(match[3].charCodeAt(0) - "1".charCodeAt(0)));
+		const pawnAdvance = role === "pawn" ? SquareSet.fromFile(squareFile(to)) : SquareSet.empty();
+		candidates = candidates.intersect(pawnAdvance.union(attacks({
+			color: opposite(pos.turn),
+			role
+		}, to, pos.board.occupied)));
+		let from;
+		for (const candidate of candidates) if (pos.dests(candidate, ctx).has(to)) {
+			if (defined(from)) return;
+			from = candidate;
+		}
+		if (!defined(from)) return;
+		return {
+			from,
+			to,
+			promotion
+		};
+	};
+	var comparable = (fen) => fen.split(" ").filter((_, i) => i !== 3).join(" ");
+	function canonicalFen(fen) {
+		if (typeof fen !== "string" || fen.trim().split(/\s+/).length !== 6) return null;
+		try {
+			const setup = parseFen(fen.trim());
+			if (setup.isErr) return null;
+			const position = Chess.fromSetup(setup.value);
+			if (position.isErr) return null;
+			return makeFen(position.value.toSetup());
+		} catch {
+			return null;
+		}
+	}
+	function replaySanLine(startFen, sans) {
+		const rootFen = canonicalFen(startFen);
+		if (!rootFen) return void 0;
+		try {
+			const setup = parseFen(rootFen);
+			if (setup.isErr) return void 0;
+			const position = Chess.fromSetup(setup.value);
+			if (position.isErr) return void 0;
+			const moves = [];
+			const fens = [rootFen];
+			for (const san of sans) {
+				if (typeof san !== "string" || !san.trim()) return void 0;
+				const move = parseSan(position.value, san.trim());
+				if (!move) return void 0;
+				moves.push(makeUci(move));
+				position.value.play(move);
+				const fen = makeFen(position.value.toSetup());
+				if (!canonicalFen(fen)) return void 0;
+				fens.push(fen);
+			}
+			return {
+				history: {
+					startFen: rootFen,
+					moves
+				},
+				fens
+			};
+		} catch {
+			return;
+		}
+	}
+	function readPositionHistory(game, currentFen) {
+		try {
+			const fens = game.getHistoryFENs?.();
+			const sans = game.getHistorySANs?.();
+			if (!Array.isArray(fens) || !Array.isArray(sans) || typeof fens[0] !== "string") return void 0;
+			const setup = parseFen(fens[0]);
+			if (setup.isErr) return void 0;
+			const position = Chess.fromSetup(setup.value);
+			if (position.isErr) return void 0;
+			const moves = [];
+			for (const san of sans) {
+				if (!san) continue;
+				if (typeof san !== "string") return void 0;
+				const move = parseSan(position.value, san);
+				if (!move) return void 0;
+				moves.push(makeUci(move));
+				position.value.play(move);
+				if (comparable(makeFen(position.value.toSetup())) === comparable(currentFen)) return {
+					startFen: fens[0],
+					moves
+				};
+			}
+			if (comparable(fens[0]) === comparable(currentFen)) return {
+				startFen: fens[0],
+				moves: []
+			};
+			return;
+		} catch {
+			return;
+		}
+	}
+	var pieceNames = {
+		q: "queen",
+		r: "rook",
+		b: "bishop",
+		n: "knight"
+	};
+	function pieceFromToken(token) {
+		const value = token.toLowerCase();
+		if (value === "q" || value === "r" || value === "b" || value === "n") return value;
+		if (/^[wb][qrbn]$/.test(value)) return value[1];
+		return Object.entries(pieceNames).find(([, name]) => name === value)?.[0] ?? null;
+	}
+	function promotionPieceFromLabel(label) {
+		if (typeof label !== "string") return null;
+		const tokens = label.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+		const pieces = new Set(tokens.map(pieceFromToken).filter((piece) => piece !== null));
+		return pieces.size === 1 ? pieces.values().next().value ?? null : null;
+	}
+	function findPromotionOption(options, requested) {
+		const piece = promotionPieceFromLabel(requested);
+		if (!piece) return null;
+		for (const option of options) {
+			const className = typeof option.className === "string" ? option.className : option.className?.baseVal;
+			if ([
+				option.dataset?.piece,
+				option.dataset?.pieceType,
+				option.dataset?.testElement,
+				option.getAttribute?.("data-piece"),
+				option.getAttribute?.("data-piece-type"),
+				option.getAttribute?.("data-test-element"),
+				option.getAttribute?.("aria-label"),
+				option.getAttribute?.("title"),
+				className,
+				option.textContent
+			].some((label) => promotionPieceFromLabel(label) === piece)) return option;
+		}
+		return null;
+	}
+	var DEFAULT_CONFIG = {
+		lang: void 0,
+		message: void 0,
+		abortEarly: void 0,
+		abortPipeEarly: void 0
+	};
+	function getGlobalConfig(config$1) {
+		if (!config$1 && true) return DEFAULT_CONFIG;
+		return {
+			lang: config$1?.lang ?? void 0,
+			message: config$1?.message,
+			abortEarly: config$1?.abortEarly ?? void 0,
+			abortPipeEarly: config$1?.abortPipeEarly ?? void 0
+		};
+	}
+	function _stringify(input) {
+		const type = typeof input;
+		if (type === "string") return `"${input}"`;
+		if (type === "number" || type === "bigint" || type === "boolean") return `${input}`;
+		if (type === "object" || type === "function") return (input && Object.getPrototypeOf(input)?.constructor?.name) ?? "null";
+		return type;
+	}
+	function _addIssue(context, label, dataset, config$1, other) {
+		const input = other && "input" in other ? other.input : dataset.value;
+		const expected = other?.expected ?? context.expects ?? null;
+		const received = other?.received ?? _stringify(input);
+		const issue = {
+			kind: context.kind,
+			type: context.type,
+			input,
+			expected,
+			received,
+			message: `Invalid ${label}: ${expected ? `Expected ${expected} but r` : "R"}eceived ${received}`,
+			requirement: context.requirement,
+			path: other?.path,
+			issues: other?.issues,
+			lang: config$1.lang,
+			abortEarly: config$1.abortEarly,
+			abortPipeEarly: config$1.abortPipeEarly
+		};
+		const isSchema = context.kind === "schema";
+		const message$1 = other?.message ?? context.message ?? (context.reference, issue.lang, void 0) ?? (isSchema ? (issue.lang, void 0) : null) ?? config$1.message ?? (issue.lang, void 0);
+		if (message$1 !== void 0) issue.message = typeof message$1 === "function" ? message$1(issue) : message$1;
+		if (isSchema) dataset.typed = false;
+		if (dataset.issues) dataset.issues.push(issue);
+		else dataset.issues = [issue];
+	}
+	function _isSameValueZero(value1, value2) {
+		return value1 === value2 || Number.isNaN(value1) && Number.isNaN(value2);
+	}
+	function _joinExpects(values$1, separator) {
+		const list = [...new Set(values$1)];
+		if (list.length > 1) return `(${list.join(` ${separator} `)})`;
+		return list[0] ?? "never";
+	}
+	function _standardSchema(schema) {
+		schema["~standard"] = {
+			version: 1,
+			vendor: "valibot",
+			validate: (value$1) => schema["~run"]({ value: value$1 }, getGlobalConfig())
+		};
+		return schema;
+	}
+	function integer(message$1) {
+		return {
+			kind: "validation",
+			type: "integer",
+			reference: integer,
+			async: false,
+			expects: null,
+			requirement: Number.isInteger,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (dataset.typed && !this.requirement(dataset.value)) _addIssue(this, "integer", dataset, config$1);
+				return dataset;
+			}
+		};
+	}
+	function maxLength(requirement, message$1) {
+		return {
+			kind: "validation",
+			type: "max_length",
+			reference: maxLength,
+			async: false,
+			expects: `<=${requirement}`,
+			requirement,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (dataset.typed && dataset.value.length > this.requirement) _addIssue(this, "length", dataset, config$1, { received: `${dataset.value.length}` });
+				return dataset;
+			}
+		};
+	}
+	function maxValue(requirement, message$1) {
+		return {
+			kind: "validation",
+			type: "max_value",
+			reference: maxValue,
+			async: false,
+			expects: `<=${requirement instanceof Date ? requirement.toJSON() : _stringify(requirement)}`,
+			requirement,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (dataset.typed && !(dataset.value <= this.requirement)) _addIssue(this, "value", dataset, config$1, { received: dataset.value instanceof Date ? dataset.value.toJSON() : _stringify(dataset.value) });
+				return dataset;
+			}
+		};
+	}
+	function minValue(requirement, message$1) {
+		return {
+			kind: "validation",
+			type: "min_value",
+			reference: minValue,
+			async: false,
+			expects: `>=${requirement instanceof Date ? requirement.toJSON() : _stringify(requirement)}`,
+			requirement,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (dataset.typed && !(dataset.value >= this.requirement)) _addIssue(this, "value", dataset, config$1, { received: dataset.value instanceof Date ? dataset.value.toJSON() : _stringify(dataset.value) });
+				return dataset;
+			}
+		};
+	}
+	function getFallback(schema, dataset, config$1) {
+		return typeof schema.fallback === "function" ? schema.fallback(dataset, config$1) : schema.fallback;
+	}
+	function getDefault(schema, dataset, config$1) {
+		return typeof schema.default === "function" ? schema.default(dataset, config$1) : schema.default;
+	}
+	function literal(literal_, message$1) {
+		return _standardSchema({
+			kind: "schema",
+			type: "literal",
+			reference: literal,
+			expects: _stringify(literal_),
+			async: false,
+			literal: literal_,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (_isSameValueZero(dataset.value, this.literal)) dataset.typed = true;
+				else _addIssue(this, "type", dataset, config$1);
+				return dataset;
+			}
+		});
+	}
+	function nullable(wrapped, default_) {
+		return _standardSchema({
+			kind: "schema",
+			type: "nullable",
+			reference: nullable,
+			expects: `(${wrapped.expects} | null)`,
+			async: false,
+			wrapped,
+			default: default_,
+			"~run"(dataset, config$1) {
+				if (dataset.value === null) {
+					if (this.default !== void 0) dataset.value = getDefault(this, dataset, config$1);
+					if (dataset.value === null) {
+						dataset.typed = true;
+						return dataset;
+					}
+				}
+				return this.wrapped["~run"](dataset, config$1);
+			}
+		});
+	}
+	function number(message$1) {
+		return _standardSchema({
+			kind: "schema",
+			type: "number",
+			reference: number,
+			expects: "number",
+			async: false,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (typeof dataset.value === "number" && !isNaN(dataset.value)) dataset.typed = true;
+				else _addIssue(this, "type", dataset, config$1);
+				return dataset;
+			}
+		});
+	}
+	function object(entries$1, message$1) {
+		return _standardSchema({
+			kind: "schema",
+			type: "object",
+			reference: object,
+			expects: "Object",
+			async: false,
+			entries: entries$1,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				const input = dataset.value;
+				if (input && typeof input === "object") {
+					dataset.typed = true;
+					dataset.value = {};
+					for (const key in this.entries) {
+						const valueSchema = this.entries[key];
+						if (key in input || (valueSchema.type === "exact_optional" || valueSchema.type === "optional" || valueSchema.type === "nullish") && valueSchema.default !== void 0) {
+							const value$1 = key in input ? input[key] : getDefault(valueSchema);
+							const valueDataset = valueSchema["~run"]({ value: value$1 }, config$1);
+							if (valueDataset.issues) {
+								const pathItem = {
+									type: "object",
+									origin: "value",
+									input,
+									key,
+									value: value$1
+								};
+								for (const issue of valueDataset.issues) {
+									if (issue.path) issue.path.unshift(pathItem);
+									else issue.path = [pathItem];
+									dataset.issues?.push(issue);
+								}
+								if (!dataset.issues) dataset.issues = valueDataset.issues;
+								if (config$1.abortEarly) {
+									dataset.typed = false;
+									break;
+								}
+							}
+							if (!valueDataset.typed) dataset.typed = false;
+							dataset.value[key] = valueDataset.value;
+						} else if (valueSchema.fallback !== void 0) dataset.value[key] = getFallback(valueSchema);
+						else if (valueSchema.type !== "exact_optional" && valueSchema.type !== "optional" && valueSchema.type !== "nullish") {
+							_addIssue(this, "key", dataset, config$1, {
+								input: void 0,
+								expected: `"${key}"`,
+								path: [{
+									type: "object",
+									origin: "key",
+									input,
+									key,
+									value: input[key]
+								}]
+							});
+							if (config$1.abortEarly) break;
+						}
+					}
+				} else _addIssue(this, "type", dataset, config$1);
+				return dataset;
+			}
+		});
+	}
+	function optional(wrapped, default_) {
+		return _standardSchema({
+			kind: "schema",
+			type: "optional",
+			reference: optional,
+			expects: `(${wrapped.expects} | undefined)`,
+			async: false,
+			wrapped,
+			default: default_,
+			"~run"(dataset, config$1) {
+				if (dataset.value === void 0) {
+					if (this.default !== void 0) dataset.value = getDefault(this, dataset, config$1);
+					if (dataset.value === void 0) {
+						dataset.typed = true;
+						return dataset;
+					}
+				}
+				return this.wrapped["~run"](dataset, config$1);
+			}
+		});
+	}
+	function picklist(options, message$1) {
+		return _standardSchema({
+			kind: "schema",
+			type: "picklist",
+			reference: picklist,
+			expects: _joinExpects(options.map(_stringify), "|"),
+			async: false,
+			options,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (this.options.includes(dataset.value)) dataset.typed = true;
+				else _addIssue(this, "type", dataset, config$1);
+				return dataset;
+			}
+		});
+	}
+	function string(message$1) {
+		return _standardSchema({
+			kind: "schema",
+			type: "string",
+			reference: string,
+			expects: "string",
+			async: false,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				if (typeof dataset.value === "string") dataset.typed = true;
+				else _addIssue(this, "type", dataset, config$1);
+				return dataset;
+			}
+		});
+	}
+	function _subIssues(datasets) {
+		let issues;
+		if (datasets) for (const dataset of datasets) if (issues) for (const issue of dataset.issues) issues.push(issue);
+		else issues = dataset.issues;
+		return issues;
+	}
+	function union(options, message$1) {
+		return _standardSchema({
+			kind: "schema",
+			type: "union",
+			reference: union,
+			expects: _joinExpects(options.map((option) => option.expects), "|"),
+			async: false,
+			options,
+			message: message$1,
+			"~run"(dataset, config$1) {
+				let validDataset;
+				let typedDatasets;
+				let untypedDatasets;
+				for (const schema of this.options) {
+					const optionDataset = schema["~run"]({ value: dataset.value }, config$1);
+					if (optionDataset.typed) if (optionDataset.issues) if (typedDatasets) typedDatasets.push(optionDataset);
+					else typedDatasets = [optionDataset];
+					else {
+						validDataset = optionDataset;
+						break;
+					}
+					else if (untypedDatasets) untypedDatasets.push(optionDataset);
+					else untypedDatasets = [optionDataset];
+				}
+				if (validDataset) return validDataset;
+				if (typedDatasets) {
+					if (typedDatasets.length === 1) return typedDatasets[0];
+					_addIssue(this, "type", dataset, config$1, { issues: _subIssues(typedDatasets) });
+					dataset.typed = true;
+				} else if (untypedDatasets?.length === 1) return untypedDatasets[0];
+				else _addIssue(this, "type", dataset, config$1, { issues: _subIssues(untypedDatasets) });
+				return dataset;
+			}
+		});
+	}
+	function pipe(...pipe$1) {
+		return _standardSchema({
+			...pipe$1[0],
+			pipe: pipe$1,
+			"~run"(dataset, config$1) {
+				for (const item of pipe$1) if (item.kind !== "metadata") {
+					if (dataset.issues && (item.kind === "schema" || item.kind === "transformation")) {
+						dataset.typed = false;
+						break;
+					}
+					if (!dataset.issues || !config$1.abortEarly && !config$1.abortPipeEarly) dataset = item["~run"](dataset, config$1);
+				}
+				return dataset;
+			}
+		});
+	}
+	function safeParse(schema, input, config$1) {
+		const dataset = schema["~run"]({ value: input }, getGlobalConfig(config$1));
+		return {
+			typed: dataset.typed,
+			success: !dataset.issues,
+			output: dataset.value,
+			issues: dataset.issues
+		};
+	}
+	var DEFAULT_SETTINGS = {
+		hackEnabled: 0,
+		botPower: 30,
+		moveTime: 100,
+		autoMove: 1,
+		ponderEnabled: 1,
+		autoRematch: 0,
+		moveMethod: "click",
+		menuPosition: null
+	};
+	var flagSchema = union([literal(0), literal(1)]);
+	var integerInRange = (minimum, maximum) => pipe(number(), integer(), minValue(minimum), maxValue(maximum));
+	var positionSchema = object({
+		top: pipe(string(), maxLength(32)),
+		left: pipe(string(), maxLength(32))
+	});
+	var savedSettingsSchema = object({
+		hackEnabled: optional(flagSchema),
+		botPower: optional(integerInRange(1, 30)),
+		moveTime: optional(integerInRange(100, 1e4)),
+		autoMove: optional(flagSchema),
+		ponderEnabled: optional(flagSchema),
+		premoveEnabled: optional(flagSchema),
+		autoRematch: optional(flagSchema),
+		moveMethod: optional(picklist(["click", "drag"])),
+		menuPosition: optional(nullable(positionSchema))
+	});
+	function loadSettings(serialized) {
+		if (serialized === null) return { ...DEFAULT_SETTINGS };
+		let saved;
+		try {
+			saved = JSON.parse(serialized);
+		} catch {
+			return { ...DEFAULT_SETTINGS };
+		}
+		const result = safeParse(savedSettingsSchema, saved);
+		if (!result.success) return { ...DEFAULT_SETTINGS };
+		const { premoveEnabled, ...currentSettings } = result.output;
+		return {
+			...DEFAULT_SETTINGS,
+			...currentSettings,
+			ponderEnabled: currentSettings.ponderEnabled ?? premoveEnabled ?? DEFAULT_SETTINGS.ponderEnabled,
+			hackEnabled: 0
+		};
+	}
+	var activeSite$1 = null;
+	function setActiveSite(site) {
+		activeSite$1 = site;
+	}
+	function getActiveSite() {
+		return activeSite$1;
+	}
+	var BOARD_SELECTOR = "wc-chess-board, chess-board, .board";
+	var cachedGame = null;
+	var cachedGameTimestamp = 0;
+	function pageDocument() {
+		return typeof unsafeWindow === "undefined" ? document : unsafeWindow.document;
+	}
+	function hasGameApi(board) {
+		return typeof board.game?.getFEN === "function";
+	}
+	function isVisibleBoard(board) {
+		try {
+			const style = (board.ownerDocument?.defaultView)?.getComputedStyle(board) ?? (typeof getComputedStyle === "function" ? getComputedStyle(board) : null);
+			if (style?.display === "none" || style?.visibility === "hidden" || style?.visibility === "collapse") return false;
+			if (typeof board.getClientRects === "function" && board.getClientRects().length === 0) return false;
+			const rect = board.getBoundingClientRect?.();
+			return !rect || rect.width > 0 && rect.height > 0;
+		} catch {
+			return false;
+		}
+	}
+	function boardArea(board) {
+		const rect = board.getBoundingClientRect?.();
+		return rect ? rect.width * rect.height : 0;
+	}
+	function getBoard(doc = pageDocument()) {
+		const visible = (typeof doc.querySelectorAll === "function" ? Array.from(doc.querySelectorAll(BOARD_SELECTOR)) : [doc.querySelector(BOARD_SELECTOR)].filter((board) => !!board)).filter(isVisibleBoard);
+		visible.sort((a, b) => Number(hasGameApi(b)) - Number(hasGameApi(a)) || boardArea(b) - boardArea(a));
+		return visible[0] ?? null;
+	}
+	function getGame() {
+		const now = Date.now();
+		if (cachedGame && now - cachedGameTimestamp < 100) return cachedGame;
+		cachedGame = getBoard(pageDocument())?.game || null;
+		cachedGameTimestamp = now;
+		return cachedGame;
+	}
+	var getFen$1 = (game) => {
+		try {
+			return game?.getFEN ? game.getFEN() : null;
+		} catch {
+			return null;
+		}
+	};
+	var getPlayerColor$1 = (game) => {
+		try {
+			return game?.getPlayingAs?.() === 2 ? "b" : "w";
+		} catch {
+			return "w";
+		}
+	};
+	var getSideToMove = (game) => {
+		const fen = getFen$1(game);
+		return fen ? fen.split(" ")[1] || null : null;
+	};
+	var isPlayersTurn$1 = (game) => {
+		return getPlayerColor$1(game) === getSideToMove(game);
+	};
+	function isBoardFlipped$1() {
+		const el = getBoard();
+		let flipped = false;
+		try {
+			const attr = el?.getAttribute?.("orientation");
+			if (attr === "black") flipped = true;
+			else if (attr === "white") flipped = false;
+			else if (el?.classList?.contains("flipped")) flipped = true;
+			else if (getGame()?.getPlayingAs?.() === 2) flipped = true;
+		} catch {}
+		return flipped;
+	}
+	function invalidateGameCache() {
+		cachedGame = null;
+		cachedGameTimestamp = 0;
+	}
+	function snapshot() {
+		try {
+			const read = getActiveSite()?.read();
+			return read?.kind === "game" ? read.snapshot : null;
+		} catch {
+			return null;
+		}
+	}
+	function getFen(...args) {
+		if (args.length > 0) return getFen$1(args[0]);
+		return snapshot()?.fen ?? getFen$1(getGame());
+	}
+	function getPlayerColor(...args) {
+		if (args.length > 0) return getPlayerColor$1(args[0]);
+		return snapshot()?.playerColor ?? getPlayerColor$1(getGame());
+	}
+	function isPlayersTurn(...args) {
+		if (args.length > 0) return isPlayersTurn$1(args[0]);
+		const current = snapshot();
+		return current ? current.playerColor === current.sideToMove : isPlayersTurn$1(getGame());
+	}
+	function isBoardFlipped() {
+		const current = snapshot();
+		return current ? current.orientation === "black" : isBoardFlipped$1();
+	}
+	function pa() {
+		const color = snapshot()?.playerColor;
+		return color === "b" ? 2 : color === "w" ? 1 : getPlayerColor$1(getGame()) === "b" ? 2 : 1;
+	}
+	var BotState = {
+		hackEnabled: 0,
+		botPower: 30,
+		moveTime: 100,
+		autoMove: 1,
+		currentEvaluation: "-",
+		bestMove: "-",
+		principalVariation: "-",
+		statusInfo: "Ready",
+		recoveryAction: null,
+		ponderEnabled: 1,
+		autoRematch: 0,
+		moveMethod: "click"
+	};
+	var Settings = {
+		save: debounce(() => {
+			try {
+				const menuWrap = document.querySelector("#menuWrap");
+				const settings = {
+					hackEnabled: BotState.hackEnabled,
+					botPower: BotState.botPower,
+					moveTime: BotState.moveTime,
+					autoMove: BotState.autoMove,
+					ponderEnabled: BotState.ponderEnabled,
+					autoRematch: BotState.autoRematch,
+					moveMethod: BotState.moveMethod,
+					menuPosition: menuWrap ? {
+						top: menuWrap.style.top,
+						left: menuWrap.style.left
+					} : null
+				};
+				localStorage.setItem("gabibot_settings", JSON.stringify(settings));
+			} catch (e) {
+				console.warn("Failed to save settings:", e);
+			}
+		}, 200),
+		load() {
+			try {
+				const saved = localStorage.getItem("gabibot_settings");
+				if (!saved) {
+					BotState.hackEnabled = 0;
+					return null;
+				}
+				const settings = loadSettings(saved);
+				Object.assign(BotState, settings, { hackEnabled: 0 });
+				return settings;
+			} catch {
+				Object.assign(BotState, DEFAULT_SETTINGS, { hackEnabled: 0 });
+				return { ...DEFAULT_SETTINGS };
+			}
+		}
+	};
+	var boardCtx = null;
+	var observedOrientation = null;
+	var moveRevision = 0;
+	var moveExecutionActive = false;
+	var pendingMoveConfirmations = new Set();
+	var boardInputListeners = new Set();
+	var boardMoveObserver = null;
+	var mutationListeners = new Set();
+	var unsubscribeGame = null;
+	var watcherRevision = 0;
+	var moveWatcherRequested = false;
+	function clearMoveWatcher() {
+		watcherRevision++;
+		unsubscribeGame?.();
+		unsubscribeGame = null;
+		boardMoveObserver?.disconnect();
+		boardMoveObserver = null;
+	}
+	function isBotOwnedNode(node) {
+		const candidate = node;
+		return !!(typeof candidate.closest === "function" ? candidate : candidate.parentElement)?.closest?.("[data-gabibot-overlay], #menuWrap");
+	}
+	function isBotOwnedMutation(record) {
+		if (isBotOwnedNode(record.target)) return true;
+		if (record.type !== "childList") return false;
+		const changedNodes = [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)];
+		return changedNodes.length > 0 && changedNodes.every(isBotOwnedNode);
+	}
+	function notifyMutationListeners() {
+		invalidateGameCache();
+		for (const callback of [...mutationListeners]) try {
+			callback();
+		} catch (error) {
+			console.error("GabiBot: Board mutation listener failed.", error);
+		}
+	}
+	function attachMoveWatcher() {
+		if (!moveWatcherRequested) return;
+		const board = getBoard();
+		if (!board) return;
+		const game = getGame();
+		const revision = watcherRevision;
+		const notify = () => {
+			if (revision !== watcherRevision) return;
+			notifyMutationListeners();
+		};
+		if (typeof game?.on === "function" && typeof game?.off === "function") {
+			game.on("Move", notify);
+			const off = game.off.bind(game);
+			unsubscribeGame = () => off("Move", notify);
+		}
+		let queued = false;
+		boardMoveObserver = new MutationObserver((records) => {
+			if (!records.some((record) => !isBotOwnedMutation(record))) return;
+			if (queued) return;
+			queued = true;
+			queueMicrotask(() => {
+				queued = false;
+				notify();
+			});
+		});
+		boardMoveObserver.observe(board, {
+			childList: true,
+			subtree: true,
+			attributes: true,
+			attributeFilter: [
+				"class",
+				"style",
+				"data-piece"
+			]
+		});
+	}
+	function attachToBoard(boardEl) {
+		invalidateGameCache();
+		detachFromBoard();
+		clearMoveWatcher();
+		if (!boardEl) return;
+		if (getComputedStyle(boardEl).position === "static") boardEl.style.position = "relative";
+		const drawingBoard = document.createElement("canvas");
+		drawingBoard.id = "arrowCanvas";
+		drawingBoard.setAttribute("data-gabibot-overlay", "");
+		drawingBoard.style.cssText = "position:absolute;top:0;left:0;pointer-events:none;z-index:100;";
+		const ctx = drawingBoard.getContext("2d");
+		if (!ctx) {
+			console.error("GabiBot: Failed to get 2D context.");
+			return;
+		}
+		const evalBarWrap = document.createElement("div");
+		evalBarWrap.id = "evaluationBarWrap";
+		evalBarWrap.setAttribute("data-gabibot-overlay", "");
+		evalBarWrap.style.cssText = "position:absolute;height:100%;width:14px;left:-22px;top:0;background:#111;z-index:50;overflow:hidden;pointer-events:none;border-radius:4px;border:1px solid rgba(255,255,255,0.2);box-sizing:border-box;";
+		const whiteBar = document.createElement("div");
+		whiteBar.id = "evaluationBarWhite";
+		whiteBar.style.cssText = "position:absolute;left:0;right:0;bottom:0;height:50%;background:#f0d9b5;";
+		const blackBar = document.createElement("div");
+		blackBar.id = "evaluationBarBlack";
+		blackBar.style.cssText = "position:absolute;left:0;right:0;top:0;height:50%;background:#111;";
+		evalBarWrap.appendChild(whiteBar);
+		evalBarWrap.appendChild(blackBar);
+		boardEl.appendChild(evalBarWrap);
+		boardEl.appendChild(drawingBoard);
+		const resizeCanvas = () => {
+			const rect = boardEl.getBoundingClientRect();
+			drawingBoard.width = rect.width;
+			drawingBoard.height = rect.height;
+		};
+		resizeCanvas();
+		const ro = new ResizeObserver(resizeCanvas);
+		ro.observe(boardEl);
+		const cancelPendingOnUserAction = (event) => {
+			if (!event.isTrusted) return;
+			if ("button" in event && typeof event.button === "number" && event.button !== 0) return;
+			cancelPendingMove();
+			boardInputListeners.forEach((listener) => {
+				listener();
+			});
+		};
+		const userInputEvents = typeof PointerEvent === "undefined" ? ["mousedown", "touchstart"] : ["pointerdown"];
+		for (const eventName of userInputEvents) boardEl.addEventListener(eventName, cancelPendingOnUserAction, true);
+		boardCtx = {
+			boardEl,
+			orientation: observedOrientation ?? (isBoardFlipped() ? "black" : "white"),
+			drawingBoard,
+			ctx,
+			evalBarWrap,
+			detachListeners() {
+				for (const eventName of userInputEvents) try {
+					boardEl.removeEventListener(eventName, cancelPendingOnUserAction, true);
+				} catch {}
+				try {
+					ro.disconnect();
+				} catch {}
+				try {
+					drawingBoard.remove();
+				} catch {}
+				try {
+					evalBarWrap.remove();
+				} catch {}
+			}
+		};
+		if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
+		attachMoveWatcher();
+	}
+	function setBoardOrientation(orientation) {
+		observedOrientation = orientation;
+		if (boardCtx) boardCtx.orientation = orientation;
+	}
+	function isAttachedBoardFlipped() {
+		return boardCtx ? boardCtx.orientation === "black" : isBoardFlipped();
+	}
+	function detachFromBoard() {
+		if (!boardCtx) return;
+		try {
+			boardCtx.detachListeners();
+		} catch {}
+		boardCtx = null;
+	}
+	function onBoardMutation(cb) {
+		mutationListeners.add(cb);
+		return () => mutationListeners.delete(cb);
+	}
+	function onBoardInput(cb) {
+		boardInputListeners.add(cb);
+		return () => boardInputListeners.delete(cb);
+	}
+	function startMoveWatcher() {
+		moveWatcherRequested = true;
+		clearMoveWatcher();
+		attachMoveWatcher();
+	}
+	function stopMoveWatcher() {
+		moveWatcherRequested = false;
+		clearMoveWatcher();
+	}
+	function clearArrows() {
+		if (!boardCtx) return;
+		const { drawingBoard, ctx } = boardCtx;
+		ctx.clearRect(0, 0, drawingBoard.width, drawingBoard.height);
+	}
+	function getSquareCenterClientXY(square) {
+		if (!boardCtx || !square || square.length < 2) return null;
+		const file = "abcdefgh".indexOf(square[0]);
+		const rank = parseInt(square[1], 10);
+		if (file < 0 || Number.isNaN(rank)) return null;
+		const rect = boardCtx.boardEl.getBoundingClientRect();
+		const size = Math.min(rect.width, rect.height);
+		const tile = size / 8;
+		const offsetX = rect.left + (rect.width - size) / 2;
+		const offsetY = rect.top + (rect.height - size) / 2;
+		let x = file, y = 8 - rank;
+		if (isAttachedBoardFlipped()) {
+			x = 7 - x;
+			y = 7 - y;
+		}
+		const result = {
+			x: offsetX + (x + .5) * tile,
+			y: offsetY + (y + .5) * tile
+		};
+		if (Number.isNaN(result.x) || Number.isNaN(result.y)) {
+			console.warn(`GabiBot: Invalid coordinates for square ${square}. Board size: ${rect.width}x${rect.height}`);
+			return null;
+		}
+		return result;
+	}
+	function getSquareCenterCanvasXY(square) {
+		if (!boardCtx || !square || square.length < 2) return null;
+		const p = getSquareCenterClientXY(square);
+		if (!p) return null;
+		const rect = boardCtx.boardEl.getBoundingClientRect();
+		return {
+			x: p.x - rect.left,
+			y: p.y - rect.top
+		};
+	}
+	function drawArrow(uciFrom, uciTo, color, thickness) {
+		if (!boardCtx || !uciFrom || !uciTo || uciFrom.length < 2 || uciTo.length < 2) return;
+		const { drawingBoard, ctx } = boardCtx;
+		const a = getSquareCenterCanvasXY(uciFrom);
+		const b = getSquareCenterCanvasXY(uciTo);
+		if (!a || !b) return;
+		const tile = Math.min(drawingBoard.width, drawingBoard.height) / 8;
+		const angle = Math.atan2(b.y - a.y, b.x - a.x);
+		const headLength = Math.max(14, tile * .35);
+		const headAngle = Math.PI / 6;
+		ctx.beginPath();
+		ctx.arc(a.x, a.y, Math.max(4, thickness * 1.2), 0, 2 * Math.PI);
+		ctx.fillStyle = color;
+		ctx.fill();
+		const shaftEndX = b.x - headLength * .6 * Math.cos(angle);
+		const shaftEndY = b.y - headLength * .6 * Math.sin(angle);
+		ctx.beginPath();
+		ctx.moveTo(a.x, a.y);
+		ctx.lineTo(shaftEndX, shaftEndY);
+		ctx.lineWidth = Math.max(thickness, 4);
+		ctx.strokeStyle = color;
+		ctx.lineCap = "round";
+		ctx.stroke();
+		ctx.beginPath();
+		ctx.moveTo(b.x, b.y);
+		ctx.lineTo(b.x - headLength * Math.cos(angle - headAngle), b.y - headLength * Math.sin(angle - headAngle));
+		ctx.lineTo(b.x - headLength * .5 * Math.cos(angle), b.y - headLength * .5 * Math.sin(angle));
+		ctx.lineTo(b.x - headLength * Math.cos(angle + headAngle), b.y - headLength * Math.sin(angle + headAngle));
+		ctx.closePath();
+		ctx.fillStyle = color;
+		ctx.fill();
+	}
+	function getTargetAt(x, y) {
+		return document.elementFromPoint(x, y) || boardCtx?.boardEl || document.body;
+	}
+	function getMoveCoordinates(from, to) {
+		const a = getSquareCenterClientXY(from);
+		const b = getSquareCenterClientXY(to);
+		if (!a || !b) return null;
+		return {
+			a,
+			b
+		};
+	}
+	async function waitForFenChange(prevFen, timeout = 1e3, expectedFen, signal) {
+		return new Promise((resolve) => {
+			if (signal?.aborted) {
+				resolve(false);
+				return;
+			}
+			let done = false;
+			let unsubscribe = () => {};
+			let frame;
+			let timer;
+			const finish = (accepted) => {
+				if (done) return;
+				done = true;
+				unsubscribe();
+				signal?.removeEventListener("abort", onAbort);
+				if (timer) clearTimeout(timer);
+				if (frame !== void 0) cancelAnimationFrame(frame);
+				resolve(accepted);
+			};
+			const check = () => {
+				const game = getGame();
+				const fen = getFen(game);
+				if (fen && fen !== prevFen) {
+					if (!expectedFen) {
+						finish(true);
+						return;
+					}
+					const comparable = (f) => f.split(" ").filter((_, i) => i !== 3).join(" ");
+					const expectedComp = comparable(expectedFen);
+					if (comparable(fen) === expectedComp) {
+						finish(true);
+						return;
+					}
+					const history = game?.getHistoryFENs?.();
+					if (Array.isArray(history) && history.some((h) => typeof h === "string" && comparable(h) === expectedComp)) {
+						finish(true);
+						return;
+					}
+					finish(false);
+				}
+			};
+			const onAbort = () => {
+				check();
+				if (!done) finish(false);
+			};
+			signal?.addEventListener("abort", onAbort, { once: true });
+			unsubscribe = onBoardMutation(check);
+			timer = setTimeout(() => finish(false), timeout);
+			const poll = () => {
+				check();
+				if (!done) frame = requestAnimationFrame(poll);
+			};
+			poll();
+		});
+	}
+	function confirmSiteMove(request, adapter, timeout = 1e3) {
+		const expectedFen = canonicalFen(request.expectedFen);
+		if (!expectedFen || request.expectedPly !== null && (!Number.isInteger(request.expectedPly) || request.expectedPly < 0)) return Promise.resolve(false);
+		return new Promise((resolve) => {
+			let done = false;
+			let unsubscribe = null;
+			let unsubscribeWhenReady = false;
+			let timer;
+			const finish = (accepted) => {
+				if (done) return;
+				done = true;
+				if (unsubscribe) try {
+					unsubscribe();
+				} catch {}
+				else unsubscribeWhenReady = true;
+				request.signal.removeEventListener("abort", onAbort);
+				if (timer) clearTimeout(timer);
+				resolve(accepted);
+			};
+			const check = () => {
+				if (done) return;
+				let current;
+				try {
+					current = adapter.read();
+				} catch {
+					finish(false);
+					return;
+				}
+				if (current.kind !== "game") return;
+				if (current.snapshot.identity !== request.identity) {
+					finish(false);
+					return;
+				}
+				if (request.expectedPly !== null) {
+					const confirmed = current.snapshot.confirmedFens?.[request.expectedPly];
+					if (typeof confirmed !== "string") return;
+					finish(canonicalFen(confirmed) === expectedFen);
+					return;
+				}
+				if (canonicalFen(current.snapshot.fen) === expectedFen) finish(true);
+			};
+			const onAbort = () => {
+				check();
+				if (!done) finish(false);
+			};
+			try {
+				unsubscribe = adapter.subscribe(check);
+				if (unsubscribeWhenReady) {
+					unsubscribe();
+					unsubscribe = null;
+				}
+			} catch {
+				finish(false);
+				return;
+			}
+			if (done) return;
+			request.signal.addEventListener("abort", onAbort, { once: true });
+			timer = setTimeout(() => finish(false), Math.max(0, timeout));
+			check();
+			if (request.signal.aborted && !done) onAbort();
+		});
+	}
+	async function maybeSelectPromotion(prefer = "q", guard = () => true) {
+		if (!/^[qrbn]$/i.test(prefer)) return false;
+		const getCandidates = () => Array.from(document.querySelectorAll("[data-test-element*=\"promotion\"], [class*=\"promotion\"] [class*=\"piece\"], [class*=\"promotion\"] button, .promotion-piece")).filter((el) => {
+			const option = el;
+			if (option.getClientRects().length === 0) return false;
+			const style = getComputedStyle(option);
+			return style.display !== "none" && style.visibility !== "hidden";
+		});
+		const tryClick = async (el) => {
+			return activateElement(el, getTargetAt, guard);
+		};
+		const start = Date.now();
+		while (Date.now() - start < 1e3) {
+			if (!guard()) return false;
+			const match = findPromotionOption(getCandidates(), prefer);
+			if (match && guard() && await tryClick(match)) return true;
+			await sleep(60);
+		}
+		return false;
+	}
+	function cancelPendingMove() {
+		moveRevision++;
+		for (const controller of pendingMoveConfirmations) controller.abort();
+		pendingMoveConfirmations.clear();
+	}
+	function getMoveRevision() {
+		return moveRevision;
+	}
+	function setStyleIfChanged(element, property, value) {
+		if (element.style[property] !== value) element.style[property] = value;
+	}
+	async function executeMove(from, to, analysisFen, promotionChar, _depth, _tickCallback, expectedFen) {
+		if (moveExecutionActive) return false;
+		const revision = moveRevision;
+		const game = getGame();
+		if (!BotState.hackEnabled || !BotState.autoMove || !game || !isPlayersTurn(game) || getFen(game) !== analysisFen) return false;
+		moveExecutionActive = true;
+		const confirmationController = new AbortController();
+		pendingMoveConfirmations.add(confirmationController);
+		const guard = () => revision === moveRevision && !!BotState.hackEnabled && !!BotState.autoMove && getFen(getGame()) === analysisFen;
+		let confirmation;
+		try {
+			BotState.statusInfo = "Submitting move...";
+			BotState.onUpdateDisplay?.(pa());
+			confirmation = waitForFenChange(analysisFen, 1e3, expectedFen, confirmationController.signal);
+			if (!(BotState.moveMethod === "drag" ? await simulateDragMove(from, to, {
+				getMoveCoordinates,
+				getTargetAt,
+				guard
+			}) : await simulateClickMove(from, to, {
+				getMoveCoordinates,
+				getTargetAt,
+				guard
+			}))) return false;
+			if (promotionChar && guard() && !await maybeSelectPromotion(promotionChar, guard)) return false;
+			const accepted = await confirmation;
+			if (revision === moveRevision) {
+				BotState.statusInfo = accepted ? "Move confirmed" : "Move not confirmed; waiting for position change";
+				BotState.onUpdateDisplay?.(pa());
+			}
+			return accepted;
+		} finally {
+			confirmationController.abort();
+			pendingMoveConfirmations.delete(confirmationController);
+			moveExecutionActive = false;
+			if (revision === moveRevision && BotState.statusInfo === "Submitting move...") {
+				BotState.statusInfo = "Move input failed";
+				BotState.onUpdateDisplay?.(pa());
+			}
+		}
+	}
+	function updateEvaluationBar(evaluation, _playingAs) {
+		if (!boardCtx) return;
+		const whiteBar = boardCtx.evalBarWrap.querySelector("#evaluationBarWhite");
+		const blackBar = boardCtx.evalBarWrap.querySelector("#evaluationBarBlack");
+		if (!whiteBar || !blackBar) return;
+		let score = 0;
+		if (typeof evaluation === "string") {
+			if (evaluation === "-" || evaluation === "Error") {
+				setStyleIfChanged(whiteBar, "height", "50%");
+				setStyleIfChanged(blackBar, "height", "50%");
+				return;
+			}
+			if (evaluation.includes("M")) score = parseInt(evaluation.replace("M", "").replace("+", ""), 10) > 0 ? 10 : -10;
+			else score = parseFloat(evaluation);
+		} else score = evaluation;
+		if (Number.isNaN(score)) {
+			setStyleIfChanged(whiteBar, "height", "50%");
+			setStyleIfChanged(blackBar, "height", "50%");
+			return;
+		}
+		const maxScore = 5;
+		const whitePercent = 50 + Math.max(-5, Math.min(maxScore, score)) / maxScore * 50;
+		const blackPercent = 100 - whitePercent;
+		if (isAttachedBoardFlipped()) {
+			setStyleIfChanged(blackBar, "bottom", "0");
+			setStyleIfChanged(blackBar, "top", "auto");
+			setStyleIfChanged(blackBar, "height", `${blackPercent}%`);
+			setStyleIfChanged(whiteBar, "top", "0");
+			setStyleIfChanged(whiteBar, "bottom", "auto");
+			setStyleIfChanged(whiteBar, "height", `${whitePercent}%`);
+		} else {
+			setStyleIfChanged(whiteBar, "bottom", "0");
+			setStyleIfChanged(whiteBar, "top", "auto");
+			setStyleIfChanged(whiteBar, "height", `${whitePercent}%`);
+			setStyleIfChanged(blackBar, "top", "0");
+			setStyleIfChanged(blackBar, "bottom", "auto");
+			setStyleIfChanged(blackBar, "height", `${blackPercent}%`);
+		}
+		const ourEval = (_playingAs === 2 ? "b" : _playingAs === 1 ? "w" : getPlayerColor()) === "w" ? score : -score;
+		if (ourEval < -2) setStyleIfChanged(boardCtx.evalBarWrap, "borderColor", "rgba(255, 100, 100, 0.5)");
+		else if (ourEval > 2) setStyleIfChanged(boardCtx.evalBarWrap, "borderColor", "rgba(100, 255, 100, 0.5)");
+		else setStyleIfChanged(boardCtx.evalBarWrap, "borderColor", "rgba(255, 255, 255, 0.2)");
+	}
 	var PONDER_REUSE_DEPTH = 12;
 	function deferred() {
 		let resolve;
@@ -3076,134 +3315,695 @@
 			score
 		};
 	}
-	var makeSanWithoutSuffix = (pos, move) => {
-		let san = "";
-		if (isDrop(move)) {
-			if (move.role !== "pawn") san = roleToChar(move.role).toUpperCase();
-			san += "@" + makeSquare(move.to);
-		} else {
-			const role = pos.board.getRole(move.from);
-			if (!role) return "--";
-			if (role === "king" && (pos.board[pos.turn].has(move.to) || Math.abs(move.to - move.from) === 2)) san = move.to > move.from ? "O-O" : "O-O-O";
-			else {
-				const capture = pos.board.occupied.has(move.to) || role === "pawn" && squareFile(move.from) !== squareFile(move.to);
-				if (role !== "pawn") {
-					san = roleToChar(role).toUpperCase();
-					let others;
-					if (role === "king") others = kingAttacks(move.to).intersect(pos.board.king);
-					else if (role === "queen") others = queenAttacks(move.to, pos.board.occupied).intersect(pos.board.queen);
-					else if (role === "rook") others = rookAttacks(move.to, pos.board.occupied).intersect(pos.board.rook);
-					else if (role === "bishop") others = bishopAttacks(move.to, pos.board.occupied).intersect(pos.board.bishop);
-					else others = knightAttacks(move.to).intersect(pos.board.knight);
-					others = others.intersect(pos.board[pos.turn]).without(move.from);
-					if (others.nonEmpty()) {
-						const ctx = pos.ctx();
-						for (const from of others) if (!pos.dests(from, ctx).has(move.to)) others = others.without(from);
-						if (others.nonEmpty()) {
-							let row = false;
-							let column = others.intersects(SquareSet.fromRank(squareRank(move.from)));
-							if (others.intersects(SquareSet.fromFile(squareFile(move.from)))) row = true;
-							else column = true;
-							if (column) san += FILE_NAMES[squareFile(move.from)];
-							if (row) san += RANK_NAMES[squareRank(move.from)];
-						}
-					}
-				} else if (capture) san = FILE_NAMES[squareFile(move.from)];
-				if (capture) san += "x";
-				san += makeSquare(move.to);
-				if (move.promotion) san += "=" + roleToChar(move.promotion).toUpperCase();
-			}
-		}
-		return san;
-	};
-	var makeSanAndPlay = (pos, move) => {
-		var _a;
-		const san = makeSanWithoutSuffix(pos, move);
-		pos.play(move);
-		if ((_a = pos.outcome()) === null || _a === void 0 ? void 0 : _a.winner) return san + "#";
-		if (pos.isCheck()) return san + "+";
-		return san;
-	};
-	var parseSan = (pos, san) => {
-		const ctx = pos.ctx();
-		const match = san.match(/^([NBRQK])?([a-h])?([1-8])?[-x]?([a-h][1-8])(?:=?([nbrqkNBRQK]))?[+#]?$/);
-		if (!match) {
-			let castlingSide;
-			if (san === "O-O" || san === "O-O+" || san === "O-O#") castlingSide = "h";
-			else if (san === "O-O-O" || san === "O-O-O+" || san === "O-O-O#") castlingSide = "a";
-			if (castlingSide) {
-				const rook = pos.castles.rook[pos.turn][castlingSide];
-				if (!defined(ctx.king) || !defined(rook) || !pos.dests(ctx.king, ctx).has(rook)) return;
-				return {
-					from: ctx.king,
-					to: rook
-				};
-			}
-			const match = san.match(/^([pnbrqkPNBRQK])?@([a-h][1-8])[+#]?$/);
-			if (!match) return;
-			const move = {
-				role: match[1] ? charToRole(match[1]) : "pawn",
-				to: parseSquare(match[2])
+	var nextGameId = 0;
+	function createChesscomAdapter(page = defaultPage) {
+		let currentBoard = null;
+		let currentGame = null;
+		let currentIdentity = null;
+		let currentGameId = "";
+		const read = () => {
+			const doc = page().document;
+			const board = getBoard(doc);
+			if (!board) return {
+				kind: "waiting",
+				reason: "Waiting for board"
 			};
-			return pos.isLegal(move, ctx) ? move : void 0;
-		}
-		const role = match[1] ? charToRole(match[1]) : "pawn";
-		const to = parseSquare(match[4]);
-		const promotion = match[5] ? charToRole(match[5]) : void 0;
-		if (!!promotion !== (role === "pawn" && SquareSet.backranks().has(to))) return;
-		if (promotion === "king" && pos.rules !== "antichess") return;
-		let candidates = pos.board.pieces(pos.turn, role);
-		if (role === "pawn" && !match[2]) candidates = candidates.intersect(SquareSet.fromFile(squareFile(to)));
-		else if (match[2]) candidates = candidates.intersect(SquareSet.fromFile(match[2].charCodeAt(0) - "a".charCodeAt(0)));
-		if (match[3]) candidates = candidates.intersect(SquareSet.fromRank(match[3].charCodeAt(0) - "1".charCodeAt(0)));
-		const pawnAdvance = role === "pawn" ? SquareSet.fromFile(squareFile(to)) : SquareSet.empty();
-		candidates = candidates.intersect(pawnAdvance.union(attacks({
-			color: opposite(pos.turn),
-			role
-		}, to, pos.board.occupied)));
-		let from;
-		for (const candidate of candidates) if (pos.dests(candidate, ctx).has(to)) {
-			if (defined(from)) return;
-			from = candidate;
-		}
-		if (!defined(from)) return;
+			const game = board.game;
+			if (!game || typeof game.getFEN !== "function") return {
+				kind: "waiting",
+				reason: "Waiting for game state"
+			};
+			const fen = getFen$1(game);
+			if (!fen) return {
+				kind: "ineligible",
+				reason: "Chess.com position is unavailable"
+			};
+			const fields = fen.split(" ");
+			if (fields.length < 2 || fields[1] !== "w" && fields[1] !== "b") return {
+				kind: "ineligible",
+				reason: "Chess.com position is malformed"
+			};
+			const sideToMove = fields[1];
+			const playingAs = game.getPlayingAs?.();
+			if (playingAs !== 1 && playingAs !== 2) return {
+				kind: "ineligible",
+				reason: "Chess.com player color is unavailable"
+			};
+			const playerColor = playingAs === 2 ? "b" : "w";
+			if (board !== currentBoard || game !== currentGame) {
+				currentBoard = board;
+				currentGame = game;
+				currentIdentity = {};
+				const declaredId = game.id ?? board.getAttribute("data-game-id");
+				currentGameId = declaredId == null ? `chesscom-${++nextGameId}` : String(declaredId);
+			}
+			const orientation = board.getAttribute("orientation") === "black" || board.classList.contains("flipped") ? "black" : "white";
+			const phase = game.isGameOver?.() || doc.querySelector(".game-over-modal-content") ? "finished" : "live";
+			const history = readPositionHistory(game, fen);
+			const confirmedFensRaw = game.getHistoryFENs?.();
+			const confirmedFens = Array.isArray(confirmedFensRaw) ? confirmedFensRaw.filter((item) => typeof item === "string") : void 0;
+			return {
+				kind: "game",
+				snapshot: {
+					identity: currentIdentity ?? {},
+					gameId: currentGameId,
+					board,
+					fen,
+					playerColor,
+					sideToMove,
+					orientation,
+					phase,
+					inputReady: phase === "live" && sideToMove === playerColor,
+					remainingMs: null,
+					...history ? { history } : {},
+					...confirmedFens ? { confirmedFens } : {}
+				}
+			};
+		};
+		return {
+			id: "chesscom",
+			capabilities: {
+				input: "gestures",
+				autoRematch: true
+			},
+			read,
+			subscribe(listener) {
+				let stopObserving = () => {};
+				let observedBoard = null;
+				let observedGame = null;
+				let moveListener = null;
+				let queued = false;
+				let active = true;
+				const detachGame = () => {
+					if (observedGame && moveListener) observedGame.off?.("Move", moveListener);
+					observedGame = null;
+					moveListener = null;
+				};
+				const bind = () => {
+					const result = read();
+					const board = result.kind === "game" ? result.snapshot.board : null;
+					const game = board?.game ?? null;
+					if (board === observedBoard && game === observedGame) return;
+					detachGame();
+					observedBoard = board;
+					if (game && typeof game.on === "function" && typeof game.off === "function") {
+						observedGame = game;
+						moveListener = notify;
+						game.on("Move", moveListener);
+					}
+				};
+				const notify = () => {
+					if (!active) return;
+					bind();
+					try {
+						listener();
+					} catch (error) {
+						console.error("Super Chess Bot: site listener failed.", error);
+					}
+				};
+				bind();
+				const doc = page().document;
+				const Observer = page().MutationObserver;
+				if (doc.body && Observer) {
+					const observer = new Observer(() => {
+						if (queued) return;
+						queued = true;
+						queueMicrotask(() => {
+							queued = false;
+							notify();
+						});
+					});
+					observer.observe(doc.body, {
+						childList: true,
+						subtree: true,
+						attributes: true
+					});
+					stopObserving = () => observer.disconnect();
+				}
+				return () => {
+					active = false;
+					stopObserving();
+					detachGame();
+				};
+			},
+			async submitMove(request) {
+				if (request.signal.aborted || !request.isCurrent()) return false;
+				return executeMove(request.uci.slice(0, 2), request.uci.slice(2, 4), request.fromFen, request.uci[4], void 0, void 0, request.expectedFen);
+			},
+			cancelInput() {
+				cancelPendingMove();
+			},
+			requestRematch() {
+				const button = page().document.querySelector("[data-cy=\"sidebar-game-over-rematch-button\"], [data-cy=\"game-over-modal-rematch-button\"]");
+				if (!button) return false;
+				button.click();
+				return true;
+			}
+		};
+	}
+	function defaultPage() {
+		return typeof unsafeWindow === "undefined" ? window : unsafeWindow;
+	}
+	var STANDARD_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+	var TERMINAL_RESULTS = new Set([
+		"1-0",
+		"0-1",
+		"1/2-1/2"
+	]);
+	var cachedReplayKey = null;
+	var cachedReplay;
+	function colorValue(color) {
+		if (color === "white") return "w";
+		if (color === "black") return "b";
+		return null;
+	}
+	function normalizedName(value) {
+		return value?.trim().toLocaleLowerCase() || null;
+	}
+	function pathGameId(pathname) {
+		const parts = pathname.split("/").filter(Boolean);
+		return parts.length === 1 ? parts[0] : null;
+	}
+	function parseClock(clock) {
+		if (clock.connecting || !clock.min || !clock.sec) return null;
+		if (!/^\d{1,3}$/.test(clock.min) || !/^\d{1,2}(?:\.\d+)?$/.test(clock.sec)) return null;
+		const minutes = Number(clock.min);
+		const seconds = Number(clock.sec);
+		if (!Number.isFinite(minutes) || !Number.isFinite(seconds) || seconds >= 60) return null;
+		return Math.round((minutes * 60 + seconds) * 1e3);
+	}
+	function unavailable(reason) {
+		return {
+			kind: "ineligible",
+			reason
+		};
+	}
+	function replayAcceptedHistory(startFen, sans) {
+		const key = JSON.stringify([startFen, sans]);
+		if (key === cachedReplayKey) return cachedReplay;
+		cachedReplayKey = key;
+		cachedReplay = replaySanLine(startFen, sans);
+		return cachedReplay;
+	}
+	function parsePychessObservation(observation, identity) {
+		const { metadata, board, state } = observation;
+		if (!identity || typeof identity !== "object") return unavailable("PyChess game identity is unavailable");
+		if (!metadata.isRoundView) return {
+			kind: "waiting",
+			reason: "Waiting for PyChess AI game"
+		};
+		const urlGameId = pathGameId(metadata.pathname);
+		if (!metadata.gameId || !urlGameId || metadata.gameId !== urlGameId) return unavailable("PyChess game identity does not match the current URL");
+		const username = normalizedName(metadata.username);
+		const whitePlayer = normalizedName(metadata.whitePlayer);
+		const blackPlayer = normalizedName(metadata.blackPlayer);
+		if (!username || !whitePlayer || !blackPlayer || username !== whitePlayer && username !== blackPlayer) return unavailable("PyChess player identity is unavailable or conflicting");
+		if (username === whitePlayer && username === blackPlayer) return unavailable("PyChess player identity is ambiguous");
+		const playerColor = username === whitePlayer ? "w" : "b";
+		if ((playerColor === "w" ? blackPlayer : whitePlayer) !== "fairy-stockfish") return unavailable("PyChess Fairy-Stockfish game required");
+		if (metadata.variant?.trim().toLowerCase() !== "chess") return unavailable("PyChess chess variant required");
+		if (!["false", "0"].includes(metadata.chess960?.trim().toLowerCase() ?? "")) return unavailable("PyChess Chess960 is not supported");
+		if (!["false", "0"].includes(metadata.correspondence?.trim().toLowerCase() ?? "")) return unavailable("PyChess real-time game required");
+		if (!metadata.level || !/^\d+$/.test(metadata.level) || Number(metadata.level) < 0 || Number(metadata.level) > 8) return unavailable("PyChess AI level is invalid");
+		if (!board.element || !board.connected || !board.visible || !board.owned) return unavailable("PyChess board is disconnected, hidden, or not owned by this game");
+		if (board.width !== 8 || board.height !== 8) return unavailable("PyChess board is not 8×8");
+		const orientation = state.orientation;
+		if (orientation !== "white" && orientation !== "black") return unavailable("PyChess board orientation is unavailable");
+		if (!state.fen) return unavailable("PyChess accepted FEN is unavailable");
+		const fen = canonicalFen(state.fen);
+		if (!fen) return unavailable("PyChess accepted FEN is malformed");
+		const sideField = fen.split(" ")[1];
+		if (sideField !== "w" && sideField !== "b") return unavailable("PyChess side to move is unavailable");
+		const sideToMove = sideField;
+		const startFen = metadata.initialFen?.trim() || STANDARD_START_FEN;
+		if (!canonicalFen(startFen)) return unavailable("PyChess initial FEN is malformed");
+		const orderedMoves = [...observation.moves];
+		if (orderedMoves.some((move, index) => move.ply !== index + 1 || !move.san.trim())) return unavailable("PyChess move history is truncated or noncontiguous");
+		const replay = replayAcceptedHistory(startFen, orderedMoves.map((move) => move.san));
+		if (!replay) return unavailable("PyChess move history contains invalid SAN");
+		const activeMoves = orderedMoves.filter((move) => move.active);
+		if (activeMoves.length > 1) return unavailable("PyChess active move selection is ambiguous");
+		const activePly = activeMoves[0]?.ply ?? 0;
+		if (activePly > orderedMoves.length) return unavailable("PyChess active move is outside the game history");
+		if (replay.fens[activePly] !== fen) return {
+			kind: "waiting",
+			reason: "Waiting for PyChess position and move history to synchronize"
+		};
+		const renderedResult = observation.result.text?.trim() ?? "";
+		const terminalResult = TERMINAL_RESULTS.has(renderedResult) || renderedResult === "*";
+		const initialStatus = Number(metadata.status);
+		const initialResult = metadata.initialResult?.trim() ?? "";
+		const initialTerminal = Number.isInteger(initialStatus) && initialStatus < 0 && TERMINAL_RESULTS.has(initialResult);
+		const finished = observation.result.postgame && terminalResult || initialTerminal;
+		const latestPly = orderedMoves.length;
+		const phase = finished ? "finished" : activePly < latestPly ? "replay" : "live";
+		const history = {
+			...replay.history,
+			moves: replay.history.moves.slice(0, activePly)
+		};
+		const movingColor = colorValue(state.turnColor);
+		const movableColor = colorValue(state.movableColor);
+		const displayedInSync = state.displayedPlacement === fen.split(" ")[0] && movingColor === sideToMove;
+		const playerClockIndex = orientation === "white" ? playerColor === "w" ? 1 : 0 : playerColor === "w" ? 0 : 1;
+		const playerClock = observation.clocks[playerClockIndex === 0 ? "clock0" : "clock1"];
+		const remainingMs = parseClock(playerClock);
+		const inputReady = phase === "live" && displayedInSync && sideToMove === playerColor && movableColor === playerColor && !playerClock.connecting;
+		return {
+			kind: "game",
+			snapshot: {
+				identity,
+				gameId: metadata.gameId,
+				board: board.element,
+				fen,
+				playerColor,
+				sideToMove,
+				orientation,
+				phase,
+				inputReady,
+				remainingMs,
+				history,
+				confirmedFens: replay.fens
+			}
+		};
+	}
+	function pageWindow() {
+		return typeof unsafeWindow === "undefined" ? window : unsafeWindow;
+	}
+	var PROMOTION_ROLE = {
+		q: "queen",
+		r: "rook",
+		b: "bishop",
+		n: "knight"
+	};
+	var INPUT_TIMEOUT_MS = 1e3;
+	function cleanFen(fen) {
+		return canonicalFen(fen);
+	}
+	function moveDetails(request) {
+		const sourceFen = cleanFen(request.fromFen);
+		const expectedFen = cleanFen(request.expectedFen);
+		if (!sourceFen || !expectedFen) return null;
+		const setup = parseFen(sourceFen);
+		if (setup.isErr) return null;
+		const position = Chess.fromSetup(setup.value);
+		if (position.isErr) return null;
+		const move = parseUci(request.uci);
+		if (!move || !("from" in move) || !position.value.isLegal(move)) return null;
+		const normalized = normalizeMove(position.value, move);
+		const from = makeSquare(move.from);
+		const candidates = [...new Set([makeSquare(move.to), makeSquare(normalized.to)])];
+		position.value.play(move);
+		if (cleanFen(makeFen(position.value.toSetup())) !== expectedFen) return null;
 		return {
 			from,
-			to,
-			promotion
+			toCandidates: candidates,
+			promotion: !!move.promotion
 		};
-	};
-	var comparable = (fen) => fen.split(" ").filter((_, i) => i !== 3).join(" ");
-	function readPositionHistory(game, currentFen) {
-		try {
-			const fens = game.getHistoryFENs?.();
-			const sans = game.getHistorySANs?.();
-			if (!Array.isArray(fens) || !Array.isArray(sans) || typeof fens[0] !== "string") return void 0;
-			const setup = parseFen(fens[0]);
-			if (setup.isErr) return void 0;
-			const position = Chess.fromSetup(setup.value);
-			if (position.isErr) return void 0;
-			const moves = [];
-			for (const san of sans) {
-				if (!san) continue;
-				if (typeof san !== "string") return void 0;
-				const move = parseSan(position.value, san);
-				if (!move) return void 0;
-				moves.push(makeUci(move));
-				position.value.play(move);
-				if (comparable(makeFen(position.value.toSetup())) === comparable(currentFen)) return {
-					startFen: fens[0],
-					moves
-				};
+	}
+	function roleMatches(piece, role, color) {
+		const roleClass = PROMOTION_ROLE[role];
+		if (!roleClass) return false;
+		const classList = piece.classList;
+		return classList.contains(roleClass) && classList.contains(color);
+	}
+	function visible(element) {
+		if (!element.isConnected || element.getClientRects().length === 0) return false;
+		const rect = element.getBoundingClientRect();
+		if (rect.width <= 0 || rect.height <= 0) return false;
+		const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+		return style?.display !== "none" && style?.visibility !== "hidden";
+	}
+	function mutationElement(target) {
+		return target.nodeType === 1 ? target : target.parentElement ?? null;
+	}
+	function isRelevantMutation(records) {
+		return records.some((record) => {
+			const target = mutationElement(record.target);
+			if (!target || target.closest("[data-gabibot-overlay], #menuWrap")) return false;
+			if (target.closest("#mainboard, #movelist, .btn-controls")) return true;
+			if (record.type === "attributes" && record.attributeName === "class" && target.matches(".clock")) return true;
+			if (record.type !== "childList") return false;
+			return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some((node) => {
+				const element = mutationElement(node);
+				return !!element && (element.matches(".round-app") || !!element.querySelector(".round-app, #mainboard, #movelist"));
+			});
+		});
+	}
+	function createPychessAdapter(page = pageWindow) {
+		let lastGameId = null;
+		let lastBoard = null;
+		let lastCg = null;
+		let identity = {};
+		const capture = () => {
+			const currentPage = page();
+			const observation = collectPychessObservation(currentPage);
+			bindTrustedBoard(observation.board.element);
+			const cg = currentPage.cg ?? null;
+			if (observation.metadata.gameId !== lastGameId || observation.board.element !== lastBoard || cg !== lastCg) {
+				lastGameId = observation.metadata.gameId;
+				lastBoard = observation.board.element;
+				lastCg = cg;
+				identity = {};
 			}
-			if (comparable(fens[0]) === comparable(currentFen)) return {
-				startFen: fens[0],
-				moves: []
+			const read = parsePychessObservation(observation, identity);
+			return {
+				read,
+				fingerprint: read.kind === "game" ? JSON.stringify([
+					read.snapshot.gameId,
+					read.snapshot.fen,
+					read.snapshot.playerColor,
+					read.snapshot.orientation,
+					read.snapshot.phase,
+					read.snapshot.inputReady,
+					read.snapshot.history?.moves,
+					read.snapshot.confirmedFens,
+					observation.result.text,
+					observation.result.postgame,
+					observation.clocks.clock0.connecting,
+					observation.clocks.clock1.connecting
+				]) : JSON.stringify([
+					read.kind,
+					read.reason,
+					observation.result.text,
+					observation.result.postgame
+				]),
+				identity
 			};
-			return;
-		} catch {
-			return;
+		};
+		let watchedBoard = null;
+		let trustedRevision = 0;
+		let trustedEventNames = [];
+		let pendingInput = null;
+		const onTrustedInput = (event) => {
+			if (event.isTrusted) trustedRevision++;
+		};
+		const bindTrustedBoard = (board) => {
+			const mainboard = board && typeof board.closest === "function" ? board.closest("#mainboard") : null;
+			const candidate = board ? mainboard ?? board.parentElement ?? board : null;
+			const inputRegion = candidate && typeof candidate.addEventListener === "function" && typeof candidate.removeEventListener === "function" ? candidate : null;
+			if (inputRegion === watchedBoard) return;
+			if (watchedBoard) for (const eventName of trustedEventNames) watchedBoard.removeEventListener(eventName, onTrustedInput, true);
+			watchedBoard = inputRegion;
+			trustedEventNames = [];
+			if (!watchedBoard) return;
+			trustedEventNames = page().PointerEvent ? ["pointerdown"] : ["mousedown", "touchstart"];
+			for (const eventName of trustedEventNames) watchedBoard.addEventListener(eventName, onTrustedInput, true);
+		};
+		const releasePendingInput = (pending, cancelOwnedInput) => {
+			if (pendingInput === pending) pendingInput = null;
+			pending.request.signal.removeEventListener("abort", pending.onAbort);
+			pending.cancelled = true;
+			if (!cancelOwnedInput || pending.userRevision !== trustedRevision) return;
+			const currentPage = page();
+			if (pending.promotion && pending.chooser?.isConnected && currentPage.document.querySelector("#extension_choice") === pending.chooser) {
+				pending.chooser.click();
+				return;
+			}
+			if (pending.cg.state?.selectable?.selected === pending.from) pending.cg.selectSquare?.(null);
+		};
+		const isPendingCurrent = (pending, requireInputReady) => {
+			try {
+				if (pending.cancelled || pending.request.signal.aborted || pending.userRevision !== trustedRevision || page().cg !== pending.cg || pending.request.isCurrent() !== true) return false;
+				const current = capture().read;
+				if (current.kind !== "game" || current.snapshot.identity !== pending.request.identity || current.snapshot.board !== pending.board || cleanFen(current.snapshot.fen) !== cleanFen(pending.request.fromFen)) return false;
+				if (!requireInputReady) return true;
+				const color = current.snapshot.playerColor === "w" ? "white" : "black";
+				return current.snapshot.inputReady && current.snapshot.sideToMove === current.snapshot.playerColor && pending.cg.state?.turnColor === color && pending.cg.state.movable?.color === color;
+			} catch {
+				return false;
+			}
+		};
+		const isInputStillOwned = (pending) => {
+			try {
+				if (pending.cancelled || pending.request.signal.aborted || pending.userRevision !== trustedRevision || page().cg !== pending.cg) return false;
+				const current = capture().read;
+				return current.kind === "game" && current.snapshot.identity === pending.request.identity && current.snapshot.board === pending.board;
+			} catch {
+				return false;
+			}
+		};
+		const cancelCurrentInput = () => {
+			const pending = pendingInput;
+			if (pending) releasePendingInput(pending, true);
+		};
+		const findPromotionChoice = (pending) => {
+			const root = page().document.querySelector("#extension_choice");
+			pending.chooser = root;
+			if (!root?.isConnected || !visible(root)) return null;
+			const requested = pending.request.uci.slice(-1).toLowerCase();
+			const color = pending.playerColor === "w" ? "white" : "black";
+			for (const piece of Array.from(root.querySelectorAll("square > piece"))) {
+				const square = piece.parentElement;
+				if (square && square.closest("#extension_choice") === root && roleMatches(piece, requested, color) && visible(square) && visible(piece)) return square;
+			}
+			return null;
+		};
+		const waitForPromotionChoice = async (pending) => {
+			let elapsed = 0;
+			while (elapsed < INPUT_TIMEOUT_MS) {
+				if (!isInputStillOwned(pending)) {
+					releasePendingInput(pending, true);
+					return false;
+				}
+				const choice = findPromotionChoice(pending);
+				if (choice) {
+					const activated = await activateElement(choice, (x, y) => page().document.elementFromPoint(x, y) ?? choice, () => isInputStillOwned(pending));
+					releasePendingInput(pending, !activated);
+					return activated;
+				}
+				const delay = Math.min(16, INPUT_TIMEOUT_MS - elapsed);
+				await new Promise((resolve) => setTimeout(resolve, delay));
+				elapsed += delay;
+			}
+			releasePendingInput(pending, true);
+			return false;
+		};
+		return {
+			id: "pychess",
+			capabilities: {
+				input: "selection",
+				autoRematch: false
+			},
+			read: () => capture().read,
+			subscribe(listener) {
+				const currentPage = page();
+				const body = currentPage.document.body;
+				const Observer = currentPage.MutationObserver;
+				if (!body || !Observer) return () => {};
+				let active = true;
+				let queued = false;
+				let previous = capture();
+				const observer = new Observer((records) => {
+					if (!isRelevantMutation(records)) return;
+					if (queued || !active) return;
+					queued = true;
+					queueMicrotask(() => {
+						queued = false;
+						if (!active) return;
+						const next = capture();
+						if (next.identity === previous.identity && next.fingerprint === previous.fingerprint) return;
+						previous = next;
+						try {
+							listener();
+						} catch (error) {
+							console.error("Super Chess Bot: PyChess listener failed.", error);
+						}
+					});
+				});
+				observer.observe(body, {
+					childList: true,
+					subtree: true,
+					attributes: true,
+					attributeFilter: ["class", "data-ply"],
+					characterData: true
+				});
+				return () => {
+					active = false;
+					observer.disconnect();
+				};
+			},
+			async submitMove(request) {
+				if (pendingInput) cancelCurrentInput();
+				try {
+					if (request.signal.aborted) return false;
+					const initial = capture().read;
+					const cg = page().cg;
+					const state = cg?.state;
+					const board = initial.kind === "game" ? initial.snapshot.board : null;
+					if (initial.kind !== "game" || !board || initial.snapshot.identity !== request.identity || cleanFen(initial.snapshot.fen) !== cleanFen(request.fromFen) || !initial.snapshot.inputReady || !cg || !state || !cg.selectSquare || page().document.querySelector(".round-app #mainboard cg-board") !== board || state.dom?.elements?.board !== board || state.selectable?.selected) return false;
+					const detail = moveDetails(request);
+					if (!detail) return false;
+					const destinations = state.movable?.dests?.get(detail.from);
+					if (!destinations) return false;
+					const legalDestinations = new Set(Array.from(destinations, String));
+					const siteTargets = detail.toCandidates.filter((target) => legalDestinations.has(target));
+					if (siteTargets.length !== 1 || !siteTargets[0]) return false;
+					const to = siteTargets[0];
+					if (detail.promotion && !state.stats) return false;
+					const pending = {
+						request,
+						cg,
+						board,
+						from: detail.from,
+						playerColor: initial.snapshot.playerColor,
+						userRevision: trustedRevision,
+						promotion: detail.promotion,
+						chooser: null,
+						cancelled: false,
+						onAbort: () => {}
+					};
+					pending.onAbort = () => releasePendingInput(pending, true);
+					pendingInput = pending;
+					request.signal.addEventListener("abort", pending.onAbort, { once: true });
+					if (!isPendingCurrent(pending, true)) {
+						releasePendingInput(pending, true);
+						return false;
+					}
+					cg.selectSquare(detail.from);
+					if (state.selectable?.selected !== detail.from || !isPendingCurrent(pending, true)) {
+						releasePendingInput(pending, true);
+						return false;
+					}
+					const stats = state.stats;
+					const hadCtrlKey = !!stats && Object.hasOwn(stats, "ctrlKey");
+					const previousCtrlKey = stats?.ctrlKey;
+					if (detail.promotion && stats) stats.ctrlKey = true;
+					try {
+						if (!isPendingCurrent(pending, true)) {
+							releasePendingInput(pending, true);
+							return false;
+						}
+						cg.selectSquare(to);
+					} finally {
+						if (detail.promotion && stats) {
+							if (hadCtrlKey) stats.ctrlKey = previousCtrlKey;
+							else delete stats.ctrlKey;
+						}
+					}
+					if (!isInputStillOwned(pending)) {
+						releasePendingInput(pending, true);
+						return false;
+					}
+					if (!detail.promotion) {
+						const expectedPlacement = cleanFen(request.expectedFen)?.split(" ")[0];
+						const displayedPlacement = cg.getFen?.().trim().split(/\s+/)[0];
+						const submitted = !!expectedPlacement && displayedPlacement === expectedPlacement;
+						releasePendingInput(pending, !submitted);
+						return submitted;
+					}
+					return await waitForPromotionChoice(pending);
+				} catch {
+					if (pendingInput) releasePendingInput(pendingInput, true);
+					return false;
+				}
+			},
+			cancelInput() {
+				cancelCurrentInput();
+			},
+			requestRematch() {
+				return false;
+			}
+		};
+	}
+	function collectPychessObservation(page) {
+		const doc = page.document;
+		const body = doc.body;
+		const cg = page.cg;
+		const state = cg?.state;
+		const board = doc.querySelector(".round-app #mainboard cg-board");
+		const controllerBoard = state?.dom?.elements?.board ?? null;
+		const dimensions = state?.dimensions;
+		const directSquares = board?.querySelectorAll(":scope > square").length ?? 0;
+		const width = Number.isInteger(dimensions?.width) ? dimensions?.width : directSquares === 64 ? 8 : 0;
+		const height = Number.isInteger(dimensions?.height) ? dimensions?.height : directSquares === 64 ? 8 : 0;
+		const style = board ? board.ownerDocument.defaultView?.getComputedStyle(board) : null;
+		const rect = board?.getBoundingClientRect();
+		const visible = !!board && style?.display !== "none" && style?.visibility !== "hidden" && (board.getClientRects?.().length ?? 0) > 0 && !!rect && rect.width > 0 && rect.height > 0;
+		const moves = Array.from(doc.querySelectorAll("#movelist move[ply]")).flatMap((move) => {
+			const ply = Number(move.getAttribute("ply"));
+			const san = move.querySelector("san")?.textContent?.trim() ?? "";
+			if (!Number.isInteger(ply) || ply < 1 || !san) return [];
+			return [{
+				ply,
+				san,
+				active: move.classList.contains("active")
+			}];
+		});
+		const clock = (id) => {
+			return {
+				min: doc.querySelector(`#clock${id} .clock-time.min`)?.textContent?.trim() ?? null,
+				sec: doc.querySelector(`#clock${id} .clock-time.sec`)?.textContent?.trim() ?? null,
+				connecting: !!doc.querySelector(`#clock${id} .clock.connecting`)
+			};
+		};
+		const renderedResult = doc.querySelector("#movelist .result")?.textContent?.trim() ?? null;
+		const postgame = !!doc.querySelector(".btn-controls.after");
+		const dataset = body.dataset;
+		const orientation = state?.orientation ?? null;
+		const turnColor = state?.turnColor ?? null;
+		const movableColor = state?.movable?.color ?? null;
+		const fen = state?.fen ?? null;
+		const displayedPlacement = cg?.getFen?.() ?? (fen ? fen.split(" ")[0] : null);
+		return {
+			metadata: {
+				isRoundView: dataset.view === "round" && !!doc.querySelector(".round-app"),
+				pathname: page.location.pathname,
+				gameId: dataset.gameid || null,
+				username: dataset.username || null,
+				whitePlayer: dataset.wplayer || null,
+				blackPlayer: dataset.bplayer || null,
+				variant: dataset.variant || null,
+				chess960: dataset.chess960 || null,
+				correspondence: dataset.corr || null,
+				level: dataset.level || null,
+				initialFen: dataset.initialfen ?? null,
+				status: dataset.status ?? null,
+				initialResult: dataset.result ?? null
+			},
+			board: {
+				element: board,
+				owned: !!board && board === controllerBoard,
+				connected: !!board?.isConnected,
+				visible,
+				width,
+				height
+			},
+			state: {
+				fen,
+				displayedPlacement,
+				turnColor,
+				movableColor,
+				orientation
+			},
+			moves,
+			result: {
+				text: renderedResult,
+				postgame
+			},
+			clocks: {
+				clock0: clock(0),
+				clock1: clock(1)
+			}
+		};
+	}
+	var activeSite;
+	function selectSite(hostname) {
+		if (hostname === "chess.com" || hostname === "www.chess.com") return createChesscomAdapter();
+		if (hostname === "pychess.org" || hostname === "www.pychess.org") return createPychessAdapter();
+		return null;
+	}
+	function getSite() {
+		if (activeSite === void 0) {
+			activeSite = selectSite(pageWindow().location.hostname);
+			setActiveSite(activeSite);
 		}
+		return activeSite;
+	}
+	function readSite() {
+		return getSite()?.read() ?? {
+			kind: "ineligible",
+			reason: "Unsupported site"
+		};
 	}
 	function positionFromFen(fen) {
 		const setup = parseFen(fen);
@@ -3239,7 +4039,7 @@
 		const sanText = typeof san === "string" ? san : String(san ?? "");
 		return whiteToMove ? `${moveNumber}. ${sanText}` : `${moveNumber}... ${sanText}`;
 	}
-	var panel_default = ":host{--color-panel:oklch(22% .025 160);--color-panel-header:oklch(25.5% .03 158);--color-panel-card:oklch(27.5% .03 158);--color-panel-border:oklch(40.5% .025 158);--color-panel-line:oklch(34% .022 158);--color-panel-muted:oklch(73% .022 157);--color-panel-text:oklch(94% .015 140);--color-panel-accent:oklch(84% .105 126);--color-panel-console:oklch(19% .02 158);--color-panel-control:oklch(25.5% .022 158);--color-panel-control-hover:oklch(32% .028 157);--color-panel-good:oklch(83% .105 126);--color-panel-warning:oklch(82% .105 82);--color-panel-error:oklch(78% .11 35);--color-panel-opponent:oklch(79% .07 73);--color-panel-shadow:oklch(8% .01 158/.48);--ease-out:cubic-bezier(.16, 1, .3, 1);--dur-short:.16s;--font-sans:-apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--font-mono:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;all:initial;z-index:9999999;width:min(336px,100vw - 16px);color:var(--color-panel-text);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font-family:var(--font-sans);-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.4;display:block;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}:host button,:host input{font:inherit}.panel-shell{border:1px solid var(--color-panel-border);background:var(--color-panel);box-shadow:0 14px 38px var(--color-panel-shadow), 0 2px 8px var(--color-panel-shadow);border-radius:14px;overflow:hidden}.panel-header{border-bottom:1px solid var(--color-panel-line);background:var(--color-panel-header);cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:58px;padding:9px 10px;display:flex}:host(.dragging) .panel-header{cursor:grabbing}.panel-brandmark{border:1px solid var(--color-panel-border);background:var(--color-panel-card);width:30px;height:30px;color:var(--color-panel-accent);border-radius:8px;flex:none;place-items:center;font-family:Georgia,serif;font-size:21px;line-height:1;display:grid}.panel-brand{flex-direction:column;flex:auto;gap:1px;min-width:0;display:flex}.panel-title{color:var(--color-panel-text);letter-spacing:.01em;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:650;overflow:hidden}.panel-state{min-width:0;color:var(--color-panel-muted);align-items:center;gap:7px;font-size:11px;display:flex}.panel-state-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-state-dot{background:var(--color-panel-muted);border-radius:50%;flex:none;width:7px;height:7px}.panel-state[data-tone=working] .panel-state-dot,.panel-state[data-tone=ready] .panel-state-dot{background:var(--color-panel-good);box-shadow:0 0 0 3px color-mix(in oklab, var(--color-panel-good) 16%, transparent)}.panel-state[data-tone=paused] .panel-state-dot,.panel-state[data-tone=paused] .panel-state-text{color:var(--color-panel-warning)}.panel-state[data-tone=paused] .panel-state-dot{background:var(--color-panel-warning)}.panel-state[data-tone=error] .panel-state-dot,.panel-state[data-tone=error] .panel-state-text{color:var(--color-panel-error)}.panel-state[data-tone=error] .panel-state-dot{background:var(--color-panel-error)}.panel-icon-button,.panel-action-button,.panel-quiet-button,.panel-segment{border:1px solid var(--color-panel-border);color:var(--color-panel-text);cursor:pointer;transition:transform var(--dur-short) var(--ease-out)}.panel-icon-button{background:var(--color-panel-control);border-radius:8px;flex:none;place-items:center;width:40px;height:40px;font-size:18px;line-height:1;display:grid}.panel-icon-button:hover,.panel-quiet-button:hover,.panel-segment:hover{border-color:var(--color-panel-muted);background:var(--color-panel-control-hover)}.panel-action-button{border-color:var(--color-panel-accent);background:var(--color-panel-accent);min-height:40px;color:var(--color-panel);border-radius:7px;flex:none;padding:0 10px;font-size:11px;font-weight:700}.panel-action-button:hover{border-color:var(--color-panel-text);background:var(--color-panel-text)}.panel-quiet-button{border-color:var(--color-panel-line);background:var(--color-panel-control);min-width:42px;min-height:30px;color:var(--color-panel-muted);border-radius:6px;padding:2px 7px;font-size:10px;font-weight:500}.panel-icon-button:focus-visible,.panel-action-button:focus-visible,.panel-quiet-button:focus-visible,.panel-segment:focus-visible,.panel-range:focus-visible{outline:2px solid var(--color-panel-accent);outline-offset:3px}.panel-icon-button:active,.panel-action-button:active,.panel-quiet-button:active,.panel-segment:active{transform:translateY(1px)}.panel-icon-button:disabled,.panel-action-button:disabled,.panel-quiet-button:disabled,.panel-segment:disabled{cursor:not-allowed;opacity:.55}.panel-scroll{overscroll-behavior:contain;scrollbar-color:var(--color-panel-border) var(--color-panel-console);scrollbar-width:thin;max-height:min(78vh,720px);overflow:auto}.panel-analysis{border:1px solid var(--color-panel-line);background:var(--color-panel-card);border-radius:9px;margin:10px 10px 4px;padding:10px 11px 9px 13px;position:relative}.panel-analysis:before{background:var(--color-panel-accent);content:\"\";border-radius:0 3px 3px 0;width:2px;position:absolute;inset:9px auto 9px 0}.panel-analysis-heading,.panel-setting-heading,.panel-activity-heading{justify-content:space-between;align-items:center;gap:10px;display:flex}.panel-eyebrow,.panel-setting-heading,.panel-method legend{color:var(--color-panel-muted);font-size:11px}.panel-evaluation{color:var(--color-panel-accent);font-variant-numeric:tabular-nums;font-size:14px;font-weight:700}.panel-setting-heading output{color:var(--color-panel-accent);font-variant-numeric:tabular-nums;font-size:11px;font-weight:650}.panel-best-move{color:var(--color-panel-text);font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:.035em;margin-top:1px;font-size:24px;font-weight:650;line-height:1.25}.panel-line{color:var(--color-panel-muted);font-family:var(--font-mono);text-overflow:ellipsis;white-space:nowrap;margin-top:4px;font-size:10px;overflow:hidden}.panel-recovery{border-top:1px solid var(--color-panel-line);color:var(--color-panel-muted);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:9px;margin-top:9px;padding-top:9px;font-size:11px;display:grid}.panel-recovery[data-kind=resume]{color:var(--color-panel-warning)}.panel-recovery[data-kind=retry]{color:var(--color-panel-error)}.panel-controls{padding:6px 14px 12px}.panel-section-heading{color:var(--color-panel-muted);letter-spacing:.075em;text-transform:uppercase;margin:1px 0 3px;font-size:10px;font-weight:700}.panel-toggle-list{gap:0;display:grid}.panel-toggle{min-height:44px;color:var(--color-panel-text);cursor:pointer;justify-content:space-between;align-items:center;gap:12px;font-size:12px;display:flex}.panel-switch{flex:none;justify-content:center;align-items:center;width:44px;height:38px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{border:1px solid var(--color-panel-border);background:var(--color-panel-control-hover);border-radius:999px;width:34px;height:19px}.panel-switch-thumb{background:var(--color-panel-muted);width:13px;height:13px;box-shadow:0 1px 2px var(--color-panel-shadow);pointer-events:none;transition:transform var(--dur-short) var(--ease-out);border-radius:50%;position:absolute;top:50%;left:7px;transform:translateY(-50%)}.panel-switch-input:checked~.panel-switch-track{border-color:var(--color-panel-good);background:color-mix(in oklab, var(--color-panel-good) 62%, var(--color-panel-control))}.panel-switch-input:checked~.panel-switch-thumb{background:var(--color-panel-text);transform:translate(15px,-50%)}.panel-switch-input:focus-visible~.panel-switch-track{outline:2px solid var(--color-panel-accent);outline-offset:3px}.panel-switch-input:disabled~.panel-switch-track,.panel-switch-input:disabled~.panel-switch-thumb{cursor:not-allowed;opacity:.55}.panel-slider{padding-top:8px}.panel-range{appearance:none;cursor:pointer;width:100%;height:27px;accent-color:var(--color-panel-accent);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--color-panel-border);border-radius:3px;height:3px}.panel-range::-moz-range-track{background:var(--color-panel-border);border-radius:3px;height:3px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--color-panel);background:var(--color-panel-accent);width:13px;height:13px;box-shadow:0 0 0 1px var(--color-panel-muted);border-radius:50%;margin-top:-5px}.panel-range::-moz-range-thumb{border:2px solid var(--color-panel);background:var(--color-panel-accent);width:13px;height:13px;box-shadow:0 0 0 1px var(--color-panel-muted);border-radius:50%}.panel-method{border:0;justify-content:space-between;align-items:center;gap:10px;min-width:0;margin:7px 0 0;padding:0;display:flex}.panel-method legend{float:left;padding:0}.panel-segmented{border:1px solid var(--color-panel-line);background:var(--color-panel-console);border-radius:7px;flex:none;gap:3px;padding:3px;display:flex}.panel-segment{min-width:52px;min-height:38px;color:var(--color-panel-muted);background:0 0;border-color:#0000;border-radius:5px;padding:3px 8px;font-size:11px}.panel-segment[aria-pressed=true]{border-color:var(--color-panel-border);background:var(--color-panel-control-hover);color:var(--color-panel-text)}.panel-activity{border-top:1px solid var(--color-panel-line);background:var(--color-panel-console)}.panel-activity-heading{min-height:34px;color:var(--color-panel-muted);padding:3px 11px;font-size:11px;font-weight:650}.panel-activity-actions{gap:5px;display:flex}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--color-panel-border) var(--color-panel-console);scrollbar-width:thin;flex-direction:column;gap:3px;min-height:54px;max-height:128px;padding:5px 11px 10px;display:flex;overflow:auto}.panel-log:focus-visible{outline:2px solid var(--color-panel-accent);outline-offset:-2px}.panel-log-empty{color:var(--color-panel-muted);opacity:.78;margin:0;font-size:10px;line-height:1.5}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:48px minmax(0,1fr);gap:7px;margin:0;font-size:10px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--color-panel-muted);font-variant-numeric:tabular-nums;opacity:.78}.log-text-info,.log-text-move{color:var(--color-panel-good)}.log-text-status{color:var(--color-panel-muted)}.log-text-error{color:var(--color-panel-error)}.log-text-warn{color:var(--color-panel-warning)}.log-text-opponent{color:var(--color-panel-opponent)}@media (width<=360px){.panel-analysis{margin-left:8px;margin-right:8px}.panel-controls{padding-left:11px;padding-right:11px}.panel-method{gap:5px}.panel-method legend{font-size:10px}}@media (prefers-reduced-motion:reduce){.panel-icon-button,.panel-action-button,.panel-quiet-button,.panel-segment,.panel-switch-track,.panel-switch-thumb{transition-duration:1ms}}";
+	var panel_default = ":host{--color-panel:oklch(22% .025 160);--color-panel-header:oklch(25.5% .03 158);--color-panel-card:oklch(27.5% .03 158);--color-panel-border:oklch(40.5% .025 158);--color-panel-line:oklch(34% .022 158);--color-panel-muted:oklch(73% .022 157);--color-panel-text:oklch(94% .015 140);--color-panel-accent:oklch(84% .105 126);--color-panel-console:oklch(19% .02 158);--color-panel-control:oklch(25.5% .022 158);--color-panel-control-hover:oklch(32% .028 157);--color-panel-good:oklch(83% .105 126);--color-panel-warning:oklch(82% .105 82);--color-panel-error:oklch(78% .11 35);--color-panel-opponent:oklch(79% .07 73);--color-panel-shadow:oklch(8% .01 158/.48);--ease-out:cubic-bezier(.16, 1, .3, 1);--dur-short:.16s;--font-sans:-apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--font-mono:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;all:initial;z-index:9999999;width:min(336px,100vw - 16px);color:var(--color-panel-text);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font-family:var(--font-sans);-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.4;display:block;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}:host button,:host input{font:inherit}.panel-shell{border:1px solid var(--color-panel-border);background:var(--color-panel);box-shadow:0 14px 38px var(--color-panel-shadow), 0 2px 8px var(--color-panel-shadow);border-radius:14px;overflow:hidden}.panel-header{border-bottom:1px solid var(--color-panel-line);background:var(--color-panel-header);cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:58px;padding:9px 10px;display:flex}:host(.dragging) .panel-header{cursor:grabbing}.panel-brandmark{border:1px solid var(--color-panel-border);background:var(--color-panel-card);width:30px;height:30px;color:var(--color-panel-accent);border-radius:8px;flex:none;place-items:center;font-family:Georgia,serif;font-size:21px;line-height:1;display:grid}.panel-brand{flex-direction:column;flex:auto;gap:1px;min-width:0;display:flex}.panel-title{color:var(--color-panel-text);letter-spacing:.01em;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:650;overflow:hidden}.panel-state{min-width:0;color:var(--color-panel-muted);align-items:center;gap:7px;font-size:11px;display:flex}.panel-state-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-state-dot{background:var(--color-panel-muted);border-radius:50%;flex:none;width:7px;height:7px}.panel-state[data-tone=working] .panel-state-dot,.panel-state[data-tone=ready] .panel-state-dot{background:var(--color-panel-good);box-shadow:0 0 0 3px color-mix(in oklab, var(--color-panel-good) 16%, transparent)}.panel-state[data-tone=paused] .panel-state-dot,.panel-state[data-tone=paused] .panel-state-text{color:var(--color-panel-warning)}.panel-state[data-tone=paused] .panel-state-dot{background:var(--color-panel-warning)}.panel-state[data-tone=error] .panel-state-dot,.panel-state[data-tone=error] .panel-state-text{color:var(--color-panel-error)}.panel-state[data-tone=error] .panel-state-dot{background:var(--color-panel-error)}.panel-icon-button,.panel-action-button,.panel-quiet-button,.panel-segment{border:1px solid var(--color-panel-border);color:var(--color-panel-text);cursor:pointer;transition:transform var(--dur-short) var(--ease-out)}.panel-icon-button{background:var(--color-panel-control);border-radius:8px;flex:none;place-items:center;width:40px;height:40px;font-size:18px;line-height:1;display:grid}.panel-icon-button:hover,.panel-quiet-button:hover,.panel-segment:hover{border-color:var(--color-panel-muted);background:var(--color-panel-control-hover)}.panel-action-button{border-color:var(--color-panel-accent);background:var(--color-panel-accent);min-height:40px;color:var(--color-panel);border-radius:7px;flex:none;padding:0 10px;font-size:11px;font-weight:700}.panel-action-button:hover{border-color:var(--color-panel-text);background:var(--color-panel-text)}.panel-quiet-button{border-color:var(--color-panel-line);background:var(--color-panel-control);min-width:42px;min-height:30px;color:var(--color-panel-muted);border-radius:6px;padding:2px 7px;font-size:10px;font-weight:500}.panel-icon-button:focus-visible,.panel-action-button:focus-visible,.panel-quiet-button:focus-visible,.panel-segment:focus-visible,.panel-range:focus-visible{outline:2px solid var(--color-panel-accent);outline-offset:3px}.panel-icon-button:active,.panel-action-button:active,.panel-quiet-button:active,.panel-segment:active{transform:translateY(1px)}.panel-icon-button:disabled,.panel-action-button:disabled,.panel-quiet-button:disabled,.panel-segment:disabled{cursor:not-allowed;opacity:.55}.panel-scroll{overscroll-behavior:contain;scrollbar-color:var(--color-panel-border) var(--color-panel-console);scrollbar-width:thin;max-height:min(78vh,720px);overflow:auto}.panel-analysis{border:1px solid var(--color-panel-line);background:var(--color-panel-card);border-radius:9px;margin:10px 10px 4px;padding:10px 11px 9px 13px;position:relative}.panel-analysis:before{background:var(--color-panel-accent);content:\"\";border-radius:0 3px 3px 0;width:2px;position:absolute;inset:9px auto 9px 0}.panel-analysis-heading,.panel-setting-heading,.panel-activity-heading{justify-content:space-between;align-items:center;gap:10px;display:flex}.panel-eyebrow,.panel-setting-heading,.panel-method legend{color:var(--color-panel-muted);font-size:11px}.panel-evaluation{color:var(--color-panel-accent);font-variant-numeric:tabular-nums;font-size:14px;font-weight:700}.panel-setting-heading output{color:var(--color-panel-accent);font-variant-numeric:tabular-nums;font-size:11px;font-weight:650}.panel-best-move{color:var(--color-panel-text);font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:.035em;margin-top:1px;font-size:24px;font-weight:650;line-height:1.25}.panel-line{color:var(--color-panel-muted);font-family:var(--font-mono);text-overflow:ellipsis;white-space:nowrap;margin-top:4px;font-size:10px;overflow:hidden}.panel-recovery{border-top:1px solid var(--color-panel-line);color:var(--color-panel-muted);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:9px;margin-top:9px;padding-top:9px;font-size:11px;display:grid}.panel-recovery[data-kind=resume]{color:var(--color-panel-warning)}.panel-recovery[data-kind=retry]{color:var(--color-panel-error)}.panel-controls{padding:6px 14px 12px}.panel-section-heading{color:var(--color-panel-muted);letter-spacing:.075em;text-transform:uppercase;margin:1px 0 3px;font-size:10px;font-weight:700}.panel-toggle-list{gap:0;display:grid}.panel-site-note{border-left:2px solid var(--color-panel-accent);color:var(--color-panel-muted);margin:8px 0 2px;padding-left:9px;font-size:11px}.panel-toggle{min-height:44px;color:var(--color-panel-text);cursor:pointer;justify-content:space-between;align-items:center;gap:12px;font-size:12px;display:flex}.panel-switch{flex:none;justify-content:center;align-items:center;width:44px;height:38px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{border:1px solid var(--color-panel-border);background:var(--color-panel-control-hover);border-radius:999px;width:34px;height:19px}.panel-switch-thumb{background:var(--color-panel-muted);width:13px;height:13px;box-shadow:0 1px 2px var(--color-panel-shadow);pointer-events:none;transition:transform var(--dur-short) var(--ease-out);border-radius:50%;position:absolute;top:50%;left:7px;transform:translateY(-50%)}.panel-switch-input:checked~.panel-switch-track{border-color:var(--color-panel-good);background:color-mix(in oklab, var(--color-panel-good) 62%, var(--color-panel-control))}.panel-switch-input:checked~.panel-switch-thumb{background:var(--color-panel-text);transform:translate(15px,-50%)}.panel-switch-input:focus-visible~.panel-switch-track{outline:2px solid var(--color-panel-accent);outline-offset:3px}.panel-switch-input:disabled~.panel-switch-track,.panel-switch-input:disabled~.panel-switch-thumb{cursor:not-allowed;opacity:.55}.panel-slider{padding-top:8px}.panel-range{appearance:none;cursor:pointer;width:100%;height:27px;accent-color:var(--color-panel-accent);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--color-panel-border);border-radius:3px;height:3px}.panel-range::-moz-range-track{background:var(--color-panel-border);border-radius:3px;height:3px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--color-panel);background:var(--color-panel-accent);width:13px;height:13px;box-shadow:0 0 0 1px var(--color-panel-muted);border-radius:50%;margin-top:-5px}.panel-range::-moz-range-thumb{border:2px solid var(--color-panel);background:var(--color-panel-accent);width:13px;height:13px;box-shadow:0 0 0 1px var(--color-panel-muted);border-radius:50%}.panel-method{border:0;justify-content:space-between;align-items:center;gap:10px;min-width:0;margin:7px 0 0;padding:0;display:flex}.panel-method legend{float:left;padding:0}.panel-segmented{border:1px solid var(--color-panel-line);background:var(--color-panel-console);border-radius:7px;flex:none;gap:3px;padding:3px;display:flex}.panel-segment{min-width:52px;min-height:38px;color:var(--color-panel-muted);background:0 0;border-color:#0000;border-radius:5px;padding:3px 8px;font-size:11px}.panel-segment[aria-pressed=true]{border-color:var(--color-panel-border);background:var(--color-panel-control-hover);color:var(--color-panel-text)}.panel-activity{border-top:1px solid var(--color-panel-line);background:var(--color-panel-console)}.panel-activity-heading{min-height:34px;color:var(--color-panel-muted);padding:3px 11px;font-size:11px;font-weight:650}.panel-activity-actions{gap:5px;display:flex}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--color-panel-border) var(--color-panel-console);scrollbar-width:thin;flex-direction:column;gap:3px;min-height:54px;max-height:128px;padding:5px 11px 10px;display:flex;overflow:auto}.panel-log:focus-visible{outline:2px solid var(--color-panel-accent);outline-offset:-2px}.panel-log-empty{color:var(--color-panel-muted);opacity:.78;margin:0;font-size:10px;line-height:1.5}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:48px minmax(0,1fr);gap:7px;margin:0;font-size:10px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--color-panel-muted);font-variant-numeric:tabular-nums;opacity:.78}.log-text-info,.log-text-move{color:var(--color-panel-good)}.log-text-status{color:var(--color-panel-muted)}.log-text-error{color:var(--color-panel-error)}.log-text-warn{color:var(--color-panel-warning)}.log-text-opponent{color:var(--color-panel-opponent)}@media (width<=360px){.panel-analysis{margin-left:8px;margin-right:8px}.panel-controls{padding-left:11px;padding-right:11px}.panel-method{gap:5px}.panel-method legend{font-size:10px}}@media (prefers-reduced-motion:reduce){.panel-icon-button,.panel-action-button,.panel-quiet-button,.panel-segment,.panel-switch-track,.panel-switch-thumb{transition-duration:1ms}}";
 	var n$1;
 	var t$2;
 	var i$2;
@@ -4330,6 +5130,14 @@
 		};
 		return (u || i) && (p.__source = u, p.__self = i), n$1.vnode && n$1.vnode(p), p;
 	}
+	function getPanelCapabilityView(capabilities) {
+		const selectionInput = capabilities?.input === "selection";
+		return {
+			showAutoRematch: capabilities?.autoRematch !== false,
+			showMoveMethod: !selectionInput,
+			transportNote: selectionInput ? "Moves use legal square selection on this site." : null
+		};
+	}
 	var readSettings = () => ({
 		enabled: !!BotState.hackEnabled,
 		autoMove: !!BotState.autoMove,
@@ -4433,10 +5241,11 @@
 			}
 		}
 	}
-	function mountPanel(root, host, actions) {
+	function mountPanel(root, host, actions, capabilities) {
 		G$1(u(Panel, {
 			host,
-			actions
+			actions,
+			capabilities
 		}), root);
 	}
 	function formatBudget(milliseconds) {
@@ -4474,10 +5283,11 @@
 			})]
 		});
 	}
-	function Panel({ host, actions }) {
+	function Panel({ host, actions, capabilities }) {
 		const settings = settingsSignal.value;
 		const analysis = analysisSignal.value;
 		const logs = logsSignal.value;
+		const capabilityView = getPanelCapabilityView(capabilities);
 		const [minimized, setMinimized] = d$2(false);
 		const [copied, setCopied] = d$2(false);
 		const logElement = T(null);
@@ -4683,12 +5493,16 @@
 										checked: settings.ponder,
 										onChange: (checked) => updateSetting("ponder", checked)
 									}),
-									u(Toggle, {
+									capabilityView.showAutoRematch && u(Toggle, {
 										label: "Auto rematch",
 										checked: settings.autoRematch,
 										onChange: (checked) => updateSetting("autoRematch", checked)
 									})
 								]
+							}),
+							capabilityView.transportNote && u("p", {
+								class: "panel-site-note",
+								children: capabilityView.transportNote
 							}),
 							u("div", {
 								class: "panel-slider",
@@ -4730,7 +5544,7 @@
 									onInput: (event) => updateSetting("moveTimeMs", Number(event.currentTarget.value))
 								})]
 							}),
-							u("fieldset", {
+							capabilityView.showMoveMethod && u("fieldset", {
 								class: "panel-method",
 								children: [u("legend", { children: "Move input method" }), u("div", {
 									class: "panel-segmented",
@@ -4816,7 +5630,8 @@
 		},
 		updateDisplay(playingAs) {
 			syncPanelSettings();
-			const fen = getFen(getGame());
+			const read = readSite();
+			const fen = read.kind === "game" ? read.snapshot.fen : null;
 			const san = fen && BotState.bestMove !== "-" ? uciToSan(fen, BotState.bestMove) : BotState.bestMove;
 			const suggestedMove = typeof san === "string" ? san : BotState.bestMove;
 			if (BotState.statusInfo !== this.lastStatus) {
@@ -4842,7 +5657,7 @@
 			updateEvaluationBar(BotState.currentEvaluation, playingAs);
 		}
 	};
-	async function buildUI(actions = {}) {
+	async function buildUI(actions = {}, capabilities) {
 		if (ui.menuWrap) return;
 		const host = document.createElement("div");
 		host.id = "menuWrap";
@@ -4867,12 +5682,14 @@
 		mountPanel(appRoot, host, {
 			...actions,
 			clearConsole: () => ui.clearConsole()
-		});
+		}, capabilities);
 	}
 	var revision = 0;
 	var active = null;
-	var processed = "";
+	var processed = null;
 	var anticipatedPonder = null;
+	var pendingConfirmation = null;
+	var confirmationSettledListeners = new Set();
 	function scoreForWhite(score, sideToMove) {
 		if (sideToMove !== "b") return score;
 		return {
@@ -4880,59 +5697,89 @@
 			...typeof score.mate === "number" ? { mate: -score.mate } : {}
 		};
 	}
+	function matchingSnapshot(site, identity, fen) {
+		const read = site.read();
+		if (read.kind !== "game" || read.snapshot.identity !== identity || read.snapshot.fen !== fen || read.snapshot.phase !== "live") return null;
+		return read.snapshot;
+	}
+	function isMoveConfirmationPending(identity) {
+		return pendingConfirmation?.identity === identity && !pendingConfirmation.requestController.signal.aborted;
+	}
+	function onMoveConfirmationSettled(listener) {
+		confirmationSettledListeners.add(listener);
+		return () => confirmationSettledListeners.delete(listener);
+	}
 	function cancelAnalysis(preservePonderFen) {
 		revision++;
 		active?.abort();
 		active = null;
-		processed = "";
+		processed = null;
+		if (pendingConfirmation) pendingConfirmation.requestController.abort();
+		pendingConfirmation = null;
 		if (!anticipatedPonder || anticipatedPonder.fromFen !== preservePonderFen) anticipatedPonder = null;
 		cancelPonder(preservePonderFen);
 		cancelPendingMove();
 	}
-	function searchBudget() {
+	function searchBudget(snapshot) {
 		const configured = Math.max(10, BotState.moveTime);
-		const clock = document.querySelector(".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time")?.textContent?.trim();
-		let remaining = Infinity;
-		if (clock) {
-			if (/^\d+:\d{2}(?:\.\d+)?$/.test(clock)) {
-				const [minutes, seconds] = clock.split(":").map(Number);
-				remaining = (minutes * 60 + seconds) * 1e3;
-			} else if (/^\d+(?:\.\d+)?$/.test(clock)) remaining = Number(clock) * 1e3;
-		}
-		return Math.max(1, Math.floor(Math.min(configured, remaining / 40) - 12));
+		if (snapshot.remainingMs === null) return configured;
+		return Math.max(1, Math.floor(Math.min(configured, snapshot.remainingMs / 40) - 12));
+	}
+	function requestPly(snapshot) {
+		return snapshot.history ? snapshot.history.moves.length + 1 : null;
+	}
+	function requestHistory(snapshot) {
+		return snapshot.history ? {
+			startFen: snapshot.history.startFen,
+			moves: [...snapshot.history.moves]
+		} : void 0;
 	}
 	async function scheduleAnalysis(kind, fen) {
-		const key = `${kind}:${fen}`;
-		if (!BotState.hackEnabled || key === processed) return;
-		const game = getGame();
-		if (!game) return;
+		const site = getSite();
+		if (!BotState.hackEnabled || !site) return;
+		const read = site.read();
+		if (read.kind !== "game") return;
+		const snapshot = read.snapshot;
+		if (snapshot.phase !== "live" || snapshot.fen !== fen) return;
+		if (kind === "main" && snapshot.sideToMove !== snapshot.playerColor) return;
+		if (kind === "main" && !snapshot.inputReady) return;
+		if (processed?.kind === kind && processed.fen === fen && processed.identity === snapshot.identity) return;
 		active?.abort();
 		if (kind !== "main" && !BotState.ponderEnabled) {
 			cancelPonder();
 			anticipatedPonder = null;
-			processed = key;
+			processed = {
+				kind,
+				fen,
+				identity: snapshot.identity
+			};
 			return;
 		}
 		cancelPonder(fen);
 		const id = ++revision;
 		const ctrl = new AbortController();
 		active = ctrl;
-		processed = key;
+		processed = {
+			kind,
+			fen,
+			identity: snapshot.identity
+		};
 		const inputRevision = getMoveRevision();
-		const positionIsCurrent = () => id === revision && !ctrl.signal.aborted && !!BotState.hackEnabled && getGame() === game && getFen(game) === fen;
+		const identity = snapshot.identity;
+		const positionIsCurrent = () => id === revision && !ctrl.signal.aborted && !!BotState.hackEnabled && !!matchingSnapshot(site, identity, fen);
 		const current = () => positionIsCurrent() && inputRevision === getMoveRevision();
 		if (!current()) return;
 		try {
 			const started = performance.now();
-			const budget = searchBudget();
+			const budget = kind === "main" ? searchBudget(snapshot) : Math.max(10, BotState.moveTime);
 			BotState.statusInfo = kind === "main" ? "Analyzing..." : "Pondering...";
 			ui.updateDisplay(pa());
-			const history = readPositionHistory(game, fen);
+			const history = requestHistory(snapshot);
 			const anticipated = anticipatedPonder;
-			if (kind !== "main" && anticipated?.fromFen === fen) {
+			if (kind !== "main") {
 				anticipatedPonder = null;
-				if (ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history)) return;
-			} else if (kind === "main") anticipatedPonder = null;
+				if (anticipated?.fromFen === fen && ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history)) return;
+			} else anticipatedPonder = null;
 			const result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
 			if (!current()) return;
 			const best = parseBestLine(result);
@@ -4955,8 +5802,9 @@
 				}
 				return;
 			}
+			const currentPosition = matchingSnapshot(site, identity, fen);
 			const nextFen = predictFen(fen, best.uci);
-			if (!nextFen || fen.split(" ")[1] !== getPlayerColor(game)) throw new Error("Engine move failed position validation");
+			if (!nextFen || fen.split(" ")[1] !== snapshot.playerColor) throw new Error("Engine move failed position validation");
 			const pvMoves = best.pv.split(/\s+/);
 			const predictedReply = pvMoves[0] === best.uci ? pvMoves[1] : void 0;
 			const targetFen = predictedReply ? predictFen(nextFen, predictedReply) : null;
@@ -4974,13 +5822,50 @@
 			};
 			BotState.bestMove = best.uci;
 			BotState.principalVariation = best.pv;
-			BotState.currentEvaluation = scoreToDisplay(scoreForWhite(best.score, fen.split(" ")[1]));
+			BotState.currentEvaluation = scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
 			BotState.statusInfo = `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
 			clearArrows();
 			drawArrow(best.uci.slice(0, 2), best.uci.slice(2, 4), "rgba(100,255,100,0.7)", 3);
 			ui.updateDisplay(pa());
-			if (!BotState.autoMove || !current()) return;
-			if (await executeMove(best.uci.slice(0, 2), best.uci.slice(2, 4), fen, best.uci[4], result.depth, void 0, nextFen)) {
+			if (!BotState.autoMove || !current() || !currentPosition?.inputReady) return;
+			const requestController = new AbortController();
+			const abortRequest = () => requestController.abort();
+			ctrl.signal.addEventListener("abort", abortRequest, { once: true });
+			const moveRequest = {
+				identity,
+				fromFen: fen,
+				uci: best.uci,
+				expectedFen: nextFen,
+				expectedPly: requestPly(snapshot),
+				signal: requestController.signal,
+				isCurrent: () => current() && matchingSnapshot(site, identity, fen)?.inputReady === true
+			};
+			pendingConfirmation = {
+				identity,
+				requestController
+			};
+			const confirmation = confirmSiteMove(moveRequest, site);
+			let initiated = false;
+			let accepted = false;
+			try {
+				initiated = await site.submitMove(moveRequest);
+				if (!initiated) {
+					requestController.abort();
+					accepted = false;
+				} else accepted = await confirmation;
+			} finally {
+				ctrl.signal.removeEventListener("abort", abortRequest);
+				requestController.abort();
+				if (pendingConfirmation?.requestController === requestController) {
+					pendingConfirmation = null;
+					for (const listener of [...confirmationSettledListeners]) try {
+						listener();
+					} catch (error) {
+						console.error("Super Chess Bot: confirmation listener failed.", error);
+					}
+				}
+			}
+			if (accepted) {
 				BotState.recoveryAction = null;
 				ui.log(formatMove(fen, best.uci), "move");
 			} else if (positionIsCurrent()) {
@@ -4994,7 +5879,7 @@
 					BotState.statusInfo = "Paused after board interaction";
 				} else {
 					BotState.recoveryAction = "retry";
-					if (!/^Move (?:input failed|not confirmed)/i.test(BotState.statusInfo)) BotState.statusInfo = "Move was not confirmed";
+					BotState.statusInfo = initiated ? "Move was not confirmed" : "Move input failed";
 				}
 				ui.updateDisplay(pa());
 			}
@@ -5014,20 +5899,50 @@
 	var BotController = class {
 		isActive = false;
 		lastFenSeen = "";
-		game = null;
 		cleanup = null;
 		cleanupBoardInput = null;
+		cleanupSite = null;
+		cleanupConfirmation = null;
 		interval = null;
 		generation = 0;
 		ready = false;
 		rematchAttempted = false;
-		waitingForBoard = false;
+		waitingKey = null;
+		identity = null;
+		board = null;
 		interruptedFen = null;
-		domWatcherStarted = false;
+		previousInputReady = null;
+		site = null;
 		init() {
-			if (this.domWatcherStarted) return;
-			this.domWatcherStarted = true;
-			startDomBoardWatcher();
+			if (this.cleanupSite) return;
+			this.site = getSite();
+			if (!this.site) return;
+			this.cleanupConfirmation = onMoveConfirmationSettled(() => this.tick());
+			this.cleanupSite = this.site.subscribe(() => {
+				this.syncBoard();
+				this.tick();
+			});
+			this.syncBoard();
+		}
+		syncBoard(read = readSite()) {
+			if (read.kind !== "game") {
+				if (this.board) attachToBoard(null);
+				this.board = null;
+				return;
+			}
+			const snapshot = read.snapshot;
+			if (snapshot.board !== this.board) {
+				attachToBoard(snapshot.board);
+				this.board = snapshot.board;
+			}
+			setBoardOrientation(snapshot.orientation);
+		}
+		listenForLifecycle() {
+			if (this.cleanup) return;
+			this.cleanup = onBoardMutation(() => this.tick());
+			this.cleanupBoardInput = onBoardInput(() => this.pauseForBoardInput());
+			if (this.site?.id === "chesscom") startMoveWatcher();
+			this.interval = setInterval(() => this.tick(), 1e3);
 		}
 		setEnabled(enabled) {
 			BotState.hackEnabled = Number(enabled);
@@ -5038,6 +5953,11 @@
 			} else this.stop();
 		}
 		async start() {
+			this.init();
+			if (!BotState.hackEnabled) {
+				await warmEngine();
+				return;
+			}
 			if (this.isActive) return;
 			this.isActive = true;
 			const generation = ++this.generation;
@@ -5048,10 +5968,7 @@
 				if (!this.isActive || generation !== this.generation || !BotState.hackEnabled) return;
 				this.ready = true;
 				BotState.recoveryAction = null;
-				this.cleanup = onBoardMutation(() => this.tick());
-				this.cleanupBoardInput = onBoardInput(() => this.pauseForBoardInput());
-				startMoveWatcher();
-				this.interval = setInterval(() => this.tick(), 1e3);
+				this.listenForLifecycle();
 				this.tick();
 			} catch (error) {
 				if (generation !== this.generation) return;
@@ -5072,13 +5989,21 @@
 			this.cleanup = null;
 			this.cleanupBoardInput?.();
 			this.cleanupBoardInput = null;
+			this.cleanupSite?.();
+			this.cleanupSite = null;
+			this.cleanupConfirmation?.();
+			this.cleanupConfirmation = null;
 			stopMoveWatcher();
 			cancelAnalysis();
+			this.site?.cancelInput();
 			clearArrows();
+			if (this.board) attachToBoard(null);
+			this.board = null;
 			this.lastFenSeen = "";
-			this.game = null;
-			this.waitingForBoard = false;
+			this.identity = null;
+			this.waitingKey = null;
 			this.interruptedFen = null;
+			this.previousInputReady = null;
 			this.clearRecommendation();
 			BotState.recoveryAction = null;
 			BotState.statusInfo = "Bot disabled";
@@ -5113,82 +6038,110 @@
 			}
 			this.tick();
 		}
+		cancelSiteWork() {
+			cancelAnalysis();
+			this.site?.cancelInput();
+		}
 		pauseForBoardInput() {
 			if (!this.isActive || !this.ready || !BotState.hackEnabled) return;
-			invalidateGameCache();
-			this.interruptedFen = getFen(getGame()) ?? "";
-			cancelAnalysis();
+			const read = readSite();
+			this.interruptedFen = read.kind === "game" ? read.snapshot.fen : "";
+			this.cancelSiteWork();
 			clearArrows();
 			this.clearRecommendation();
 			BotState.recoveryAction = "resume";
 			BotState.statusInfo = "Paused after board interaction";
 			ui.updateDisplay(pa());
 		}
+		clearForUnavailable(read) {
+			const waitingKey = `${read.kind}:${read.reason}`;
+			if (this.identity && isMoveConfirmationPending(this.identity)) return;
+			if (this.waitingKey === waitingKey) return;
+			this.waitingKey = waitingKey;
+			this.cancelSiteWork();
+			clearArrows();
+			if (this.board) attachToBoard(null);
+			this.board = null;
+			this.lastFenSeen = "";
+			this.interruptedFen = null;
+			this.previousInputReady = null;
+			this.clearRecommendation();
+			BotState.recoveryAction = null;
+			BotState.statusInfo = read.reason;
+			ui.updateDisplay(pa());
+		}
+		handlePhase(snapshot) {
+			if (snapshot.phase === "live") return false;
+			const phaseKey = `phase:${snapshot.identity === this.identity ? snapshot.phase : `${snapshot.gameId}:${snapshot.phase}`}`;
+			if (this.waitingKey !== phaseKey) {
+				this.waitingKey = phaseKey;
+				this.cancelSiteWork();
+				clearArrows();
+				this.clearRecommendation();
+				this.lastFenSeen = "";
+				this.interruptedFen = null;
+				this.previousInputReady = snapshot.inputReady;
+				BotState.recoveryAction = null;
+				BotState.statusInfo = snapshot.phase === "replay" ? "Replay mode" : "Game finished";
+				ui.updateDisplay(pa());
+			}
+			if (snapshot.phase === "finished" && BotState.autoRematch && this.site?.capabilities.autoRematch) {
+				if (!this.rematchAttempted) this.rematchAttempted = this.site.requestRematch();
+			}
+			return true;
+		}
 		tick() {
 			if (!this.isActive || !this.ready || !BotState.hackEnabled) return;
-			invalidateGameCache();
-			const game = getGame();
-			if (!game) {
-				if (this.waitingForBoard) return;
-				this.waitingForBoard = true;
-				cancelAnalysis();
-				clearArrows();
+			const read = readSite();
+			this.syncBoard(read);
+			if (read.kind !== "game") {
+				this.clearForUnavailable(read);
+				return;
+			}
+			const snapshot = read.snapshot;
+			if (snapshot.identity !== this.identity) {
+				const hadIdentity = this.identity !== null;
+				this.cancelSiteWork();
+				if (hadIdentity) resetEngine();
+				this.identity = snapshot.identity;
 				this.lastFenSeen = "";
-				this.game = null;
+				this.waitingKey = null;
+				this.rematchAttempted = false;
 				this.interruptedFen = null;
+				this.previousInputReady = null;
 				this.clearRecommendation();
 				BotState.recoveryAction = null;
+				ui.clearConsole();
+			}
+			if (this.handlePhase(snapshot)) return;
+			if (snapshot.identity === this.identity && snapshot.fen !== this.lastFenSeen && isMoveConfirmationPending(snapshot.identity)) return;
+			this.waitingKey = null;
+			this.rematchAttempted = false;
+			const ourTurn = snapshot.sideToMove === snapshot.playerColor;
+			const readinessRestored = this.previousInputReady === false && snapshot.inputReady && ourTurn;
+			this.previousInputReady = snapshot.inputReady;
+			if (readinessRestored && snapshot.sideToMove === snapshot.playerColor && snapshot.fen === this.lastFenSeen) cancelAnalysis(snapshot.fen);
+			if (this.interruptedFen !== null) {
+				if (!snapshot.fen || snapshot.fen === this.interruptedFen) return;
+				this.interruptedFen = null;
+				BotState.recoveryAction = null;
+			}
+			if (!snapshot.fen) return;
+			const positionChanged = snapshot.fen !== this.lastFenSeen;
+			if (!positionChanged && !readinessRestored) return;
+			if (positionChanged) cancelAnalysis(snapshot.fen);
+			clearArrows();
+			this.clearRecommendation();
+			this.lastFenSeen = snapshot.fen;
+			BotState.recoveryAction = null;
+			if (ourTurn && !snapshot.inputReady) {
 				BotState.statusInfo = "Waiting for board";
 				ui.updateDisplay(pa());
 				return;
 			}
-			this.waitingForBoard = false;
-			if (game !== this.game) {
-				cancelAnalysis();
-				resetEngine();
-				this.game = game;
-				this.lastFenSeen = "";
-				this.rematchAttempted = false;
-				this.interruptedFen = null;
-				this.clearRecommendation();
-				BotState.recoveryAction = null;
-				startMoveWatcher();
-				ui.clearConsole();
-			}
-			if (game.isGameOver?.() || document.querySelector(".game-over-modal-content")) {
-				cancelAnalysis();
-				clearArrows();
-				this.clearRecommendation();
-				this.interruptedFen = null;
-				BotState.recoveryAction = null;
-				BotState.statusInfo = "Game finished";
-				ui.updateDisplay(pa());
-				if (BotState.autoRematch && !this.rematchAttempted) {
-					const button = document.querySelector("[data-cy=\"sidebar-game-over-rematch-button\"], [data-cy=\"game-over-modal-rematch-button\"]");
-					if (button) {
-						button.click();
-						this.rematchAttempted = true;
-					}
-				}
-				return;
-			}
-			this.rematchAttempted = false;
-			const fen = getFen(game);
-			if (this.interruptedFen !== null) {
-				if (!fen || fen === this.interruptedFen) return;
-				this.interruptedFen = null;
-				BotState.recoveryAction = null;
-			}
-			if (!fen || fen === this.lastFenSeen) return;
-			cancelAnalysis(fen);
-			clearArrows();
-			this.clearRecommendation();
-			this.lastFenSeen = fen;
-			BotState.recoveryAction = null;
-			const ourTurn = isPlayersTurn(game);
 			BotState.statusInfo = ourTurn ? "Analyzing..." : "Waiting for opponent";
 			ui.updateDisplay(pa());
-			scheduleAnalysis(ourTurn ? "main" : "ponder", fen);
+			scheduleAnalysis(ourTurn ? "main" : "ponder", snapshot.fen);
 		}
 	};
 	var controller = new BotController();
@@ -5198,11 +6151,13 @@
 		page.__GABIBOT_RUNNING__ = true;
 		try {
 			BotState.onUpdateDisplay = (playingAs) => ui.updateDisplay(playingAs);
+			const site = getSite();
 			await buildUI({
 				setEnabled: (enabled) => controller.setEnabled(enabled),
 				refreshSettings: () => controller.refreshSettings(),
 				recover: () => controller.recover()
-			});
+			}, site?.capabilities);
+			controller.init();
 			if (!BotState.hackEnabled) {
 				BotState.statusInfo = "Preparing Stockfish...";
 				ui.updateDisplay(pa());
@@ -5216,10 +6171,11 @@
 				BotState.statusInfo = error instanceof Error ? `Stockfish warmup failed: ${error.message}` : "Stockfish warmup failed";
 				ui.updateDisplay(pa());
 			});
-			await waitForElement("wc-chess-board, chess-board, .board");
-			const board = getBoard();
-			if (board) attachToBoard(board);
-			controller.init();
+			if (!site) {
+				BotState.statusInfo = "Unsupported site";
+				ui.updateDisplay(pa());
+				return;
+			}
 		} catch (error) {
 			page.__GABIBOT_RUNNING__ = false;
 			BotState.statusInfo = error instanceof Error ? error.message : "Initialization failed";
