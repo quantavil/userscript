@@ -1,0 +1,6 @@
+# dependencies
+node_modules/
+
+# build logs & caches
+*.log
+.DS_Store

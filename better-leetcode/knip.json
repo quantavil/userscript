@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@5/overview/configuration-schema.json",
+  "entry": ["src/main.ts", "test/**/*.test.ts"],
+  "project": ["src/**/*.{ts,tsx}", "test/**/*.{ts,tsx}"],
+  "ignoreUnresolved": ["^\\$$"]
+}

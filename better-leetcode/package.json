@@ -1,0 +1,44 @@
+{
+  "name": "better-leetcode",
+  "version": "1.0.0",
+  "author": "quantavil",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "description": "Export LeetCode problems to clean Markdown with test cases, failed submission traces, code templates, comments, and customizable LLM prompts.",
+  "homepage": "https://github.com/quantavil/userscript/tree/main/better-leetcode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/quantavil/userscript.git",
+    "directory": "better-leetcode"
+  },
+  "bugs": {
+    "url": "https://github.com/quantavil/userscript/issues"
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "knip": "knip",
+    "test": "bun test",
+    "check": "bun run typecheck && bun run lint && bun run knip && bun run test",
+    "build": "bun run check && vite build"
+  },
+  "dependencies": {
+    "@joplin/turndown-plugin-gfm": "^1.0.68",
+    "preact": "^11.0.1",
+    "turndown": "^7.2.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@happy-dom/global-registrator": "^20.14.6",
+    "@types/bun": "^1.4.2",
+    "@types/turndown": "^5.0.6",
+    "knip": "^6.41.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vite-plugin-monkey": "^8.1.1"
+  },
+  "packageManager": "bun@1.4.2"
+}

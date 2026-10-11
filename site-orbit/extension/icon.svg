@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="SiteOrbit Icon">
+  <title>SiteOrbit Icon</title>
+  <defs>
+    <!-- Deep Space Background Canvas -->
+    <linearGradient id="so-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#081810" />
+      <stop offset="100%" stop-color="#020604" />
+    </linearGradient>
+
+    <!-- 3D Planet Sphere Gradient -->
+    <radialGradient id="so-planet" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#1e5c3e" />
+      <stop offset="45%" stop-color="#0f3322" />
+      <stop offset="85%" stop-color="#061a10" />
+      <stop offset="100%" stop-color="#020a06" />
+    </radialGradient>
+
+    <!-- Atmospheric Rim Light -->
+    <linearGradient id="so-rim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#47db7b" stop-opacity="0.9" />
+      <stop offset="50%" stop-color="#10b981" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#05140c" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Front Ring Luminous Solar Gradient -->
+    <linearGradient id="so-ring-front" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="35%" stop-color="#ff9f43" />
+      <stop offset="75%" stop-color="#ff5222" />
+      <stop offset="100%" stop-color="#ff793f" />
+    </linearGradient>
+
+    <!-- Back Ring Shadow Gradient -->
+    <linearGradient id="so-ring-back" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff793f" stop-opacity="0.6" />
+      <stop offset="50%" stop-color="#143b27" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#0a2015" stop-opacity="0.3" />
+    </linearGradient>
+
+    <!-- Orbiting Satellite Flare -->
+    <radialGradient id="so-orb" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="35%" stop-color="#ffd166" />
+      <stop offset="70%" stop-color="#ff5222" />
+      <stop offset="100%" stop-color="#c0392b" />
+    </radialGradient>
+  </defs>
+
+  <!-- Base Rounded Icon Container -->
+  <rect width="96" height="96" rx="22" fill="url(#so-bg)" stroke="#1a3b2b" stroke-width="1.5" />
+
+  <!-- ================= 1. BACK RING LAYER (Behind Planet) ================= -->
+  <g transform="rotate(-30 48 48)">
+    <!-- Seamless Outer Orbit Arc (Behind) -->
+    <path d="M 6 48 A 42 15 0 0 1 90 48" fill="none" stroke="url(#so-ring-back)" stroke-width="4.5" stroke-linecap="round" />
+    <!-- Fine Specular Track (Behind) -->
+    <path d="M 9 48 A 39 13.5 0 0 1 87 48" fill="none" stroke="#25533d" stroke-width="1" opacity="0.4" />
+  </g>
+
+  <!-- ================= 2. CENTRAL PLANET LAYER (Dead Center 48, 48) ================= -->
+  <g id="planet">
+    <!-- Planetary Sphere Body -->
+    <circle cx="48" cy="48" r="23" fill="url(#so-planet)" />
+
+    <!-- Stylized Continents / Landmasses -->
+    <path d="M 33 42 C 35 37, 41 35, 45 37 C 48 39, 46 44, 42 45 C 38 46, 34 47, 33 42 Z" fill="#246a48" opacity="0.75" />
+    <path d="M 52 35 C 57 33, 63 36, 61 41 C 59 45, 54 44, 52 41 C 50 38, 50 36, 52 35 Z" fill="#246a48" opacity="0.75" />
+    <path d="M 36 53 C 39 50, 47 51, 48 55 C 49 59, 43 62, 38 60 C 34 58, 34 55, 36 53 Z" fill="#246a48" opacity="0.75" />
+    <path d="M 53 50 C 58 48, 64 52, 62 57 C 60 61, 54 60, 52 56 C 51 53, 51 51, 53 50 Z" fill="#246a48" opacity="0.75" />
+
+    <!-- Subtle Web Grid (Clean Meridian & Equator) -->
+    <ellipse cx="48" cy="48" rx="12" ry="23" fill="none" stroke="#47db7b" stroke-width="1" opacity="0.45" />
+    <line x1="48" y1="25" x2="48" y2="71" stroke="#47db7b" stroke-width="1" opacity="0.45" />
+    <path d="M 28 40 Q 48 44 68 40" fill="none" stroke="#47db7b" stroke-width="1" opacity="0.4" />
+    <line x1="25" y1="48" x2="71" y2="48" stroke="#47db7b" stroke-width="1.2" opacity="0.55" />
+    <path d="M 28 56 Q 48 52 68 56" fill="none" stroke="#47db7b" stroke-width="1" opacity="0.4" />
+
+    <!-- Atmosphere Rim Light Layer -->
+    <circle cx="48" cy="48" r="23" fill="none" stroke="url(#so-rim)" stroke-width="1.8" />
+  </g>
+
+  <!-- ================= 3. FRONT RING & PERFECTLY LOCKED SATELLITE ================= -->
+  <!-- Transformed together so the satellite is 100% locked to the exact orbital curve -->
+  <g transform="rotate(-30 48 48)">
+    <!-- Seamless Outer Planetary Ring (In Front) -->
+    <path d="M 90 48 A 42 15 0 0 1 6 48" fill="none" stroke="url(#so-ring-front)" stroke-width="4.5" stroke-linecap="round" />
+    <!-- Fine Luminous Specular Accent Line (In Front) -->
+    <path d="M 87 48 A 39 13.5 0 0 1 9 48" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.65" />
+
+    <!-- Perfectly Centered Orbiting Satellite Planet at exact point (76, 59.18) -->
+    <g>
+      <!-- Corona Glow Layer -->
+      <circle cx="76" cy="59.18" r="9" fill="#ff5222" opacity="0.25" />
+      <!-- Satellite Sphere -->
+      <circle cx="76" cy="59.18" r="5.2" fill="url(#so-orb)" stroke="#ffeaa7" stroke-width="1" />
+      <!-- Specular Light Reflection -->
+      <circle cx="74.8" cy="58" r="1.5" fill="#ffffff" />
+    </g>
+  </g>
+</svg>

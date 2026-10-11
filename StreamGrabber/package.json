@@ -1,0 +1,28 @@
+{
+  "name": "streamgrabber",
+  "private": true,
+  "version": "2.5.4",
+  "license": "GPL-3.0-or-later",
+  "description": "A premium, lightweight HLS/Video downloader userscript with support for AES-128, fMP4, and adaptive quality selection.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "hls-parser": "^0.16.1",
+    "p-queue": "^9.3.3",
+    "p-retry": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/greasemonkey": "^4.0.7",
+    "jsdom": "^30.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vite-plugin-monkey": "^8.1.1",
+    "vitest": "^5.0.3"
+  }
+}

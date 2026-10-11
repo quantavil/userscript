@@ -1,0 +1,17 @@
+{
+  "name": "ai-wishlist",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "vite": "^8.3.4",
+    "vite-plugin-monkey": "^8.1.1"
+  },
+  "peerDependencies": {
+    "typescript": "^7.0.2"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  }
+}

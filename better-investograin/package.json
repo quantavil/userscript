@@ -1,0 +1,21 @@
+{
+  "name": "better-investograin",
+  "version": "1.2.0",
+  "description": "Hides ads, broker affiliate promo bars, sponsor strips, and partner footer sections on InvestorGain.com — keeping only the IPO data you care about.",
+  "type": "module",
+  "author": "quantavil",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "build": "bunx vite build",
+    "dev": "bunx vite",
+    "test": "bun test",
+    "test:e2e": "python3 tests/e2e.py",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vite-plugin-monkey": "^8.1.1"
+  }
+}

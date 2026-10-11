@@ -1,0 +1,21 @@
+{
+  "name": "google-ai-brave-sidebar",
+  "version": "3.3.2",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2"
+  },
+  "devDependencies": {
+    "@types/turndown": "^5.0.6",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

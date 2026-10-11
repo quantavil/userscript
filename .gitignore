@@ -1,0 +1,14 @@
+# Dependencies
+node_modules
+yarn.lock
+/dist
+web-ext-artifacts
+dist-extension-zip
+
+# Test artifacts
+screenshots/
+__pycache__/
+.pytest_cache/
+.superpowers/
+GlideVideo/test-results/
+GlideVideo/playwright-report/

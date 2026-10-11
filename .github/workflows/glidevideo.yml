@@ -1,0 +1,31 @@
+name: GlideVideo
+
+on:
+  push:
+    paths:
+      - "GlideVideo/**"
+      - ".github/workflows/glidevideo.yml"
+  pull_request:
+    paths:
+      - "GlideVideo/**"
+      - ".github/workflows/glidevideo.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: GlideVideo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run tsc
+      - run: bun run test
+      - run: bun run build
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run test:e2e
+      - run: bun run lint:extension

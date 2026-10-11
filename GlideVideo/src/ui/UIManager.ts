@@ -1,0 +1,921 @@
+// src/ui/UIManager.ts
+import { MVC_CONFIG } from "../config";
+import type { StateStore } from "../core/StateStore";
+import type { EventBus } from "../events/EventBus";
+import {
+	clamp,
+	getFullscreenContainer,
+	preventPropagation,
+	vibrate,
+} from "../utils";
+import { ProgressBar } from "./components/ProgressBar";
+import { getSvgIcon, type IconName } from "./icons";
+import { SettingsSheet } from "./panels/SettingsSheet";
+import { SpeedStepper } from "./panels/SpeedStepper";
+import { applyTheme } from "./styles/css";
+
+export class UIManager {
+	public wrap: HTMLDivElement | null = null;
+	public topBar: HTMLDivElement | null = null;
+	public stepper: SpeedStepper | null = null;
+	public progressBar: ProgressBar | null = null;
+	public settingsBtn: HTMLButtonElement | null = null;
+	public pipBtn: HTMLButtonElement | null = null;
+	public lockBtn: HTMLButtonElement | null = null;
+	public ratioBtn: HTMLButtonElement | null = null;
+	public lockShield: HTMLDivElement | null = null;
+	public frameEl: HTMLDivElement | null = null;
+	public settingsSheet: SettingsSheet | null = null;
+	public backdrop: HTMLDivElement | null = null;
+	public toast: HTMLDivElement | null = null;
+	public gestureOverlay: HTMLDivElement | null = null;
+	public doubleTapContainer: HTMLDivElement | null = null;
+	public doubleTapLeftPanel: HTMLDivElement | null = null;
+	public doubleTapRightPanel: HTMLDivElement | null = null;
+	public doubleTapLeftText: HTMLDivElement | null = null;
+	public doubleTapRightText: HTMLDivElement | null = null;
+
+	// Collapsible controls
+	public controlsRow: HTMLDivElement | null = null;
+	public collapseBtn: HTMLButtonElement | null = null;
+
+	// Volume bar
+	public volumeBar: HTMLDivElement | null = null;
+	public volumeFill: HTMLDivElement | null = null;
+	public volumeIcon: HTMLDivElement | null = null;
+	public volumeValue: HTMLDivElement | null = null;
+
+	// Brightness bar & overlay
+	public brightnessOverlay: HTMLDivElement | null = null;
+	public brightnessBar: HTMLDivElement | null = null;
+	public brightnessFill: HTMLDivElement | null = null;
+	public brightnessIcon: HTMLDivElement | null = null;
+	public brightnessValue: HTMLDivElement | null = null;
+
+	constructor(
+		private readonly eventBus: EventBus,
+		public readonly store: StateStore,
+	) {
+		this.setupSubscriptions();
+	}
+
+	public init() {
+		applyTheme(this.store.settings.theme);
+		this.applyLeftHandModeUI();
+		this.createMainUI();
+		this.attachGlobalListeners();
+		this.updateRotationUI();
+	}
+
+	public applyLeftHandModeUI() {
+		const isLeft = !!this.store.settings.leftHandMode;
+		if (
+			document.documentElement &&
+			typeof document.documentElement.setAttribute === "function"
+		) {
+			document.documentElement.setAttribute(
+				"data-mvc-left-hand",
+				isLeft ? "true" : "false",
+			);
+		}
+	}
+
+	private setupSubscriptions() {
+		this.eventBus.on("control:visibility-requested", ({ visible, force }) => {
+			if (visible) this.showUI(force);
+			else this.hideUI();
+		});
+		this.eventBus.on("ui:toast", ({ message }) => this.showToast(message));
+		this.eventBus.on("ui:gesture-overlay", (payload) => {
+			if (payload) {
+				this.showGestureOverlay(payload.text, payload.subText);
+			} else {
+				this.hideGestureOverlay();
+			}
+		});
+		// The speed display reads playbackRate only, so ratechange is the one
+		// signal it needs — play/pause no longer changes what it shows.
+		this.eventBus.on("video:rate-changed", () => this.updateSpeedDisplay());
+		this.eventBus.on("video:transform-need-update", () => {
+			this.updateSettingsTransformUI();
+			this.updateBrightnessOverlayPosition();
+		});
+		this.eventBus.on("video:active-changed", (video) => {
+			if (video) {
+				this.updateSpeedDisplay();
+				this.updateSettingsTransformUI();
+				this.updateBrightnessOverlayPosition();
+			}
+		});
+		this.eventBus.on("settings:changed", ({ key, val }) => {
+			if (key === "theme") {
+				applyTheme(val);
+				if (this.settingsSheet) this.settingsSheet.update();
+			} else if (key === "leftHandMode") {
+				this.applyLeftHandModeUI();
+				if (this.settingsSheet) this.settingsSheet.update();
+			} else if (key !== "transform") {
+				if (this.settingsSheet) this.settingsSheet.update();
+			} else {
+				this.updateSettingsTransformUI();
+				this.updateBrightnessOverlayPosition();
+				this.updateRotationUI();
+			}
+		});
+		this.eventBus.on("video:double-tap-skipped", ({ side, x, y, seconds }) => {
+			this.showDoubleTapOverlay(side, x, y, seconds);
+		});
+		this.eventBus.on("ui:volume-changed", ({ volume }) => {
+			this.showVolumeBar(volume);
+		});
+		this.eventBus.on("ui:brightness-changed", ({ brightness }) => {
+			this.showBrightness(brightness);
+		});
+	}
+
+	// ── Primitive builders ──────────────────────────────────────────────────
+	public createEl<K extends keyof HTMLElementTagNameMap>(
+		tag: K,
+		className?: string,
+		props: Record<string, any> = {},
+	): HTMLElementTagNameMap[K] {
+		const el = document.createElement(tag);
+		if (className) el.className = className;
+		for (const [k, v] of Object.entries(props)) {
+			if (k === "style") {
+				Object.assign(el.style, v);
+			} else if (k === "role" || k.startsWith("aria-")) {
+				el.setAttribute(k, v);
+			} else {
+				(el as any)[k] = v;
+			}
+		}
+		return el;
+	}
+
+	public getIcon(name: IconName): SVGSVGElement {
+		return getSvgIcon(name);
+	}
+
+	public isAnyMenuOpen(): boolean {
+		return (
+			this.settingsSheet !== null &&
+			this.settingsSheet.dom.classList.contains("visible")
+		);
+	}
+
+	// ── Main UI layout ────────────────────────────────────────────────────────
+	public createMainUI() {
+		const wrap = this.createEl("div", "mvc-ui-wrap");
+		const backdrop = this.createEl("div", "mvc-backdrop");
+		const toast = this.createEl("div", "mvc-toast", {
+			role: "status",
+			"aria-live": "polite",
+		});
+		const gestureOverlay = this.createEl("div", "mvc-gesture-overlay", {
+			role: "status",
+			"aria-live": "polite",
+		});
+
+		this.wrap = wrap;
+		this.backdrop = backdrop;
+		this.toast = toast;
+		this.gestureOverlay = gestureOverlay;
+
+		preventPropagation(backdrop, this.store.abortController.signal);
+
+		// Make sure wrap doesn't swallow touches for standard video control gestures
+		wrap.style.cssText =
+			"position:fixed; inset:0; z-index:2147483647; pointer-events:none; display:none; opacity:0; transition:opacity .35s ease;";
+
+		// Append full-screen components directly
+		const container = getFullscreenContainer();
+		container.append(backdrop, toast, gestureOverlay);
+
+		// Volume bar (right-side vertical pill)
+		const volume = this.buildSideBar("volume", container);
+		this.volumeBar = volume.bar;
+		this.volumeFill = volume.fill;
+		this.volumeIcon = volume.icon;
+		this.volumeValue = volume.value;
+
+		// Brightness Overlay (black backdrop with variable opacity)
+		const brightnessOverlay = this.createEl("div", "mvc-brightness-overlay");
+		container.appendChild(brightnessOverlay);
+		this.brightnessOverlay = brightnessOverlay;
+
+		// Brightness bar (left-side vertical pill)
+		const brightness = this.buildSideBar("brightness", container);
+		this.brightnessBar = brightness.bar;
+		this.brightnessFill = brightness.fill;
+		this.brightnessIcon = brightness.icon;
+		this.brightnessValue = brightness.value;
+
+		// Create Double Tap UI Elements — YouTube style
+		const doubleTapContainer = this.createEl("div", "mvc-doubletap-container");
+		this.doubleTapContainer = doubleTapContainer;
+		doubleTapContainer.style.cssText =
+			"position:fixed; pointer-events:none; display:none; z-index:2147483646; overflow:hidden;";
+
+		const buildPanel = (dir: "left" | "right") => {
+			const panel = this.createEl("div", `mvc-doubletap-panel ${dir}`);
+			const inner = this.createEl("div", "mvc-doubletap-inner");
+			const chevrons = this.createEl("div", "mvc-doubletap-chevrons");
+			const iconName: IconName = dir === "left" ? "chev-left" : "chev-right";
+			for (let i = 0; i < 3; i++) {
+				const ch = this.createEl("span", "mvc-doubletap-chevron");
+				ch.appendChild(this.getIcon(iconName));
+				chevrons.appendChild(ch);
+			}
+			const text = this.createEl("div", "mvc-doubletap-text");
+			// Left: ❮❮❮ 10s | Right: 10s ❯❯❯
+			if (dir === "left") {
+				inner.append(chevrons, text);
+			} else {
+				inner.append(text, chevrons);
+			}
+			panel.appendChild(inner);
+			return { panel, text };
+		};
+
+		const { panel: leftPanel, text: leftText } = buildPanel("left");
+		const { panel: rightPanel, text: rightText } = buildPanel("right");
+
+		doubleTapContainer.append(leftPanel, rightPanel);
+		container.append(doubleTapContainer);
+
+		this.doubleTapLeftPanel = leftPanel;
+		this.doubleTapRightPanel = rightPanel;
+		this.doubleTapLeftText = leftText;
+		this.doubleTapRightText = rightText;
+
+		// Mount modular Stepper & ProgressBar
+		this.stepper = new SpeedStepper(this.eventBus, this);
+		this.stepper.dom.style.pointerEvents = "auto"; // allow clicks
+		preventPropagation(this.stepper.dom, this.store.abortController.signal);
+
+		this.progressBar = new ProgressBar(this.eventBus, this);
+
+		// Check PiP support (either native Picture-in-Picture API, video prototype request, or iOS Webkit Presentation Mode)
+		const isPipSupported = !!(
+			document.pictureInPictureEnabled ||
+			"requestPictureInPicture" in HTMLVideoElement.prototype ||
+			"webkitSupportsPresentationMode" in HTMLVideoElement.prototype
+		);
+		if (isPipSupported) {
+			this.pipBtn = document.createElement("button");
+			this.pipBtn.className = "mvc-pip-btn";
+			this.pipBtn.setAttribute("aria-label", "Picture in Picture");
+			this.pipBtn.style.pointerEvents = "auto";
+			this.pipBtn.appendChild(this.getIcon("pip"));
+			this.pipBtn.onclick = (e) => {
+				e.stopPropagation();
+				this.resetCollapseTimer();
+				this.togglePiP();
+			};
+			preventPropagation(this.pipBtn, this.store.abortController.signal);
+		}
+
+		const settingsBtn = document.createElement("button");
+		this.settingsBtn = settingsBtn;
+		settingsBtn.className = "mvc-settings-btn";
+		settingsBtn.setAttribute("aria-label", "Settings");
+		settingsBtn.style.pointerEvents = "auto";
+		settingsBtn.appendChild(this.getIcon("settings"));
+		settingsBtn.onclick = (e) => {
+			e.stopPropagation();
+			this.resetCollapseTimer();
+			this.ensureSettingsSheet();
+			if (this.settingsSheet) {
+				this.toggleMenu(this.settingsSheet.dom, settingsBtn);
+			}
+		};
+		preventPropagation(settingsBtn, this.store.abortController.signal);
+
+		// Lock Shield
+		// Camera-gate corner brackets (only visible in the Frame theme)
+		const frameEl = this.createEl("div", "mvc-frame");
+		for (let i = 0; i < 4; i++) frameEl.appendChild(this.createEl("i"));
+		container.appendChild(frameEl);
+		this.frameEl = frameEl;
+
+		// The shield lives beside `wrap`, not inside it. As a child it inherited
+		// wrap's display:none when the chrome faded, so the lock silently
+		// stopped blocking gestures ~3.9s after it was switched on while the
+		// lock button still read "locked".
+		const lockShield = this.createEl("div", "mvc-lock-shield");
+		lockShield.style.display = "none";
+		const blk = (e: Event) => {
+			e.preventDefault();
+			e.stopPropagation();
+			e.stopImmediatePropagation();
+			this.showUI(true);
+		};
+		[
+			"click",
+			"mousedown",
+			"mouseup",
+			"pointerdown",
+			"pointerup",
+			"dblclick",
+			"touchstart",
+			"touchend",
+		].forEach((evt) => {
+			lockShield.addEventListener(evt, blk, { capture: true, passive: false });
+		});
+		container.appendChild(lockShield);
+		this.lockShield = lockShield;
+
+		// Lock Button
+		this.lockBtn = document.createElement("button");
+		this.lockBtn.className = "mvc-lock-btn";
+		this.lockBtn.setAttribute("aria-label", "Lock gestures");
+		this.lockBtn.setAttribute("aria-pressed", "false");
+		this.lockBtn.style.pointerEvents = "auto";
+		this.lockBtn.appendChild(this.getIcon("unlock"));
+		this.lockBtn.onclick = (e) => {
+			e.stopPropagation();
+			this.resetCollapseTimer();
+			this.toggleScreenLock();
+		};
+		preventPropagation(this.lockBtn, this.store.abortController.signal);
+
+		// Aspect Ratio Button — tap cycles ratio, long-press rotates
+		this.ratioBtn = document.createElement("button");
+		this.ratioBtn.className = "mvc-ratio-btn";
+		this.ratioBtn.setAttribute("aria-label", "Aspect ratio — hold to rotate");
+		this.ratioBtn.style.pointerEvents = "auto";
+		this.ratioBtn.appendChild(this.getIcon("ratio"));
+		this.ratioBtn.onclick = (e) => {
+			e.stopPropagation();
+			this.resetCollapseTimer();
+			if (this.consumeRotateLongPress()) return;
+			vibrate(MVC_CONFIG.HAPTIC_VIBRATION_MS);
+			const ratios = ["fit", "fill", "stretch"];
+			const currentRatio = this.store.settings.transform.ratio || "fit";
+			const nextIndex = (ratios.indexOf(currentRatio) + 1) % ratios.length;
+			const nextRatio = ratios[nextIndex];
+
+			this.store.settings.transform.ratio = nextRatio;
+			this.store.saveSetting("transform", this.store.settings.transform);
+			this.eventBus.emit("video:transform-need-update", undefined);
+			this.showToast(`Aspect ratio: ${nextRatio.toUpperCase()}`);
+		};
+		this.attachRotateLongPress(this.ratioBtn);
+		preventPropagation(this.ratioBtn, this.store.abortController.signal);
+
+		// Create collapsible controls group at the top right
+		const controlsGroup = this.createEl("div", "mvc-controls-group");
+
+		const controlsRow = this.createEl("div", "mvc-controls-row collapsed");
+		this.controlsRow = controlsRow;
+
+		controlsRow.appendChild(this.ratioBtn);
+		controlsRow.appendChild(this.lockBtn);
+		if (this.pipBtn) {
+			controlsRow.appendChild(this.pipBtn);
+		}
+		controlsRow.appendChild(this.settingsBtn);
+
+		this.collapseBtn = document.createElement("button");
+		this.collapseBtn.className = "mvc-collapse-btn";
+		this.collapseBtn.setAttribute("aria-label", "Toggle control menu");
+		this.collapseBtn.setAttribute("aria-expanded", "false");
+		this.collapseBtn.style.pointerEvents = "auto";
+		this.collapseBtn.appendChild(this.getIcon("chevron"));
+		this.collapseBtn.onclick = (e) => {
+			e.stopPropagation();
+			this.toggleControlsRow();
+		};
+		preventPropagation(this.collapseBtn, this.store.abortController.signal);
+
+		controlsGroup.appendChild(controlsRow);
+		controlsGroup.appendChild(this.collapseBtn);
+
+		const topBar = this.createEl("div", "mvc-top-bar");
+		this.topBar = topBar;
+		topBar.append(this.stepper.dom, this.progressBar.dom, controlsGroup);
+		wrap.appendChild(topBar);
+
+		container.appendChild(wrap);
+	}
+
+	private buildSideBar(
+		prefix: "volume" | "brightness",
+		container: HTMLElement,
+	) {
+		const bar = this.createEl("div", `mvc-${prefix}-bar`);
+		const icon = this.createEl("div", `mvc-${prefix}-icon`);
+		const track = this.createEl("div", `mvc-${prefix}-track`);
+		const fill = this.createEl("div", `mvc-${prefix}-fill`);
+		const value = this.createEl("div", `mvc-${prefix}-value`);
+		track.appendChild(fill);
+		bar.append(icon, track, value);
+		container.appendChild(bar);
+		return { bar, icon, fill, value };
+	}
+
+	// Vertically centers the pill on the active video and returns its height
+	private positionSideBar(bar: HTMLDivElement, side: "left" | "right") {
+		const video = this.store.activeVideo;
+		if (!video) return;
+		const rect = video.getBoundingClientRect();
+		const barH = clamp(
+			rect.height * MVC_CONFIG.SIDEBAR_HEIGHT_RATIO,
+			MVC_CONFIG.SIDEBAR_MIN_HEIGHT,
+			MVC_CONFIG.SIDEBAR_MAX_HEIGHT,
+		);
+		const top = rect.top + (rect.height - barH) / 2;
+		const effectiveSide = this.store.settings.leftHandMode
+			? side === "right"
+				? "left"
+				: "right"
+			: side;
+		const styles: Record<string, string> = {
+			top: `${top}px`,
+			height: `${barH}px`,
+			left: "auto",
+			right: "auto",
+		};
+		if (effectiveSide === "right") {
+			styles.right = `${window.innerWidth - rect.right + 14}px`;
+		} else {
+			styles.left = `${rect.left + 14}px`;
+		}
+		Object.assign(bar.style, styles);
+	}
+
+	public ensureSettingsSheet() {
+		if (this.settingsSheet) return;
+		this.settingsSheet = new SettingsSheet(this.eventBus, this.store, this);
+		preventPropagation(
+			this.settingsSheet.dom,
+			this.store.abortController.signal,
+		);
+
+		const container = getFullscreenContainer();
+		container.appendChild(this.settingsSheet.dom);
+	}
+
+	public updateSpeedDisplay() {
+		if (this.stepper) {
+			this.stepper.update();
+		}
+	}
+
+	// ── Rotation (long-press on the ratio button) ───────────────────────────
+	private rotateTimer?: ReturnType<typeof setTimeout>;
+	private rotateFired = false;
+
+	/** Swallows the click that follows a long-press so ratio doesn't also cycle. */
+	private consumeRotateLongPress(): boolean {
+		if (!this.rotateFired) return false;
+		this.rotateFired = false;
+		return true;
+	}
+
+	private attachRotateLongPress(btn: HTMLButtonElement) {
+		const start = () => {
+			clearTimeout(this.rotateTimer);
+			this.rotateFired = false;
+			this.rotateTimer = setTimeout(() => {
+				this.rotateFired = true;
+				this.cycleRotation();
+			}, MVC_CONFIG.LONG_PRESS_DURATION_MS);
+		};
+		const cancel = () => clearTimeout(this.rotateTimer);
+		btn.addEventListener("pointerdown", start);
+		["pointerup", "pointerleave", "pointercancel"].forEach((ev) =>
+			btn.addEventListener(ev, cancel),
+		);
+	}
+
+	public cycleRotation() {
+		const t = this.store.settings.transform;
+		t.rot = ((t.rot || 0) + 90) % 360;
+		this.store.saveSetting("transform", t);
+		this.eventBus.emit("video:transform-need-update", undefined);
+		this.updateRotationUI();
+		vibrate(MVC_CONFIG.LONG_PRESS_VIBRATE_MS);
+		this.showToast(t.rot === 0 ? "Rotation reset" : `Rotated ${t.rot}°`);
+	}
+
+	public updateRotationUI() {
+		if (!this.ratioBtn) return;
+		const rot = this.store.settings.transform?.rot || 0;
+		this.ratioBtn.setAttribute("data-rot", String(rot));
+	}
+
+	public toggleMenu(menuEl: HTMLElement, anchorEl: HTMLElement) {
+		const isOpen = menuEl.classList.contains("visible");
+		this.hideAllMenus();
+		if (isOpen) {
+			this.updateModalState();
+			return;
+		}
+
+		menuEl.classList.add("visible");
+		anchorEl.classList.add("visible");
+		this.showBackdrop();
+		this.updateModalState();
+
+		clearTimeout(this.store.timers.hide);
+	}
+
+	public showBackdrop() {
+		if (!this.backdrop) return;
+		this.backdrop.classList.add("visible");
+	}
+
+	public hideAllMenus() {
+		if (
+			this.settingsSheet &&
+			this.settingsSheet.dom.classList.contains("visible")
+		) {
+			this.settingsSheet.dom.classList.remove("visible");
+			this.settingsBtn?.classList.remove("visible");
+		}
+		if (this.backdrop) this.backdrop.classList.remove("visible");
+		this.updateModalState();
+		this.eventBus.emit("control:visibility-requested", { visible: true });
+		this.resetCollapseTimer();
+	}
+
+	public updateModalState() {
+		const isModalOpen = Boolean(
+			this.settingsSheet && this.settingsSheet.dom.classList.contains("visible"),
+		);
+		const container = getFullscreenContainer();
+		if (container) {
+			container.classList.toggle("mvc-modal-open", isModalOpen);
+		}
+		if (this.wrap?.parentElement) {
+			this.wrap.parentElement.classList.toggle("mvc-modal-open", isModalOpen);
+		}
+	}
+
+	public updateSettingsTransformUI() {
+		if (
+			!this.settingsSheet ||
+			!this.settingsSheet.dom.classList.contains("visible")
+		)
+			return;
+		this.settingsSheet.update();
+	}
+
+	public showToast(message: string) {
+		if (!this.toast) return;
+		this.toast.textContent = message;
+		this.toast.classList.add("visible");
+		clearTimeout(this.store.timers.toast);
+		this.store.timers.toast = setTimeout(() => {
+			if (this.toast) this.toast.classList.remove("visible");
+		}, MVC_CONFIG.TOAST_FADE_DELAY) as any;
+	}
+
+	public showGestureOverlay(text: string, subText?: string) {
+		if (!this.gestureOverlay) return;
+		this.gestureOverlay.textContent = text;
+		if (subText) {
+			const span = document.createElement("span");
+			Object.assign(span.style, {
+				fontSize: "11px",
+				opacity: "0.8",
+				display: "block",
+				marginTop: "2px",
+			});
+			span.textContent = subText;
+			this.gestureOverlay.appendChild(span);
+		}
+		this.gestureOverlay.style.display = "block";
+	}
+
+	public hideGestureOverlay() {
+		if (!this.gestureOverlay) return;
+		this.gestureOverlay.style.display = "none";
+		this.gestureOverlay.textContent = "";
+	}
+
+	private attachGlobalListeners() {
+		// Capture phase: UI elements stopPropagation() on these events, which
+		// would otherwise prevent taps on our own controls from counting as
+		// recent user activity.
+		["pointerdown", "keydown", "touchstart"].forEach((ev) =>
+			window.addEventListener(
+				ev,
+				(e) => {
+					if (!e.isTrusted) return;
+					this.store.lastRealUserEvent = Date.now();
+					if (
+						e.type === "keydown" ||
+						(this.wrap && e.target && this.wrap.contains(e.target as Node))
+					) {
+						this.showUI(true);
+					}
+				},
+				{
+					passive: true,
+					capture: true,
+					signal: this.store.abortController.signal,
+				},
+			),
+		);
+
+		if (this.backdrop) {
+			this.backdrop.addEventListener("click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.hideAllMenus();
+			});
+		}
+	}
+
+	public showUI(force = false) {
+		if (
+			!this.wrap ||
+			!this.store.activeVideo ||
+			this.store.savedPlaybackRate !== undefined
+		)
+			return;
+
+		// Timeout fade guard
+		const now = Date.now();
+		if (
+			!force &&
+			now - this.store.lastRealUserEvent >= MVC_CONFIG.INTERACTION_TIMEOUT
+		)
+			return;
+
+		this.wrap.style.display = "block";
+		this.updateTopBarPosition();
+		// Force reflow
+		this.wrap.offsetHeight;
+		this.wrap.style.opacity = "1";
+		// Arms pointer-events on everything inside wrap — see .mvc-ui-wrap:not(.mvc-shown)
+		this.wrap.classList.add("mvc-shown");
+		// frameEl is a sibling of wrap, not a child, so it fades on its own
+		this.frameEl?.classList.add("visible");
+
+		clearTimeout(this.store.timers.hide);
+
+		const isInteracting = this.isAnyMenuOpen();
+
+		if (!isInteracting && !this.store.activeVideo.paused) {
+			this.store.timers.hide = setTimeout(
+				() => this.hideUI(),
+				MVC_CONFIG.UI_FADE_TIMEOUT,
+			) as any;
+		}
+	}
+
+	public hideUI() {
+		if (!this.wrap) return;
+		if (this.store.activeVideo?.paused || this.isAnyMenuOpen()) return;
+
+		this.wrap.style.opacity = "0";
+		this.wrap.classList.remove("mvc-shown");
+		this.frameEl?.classList.remove("visible");
+		clearTimeout(this.store.timers.hide);
+		this.store.timers.hide = setTimeout(() => {
+			if (this.wrap && this.wrap.style.opacity === "0") {
+				this.wrap.style.display = "none";
+				this.collapseControlsRow();
+			}
+		}, MVC_CONFIG.UI_FADE_ANIMATION_DURATION) as any;
+	}
+
+	public togglePiP() {
+		const video = this.store.activeVideo;
+		if (!video) return;
+
+		try {
+			if (
+				video.webkitSupportsPresentationMode &&
+				typeof video.webkitSetPresentationMode === "function"
+			) {
+				const isPip = video.webkitPresentationMode === "picture-in-picture";
+				video.webkitSetPresentationMode(
+					isPip ? "inline" : "picture-in-picture",
+				);
+			} else if (typeof video.requestPictureInPicture === "function") {
+				if (document.pictureInPictureElement === video) {
+					document.exitPictureInPicture().catch(() => {});
+				} else {
+					video.requestPictureInPicture().catch(() => {});
+				}
+			} else {
+				this.showToast("PiP not supported on this browser");
+			}
+		} catch (err) {
+			console.error("[MVC] PiP error:", err);
+			this.showToast("Failed to toggle PiP mode");
+		}
+	}
+	public toggleScreenLock() {
+		const locked = !this.store.isScreenLocked;
+		this.store.isScreenLocked = locked;
+		if (this.wrap) this.wrap.classList.toggle("locked", locked);
+		if (this.lockShield) {
+			this.lockShield.style.display = locked ? "block" : "none";
+			if (locked) this.updateBrightnessOverlayPosition();
+		}
+		if (this.lockBtn) {
+			this.lockBtn.replaceChildren(this.getIcon(locked ? "lock" : "unlock"));
+			this.lockBtn.setAttribute(
+				"aria-label",
+				locked ? "Unlock gestures" : "Lock gestures",
+			);
+			this.lockBtn.setAttribute("aria-pressed", locked ? "true" : "false");
+		}
+		if (locked) this.hideAllMenus();
+		this.showToast(locked ? "Gestures locked" : "Gestures unlocked");
+		this.showUI(true);
+	}
+
+	public showDoubleTapOverlay(
+		side: "left" | "right",
+		x: number,
+		y: number,
+		seconds: number,
+	) {
+		if (!this.doubleTapContainer || !this.store.activeVideo) return;
+
+		const rect = this.store.activeVideo.getBoundingClientRect();
+		Object.assign(this.doubleTapContainer.style, {
+			top: `${rect.top}px`,
+			left: `${rect.left}px`,
+			width: `${rect.width}px`,
+			height: `${rect.height}px`,
+			display: "block",
+		});
+
+		const activePanel =
+			side === "left" ? this.doubleTapLeftPanel : this.doubleTapRightPanel;
+		const inactivePanel =
+			side === "left" ? this.doubleTapRightPanel : this.doubleTapLeftPanel;
+		const activeText =
+			side === "left" ? this.doubleTapLeftText : this.doubleTapRightText;
+
+		if (inactivePanel) inactivePanel.classList.remove("visible");
+		if (activeText) activeText.textContent = `${seconds}s`;
+
+		if (activePanel) {
+			activePanel.classList.add("visible");
+		}
+
+		clearTimeout(this.store.timers.doubleTapUIHide);
+		this.store.timers.doubleTapUIHide = setTimeout(() => {
+			if (this.doubleTapLeftPanel)
+				this.doubleTapLeftPanel.classList.remove("visible");
+			if (this.doubleTapRightPanel)
+				this.doubleTapRightPanel.classList.remove("visible");
+			if (this.doubleTapContainer)
+				this.doubleTapContainer.style.display = "none";
+		}, MVC_CONFIG.DOUBLE_TAP_UI_HIDE_DELAY);
+	}
+
+	public showVolumeBar(volume: number) {
+		if (
+			!this.volumeBar ||
+			!this.volumeFill ||
+			!this.volumeIcon ||
+			!this.volumeValue
+		)
+			return;
+		if (!this.store.activeVideo) return;
+
+		this.positionSideBar(this.volumeBar, "right");
+
+		const pct = Math.round(volume * 100);
+		this.volumeFill.style.height = `${Math.min(pct, 100)}%`;
+		this.volumeValue.textContent = `${pct}%`;
+		const volIconName: IconName =
+			volume === 0 ? "vol-mute" : volume < 0.4 ? "vol-low" : volume < 0.7 ? "vol-mid" : "vol-high";
+		this.volumeIcon.replaceChildren(this.getIcon(volIconName));
+
+		this.volumeBar.classList.add("visible");
+
+		clearTimeout(this.store.timers.volumeBarHide);
+		this.store.timers.volumeBarHide = setTimeout(() => {
+			if (this.volumeBar) this.volumeBar.classList.remove("visible");
+		}, MVC_CONFIG.SLIDER_UI_HIDE_DELAY) as any;
+	}
+
+	public showBrightness(brightness: number) {
+		if (
+			!this.brightnessOverlay ||
+			!this.brightnessBar ||
+			!this.brightnessFill ||
+			!this.brightnessIcon ||
+			!this.brightnessValue
+		)
+			return;
+		if (!this.store.activeVideo) return;
+
+		const opacity = 1 - brightness;
+		this.brightnessOverlay.style.opacity = `${opacity}`;
+		this.updateBrightnessOverlayPosition();
+
+		this.positionSideBar(this.brightnessBar, "left");
+
+		const pct = Math.round(brightness * 100);
+		this.brightnessFill.style.height = `${pct}%`;
+		this.brightnessValue.textContent = `${pct}%`;
+		const brightIconName: IconName =
+			brightness < 0.4 ? "bright-low" : brightness < 0.7 ? "bright-mid" : "bright-high";
+		this.brightnessIcon.replaceChildren(this.getIcon(brightIconName));
+
+		this.brightnessBar.classList.add("visible");
+
+		clearTimeout(this.store.timers.brightnessBarHide);
+		this.store.timers.brightnessBarHide = setTimeout(() => {
+			if (this.brightnessBar) this.brightnessBar.classList.remove("visible");
+		}, MVC_CONFIG.SLIDER_UI_HIDE_DELAY) as any;
+	}
+
+	public updateBrightnessOverlayPosition() {
+		if (!this.store.activeVideo) return;
+		const rect = this.store.activeVideo.getBoundingClientRect();
+		if (this.brightnessOverlay) {
+			Object.assign(this.brightnessOverlay.style, {
+				top: `${rect.top}px`,
+				left: `${rect.left}px`,
+				width: `${rect.width}px`,
+				height: `${rect.height}px`,
+			});
+		}
+		const box = {
+			top: `${rect.top}px`,
+			left: `${rect.left}px`,
+			width: `${rect.width}px`,
+			height: `${rect.height}px`,
+		};
+		if (this.lockShield) Object.assign(this.lockShield.style, box);
+		if (this.frameEl) Object.assign(this.frameEl.style, box);
+	}
+
+	public updateTopBarPosition() {
+		if (!this.topBar || !this.store.activeVideo) return;
+		const isFs = !!(
+			document.fullscreenElement || (document as any).webkitFullscreenElement
+		);
+		if (isFs) {
+			this.topBar.style.top = "";
+			this.topBar.style.left = "";
+			this.topBar.style.right = "";
+			this.topBar.style.width = "";
+			return;
+		}
+		const rect = this.store.activeVideo.getBoundingClientRect();
+		const pad = 16;
+		const top = clamp(rect.top + pad, pad, window.innerHeight - 50);
+		const left = clamp(rect.left + pad, pad, window.innerWidth - pad);
+		const width = Math.max(0, rect.width - pad * 2);
+
+		this.topBar.style.top = `${top}px`;
+		this.topBar.style.left = `${left}px`;
+		this.topBar.style.width = `${width}px`;
+		this.topBar.style.right = "auto";
+	}
+
+	public expandControlsRow() {
+		if (!this.controlsRow) return;
+		this.controlsRow.classList.remove("collapsed");
+		this.collapseBtn?.parentElement?.classList.add("expanded");
+		this.collapseBtn?.setAttribute("aria-expanded", "true");
+		this.resetCollapseTimer();
+	}
+
+	public collapseControlsRow() {
+		if (!this.controlsRow) return;
+		this.controlsRow.classList.add("collapsed");
+		this.collapseBtn?.parentElement?.classList.remove("expanded");
+		this.collapseBtn?.setAttribute("aria-expanded", "false");
+		this.clearCollapseTimer();
+	}
+
+	public toggleControlsRow() {
+		vibrate(10);
+		if (this.controlsRow?.classList.contains("collapsed")) {
+			this.expandControlsRow();
+		} else {
+			this.collapseControlsRow();
+		}
+		this.showUI(true);
+	}
+
+	public resetCollapseTimer() {
+		this.clearCollapseTimer();
+		if (this.isAnyMenuOpen()) return;
+		this.store.timers.collapse = setTimeout(() => {
+			this.collapseControlsRow();
+		}, MVC_CONFIG.CONTROLS_COLLAPSE_DELAY) as any;
+	}
+
+	public clearCollapseTimer() {
+		if (this.store.timers.collapse) {
+			clearTimeout(this.store.timers.collapse);
+			this.store.timers.collapse = null;
+		}
+	}
+}

@@ -1,0 +1,18 @@
+{
+  "name": "bpedia-filter-userscript",
+  "version": "2.4.0",
+  "license": "GPL-3.0-or-later",
+  "description": "Babepedia Advanced Filter and Badges userscript",
+  "main": "dist/bpedia-filter.user.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vite-plugin-monkey": "^8.1.1"
+  }
+}

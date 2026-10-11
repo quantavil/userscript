@@ -1,0 +1,22 @@
+{
+  "name": "better-rule34",
+  "version": "2.0.0",
+  "description": "Rule34Video enhancements: in-sheet minimum rating and view count filters, seamless infinite scroll, viewport preview autoplay, watch history tracking, and ad cleanup.",
+  "type": "module",
+  "author": "quantavil",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "build": "bunx vite build",
+    "dev": "bunx vite",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/jsdom": "^30.0.0",
+    "jsdom": "^30.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vite-plugin-monkey": "^8.1.1"
+  }
+}

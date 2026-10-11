@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080a0f"/>
+      <stop offset="100%" stop-color="#0f1420"/>
+    </linearGradient>
+    <linearGradient id="cyan-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe"/>
+      <stop offset="100%" stop-color="#4facfe"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Dark Geometric Squircle Frame -->
+  <rect width="96" height="96" rx="22" fill="url(#bg)"/>
+  <rect x="1" y="1" width="94" height="94" rx="21" fill="none" stroke="#1e2638" stroke-width="1.5"/>
+
+  <!-- Left Geometric Glide Ribbon (Gesture Motion) -->
+  <path d="M 26 28 L 42 48 L 26 68 L 34.5 68 L 50.5 48 L 34.5 28 Z" fill="url(#cyan-grad)"/>
+
+  <!-- Right Geometric Play Arrow (Playback) -->
+  <path d="M 46 24 C 46 22.8 47.3 22 48.4 22.7 L 75.4 46.7 C 76.5 47.5 76.5 48.5 75.4 49.3 L 48.4 73.3 C 47.3 74 46 73.2 46 72 Z" fill="#ffffff"/>
+</svg>

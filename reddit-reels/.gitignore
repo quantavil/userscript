@@ -1,0 +1,7 @@
+node_modules/
+dist/*
+!dist/*.user.js
+test-results/
+playwright-report/
+.cache/
+*.log

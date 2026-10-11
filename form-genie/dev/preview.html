@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Form Genie — UI preview harness</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; }
+    table { border-collapse: collapse; width: 100%; }
+    td { padding: 6px 8px; border: 1px solid #eee; }
+    input, select { padding: 6px; width: 100%; box-sizing: border-box; }
+  </style>
+  <script>
+    // GM stubs so the built userscript runs on a plain page. The store is
+    // pre-seeded with this host enabled + a sample profile.
+    const __gm = new Map([
+      ['fg:settings', { overwrite: false, debug: false, ai: { enabled: false, apiKey: '', model: 'gemini-3.1-flash-lite' }, enabledSites: [location.hostname] }],
+      ['fg:profile', { v: 1, data: {
+        'personal.firstName': 'Karan', 'personal.middleName': 'Singh', 'personal.lastName': 'Rawat',
+        'personal.dob': '1998-09-05', 'personal.category': 'OBC', 'personal.gender': 'Male',
+        'family.fatherName': 'Mohan Rawat', 'contact.email': 'karan@example.com',
+        'contact.mobile': '+91 98765 43210', 'address.permanent.state': 'Bihar',
+        'address.permanent.pincode': '800001', 'ids.pan': 'ABCDE1234F', 'ids.aadhaar': '123412341234',
+      } }],
+    ]);
+    window.GM_getValue = (k, d) => (__gm.has(k) ? __gm.get(k) : d);
+    window.GM_setValue = (k, v) => __gm.set(k, v);
+    window.GM_deleteValue = (k) => __gm.delete(k);
+    window.GM_registerMenuCommand = (name, fn) => { (window.__menu ||= {})[name] = fn; };
+    window.GM_xmlhttpRequest = () => {};
+  </script>
+</head>
+<body>
+  <h1>Preview harness</h1>
+  <table>
+    <tr><td>Candidate's Name</td><td><input name="cand_name" maxlength="50"></td></tr>
+    <tr><td>Father's Name</td><td><input name="father_name"></td></tr>
+    <tr><td>Date of Birth</td><td><input name="dob" placeholder="DD/MM/YYYY"></td></tr>
+    <tr><td>Category</td><td>
+      <select name="cat"><option value="">Select</option><option>General</option><option>OBC</option><option>SC</option><option>ST</option><option>EWS</option></select>
+    </td></tr>
+    <tr><td>Mobile No.</td><td><input name="mob" maxlength="10"></td></tr>
+    <tr><td>Security Code</td><td><input name="secc"> (as in the image)</td></tr>
+  </table>
+  <script src="../dist/form-genie.user.js"></script>
+</body>
+</html>

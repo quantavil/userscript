@@ -1,0 +1,16 @@
+[Event "Chess.com Computer Game"]
+[Site "https://www.chess.com/play/computer/Komodo20"]
+[Date "2026.10.11"]
+[Round "-"]
+[White "Guest (Super Chess Bot)"]
+[Black "Komodo20 (2400)"]
+[Result "1-0"]
+[TimeControl "60+1"]
+[Termination "checkmate"]
+
+1. e4 c5 2. Nf3 e6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 Bb4 6. e5 Nd5
+7. Qg4 Qc7 8. Qxg7 Rf8 9. Nb5 Qc6 10. Bd2 Na6 11. Ne4 Bxd2+
+12. Kxd2 Qb6 13. Ned6+ Qxd6 14. Nxd6+ Kd8 15. Qxf8+ Kc7
+16. Ne8+ Kb8 17. Nd6 Nb6 18. h4 h5 19. Rh3 Nc7 20. Rc3 a6
+21. Re1 Ra7 22. a4 Ra8 23. a5 Nc4+ 24. Rxc4 Ka7 25. Rxc7 Rb8
+26. Nxc8+ Ka8 27. Qc5 f5 28. Qa7# 1-0

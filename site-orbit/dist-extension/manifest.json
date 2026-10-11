@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "SiteOrbit",
+  "version": "1.1.0",
+  "description": "Private Domain & Tech Observatory caching verified Tranco global ranks, tech stack, DNS infrastructure, and live performance metrics.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "site-orbit@quantavil.github.io",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  },
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "*://*/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "action": {
+    "default_title": "Open SiteOrbit Observatory (Ctrl+Alt+S)",
+    "default_icon": "icon.svg"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Alt+S"
+      },
+      "description": "Toggle SiteOrbit panel"
+    }
+  },
+  "icons": {
+    "48": "icon.svg",
+    "96": "icon.svg"
+  }
+}
