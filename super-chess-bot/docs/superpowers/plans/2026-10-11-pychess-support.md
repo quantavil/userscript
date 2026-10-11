@@ -117,9 +117,9 @@ function replaySanLine(startFen: string, sans: readonly string[]):
 
 Require all six fields for PyChess FEN observations. Use chessops parse/setup, SAN parsing, move legality, and canonical serialization; `fens[0]` is the canonical root, followed by each position. Preserve existing `readPositionHistory` behavior for Chess.com.
 
-- [ ] Add fixture-based tests using the research game: initial metadata with empty initialfen; `e4`, `c5` history and exact final FEN; optimistic e4 pieces with initial accepted FEN; replay at ply 1 of 2; missing or conflicting identity; non-chess/Chess960; invalid level; disconnected/foreign board; malformed FEN; truncated/noncontiguous SAN. Assert input eligibility, FEN, phase, and history independently.
-- [ ] Add parameterized tests: White/Black × both orientations; clocks `01:00+0s` → 60,000 ms and `00:06.0+0s` → 6,000 ms; increment excluded; malformed clock gives null; connecting clock makes input unavailable; stale body status with `0-1` plus postgame UI gives finished; missing movable color alone does not.
-- [ ] Add event tests: movelist-only acknowledgement notifies, overlay/clock/animation changes with unchanged normalized state do not cause repeated position events, listener errors are isolated, detach on board or cg replacement, terminal UI changes notify even with identical FEN.
+- [x] Add fixture-based tests using the research game: initial metadata with empty initialfen; `e4`, `c5` history and exact final FEN; optimistic e4 pieces with initial accepted FEN; replay at ply 1 of 2; missing or conflicting identity; non-chess/Chess960; invalid level; disconnected/foreign board; malformed FEN; truncated/noncontiguous SAN. Assert input eligibility, FEN, phase, and history independently.
+- [x] Add parameterized tests: White/Black × both orientations; clocks `01:00+0s` → 60,000 ms and `00:06.0+0s` → 6,000 ms; increment excluded; malformed clock gives null; connecting clock makes input unavailable; stale body status with `0-1` plus postgame UI gives finished; missing movable color alone does not.
+- [x] Add event tests: movelist-only acknowledgement notifies, overlay/clock/animation changes with unchanged normalized state do not cause repeated position events, listener errors are isolated, detach on board or cg replacement, terminal UI changes notify even with identical FEN.
 
 ```ts
 it('replays the accepted e4 c5 line', () => {
@@ -130,9 +130,9 @@ it('replays the accepted e4 c5 line', () => {
   expect(line?.fens[2]).toBe('rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2');
 });
 ```
-- [ ] Run `bun run test -- tests/pychess-state.test.ts tests/pychess-events.test.ts tests/history.test.ts`; verify the new contracts fail before implementation.
-- [ ] Implement collection/parsing and cached SAN replay, then select this factory for both exact PyChess hosts. Check round view, matching URL/game ID, username membership, Fairy-Stockfish identity, level 0–8, real-time chess and owned visible 8×8 board. Use body data only for initial identity/config; full state FEN, movelist, result and live clocks drive later reads. Return recoverable reasons rather than defaults for missing color/FEN. Keep identity stable until game ID, board or cg changes. Observe board, movelist and result/control subtree; deduplicate microtask updates by identity, accepted FEN, phase, input readiness and result. Exclude ticking remainingMs from the position-event fingerprint; a connecting-state change still invalidates readiness. Do not wrap the socket or replace site callbacks. Provide no-op/false submission until Task 3.
-- [ ] Run focused tests and `bun run check`; commit `feat(pychess): read accepted AI game state and history`.
+- [x] Run `bun run test -- tests/pychess-state.test.ts tests/pychess-events.test.ts tests/history.test.ts`; verify the new contracts fail before implementation.
+- [x] Implement collection/parsing and cached SAN replay, then select this factory for both exact PyChess hosts. Check round view, matching URL/game ID, username membership, Fairy-Stockfish identity, level 0–8, real-time chess and owned visible 8×8 board. Use body data only for initial identity/config; full state FEN, movelist, result and live clocks drive later reads. Return recoverable reasons rather than defaults for missing color/FEN. Keep identity stable until game ID, board or cg changes. Observe board, movelist and result/control subtree; deduplicate microtask updates by identity, accepted FEN, phase, input readiness and result. Exclude ticking remainingMs from the position-event fingerprint; a connecting-state change still invalidates readiness. Do not wrap the socket or replace site callbacks. Provide no-op/false submission until Task 3.
+- [x] Run focused tests and `bun run check`; commit `feat(pychess): read accepted AI game state and history`.
 
 ## Task 3: Submit legal selections and confirm accepted moves
 

@@ -8,6 +8,8 @@ describe('site adapter selection', () => {
   it('selects only exact Chess.com hostnames', () => {
     expect(selectSite('www.chess.com')?.id).toBe('chesscom');
     expect(selectSite('chess.com')?.id).toBe('chesscom');
+    expect(selectSite('www.pychess.org')?.id).toBe('pychess');
+    expect(selectSite('pychess.org')?.id).toBe('pychess');
     expect(selectSite('chess.com.example.test')).toBeNull();
     expect(selectSite('pychess.org.example.test')).toBeNull();
   });

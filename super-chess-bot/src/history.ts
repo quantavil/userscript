@@ -17,6 +17,50 @@ const comparable = (fen: string) =>
     .filter((_, i) => i !== 3)
     .join(' ');
 
+/** Canonicalise a complete chess FEN, retaining only legal en passant rights. */
+export function canonicalFen(fen: string): string | null {
+  if (typeof fen !== 'string' || fen.trim().split(/\s+/).length !== 6) return null;
+  try {
+    const setup = parseFen(fen.trim());
+    if (setup.isErr) return null;
+    const position = Chess.fromSetup(setup.value);
+    if (position.isErr) return null;
+    return makeFen(position.value.toSetup());
+  } catch {
+    return null;
+  }
+}
+
+/** Replay a complete SAN line and return its legal UCI history and every position. */
+export function replaySanLine(
+  startFen: string,
+  sans: readonly string[],
+): { history: PositionHistory; fens: string[] } | undefined {
+  const rootFen = canonicalFen(startFen);
+  if (!rootFen) return undefined;
+  try {
+    const setup = parseFen(rootFen);
+    if (setup.isErr) return undefined;
+    const position = Chess.fromSetup(setup.value);
+    if (position.isErr) return undefined;
+    const moves: string[] = [];
+    const fens = [rootFen];
+    for (const san of sans) {
+      if (typeof san !== 'string' || !san.trim()) return undefined;
+      const move = parseSan(position.value, san.trim());
+      if (!move) return undefined;
+      moves.push(makeUci(move));
+      position.value.play(move);
+      const fen = makeFen(position.value.toSetup());
+      if (!canonicalFen(fen)) return undefined;
+      fens.push(fen);
+    }
+    return { history: { startFen: rootFen, moves }, fens };
+  } catch {
+    return undefined;
+  }
+}
+
 /** Reconstruct the selected line; discard partial or mismatched histories. */
 export function readPositionHistory(game: HistorySource, currentFen: string): PositionHistory | undefined {
   try {
