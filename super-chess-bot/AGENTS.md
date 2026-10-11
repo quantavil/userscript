@@ -5,7 +5,7 @@ Project guidance for `super-chess-bot`.
 ## Stack and packaging
 
 - Use Bun for installs, scripts, and tests.
-- Build the TypeScript userscript with Vite and `vite-plugin-monkey`; the installable output is `dist/bundle.user.js`.
+- Build the TypeScript userscript with Vite and `vite-plugin-monkey`; installable outputs are `dist/bundle.user.js` (multi-site) and `dist/chesscom.user.js` (standalone Chess.com build).
 - Keep the package, userscript metadata, and project license at GPL-3.0-or-later. Preserve Stockfish's upstream license notice.
 - Stockfish JS and WASM are loaded as version-pinned userscript resources. Keep engine loading in the worker adapter; do not add a page-thread search fallback.
 - Keep runtime dependencies small and prefer `chessops`, Preact + Signals, and Valibot for the capabilities they already provide.
@@ -37,7 +37,7 @@ Project guidance for `super-chess-bot`.
 
 ## Tests and verification
 
-- Run `bun run check` before committing. It runs Biome, strict TypeScript, Knip, Vitest, and the production build.
+- Run `bun run check` before committing. It runs Biome, strict TypeScript, Knip, Vitest, and both production builds (`dist/bundle.user.js` and `dist/chesscom.user.js`).
 - Use `bun run test` for the Vitest suite. The native `bun test` runner does not support the suite's Vitest mocking API.
 - Keep tests that assert observable behavior at the board adapter, controller, scheduler, settings, and UCI boundaries. Remove a test only when it is demonstrably misleading, redundant, or no longer exercises supported behavior; do not delete tests merely to make a failure disappear.
 - Prefer focused tests over copied chess-engine implementations. Test cancellation, stale-result rejection, move confirmation, settings recovery, and worker failure behavior.

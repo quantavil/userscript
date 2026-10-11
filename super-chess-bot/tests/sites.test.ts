@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import pkg from '../package.json' with { type: 'json' };
 import { createChesscomAdapter } from '../src/sites/chesscom.js';
 import { resetCapturedChesscomController } from '../src/sites/chesscom-bridge.js';
+import { selectSite as selectChesscomOnlySite } from '../src/sites/chesscom-only.js';
 import { selectSite } from '../src/sites/index.js';
-import { userscriptMetadata } from '../src/userscript-metadata.js';
+import { getUserscriptMetadata, userscriptMetadata } from '../src/userscript-metadata.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
@@ -29,6 +30,16 @@ describe('site adapter selection', () => {
     expect(selectSite('lichess.org', () => page)?.id).toBe('lichess');
     expect(selectSite('www.lichess.org', () => page)?.id).toBe('lichess');
     expect(selectSite('lichess.org.example.test')).toBeNull();
+  });
+
+  it('selects only exact Chess.com hostnames in the chesscom-only build', () => {
+    expect(selectChesscomOnlySite('www.chess.com')?.id).toBe('chesscom');
+    expect(selectChesscomOnlySite('chess.com')?.id).toBe('chesscom');
+    expect(selectChesscomOnlySite('lichess.org')).toBeNull();
+    expect(selectChesscomOnlySite('www.lichess.org')).toBeNull();
+    expect(selectChesscomOnlySite('pychess.org')).toBeNull();
+    expect(selectChesscomOnlySite('www.pychess.org')).toBeNull();
+    expect(selectChesscomOnlySite('chess.com.example.test')).toBeNull();
   });
 
   it('keeps a stable game identity and changes it when the board is replaced', () => {
@@ -268,6 +279,22 @@ describe('userscript package metadata', () => {
 
     const worker = `https://unpkg.com/stockfish@${stockfishPackage.version}/bin/stockfish-${stockfishPackage.buildVersion}-lite-single`;
     expect(userscriptMetadata.resource).toEqual({
+      'stockfish.js': `${worker}.js`,
+      'stockfish.wasm': `${worker}.wasm`,
+    });
+  });
+
+  it('provides dedicated Chess.com-only userscript metadata matching only Chess.com', () => {
+    const meta = getUserscriptMetadata('chesscom');
+    expect(meta.name).toBe('♟Super-chess-Bot (Chess.com)');
+    expect(meta.description).toBe('Local Stockfish analysis and move automation for Chess.com standard games');
+    expect(meta.match).toEqual(['https://chess.com/*', 'https://www.chess.com/*']);
+    expect(meta.license).toBe('GPL-3.0-or-later');
+    expect(meta['run-at']).toBe('document-start');
+    expect(meta['inject-into']).toBe('page');
+
+    const worker = `https://unpkg.com/stockfish@${stockfishPackage.version}/bin/stockfish-${stockfishPackage.buildVersion}-lite-single`;
+    expect(meta.resource).toEqual({
       'stockfish.js': `${worker}.js`,
       'stockfish.wasm': `${worker}.wasm`,
     });

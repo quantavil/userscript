@@ -74,7 +74,7 @@ flowchart LR
 ## Install and use
 
 1. Install Tampermonkey or Violentmonkey in your browser: **Microsoft Edge**, **Firefox**, **Vivaldi**, **Helium**, **Google Chrome**, **Brave**, or mobile browsers (Firefox for Android + Violentmonkey, Safari + Userscripts, or Orion).
-2. Build and install `dist/bundle.user.js`. The userscript manager also fetches the two version-pinned engine resources.
+2. Build and install `dist/bundle.user.js` (multi-site build) or `dist/chesscom.user.js` (standalone Chess.com build). The userscript manager also fetches the two version-pinned engine resources.
 3. Choose a supported game: a Chess.com game, a PyChess round, or a Lichess round.
 4. On PyChess, keep **CHESS**, Chess960 off, and real-time play. For 1+0, set the minutes slider to index **4** (one minute), increment to 0, and select **White** by its title.
 5. Wait for the panel and Stockfish to report `Ready`, then enable the bot. It starts disabled on each page load. Choose auto move or analysis-only mode.
@@ -112,7 +112,7 @@ bun install --frozen-lockfile
 bun run check
 ```
 
-`bun run check` runs Biome, strict TypeScript, Knip, Vitest, and the production build. Run one step with `bun run test`, `bun run typecheck`, `bun run lint`, `bun run knip`, or `bun run build`. Biome and Knip are development tools and are not included in the userscript. Stockfish is loaded as a userscript resource, so Knip's configuration accounts for that external loading.
+`bun run check` runs Biome, strict TypeScript, Knip, Vitest, and both production builds (`dist/bundle.user.js` and `dist/chesscom.user.js`). Run one step with `bun run test`, `bun run typecheck`, `bun run lint`, `bun run knip`, `bun run build:all`, `bun run build:chesscom`, or `bun run build`. Biome and Knip are development tools and are not included in the userscript. Stockfish is loaded as a userscript resource, so Knip's configuration accounts for that external loading.
 
 ## Browser verification
 

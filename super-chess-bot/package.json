@@ -4,7 +4,9 @@
   "type": "module",
   "description": "Local Stockfish analysis and move automation for Chess.com, PyChess, and Lichess standard games",
   "scripts": {
-    "build": "vite build",
+    "build:all": "BUILD_TARGET=all vite build",
+    "build:chesscom": "BUILD_TARGET=chesscom vite build",
+    "build": "bun run build:all && bun run build:chesscom",
     "dev": "vite",
     "test": "vitest run",
     "lint": "biome check",
