@@ -5,6 +5,7 @@ export const DEFAULT_SETTINGS: SettingsData = {
   hackEnabled: 0,
   botPower: 30,
   moveTime: 100,
+  timingMode: 'dynamic',
   autoMove: 1,
   openingBook: 1,
   openingStyle: 'balanced',
@@ -20,11 +21,13 @@ const positionSchema = v.object({
   left: v.pipe(v.string(), v.maxLength(32)),
 });
 const openingStyleSchema = v.picklist(['hyper-defensive', 'defensive', 'balanced', 'aggressive', 'hyper-aggressive']);
+const timingModeSchema = v.picklist(['dynamic', 'fixed']);
 
 const savedSettingsSchema = v.object({
   hackEnabled: v.optional(flagSchema),
   botPower: v.optional(integerInRange(1, 30)),
   moveTime: v.optional(integerInRange(25, 10_000)),
+  timingMode: v.optional(timingModeSchema),
   autoMove: v.optional(flagSchema),
   openingBook: v.optional(flagSchema),
   openingStyle: v.optional(openingStyleSchema),

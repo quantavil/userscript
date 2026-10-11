@@ -3,10 +3,20 @@ import { signal } from '@preact/signals';
 import type { TargetedPointerEvent } from 'preact';
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { CheckIcon, Chevron, ClearIcon, CopyIcon, KnightIcon, OpeningStyleIcon, PowerIcon } from './icons.js';
+import {
+  BrainIcon,
+  CheckIcon,
+  Chevron,
+  ClearIcon,
+  CopyIcon,
+  KnightIcon,
+  LightningIcon,
+  OpeningStyleIcon,
+  PowerIcon,
+} from './icons.js';
 import type { SiteCapabilities } from './sites/types.js';
 import { BotState, Settings } from './state.js';
-import type { OpeningStyle, RecoveryAction } from './types/chess.js';
+import type { OpeningStyle, RecoveryAction, TimingMode } from './types/chess.js';
 
 export type PanelLogType = 'info' | 'status' | 'error' | 'warn' | 'move' | 'opponent';
 
@@ -38,6 +48,7 @@ interface PanelSettings {
   openingBook: boolean;
   openingStyle: OpeningStyle;
   ponder: boolean;
+  timingMode: TimingMode;
   depth: number;
   moveTimeMs: number;
 }
@@ -84,6 +95,7 @@ const readSettings = (): PanelSettings => ({
   openingBook: !!BotState.openingBook,
   openingStyle: BotState.openingStyle,
   ponder: !!BotState.ponderEnabled,
+  timingMode: BotState.timingMode,
   depth: BotState.botPower,
   moveTimeMs: BotState.moveTime,
 });
@@ -154,6 +166,9 @@ function writeBotState<K extends keyof PanelSettings>(key: K, value: PanelSettin
       break;
     case 'ponder':
       BotState.ponderEnabled = value ? 1 : 0;
+      break;
+    case 'timingMode':
+      BotState.timingMode = value as TimingMode;
       break;
     case 'depth':
       BotState.botPower = Number(value);
@@ -310,10 +325,12 @@ function EnableButton({ enabled, onToggle }: { enabled: boolean; onToggle: (enab
       onClick={() => onToggle(!enabled)}
     >
       <span class="panel-enable-label">Enable bot</span>
-      <span class="panel-enable-state">{enabled ? 'On' : 'Off'}</span>
-      <span class="panel-switch" aria-hidden="true">
-        <span class="panel-switch-track" />
-        <span class="panel-switch-knob" />
+      <span class="panel-enable-action">
+        <span class="panel-enable-state">{enabled ? 'On' : 'Off'}</span>
+        <span class="panel-switch" aria-hidden="true">
+          <span class="panel-switch-track" />
+          <span class="panel-switch-knob" />
+        </span>
       </span>
     </button>
   );
@@ -355,6 +372,7 @@ function Slider({
   max,
   step,
   format,
+  hint,
   onPreview,
   onCommit,
 }: {
@@ -365,6 +383,7 @@ function Slider({
   max: number;
   step: number;
   format: (value: number) => string;
+  hint?: string;
   onPreview: (value: number) => void;
   onCommit: (value: number) => void;
 }) {
@@ -386,6 +405,7 @@ function Slider({
         onInput={(event) => onPreview(Number(event.currentTarget.value))}
         onChange={(event) => onCommit(Number(event.currentTarget.value))}
       />
+      {hint && <span class="panel-field-hint">{hint}</span>}
     </div>
   );
 }
@@ -394,37 +414,43 @@ const OPENING_STYLES: {
   id: OpeningStyle;
   label: string;
   tooltip: string;
+  badge: string;
   description: string;
 }[] = [
   {
     id: 'hyper-defensive',
     label: 'Hyper-Defensive',
     tooltip: 'Hyper-Defensive (Berlin Wall, Petroff, Slav, Réti)',
-    description: 'Hyper-Defensive: Ironclad fortresses & solid pawn structures',
+    badge: 'Fortress',
+    description: 'Ironclad fortresses & solid pawn structures (Berlin, Petroff, Slav)',
   },
   {
     id: 'defensive',
     label: 'Defensive',
     tooltip: 'Defensive (Caro-Kann, French, Queen’s Gambit Declined)',
-    description: 'Defensive: Solid positional control & resilient structures',
+    badge: 'Solid',
+    description: 'Positional control & resilient structures (Caro-Kann, French, QGD)',
   },
   {
     id: 'balanced',
     label: 'Balanced',
     tooltip: 'Balanced (Classical GM mainlines & open games)',
-    description: 'Balanced: Classical grandmaster mainlines & standard book',
+    badge: 'Classical',
+    description: 'Classical grandmaster mainlines & standard book (Ruy Lopez, Italian)',
   },
   {
     id: 'aggressive',
     label: 'Aggressive',
     tooltip: 'Aggressive (King’s Gambit, Evans, Scotch, Smith-Morra)',
-    description: 'Aggressive: Sharp tactical lines & active piece attacks',
+    badge: 'Attacking',
+    description: 'Sharp tactical lines & active piece attacks (King’s Gambit, Scotch, Evans)',
   },
   {
     id: 'hyper-aggressive',
     label: 'Hyper-Aggressive',
     tooltip: 'Hyper-Aggressive (Danish, Traxler, Stafford, Albin)',
-    description: 'Hyper-Aggressive: High-risk gambits & tactical fireworks',
+    badge: 'Gambit',
+    description: 'High-risk gambits & tactical fireworks (Danish, Traxler, Stafford)',
   },
 ];
 
@@ -663,9 +689,15 @@ function Panel({
                       </button>
                     ))}
                   </div>
-                  <p class="panel-opening-style-desc">
-                    {OPENING_STYLES.find((st) => st.id === settings.openingStyle)?.description}
-                  </p>
+                  {(() => {
+                    const currentStyle = OPENING_STYLES.find((st) => st.id === settings.openingStyle);
+                    return (
+                      <div class="panel-style-info">
+                        <span class="panel-style-badge">{currentStyle?.badge}</span>
+                        <p class="panel-opening-style-desc">{currentStyle?.description}</p>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
               <Toggle
@@ -675,6 +707,34 @@ function Panel({
               />
             </div>
             {capabilityView.transportNote && <p class="panel-note">{capabilityView.transportNote}</p>}
+
+            <div class="panel-timing-row">
+              <span class="panel-timing-label">Timing mode</span>
+              <div class="panel-segmented panel-timing-segmented">
+                <button
+                  type="button"
+                  class="panel-segment panel-timing-segment"
+                  aria-pressed={settings.timingMode === 'dynamic'}
+                  aria-label="Dynamic timing"
+                  title="Dynamic: adaptive thinking time, natural pacing on forced moves & opening book"
+                  onClick={() => updateSetting('timingMode', 'dynamic')}
+                >
+                  <BrainIcon />
+                  <span>Dynamic</span>
+                </button>
+                <button
+                  type="button"
+                  class="panel-segment panel-timing-segment"
+                  aria-pressed={settings.timingMode === 'fixed'}
+                  aria-label="Fixed timing"
+                  title="Fixed: rigid full-budget thinking time per move"
+                  onClick={() => updateSetting('timingMode', 'fixed')}
+                >
+                  <LightningIcon />
+                  <span>Fixed</span>
+                </button>
+              </div>
+            </div>
 
             <Slider
               id="bot-depth"
@@ -689,12 +749,17 @@ function Panel({
             />
             <Slider
               id="move-budget"
-              label="Move time"
+              label={settings.timingMode === 'dynamic' ? 'Move budget' : 'Move time'}
               value={settings.moveTimeMs}
               min={25}
               max={5000}
               step={25}
               format={formatBudget}
+              hint={
+                settings.timingMode === 'dynamic'
+                  ? 'Adaptive: scales down for forced moves & adds human micro-delays'
+                  : 'Fixed: calculates for full duration on every move'
+              }
               onPreview={(value) => previewSlider('moveTimeMs', value)}
               onCommit={(value) => updateSetting('moveTimeMs', value)}
             />

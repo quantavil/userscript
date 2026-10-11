@@ -192,6 +192,9 @@ describe('panel hotkeys and settings', () => {
 
     updatePanelSetting('moveTimeMs', 50);
     expect(BotState.moveTime).toBe(50);
+
+    updatePanelSetting('timingMode', 'fixed');
+    expect(BotState.timingMode).toBe('fixed');
   });
 
   it('shows site-supported controls for each transport', () => {

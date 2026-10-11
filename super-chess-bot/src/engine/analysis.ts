@@ -44,6 +44,23 @@ export function hasLegalMoves(fen: string): boolean | null {
   }
 }
 
+/** Count total legal moves available in a standard chess FEN; null if position cannot be parsed. */
+export function countLegalMoves(fen: string): number | null {
+  try {
+    const setup = parseFen(fen);
+    if (setup.isErr) return null;
+    const position = Chess.fromSetup(setup.value);
+    if (position.isErr) return null;
+    let total = 0;
+    for (const dests of position.value.allDests().values()) {
+      total += dests.size();
+    }
+    return total;
+  } catch {
+    return null;
+  }
+}
+
 /** Search the most likely reply while the opponent is thinking. */
 export function ponderPosition(fen: string, depth: number, history?: PositionHistory): boolean {
   return engineWorker.ponder(fen, depth, history);

@@ -6,7 +6,15 @@ import type { Evaluation } from '../types/chess';
 import { ui } from '../ui.js';
 import { scoreToDisplay } from '../utils.js';
 import type { AnalysisResult, BestLine, PositionHistory } from './analysis.js';
-import { cancelPonder, getAnalysis, hasLegalMoves, parseBestLine, ponderPosition, predictFen } from './analysis.js';
+import {
+  cancelPonder,
+  countLegalMoves,
+  getAnalysis,
+  hasLegalMoves,
+  parseBestLine,
+  ponderPosition,
+  predictFen,
+} from './analysis.js';
 import { lookupBookMove } from './book.js';
 import { formatMove } from './san.js';
 
@@ -16,6 +24,21 @@ let processed: { kind: string; fen: string; identity: object } | null = null;
 let anticipatedPonder: { fromFen: string; targetFen: string; history?: PositionHistory } | null = null;
 let pendingConfirmation: { identity: object; requestController: AbortController } | null = null;
 const confirmationSettledListeners = new Set<() => void>();
+
+function delayMs(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+}
 
 function scoreForWhite(score: Evaluation, sideToMove: string | undefined): Evaluation {
   if (sideToMove !== 'b') return score;
@@ -58,10 +81,21 @@ export function cancelAnalysis(preservePonderFen?: string): void {
   cancelPendingMove();
 }
 
-function searchBudget(snapshot: GameSnapshot): number {
+function searchBudget(snapshot: GameSnapshot, fen?: string): number {
   const configured = Math.max(25, BotState.moveTime);
-  if (snapshot.remainingMs === null) return configured;
-  return Math.max(1, Math.floor(Math.min(configured, snapshot.remainingMs / 40) - 12));
+  const baseBudget =
+    snapshot.remainingMs === null
+      ? configured
+      : Math.max(1, Math.floor(Math.min(configured, snapshot.remainingMs / 40) - 12));
+
+  if (BotState.timingMode === 'fixed' || !fen) return baseBudget;
+
+  const legalCount = countLegalMoves(fen);
+  if (legalCount === 1) {
+    return Math.max(25, Math.min(baseBudget, Math.round(baseBudget * 0.2)));
+  }
+
+  return baseBudget;
 }
 
 function requestPly(snapshot: GameSnapshot): number | null {
@@ -104,7 +138,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
   active = ctrl;
   try {
     const started = performance.now();
-    const budget = kind === 'main' ? searchBudget(snapshot) : Math.max(25, BotState.moveTime);
+    const budget = kind === 'main' ? searchBudget(snapshot, fen) : Math.max(25, BotState.moveTime);
     BotState.statusInfo = kind === 'main' ? 'Analyzing...' : 'Pondering...';
     ui.updateDisplay(pa());
     const history = requestHistory(snapshot);
@@ -182,6 +216,12 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     drawArrow(best.uci.slice(0, 2), best.uci.slice(2, 4), 'rgba(100,255,100,0.7)', 3);
     ui.updateDisplay(pa());
     if (!BotState.autoMove || !current() || !currentPosition?.inputReady) return;
+
+    if (bookMove && BotState.timingMode === 'dynamic') {
+      const delay = Math.min(250, Math.max(45, Math.round(budget * 0.25)));
+      await delayMs(delay, ctrl.signal);
+      if (!current()) return;
+    }
 
     const requestController = new AbortController();
     const abortRequest = () => requestController.abort();

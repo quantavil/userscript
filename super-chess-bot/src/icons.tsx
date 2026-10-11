@@ -137,13 +137,13 @@ function IconDualShields() {
       viewBox="0 0 24 20"
       fill="none"
       stroke="currentColor"
-      stroke-width="1.8"
+      stroke-width="1.7"
       stroke-linecap="round"
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M7 2L2.5 4v4.5c0 4 2.8 6.8 4.5 7.8 1.7-1 4.5-3.8 4.5-7.8V4L7 2z" opacity="0.6" />
-      <path d="M17 3l-4.5 2v4.5c0 4 2.8 6.8 4.5 7.8 1.7-1 4.5-3.8 4.5-7.8V5L17 3z" />
+      <path d="M6.5 2.5L2 4.5v5c0 4 2.8 6.5 4.5 7.5 1.7-1 4.5-3.5 4.5-7.5v-5L6.5 2.5z" />
+      <path d="M17.5 2.5L13 4.5v5c0 4 2.8 6.5 4.5 7.5 1.7-1 4.5-3.5 4.5-7.5v-5L17.5 2.5z" />
     </svg>
   );
 }
@@ -161,7 +161,7 @@ function IconShield() {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M12 2L6 4.5v5.5c0 5 4.5 8.5 6 10 1.5-1.5 6-5 6-10V4.5L12 2z" />
+      <path d="M12 2L5 4.5v5.5c0 4.8 4.2 8 7 9.5 2.8-1.5 7-4.7 7-9.5V4.5L12 2z" />
     </svg>
   );
 }
@@ -198,7 +198,7 @@ function IconSword() {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M18 2l-9.5 9.5M15 2l3 3M7.5 12.5l2 2M6 14l-3 3M4 18l2-2" />
+      <path d="M19 2.5L9 12.5M16 2.5h3v3M7 9.5l4 4M7.5 14l-3.5 3.5M3 18.5l-1 1M4.5 20l-2-2" />
     </svg>
   );
 }
@@ -211,14 +211,14 @@ function IconDualSwordsSparks() {
       viewBox="0 0 24 20"
       fill="none"
       stroke="currentColor"
-      stroke-width="1.8"
+      stroke-width="1.7"
       stroke-linecap="round"
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M4 3l16 14M17 19l3-3M3 5l2 2" />
-      <path d="M20 3L4 17M7 19l-3-3M21 5l-2 2" />
-      <path d="M12 1v3M10 2.5h4" stroke-width="1.4" />
+      <path d="M4 3.5l16 16M14 17l4-4" />
+      <path d="M20 3.5L4 19.5M6 13l4 4" />
+      <path d="M13 1l-3 5h3.5L11.5 11l5-6h-3.5L14.5 1z" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -236,4 +236,41 @@ export function OpeningStyleIcon({ style }: { style: OpeningStyle }) {
     case 'hyper-aggressive':
       return <IconDualSwordsSparks />;
   }
+}
+
+export function BrainIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.04z" />
+      <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.04z" />
+    </svg>
+  );
+}
+
+export function LightningIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  );
 }

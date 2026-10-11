@@ -26,6 +26,7 @@ describe('loadSettings', () => {
       openingBook: 1,
       openingStyle: 'balanced',
       ponderEnabled: 1,
+      timingMode: 'dynamic',
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);
@@ -41,6 +42,7 @@ describe('loadSettings', () => {
       openingBook: 1,
       openingStyle: 'balanced',
       ponderEnabled: 1,
+      timingMode: 'dynamic',
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);
@@ -56,18 +58,27 @@ describe('loadSettings', () => {
       openingBook: 1,
       openingStyle: 'balanced',
       ponderEnabled: 1,
+      timingMode: 'dynamic',
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);
   });
 
   it('accepts sub-100ms moveTime budgets down to 25ms and custom openingBook and openingStyle settings', () => {
-    const settings = loadStoredSettings('{"moveTime":25,"openingBook":1,"openingStyle":"hyper-aggressive"}');
+    const settings = loadStoredSettings(
+      '{"moveTime":25,"openingBook":1,"openingStyle":"hyper-aggressive","timingMode":"fixed"}',
+    );
 
-    expect(settings).toMatchObject({ moveTime: 25, openingBook: 1, openingStyle: 'hyper-aggressive' });
+    expect(settings).toMatchObject({
+      moveTime: 25,
+      openingBook: 1,
+      openingStyle: 'hyper-aggressive',
+      timingMode: 'fixed',
+    });
     expect(BotState.moveTime).toBe(25);
     expect(BotState.openingBook).toBe(1);
     expect(BotState.openingStyle).toBe('hyper-aggressive');
+    expect(BotState.timingMode).toBe('fixed');
   });
 
   it('drops the obsolete jitter setting instead of carrying dead state forward', () => {

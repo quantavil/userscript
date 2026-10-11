@@ -60,6 +60,7 @@ export const BotState: BotStateInterface = {
   hackEnabled: 0,
   botPower: 30, // High depth cap; the move-time budget normally ends search.
   moveTime: 100, // Single search deadline (ms)
+  timingMode: 'dynamic',
   autoMove: 1,
   openingBook: 1,
   openingStyle: 'balanced',
@@ -80,6 +81,7 @@ export const Settings = {
         hackEnabled: BotState.hackEnabled,
         botPower: BotState.botPower,
         moveTime: BotState.moveTime,
+        timingMode: BotState.timingMode,
         autoMove: BotState.autoMove,
         openingBook: BotState.openingBook,
         openingStyle: BotState.openingStyle,
