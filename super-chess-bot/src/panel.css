@@ -719,8 +719,8 @@
   }
 
   .panel-icon-btn {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 }
 
@@ -743,16 +743,36 @@
   }
 
   .panel-bar {
+    gap: 8px;
+    padding: 8px 8px 8px 10px;
     cursor: default;
     touch-action: manipulation;
   }
 
   .panel-body {
     max-height: min(70vh, 580px);
+    -webkit-overflow-scrolling: touch;
   }
 
   .panel-log {
     max-height: 180px;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 380px) {
+  .panel-title {
+    font-size: 13px;
+  }
+
+  .panel-quick-enable {
+    gap: 4px;
+    padding: 0 4px 0 6px;
+  }
+
+  .panel-notice {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 }
 
