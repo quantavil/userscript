@@ -99,6 +99,14 @@ Chess.com's [premove guidance](https://support.chess.com/en/articles/8562432-wha
 
 The previous `@resource` URL used jsDelivr's npm endpoint. That endpoint returned HTTP 403 with `Package size exceeded the configured limit of 150 MB.` because the Stockfish npm package is about 205 MB unpacked. The project only needs the 1.8 MB lite single-thread WASM file, but jsDelivr applies its limit to the whole package. The pinned resource host now uses unpkg; both exact version-pinned resources returned HTTP 200, and the full manager-installed Chess.com game verified worker startup end to end.
 
+## Lichess From-Position eligibility and live promotion (2026-10-11)
+
+A from-custom-position computer game ([`sttl5p9L`](https://lichess.org/sttl5p9L), PGN `Variant "From Position"`, custom FEN) was rejected with `Lichess standard chess is required` because the adapter only accepted `variant.key === 'standard'`; from-position games report `fromPosition`. The gate now accepts both keys since From-Position is orthodox chess from a custom FEN. A unit test covers `fromPosition` acceptance alongside the `chess960` rejection.
+
+After rebuilding and reinstalling the manager bundle, the same game reached `Ready` and the bot submitted accepted moves (observed through `4...Qd6` with SAN/Eval log entries). A fresh from-position game from `7k/P7/8/8/8/8/8/K7 w - - 0 1` ([`iYTQx601`](https://lichess.org/iYTQx601), White, level 8, 1+0) verified live promotion: the bot played `2.a8=Q` through the controller's explicit promotion role and finished `11.Qb8#`, 1–0. This is the first live Lichess promotion; underpromotion on Lichess remains live-unverified.
+
+One setup caveat: starting the game from the homepage AI-setup form left the round controller uncaptured (`not captured` status) until a full page reload, after which the same game captured normally. Games opened or reloaded directly have not shown this; in-setup SPA navigation is the suspect and remains unconfirmed.
+
 ## Earlier smoke measurements
 
 An earlier Chromium smoke run measured 24 opponent-response to accepted-move intervals with a 100 ms budget: 122.7 ms minimum, 130.2 ms median, and 158.9 ms maximum. These include engine search, UI scheduling, and move acceptance. They are small samples from this machine, not percentile benchmarks or an Elo claim.

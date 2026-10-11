@@ -49,6 +49,10 @@ describe('Lichess player-round adapter', () => {
       reason: expect.stringContaining('standard chess'),
     });
 
+    const fromPosition = makeFixture({ variant: 'fromPosition' });
+    await fromPosition.captureRound();
+    expect(fromPosition.adapter.read().kind).toBe('game');
+
     const spectator = makeFixture({ spectator: true });
     await spectator.captureRound();
     expect(spectator.adapter.read()).toMatchObject({

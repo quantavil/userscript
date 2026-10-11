@@ -72,6 +72,8 @@ const PROMOTION_ROLE: Record<string, string> = {
   bishop: 'bishop',
   knight: 'knight',
 };
+/** Orthodox-chess variant keys. `fromPosition` is standard chess from a custom FEN. */
+const ORTHODOX_VARIANT_KEYS = new Set(['standard', 'fromPosition']);
 const DEFAULT_BRIDGE_ERROR =
   'Lichess round controller not captured. Enable synchronous page-context injection in your userscript manager, then reload.';
 
@@ -220,7 +222,8 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
       const game = data?.game;
       const player = data?.player;
       if (!data || !game || !player) return { kind: 'waiting', reason: 'Waiting for Lichess game state' };
-      if (game.variant?.key !== 'standard') return { kind: 'ineligible', reason: 'Lichess standard chess is required' };
+      if (typeof game.variant?.key !== 'string' || !ORTHODOX_VARIANT_KEYS.has(game.variant.key))
+        return { kind: 'ineligible', reason: 'Lichess standard chess is required' };
       if (player.spectator === true) return { kind: 'ineligible', reason: 'Lichess player round is required' };
       if (typeof game.id !== 'string' || !game.id)
         return { kind: 'waiting', reason: 'Waiting for Lichess game identity' };

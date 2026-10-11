@@ -30,10 +30,10 @@ Project guidance for `super-chess-bot`.
 ## Site support matrix
 
 - Transports: Chess.com gestures (click/drag setting), PyChess square selection, Lichess controller `pluginMove`.
-- Promotion: Chess.com site chooser, PyChess q/r/b/n chooser + Ctrl override, Lichess explicit role. Live promotion verified on Chess.com and PyChess (queen); Lichess live promotion unverified.
+- Promotion: Chess.com site chooser, PyChess q/r/b/n chooser + Ctrl override, Lichess explicit role. Live queen promotion verified on all three sites, including Lichess ([iYTQx601](https://lichess.org/iYTQx601), `2.a8=Q`, `11.Qb8#`).
 - Premove is off on all sites. Background ponder, opening book, and clock-aware budgets work on all sites.
 - The panel hides the move-method setting on PyChess/Lichess.
-- Standard chess only: variants, Chess960, and correspondence stay ineligible where the adapter checks them.
+- Standard chess and From-Position custom starts are eligible. Other variants, Chess960, and correspondence stay ineligible where the adapter checks them.
 
 ## Tests and verification
 

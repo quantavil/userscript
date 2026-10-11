@@ -3662,6 +3662,7 @@
 		bishop: "bishop",
 		knight: "knight"
 	};
+	var ORTHODOX_VARIANT_KEYS = new Set(["standard", "fromPosition"]);
 	var DEFAULT_BRIDGE_ERROR = "Lichess round controller not captured. Enable synchronous page-context injection in your userscript manager, then reload.";
 	function lichessColor(color) {
 		return color === "w" ? "white" : "black";
@@ -3806,7 +3807,7 @@
 					kind: "waiting",
 					reason: "Waiting for Lichess game state"
 				};
-				if (game.variant?.key !== "standard") return {
+				if (typeof game.variant?.key !== "string" || !ORTHODOX_VARIANT_KEYS.has(game.variant.key)) return {
 					kind: "ineligible",
 					reason: "Lichess standard chess is required"
 				};
