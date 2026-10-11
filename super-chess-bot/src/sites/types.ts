@@ -46,3 +46,13 @@ export interface SiteAdapter {
 export function pageWindow(): Window {
   return typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
 }
+
+export function pageDocument(): Document {
+  return typeof unsafeWindow === 'undefined' ? document : unsafeWindow.document;
+}
+
+export function mutationElement(target: Node): Element | null {
+  return target.nodeType === 1
+    ? (target as Element)
+    : ((target as Node & { parentElement?: Element | null }).parentElement ?? null);
+}

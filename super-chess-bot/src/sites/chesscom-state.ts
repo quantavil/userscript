@@ -1,3 +1,5 @@
+import { pageDocument } from './types.js';
+
 export const GAME_CACHE_TTL = 100;
 
 interface ChessGame {
@@ -17,10 +19,6 @@ interface BoardElement extends HTMLElement {
 const BOARD_SELECTOR = 'wc-chess-board, chess-board, .board';
 let cachedGame: ChessGame | null = null;
 let cachedGameTimestamp = 0;
-
-function pageDocument(): Document {
-  return typeof unsafeWindow === 'undefined' ? document : unsafeWindow.document;
-}
 
 function hasGameApi(board: BoardElement): boolean {
   return typeof board.game?.getFEN === 'function';

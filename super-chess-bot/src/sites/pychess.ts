@@ -10,7 +10,7 @@ import {
   type PychessObservation,
   parsePychessObservation,
 } from './pychess-state.js';
-import { type MoveRequest, pageWindow, type SiteAdapter, type SiteRead } from './types.js';
+import { type MoveRequest, mutationElement, pageWindow, type SiteAdapter, type SiteRead } from './types.js';
 
 interface ChessgroundState {
   fen?: string;
@@ -100,12 +100,6 @@ function visible(element: HTMLElement): boolean {
   if (rect.width <= 0 || rect.height <= 0) return false;
   const style = element.ownerDocument.defaultView?.getComputedStyle(element);
   return style?.display !== 'none' && style?.visibility !== 'hidden';
-}
-
-function mutationElement(target: Node): Element | null {
-  return target.nodeType === 1
-    ? (target as Element)
-    : ((target as Node & { parentElement?: Element | null }).parentElement ?? null);
 }
 
 function isRelevantMutation(records: MutationRecord[]): boolean {

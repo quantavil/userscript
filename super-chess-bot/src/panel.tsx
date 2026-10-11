@@ -58,6 +58,31 @@ interface PanelLog {
   time: string;
 }
 
+type Tone = 'error' | 'paused' | 'working' | 'ready' | 'idle';
+
+interface PanelKeyEvent {
+  key?: string;
+  code: string;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  altKey?: boolean;
+  composedPath?: () => unknown[];
+  target?: unknown;
+  preventDefault?: () => void;
+}
+
+const EDGE_MARGIN = 8;
+const DOCK_QUERY = '(max-width: 560px)';
+const COLLAPSED_KEY = 'gabibot_panel_collapsed';
+const MAX_LOG_ENTRIES = 100;
+const LOG_STICK_PX = 16;
+const COPY_FEEDBACK_MS = 1400;
+const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+const MOVE_METHODS = [
+  { value: 'click', label: 'Click' },
+  { value: 'drag', label: 'Drag' },
+] as const;
+
 const readSettings = (): PanelSettings => ({
   enabled: !!BotState.hackEnabled,
   autoMove: !!BotState.autoMove,
@@ -78,7 +103,8 @@ const analysisSignal = signal<PanelAnalysis>({
 });
 const logsSignal = signal<PanelLog[]>([]);
 let nextLogId = 0;
-const logTextColor: Record<PanelLogType, string> = {
+
+const logTextClass: Record<PanelLogType, string> = {
   info: 'log-text-info',
   status: 'log-text-status',
   error: 'log-text-error',
@@ -87,6 +113,11 @@ const logTextColor: Record<PanelLogType, string> = {
   opponent: 'log-text-opponent',
 };
 
+/** Field-by-field equality over the keys of `b`; used to skip no-op signal writes. */
+function shallowEqual<T extends object>(a: T, b: T): boolean {
+  return (Object.keys(b) as (keyof T)[]).every((key) => a[key] === b[key]);
+}
+
 export function appendPanelLog(text: string, type: PanelLogType = 'info'): void {
   const entry: PanelLog = {
     id: ++nextLogId,
@@ -94,7 +125,7 @@ export function appendPanelLog(text: string, type: PanelLogType = 'info'): void 
     type,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }),
   };
-  logsSignal.value = [...logsSignal.value, entry].slice(-100);
+  logsSignal.value = [...logsSignal.value, entry].slice(-MAX_LOG_ENTRIES);
 }
 
 export function clearPanelLogs(): void {
@@ -102,42 +133,17 @@ export function clearPanelLogs(): void {
 }
 
 export function syncPanelSettings(): void {
-  const current = settingsSignal.value;
   const next = readSettings();
-  if (
-    current.enabled === next.enabled &&
-    current.autoMove === next.autoMove &&
-    current.openingBook === next.openingBook &&
-    current.ponder === next.ponder &&
-    current.depth === next.depth &&
-    current.moveTimeMs === next.moveTimeMs &&
-    current.moveMethod === next.moveMethod
-  ) {
-    return;
-  }
+  if (shallowEqual(settingsSignal.value, next)) return;
   settingsSignal.value = next;
 }
 
 export function updatePanelAnalysis(next: PanelAnalysis): void {
-  const current = analysisSignal.value;
-  if (
-    current.status === next.status &&
-    current.evaluation === next.evaluation &&
-    current.bestMove === next.bestMove &&
-    current.principalVariation === next.principalVariation &&
-    current.recoveryAction === next.recoveryAction
-  ) {
-    return;
-  }
+  if (shallowEqual(analysisSignal.value, next)) return;
   analysisSignal.value = next;
 }
 
-export function updatePanelSetting<K extends keyof PanelSettings>(
-  key: K,
-  value: PanelSettings[K],
-  actions?: PanelActions,
-): void {
-  const next = { ...settingsSignal.value, [key]: value };
+function writeBotState<K extends keyof PanelSettings>(key: K, value: PanelSettings[K]): void {
   switch (key) {
     case 'enabled':
       BotState.hackEnabled = value ? 1 : 0;
@@ -161,55 +167,91 @@ export function updatePanelSetting<K extends keyof PanelSettings>(
       BotState.moveMethod = value as PanelSettings['moveMethod'];
       break;
   }
-  settingsSignal.value = next;
-  Settings.save();
+}
 
+export function updatePanelSetting<K extends keyof PanelSettings>(
+  key: K,
+  value: PanelSettings[K],
+  actions?: PanelActions,
+): void {
+  settingsSignal.value = { ...settingsSignal.value, [key]: value };
+  writeBotState(key, value);
+  Settings.save();
   if (key === 'enabled') actions?.setEnabled?.(!!value);
   else actions?.refreshSettings?.();
 }
 
+/** True for any focusable text target, so typing never triggers a panel shortcut. */
+function isEditableTarget(target: unknown): boolean {
+  if (!target || typeof target !== 'object') return false;
+  const element = target as { tagName?: string; isContentEditable?: boolean };
+  return element.isContentEditable === true || EDITABLE_TAGS.has((element.tagName ?? '').toUpperCase());
+}
+
 export function handlePanelKeyDown(
-  event: {
-    key: string;
-    code: string;
-    ctrlKey?: boolean;
-    metaKey?: boolean;
-    altKey?: boolean;
-    composedPath?: () => unknown[];
-    target?: unknown;
-    preventDefault?: () => void;
-  },
+  event: PanelKeyEvent,
   actions: PanelActions = {},
-  toggleMinimized?: () => void,
+  toggleCollapsed?: () => void,
 ): void {
   const target = event.composedPath ? event.composedPath()[0] : event.target;
-  const targetElement =
-    target && typeof target === 'object' ? (target as { tagName?: string; isContentEditable?: boolean }) : null;
-  if (
-    (typeof HTMLInputElement !== 'undefined' && target instanceof HTMLInputElement) ||
-    (typeof HTMLTextAreaElement !== 'undefined' && target instanceof HTMLTextAreaElement) ||
-    (typeof HTMLSelectElement !== 'undefined' && target instanceof HTMLSelectElement) ||
-    (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && target.isContentEditable) ||
-    targetElement?.isContentEditable === true ||
-    targetElement?.tagName === 'INPUT' ||
-    targetElement?.tagName === 'TEXTAREA' ||
-    targetElement?.tagName === 'SELECT'
-  ) {
-    return;
-  }
-  if (event.key.toLowerCase() === 'b' && event.ctrlKey && !event.metaKey) {
+  if (isEditableTarget(target)) return;
+
+  if (event.key?.toLowerCase() === 'b' && event.ctrlKey && !event.metaKey) {
     event.preventDefault?.();
-    toggleMinimized?.();
+    toggleCollapsed?.();
     return;
   }
-  if (!event.ctrlKey && !event.metaKey && !event.altKey) {
-    if (event.code === 'KeyE') {
-      event.preventDefault?.();
-      updatePanelSetting('enabled', !settingsSignal.value.enabled, actions);
-    } else if (event.code === 'KeyR' && analysisSignal.value.recoveryAction !== null) {
-      event.preventDefault?.();
-      actions.recover?.();
-    }
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.code === 'KeyE') {
+    event.preventDefault?.();
+    updatePanelSetting('enabled', !settingsSignal.value.enabled, actions);
+  } else if (event.code === 'KeyR' && analysisSignal.value.recoveryAction !== null) {
+    event.preventDefault?.();
+    actions.recover?.();
+  }
+}
+
+/* Position helpers. The panel floats on desktop and docks to the bottom edge on narrow screens (see CSS). */
+
+function clampPosition(left: number, top: number, width: number, height: number): { left: number; top: number } {
+  const maxLeft = Math.max(EDGE_MARGIN, window.innerWidth - width - EDGE_MARGIN);
+  const maxTop = Math.max(EDGE_MARGIN, window.innerHeight - height - EDGE_MARGIN);
+  return {
+    left: Math.min(Math.max(EDGE_MARGIN, left), maxLeft),
+    top: Math.min(Math.max(EDGE_MARGIN, top), maxTop),
+  };
+}
+
+/** Writes only values that changed, so resize observers do not churn the style attribute. */
+function placeHost(host: HTMLElement, left: number, top: number): void {
+  const nextLeft = `${left}px`;
+  const nextTop = `${top}px`;
+  if (host.style.left !== nextLeft) host.style.left = nextLeft;
+  if (host.style.top !== nextTop) host.style.top = nextTop;
+  if (host.style.right !== 'auto') host.style.right = 'auto';
+}
+
+function isDocked(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia(DOCK_QUERY).matches;
+}
+
+/* Collapsed state is a presentation preference, so it lives in its own key rather than the bot settings blob. */
+
+function readStoredCollapsed(): boolean | null {
+  try {
+    const value = localStorage.getItem(COLLAPSED_KEY);
+    return value === null ? null : value === '1';
+  } catch {
+    // Storage can be blocked by the host page; fall back to the viewport default.
+    return null;
+  }
+}
+
+function storeCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
+  } catch {
+    // Blocked storage only means the preference will not persist.
   }
 }
 
@@ -223,17 +265,64 @@ export function mountPanel(
 }
 
 function formatBudget(milliseconds: number): string {
-  return milliseconds >= 1000
-    ? `${(milliseconds / 1000).toFixed(milliseconds % 1000 === 0 ? 0 : 1)} s`
-    : `${milliseconds} ms`;
+  return milliseconds < 1000 ? `${milliseconds} ms` : `${Number((milliseconds / 1000).toFixed(2))} s`;
 }
 
-function statusTone(analysis: PanelAnalysis, enabled: boolean): string {
+function displayValue(value: string | null | undefined): string {
+  return value && value !== '-' ? value : '—';
+}
+
+function hasLine(value: string): boolean {
+  return !!value && value !== '-' && value !== 'Not available';
+}
+
+function statusTone(analysis: PanelAnalysis, enabled: boolean): Tone {
   if (analysis.recoveryAction === 'retry') return 'error';
   if (analysis.recoveryAction === 'resume') return 'paused';
   if (/error|failed|unavailable|not confirmed/i.test(analysis.status)) return 'error';
   if (/loading|analyz|ponder|submitting|resuming/i.test(analysis.status)) return 'working';
   return enabled ? 'ready' : 'idle';
+}
+
+function Chevron() {
+  return (
+    <svg class="panel-chevron" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <path
+        d="M4 6l4 4 4-4"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </svg>
+  );
+}
+
+function EnableButton({
+  enabled,
+  wide = false,
+  onToggle,
+}: {
+  enabled: boolean;
+  wide?: boolean;
+  onToggle: (enabled: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      class={wide ? 'panel-enable panel-enable-wide' : 'panel-enable'}
+      aria-pressed={enabled}
+      onClick={() => onToggle(!enabled)}
+    >
+      <span class="panel-enable-label">Enable bot</span>
+      <span class="panel-enable-state">{enabled ? 'On' : 'Off'}</span>
+      <span class="panel-switch" aria-hidden="true">
+        <span class="panel-switch-track" />
+        <span class="panel-switch-knob" />
+      </span>
+    </button>
+  );
 }
 
 function Toggle({
@@ -257,9 +346,101 @@ function Toggle({
           onChange={(event) => onChange(event.currentTarget.checked)}
         />
         <span class="panel-switch-track" aria-hidden="true" />
-        <span class="panel-switch-thumb" aria-hidden="true" />
+        <span class="panel-switch-knob" aria-hidden="true" />
       </span>
     </label>
+  );
+}
+
+/** Dragging updates the display live; the commit (and the search restart it causes) happens on release. */
+function Slider({
+  id,
+  label,
+  value,
+  min,
+  max,
+  step,
+  format,
+  onPreview,
+  onCommit,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  format: (value: number) => string;
+  onPreview: (value: number) => void;
+  onCommit: (value: number) => void;
+}) {
+  return (
+    <div class="panel-field">
+      <div class="panel-field-head">
+        <label htmlFor={id}>{label}</label>
+        <output>{format(value)}</output>
+      </div>
+      <input
+        id={id}
+        class="panel-range"
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-valuetext={format(value)}
+        onInput={(event) => onPreview(Number(event.currentTarget.value))}
+        onChange={(event) => onCommit(Number(event.currentTarget.value))}
+      />
+    </div>
+  );
+}
+
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onSelect,
+}: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string }[];
+  onSelect: (value: T) => void;
+}) {
+  return (
+    <div class="panel-field">
+      <span class="panel-field-label">{label}</span>
+      {/* biome-ignore lint/a11y/useSemanticElements: Segmented buttons in a group */}
+      <div class="panel-segmented" role="group" aria-label={label}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            class="panel-segment"
+            aria-pressed={value === option.value}
+            onClick={() => onSelect(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RecoveryNotice({ kind, onRecover }: { kind: RecoveryAction; onRecover: () => void }) {
+  const resume = kind === 'resume';
+  return (
+    <div class="panel-notice" role="alert" data-kind={kind}>
+      <p>
+        {resume
+          ? 'Board input paused the bot. Resume when you are ready.'
+          : 'The last action did not finish. Retry this position.'}
+      </p>
+      <button type="button" class="panel-button" onClick={onRecover}>
+        {resume ? 'Resume bot' : 'Retry position'}
+      </button>
+    </div>
   );
 }
 
@@ -272,45 +453,52 @@ function Panel({
   actions: PanelActions;
   capabilities?: SiteCapabilities;
 }) {
-  // Read signals directly in the component; a parallel useState copy only adds synchronization work.
+  // Signals are read during render; a parallel useState copy would only add a synchronization step.
   const settings = settingsSignal.value;
   const analysis = analysisSignal.value;
   const logs = logsSignal.value;
   const capabilityView = getPanelCapabilityView(capabilities);
-  const [minimized, setMinimized] = useState(false);
+  const tone = statusTone(analysis, settings.enabled);
+  const [collapsed, setCollapsed] = useState(() => readStoredCollapsed() ?? isDocked());
+  const [activityOpen, setActivityOpen] = useState(() => !isDocked());
   const [copied, setCopied] = useState(false);
   const logElement = useRef<HTMLDivElement | null>(null);
   const stickToBottom = useRef(true);
   const copyTimer = useRef<number | null>(null);
 
+  const toggleCollapsed = () => setCollapsed((value) => !value);
+  const updateSetting = <K extends keyof PanelSettings>(key: K, value: PanelSettings[K]) =>
+    updatePanelSetting(key, value, actions);
+  const previewSlider = (key: 'depth' | 'moveTimeMs', value: number) => {
+    settingsSignal.value = { ...settingsSignal.value, [key]: value };
+  };
+
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      handlePanelKeyDown(event, actions, () => setMinimized((value) => !value));
-    };
+    const handleKeyDown = (event: KeyboardEvent) =>
+      handlePanelKeyDown(event, actions, () => setCollapsed((value) => !value));
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [actions]);
 
+  useEffect(() => storeCollapsed(collapsed), [collapsed]);
+
   useEffect(() => {
-    const clampToViewport = () => {
+    const keepOnScreen = () => {
+      if (isDocked()) return;
       const rect = host.getBoundingClientRect();
-      const margin = 8;
-      const left = Math.max(margin, Math.min(rect.left, window.innerWidth - rect.width - margin));
-      const top = Math.max(margin, Math.min(rect.top, window.innerHeight - rect.height - margin));
-      host.style.left = `${left}px`;
-      host.style.right = 'auto';
-      host.style.top = `${top}px`;
+      const next = clampPosition(rect.left, rect.top, rect.width, rect.height);
+      placeHost(host, next.left, next.top);
     };
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(clampToViewport);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(keepOnScreen);
     observer?.observe(host);
-    window.addEventListener('resize', clampToViewport);
-    const frame = requestAnimationFrame(clampToViewport);
+    window.addEventListener('resize', keepOnScreen);
+    const frame = requestAnimationFrame(keepOnScreen);
     return () => {
       observer?.disconnect();
-      window.removeEventListener('resize', clampToViewport);
+      window.removeEventListener('resize', keepOnScreen);
       cancelAnimationFrame(frame);
     };
-  }, [host, minimized]);
+  }, [host, collapsed]);
 
   useEffect(
     () => () => {
@@ -320,56 +508,46 @@ function Panel({
   );
 
   useEffect(() => {
+    if (logs.length === 0) stickToBottom.current = true;
     const log = logElement.current;
-    if (logs.length === 0) {
-      stickToBottom.current = true;
-      return;
-    }
-    if (log && stickToBottom.current) log.scrollTop = log.scrollHeight;
-  }, [logs]);
-
-  const updateSetting = <K extends keyof PanelSettings>(key: K, value: PanelSettings[K]) => {
-    updatePanelSetting(key, value, actions);
-  };
+    if (activityOpen && log && stickToBottom.current) log.scrollTop = log.scrollHeight;
+  }, [logs, activityOpen]);
 
   const beginDrag = (event: TargetedPointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || (event.target as Element).closest('button, input, a')) return;
+    if (isDocked() || event.button !== 0 || (event.target as Element).closest('button, input, label, a')) return;
     event.preventDefault();
 
     const start = host.getBoundingClientRect();
     const originX = event.clientX;
     const originY = event.clientY;
-    let finished = false;
-    const maxLeft = () => Math.max(8, window.innerWidth - start.width - 8);
-    const maxTop = () => Math.max(8, window.innerHeight - start.height - 8);
-
-    const move = (pointerEvent: PointerEvent) => {
-      const left = Math.min(Math.max(8, start.left + pointerEvent.clientX - originX), maxLeft());
-      const top = Math.min(Math.max(8, start.top + pointerEvent.clientY - originY), maxTop());
-      host.style.left = `${left}px`;
-      host.style.right = 'auto';
-      host.style.top = `${top}px`;
-    };
+    const drag = new AbortController();
     const finish = () => {
-      if (finished) return;
-      finished = true;
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', finish);
-      window.removeEventListener('pointercancel', finish);
-      window.removeEventListener('blur', finish);
+      drag.abort();
       host.classList.remove('dragging');
       Settings.save();
     };
 
     host.classList.add('dragging');
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', finish, { once: true });
-    window.addEventListener('pointercancel', finish, { once: true });
-    window.addEventListener('blur', finish, { once: true });
+    window.addEventListener(
+      'pointermove',
+      (pointer) => {
+        const next = clampPosition(
+          start.left + pointer.clientX - originX,
+          start.top + pointer.clientY - originY,
+          start.width,
+          start.height,
+        );
+        placeHost(host, next.left, next.top);
+      },
+      { signal: drag.signal },
+    );
+    for (const type of ['pointerup', 'pointercancel', 'blur'] as const) {
+      window.addEventListener(type, finish, { once: true, signal: drag.signal });
+    }
   };
 
   const copyLogs = async () => {
-    const text = logsSignal.value.map((log) => `[${log.time}] ${log.text}`).join('\n');
+    const text = logs.map((entry) => `[${entry.time}] ${entry.text}`).join('\n');
     if (!text || !navigator.clipboard?.writeText) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -378,204 +556,188 @@ function Panel({
       copyTimer.current = window.setTimeout(() => {
         copyTimer.current = null;
         setCopied(false);
-      }, 1400);
+      }, COPY_FEEDBACK_MS);
     } catch {
       setCopied(false);
     }
   };
 
-  const tone = statusTone(analysis, settings.enabled);
-  const canRecover = analysis.recoveryAction !== null;
+  const move = displayValue(analysis.bestMove);
+  const evaluation = displayValue(analysis.evaluation);
+  const line = hasLine(analysis.principalVariation) ? analysis.principalVariation : 'Waiting for a position';
 
   return (
-    <aside class="panel-shell" aria-label="Super Chess Bot controls">
-      <header class="panel-header" onPointerDown={beginDrag}>
-        <span class="panel-brandmark" aria-hidden="true">
+    <aside
+      class="panel"
+      data-state={collapsed ? 'collapsed' : 'open'}
+      data-tone={tone}
+      aria-label="Super Chess Bot controls"
+    >
+      <header class="panel-bar" onPointerDown={beginDrag}>
+        <span class="panel-mark" aria-hidden="true">
           ♞
         </span>
-        <div class="panel-brand">
+        <div class="panel-bar-text">
           <strong class="panel-title">Super Chess Bot</strong>
-          <span class="panel-state" data-tone={tone} role="status" aria-live="polite" title={analysis.status}>
-            <i class="panel-state-dot" aria-hidden="true" />
-            <span class="panel-state-text">{analysis.status || 'Ready'}</span>
-          </span>
+          {collapsed ? (
+            <span class="panel-summary">
+              <span class="panel-dot" aria-hidden="true" />
+              <b>{move}</b>
+              <span>{evaluation}</span>
+            </span>
+          ) : (
+            <span class="panel-status" title={analysis.status}>
+              <span class="panel-dot" aria-hidden="true" />
+              <span class="panel-status-text">{analysis.status || 'Ready'}</span>
+            </span>
+          )}
         </div>
+        {collapsed && <EnableButton enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />}
         <button
-          class="panel-icon-button"
           type="button"
-          aria-label={minimized ? 'Expand panel' : 'Minimize panel'}
-          aria-expanded={!minimized}
-          title="Minimize or expand (Ctrl+B)"
-          onClick={() => setMinimized((value) => !value)}
+          class="panel-icon"
+          aria-expanded={!collapsed}
+          aria-controls="panel-body"
+          aria-label={collapsed ? 'Show panel' : 'Hide panel'}
+          title={collapsed ? 'Show panel (Ctrl+B)' : 'Hide panel (Ctrl+B)'}
+          onClick={toggleCollapsed}
         >
-          <span aria-hidden="true">{minimized ? '+' : '−'}</span>
+          <Chevron />
         </button>
       </header>
 
-      {!minimized && (
-        <div class="panel-scroll">
-          <section class="panel-analysis" aria-label="Suggested move">
-            <div class="panel-analysis-heading">
-              <span class="panel-eyebrow">Suggested move</span>
-              <output class="panel-evaluation" aria-label={`Evaluation ${analysis.evaluation || 'unknown'}`}>
-                {analysis.evaluation && analysis.evaluation !== '-' ? analysis.evaluation : '—'}
+      {!collapsed && (
+        <div class="panel-body" id="panel-body">
+          <section class="panel-hero" aria-label="Suggested move">
+            <div class="panel-move-row">
+              <output class="panel-move" aria-label="Suggested move">
+                {move}
+              </output>
+              <output class="panel-score" aria-label="Evaluation">
+                {evaluation}
               </output>
             </div>
-            <div class="panel-best-move">
-              {analysis.bestMove && analysis.bestMove !== '-' ? analysis.bestMove : '—'}
-            </div>
-            <div class="panel-line" title={analysis.principalVariation}>
-              {analysis.principalVariation &&
-              analysis.principalVariation !== '-' &&
-              analysis.principalVariation !== 'Not available'
-                ? `Line · ${analysis.principalVariation}`
-                : 'Waiting for a position'}
-            </div>
-            {canRecover && (
-              <div class="panel-recovery" data-kind={analysis.recoveryAction}>
-                <span>
-                  {analysis.recoveryAction === 'resume'
-                    ? 'Board input paused the bot. Resume when you are ready.'
-                    : 'The last action did not finish. Retry this position.'}
-                </span>
-                <button class="panel-action-button" type="button" onClick={() => actions.recover?.()}>
-                  {analysis.recoveryAction === 'resume' ? 'Resume bot' : 'Retry'}
-                </button>
-              </div>
+            <p class="panel-line" title={analysis.principalVariation}>
+              {line}
+            </p>
+            {analysis.recoveryAction && (
+              <RecoveryNotice kind={analysis.recoveryAction} onRecover={() => actions.recover?.()} />
             )}
           </section>
 
-          <section class="panel-controls" aria-label="Bot settings">
-            <div class="panel-section-heading">Automation</div>
-            <div class="panel-toggle-list">
-              <Toggle
-                label="Enable bot"
-                checked={settings.enabled}
-                onChange={(checked) => updateSetting('enabled', checked)}
-              />
+          <section class="panel-settings" aria-label="Bot settings">
+            <EnableButton wide enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />
+            <div class="panel-toggles">
               <Toggle
                 label="Auto move"
                 checked={settings.autoMove}
-                onChange={(checked) => updateSetting('autoMove', checked)}
+                onChange={(next) => updateSetting('autoMove', next)}
               />
               <Toggle
                 label="Opening book"
                 checked={settings.openingBook}
-                onChange={(checked) => updateSetting('openingBook', checked)}
+                onChange={(next) => updateSetting('openingBook', next)}
               />
               <Toggle
                 label="Background ponder"
                 checked={settings.ponder}
-                onChange={(checked) => updateSetting('ponder', checked)}
+                onChange={(next) => updateSetting('ponder', next)}
               />
             </div>
-            {capabilityView.transportNote && <p class="panel-site-note">{capabilityView.transportNote}</p>}
+            {capabilityView.transportNote && <p class="panel-note">{capabilityView.transportNote}</p>}
 
-            <div class="panel-slider">
-              <div class="panel-setting-heading">
-                <label htmlFor="bot-depth">Depth cap</label>
-                <output>{settings.depth}</output>
-              </div>
-              <input
-                id="bot-depth"
-                class="panel-range"
-                type="range"
-                min="1"
-                max="30"
-                step="1"
-                value={settings.depth}
-                aria-label="Maximum search depth"
-                onInput={(event) => updateSetting('depth', Number(event.currentTarget.value))}
-              />
-            </div>
-            <div class="panel-slider">
-              <div class="panel-setting-heading">
-                <label htmlFor="move-budget">Move time</label>
-                <output>{formatBudget(settings.moveTimeMs)}</output>
-              </div>
-              <input
-                id="move-budget"
-                class="panel-range"
-                type="range"
-                min="25"
-                max="5000"
-                step="25"
-                value={settings.moveTimeMs}
-                aria-label="Move time budget in milliseconds"
-                onInput={(event) => updateSetting('moveTimeMs', Number(event.currentTarget.value))}
-              />
-            </div>
+            <Slider
+              id="bot-depth"
+              label="Depth cap"
+              value={settings.depth}
+              min={1}
+              max={30}
+              step={1}
+              format={String}
+              onPreview={(value) => previewSlider('depth', value)}
+              onCommit={(value) => updateSetting('depth', value)}
+            />
+            <Slider
+              id="move-budget"
+              label="Move time"
+              value={settings.moveTimeMs}
+              min={25}
+              max={5000}
+              step={25}
+              format={formatBudget}
+              onPreview={(value) => previewSlider('moveTimeMs', value)}
+              onCommit={(value) => updateSetting('moveTimeMs', value)}
+            />
 
             {capabilityView.showMoveMethod && (
-              <fieldset class="panel-method">
-                <legend>Move input method</legend>
-                <div class="panel-segmented">
-                  <button
-                    class="panel-segment"
-                    type="button"
-                    aria-pressed={settings.moveMethod === 'click'}
-                    onClick={() => updateSetting('moveMethod', 'click')}
-                  >
-                    Click
-                  </button>
-                  <button
-                    class="panel-segment"
-                    type="button"
-                    aria-pressed={settings.moveMethod === 'drag'}
-                    onClick={() => updateSetting('moveMethod', 'drag')}
-                  >
-                    Drag
-                  </button>
-                </div>
-              </fieldset>
+              <Segmented
+                label="Move input"
+                value={settings.moveMethod}
+                options={MOVE_METHODS}
+                onSelect={(value) => updateSetting('moveMethod', value)}
+              />
             )}
           </section>
 
           <section class="panel-activity" aria-label="Activity log">
-            <div class="panel-activity-heading">
-              <span>Activity</span>
-              <div class="panel-activity-actions">
-                <button
-                  class="panel-quiet-button"
-                  type="button"
-                  aria-label={copied ? 'Log copied' : 'Copy log'}
-                  onClick={copyLogs}
-                >
-                  {copied ? 'Copied' : 'Copy'}
-                </button>
-                <button
-                  class="panel-quiet-button"
-                  type="button"
-                  aria-label="Clear log"
-                  onClick={() => actions.clearConsole?.()}
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-            <div
-              ref={logElement}
-              class="panel-log"
-              role="log"
-              aria-label="Engine activity"
-              aria-live="off"
-              tabIndex={0}
-              onScroll={() => {
-                const log = logElement.current;
-                if (log) stickToBottom.current = log.scrollHeight - log.scrollTop - log.clientHeight < 16;
-              }}
-            >
-              {logs.length === 0 ? (
-                <p class="panel-log-empty">Moves and engine updates will appear here.</p>
-              ) : (
-                logs.map((entry) => (
-                  <p key={entry.id} class={`panel-log-entry ${logTextColor[entry.type]}`}>
-                    <time>{entry.time}</time>
-                    <span>{entry.text}</span>
-                  </p>
-                ))
+            <div class="panel-activity-head">
+              <button
+                type="button"
+                class="panel-disclosure"
+                aria-expanded={activityOpen}
+                aria-controls="panel-log"
+                onClick={() => setActivityOpen((value) => !value)}
+              >
+                Activity
+                <span class="panel-count">{logs.length}</span>
+              </button>
+              {activityOpen && (
+                <div class="panel-activity-actions">
+                  <button
+                    type="button"
+                    class="panel-text-button"
+                    aria-label={copied ? 'Log copied' : 'Copy log'}
+                    onClick={copyLogs}
+                  >
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                  <button
+                    type="button"
+                    class="panel-text-button"
+                    aria-label="Clear log"
+                    onClick={() => actions.clearConsole?.()}
+                  >
+                    Clear
+                  </button>
+                </div>
               )}
             </div>
+            {activityOpen && (
+              <div
+                id="panel-log"
+                ref={logElement}
+                class="panel-log"
+                role="log"
+                aria-label="Engine activity"
+                aria-live="off"
+                tabIndex={0}
+                onScroll={() => {
+                  const log = logElement.current;
+                  if (log) stickToBottom.current = log.scrollHeight - log.scrollTop - log.clientHeight < LOG_STICK_PX;
+                }}
+              >
+                {logs.length === 0 ? (
+                  <p class="panel-log-empty">Moves and engine updates will appear here.</p>
+                ) : (
+                  logs.map((entry) => (
+                    <p key={entry.id} class={`panel-log-entry ${logTextClass[entry.type]}`}>
+                      <time>{entry.time}</time>
+                      <span>{entry.text}</span>
+                    </p>
+                  ))
+                )}
+              </div>
+            )}
           </section>
         </div>
       )}

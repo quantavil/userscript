@@ -2064,12 +2064,18 @@
 	function getActiveSite() {
 		return activeSite$1;
 	}
-	var BOARD_SELECTOR$1 = "wc-chess-board, chess-board, .board";
-	var cachedGame = null;
-	var cachedGameTimestamp = 0;
+	function pageWindow() {
+		return typeof unsafeWindow === "undefined" ? window : unsafeWindow;
+	}
 	function pageDocument() {
 		return typeof unsafeWindow === "undefined" ? document : unsafeWindow.document;
 	}
+	function mutationElement(target) {
+		return target.nodeType === 1 ? target : target.parentElement ?? null;
+	}
+	var BOARD_SELECTOR$1 = "wc-chess-board, chess-board, .board";
+	var cachedGame = null;
+	var cachedGameTimestamp = 0;
 	function hasGameApi(board) {
 		return typeof board.game?.getFEN === "function";
 	}
@@ -2177,8 +2183,7 @@
 		return current ? current.orientation === "black" : isBoardFlipped$1();
 	}
 	function pa() {
-		const color = snapshot()?.playerColor;
-		return color === "b" ? 2 : color === "w" ? 1 : getPlayerColor$1(getGame()) === "b" ? 2 : 1;
+		return getPlayerColor() === "b" ? 2 : 1;
 	}
 	var BotState = {
 		hackEnabled: 0,
@@ -2353,18 +2358,10 @@
 			ctx,
 			evalBarWrap,
 			detachListeners() {
-				for (const eventName of userInputEvents) try {
-					boardEl.removeEventListener(eventName, cancelPendingOnUserAction, true);
-				} catch {}
-				try {
-					ro.disconnect();
-				} catch {}
-				try {
-					drawingBoard.remove();
-				} catch {}
-				try {
-					evalBarWrap.remove();
-				} catch {}
+				for (const eventName of userInputEvents) boardEl.removeEventListener(eventName, cancelPendingOnUserAction, true);
+				ro.disconnect();
+				drawingBoard.remove();
+				evalBarWrap.remove();
 			}
 		};
 		if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
@@ -2570,7 +2567,8 @@
 				let current;
 				try {
 					current = adapter.read();
-				} catch {
+				} catch (error) {
+					console.error("Super Chess Bot: adapter read failed during move confirmation.", error);
 					finish(false);
 					return;
 				}
@@ -2597,7 +2595,8 @@
 					unsubscribe();
 					unsubscribe = null;
 				}
-			} catch {
+			} catch (error) {
+				console.error("Super Chess Bot: adapter subscribe failed during move confirmation.", error);
 				finish(false);
 				return;
 			}
@@ -3267,10 +3266,8 @@
 			return this.client.warm();
 		}
 		analyze(fen, depth, timeLimit, signal, history) {
-			if (signal?.aborted) return this.client.analyze(fen, depth, timeLimit, signal, history);
-			const result = this.client.analyze(fen, depth, timeLimit, signal, history);
-			this.ponderSearch = null;
-			return result;
+			if (!signal?.aborted) this.ponderSearch = null;
+			return this.client.analyze(fen, depth, timeLimit, signal, history);
 		}
 		ponder(fen, depth, history) {
 			if (!fen || this.client.busy || this.ponderSearch) return false;
@@ -3387,16 +3384,13 @@
 	function closestOrSelf(element, selector) {
 		return element.matches(selector) ? element : element.closest(selector);
 	}
-	function mutationElement$1(target) {
-		return target.nodeType === 1 ? target : target.parentElement ?? null;
-	}
 	function nodeContainsSelector(node, selector) {
-		const element = mutationElement$1(node);
+		const element = mutationElement(node);
 		return !!element && (element.matches(selector) || !!element.querySelector(selector));
 	}
 	function isRelevantMutation$1(records) {
 		return records.some((record) => {
-			const target = mutationElement$1(record.target);
+			const target = mutationElement(record.target);
 			if (!target || target.closest("[data-gabibot-overlay], #menuWrap")) return false;
 			const onBoard = !!closestOrSelf(target, BOARD_SELECTOR);
 			const onClock = !!closestOrSelf(target, CLOCK_REGION_SELECTOR);
@@ -3412,7 +3406,7 @@
 			return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some((node) => nodeContainsSelector(node, BOARD_SELECTOR) || nodeContainsSelector(node, CLOCK_SELECTOR) || nodeContainsSelector(node, RESULT_SELECTOR));
 		});
 	}
-	function createChesscomAdapter(page = defaultPage) {
+	function createChesscomAdapter(page = pageWindow) {
 		let currentBoard = null;
 		let currentGame = null;
 		let currentIdentity = null;
@@ -3560,9 +3554,6 @@
 			}
 		};
 	}
-	function defaultPage() {
-		return typeof unsafeWindow === "undefined" ? window : unsafeWindow;
-	}
 	function isObject(value) {
 		return typeof value === "object" && value !== null || typeof value === "function";
 	}
@@ -3652,9 +3643,6 @@
 		}
 		if (currentSite !== void 0) hookSite(currentSite);
 		return true;
-	}
-	function pageWindow() {
-		return typeof unsafeWindow === "undefined" ? window : unsafeWindow;
 	}
 	var PROMOTION_ROLE$1 = {
 		queen: "queen",
@@ -4150,9 +4138,6 @@
 		const style = element.ownerDocument.defaultView?.getComputedStyle(element);
 		return style?.display !== "none" && style?.visibility !== "hidden";
 	}
-	function mutationElement(target) {
-		return target.nodeType === 1 ? target : target.parentElement ?? null;
-	}
 	function isRelevantMutation(records) {
 		return records.some((record) => {
 			const target = mutationElement(record.target);
@@ -4555,7 +4540,7 @@
 		const sanText = typeof san === "string" ? san : String(san ?? "");
 		return whiteToMove ? `${moveNumber}. ${sanText}` : `${moveNumber}... ${sanText}`;
 	}
-	var panel_default = ":host{--color-panel:oklch(22% .025 160);--color-panel-header:oklch(25.5% .03 158);--color-panel-card:oklch(27.5% .03 158);--color-panel-border:oklch(40.5% .025 158);--color-panel-line:oklch(34% .022 158);--color-panel-muted:oklch(73% .022 157);--color-panel-text:oklch(94% .015 140);--color-panel-accent:oklch(84% .105 126);--color-panel-console:oklch(19% .02 158);--color-panel-control:oklch(25.5% .022 158);--color-panel-control-hover:oklch(32% .028 157);--color-panel-good:oklch(83% .105 126);--color-panel-warning:oklch(82% .105 82);--color-panel-error:oklch(78% .11 35);--color-panel-opponent:oklch(79% .07 73);--color-panel-shadow:oklch(8% .01 158/.48);--ease-out:cubic-bezier(.16, 1, .3, 1);--dur-short:.16s;--font-sans:-apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;--font-mono:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;all:initial;z-index:9999999;width:min(336px,100vw - 16px);color:var(--color-panel-text);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font-family:var(--font-sans);-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.4;display:block;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}:host button,:host input{font:inherit}.panel-shell{border:1px solid var(--color-panel-border);background:var(--color-panel);box-shadow:0 14px 38px var(--color-panel-shadow), 0 2px 8px var(--color-panel-shadow);border-radius:14px;overflow:hidden}.panel-header{border-bottom:1px solid var(--color-panel-line);background:var(--color-panel-header);cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:58px;padding:9px 10px;display:flex}:host(.dragging) .panel-header{cursor:grabbing}.panel-brandmark{border:1px solid var(--color-panel-border);background:var(--color-panel-card);width:30px;height:30px;color:var(--color-panel-accent);border-radius:8px;flex:none;place-items:center;font-family:Georgia,serif;font-size:21px;line-height:1;display:grid}.panel-brand{flex-direction:column;flex:auto;gap:1px;min-width:0;display:flex}.panel-title{color:var(--color-panel-text);letter-spacing:.01em;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:650;overflow:hidden}.panel-state{min-width:0;color:var(--color-panel-muted);align-items:center;gap:7px;font-size:11px;display:flex}.panel-state-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-state-dot{background:var(--color-panel-muted);border-radius:50%;flex:none;width:7px;height:7px}.panel-state[data-tone=working] .panel-state-dot,.panel-state[data-tone=ready] .panel-state-dot{background:var(--color-panel-good);box-shadow:0 0 0 3px color-mix(in oklab, var(--color-panel-good) 16%, transparent)}.panel-state[data-tone=paused] .panel-state-dot,.panel-state[data-tone=paused] .panel-state-text{color:var(--color-panel-warning)}.panel-state[data-tone=paused] .panel-state-dot{background:var(--color-panel-warning)}.panel-state[data-tone=error] .panel-state-dot,.panel-state[data-tone=error] .panel-state-text{color:var(--color-panel-error)}.panel-state[data-tone=error] .panel-state-dot{background:var(--color-panel-error)}.panel-icon-button,.panel-action-button,.panel-quiet-button,.panel-segment{border:1px solid var(--color-panel-border);color:var(--color-panel-text);cursor:pointer;transition:transform var(--dur-short) var(--ease-out)}.panel-icon-button{background:var(--color-panel-control);border-radius:8px;flex:none;place-items:center;width:40px;height:40px;font-size:18px;line-height:1;display:grid}.panel-icon-button:hover,.panel-quiet-button:hover,.panel-segment:hover{border-color:var(--color-panel-muted);background:var(--color-panel-control-hover)}.panel-action-button{border-color:var(--color-panel-accent);background:var(--color-panel-accent);min-height:40px;color:var(--color-panel);border-radius:7px;flex:none;padding:0 10px;font-size:11px;font-weight:700}.panel-action-button:hover{border-color:var(--color-panel-text);background:var(--color-panel-text)}.panel-quiet-button{border-color:var(--color-panel-line);background:var(--color-panel-control);min-width:42px;min-height:30px;color:var(--color-panel-muted);border-radius:6px;padding:2px 7px;font-size:10px;font-weight:500}.panel-icon-button:focus-visible,.panel-action-button:focus-visible,.panel-quiet-button:focus-visible,.panel-segment:focus-visible,.panel-range:focus-visible{outline:2px solid var(--color-panel-accent);outline-offset:3px}.panel-icon-button:active,.panel-action-button:active,.panel-quiet-button:active,.panel-segment:active{transform:translateY(1px)}.panel-icon-button:disabled,.panel-action-button:disabled,.panel-quiet-button:disabled,.panel-segment:disabled{cursor:not-allowed;opacity:.55}.panel-scroll{overscroll-behavior:contain;scrollbar-color:var(--color-panel-border) var(--color-panel-console);scrollbar-width:thin;max-height:min(78vh,720px);overflow:auto}.panel-analysis{border:1px solid var(--color-panel-line);background:var(--color-panel-card);border-radius:9px;margin:10px 10px 4px;padding:10px 11px 9px 13px;position:relative}.panel-analysis:before{background:var(--color-panel-accent);content:\"\";border-radius:0 3px 3px 0;width:2px;position:absolute;inset:9px auto 9px 0}.panel-analysis-heading,.panel-setting-heading,.panel-activity-heading{justify-content:space-between;align-items:center;gap:10px;display:flex}.panel-eyebrow,.panel-setting-heading,.panel-method legend{color:var(--color-panel-muted);font-size:11px}.panel-evaluation{color:var(--color-panel-accent);font-variant-numeric:tabular-nums;font-size:14px;font-weight:700}.panel-setting-heading output{color:var(--color-panel-accent);font-variant-numeric:tabular-nums;font-size:11px;font-weight:650}.panel-best-move{color:var(--color-panel-text);font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:.035em;margin-top:1px;font-size:24px;font-weight:650;line-height:1.25}.panel-line{color:var(--color-panel-muted);font-family:var(--font-mono);text-overflow:ellipsis;white-space:nowrap;margin-top:4px;font-size:10px;overflow:hidden}.panel-recovery{border-top:1px solid var(--color-panel-line);color:var(--color-panel-muted);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:9px;margin-top:9px;padding-top:9px;font-size:11px;display:grid}.panel-recovery[data-kind=resume]{color:var(--color-panel-warning)}.panel-recovery[data-kind=retry]{color:var(--color-panel-error)}.panel-controls{padding:6px 14px 12px}.panel-section-heading{color:var(--color-panel-muted);letter-spacing:.075em;text-transform:uppercase;margin:1px 0 3px;font-size:10px;font-weight:700}.panel-toggle-list{gap:0;display:grid}.panel-site-note{border-left:2px solid var(--color-panel-accent);color:var(--color-panel-muted);margin:8px 0 2px;padding-left:9px;font-size:11px}.panel-toggle{min-height:44px;color:var(--color-panel-text);cursor:pointer;justify-content:space-between;align-items:center;gap:12px;font-size:12px;display:flex}.panel-switch{flex:none;justify-content:center;align-items:center;width:44px;height:38px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{border:1px solid var(--color-panel-border);background:var(--color-panel-control-hover);border-radius:999px;width:34px;height:19px}.panel-switch-thumb{background:var(--color-panel-muted);width:13px;height:13px;box-shadow:0 1px 2px var(--color-panel-shadow);pointer-events:none;transition:transform var(--dur-short) var(--ease-out);border-radius:50%;position:absolute;top:50%;left:7px;transform:translateY(-50%)}.panel-switch-input:checked~.panel-switch-track{border-color:var(--color-panel-good);background:color-mix(in oklab, var(--color-panel-good) 62%, var(--color-panel-control))}.panel-switch-input:checked~.panel-switch-thumb{background:var(--color-panel-text);transform:translate(15px,-50%)}.panel-switch-input:focus-visible~.panel-switch-track{outline:2px solid var(--color-panel-accent);outline-offset:3px}.panel-switch-input:disabled~.panel-switch-track,.panel-switch-input:disabled~.panel-switch-thumb{cursor:not-allowed;opacity:.55}.panel-slider{padding-top:8px}.panel-range{appearance:none;cursor:pointer;width:100%;height:27px;accent-color:var(--color-panel-accent);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--color-panel-border);border-radius:3px;height:3px}.panel-range::-moz-range-track{background:var(--color-panel-border);border-radius:3px;height:3px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--color-panel);background:var(--color-panel-accent);width:13px;height:13px;box-shadow:0 0 0 1px var(--color-panel-muted);border-radius:50%;margin-top:-5px}.panel-range::-moz-range-thumb{border:2px solid var(--color-panel);background:var(--color-panel-accent);width:13px;height:13px;box-shadow:0 0 0 1px var(--color-panel-muted);border-radius:50%}.panel-method{border:0;justify-content:space-between;align-items:center;gap:10px;min-width:0;margin:7px 0 0;padding:0;display:flex}.panel-method legend{float:left;padding:0}.panel-segmented{border:1px solid var(--color-panel-line);background:var(--color-panel-console);border-radius:7px;flex:none;gap:3px;padding:3px;display:flex}.panel-segment{min-width:52px;min-height:38px;color:var(--color-panel-muted);background:0 0;border-color:#0000;border-radius:5px;padding:3px 8px;font-size:11px}.panel-segment[aria-pressed=true]{border-color:var(--color-panel-border);background:var(--color-panel-control-hover);color:var(--color-panel-text)}.panel-activity{border-top:1px solid var(--color-panel-line);background:var(--color-panel-console)}.panel-activity-heading{min-height:34px;color:var(--color-panel-muted);padding:3px 11px;font-size:11px;font-weight:650}.panel-activity-actions{gap:5px;display:flex}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--color-panel-border) var(--color-panel-console);scrollbar-width:thin;flex-direction:column;gap:3px;min-height:54px;max-height:128px;padding:5px 11px 10px;display:flex;overflow:auto}.panel-log:focus-visible{outline:2px solid var(--color-panel-accent);outline-offset:-2px}.panel-log-empty{color:var(--color-panel-muted);opacity:.78;margin:0;font-size:10px;line-height:1.5}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:48px minmax(0,1fr);gap:7px;margin:0;font-size:10px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--color-panel-muted);font-variant-numeric:tabular-nums;opacity:.78}.log-text-info,.log-text-move{color:var(--color-panel-good)}.log-text-status{color:var(--color-panel-muted)}.log-text-error{color:var(--color-panel-error)}.log-text-warn{color:var(--color-panel-warning)}.log-text-opponent{color:var(--color-panel-opponent)}@media (width<=360px){.panel-analysis{margin-left:8px;margin-right:8px}.panel-controls{padding-left:11px;padding-right:11px}.panel-method{gap:5px}.panel-method legend{font-size:10px}}@media (prefers-reduced-motion:reduce){.panel-icon-button,.panel-action-button,.panel-quiet-button,.panel-segment,.panel-switch-track,.panel-switch-thumb{transition-duration:1ms}}";
+	var panel_default = ":host{--ink:#1b1a17;--well:#151411;--wood:#252420;--wood-raised:#302e28;--line:#3b3932;--paper:#efe9dc;--muted:#a8a193;--brass:#d9a94f;--sage:#8fb996;--brick:#d8826b;--serif:\"Iowan Old Style\", \"Palatino Linotype\", Palatino, \"Book Antiqua\", Georgia, serif;--sans:system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif;--radius:14px;--radius-control:8px;--target:40px;--ease:cubic-bezier(.2, .7, .2, 1);all:initial;z-index:9999999;width:min(360px,100vw - 24px);color:var(--paper);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font:13px / 1.45 var(--sans);-webkit-font-smoothing:antialiased;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}.panel button{font:inherit;color:inherit}.panel :is(button,input):focus-visible,.panel-log:focus-visible{outline:2px solid var(--brass);outline-offset:2px}.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--ink);overflow:hidden;box-shadow:0 16px 40px #0000006b}.panel-bar{cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:60px;padding:8px 8px 8px 12px;display:flex}.panel[data-state=open] .panel-bar{border-bottom:1px solid var(--line)}:host(.dragging) .panel-bar{cursor:grabbing}.panel-mark{border-radius:var(--radius-control);background:var(--wood-raised);width:32px;height:32px;color:var(--brass);font:22px / 1 var(--serif);flex:none;place-items:center;display:grid}.panel-bar-text{flex-direction:column;flex:auto;gap:3px;min-width:0;display:flex}.panel-title{letter-spacing:-.005em;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600;overflow:hidden}.panel-status,.panel-summary{min-width:0;color:var(--muted);align-items:center;gap:7px;font-size:12px;display:flex}.panel-status-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-summary b{color:var(--paper);font:600 17px / 1 var(--serif)}.panel-summary>span:last-child{color:var(--brass);font-variant-numeric:tabular-nums}.panel-dot{background:var(--muted);border-radius:50%;flex:none;width:7px;height:7px}.panel[data-tone=ready] .panel-dot{background:var(--sage)}.panel[data-tone=working] .panel-dot{background:var(--sage);animation:panel-pulse 1.6s var(--ease) infinite}.panel[data-tone=paused] .panel-dot{background:var(--brass)}.panel[data-tone=error] .panel-dot{background:var(--brick)}.panel[data-tone=error] .panel-status{color:var(--brick)}.panel[data-tone=paused] .panel-status{color:var(--brass)}@keyframes panel-pulse{0%,to{box-shadow:0 0 #8fb99680}50%{box-shadow:0 0 0 5px #8fb99600}}.panel-icon{width:var(--target);height:var(--target);border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);cursor:pointer;flex:none;place-items:center;display:grid}.panel-icon:hover{background:var(--wood-raised)}.panel-chevron{transition:transform .18s var(--ease)}.panel[data-state=collapsed] .panel-chevron{transform:rotate(180deg)}.panel-enable{min-height:var(--target);border:1px solid var(--line);background:var(--wood);cursor:pointer;border-radius:999px;flex:none;align-items:center;gap:8px;padding:0 10px 0 12px;font-size:12px;font-weight:500;display:inline-flex}.panel-enable:hover{background:var(--wood-raised)}.panel-enable-state{min-width:18px;color:var(--muted);font-variant-numeric:tabular-nums}.panel-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line))}.panel-enable[aria-pressed=true] .panel-enable-state{color:var(--sage)}.panel-enable-wide{border-radius:var(--radius-control);justify-content:space-between;width:100%;padding:0 12px;font-size:13px}.panel-switch{flex:none;align-items:center;width:34px;height:20px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{background:var(--line);transition:background .16s var(--ease);border-radius:999px;position:absolute;inset:0}.panel-switch-knob{background:var(--muted);pointer-events:none;width:14px;height:14px;transition:transform .16s var(--ease), background .16s var(--ease);border-radius:50%;position:absolute;top:3px;left:3px}.panel-enable .panel-switch-knob{background:var(--paper)}.panel-switch-input:checked~.panel-switch-track,.panel-enable[aria-pressed=true] .panel-switch-track{background:var(--sage)}.panel-switch-input:checked~.panel-switch-knob,.panel-enable[aria-pressed=true] .panel-switch-knob{background:var(--ink);transform:translate(14px)}.panel-body{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(72vh,640px);animation:panel-rise .18s var(--ease);overflow:auto}@keyframes panel-rise{0%{opacity:0;transform:translateY(-4px)}}.panel-hero{padding:14px 16px}.panel-move-row{justify-content:space-between;align-items:baseline;gap:12px;display:flex}.panel-move{overflow-wrap:anywhere;color:var(--paper);font:600 36px / 1.05 var(--serif);letter-spacing:.01em}.panel-score{color:var(--brass);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600}.panel-line{color:var(--muted);font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap;margin:6px 0 0;font-size:12px;overflow:hidden}.panel-notice{border-radius:var(--radius-control);background:var(--wood);box-shadow:inset 0 0 0 1px var(--line);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;margin-top:12px;padding:10px 12px;font-size:12px;display:grid}.panel-notice p{margin:0}.panel-notice[data-kind=retry]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brick) 60%, transparent)}.panel-notice[data-kind=resume]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brass) 60%, transparent)}.panel-button{min-height:var(--target);border:1px solid var(--brass);border-radius:var(--radius-control);background:var(--brass);color:var(--ink);white-space:nowrap;cursor:pointer;padding:0 14px;font-size:13px;font-weight:600}.panel-button:hover{filter:brightness(1.06)}.panel-settings{border-top:1px solid var(--line);gap:2px;padding:12px 16px 16px;display:grid}.panel-toggles{margin-top:6px;display:grid}.panel-toggle{cursor:pointer;justify-content:space-between;align-items:center;gap:12px;min-height:44px;display:flex}.panel-note{color:var(--muted);margin:4px 0 0;font-size:12px}.panel-field{gap:6px;padding:8px 0 4px;display:grid}.panel-field-head{justify-content:space-between;align-items:baseline;gap:10px;display:flex}.panel-field-head output{font-variant-numeric:tabular-nums;font-weight:600}.panel-field-label{color:var(--muted);font-size:12px}.panel-range{appearance:none;cursor:pointer;width:100%;height:28px;accent-color:var(--brass);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-moz-range-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px;margin-top:-8px}.panel-range::-moz-range-thumb{border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px}.panel-segmented{border-radius:var(--radius-control);background:var(--wood);grid-auto-columns:1fr;grid-auto-flow:column;gap:4px;padding:4px;display:grid}.panel-segment{min-height:var(--target);color:var(--muted);cursor:pointer;background:0 0;border:0;border-radius:6px;font-weight:500}.panel-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-activity{border-top:1px solid var(--line);background:var(--well)}.panel-activity-head{justify-content:space-between;align-items:center;gap:8px;min-height:44px;padding:0 8px 0 16px;display:flex}.panel-disclosure{min-height:var(--target);cursor:pointer;background:0 0;border:0;align-items:center;gap:8px;padding:0;font-size:13px;font-weight:600;display:inline-flex}.panel-count{background:var(--wood-raised);min-width:24px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:center;border-radius:999px;padding:2px 6px;font-size:11px}.panel-activity-actions{gap:2px;display:flex}.panel-text-button{border-radius:var(--radius-control);min-height:36px;color:var(--muted);cursor:pointer;background:0 0;border:0;padding:0 10px;font-size:12px}.panel-text-button:hover{color:var(--paper)}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;gap:6px;max-height:176px;padding:2px 16px 14px;display:grid;overflow:auto}.panel-log-empty{color:var(--muted);margin:0;font-size:12px}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:44px minmax(0,1fr);gap:8px;margin:0;font-size:12px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--muted);font-variant-numeric:tabular-nums}.log-text-info{color:var(--paper)}.log-text-status{color:var(--muted)}.log-text-move{color:var(--sage)}.log-text-warn{color:var(--brass)}.log-text-error{color:var(--brick)}.log-text-opponent{color:#cfc7b5}@media (pointer:coarse){:host{--target:48px}.panel-range::-webkit-slider-runnable-track{height:6px}.panel-range::-webkit-slider-thumb{width:28px;height:28px;margin-top:-11px}.panel-range::-moz-range-thumb{width:28px;height:28px}.panel-text-button{min-height:44px}}@media (width<=560px){:host{width:100%;inset:auto 0 0!important}.panel{padding-bottom:env(safe-area-inset-bottom,0px);border-bottom:0;border-left:0;border-right:0;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px #0000005c}.panel-bar{cursor:default;touch-action:manipulation}.panel-body{max-height:min(64vh,540px)}.panel-log{max-height:132px}}@media (prefers-reduced-motion:reduce){.panel *,.panel :before,.panel :after{transition-duration:1ms!important;animation-duration:1ms!important;animation-iteration-count:1!important}}";
 	var n$1;
 	var t$2;
 	var i$2;
@@ -5653,6 +5638,23 @@
 			transportNote: selectionInput ? "Moves use legal square selection on this site." : capabilities?.input === "controller" ? "Moves use the active game controller." : null
 		};
 	}
+	var EDGE_MARGIN = 8;
+	var DOCK_QUERY = "(max-width: 560px)";
+	var COLLAPSED_KEY = "gabibot_panel_collapsed";
+	var LOG_STICK_PX = 16;
+	var COPY_FEEDBACK_MS = 1400;
+	var EDITABLE_TAGS = new Set([
+		"INPUT",
+		"TEXTAREA",
+		"SELECT"
+	]);
+	var MOVE_METHODS = [{
+		value: "click",
+		label: "Click"
+	}, {
+		value: "drag",
+		label: "Drag"
+	}];
 	var readSettings = () => ({
 		enabled: !!BotState.hackEnabled,
 		autoMove: !!BotState.autoMove,
@@ -5672,7 +5674,7 @@
 	});
 	var logsSignal = y$1([]);
 	var nextLogId = 0;
-	var logTextColor = {
+	var logTextClass = {
 		info: "log-text-info",
 		status: "log-text-status",
 		error: "log-text-error",
@@ -5680,6 +5682,9 @@
 		move: "log-text-move",
 		opponent: "log-text-opponent"
 	};
+	function shallowEqual(a, b) {
+		return Object.keys(b).every((key) => a[key] === b[key]);
+	}
 	function appendPanelLog(text, type = "info") {
 		const entry = {
 			id: ++nextLogId,
@@ -5697,21 +5702,15 @@
 		logsSignal.value = [];
 	}
 	function syncPanelSettings() {
-		const current = settingsSignal.value;
 		const next = readSettings();
-		if (current.enabled === next.enabled && current.autoMove === next.autoMove && current.openingBook === next.openingBook && current.ponder === next.ponder && current.depth === next.depth && current.moveTimeMs === next.moveTimeMs && current.moveMethod === next.moveMethod) return;
+		if (shallowEqual(settingsSignal.value, next)) return;
 		settingsSignal.value = next;
 	}
 	function updatePanelAnalysis(next) {
-		const current = analysisSignal.value;
-		if (current.status === next.status && current.evaluation === next.evaluation && current.bestMove === next.bestMove && current.principalVariation === next.principalVariation && current.recoveryAction === next.recoveryAction) return;
+		if (shallowEqual(analysisSignal.value, next)) return;
 		analysisSignal.value = next;
 	}
-	function updatePanelSetting(key, value, actions) {
-		const next = {
-			...settingsSignal.value,
-			[key]: value
-		};
+	function writeBotState(key, value) {
 		switch (key) {
 			case "enabled":
 				BotState.hackEnabled = value ? 1 : 0;
@@ -5733,29 +5732,68 @@
 				break;
 			case "moveMethod": BotState.moveMethod = value;
 		}
-		settingsSignal.value = next;
+	}
+	function updatePanelSetting(key, value, actions) {
+		settingsSignal.value = {
+			...settingsSignal.value,
+			[key]: value
+		};
+		writeBotState(key, value);
 		Settings.save();
 		if (key === "enabled") actions?.setEnabled?.(!!value);
 		else actions?.refreshSettings?.();
 	}
-	function handlePanelKeyDown(event, actions = {}, toggleMinimized) {
-		const target = event.composedPath ? event.composedPath()[0] : event.target;
-		const targetElement = target && typeof target === "object" ? target : null;
-		if (typeof HTMLInputElement !== "undefined" && target instanceof HTMLInputElement || typeof HTMLTextAreaElement !== "undefined" && target instanceof HTMLTextAreaElement || typeof HTMLSelectElement !== "undefined" && target instanceof HTMLSelectElement || typeof HTMLElement !== "undefined" && target instanceof HTMLElement && target.isContentEditable || targetElement?.isContentEditable === true || targetElement?.tagName === "INPUT" || targetElement?.tagName === "TEXTAREA" || targetElement?.tagName === "SELECT") return;
-		if (event.key.toLowerCase() === "b" && event.ctrlKey && !event.metaKey) {
+	function isEditableTarget(target) {
+		if (!target || typeof target !== "object") return false;
+		const element = target;
+		return element.isContentEditable === true || EDITABLE_TAGS.has((element.tagName ?? "").toUpperCase());
+	}
+	function handlePanelKeyDown(event, actions = {}, toggleCollapsed) {
+		if (isEditableTarget(event.composedPath ? event.composedPath()[0] : event.target)) return;
+		if (event.key?.toLowerCase() === "b" && event.ctrlKey && !event.metaKey) {
 			event.preventDefault?.();
-			toggleMinimized?.();
+			toggleCollapsed?.();
 			return;
 		}
-		if (!event.ctrlKey && !event.metaKey && !event.altKey) {
-			if (event.code === "KeyE") {
-				event.preventDefault?.();
-				updatePanelSetting("enabled", !settingsSignal.value.enabled, actions);
-			} else if (event.code === "KeyR" && analysisSignal.value.recoveryAction !== null) {
-				event.preventDefault?.();
-				actions.recover?.();
-			}
+		if (event.ctrlKey || event.metaKey || event.altKey) return;
+		if (event.code === "KeyE") {
+			event.preventDefault?.();
+			updatePanelSetting("enabled", !settingsSignal.value.enabled, actions);
+		} else if (event.code === "KeyR" && analysisSignal.value.recoveryAction !== null) {
+			event.preventDefault?.();
+			actions.recover?.();
 		}
+	}
+	function clampPosition(left, top, width, height) {
+		const maxLeft = Math.max(EDGE_MARGIN, window.innerWidth - width - EDGE_MARGIN);
+		const maxTop = Math.max(EDGE_MARGIN, window.innerHeight - height - EDGE_MARGIN);
+		return {
+			left: Math.min(Math.max(EDGE_MARGIN, left), maxLeft),
+			top: Math.min(Math.max(EDGE_MARGIN, top), maxTop)
+		};
+	}
+	function placeHost(host, left, top) {
+		const nextLeft = `${left}px`;
+		const nextTop = `${top}px`;
+		if (host.style.left !== nextLeft) host.style.left = nextLeft;
+		if (host.style.top !== nextTop) host.style.top = nextTop;
+		if (host.style.right !== "auto") host.style.right = "auto";
+	}
+	function isDocked() {
+		return typeof window.matchMedia === "function" && window.matchMedia(DOCK_QUERY).matches;
+	}
+	function readStoredCollapsed() {
+		try {
+			const value = localStorage.getItem(COLLAPSED_KEY);
+			return value === null ? null : value === "1";
+		} catch {
+			return null;
+		}
+	}
+	function storeCollapsed(collapsed) {
+		try {
+			localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
+		} catch {}
 	}
 	function mountPanel(root, host, actions, capabilities) {
 		G$1(u(Panel, {
@@ -5765,7 +5803,13 @@
 		}), root);
 	}
 	function formatBudget(milliseconds) {
-		return milliseconds >= 1e3 ? `${(milliseconds / 1e3).toFixed(milliseconds % 1e3 === 0 ? 0 : 1)} s` : `${milliseconds} ms`;
+		return milliseconds < 1e3 ? `${milliseconds} ms` : `${Number((milliseconds / 1e3).toFixed(2))} s`;
+	}
+	function displayValue(value) {
+		return value && value !== "-" ? value : "—";
+	}
+	function hasLine(value) {
+		return !!value && value !== "-" && value !== "Not available";
 	}
 	function statusTone(analysis, enabled) {
 		if (analysis.recoveryAction === "retry") return "error";
@@ -5773,6 +5817,46 @@
 		if (/error|failed|unavailable|not confirmed/i.test(analysis.status)) return "error";
 		if (/loading|analyz|ponder|submitting|resuming/i.test(analysis.status)) return "working";
 		return enabled ? "ready" : "idle";
+	}
+	function Chevron() {
+		return u("svg", {
+			class: "panel-chevron",
+			viewBox: "0 0 16 16",
+			width: "16",
+			height: "16",
+			"aria-hidden": "true",
+			children: u("path", {
+				d: "M4 6l4 4 4-4",
+				fill: "none",
+				stroke: "currentColor",
+				"stroke-width": "1.75",
+				"stroke-linecap": "round",
+				"stroke-linejoin": "round"
+			})
+		});
+	}
+	function EnableButton({ enabled, wide = false, onToggle }) {
+		return u("button", {
+			type: "button",
+			class: wide ? "panel-enable panel-enable-wide" : "panel-enable",
+			"aria-pressed": enabled,
+			onClick: () => onToggle(!enabled),
+			children: [
+				u("span", {
+					class: "panel-enable-label",
+					children: "Enable bot"
+				}),
+				u("span", {
+					class: "panel-enable-state",
+					children: enabled ? "On" : "Off"
+				}),
+				u("span", {
+					class: "panel-switch",
+					"aria-hidden": "true",
+					children: [u("span", { class: "panel-switch-track" }), u("span", { class: "panel-switch-knob" })]
+				})
+			]
+		});
 	}
 	function Toggle({ label, checked, onChange }) {
 		return u("label", {
@@ -5792,10 +5876,67 @@
 						"aria-hidden": "true"
 					}),
 					u("span", {
-						class: "panel-switch-thumb",
+						class: "panel-switch-knob",
 						"aria-hidden": "true"
 					})
 				]
+			})]
+		});
+	}
+	function Slider({ id, label, value, min, max, step, format, onPreview, onCommit }) {
+		return u("div", {
+			class: "panel-field",
+			children: [u("div", {
+				class: "panel-field-head",
+				children: [u("label", {
+					htmlFor: id,
+					children: label
+				}), u("output", { children: format(value) })]
+			}), u("input", {
+				id,
+				class: "panel-range",
+				type: "range",
+				min,
+				max,
+				step,
+				value,
+				"aria-valuetext": format(value),
+				onInput: (event) => onPreview(Number(event.currentTarget.value)),
+				onChange: (event) => onCommit(Number(event.currentTarget.value))
+			})]
+		});
+	}
+	function Segmented({ label, value, options, onSelect }) {
+		return u("div", {
+			class: "panel-field",
+			children: [u("span", {
+				class: "panel-field-label",
+				children: label
+			}), u("div", {
+				class: "panel-segmented",
+				role: "group",
+				"aria-label": label,
+				children: options.map((option) => u("button", {
+					type: "button",
+					class: "panel-segment",
+					"aria-pressed": value === option.value,
+					onClick: () => onSelect(option.value),
+					children: option.label
+				}, option.value))
+			})]
+		});
+	}
+	function RecoveryNotice({ kind, onRecover }) {
+		const resume = kind === "resume";
+		return u("div", {
+			class: "panel-notice",
+			role: "alert",
+			"data-kind": kind,
+			children: [u("p", { children: resume ? "Board input paused the bot. Resume when you are ready." : "The last action did not finish. Retry this position." }), u("button", {
+				type: "button",
+				class: "panel-button",
+				onClick: onRecover,
+				children: resume ? "Resume bot" : "Retry position"
 			})]
 		});
 	}
@@ -5804,86 +5945,80 @@
 		const analysis = analysisSignal.value;
 		const logs = logsSignal.value;
 		const capabilityView = getPanelCapabilityView(capabilities);
-		const [minimized, setMinimized] = d$2(false);
+		const tone = statusTone(analysis, settings.enabled);
+		const [collapsed, setCollapsed] = d$2(() => readStoredCollapsed() ?? isDocked());
+		const [activityOpen, setActivityOpen] = d$2(() => !isDocked());
 		const [copied, setCopied] = d$2(false);
 		const logElement = T(null);
 		const stickToBottom = T(true);
 		const copyTimer = T(null);
-		A(() => {
-			const handleKeyDown = (event) => {
-				handlePanelKeyDown(event, actions, () => setMinimized((value) => !value));
+		const toggleCollapsed = () => setCollapsed((value) => !value);
+		const updateSetting = (key, value) => updatePanelSetting(key, value, actions);
+		const previewSlider = (key, value) => {
+			settingsSignal.value = {
+				...settingsSignal.value,
+				[key]: value
 			};
+		};
+		A(() => {
+			const handleKeyDown = (event) => handlePanelKeyDown(event, actions, () => setCollapsed((value) => !value));
 			window.addEventListener("keydown", handleKeyDown);
 			return () => window.removeEventListener("keydown", handleKeyDown);
 		}, [actions]);
+		A(() => storeCollapsed(collapsed), [collapsed]);
 		A(() => {
-			const clampToViewport = () => {
+			const keepOnScreen = () => {
+				if (isDocked()) return;
 				const rect = host.getBoundingClientRect();
-				const margin = 8;
-				const left = Math.max(margin, Math.min(rect.left, window.innerWidth - rect.width - margin));
-				const top = Math.max(margin, Math.min(rect.top, window.innerHeight - rect.height - margin));
-				host.style.left = `${left}px`;
-				host.style.right = "auto";
-				host.style.top = `${top}px`;
+				const next = clampPosition(rect.left, rect.top, rect.width, rect.height);
+				placeHost(host, next.left, next.top);
 			};
-			const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(clampToViewport);
+			const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(keepOnScreen);
 			observer?.observe(host);
-			window.addEventListener("resize", clampToViewport);
-			const frame = requestAnimationFrame(clampToViewport);
+			window.addEventListener("resize", keepOnScreen);
+			const frame = requestAnimationFrame(keepOnScreen);
 			return () => {
 				observer?.disconnect();
-				window.removeEventListener("resize", clampToViewport);
+				window.removeEventListener("resize", keepOnScreen);
 				cancelAnimationFrame(frame);
 			};
-		}, [host, minimized]);
+		}, [host, collapsed]);
 		A(() => () => {
 			if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
 		}, []);
 		A(() => {
+			if (logs.length === 0) stickToBottom.current = true;
 			const log = logElement.current;
-			if (logs.length === 0) {
-				stickToBottom.current = true;
-				return;
-			}
-			if (log && stickToBottom.current) log.scrollTop = log.scrollHeight;
-		}, [logs]);
-		const updateSetting = (key, value) => {
-			updatePanelSetting(key, value, actions);
-		};
+			if (activityOpen && log && stickToBottom.current) log.scrollTop = log.scrollHeight;
+		}, [logs, activityOpen]);
 		const beginDrag = (event) => {
-			if (event.button !== 0 || event.target.closest("button, input, a")) return;
+			if (isDocked() || event.button !== 0 || event.target.closest("button, input, label, a")) return;
 			event.preventDefault();
 			const start = host.getBoundingClientRect();
 			const originX = event.clientX;
 			const originY = event.clientY;
-			let finished = false;
-			const maxLeft = () => Math.max(8, window.innerWidth - start.width - 8);
-			const maxTop = () => Math.max(8, window.innerHeight - start.height - 8);
-			const move = (pointerEvent) => {
-				const left = Math.min(Math.max(8, start.left + pointerEvent.clientX - originX), maxLeft());
-				const top = Math.min(Math.max(8, start.top + pointerEvent.clientY - originY), maxTop());
-				host.style.left = `${left}px`;
-				host.style.right = "auto";
-				host.style.top = `${top}px`;
-			};
+			const drag = new AbortController();
 			const finish = () => {
-				if (finished) return;
-				finished = true;
-				window.removeEventListener("pointermove", move);
-				window.removeEventListener("pointerup", finish);
-				window.removeEventListener("pointercancel", finish);
-				window.removeEventListener("blur", finish);
+				drag.abort();
 				host.classList.remove("dragging");
 				Settings.save();
 			};
 			host.classList.add("dragging");
-			window.addEventListener("pointermove", move);
-			window.addEventListener("pointerup", finish, { once: true });
-			window.addEventListener("pointercancel", finish, { once: true });
-			window.addEventListener("blur", finish, { once: true });
+			window.addEventListener("pointermove", (pointer) => {
+				const next = clampPosition(start.left + pointer.clientX - originX, start.top + pointer.clientY - originY, start.width, start.height);
+				placeHost(host, next.left, next.top);
+			}, { signal: drag.signal });
+			for (const type of [
+				"pointerup",
+				"pointercancel",
+				"blur"
+			]) window.addEventListener(type, finish, {
+				once: true,
+				signal: drag.signal
+			});
 		};
 		const copyLogs = async () => {
-			const text = logsSignal.value.map((log) => `[${log.time}] ${log.text}`).join("\n");
+			const text = logs.map((entry) => `[${entry.time}] ${entry.text}`).join("\n");
 			if (!text || !navigator.clipboard?.writeText) return;
 			try {
 				await navigator.clipboard.writeText(text);
@@ -5892,192 +6027,161 @@
 				copyTimer.current = window.setTimeout(() => {
 					copyTimer.current = null;
 					setCopied(false);
-				}, 1400);
+				}, COPY_FEEDBACK_MS);
 			} catch {
 				setCopied(false);
 			}
 		};
-		const tone = statusTone(analysis, settings.enabled);
-		const canRecover = analysis.recoveryAction !== null;
+		const move = displayValue(analysis.bestMove);
+		const evaluation = displayValue(analysis.evaluation);
+		const line = hasLine(analysis.principalVariation) ? analysis.principalVariation : "Waiting for a position";
 		return u("aside", {
-			class: "panel-shell",
+			class: "panel",
+			"data-state": collapsed ? "collapsed" : "open",
+			"data-tone": tone,
 			"aria-label": "Super Chess Bot controls",
 			children: [u("header", {
-				class: "panel-header",
+				class: "panel-bar",
 				onPointerDown: beginDrag,
 				children: [
 					u("span", {
-						class: "panel-brandmark",
+						class: "panel-mark",
 						"aria-hidden": "true",
 						children: "♞"
 					}),
 					u("div", {
-						class: "panel-brand",
+						class: "panel-bar-text",
 						children: [u("strong", {
 							class: "panel-title",
 							children: "Super Chess Bot"
-						}), u("span", {
-							class: "panel-state",
-							"data-tone": tone,
-							role: "status",
-							"aria-live": "polite",
+						}), collapsed ? u("span", {
+							class: "panel-summary",
+							children: [
+								u("span", {
+									class: "panel-dot",
+									"aria-hidden": "true"
+								}),
+								u("b", { children: move }),
+								u("span", { children: evaluation })
+							]
+						}) : u("span", {
+							class: "panel-status",
 							title: analysis.status,
-							children: [u("i", {
-								class: "panel-state-dot",
+							children: [u("span", {
+								class: "panel-dot",
 								"aria-hidden": "true"
 							}), u("span", {
-								class: "panel-state-text",
+								class: "panel-status-text",
 								children: analysis.status || "Ready"
 							})]
 						})]
 					}),
+					collapsed && u(EnableButton, {
+						enabled: settings.enabled,
+						onToggle: (next) => updateSetting("enabled", next)
+					}),
 					u("button", {
-						class: "panel-icon-button",
 						type: "button",
-						"aria-label": minimized ? "Expand panel" : "Minimize panel",
-						"aria-expanded": !minimized,
-						title: "Minimize or expand (Ctrl+B)",
-						onClick: () => setMinimized((value) => !value),
-						children: u("span", {
-							"aria-hidden": "true",
-							children: minimized ? "+" : "−"
-						})
+						class: "panel-icon",
+						"aria-expanded": !collapsed,
+						"aria-controls": "panel-body",
+						"aria-label": collapsed ? "Show panel" : "Hide panel",
+						title: collapsed ? "Show panel (Ctrl+B)" : "Hide panel (Ctrl+B)",
+						onClick: toggleCollapsed,
+						children: u(Chevron, {})
 					})
 				]
-			}), !minimized && u("div", {
-				class: "panel-scroll",
+			}), !collapsed && u("div", {
+				class: "panel-body",
+				id: "panel-body",
 				children: [
 					u("section", {
-						class: "panel-analysis",
+						class: "panel-hero",
 						"aria-label": "Suggested move",
 						children: [
 							u("div", {
-								class: "panel-analysis-heading",
-								children: [u("span", {
-									class: "panel-eyebrow",
-									children: "Suggested move"
+								class: "panel-move-row",
+								children: [u("output", {
+									class: "panel-move",
+									"aria-label": "Suggested move",
+									children: move
 								}), u("output", {
-									class: "panel-evaluation",
-									"aria-label": `Evaluation ${analysis.evaluation || "unknown"}`,
-									children: analysis.evaluation && analysis.evaluation !== "-" ? analysis.evaluation : "—"
+									class: "panel-score",
+									"aria-label": "Evaluation",
+									children: evaluation
 								})]
 							}),
-							u("div", {
-								class: "panel-best-move",
-								children: analysis.bestMove && analysis.bestMove !== "-" ? analysis.bestMove : "—"
-							}),
-							u("div", {
+							u("p", {
 								class: "panel-line",
 								title: analysis.principalVariation,
-								children: analysis.principalVariation && analysis.principalVariation !== "-" && analysis.principalVariation !== "Not available" ? `Line · ${analysis.principalVariation}` : "Waiting for a position"
+								children: line
 							}),
-							canRecover && u("div", {
-								class: "panel-recovery",
-								"data-kind": analysis.recoveryAction,
-								children: [u("span", { children: analysis.recoveryAction === "resume" ? "Board input paused the bot. Resume when you are ready." : "The last action did not finish. Retry this position." }), u("button", {
-									class: "panel-action-button",
-									type: "button",
-									onClick: () => actions.recover?.(),
-									children: analysis.recoveryAction === "resume" ? "Resume bot" : "Retry"
-								})]
+							analysis.recoveryAction && u(RecoveryNotice, {
+								kind: analysis.recoveryAction,
+								onRecover: () => actions.recover?.()
 							})
 						]
 					}),
 					u("section", {
-						class: "panel-controls",
+						class: "panel-settings",
 						"aria-label": "Bot settings",
 						children: [
-							u("div", {
-								class: "panel-section-heading",
-								children: "Automation"
+							u(EnableButton, {
+								wide: true,
+								enabled: settings.enabled,
+								onToggle: (next) => updateSetting("enabled", next)
 							}),
 							u("div", {
-								class: "panel-toggle-list",
+								class: "panel-toggles",
 								children: [
-									u(Toggle, {
-										label: "Enable bot",
-										checked: settings.enabled,
-										onChange: (checked) => updateSetting("enabled", checked)
-									}),
 									u(Toggle, {
 										label: "Auto move",
 										checked: settings.autoMove,
-										onChange: (checked) => updateSetting("autoMove", checked)
+										onChange: (next) => updateSetting("autoMove", next)
 									}),
 									u(Toggle, {
 										label: "Opening book",
 										checked: settings.openingBook,
-										onChange: (checked) => updateSetting("openingBook", checked)
+										onChange: (next) => updateSetting("openingBook", next)
 									}),
 									u(Toggle, {
 										label: "Background ponder",
 										checked: settings.ponder,
-										onChange: (checked) => updateSetting("ponder", checked)
+										onChange: (next) => updateSetting("ponder", next)
 									})
 								]
 							}),
 							capabilityView.transportNote && u("p", {
-								class: "panel-site-note",
+								class: "panel-note",
 								children: capabilityView.transportNote
 							}),
-							u("div", {
-								class: "panel-slider",
-								children: [u("div", {
-									class: "panel-setting-heading",
-									children: [u("label", {
-										htmlFor: "bot-depth",
-										children: "Depth cap"
-									}), u("output", { children: settings.depth })]
-								}), u("input", {
-									id: "bot-depth",
-									class: "panel-range",
-									type: "range",
-									min: "1",
-									max: "30",
-									step: "1",
-									value: settings.depth,
-									"aria-label": "Maximum search depth",
-									onInput: (event) => updateSetting("depth", Number(event.currentTarget.value))
-								})]
+							u(Slider, {
+								id: "bot-depth",
+								label: "Depth cap",
+								value: settings.depth,
+								min: 1,
+								max: 30,
+								step: 1,
+								format: String,
+								onPreview: (value) => previewSlider("depth", value),
+								onCommit: (value) => updateSetting("depth", value)
 							}),
-							u("div", {
-								class: "panel-slider",
-								children: [u("div", {
-									class: "panel-setting-heading",
-									children: [u("label", {
-										htmlFor: "move-budget",
-										children: "Move time"
-									}), u("output", { children: formatBudget(settings.moveTimeMs) })]
-								}), u("input", {
-									id: "move-budget",
-									class: "panel-range",
-									type: "range",
-									min: "25",
-									max: "5000",
-									step: "25",
-									value: settings.moveTimeMs,
-									"aria-label": "Move time budget in milliseconds",
-									onInput: (event) => updateSetting("moveTimeMs", Number(event.currentTarget.value))
-								})]
+							u(Slider, {
+								id: "move-budget",
+								label: "Move time",
+								value: settings.moveTimeMs,
+								min: 25,
+								max: 5e3,
+								step: 25,
+								format: formatBudget,
+								onPreview: (value) => previewSlider("moveTimeMs", value),
+								onCommit: (value) => updateSetting("moveTimeMs", value)
 							}),
-							capabilityView.showMoveMethod && u("fieldset", {
-								class: "panel-method",
-								children: [u("legend", { children: "Move input method" }), u("div", {
-									class: "panel-segmented",
-									children: [u("button", {
-										class: "panel-segment",
-										type: "button",
-										"aria-pressed": settings.moveMethod === "click",
-										onClick: () => updateSetting("moveMethod", "click"),
-										children: "Click"
-									}), u("button", {
-										class: "panel-segment",
-										type: "button",
-										"aria-pressed": settings.moveMethod === "drag",
-										onClick: () => updateSetting("moveMethod", "drag"),
-										children: "Drag"
-									})]
-								})]
+							capabilityView.showMoveMethod && u(Segmented, {
+								label: "Move input",
+								value: settings.moveMethod,
+								options: MOVE_METHODS,
+								onSelect: (value) => updateSetting("moveMethod", value)
 							})
 						]
 					}),
@@ -6085,24 +6189,35 @@
 						class: "panel-activity",
 						"aria-label": "Activity log",
 						children: [u("div", {
-							class: "panel-activity-heading",
-							children: [u("span", { children: "Activity" }), u("div", {
+							class: "panel-activity-head",
+							children: [u("button", {
+								type: "button",
+								class: "panel-disclosure",
+								"aria-expanded": activityOpen,
+								"aria-controls": "panel-log",
+								onClick: () => setActivityOpen((value) => !value),
+								children: ["Activity", u("span", {
+									class: "panel-count",
+									children: logs.length
+								})]
+							}), activityOpen && u("div", {
 								class: "panel-activity-actions",
 								children: [u("button", {
-									class: "panel-quiet-button",
 									type: "button",
+									class: "panel-text-button",
 									"aria-label": copied ? "Log copied" : "Copy log",
 									onClick: copyLogs,
 									children: copied ? "Copied" : "Copy"
 								}), u("button", {
-									class: "panel-quiet-button",
 									type: "button",
+									class: "panel-text-button",
 									"aria-label": "Clear log",
 									onClick: () => actions.clearConsole?.(),
 									children: "Clear"
 								})]
 							})]
-						}), u("div", {
+						}), activityOpen && u("div", {
+							id: "panel-log",
 							ref: logElement,
 							class: "panel-log",
 							role: "log",
@@ -6111,13 +6226,13 @@
 							tabIndex: 0,
 							onScroll: () => {
 								const log = logElement.current;
-								if (log) stickToBottom.current = log.scrollHeight - log.scrollTop - log.clientHeight < 16;
+								if (log) stickToBottom.current = log.scrollHeight - log.scrollTop - log.clientHeight < LOG_STICK_PX;
 							},
 							children: logs.length === 0 ? u("p", {
 								class: "panel-log-empty",
 								children: "Moves and engine updates will appear here."
 							}) : logs.map((entry) => u("p", {
-								class: `panel-log-entry ${logTextColor[entry.type]}`,
+								class: `panel-log-entry ${logTextClass[entry.type]}`,
 								children: [u("time", { children: entry.time }), u("span", { children: entry.text })]
 							}, entry.id))
 						})]
@@ -6319,7 +6434,7 @@
 		cancelPendingMove();
 	}
 	function searchBudget(snapshot) {
-		const configured = Math.max(10, BotState.moveTime);
+		const configured = Math.max(25, BotState.moveTime);
 		if (snapshot.remainingMs === null) return configured;
 		return Math.max(1, Math.floor(Math.min(configured, snapshot.remainingMs / 40) - 12));
 	}
@@ -6356,7 +6471,6 @@
 		cancelPonder(fen);
 		const id = ++revision;
 		const ctrl = new AbortController();
-		active = ctrl;
 		processed = {
 			kind,
 			fen,
@@ -6367,9 +6481,10 @@
 		const positionIsCurrent = () => id === revision && !ctrl.signal.aborted && !!BotState.hackEnabled && !!matchingSnapshot(site, identity, fen);
 		const current = () => positionIsCurrent() && inputRevision === getMoveRevision();
 		if (!current()) return;
+		active = ctrl;
 		try {
 			const started = performance.now();
-			const budget = kind === "main" ? searchBudget(snapshot) : Math.max(10, BotState.moveTime);
+			const budget = kind === "main" ? searchBudget(snapshot) : Math.max(25, BotState.moveTime);
 			BotState.statusInfo = kind === "main" ? "Analyzing..." : "Pondering...";
 			ui.updateDisplay(pa());
 			const history = requestHistory(snapshot);
@@ -6511,6 +6626,9 @@
 		} finally {
 			if (active === ctrl) active = null;
 		}
+	}
+	function formatPhaseKey(snapshot, currentIdentity) {
+		return `phase:${snapshot.identity === currentIdentity ? snapshot.phase : `${snapshot.gameId}:${snapshot.phase}`}`;
 	}
 	var BotController = class {
 		isActive = false;
@@ -6687,7 +6805,7 @@
 		}
 		handlePhase(snapshot) {
 			if (snapshot.phase === "live") return false;
-			const phaseKey = `phase:${snapshot.identity === this.identity ? snapshot.phase : `${snapshot.gameId}:${snapshot.phase}`}`;
+			const phaseKey = formatPhaseKey(snapshot, this.identity);
 			if (this.waitingKey !== phaseKey) {
 				this.waitingKey = phaseKey;
 				this.cancelSiteWork();

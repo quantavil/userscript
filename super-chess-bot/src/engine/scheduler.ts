@@ -59,7 +59,7 @@ export function cancelAnalysis(preservePonderFen?: string): void {
 }
 
 function searchBudget(snapshot: GameSnapshot): number {
-  const configured = Math.max(10, BotState.moveTime);
+  const configured = Math.max(25, BotState.moveTime);
   if (snapshot.remainingMs === null) return configured;
   return Math.max(1, Math.floor(Math.min(configured, snapshot.remainingMs / 40) - 12));
 }
@@ -94,7 +94,6 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
   cancelPonder(fen);
   const id = ++revision;
   const ctrl = new AbortController();
-  active = ctrl;
   processed = { kind, fen, identity: snapshot.identity };
   const inputRevision = getMoveRevision();
   const identity = snapshot.identity;
@@ -102,9 +101,10 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     id === revision && !ctrl.signal.aborted && !!BotState.hackEnabled && !!matchingSnapshot(site, identity, fen);
   const current = () => positionIsCurrent() && inputRevision === getMoveRevision();
   if (!current()) return;
+  active = ctrl;
   try {
     const started = performance.now();
-    const budget = kind === 'main' ? searchBudget(snapshot) : Math.max(10, BotState.moveTime);
+    const budget = kind === 'main' ? searchBudget(snapshot) : Math.max(25, BotState.moveTime);
     BotState.statusInfo = kind === 'main' ? 'Analyzing...' : 'Pondering...';
     ui.updateDisplay(pa());
     const history = requestHistory(snapshot);

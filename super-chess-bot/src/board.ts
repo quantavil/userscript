@@ -169,19 +169,11 @@ export function attachToBoard(boardEl: HTMLElement | null): void {
     evalBarWrap,
     detachListeners() {
       for (const eventName of userInputEvents) {
-        try {
-          boardEl.removeEventListener(eventName, cancelPendingOnUserAction, true);
-        } catch {}
+        boardEl.removeEventListener(eventName, cancelPendingOnUserAction, true);
       }
-      try {
-        ro.disconnect();
-      } catch {}
-      try {
-        drawingBoard.remove();
-      } catch {}
-      try {
-        evalBarWrap.remove();
-      } catch {}
+      ro.disconnect();
+      drawingBoard.remove();
+      evalBarWrap.remove();
     },
   };
 
@@ -430,7 +422,8 @@ export function confirmSiteMove(request: MoveRequest, adapter: SiteAdapter, time
       let current: SiteRead;
       try {
         current = adapter.read();
-      } catch {
+      } catch (error) {
+        console.error('Super Chess Bot: adapter read failed during move confirmation.', error);
         finish(false);
         return;
       }
@@ -459,7 +452,8 @@ export function confirmSiteMove(request: MoveRequest, adapter: SiteAdapter, time
         unsubscribe();
         unsubscribe = null;
       }
-    } catch {
+    } catch (error) {
+      console.error('Super Chess Bot: adapter subscribe failed during move confirmation.', error);
       finish(false);
       return;
     }

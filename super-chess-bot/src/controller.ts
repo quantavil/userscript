@@ -19,6 +19,11 @@ import type { GameSnapshot, SiteAdapter, SiteRead } from './sites/types.js';
 import { BotState, pa, Settings } from './state.js';
 import { ui } from './ui.js';
 
+function formatPhaseKey(snapshot: GameSnapshot, currentIdentity: object | null): string {
+  const scope = snapshot.identity === currentIdentity ? snapshot.phase : `${snapshot.gameId}:${snapshot.phase}`;
+  return `phase:${scope}`;
+}
+
 class BotController {
   isActive = false;
   lastFenSeen = '';
@@ -207,7 +212,7 @@ class BotController {
 
   private handlePhase(snapshot: GameSnapshot): boolean {
     if (snapshot.phase === 'live') return false;
-    const phaseKey = `phase:${snapshot.identity === this.identity ? snapshot.phase : `${snapshot.gameId}:${snapshot.phase}`}`;
+    const phaseKey = formatPhaseKey(snapshot, this.identity);
     if (this.waitingKey !== phaseKey) {
       this.waitingKey = phaseKey;
       this.cancelSiteWork();

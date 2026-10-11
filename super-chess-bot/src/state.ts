@@ -52,8 +52,7 @@ export function isBoardFlipped(): boolean {
 }
 
 export function pa(): number {
-  const color = snapshot()?.playerColor;
-  return color === 'b' ? 2 : color === 'w' ? 1 : getChesscomPlayerColor(getGame()) === 'b' ? 2 : 1;
+  return getPlayerColor() === 'b' ? 2 : 1;
 }
 
 // Encapsulated state (avoid global pollution)

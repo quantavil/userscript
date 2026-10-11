@@ -1,7 +1,15 @@
 import { cancelPendingMove, executeMove } from '../board.js';
 import { readPositionHistory } from '../history.js';
 import { getBoard, getFen, getRemainingMs } from './chesscom-state.js';
-import type { Color, GameSnapshot, MoveRequest, SiteAdapter, SiteRead } from './types.js';
+import {
+  type Color,
+  type GameSnapshot,
+  type MoveRequest,
+  mutationElement,
+  pageWindow,
+  type SiteAdapter,
+  type SiteRead,
+} from './types.js';
 
 interface ChessGame {
   id?: string | number;
@@ -49,12 +57,6 @@ function closestOrSelf(element: Element, selector: string): Element | null {
   return element.matches(selector) ? element : element.closest(selector);
 }
 
-function mutationElement(target: Node): Element | null {
-  return target.nodeType === 1
-    ? (target as Element)
-    : ((target as Node & { parentElement?: Element | null }).parentElement ?? null);
-}
-
 function nodeContainsSelector(node: Node, selector: string): boolean {
   const element = mutationElement(node);
   return !!element && (element.matches(selector) || !!element.querySelector(selector));
@@ -85,7 +87,7 @@ function isRelevantMutation(records: MutationRecord[]): boolean {
   });
 }
 
-export function createChesscomAdapter(page: () => Window = defaultPage): SiteAdapter {
+export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdapter {
   let currentBoard: ChessBoard | null = null;
   let currentGame: ChessGame | null = null;
   let currentIdentity: object | null = null;
@@ -229,8 +231,4 @@ export function createChesscomAdapter(page: () => Window = defaultPage): SiteAda
       cancelPendingMove();
     },
   };
-}
-
-function defaultPage(): Window {
-  return typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
 }
