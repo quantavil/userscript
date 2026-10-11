@@ -10,6 +10,7 @@ export interface BotState {
   botPower: number;
   moveTime: number;
   autoMove: number;
+  openingBook: number;
   currentEvaluation: string;
   bestMove: string;
   principalVariation: string;
@@ -26,6 +27,7 @@ export interface SettingsData {
   botPower: number;
   moveTime: number;
   autoMove: number;
+  openingBook: number;
   ponderEnabled: number;
   autoRematch: number;
   moveMethod: 'click' | 'drag';

@@ -5,8 +5,9 @@ import { BotState, pa } from '../state.js';
 import type { Evaluation } from '../types/chess';
 import { ui } from '../ui.js';
 import { scoreToDisplay } from '../utils.js';
-import type { PositionHistory } from './analysis.js';
+import type { AnalysisResult, BestLine, PositionHistory } from './analysis.js';
 import { cancelPonder, getAnalysis, hasLegalMoves, parseBestLine, ponderPosition, predictFen } from './analysis.js';
+import { lookupBookMove } from './book.js';
 import { formatMove } from './san.js';
 
 let revision = 0;
@@ -117,16 +118,35 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       anticipatedPonder = null;
     }
 
-    const result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
-    if (!current()) return;
-    const best = parseBestLine(result);
-    if (!best) {
-      if (result.bestmove === '(none)' && hasLegalMoves(fen) === false) {
-        BotState.statusInfo = 'Terminal position';
-        ui.updateDisplay(pa());
-        return;
+    const bookMove = kind === 'main' && BotState.openingBook ? lookupBookMove(fen) : null;
+    let result: AnalysisResult;
+    let best: BestLine | null = null;
+
+    if (bookMove) {
+      result = {
+        success: true,
+        bestmove: bookMove,
+        depth: 99,
+        pv: bookMove,
+        evaluation: { cp: 20 },
+      };
+      best = {
+        uci: bookMove,
+        pv: bookMove,
+        score: { cp: 20 },
+      };
+    } else {
+      result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
+      if (!current()) return;
+      best = parseBestLine(result);
+      if (!best) {
+        if (result.bestmove === '(none)' && hasLegalMoves(fen) === false) {
+          BotState.statusInfo = 'Terminal position';
+          ui.updateDisplay(pa());
+          return;
+        }
+        throw new Error('Engine returned no legal move');
       }
-      throw new Error('Engine returned no legal move');
     }
     if (kind !== 'main') {
       const predicted = predictFen(fen, best.uci);
@@ -154,8 +174,10 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
 
     BotState.bestMove = best.uci;
     BotState.principalVariation = best.pv;
-    BotState.currentEvaluation = scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
-    BotState.statusInfo = `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
+    BotState.currentEvaluation = bookMove ? 'Book' : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
+    BotState.statusInfo = bookMove
+      ? `Ready · Book · ${Math.round(performance.now() - started)} ms`
+      : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
     clearArrows();
     drawArrow(best.uci.slice(0, 2), best.uci.slice(2, 4), 'rgba(100,255,100,0.7)', 3);
     ui.updateDisplay(pa());

@@ -6,6 +6,7 @@ export const DEFAULT_SETTINGS: SettingsData = {
   botPower: 30,
   moveTime: 100,
   autoMove: 1,
+  openingBook: 1,
   ponderEnabled: 1,
   autoRematch: 0,
   moveMethod: 'click',
@@ -23,8 +24,9 @@ const positionSchema = v.object({
 const savedSettingsSchema = v.object({
   hackEnabled: v.optional(flagSchema),
   botPower: v.optional(integerInRange(1, 30)),
-  moveTime: v.optional(integerInRange(100, 10_000)),
+  moveTime: v.optional(integerInRange(25, 10_000)),
   autoMove: v.optional(flagSchema),
+  openingBook: v.optional(flagSchema),
   ponderEnabled: v.optional(flagSchema),
   /** Legacy key written by earlier builds when background pondering was misnamed. */
   premoveEnabled: v.optional(flagSchema),

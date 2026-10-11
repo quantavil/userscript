@@ -20,6 +20,7 @@ Project guidance for `super-chess-bot`.
 - `index.ts`: mount the panel and prewarm the Stockfish worker without waiting for a Chess.com board selector. Automation stays disabled until the user turns it on.
 - `controller.ts`: own enable/disable, adapter subscriptions, snapshot identity and phase, human-interruption pause, and explicit resume/retry actions.
 - `engine/scheduler.ts`: schedule one current-position search from accepted FEN/history and adapter clock, reject stale identity/FEN results, and confirm move execution before reporting success. Carry exact position/history into ponder reuse; do not queue speculative premove chains or repeatedly retry an unchanged position.
+- `engine/book.ts`: fast normalized EPD opening book for plies 1–6. Bypasses engine search for recognized grandmaster lines in <0.01 ms with zero new dependencies.
 - `engine/uci-client.ts`: serialize UCI searches, promote a matching `go ponder` search, reuse a completed result only for an exact FEN/history/depth match, and drain canceled `bestmove` responses before starting a different position. Match both FEN and UCI history because repetition state affects evaluation. UCI messages have no request IDs, so do not attach a late response to a newer position.
 - `engine/worker-client.ts`: load pinned userscript resources and manage the persistent worker. Terminate it only for recovery.
 - `history.ts` and `engine/san.ts`: use chessops for legal history, notation, and position validation; do not recreate chess rules or a search engine.

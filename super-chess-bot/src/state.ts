@@ -62,6 +62,7 @@ export const BotState: BotStateInterface = {
   botPower: 30, // High depth cap; the move-time budget normally ends search.
   moveTime: 100, // Single search deadline (ms)
   autoMove: 1,
+  openingBook: 1,
   currentEvaluation: '-',
   bestMove: '-',
   principalVariation: '-',
@@ -82,6 +83,7 @@ export const Settings = {
         botPower: BotState.botPower,
         moveTime: BotState.moveTime,
         autoMove: BotState.autoMove,
+        openingBook: BotState.openingBook,
         ponderEnabled: BotState.ponderEnabled,
         autoRematch: BotState.autoRematch,
         moveMethod: BotState.moveMethod,

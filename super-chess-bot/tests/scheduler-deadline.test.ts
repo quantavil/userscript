@@ -51,6 +51,7 @@ const dependencies = vi.hoisted(() => {
       moveTime: 100,
       botPower: 20,
       ponderEnabled: 0,
+      openingBook: 1,
       currentEvaluation: '-',
       bestMove: '-',
       principalVariation: '-',
@@ -435,5 +436,24 @@ describe('site-backed search and execution', () => {
     expect(dependencies.state.statusInfo).toBe('Engine returned no legal move');
     expect(dependencies.state.recoveryAction).toBe('retry');
     expect(dependencies.site.submitMove).not.toHaveBeenCalled();
+  });
+
+  it('instantly resolves opening book moves without invoking the engine worker', async () => {
+    const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    setPosition({
+      fen: startFen,
+      playerColor: 'w',
+      sideToMove: 'w',
+      inputReady: true,
+      remainingMs: 60000,
+    });
+    dependencies.state.openingBook = 1;
+
+    await scheduleAnalysis('main', startFen);
+
+    expect(dependencies.analyze).not.toHaveBeenCalled();
+    expect(dependencies.state.statusInfo).toMatch(/^Ready · Book · \d+ ms$/);
+    expect(dependencies.state.currentEvaluation).toBe('Book');
+    expect(dependencies.site.submitMove).toHaveBeenCalled();
   });
 });

@@ -184,6 +184,12 @@ describe('panel hotkeys and settings', () => {
     expect(BotState.botPower).toBe(25);
     expect(Settings.save).toHaveBeenCalled();
 
+    updatePanelSetting('openingBook', false);
+    expect(BotState.openingBook).toBe(0);
+
+    updatePanelSetting('moveTimeMs', 50);
+    expect(BotState.moveTime).toBe(50);
+
     updatePanelSetting('moveMethod', 'drag');
     expect(BotState.moveMethod).toBe('drag');
   });

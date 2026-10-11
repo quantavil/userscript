@@ -38,6 +38,7 @@ export function getPanelCapabilityView(capabilities?: SiteCapabilities): PanelCa
 interface PanelSettings {
   enabled: boolean;
   autoMove: boolean;
+  openingBook: boolean;
   ponder: boolean;
   autoRematch: boolean;
   depth: number;
@@ -63,6 +64,7 @@ interface PanelLog {
 const readSettings = (): PanelSettings => ({
   enabled: !!BotState.hackEnabled,
   autoMove: !!BotState.autoMove,
+  openingBook: !!BotState.openingBook,
   ponder: !!BotState.ponderEnabled,
   autoRematch: !!BotState.autoRematch,
   depth: BotState.botPower,
@@ -109,6 +111,7 @@ export function syncPanelSettings(): void {
   if (
     current.enabled === next.enabled &&
     current.autoMove === next.autoMove &&
+    current.openingBook === next.openingBook &&
     current.ponder === next.ponder &&
     current.autoRematch === next.autoRematch &&
     current.depth === next.depth &&
@@ -146,6 +149,9 @@ export function updatePanelSetting<K extends keyof PanelSettings>(
       break;
     case 'autoMove':
       BotState.autoMove = value ? 1 : 0;
+      break;
+    case 'openingBook':
+      BotState.openingBook = value ? 1 : 0;
       break;
     case 'ponder':
       BotState.ponderEnabled = value ? 1 : 0;
@@ -461,6 +467,11 @@ function Panel({
                 onChange={(checked) => updateSetting('autoMove', checked)}
               />
               <Toggle
+                label="Opening book"
+                checked={settings.openingBook}
+                onChange={(checked) => updateSetting('openingBook', checked)}
+              />
+              <Toggle
                 label="Background ponder"
                 checked={settings.ponder}
                 onChange={(checked) => updateSetting('ponder', checked)}
@@ -501,9 +512,9 @@ function Panel({
                 id="move-budget"
                 class="panel-range"
                 type="range"
-                min="100"
+                min="25"
                 max="5000"
-                step="100"
+                step="25"
                 value={settings.moveTimeMs}
                 aria-label="Move time budget in milliseconds"
                 onInput={(event) => updateSetting('moveTimeMs', Number(event.currentTarget.value))}

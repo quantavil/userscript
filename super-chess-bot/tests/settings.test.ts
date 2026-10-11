@@ -23,6 +23,7 @@ describe('loadSettings', () => {
       botPower: 18,
       moveTime: 100,
       autoMove: 1,
+      openingBook: 1,
       ponderEnabled: 1,
       autoRematch: 0,
       moveMethod: 'click',
@@ -38,6 +39,7 @@ describe('loadSettings', () => {
       botPower: 30,
       moveTime: 100,
       autoMove: 1,
+      openingBook: 1,
       ponderEnabled: 1,
       autoRematch: 0,
       moveMethod: 'click',
@@ -53,12 +55,21 @@ describe('loadSettings', () => {
       botPower: 30,
       moveTime: 100,
       autoMove: 1,
+      openingBook: 1,
       ponderEnabled: 1,
       autoRematch: 0,
       moveMethod: 'click',
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);
+  });
+
+  it('accepts sub-100ms moveTime budgets down to 25ms and custom openingBook setting', () => {
+    const settings = loadStoredSettings('{"moveTime":25,"openingBook":0}');
+
+    expect(settings).toMatchObject({ moveTime: 25, openingBook: 0 });
+    expect(BotState.moveTime).toBe(25);
+    expect(BotState.openingBook).toBe(0);
   });
 
   it('drops the obsolete jitter setting instead of carrying dead state forward', () => {

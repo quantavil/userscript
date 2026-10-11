@@ -2021,6 +2021,7 @@
 		botPower: 30,
 		moveTime: 100,
 		autoMove: 1,
+		openingBook: 1,
 		ponderEnabled: 1,
 		autoRematch: 0,
 		moveMethod: "click",
@@ -2035,8 +2036,9 @@
 	var savedSettingsSchema = object({
 		hackEnabled: optional(flagSchema),
 		botPower: optional(integerInRange(1, 30)),
-		moveTime: optional(integerInRange(100, 1e4)),
+		moveTime: optional(integerInRange(25, 1e4)),
 		autoMove: optional(flagSchema),
+		openingBook: optional(flagSchema),
 		ponderEnabled: optional(flagSchema),
 		premoveEnabled: optional(flagSchema),
 		autoRematch: optional(flagSchema),
@@ -2189,6 +2191,7 @@
 		botPower: 30,
 		moveTime: 100,
 		autoMove: 1,
+		openingBook: 1,
 		currentEvaluation: "-",
 		bestMove: "-",
 		principalVariation: "-",
@@ -2207,6 +2210,7 @@
 					botPower: BotState.botPower,
 					moveTime: BotState.moveTime,
 					autoMove: BotState.autoMove,
+					openingBook: BotState.openingBook,
 					ponderEnabled: BotState.ponderEnabled,
 					autoRematch: BotState.autoRematch,
 					moveMethod: BotState.moveMethod,
@@ -5693,6 +5697,7 @@
 	var readSettings = () => ({
 		enabled: !!BotState.hackEnabled,
 		autoMove: !!BotState.autoMove,
+		openingBook: !!BotState.openingBook,
 		ponder: !!BotState.ponderEnabled,
 		autoRematch: !!BotState.autoRematch,
 		depth: BotState.botPower,
@@ -5736,7 +5741,7 @@
 	function syncPanelSettings() {
 		const current = settingsSignal.value;
 		const next = readSettings();
-		if (current.enabled === next.enabled && current.autoMove === next.autoMove && current.ponder === next.ponder && current.autoRematch === next.autoRematch && current.depth === next.depth && current.moveTimeMs === next.moveTimeMs && current.moveMethod === next.moveMethod) return;
+		if (current.enabled === next.enabled && current.autoMove === next.autoMove && current.openingBook === next.openingBook && current.ponder === next.ponder && current.autoRematch === next.autoRematch && current.depth === next.depth && current.moveTimeMs === next.moveTimeMs && current.moveMethod === next.moveMethod) return;
 		settingsSignal.value = next;
 	}
 	function updatePanelAnalysis(next) {
@@ -5755,6 +5760,9 @@
 				break;
 			case "autoMove":
 				BotState.autoMove = value ? 1 : 0;
+				break;
+			case "openingBook":
+				BotState.openingBook = value ? 1 : 0;
 				break;
 			case "ponder":
 				BotState.ponderEnabled = value ? 1 : 0;
@@ -6042,6 +6050,11 @@
 										onChange: (checked) => updateSetting("autoMove", checked)
 									}),
 									u(Toggle, {
+										label: "Opening book",
+										checked: settings.openingBook,
+										onChange: (checked) => updateSetting("openingBook", checked)
+									}),
+									u(Toggle, {
 										label: "Background ponder",
 										checked: settings.ponder,
 										onChange: (checked) => updateSetting("ponder", checked)
@@ -6089,9 +6102,9 @@
 									id: "move-budget",
 									class: "panel-range",
 									type: "range",
-									min: "100",
+									min: "25",
 									max: "5000",
-									step: "100",
+									step: "25",
 									value: settings.moveTimeMs,
 									"aria-label": "Move time budget in milliseconds",
 									onInput: (event) => updateSetting("moveTimeMs", Number(event.currentTarget.value))
@@ -6237,6 +6250,88 @@
 			clearConsole: () => ui.clearConsole()
 		}, capabilities);
 	}
+	function normalizeEpd(fen) {
+		const parts = fen.trim().split(/\s+/);
+		return parts.length >= 4 ? parts.slice(0, 4).join(" ") : fen;
+	}
+	var EPD_BOOK = {
+		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -": [
+			["e2e4", 70],
+			["d2d4", 25],
+			["c2c4", 5]
+		],
+		"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3": [
+			["c7c5", 70],
+			["e7e5", 20],
+			["e7e6", 5],
+			["c7c6", 5]
+		],
+		"rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3": [
+			["g8f6", 70],
+			["d7d5", 25],
+			["c7c5", 5]
+		],
+		"rnbqkbnr/pppppppp/8/8/2P5/8/PP1PPPPP/RNBQKBNR b KQkq c3": [["e7e5", 75], ["g8f6", 25]],
+		"rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq -": [["d7d5", 70], ["g8f6", 30]],
+		"rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -": [["f2f4", 60], ["g1f3", 40]],
+		"rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6": [["d2d4", 60], ["g1f3", 40]],
+		"rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -": [["d2d4", 100]],
+		"rnbqkbnr/pp1ppppp/2p5/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -": [["d2d4", 100]],
+		"rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR w KQkq -": [["c2c4", 90], ["g1f3", 10]],
+		"rnbqkb1r/pppppppp/5n2/8/3P4/8/PPP1PPPP/RNBQKBNR w KQkq -": [["c2c4", 90], ["g1f3", 10]],
+		"rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -": [["b8c6", 85], ["g8f6", 15]],
+		"rnbqkbnr/pppp1ppp/8/4p3/4PP2/8/PPPP2PP/RNBQKBNR b KQkq f3": [["e5f4", 80], ["d7d5", 20]],
+		"rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -": [
+			["d7d6", 60],
+			["b8c6", 30],
+			["e7e6", 10]
+		],
+		"rnbqkbnr/pp1ppppp/8/2p5/3PP3/8/PPP2PPP/RNBQKBNR b KQkq d3": [["c5d4", 100]],
+		"rnbqkbnr/pppp1ppp/4p3/8/3PP3/8/PPP2PPP/RNBQKBNR b KQkq d3": [["d7d5", 100]],
+		"rnbqkbnr/pp1ppppp/2p5/8/3PP3/8/PPP2PPP/RNBQKBNR b KQkq d3": [["d7d5", 100]],
+		"rnbqkbnr/ppp1pppp/8/3p4/2PP4/8/PP2PPPP/RNBQKBNR b KQkq c3": [
+			["e7e6", 70],
+			["c7c6", 20],
+			["d5c4", 10]
+		],
+		"rnbqkb1r/pppppppp/5n2/8/2PP4/8/PP2PPPP/RNBQKBNR b KQkq c3": [
+			["e7e6", 50],
+			["g7g6", 30],
+			["c7c5", 20]
+		],
+		"r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq -": [
+			["f1c4", 60],
+			["f1b5", 25],
+			["d2d4", 15]
+		],
+		"rnbqkbnr/pppp1ppp/8/8/4Pp2/8/PPPP2PP/RNBQKBNR w KQkq -": [["g1f3", 80], ["f1c4", 20]],
+		"rnbqkbnr/pp2pppp/3p4/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq -": [["d2d4", 100]],
+		"rnbqkbnr/pp1ppppp/8/8/3pP3/8/PPP2PPP/RNBQKBNR w KQkq -": [["c2c3", 80], ["g1f3", 20]],
+		"rnbqkbnr/ppp2ppp/4p3/3p4/3PP3/8/PPP2PPP/RNBQKBNR w KQkq -": [["b1c3", 60], ["e4e5", 40]],
+		"rnbqkbnr/pp2pppp/2p5/3p4/3PP3/8/PPP2PPP/RNBQKBNR w KQkq -": [["b1c3", 60], ["e4e5", 40]],
+		"rnbqkbnr/ppp2ppp/4p3/3p4/2PP4/8/PP2PPPP/RNBQKBNR w KQkq -": [["b1c3", 70], ["g1f3", 30]],
+		"rnbqkb1r/pppp1ppp/4pn2/8/2PP4/8/PP2PPPP/RNBQKBNR w KQkq -": [["b1c3", 70], ["g1f3", 30]],
+		"rnbqkb1r/pppppp1p/5np1/8/2PP4/8/PP2PPPP/RNBQKBNR w KQkq -": [["b1c3", 80], ["g1f3", 20]],
+		"r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq -": [["f8c5", 60], ["g8f6", 40]],
+		"r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq -": [["a7a6", 80], ["g8f6", 20]],
+		"r1bqkbnr/pppp1ppp/2n5/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b KQkq d3": [["e5d4", 100]],
+		"rnbqkbnr/pp2pppp/3p4/2p5/3PP3/5N2/PPP2PPP/RNBQKB1R b KQkq d3": [["c5d4", 100]],
+		"rnbqkbnr/pp1ppppp/8/8/3pP3/2P5/PP3PPP/RNBQKBNR b KQkq -": [["d4c3", 80], ["d7d5", 20]],
+		"rnbqkbnr/ppp2ppp/4p3/3p4/2PP4/2N5/PP2PPPP/R1BQKBNR b KQkq -": [["g8f6", 80], ["c7c6", 20]],
+		"rnbqkb1r/pppp1ppp/4pn2/8/2PP4/2N5/PP2PPPP/R1BQKBNR b KQkq -": [["f8b4", 70], ["d7d5", 30]],
+		"rnbqkb1r/pppppp1p/5np1/8/2PP4/2N5/PP2PPPP/R1BQKBNR b KQkq -": [["d7d5", 50], ["f8g7", 50]]
+	};
+	function lookupBookMove(fen, rng = Math.random) {
+		const candidates = EPD_BOOK[normalizeEpd(fen)];
+		if (!candidates || candidates.length === 0) return null;
+		const totalWeight = candidates.reduce((sum, [, w]) => sum + w, 0);
+		let threshold = rng() * totalWeight;
+		for (const [move, weight] of candidates) {
+			threshold -= weight;
+			if (threshold <= 0) return move;
+		}
+		return candidates[0][0];
+	}
 	var revision = 0;
 	var active = null;
 	var processed = null;
@@ -6333,16 +6428,34 @@
 				anticipatedPonder = null;
 				if (anticipated?.fromFen === fen && ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history)) return;
 			} else anticipatedPonder = null;
-			const result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
-			if (!current()) return;
-			const best = parseBestLine(result);
-			if (!best) {
-				if (result.bestmove === "(none)" && hasLegalMoves(fen) === false) {
-					BotState.statusInfo = "Terminal position";
-					ui.updateDisplay(pa());
-					return;
+			const bookMove = kind === "main" && BotState.openingBook ? lookupBookMove(fen) : null;
+			let result;
+			let best = null;
+			if (bookMove) {
+				result = {
+					success: true,
+					bestmove: bookMove,
+					depth: 99,
+					pv: bookMove,
+					evaluation: { cp: 20 }
+				};
+				best = {
+					uci: bookMove,
+					pv: bookMove,
+					score: { cp: 20 }
+				};
+			} else {
+				result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
+				if (!current()) return;
+				best = parseBestLine(result);
+				if (!best) {
+					if (result.bestmove === "(none)" && hasLegalMoves(fen) === false) {
+						BotState.statusInfo = "Terminal position";
+						ui.updateDisplay(pa());
+						return;
+					}
+					throw new Error("Engine returned no legal move");
 				}
-				throw new Error("Engine returned no legal move");
 			}
 			if (kind !== "main") {
 				const predicted = predictFen(fen, best.uci);
@@ -6375,8 +6488,8 @@
 			};
 			BotState.bestMove = best.uci;
 			BotState.principalVariation = best.pv;
-			BotState.currentEvaluation = scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
-			BotState.statusInfo = `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
+			BotState.currentEvaluation = bookMove ? "Book" : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
+			BotState.statusInfo = bookMove ? `Ready · Book · ${Math.round(performance.now() - started)} ms` : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
 			clearArrows();
 			drawArrow(best.uci.slice(0, 2), best.uci.slice(2, 4), "rgba(100,255,100,0.7)", 3);
 			ui.updateDisplay(pa());
