@@ -2,23 +2,24 @@
 
 ## Production checks
 
-`bun run check` passed after the audit fixes: Biome, strict TypeScript, Knip, all 63 tests, and the Vite production build. The generated userscript is 218.73 kB (54.68 kB gzip); Stockfish's pinned worker and WASM remain manager resources.
+`bun run check` passed after the audit fixes: Biome, strict TypeScript, Knip, all 76 tests, and the Vite production build. The generated userscript is 181.53 kB (46.08 kB gzip) — down from 218.73 kB (54.68 kB gzip) after replacing Zod with Valibot and pruning Tailwind CSS. Stockfish's pinned worker and WASM remain manager resources.
 
 ## Chromium game run
 
-- Chromium 153 with Violentmonkey 2.49.0, using the production bundle installed through the manager.
-- Chess.com computer game: Komodo20 / Master (2400), guest White, 1+1 time control. Bot move budget was 100 ms, depth cap 30, automatic moves enabled, pondering and rematch disabled.
-- The userscript manager loaded Stockfish and the WASM worker started successfully. The bot played the full game from the starting position and Chess.com's native move list showed every move during play.
-- Result: **1–0 by checkmate**, `28.Qa7#`; 55 plies (28 White moves and 27 Black moves).
-- Video, PGN, and a contact sheet are in [`artifacts`](./artifacts/).
+- Chromium 153 using `agent-browser` automation with the optimized production bundle.
+- Chess.com computer game: Komodo20 / Master (2400), guest White, 1+0 bullet time control. Bot move budget was 100 ms, depth cap 30, automatic moves enabled, background pondering enabled.
+- The Stockfish 19 lite WASM worker prewarmed and reported `Ready` before game start. The bot played the full game through to checkmate.
+- Result: **1–0 by checkmate**, `75.Qa1#`; 149 plies (75 White moves and 74 Black moves).
+- Full game moves ended with king hunt across the board, pawn promotion `74.h8=Q`, and checkmate `75.Qa1#`.
 
 ## Minimum-budget strength samples
 
-After the promotion input fix, I tested the production bundle in isolated Chromium with Violentmonkey, guest White, auto move enabled, depth cap 30, 100 ms move budget, and a 1+0 clock. The clock columns show the value at game end; the bot's used time is the sum of Chess.com's displayed White move times.
+After the promotion input fix and optimization refactor, I tested the production bundle in isolated Chromium with guest White, auto move enabled, depth cap 30, 100 ms move budget, and a 1+0 clock. The clock columns show the value at game end; the bot's used time is the sum of Chess.com's displayed White move times.
 
 | Computer | Result | Plies | Bot clock | Opponent clock | Bot move time |
 | --- | --- | ---: | --- | --- | ---: |
 | Master (2400) | 1–0, `79.Rc2#` | 157 | 1:00 → 0:41 | 0:22 | 19.1 s |
+| Master (2400) | 1–0, `75.Qa1#` | 149 | 1:00 → 0:43 | 0:19 | 17.0 s |
 | Grandmaster (2700) | 1–0, `70.Qh5#` | 139 | 1:00 → 0:43 | 0:23 | 17.1 s |
 | Super Grandmaster (2900) | 0–1, `38...Qh3#` | 76 | 1:00 → 0:48 | 0:29 | 12.1 s |
 | Super Grandmaster (2900) | 1–0, `61.Bf5#` | 121 | 1:00 → 0:46 | 0:25 | 13.4 s |
