@@ -94,11 +94,12 @@ export const getFen = (game: ChessGame | null | undefined): string | null => {
   }
 };
 
+export const CLOCK_SELECTOR =
+  '.clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time, .clock-player-turn .move-time-content, .clock-player-turn.move-time-content';
+
 /** Read the clock marked active by Chess.com and normalize it for the shared scheduler. */
 export function getRemainingMs(doc: Pick<Document, 'querySelector'>): number | null {
-  const text = doc
-    .querySelector<HTMLElement>('.clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time')
-    ?.textContent?.trim();
+  const text = doc.querySelector<HTMLElement>(CLOCK_SELECTOR)?.textContent?.trim();
   if (!text) return null;
 
   let seconds: number;

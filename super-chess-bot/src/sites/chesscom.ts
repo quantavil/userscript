@@ -2,6 +2,7 @@ import { canonicalFen, readPositionHistory } from '../history.js';
 import { installChesscomControllerBridge, setCapturedChesscomController } from './chesscom-bridge.js';
 import {
   type ChessGame,
+  CLOCK_SELECTOR,
   getBoard,
   getFen,
   getOrientation,
@@ -30,7 +31,6 @@ const DEFAULT_BRIDGE_ERROR =
 let nextGameId = 0;
 const BOARD_SELECTOR = 'wc-chess-board, chess-board, .board';
 const CLOCK_REGION_SELECTOR = '.clock-player-turn';
-const CLOCK_SELECTOR = '.clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time';
 const RESULT_SELECTOR = '.game-over-modal-content';
 
 function readFingerprint(result: SiteRead): { identity: object | null; value: string } {

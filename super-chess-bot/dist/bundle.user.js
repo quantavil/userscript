@@ -2025,8 +2025,9 @@
 			return null;
 		}
 	};
+	var CLOCK_SELECTOR = ".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time, .clock-player-turn .move-time-content, .clock-player-turn.move-time-content";
 	function getRemainingMs(doc) {
-		const text = doc.querySelector(".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time")?.textContent?.trim();
+		const text = doc.querySelector(CLOCK_SELECTOR)?.textContent?.trim();
 		if (!text) return null;
 		let seconds;
 		const minutesAndSeconds = /^(\d+):(\d{2}(?:\.\d+)?)$/.exec(text);
@@ -3165,7 +3166,6 @@
 	var nextGameId = 0;
 	var BOARD_SELECTOR = "wc-chess-board, chess-board, .board";
 	var CLOCK_REGION_SELECTOR = ".clock-player-turn";
-	var CLOCK_SELECTOR = ".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time";
 	var RESULT_SELECTOR = ".game-over-modal-content";
 	function readFingerprint(result) {
 		if (result.kind !== "game") return {
@@ -3212,7 +3212,7 @@
 			if (record.type === "characterData") return onClock || onResult;
 			if (record.type !== "childList") return false;
 			if (onClock || onResult) return true;
-			return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some((node) => nodeContainsSelector(node, BOARD_SELECTOR) || nodeContainsSelector(node, CLOCK_SELECTOR) || nodeContainsSelector(node, RESULT_SELECTOR));
+			return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some((node) => nodeContainsSelector(node, BOARD_SELECTOR) || nodeContainsSelector(node, ".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time, .clock-player-turn .move-time-content, .clock-player-turn.move-time-content") || nodeContainsSelector(node, RESULT_SELECTOR));
 		});
 	}
 	function createChesscomAdapter(page = pageWindow) {

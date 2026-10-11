@@ -87,6 +87,31 @@ describe('site adapter selection', () => {
     expect(adapter.read()).toMatchObject({ kind: 'game', snapshot: { remainingMs: null } });
   });
 
+  it('reads active clock times in 0:ss and mm:ss.s formats via .move-time-content', () => {
+    const board = makeBoard();
+    const createPage = (text: string) => ({
+      location: { hostname: 'www.chess.com' },
+      document: {
+        body: {},
+        querySelector: (selector: string) => {
+          if (selector.includes('move-time-content')) return { textContent: text };
+          return selector.includes('game-over') ? null : board;
+        },
+        querySelectorAll: () => [board],
+      },
+      MutationObserver: class {
+        observe() {}
+        disconnect() {}
+      },
+    });
+
+    const adapter1 = createChesscomAdapter(() => createPage('0:09.5') as unknown as Window);
+    expect(adapter1.read()).toMatchObject({ kind: 'game', snapshot: { remainingMs: 9_500 } });
+
+    const adapter2 = createChesscomAdapter(() => createPage('0:37') as unknown as Window);
+    expect(adapter2.read()).toMatchObject({ kind: 'game', snapshot: { remainingMs: 37_000 } });
+  });
+
   it('exposes the controller transport capability', () => {
     const page = makePage(() => [makeBoard()]);
     const adapter = createChesscomAdapter(() => page as unknown as Window);
