@@ -81,8 +81,7 @@ describe('panel view state', () => {
       principalVariation: 'e2e4 e7e5',
       recoveryAction: null,
     });
-    expect(panel.appendLog).toHaveBeenCalledWith('Eval: 0.32 | PV: e2e4 e7e5', 'info');
-    expect(panel.appendLog).not.toHaveBeenCalledWith('Ready · D10 · 42 ms', 'status');
+    expect(panel.appendLog).not.toHaveBeenCalled();
   });
 
   it('logs actionable failures and forwards the retry state to the panel', () => {

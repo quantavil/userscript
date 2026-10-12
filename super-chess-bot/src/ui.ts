@@ -63,11 +63,8 @@ export const ui: UI = {
       this.lastStatus = BotState.statusInfo;
     }
 
-    // Keep the log useful without converting a PV to SAN on every display update.
+    // Track best move changes without flooding the log with redundant raw evaluations.
     if (BotState.bestMove !== '-' && BotState.bestMove !== this.lastBestMove) {
-      const pv = BotState.principalVariation;
-      const line = pv && pv !== '-' && pv !== 'Not available' ? ` | PV: ${pv}` : ` | Best: ${BotState.bestMove}`;
-      this.log(`Eval: ${BotState.currentEvaluation}${line}`, 'info');
       this.lastBestMove = BotState.bestMove;
     }
 

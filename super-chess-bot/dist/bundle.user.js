@@ -6476,7 +6476,7 @@
 		const tone = statusTone(analysis, settings.enabled);
 		const [collapsed, setCollapsed] = d$2(() => readStoredCollapsed() ?? isDocked());
 		const [helpOpen, setHelpOpen] = d$2(false);
-		const [activityOpen, setActivityOpen] = d$2(() => !isDocked());
+		const [activityOpen, setActivityOpen] = d$2(false);
 		const [copied, setCopied] = d$2(false);
 		const logElement = T(null);
 		const stickToBottom = T(true);
@@ -6649,7 +6649,7 @@
 									children: evaluation
 								})]
 							}),
-							u("p", {
+							(!analysis.multiPvLines || analysis.multiPvLines.length <= 1) && u("p", {
 								class: "panel-line",
 								title: analysis.principalVariation,
 								children: line
@@ -6851,7 +6851,7 @@
 							},
 							children: logs.length === 0 ? u("p", {
 								class: "panel-log-empty",
-								children: "Moves and engine updates will appear here."
+								children: "Game moves and system events will appear here."
 							}) : logs.map((entry) => u("p", {
 								class: `panel-log-entry ${logTextClass[entry.type]}`,
 								children: [u("time", { children: entry.time }), u("span", { children: entry.text })]
@@ -6893,12 +6893,7 @@
 				}
 				this.lastStatus = BotState.statusInfo;
 			}
-			if (BotState.bestMove !== "-" && BotState.bestMove !== this.lastBestMove) {
-				const pv = BotState.principalVariation;
-				const line = pv && pv !== "-" && pv !== "Not available" ? ` | PV: ${pv}` : ` | Best: ${BotState.bestMove}`;
-				this.log(`Eval: ${BotState.currentEvaluation}${line}`, "info");
-				this.lastBestMove = BotState.bestMove;
-			}
+			if (BotState.bestMove !== "-" && BotState.bestMove !== this.lastBestMove) this.lastBestMove = BotState.bestMove;
 			updatePanelAnalysis({
 				status: BotState.statusInfo,
 				evaluation: BotState.currentEvaluation,

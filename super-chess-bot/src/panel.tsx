@@ -579,7 +579,7 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
   const tone = statusTone(analysis, settings.enabled);
   const [collapsed, setCollapsed] = useState(() => readStoredCollapsed() ?? isDocked());
   const [helpOpen, setHelpOpen] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(() => !isDocked());
+  const [activityOpen, setActivityOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const logElement = useRef<HTMLDivElement | null>(null);
   const stickToBottom = useRef(true);
@@ -761,9 +761,11 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
                   {evaluation}
                 </output>
               </div>
-              <p class="panel-line" title={analysis.principalVariation}>
-                {line}
-              </p>
+              {(!analysis.multiPvLines || analysis.multiPvLines.length <= 1) && (
+                <p class="panel-line" title={analysis.principalVariation}>
+                  {line}
+                </p>
+              )}
               {analysis.multiPvLines && analysis.multiPvLines.length > 1 && (
                 <div class="panel-multipv-list">
                   {analysis.multiPvLines.slice(0, 3).map((pvLine) => {
@@ -958,7 +960,7 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
                   }}
                 >
                   {logs.length === 0 ? (
-                    <p class="panel-log-empty">Moves and engine updates will appear here.</p>
+                    <p class="panel-log-empty">Game moves and system events will appear here.</p>
                   ) : (
                     logs.map((entry) => (
                       <p key={entry.id} class={`panel-log-entry ${logTextClass[entry.type]}`}>
