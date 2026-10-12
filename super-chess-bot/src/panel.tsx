@@ -747,7 +747,7 @@ function GameReportPanel({
         <span class="panel-report-note">Local engine estimate</span>
       </div>
 
-      <div class="panel-report-split">
+      <div class="panel-report-row">
         <div class="panel-report-stepper" title={`Search depth per move: ${reportDepth}`}>
           <button
             type="button"
@@ -786,7 +786,7 @@ function GameReportPanel({
         {progress.running && (
           <button
             type="button"
-            class="panel-report-cancel-mini"
+            class="panel-report-cancel-btn"
             title="Cancel analysis"
             aria-label="Cancel analysis"
             onClick={cancelGameReport}
@@ -1109,6 +1109,16 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
                   onChange={(next) => updateSetting('autoRetry', next)}
                 />
                 <Toggle
+                  label="Background ponder"
+                  checked={settings.ponder}
+                  onChange={(next) => updateSetting('ponder', next)}
+                />
+                <Toggle
+                  label="Blunder shield"
+                  checked={settings.blunderShield}
+                  onChange={(next) => updateSetting('blunderShield', next)}
+                />
+                <Toggle
                   label="Opening book"
                   checked={settings.openingBook}
                   onChange={(next) => updateSetting('openingBook', next)}
@@ -1132,16 +1142,6 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
                     </div>
                   </div>
                 )}
-                <Toggle
-                  label="Background ponder"
-                  checked={settings.ponder}
-                  onChange={(next) => updateSetting('ponder', next)}
-                />
-                <Toggle
-                  label="Blunder shield"
-                  checked={settings.blunderShield}
-                  onChange={(next) => updateSetting('blunderShield', next)}
-                />
               </div>
 
               <hr class="panel-section-divider" />
