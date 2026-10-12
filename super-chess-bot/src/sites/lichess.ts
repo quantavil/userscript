@@ -272,9 +272,15 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
         !round.redirecting &&
         !round.toSubmit;
       let remainingMs: number | null = null;
+      let whiteRemainingMs: number | null = null;
+      let blackRemainingMs: number | null = null;
       try {
         const clock = round.clock?.millisOf?.(lichessColor(playerColor));
         if (typeof clock === 'number' && Number.isFinite(clock) && clock >= 0) remainingMs = clock;
+        const wClock = round.clock?.millisOf?.('white');
+        if (typeof wClock === 'number' && Number.isFinite(wClock) && wClock >= 0) whiteRemainingMs = wClock;
+        const bClock = round.clock?.millisOf?.('black');
+        if (typeof bClock === 'number' && Number.isFinite(bClock) && bClock >= 0) blackRemainingMs = bClock;
       } catch {
         // A missing or changing site clock falls back to the configured search budget.
       }
@@ -289,6 +295,8 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
         phase,
         inputReady,
         remainingMs,
+        ...(whiteRemainingMs != null ? { whiteRemainingMs } : {}),
+        ...(blackRemainingMs != null ? { blackRemainingMs } : {}),
         ...(history ? { history: history.history, confirmedFens: history.confirmedFens } : {}),
       };
       return { kind: 'game', snapshot };

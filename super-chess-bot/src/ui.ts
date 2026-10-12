@@ -1,5 +1,6 @@
 import { markBotNode, updateEvaluationBar } from './board.js';
 import { uciToSan } from './engine/san.js';
+import { gameHistoryTracker } from './game-history.js';
 import panelCss from './panel.css?inline';
 import {
   appendPanelLog,
@@ -45,6 +46,7 @@ export const ui: UI = {
 
   clearConsole() {
     clearPanelLogs();
+    gameHistoryTracker.reset();
     this.lastStatus = '';
     this.lastBestMove = '';
   },

@@ -16,6 +16,8 @@ export interface GameSnapshot {
   phase: 'live' | 'replay' | 'finished';
   inputReady: boolean;
   remainingMs: number | null;
+  whiteRemainingMs?: number | null;
+  blackRemainingMs?: number | null;
   history?: PositionHistory;
   /** Canonical accepted FENs indexed by ply, with the root at index zero. */
   confirmedFens?: readonly string[];

@@ -108,7 +108,9 @@ describe('buildPgn', () => {
 
     const pgn = buildPgn(moves, { result: '1-0' });
     expect(pgn).toContain('[Result "1-0"]');
-    expect(pgn.trim().endsWith('{ Warning: Move timings and evaluations are client-side browser telemetry estimates. } 1-0')).toBe(true);
+    expect(
+      pgn.trim().endsWith('{ Warning: Move timings and evaluations are client-side browser telemetry estimates. } 1-0'),
+    ).toBe(true);
 
     const parsedGames = parsePgn(pgn);
     expect(parsedGames.length).toBe(1);

@@ -5,6 +5,7 @@ import {
   type ChessGame,
   CLOCK_SELECTOR,
   getBoard,
+  getColorRemainingMs,
   getFen,
   getOrientation,
   getRemainingMs,
@@ -138,6 +139,9 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
     const confirmedFens = Array.isArray(confirmedFensRaw)
       ? confirmedFensRaw.filter((item): item is string => typeof item === 'string')
       : undefined;
+    const remainingMs = getRemainingMs(doc);
+    const whiteRemainingMs = getColorRemainingMs(doc, 'w');
+    const blackRemainingMs = getColorRemainingMs(doc, 'b');
     const snapshot: GameSnapshot = {
       identity: currentIdentity ?? {},
       gameId: currentGameId,
@@ -148,7 +152,9 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
       orientation,
       phase,
       inputReady: phase === 'live' && sideToMove === playerColor && settled,
-      remainingMs: getRemainingMs(doc),
+      remainingMs,
+      ...(whiteRemainingMs != null ? { whiteRemainingMs } : {}),
+      ...(blackRemainingMs != null ? { blackRemainingMs } : {}),
       ...(history ? { history } : {}),
       ...(confirmedFens ? { confirmedFens } : {}),
     };

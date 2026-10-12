@@ -16,11 +16,9 @@ export interface PgnOptions {
   warningNotice?: string;
 }
 
-const DEFAULT_WARNING =
-  'Warning: Move timings and evaluations are client-side browser telemetry estimates.';
+const DEFAULT_WARNING = 'Warning: Move timings and evaluations are client-side browser telemetry estimates.';
 
-const STANDARD_INITIAL_FEN =
-  'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const STANDARD_INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 /**
  * Format elapsed milliseconds into standard PGN Elapsed Move Time (EMT).

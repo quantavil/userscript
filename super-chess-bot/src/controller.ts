@@ -14,6 +14,7 @@ import {
   onMoveConfirmationSettled,
   scheduleAnalysis,
 } from './engine/scheduler.js';
+import { gameHistoryTracker } from './game-history.js';
 import { getSite, readSite } from './sites/index.js';
 import type { GameSnapshot, SiteAdapter, SiteRead } from './sites/types.js';
 import { BotState, pa, Settings } from './state.js';
@@ -138,6 +139,7 @@ class BotController {
     this.interruptedFen = null;
     this.previousInputReady = null;
     this.clearRecommendation();
+    gameHistoryTracker.reset();
     BotState.recoveryAction = null;
     BotState.statusInfo = 'Bot disabled';
     ui.updateDisplay(pa());
@@ -205,6 +207,7 @@ class BotController {
     this.interruptedFen = null;
     this.previousInputReady = null;
     this.clearRecommendation();
+    gameHistoryTracker.reset();
     BotState.recoveryAction = null;
     BotState.statusInfo = read.reason;
     ui.updateDisplay(pa());
@@ -249,7 +252,9 @@ class BotController {
       this.clearRecommendation();
       BotState.recoveryAction = null;
       ui.clearConsole();
+      gameHistoryTracker.reset(snapshot.gameId, snapshot.history?.startFen);
     }
+    gameHistoryTracker.updateFromSnapshot(snapshot);
     if (this.handlePhase(snapshot)) return;
     if (
       snapshot.identity === this.identity &&

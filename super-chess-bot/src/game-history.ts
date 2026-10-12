@@ -22,8 +22,7 @@ export interface MovePairView {
   black?: GameMoveRecord;
 }
 
-const STANDARD_INITIAL_FEN =
-  'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const STANDARD_INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 export class GameHistoryTracker {
   private activeGameId: string | null = null;
@@ -68,12 +67,8 @@ export class GameHistoryTracker {
       this.reset(gameId, historyStartFen, now);
     }
 
-    const currWhiteClock =
-      snapshot.whiteRemainingMs ??
-      (snapshot.playerColor === 'w' ? snapshot.remainingMs : null);
-    const currBlackClock =
-      snapshot.blackRemainingMs ??
-      (snapshot.playerColor === 'b' ? snapshot.remainingMs : null);
+    const currWhiteClock = snapshot.whiteRemainingMs ?? (snapshot.playerColor === 'w' ? snapshot.remainingMs : null);
+    const currBlackClock = snapshot.blackRemainingMs ?? (snapshot.playerColor === 'b' ? snapshot.remainingMs : null);
 
     const historyMoves = snapshot.history?.moves ?? [];
     const currentPlyCount = this.moves.length;

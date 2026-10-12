@@ -4,6 +4,7 @@ import type { TargetedPointerEvent } from 'preact';
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { setGhostMode } from './board.js';
+import { gameHistoryTracker, gameMovesSignal } from './game-history.js';
 import {
   BrainIcon,
   CheckIcon,
@@ -500,7 +501,7 @@ function EvalTrendGraph({ history }: { history?: number[] }) {
   );
 }
 
-function PanelGuide({ onClose }: { onClose: () => void }) {
+function PanelGuide() {
   return (
     <section class="panel-guide" aria-label="Super Chess Bot Guide">
       <div class="panel-guide-head">
@@ -508,9 +509,6 @@ function PanelGuide({ onClose }: { onClose: () => void }) {
           <HelpIcon />
           <span>Quick Guide & Controls</span>
         </span>
-        <button type="button" class="panel-guide-close" aria-label="Close guide" title="Close guide" onClick={onClose}>
-          <ClearIcon />
-        </button>
       </div>
 
       <div class="panel-guide-section">
@@ -547,8 +545,8 @@ function PanelGuide({ onClose }: { onClose: () => void }) {
         <div class="panel-guide-item">
           <strong>Stream-Safe Ghost Mode</strong>
           <p>
-            Hides all board arrows, evaluation bars, and floating controls for clean streaming and recording. Toggle
-            with the ghost icon or userscript menu.
+            Hides all board arrows, evaluation bars, and panel controls for clean streaming and recording. Toggle via
+            the userscript menu command (GM menu: ♟ Toggle Ghost Mode).
           </p>
         </div>
       </div>
@@ -566,6 +564,13 @@ function PanelGuide({ onClose }: { onClose: () => void }) {
             instant optimal play.
           </p>
         </div>
+        <div class="panel-guide-item">
+          <strong>Activity & Standard PGN Export</strong>
+          <p>
+            Displays full game moves with per-move timing estimates for both players. Click the copy icon in Activity to
+            export standard pasteable PGN with [%emt] move times and telemetry disclosure.
+          </p>
+        </div>
       </div>
     </section>
   );
@@ -576,6 +581,8 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
   const settings = settingsSignal.value;
   const analysis = analysisSignal.value;
   const logs = logsSignal.value;
+  const gameMoves = gameMovesSignal.value;
+  const movePairs = gameHistoryTracker.getMovePairs();
   const tone = statusTone(analysis, settings.enabled);
   const [collapsed, setCollapsed] = useState(() => readStoredCollapsed() ?? isDocked());
   const [helpOpen, setHelpOpen] = useState(false);
@@ -629,10 +636,10 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
   );
 
   useEffect(() => {
-    if (logs.length === 0) stickToBottom.current = true;
+    if (logs.length === 0 && gameMoves.length === 0) stickToBottom.current = true;
     const log = logElement.current;
     if (activityOpen && log && stickToBottom.current) log.scrollTop = log.scrollHeight;
-  }, [logs, activityOpen]);
+  }, [logs, gameMoves, activityOpen]);
 
   const beginDrag = (event: TargetedPointerEvent<HTMLElement>) => {
     if (isDocked() || event.button !== 0 || (event.target as Element).closest('button, input, label, a')) return;
@@ -668,7 +675,18 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
   };
 
   const copyLogs = async () => {
-    const text = logs.map((entry) => `[${entry.time}] ${entry.text}`).join('\n');
+    let text = '';
+    if (gameMoves.length > 0) {
+      const siteName =
+        typeof window !== 'undefined' && window.location?.hostname?.includes('lichess')
+          ? 'Lichess'
+          : typeof window !== 'undefined' && window.location?.hostname?.includes('pychess')
+            ? 'PyChess'
+            : 'Chess.com';
+      text = gameHistoryTracker.exportPgn(siteName);
+    } else {
+      text = logs.map((entry) => `[${entry.time}] ${entry.text}`).join('\n');
+    }
     if (!text || !navigator.clipboard?.writeText) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -748,7 +766,7 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
       </header>
 
       {helpOpen ? (
-        <PanelGuide onClose={() => setHelpOpen(false)} />
+        <PanelGuide />
       ) : (
         !collapsed && (
           <div class="panel-body" id="panel-body">
@@ -920,15 +938,15 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
                   onClick={() => setActivityOpen((value) => !value)}
                 >
                   Activity
-                  <span class="panel-count">{logs.length}</span>
+                  <span class="panel-count">{movePairs.length > 0 ? movePairs.length : logs.length}</span>
                 </button>
                 {activityOpen && (
                   <div class="panel-activity-actions">
                     <button
                       type="button"
                       class={`panel-icon-btn ${copied ? 'is-success' : ''}`}
-                      aria-label={copied ? 'Log copied to clipboard' : 'Copy log'}
-                      title={copied ? 'Copied!' : 'Copy log'}
+                      aria-label={copied ? 'PGN copied to clipboard' : 'Copy PGN'}
+                      title={copied ? 'Copied PGN!' : 'Copy PGN'}
                       onClick={copyLogs}
                     >
                       {copied ? <CheckIcon /> : <CopyIcon />}
@@ -959,15 +977,52 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
                     if (log) stickToBottom.current = log.scrollHeight - log.scrollTop - log.clientHeight < LOG_STICK_PX;
                   }}
                 >
-                  {logs.length === 0 ? (
+                  {movePairs.length === 0 && logs.length === 0 ? (
                     <p class="panel-log-empty">Game moves and system events will appear here.</p>
                   ) : (
-                    logs.map((entry) => (
-                      <p key={entry.id} class={`panel-log-entry ${logTextClass[entry.type]}`}>
-                        <time>{entry.time}</time>
-                        <span>{entry.text}</span>
-                      </p>
-                    ))
+                    <>
+                      {movePairs.length > 0 && (
+                        <div class="panel-scoresheet">
+                          {movePairs.map((pair) => (
+                            <div key={pair.moveNumber} class="panel-scoresheet-row">
+                              <span class="panel-scoresheet-num">{pair.moveNumber}.</span>
+                              <span class="panel-scoresheet-cell">
+                                {pair.white ? (
+                                  <>
+                                    <span class="panel-scoresheet-san">{pair.white.san}</span>
+                                    {pair.white.elapsedMs != null && (
+                                      <span class="panel-scoresheet-time">
+                                        {(pair.white.elapsedMs / 1000).toFixed(1)}s
+                                      </span>
+                                    )}
+                                  </>
+                                ) : null}
+                              </span>
+                              <span class="panel-scoresheet-cell">
+                                {pair.black ? (
+                                  <>
+                                    <span class="panel-scoresheet-san">{pair.black.san}</span>
+                                    {pair.black.elapsedMs != null && (
+                                      <span class="panel-scoresheet-time">
+                                        {(pair.black.elapsedMs / 1000).toFixed(1)}s
+                                      </span>
+                                    )}
+                                  </>
+                                ) : null}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {logs
+                        .filter((entry) => entry.type === 'error' || entry.type === 'warn' || movePairs.length === 0)
+                        .map((entry) => (
+                          <p key={entry.id} class={`panel-log-entry ${logTextClass[entry.type]}`}>
+                            <time>{entry.time}</time>
+                            <span>{entry.text}</span>
+                          </p>
+                        ))}
+                    </>
                   )}
                 </div>
               )}

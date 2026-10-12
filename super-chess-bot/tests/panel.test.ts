@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getPanelCapabilityView, toggleGhostMode, updatePanelAnalysis, updatePanelSetting } from '../src/panel.js';
+import {
+  appendPanelLog,
+  clearPanelLogs,
+  getPanelCapabilityView,
+  toggleGhostMode,
+  updatePanelAnalysis,
+  updatePanelSetting,
+} from '../src/panel.js';
 import { BotState, Settings } from '../src/state.js';
 
 describe('panel settings and state management', () => {
@@ -110,5 +117,12 @@ describe('panel settings and state management', () => {
       transportNote: 'Moves use the active game controller.',
     });
     expect(getPanelCapabilityView(undefined)).toEqual({ transportNote: null });
+  });
+
+  it('manages panel logs with append and clear', () => {
+    clearPanelLogs();
+    appendPanelLog('Engine ready', 'status');
+    appendPanelLog('Move input dropped', 'error');
+    clearPanelLogs();
   });
 });

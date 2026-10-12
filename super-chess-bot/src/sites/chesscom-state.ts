@@ -97,25 +97,41 @@ export const getFen = (game: ChessGame | null | undefined): string | null => {
 export const CLOCK_SELECTOR =
   '.clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time, .clock-player-turn .move-time-content, .clock-player-turn.move-time-content';
 
-/** Read the clock marked active by Chess.com and normalize it for the shared scheduler. */
-export function getRemainingMs(doc: Pick<Document, 'querySelector'>): number | null {
-  const text = doc.querySelector<HTMLElement>(CLOCK_SELECTOR)?.textContent?.trim();
-  if (!text) return null;
+const WHITE_CLOCK_SELECTOR =
+  '.clock-white .clock-time-monospace, .clock-white .clock-time, .clock-white .move-time-content, .clock-white.move-time-content';
 
+const BLACK_CLOCK_SELECTOR =
+  '.clock-black .clock-time-monospace, .clock-black .clock-time, .clock-black .move-time-content, .clock-black.move-time-content';
+
+function parseClockText(text: string | null | undefined): number | null {
+  if (!text) return null;
+  const trimmed = text.trim();
   let seconds: number;
-  const minutesAndSeconds = /^(\d+):(\d{2}(?:\.\d+)?)$/.exec(text);
+  const minutesAndSeconds = /^(\d+):(\d{2}(?:\.\d+)?)$/.exec(trimmed);
   if (minutesAndSeconds) {
     const minutes = Number(minutesAndSeconds[1]);
     const remainder = Number(minutesAndSeconds[2]);
     if (!Number.isFinite(minutes) || !Number.isFinite(remainder) || remainder >= 60) return null;
     seconds = minutes * 60 + remainder;
-  } else if (/^\d+(?:\.\d+)?$/.test(text)) {
-    seconds = Number(text);
+  } else if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    seconds = Number(trimmed);
   } else {
     return null;
   }
-
   return Number.isFinite(seconds) ? Math.round(seconds * 1000) : null;
+}
+
+/** Read the clock marked active by Chess.com and normalize it for the shared scheduler. */
+export function getRemainingMs(doc: Pick<Document, 'querySelector'>): number | null {
+  const text = doc.querySelector<HTMLElement>(CLOCK_SELECTOR)?.textContent?.trim();
+  return parseClockText(text);
+}
+
+/** Read the clock for a specific player color on Chess.com. */
+export function getColorRemainingMs(doc: Pick<Document, 'querySelector'>, color: 'w' | 'b'): number | null {
+  const selector = color === 'w' ? WHITE_CLOCK_SELECTOR : BLACK_CLOCK_SELECTOR;
+  const text = doc.querySelector<HTMLElement>(selector)?.textContent?.trim();
+  return parseClockText(text);
 }
 
 export const getPlayerColor = (game: ChessGame | null | undefined): string => {

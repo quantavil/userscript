@@ -154,6 +154,10 @@ export function parsePychessObservation(observation: PychessObservation, identit
   const movingColor = colorValue(state.turnColor);
   const movableColor = colorValue(state.movableColor);
   const displayedInSync = state.displayedPlacement === fen.split(' ')[0] && movingColor === sideToMove;
+  const whiteClock = observation.clocks[orientation === 'white' ? 'clock1' : 'clock0'];
+  const blackClock = observation.clocks[orientation === 'white' ? 'clock0' : 'clock1'];
+  const whiteRemainingMs = parseClock(whiteClock);
+  const blackRemainingMs = parseClock(blackClock);
   const playerClockIndex = orientation === 'white' ? (playerColor === 'w' ? 1 : 0) : playerColor === 'w' ? 0 : 1;
   const playerClock = observation.clocks[playerClockIndex === 0 ? 'clock0' : 'clock1'];
   const remainingMs = parseClock(playerClock);
@@ -175,6 +179,8 @@ export function parsePychessObservation(observation: PychessObservation, identit
     phase,
     inputReady,
     remainingMs,
+    ...(whiteRemainingMs != null ? { whiteRemainingMs } : {}),
+    ...(blackRemainingMs != null ? { blackRemainingMs } : {}),
     history,
     confirmedFens: replay.fens,
   };
