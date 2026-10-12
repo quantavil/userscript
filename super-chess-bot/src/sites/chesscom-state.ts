@@ -13,10 +13,12 @@ export interface ChessGame {
   getState?: () => string;
   isAnimating?: () => boolean;
   isGameOver?: () => boolean;
+  getResult?: () => unknown;
   isLegalMove?: (...args: unknown[]) => boolean;
   move?: (...args: unknown[]) => { type?: string; data?: unknown; [key: string]: unknown };
   getHistoryFENs?: () => unknown;
   getHistorySANs?: () => unknown;
+  getFingerprints?: () => { startingFen?: unknown; [key: string]: unknown };
   getRenderer?: () => {
     closePromotionWindow?: () => void;
     openPromotionWindow?: (...args: unknown[]) => unknown;
@@ -94,6 +96,22 @@ export const getFen = (game: ChessGame | null | undefined): string | null => {
   }
 };
 
+/**
+ * Read the game root position from the controller fingerprints.
+ *
+ * `getHistoryFENS()` is not a ply history: it holds only the current position, so it can
+ * never supply index zero. The fingerprints object is the only source that carries the true
+ * starting position, including for from-position games.
+ */
+export function getStartingFen(game: ChessGame | null | undefined): string | null {
+  try {
+    const starting = game?.getFingerprints?.()?.startingFen;
+    return typeof starting === 'string' && starting.trim() ? starting : null;
+  } catch {
+    return null;
+  }
+}
+
 export const CLOCK_SELECTOR =
   '.clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time, .clock-player-turn .move-time-content, .clock-player-turn.move-time-content';
 
@@ -168,11 +186,16 @@ export function isBoardFlipped(): boolean {
 }
 
 /** Validate a candidate move through the controller before submission. */
-export function isLegalChesscomMove(game: ChessGame | null | undefined, from: string, to: string): boolean {
+export function isLegalChesscomMove(
+  game: ChessGame | null | undefined,
+  from: string,
+  to: string,
+  promotion?: string,
+): boolean {
   try {
     const checker = game?.isLegalMove;
     if (typeof checker !== 'function') return false;
-    return checker.call(game, { from, to }) === true;
+    return checker.call(game, { from, to, ...(promotion ? { promotion } : {}) }) === true;
   } catch {
     return false;
   }

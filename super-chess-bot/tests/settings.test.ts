@@ -31,6 +31,8 @@ describe('loadSettings', () => {
       targetElo: 0,
       blunderShield: 1,
       ghostMode: 0,
+      gameReport: 1,
+      reportDepth: 18,
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);
@@ -51,6 +53,8 @@ describe('loadSettings', () => {
       targetElo: 0,
       blunderShield: 1,
       ghostMode: 0,
+      gameReport: 1,
+      reportDepth: 18,
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);
@@ -79,6 +83,8 @@ describe('loadSettings', () => {
       targetElo: 0,
       blunderShield: 1,
       ghostMode: 0,
+      gameReport: 1,
+      reportDepth: 18,
       menuPosition: null,
     });
     expect(BotState.hackEnabled).toBe(0);

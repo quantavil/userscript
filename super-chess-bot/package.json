@@ -1,6 +1,6 @@
 {
   "name": "super-chess-bot",
-  "version": "10.0.0",
+  "version": "11.0.0",
   "type": "module",
   "description": "Local Stockfish analysis and move automation for Chess.com, PyChess, and Lichess standard games",
   "scripts": {

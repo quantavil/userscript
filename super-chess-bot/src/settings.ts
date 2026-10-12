@@ -14,6 +14,8 @@ export const DEFAULT_SETTINGS: SettingsData = {
   blunderShield: 1,
   ghostMode: 0,
   autoRetry: 1,
+  gameReport: 1,
+  reportDepth: 18,
   menuPosition: null,
 };
 
@@ -42,6 +44,8 @@ const savedSettingsSchema = v.object({
   blunderShield: v.fallback(flagSchema, DEFAULT_SETTINGS.blunderShield as 0 | 1),
   ghostMode: v.fallback(flagSchema, DEFAULT_SETTINGS.ghostMode as 0 | 1),
   autoRetry: v.fallback(flagSchema, DEFAULT_SETTINGS.autoRetry as 0 | 1),
+  gameReport: v.fallback(flagSchema, DEFAULT_SETTINGS.gameReport as 0 | 1),
+  reportDepth: v.fallback(integerInRange(10, 26), DEFAULT_SETTINGS.reportDepth),
   menuPosition: v.fallback(v.nullable(positionSchema), DEFAULT_SETTINGS.menuPosition),
 });
 

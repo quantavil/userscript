@@ -1,5 +1,6 @@
 import { isBotOwnedNode } from '../board.js';
-import { canonicalFen, readPositionHistory } from '../history.js';
+import type { PositionHistory } from '../history.js';
+import { canonicalFen, replaySanLine } from '../history.js';
 import { installChesscomControllerBridge, setCapturedChesscomController } from './chesscom-bridge.js';
 import {
   type ChessGame,
@@ -10,6 +11,7 @@ import {
   getOrientation,
   getRemainingMs,
   getSideToMove,
+  getStartingFen,
   isLegalChesscomMove,
   resetStuckPromotionWindow,
 } from './chesscom-state.js';
@@ -90,12 +92,25 @@ function isRelevantMutation(records: MutationRecord[]): boolean {
   });
 }
 
+function readChesscomHistory(
+  game: ChessGame,
+): { history: PositionHistory; confirmedFens: readonly string[] } | undefined {
+  const startingFen = getStartingFen(game);
+  const sans = game.getHistorySANs?.();
+  if (!startingFen || !Array.isArray(sans)) return undefined;
+  const line = sans.filter((san): san is string => typeof san === 'string' && san.trim().length > 0);
+  const replay = replaySanLine(startingFen, line);
+  if (!replay) return undefined;
+  return { history: replay.history, confirmedFens: replay.fens };
+}
+
 /** Read Chess.com through its captured board controller and submit moves through it. */
 export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdapter {
   let currentBoard: ChessBoard | null = null;
   let currentGame: ChessGame | null = null;
   let currentIdentity: object | null = null;
   let currentGameId = '';
+  let lastPlayerColor: Color | null = null;
   let controller: ChessGame | null = null;
   let bridgeInstalled = false;
 
@@ -117,28 +132,45 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
     if (sideToMove !== 'w' && sideToMove !== 'b') {
       return { kind: 'ineligible', reason: 'Chess.com position is malformed' };
     }
-    const playingAs = game.getPlayingAs?.();
-    if (playingAs !== 1 && playingAs !== 2)
-      return { kind: 'ineligible', reason: 'Chess.com player color is unavailable' };
-    const playerColor: Color = playingAs === 2 ? 'b' : 'w';
 
     if (board !== currentBoard || game !== currentGame) {
       currentBoard = board;
       currentGame = game;
       currentIdentity = {};
+      lastPlayerColor = null;
       const declaredId = game.id ?? board.getAttribute('data-game-id');
       currentGameId = declaredId == null ? `chesscom-${++nextGameId}` : String(declaredId);
     }
 
+    const isFinished = Boolean(
+      game.isGameOver?.() ||
+        (typeof game.getResult === 'function' && /^(1-0|0-1|1\/2-1\/2)$/.test(String(game.getResult()))) ||
+        doc.querySelector('.game-over-modal-content'),
+    );
+
+    const playingAs = game.getPlayingAs?.();
+    let playerColor: Color | null = null;
+    if (playingAs === 1) {
+      playerColor = 'w';
+      lastPlayerColor = 'w';
+    } else if (playingAs === 2) {
+      playerColor = 'b';
+      lastPlayerColor = 'b';
+    } else if (isFinished) {
+      const orientation = getOrientation(game);
+      playerColor = lastPlayerColor ?? (orientation === 'black' ? 'b' : 'w');
+    }
+
+    if (!playerColor) {
+      return { kind: 'ineligible', reason: 'Chess.com player color is unavailable' };
+    }
+
     const orientation = getOrientation(game);
-    const phase = game.isGameOver?.() || doc.querySelector('.game-over-modal-content') ? 'finished' : 'live';
+    const phase: GameSnapshot['phase'] = isFinished ? 'finished' : 'live';
     const controllerState = game.getState?.();
     const settled = controllerState === undefined || controllerState === 'Idle';
-    const history = readPositionHistory(game, fen);
-    const confirmedFensRaw = game.getHistoryFENs?.();
-    const confirmedFens = Array.isArray(confirmedFensRaw)
-      ? confirmedFensRaw.filter((item): item is string => typeof item === 'string')
-      : undefined;
+    const history = readChesscomHistory(game);
+    const confirmedFens = history?.confirmedFens;
     const remainingMs = getRemainingMs(doc);
     const whiteRemainingMs = getColorRemainingMs(doc, 'w');
     const blackRemainingMs = getColorRemainingMs(doc, 'b');
@@ -155,7 +187,7 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
       remainingMs,
       ...(whiteRemainingMs != null ? { whiteRemainingMs } : {}),
       ...(blackRemainingMs != null ? { blackRemainingMs } : {}),
-      ...(history ? { history } : {}),
+      ...(history ? { history: history.history } : {}),
       ...(confirmedFens ? { confirmedFens } : {}),
     };
     return { kind: 'game', snapshot };
@@ -294,10 +326,15 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
       const to = uci.slice(2, 4);
       const promotionChar = uci.length > 4 ? uci[4].toLowerCase() : '';
       const promotion = /^[qrbn]$/.test(promotionChar) ? promotionChar : undefined;
-      if (!isLegalChesscomMove(game, from, to)) return false;
+      if (!isLegalChesscomMove(game, from, to, promotion)) return false;
       if (request.signal.aborted || !request.isCurrent() || currentGame !== game) return false;
       try {
-        const result = game.move({ from, to, ...(promotion ? { promotion } : {}) });
+        const result = game.move({
+          from,
+          to,
+          ...(promotion ? { promotion } : {}),
+          userGenerated: true,
+        });
         return result?.type === 'Move';
       } catch {
         return false;

@@ -142,6 +142,48 @@ describe('site adapter selection', () => {
 
     expect(adapter.read()).toMatchObject({ kind: 'game', snapshot: { orientation: 'black' } });
   });
+
+  it('preserves playerColor and reports phase finished when game ends and playingAs flips undefined', () => {
+    let gameOver = false;
+    let playingAs: number | undefined = 1;
+    const game = makeGame();
+    (game as unknown as { isGameOver: () => boolean }).isGameOver = () => gameOver;
+    (game as unknown as { getPlayingAs: () => number | undefined }).getPlayingAs = () => playingAs;
+
+    const board = makeBoard({ game });
+    const page = makePage(() => [board]);
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+
+    // Live state: playing as white
+    expect(adapter.read()).toMatchObject({
+      kind: 'game',
+      snapshot: { phase: 'live', playerColor: 'w', inputReady: true },
+    });
+
+    // Game over: Chess.com flips getPlayingAs to undefined and isGameOver to true
+    gameOver = true;
+    playingAs = undefined;
+
+    expect(adapter.read()).toMatchObject({
+      kind: 'game',
+      snapshot: { phase: 'finished', playerColor: 'w', inputReady: false },
+    });
+  });
+
+  it('falls back to orientation when reading a game that is already finished on page load', () => {
+    const game = makeGame({ flipped: true });
+    (game as unknown as { isGameOver: () => boolean }).isGameOver = () => true;
+    (game as unknown as { getPlayingAs: () => number | undefined }).getPlayingAs = () => undefined;
+
+    const board = makeBoard({ game });
+    const page = makePage(() => [board]);
+    const adapter = createChesscomAdapter(() => page as unknown as Window);
+
+    expect(adapter.read()).toMatchObject({
+      kind: 'game',
+      snapshot: { phase: 'finished', playerColor: 'b', orientation: 'black', inputReady: false },
+    });
+  });
 });
 
 describe('Chess.com controller move submission', () => {
@@ -158,7 +200,7 @@ describe('Chess.com controller move submission', () => {
 
     expect(submitted).toBe(true);
     expect(game.isLegalMove).toHaveBeenCalledWith({ from: 'e2', to: 'e4' });
-    expect(game.move).toHaveBeenCalledWith({ from: 'e2', to: 'e4' });
+    expect(game.move).toHaveBeenCalledWith({ from: 'e2', to: 'e4', userGenerated: true });
   });
 
   it('lowercases the promotion character in the object payload', async () => {
@@ -175,7 +217,8 @@ describe('Chess.com controller move submission', () => {
     );
 
     expect(submitted).toBe(true);
-    expect(game.move).toHaveBeenCalledWith({ from: 'a7', to: 'a8', promotion: 'q' });
+    expect(game.isLegalMove).toHaveBeenCalledWith({ from: 'a7', to: 'a8', promotion: 'q' });
+    expect(game.move).toHaveBeenCalledWith({ from: 'a7', to: 'a8', promotion: 'q', userGenerated: true });
   });
 
   it('reports failure for IllegalMove results without DOM promotion handling', async () => {
@@ -232,7 +275,7 @@ describe('Chess.com controller move submission', () => {
 
     expect(closed).toBe(true);
     expect(submitted).toBe(true);
-    expect(game.move).toHaveBeenCalledWith({ from: 'e2', to: 'e4' });
+    expect(game.move).toHaveBeenCalledWith({ from: 'e2', to: 'e4', userGenerated: true });
   });
 
   it('rejects moves for a stale position without touching the controller', async () => {

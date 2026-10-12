@@ -62,6 +62,8 @@ export const BotState: BotStateInterface = {
   blunderShield: 1,
   ghostMode: 0,
   autoRetry: 1,
+  gameReport: 1,
+  reportDepth: 18,
   multiPvLines: undefined,
   evalHistory: [],
 };
@@ -84,6 +86,8 @@ export const Settings = {
         blunderShield: BotState.blunderShield,
         ghostMode: BotState.ghostMode,
         autoRetry: BotState.autoRetry,
+        gameReport: BotState.gameReport,
+        reportDepth: BotState.reportDepth,
         menuPosition: position,
       };
       localStorage.setItem('scb_settings', JSON.stringify(settings));

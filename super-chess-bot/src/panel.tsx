@@ -4,7 +4,7 @@ import type { TargetedPointerEvent } from 'preact';
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { setGhostMode } from './board.js';
-import { gameHistoryTracker, gameMovesSignal } from './game-history.js';
+import { gameHistoryTracker, gameMovesSignal, type MovePairView } from './game-history.js';
 import {
   BrainIcon,
   CheckIcon,
@@ -17,7 +17,10 @@ import {
   OpeningStyleIcon,
   PowerIcon,
 } from './icons.js';
+import type { PlayerReport } from './report/aggregate.js';
+import { cancelGameReport, gameReportSignal, runGameReport } from './report/analyzer.js';
 import { MAX_MOVE_TIME, MIN_MOVE_TIME } from './settings.js';
+import { readSite } from './sites/index.js';
 import type { SiteCapabilities } from './sites/types.js';
 import { BotState, Settings } from './state.js';
 import type { CandidateLine, OpeningStyle, RecoveryAction, TimingMode } from './types/chess.js';
@@ -59,6 +62,8 @@ interface PanelSettings {
   targetElo: number;
   blunderShield: boolean;
   ghostMode: boolean;
+  gameReport: boolean;
+  reportDepth: number;
 }
 
 export interface PanelAnalysis {
@@ -100,6 +105,8 @@ const readSettings = (): PanelSettings => ({
   blunderShield: !!BotState.blunderShield,
   ghostMode: !!BotState.ghostMode,
   autoRetry: !!BotState.autoRetry,
+  gameReport: !!BotState.gameReport,
+  reportDepth: BotState.reportDepth,
 });
 
 const settingsSignal = signal<PanelSettings>(readSettings());
@@ -200,6 +207,12 @@ function writeBotState<K extends keyof PanelSettings>(key: K, value: PanelSettin
       break;
     case 'autoRetry':
       BotState.autoRetry = value ? 1 : 0;
+      break;
+    case 'gameReport':
+      BotState.gameReport = value ? 1 : 0;
+      break;
+    case 'reportDepth':
+      BotState.reportDepth = Number(value);
       break;
   }
 }
@@ -326,25 +339,22 @@ function QuickEnableButton({ enabled, onToggle }: { enabled: boolean; onToggle: 
   );
 }
 
-function EnableButton({ enabled, onToggle }: { enabled: boolean; onToggle: (enabled: boolean) => void }) {
+function EnableToggle({ enabled, onToggle }: { enabled: boolean; onToggle: (enabled: boolean) => void }) {
   return (
-    <button
-      type="button"
-      class="panel-enable panel-enable-wide"
-      aria-pressed={enabled}
-      aria-label={enabled ? 'Disable bot' : 'Enable bot'}
-      title={enabled ? 'Disable bot' : 'Enable bot'}
-      onClick={() => onToggle(!enabled)}
-    >
-      <span class="panel-enable-label">Enable bot</span>
-      <span class="panel-enable-action">
-        <span class="panel-enable-state">{enabled ? 'On' : 'Off'}</span>
-        <span class="panel-switch" aria-hidden="true">
-          <span class="panel-switch-track" />
-          <span class="panel-switch-knob" />
-        </span>
+    <label class="panel-toggle panel-toggle-enable">
+      <span class="panel-toggle-enable-label">ENABLE BOT</span>
+      <span class="panel-switch">
+        <input
+          class="panel-switch-input"
+          type="checkbox"
+          checked={enabled}
+          aria-label="ENABLE BOT"
+          onChange={(event) => onToggle(event.currentTarget.checked)}
+        />
+        <span class="panel-switch-track" aria-hidden="true" />
+        <span class="panel-switch-knob" aria-hidden="true" />
       </span>
-    </button>
+    </label>
   );
 }
 
@@ -482,15 +492,18 @@ function SetupNotice({ status }: { status?: string }) {
 function EvalTrendGraph({ history }: { history?: number[] }) {
   if (!history || history.length < 2) return null;
 
-  const width = 240;
-  const height = 32;
+  const width = 280;
+  const height = 56;
+  const startX = 26;
+  const chartWidth = width - startX;
   const zeroY = height / 2;
-  const maxEval = 6;
+  const maxEval = 10;
+  const usableHalf = zeroY - 6;
 
   const coords = history.map((val, idx) => {
-    const x = (idx / (history.length - 1)) * width;
+    const x = startX + (idx / (history.length - 1)) * (chartWidth - 2);
     const clamped = Math.max(-maxEval, Math.min(maxEval, val));
-    const y = zeroY - (clamped / maxEval) * (height / 2 - 4);
+    const y = zeroY - (clamped / maxEval) * usableHalf;
     return { x, y };
   });
 
@@ -504,19 +517,69 @@ function EvalTrendGraph({ history }: { history?: number[] }) {
   const latest = coords[coords.length - 1];
   const latestVal = history[history.length - 1];
   const latestFormatted = latestVal > 0 ? `+${latestVal.toFixed(1)}` : latestVal.toFixed(1);
+  const valTone = latestVal > 0.3 ? 'sage' : latestVal < -0.3 ? 'brick' : 'brass';
 
   return (
     <div class="panel-trend">
       <div class="panel-trend-head">
-        <span class="panel-trend-title">Eval Trend</span>
-        <span class="panel-trend-val">{latestFormatted}</span>
+        <div class="panel-trend-label-wrap">
+          <span class="panel-trend-title">Eval Trend</span>
+          <span class="panel-trend-subtitle">{history.length} plies</span>
+        </div>
+        <span class="panel-trend-val" data-tone={valTone}>
+          {latestFormatted}
+        </span>
       </div>
-      <svg class="panel-trend-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-        <line x1="0" y1={zeroY} x2={width} y2={zeroY} stroke="var(--line)" stroke-dasharray="3 3" stroke-width="1" />
-        <path d={areaD} fill="rgba(217, 169, 79, 0.12)" />
-        <path d={pathD} fill="none" stroke="var(--brass)" stroke-width="1.75" stroke-linejoin="round" />
-        <circle cx={latest.x} cy={latest.y} r="2.5" fill="var(--brass)" />
-      </svg>
+      <div class="panel-trend-box">
+        <svg class="panel-trend-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="scb-eval-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--sage)" stop-opacity="0.22" />
+              <stop offset="50%" stop-color="var(--brass)" stop-opacity="0.08" />
+              <stop offset="100%" stop-color="var(--brick)" stop-opacity="0.22" />
+            </linearGradient>
+          </defs>
+
+          {/* Left Y-axis labels: +10, 0, -10 */}
+          <text x="21" y="10" text-anchor="end" class="panel-trend-axis-text">
+            +10
+          </text>
+          <text x="21" y={zeroY + 3} text-anchor="end" class="panel-trend-axis-text">
+            0
+          </text>
+          <text x="21" y="52" text-anchor="end" class="panel-trend-axis-text">
+            -10
+          </text>
+
+          {/* Single horizontal dotted zero row */}
+          <line
+            x1={startX}
+            y1={zeroY}
+            x2={width - 2}
+            y2={zeroY}
+            stroke="var(--muted)"
+            stroke-dasharray="3 3"
+            stroke-width="1"
+            stroke-opacity="0.6"
+          />
+
+          {/* Shaded Area and Trend Line */}
+          <path d={areaD} fill="url(#scb-eval-fill)" />
+          <path d={pathD} fill="none" stroke="var(--brass)" stroke-width="1.75" stroke-linejoin="round" />
+
+          {/* Latest Point Indicator */}
+          <circle
+            cx={latest.x}
+            cy={latest.y}
+            r="4"
+            fill="none"
+            stroke="var(--brass)"
+            stroke-width="1.2"
+            stroke-opacity="0.6"
+          />
+          <circle cx={latest.x} cy={latest.y} r="2.2" fill="var(--brass)" />
+        </svg>
+      </div>
     </div>
   );
 }
@@ -593,6 +656,185 @@ function PanelGuide() {
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * One per-ply time cell: a proportional fill bar plus its label.
+ *
+ * The bar is what makes the column scannable. `1.6s` has to be read, but a bar's length can be
+ * compared against the row above at a glance, so "opponent spent three times longer here"
+ * becomes visible without reading a single number.
+ */
+/** Trailing-zero percentage so 92.4 reads as "92%" beside 97.5 reading as "98%". */
+function percent(value: number | null): string {
+  if (value == null) return '—';
+  return `${Math.round(value)}%`;
+}
+
+/** Accuracy band drives the colour, so a weak number is visible without reading it. */
+function accuracyTone(value: number | null): string {
+  if (value == null) return 'none';
+  if (value >= 90) return 'high';
+  if (value >= 75) return 'mid';
+  return 'low';
+}
+
+function ReportPlayer({ label, report }: { label: string; report: PlayerReport }) {
+  return (
+    <div class="panel-report-player">
+      <div class="panel-report-head">
+        <span class="panel-report-name">{label}</span>
+        <span class="panel-report-accuracy" data-tone={accuracyTone(report.accuracy)}>
+          {percent(report.accuracy)}
+        </span>
+      </div>
+      <dl class="panel-report-stats">
+        <div class="panel-report-stat" data-kind="inaccuracy">
+          <dt>{report.inaccuracy}</dt>
+          <dd>Inaccuracies</dd>
+        </div>
+        <div class="panel-report-stat" data-kind="mistake">
+          <dt>{report.mistake}</dt>
+          <dd>Mistakes</dd>
+        </div>
+        <div class="panel-report-stat" data-kind="blunder">
+          <dt>{report.blunder}</dt>
+          <dd>Blunders</dd>
+        </div>
+        <div class="panel-report-stat" data-kind="acpl">
+          <dt>{report.acpl.toFixed(0)}</dt>
+          <dd>Avg centipawn loss</dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+/**
+ * Post-game accuracy summary, in the shape players already read on the big chess sites:
+ * a headline accuracy per side, then the four damage counters.
+ *
+ * The numbers come from Lichess's open formulas against our own engine, not from the host site,
+ * so they are labelled a local estimate rather than presented as the site's own review.
+ */
+function GameReportPanel({
+  reportDepth,
+  onDepthChange,
+}: {
+  reportDepth: number;
+  onDepthChange: (depth: number) => void;
+}) {
+  const progress = gameReportSignal.value;
+  const moves = gameHistoryTracker.getMoves();
+  const movesCount = moves.length;
+
+  const handleGenerate = () => {
+    const currentMoves = gameHistoryTracker.getMoves();
+    const startFen = gameHistoryTracker.getStartFen();
+    const read = readSite();
+    const gameId = (read.kind === 'game' ? read.snapshot.gameId : null) ?? 'game';
+    void runGameReport(currentMoves, startFen, gameId, reportDepth, true);
+  };
+
+  return (
+    <section class="panel-report" aria-label="Game report">
+      <div class="panel-report-head">
+        <span class="panel-report-title">Game report</span>
+        <span class="panel-report-note">Local engine estimate</span>
+      </div>
+
+      <Slider
+        id="bot-report-depth"
+        label="Report depth"
+        value={reportDepth}
+        min={10}
+        max={26}
+        step={1}
+        format={(value) => `${value}`}
+        hint="Search depth per move for accuracy evaluation."
+        onPreview={onDepthChange}
+        onCommit={onDepthChange}
+      />
+
+      <div class="panel-report-actions">
+        <button
+          type="button"
+          class="panel-button panel-report-btn"
+          disabled={movesCount === 0 || progress.running}
+          onClick={handleGenerate}
+        >
+          {progress.running
+            ? `Analyzing ${progress.analyzed}/${progress.total}…`
+            : progress.done
+              ? 'Regenerate report'
+              : 'Generate report'}
+        </button>
+        {progress.running && (
+          <button type="button" class="panel-button panel-report-cancel-btn" onClick={cancelGameReport}>
+            Cancel
+          </button>
+        )}
+      </div>
+
+      {progress.running && (
+        <p class="panel-report-status">
+          Analyzing {progress.analyzed}/{progress.total} positions…
+        </p>
+      )}
+
+      {progress.report && (
+        <>
+          <ReportPlayer label="White" report={progress.report.white} />
+          <ReportPlayer label="Black" report={progress.report.black} />
+        </>
+      )}
+    </section>
+  );
+}
+
+function MoveTime({ ms, max }: { ms: number | null | undefined; max: number }) {
+  if (ms == null) return <span class="panel-scoresheet-time" />;
+  const fill = max > 0 ? Math.max(6, Math.min(100, Math.round((ms / max) * 100))) : 6;
+  return (
+    <span class="panel-scoresheet-time" title={`${(ms / 1000).toFixed(1)}s`}>
+      <span class="panel-scoresheet-bar" style={{ '--fill': `${fill}%` }} aria-hidden="true" />
+      <span class="panel-scoresheet-time-label">{(ms / 1000).toFixed(1)}s</span>
+    </span>
+  );
+}
+
+function Scoresheet({ pairs }: { pairs: readonly MovePairView[] }) {
+  // The longest recorded time sets the bar scale, so every row is comparable within one game.
+  const max = pairs.reduce((peak, pair) => Math.max(peak, pair.white?.elapsedMs ?? 0, pair.black?.elapsedMs ?? 0), 0);
+  const lastPly = pairs.at(-1);
+  const lastNumber = lastPly?.moveNumber ?? -1;
+
+  return (
+    <div class="panel-scoresheet">
+      {pairs.map((pair) => {
+        const isLastPair = pair.moveNumber === lastNumber;
+        const whiteActive = isLastPair && pair.black == null;
+        const blackActive = isLastPair && pair.black != null;
+        return (
+          <div
+            key={pair.moveNumber}
+            class="panel-scoresheet-row"
+            data-stripe={pair.moveNumber % 2 === 0 ? 'odd' : 'even'}
+          >
+            <span class="panel-scoresheet-num">{pair.moveNumber}.</span>
+            <span class="panel-scoresheet-move" data-turn="w" data-active={whiteActive || undefined}>
+              {pair.white?.san ?? ''}
+            </span>
+            <span class="panel-scoresheet-move" data-turn="b" data-active={blackActive || undefined}>
+              {pair.black?.san ?? ''}
+            </span>
+            <MoveTime ms={pair.white?.elapsedMs} max={max} />
+            <MoveTime ms={pair.black?.elapsedMs} max={max} />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -835,9 +1077,14 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
               )}
             </section>
 
+            <GameReportPanel
+              reportDepth={settings.reportDepth}
+              onDepthChange={(next) => updateSetting('reportDepth', next)}
+            />
+
             <section class="panel-settings" aria-label="Bot settings">
-              <EnableButton enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />
               <div class="panel-toggles">
+                <EnableToggle enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />
                 <Toggle
                   label="Auto move"
                   checked={settings.autoMove}
@@ -1002,39 +1249,7 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
                     <p class="panel-log-empty">Game moves and system events will appear here.</p>
                   ) : (
                     <>
-                      {movePairs.length > 0 && (
-                        <div class="panel-scoresheet">
-                          {movePairs.map((pair) => (
-                            <div key={pair.moveNumber} class="panel-scoresheet-row">
-                              <span class="panel-scoresheet-num">{pair.moveNumber}.</span>
-                              <span class="panel-scoresheet-cell">
-                                {pair.white ? (
-                                  <>
-                                    <span class="panel-scoresheet-san">{pair.white.san}</span>
-                                    {pair.white.elapsedMs != null && (
-                                      <span class="panel-scoresheet-time">
-                                        {(pair.white.elapsedMs / 1000).toFixed(1)}s
-                                      </span>
-                                    )}
-                                  </>
-                                ) : null}
-                              </span>
-                              <span class="panel-scoresheet-cell">
-                                {pair.black ? (
-                                  <>
-                                    <span class="panel-scoresheet-san">{pair.black.san}</span>
-                                    {pair.black.elapsedMs != null && (
-                                      <span class="panel-scoresheet-time">
-                                        {(pair.black.elapsedMs / 1000).toFixed(1)}s
-                                      </span>
-                                    )}
-                                  </>
-                                ) : null}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {movePairs.length > 0 && <Scoresheet pairs={movePairs} />}
                       {logs
                         .filter((entry) => entry.type === 'error' || entry.type === 'warn' || movePairs.length === 0)
                         .map((entry) => (

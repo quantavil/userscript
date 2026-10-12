@@ -562,39 +562,77 @@
 
 /* Evaluation Trend Momentum Graph */
 .panel-trend {
-  margin-top: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-control);
-  background: var(--well);
-  border: 1px solid var(--line);
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .panel-trend-head {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
+  align-items: baseline;
+  padding: 0 2px;
   font-size: 11px;
+}
+
+.panel-trend-label-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .panel-trend-title {
   color: var(--muted);
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
+}
+
+.panel-trend-subtitle {
+  color: color-mix(in srgb, var(--muted) 65%, transparent);
+  font-size: 10px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .panel-trend-val {
   color: var(--brass);
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.panel-trend-val[data-tone="sage"] {
+  color: var(--sage);
+}
+
+.panel-trend-val[data-tone="brick"] {
+  color: var(--brick);
+}
+
+.panel-trend-box {
+  padding: 6px 8px;
+  border-radius: var(--radius-control);
+  background: var(--well);
+  border: 1px solid var(--line);
+  overflow: hidden;
 }
 
 .panel-trend-svg {
   display: block;
   width: 100%;
-  height: 32px;
+  height: 56px;
   overflow: visible;
+}
+
+.panel-trend-axis-text {
+  font-size: 8.5px;
+  font-weight: 500;
+  font-family: var(--sans);
+  fill: var(--muted);
+  opacity: 0.7;
 }
 
 .panel-notice {
@@ -639,6 +677,12 @@
   filter: brightness(1.06);
 }
 
+.panel-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+
 /* Settings */
 
 .panel-settings {
@@ -660,6 +704,14 @@
   justify-content: space-between;
   gap: 12px;
   cursor: pointer;
+}
+
+.panel-toggle-enable-label {
+  color: var(--paper);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .panel-note {
@@ -962,11 +1014,147 @@
   font-size: 12px;
 }
 
+/* Post-game accuracy report */
+.panel-report {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-report-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.panel-report-title {
+  color: var(--paper);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.panel-report-note {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.panel-report-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.panel-report-btn {
+  width: 100%;
+}
+
+.panel-report-cancel-btn {
+  flex: 0 0 auto;
+  border-color: var(--brick);
+  background: var(--brick);
+  color: #fff;
+}
+
+.panel-report-player {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--wood);
+}
+
+.panel-report-name {
+  color: var(--paper);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.panel-report-accuracy {
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-report-accuracy[data-tone="high"] {
+  color: var(--sage);
+}
+
+.panel-report-accuracy[data-tone="mid"] {
+  color: var(--brass);
+}
+
+.panel-report-accuracy[data-tone="low"] {
+  color: var(--brick);
+}
+
+/* Two-column stat grid: the number reads first, its label second. */
+.panel-report-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 10px;
+  margin: 0;
+}
+
+.panel-report-stat {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.panel-report-stat dt {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-report-stat dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-report-stat[data-kind="inaccuracy"] dt {
+  color: #7fc4d8;
+}
+
+.panel-report-stat[data-kind="mistake"] dt {
+  color: var(--brass);
+}
+
+.panel-report-stat[data-kind="blunder"] dt {
+  color: var(--brick);
+}
+
+.panel-report-stat[data-kind="acpl"] dt {
+  color: var(--muted);
+}
+
+.panel-report-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.panel-report-status-quiet {
+  color: color-mix(in srgb, var(--muted) 80%, transparent);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 /* Scoresheet & Game Moves Table */
 .panel-scoresheet {
   display: flex;
   flex-direction: column;
-  gap: 2px;
   width: 100%;
   font-variant-numeric: tabular-nums;
   margin-bottom: 6px;
@@ -974,13 +1162,17 @@
 
 .panel-scoresheet-row {
   display: grid;
-  grid-template-columns: 28px 1fr 1fr;
+  grid-template-columns: 20px minmax(0, 1fr) minmax(0, 1fr) 62px 62px;
   align-items: center;
-  gap: 6px;
-  padding: 3px 6px;
-  border-radius: 4px;
+  gap: 4px;
+  padding: 5px 6px;
   font-size: 12px;
   transition: background 120ms var(--ease);
+}
+
+/* Striping carries the row when you lose your place scanning a long game. */
+.panel-scoresheet-row[data-stripe="even"] {
+  background: color-mix(in srgb, var(--paper) 5%, transparent);
 }
 
 .panel-scoresheet-row:hover {
@@ -992,34 +1184,54 @@
   font-size: 11px;
   font-weight: 600;
   text-align: right;
-  padding-right: 4px;
 }
 
-.panel-scoresheet-cell {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 1px 4px;
-  border-radius: 3px;
-  min-width: 0;
-}
-
-.panel-scoresheet-san {
+.panel-scoresheet-move {
+  overflow: hidden;
   color: var(--paper);
-  font-family: var(--serif);
+  font-size: 13px;
   font-weight: 600;
-  font-size: 12px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+.panel-scoresheet-move[data-active] {
+  border-radius: 3px;
+  background: var(--wood-raised);
+  padding: 1px 5px;
+}
+
+/* Times get their own gutter so both sides line up vertically instead of trailing the SAN. */
 .panel-scoresheet-time {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.panel-scoresheet-bar {
+  width: 26px;
+  height: 5px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--line);
+}
+
+.panel-scoresheet-bar::after {
+  display: block;
+  width: var(--fill);
+  height: 100%;
+  border-radius: 3px;
+  background: var(--brass);
+  content: "";
+}
+
+.panel-scoresheet-time-label {
   color: var(--muted);
   font-size: 10px;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: var(--wood);
-  border: 1px solid var(--line);
-  flex-shrink: 0;
 }
 
 .panel-log-entry {

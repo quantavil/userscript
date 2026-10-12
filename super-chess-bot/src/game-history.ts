@@ -129,6 +129,14 @@ export class GameHistoryTracker {
     return this.moves;
   }
 
+  getStartFen(): string {
+    return this.startFen;
+  }
+
+  getGameId(): string | null {
+    return this.activeGameId;
+  }
+
   getMovePairs(): readonly MovePairView[] {
     const pairs: MovePairView[] = [];
     for (const move of this.moves) {

@@ -15,6 +15,7 @@ import {
   scheduleAnalysis,
 } from './engine/scheduler.js';
 import { gameHistoryTracker } from './game-history.js';
+import { runGameReport } from './report/analyzer.js';
 import { getSite, readSite } from './sites/index.js';
 import type { GameSnapshot, SiteAdapter, SiteRead } from './sites/types.js';
 import { BotState, pa, Settings } from './state.js';
@@ -207,7 +208,6 @@ class BotController {
     this.interruptedFen = null;
     this.previousInputReady = null;
     this.clearRecommendation();
-    gameHistoryTracker.reset();
     BotState.recoveryAction = null;
     BotState.statusInfo = read.reason;
     ui.updateDisplay(pa());
@@ -227,6 +227,9 @@ class BotController {
       BotState.recoveryAction = null;
       BotState.statusInfo = snapshot.phase === 'replay' ? 'Replay mode' : 'Game finished';
       ui.updateDisplay(pa());
+    }
+    if (snapshot.phase === 'finished' && BotState.gameReport) {
+      void runGameReport(gameHistoryTracker.getMoves(), gameHistoryTracker.getStartFen(), snapshot.gameId);
     }
     return true;
   }

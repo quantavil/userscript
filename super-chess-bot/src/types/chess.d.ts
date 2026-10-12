@@ -36,6 +36,8 @@ export interface BotState {
   blunderShield: number;
   ghostMode: number;
   autoRetry: number;
+  gameReport: number;
+  reportDepth: number;
   multiPvLines?: CandidateLine[];
   evalHistory?: number[];
   onUpdateDisplay?: (playingAs: number) => void;
@@ -54,5 +56,7 @@ export interface SettingsData {
   blunderShield: number;
   ghostMode: number;
   autoRetry: number;
+  gameReport: number;
+  reportDepth: number;
   menuPosition: { top: string; left: string } | null;
 }

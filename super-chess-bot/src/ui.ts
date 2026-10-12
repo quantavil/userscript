@@ -11,6 +11,7 @@ import {
   syncPanelSettings,
   updatePanelAnalysis,
 } from './panel.js';
+import { resetGameReport } from './report/analyzer.js';
 import { readSite } from './sites/index.js';
 import type { SiteCapabilities } from './sites/types.js';
 import { BotState, Settings, setMenuPositionGetter } from './state.js';
@@ -47,6 +48,7 @@ export const ui: UI = {
   clearConsole() {
     clearPanelLogs();
     gameHistoryTracker.reset();
+    resetGameReport();
     this.lastStatus = '';
     this.lastBestMove = '';
   },
@@ -54,7 +56,8 @@ export const ui: UI = {
   updateDisplay(playingAs) {
     syncPanelSettings();
     const read = readSite();
-    const fen = read.kind === 'game' ? read.snapshot.fen : null;
+    const snapshot = read.kind === 'game' ? read.snapshot : null;
+    const fen = snapshot?.fen ?? null;
     const san = fen && BotState.bestMove !== '-' ? uciToSan(fen, BotState.bestMove) : BotState.bestMove;
     const suggestedMove = typeof san === 'string' ? san : BotState.bestMove;
     if (BotState.statusInfo !== this.lastStatus) {

@@ -69,7 +69,6 @@ vi.mock('../src/sites/index.js', () => ({
   getSite: () => dependencies.site,
   readSite: () => dependencies.site.read(),
 }));
-vi.mock('../src/history.js', () => ({ readPositionHistory: vi.fn() }));
 vi.mock('../src/board.js', () => ({
   confirmSiteMove: dependencies.confirmMove,
   clearArrows: dependencies.clearArrows,

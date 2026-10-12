@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ♟Super-chess-Bot
 // @namespace    https://github.com/quantavil/super-chess-bot
-// @version      10.0.0
+// @version      11.0.0
 // @author       quantavil
 // @description  Local Stockfish analysis and move automation for Chess.com, PyChess, and Lichess standard games
 // @license      GPL-3.0-or-later
@@ -1403,7 +1403,6 @@
 			promotion
 		};
 	};
-	var comparable = (fen) => fen.split(" ").filter((_, i) => i !== 3).join(" ");
 	function makeEngineUci(position, move) {
 		if ("from" in move && move.from === position.board.kingOf(position.turn)) {
 			const rooks = position.castles.rook[position.turn];
@@ -1451,54 +1450,6 @@
 				},
 				fens
 			};
-		} catch {
-			return;
-		}
-	}
-	var historyCache = null;
-	function readPositionHistory(game, currentFen) {
-		try {
-			const fens = game.getHistoryFENs?.();
-			const sans = game.getHistorySANs?.();
-			if (!Array.isArray(fens) || !Array.isArray(sans) || typeof fens[0] !== "string") return void 0;
-			const startFen = fens[0];
-			const sansLength = sans.length;
-			const lastSan = typeof sans[sansLength - 1] === "string" ? sans[sansLength - 1] : void 0;
-			if (historyCache && historyCache.game === game && historyCache.currentFen === currentFen && historyCache.startFen === startFen && historyCache.sansLength === sansLength && historyCache.lastSan === lastSan) return historyCache.result;
-			const setup = parseFen(startFen);
-			if (setup.isErr) return void 0;
-			const position = Chess.fromSetup(setup.value);
-			if (position.isErr) return void 0;
-			const moves = [];
-			let computed;
-			for (const san of sans) {
-				if (!san) continue;
-				if (typeof san !== "string") return void 0;
-				const move = parseSan(position.value, san);
-				if (!move) return void 0;
-				moves.push(makeEngineUci(position.value, move));
-				position.value.play(move);
-				if (comparable(makeFen(position.value.toSetup())) === comparable(currentFen)) {
-					computed = {
-						startFen,
-						moves
-					};
-					break;
-				}
-			}
-			if (!computed && comparable(startFen) === comparable(currentFen)) computed = {
-				startFen,
-				moves: []
-			};
-			historyCache = {
-				game,
-				currentFen,
-				startFen,
-				sansLength,
-				lastSan,
-				result: computed
-			};
-			return computed;
 		} catch {
 			return;
 		}
@@ -1654,6 +1605,14 @@
 			return null;
 		}
 	};
+	function getStartingFen(game) {
+		try {
+			const starting = game?.getFingerprints?.()?.startingFen;
+			return typeof starting === "string" && starting.trim() ? starting : null;
+		} catch {
+			return null;
+		}
+	}
 	var CLOCK_SELECTOR = ".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time, .clock-player-turn .move-time-content, .clock-player-turn.move-time-content";
 	var WHITE_CLOCK_SELECTOR = ".clock-white .clock-time-monospace, .clock-white .clock-time, .clock-white .move-time-content, .clock-white.move-time-content";
 	var BLACK_CLOCK_SELECTOR = ".clock-black .clock-time-monospace, .clock-black .clock-time, .clock-black .move-time-content, .clock-black.move-time-content";
@@ -1703,13 +1662,14 @@
 			return "white";
 		}
 	};
-	function isLegalChesscomMove(game, from, to) {
+	function isLegalChesscomMove(game, from, to, promotion) {
 		try {
 			const checker = game?.isLegalMove;
 			if (typeof checker !== "function") return false;
 			return checker.call(game, {
 				from,
-				to
+				to,
+				...promotion ? { promotion } : {}
 			}) === true;
 		} catch {
 			return false;
@@ -2090,6 +2050,8 @@
 		blunderShield: 1,
 		ghostMode: 0,
 		autoRetry: 1,
+		gameReport: 1,
+		reportDepth: 18,
 		menuPosition: null
 	};
 	var MAX_MOVE_TIME = 5e3;
@@ -2119,6 +2081,8 @@
 		blunderShield: fallback(flagSchema, DEFAULT_SETTINGS.blunderShield),
 		ghostMode: fallback(flagSchema, DEFAULT_SETTINGS.ghostMode),
 		autoRetry: fallback(flagSchema, DEFAULT_SETTINGS.autoRetry),
+		gameReport: fallback(flagSchema, DEFAULT_SETTINGS.gameReport),
+		reportDepth: fallback(integerInRange(10, 26), DEFAULT_SETTINGS.reportDepth),
 		menuPosition: fallback(nullable(positionSchema), DEFAULT_SETTINGS.menuPosition)
 	});
 	function loadSettings(serialized) {
@@ -2196,6 +2160,8 @@
 		blunderShield: 1,
 		ghostMode: 0,
 		autoRetry: 1,
+		gameReport: 1,
+		reportDepth: 18,
 		multiPvLines: void 0,
 		evalHistory: []
 	};
@@ -2216,6 +2182,8 @@
 					blunderShield: BotState.blunderShield,
 					ghostMode: BotState.ghostMode,
 					autoRetry: BotState.autoRetry,
+					gameReport: BotState.gameReport,
+					reportDepth: BotState.reportDepth,
 					menuPosition: position
 				};
 				localStorage.setItem("scb_settings", JSON.stringify(settings));
@@ -3375,11 +3343,23 @@
 			return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some((node) => nodeContainsSelector(node, BOARD_SELECTOR) || nodeContainsSelector(node, ".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time, .clock-player-turn .move-time-content, .clock-player-turn.move-time-content") || nodeContainsSelector(node, RESULT_SELECTOR));
 		});
 	}
+	function readChesscomHistory(game) {
+		const startingFen = getStartingFen(game);
+		const sans = game.getHistorySANs?.();
+		if (!startingFen || !Array.isArray(sans)) return void 0;
+		const replay = replaySanLine(startingFen, sans.filter((san) => typeof san === "string" && san.trim().length > 0));
+		if (!replay) return void 0;
+		return {
+			history: replay.history,
+			confirmedFens: replay.fens
+		};
+	}
 	function createChesscomAdapter(page = pageWindow) {
 		let currentBoard = null;
 		let currentGame = null;
 		let currentIdentity = null;
 		let currentGameId = "";
+		let lastPlayerColor = null;
 		let controller = null;
 		let bridgeInstalled = false;
 		const read = () => {
@@ -3413,26 +3393,37 @@
 				kind: "ineligible",
 				reason: "Chess.com position is malformed"
 			};
-			const playingAs = game.getPlayingAs?.();
-			if (playingAs !== 1 && playingAs !== 2) return {
-				kind: "ineligible",
-				reason: "Chess.com player color is unavailable"
-			};
-			const playerColor = playingAs === 2 ? "b" : "w";
 			if (board !== currentBoard || game !== currentGame) {
 				currentBoard = board;
 				currentGame = game;
 				currentIdentity = {};
+				lastPlayerColor = null;
 				const declaredId = game.id ?? board.getAttribute("data-game-id");
 				currentGameId = declaredId == null ? `chesscom-${++nextGameId}` : String(declaredId);
 			}
+			const isFinished = Boolean(game.isGameOver?.() || typeof game.getResult === "function" && /^(1-0|0-1|1\/2-1\/2)$/.test(String(game.getResult())) || doc.querySelector(".game-over-modal-content"));
+			const playingAs = game.getPlayingAs?.();
+			let playerColor = null;
+			if (playingAs === 1) {
+				playerColor = "w";
+				lastPlayerColor = "w";
+			} else if (playingAs === 2) {
+				playerColor = "b";
+				lastPlayerColor = "b";
+			} else if (isFinished) {
+				const orientation = getOrientation(game);
+				playerColor = lastPlayerColor ?? (orientation === "black" ? "b" : "w");
+			}
+			if (!playerColor) return {
+				kind: "ineligible",
+				reason: "Chess.com player color is unavailable"
+			};
 			const orientation = getOrientation(game);
-			const phase = game.isGameOver?.() || doc.querySelector(".game-over-modal-content") ? "finished" : "live";
+			const phase = isFinished ? "finished" : "live";
 			const controllerState = game.getState?.();
 			const settled = controllerState === void 0 || controllerState === "Idle";
-			const history = readPositionHistory(game, fen);
-			const confirmedFensRaw = game.getHistoryFENs?.();
-			const confirmedFens = Array.isArray(confirmedFensRaw) ? confirmedFensRaw.filter((item) => typeof item === "string") : void 0;
+			const history = readChesscomHistory(game);
+			const confirmedFens = history?.confirmedFens;
 			const remainingMs = getRemainingMs(doc);
 			const whiteRemainingMs = getColorRemainingMs(doc, "w");
 			const blackRemainingMs = getColorRemainingMs(doc, "b");
@@ -3451,7 +3442,7 @@
 					remainingMs,
 					...whiteRemainingMs != null ? { whiteRemainingMs } : {},
 					...blackRemainingMs != null ? { blackRemainingMs } : {},
-					...history ? { history } : {},
+					...history ? { history: history.history } : {},
 					...confirmedFens ? { confirmedFens } : {}
 				}
 			};
@@ -3574,13 +3565,14 @@
 				const to = uci.slice(2, 4);
 				const promotionChar = uci.length > 4 ? uci[4].toLowerCase() : "";
 				const promotion = /^[qrbn]$/.test(promotionChar) ? promotionChar : void 0;
-				if (!isLegalChesscomMove(game, from, to)) return false;
+				if (!isLegalChesscomMove(game, from, to, promotion)) return false;
 				if (request.signal.aborted || !request.isCurrent() || currentGame !== game) return false;
 				try {
 					return game.move({
 						from,
 						to,
-						...promotion ? { promotion } : {}
+						...promotion ? { promotion } : {},
+						userGenerated: true
 					})?.type === "Move";
 				} catch {
 					return false;
@@ -5870,6 +5862,12 @@
 		getMoves() {
 			return this.moves;
 		}
+		getStartFen() {
+			return this.startFen;
+		}
+		getGameId() {
+			return this.activeGameId;
+		}
 		getMovePairs() {
 			const pairs = [];
 			for (const move of this.moves) {
@@ -5898,7 +5896,7 @@
 	};
 	var gameHistoryTracker = new GameHistoryTracker();
 	var gameMovesSignal = y$1([]);
-	var panel_default = ":host{--ink:#1b1a17;--well:#151411;--wood:#252420;--wood-raised:#302e28;--line:#3b3932;--paper:#efe9dc;--muted:#a8a193;--brass:#d9a94f;--sage:#8fb996;--brick:#d8826b;--serif:\"Iowan Old Style\", \"Palatino Linotype\", Palatino, \"Book Antiqua\", Georgia, serif;--sans:system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif;--radius:14px;--radius-control:8px;--target:40px;--ease:cubic-bezier(.2, .7, .2, 1);all:initial;z-index:9999999;width:min(380px,100vw - 24px);color:var(--paper);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font:13px / 1.45 var(--sans);-webkit-font-smoothing:antialiased;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}.panel button{font:inherit;color:inherit}.panel :is(button,input):focus-visible,.panel-log:focus-visible{outline:2px solid var(--brass);outline-offset:2px}.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--ink);overflow:hidden;box-shadow:0 16px 40px #0000006b}.panel-bar{cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:60px;padding:8px 8px 8px 12px;display:flex}.panel[data-state=open] .panel-bar{border-bottom:1px solid var(--line)}:host(.dragging) .panel-bar{cursor:grabbing}.panel-mark{border-radius:var(--radius-control);background:var(--wood-raised);width:32px;height:32px;color:var(--brass);flex:none;place-items:center;display:grid}.panel-mark-icon{display:block}.panel-bar-text{flex-direction:column;flex:auto;gap:3px;min-width:0;display:flex}.panel-title{letter-spacing:-.005em;white-space:nowrap;flex-shrink:0;font-size:14px;font-weight:600}.panel-status,.panel-summary{min-width:0;color:var(--muted);align-items:center;gap:7px;font-size:12px;display:flex}.panel-status-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-summary b{color:var(--paper);font:600 17px / 1 var(--serif)}.panel-summary>span:last-child{color:var(--brass);font-variant-numeric:tabular-nums}.panel-dot{background:var(--muted);border-radius:50%;flex:none;width:7px;height:7px}.panel[data-tone=ready] .panel-dot{background:var(--sage)}.panel[data-tone=working] .panel-dot{background:var(--sage);animation:panel-pulse 1.6s var(--ease) infinite}.panel[data-tone=paused] .panel-dot{background:var(--brass)}.panel[data-tone=error] .panel-dot{background:var(--brick)}.panel[data-tone=error] .panel-status{color:var(--brick)}.panel[data-tone=paused] .panel-status{color:var(--brass)}@keyframes panel-pulse{0%,to{box-shadow:0 0 #8fb99680}50%{box-shadow:0 0 0 5px #8fb99600}}.panel-icon{width:var(--target);height:var(--target);border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);cursor:pointer;flex:none;place-items:center;display:grid}.panel-icon:hover{background:var(--wood-raised)}.panel-help-toggle{color:var(--muted);transition:color .14s var(--ease), border-color .14s var(--ease), background .14s var(--ease)}.panel-help-toggle:hover{color:var(--paper)}.panel-help-toggle.is-active{border-color:color-mix(in oklab, var(--brass) 55%, var(--line));color:var(--brass);background:color-mix(in oklab, var(--brass) 12%, var(--wood))}.panel-chevron{transition:transform .18s var(--ease)}.panel[data-state=collapsed] .panel-chevron{transform:rotate(180deg)}.panel-enable{min-height:var(--target);border:1px solid var(--line);background:var(--wood);cursor:pointer;border-radius:999px;flex:none;align-items:center;gap:8px;padding:0 10px 0 12px;font-size:12px;font-weight:500;display:inline-flex}.panel-enable:hover{background:var(--wood-raised)}.panel-enable-state{min-width:18px;color:var(--muted);font-variant-numeric:tabular-nums}.panel-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line))}.panel-enable[aria-pressed=true] .panel-enable-state{color:var(--sage)}.panel-enable-wide{border-radius:var(--radius-control);justify-content:space-between;width:100%;padding:0 12px;font-size:13px}.panel-enable-action{align-items:center;gap:8px;display:inline-flex}.panel-quick-enable{border:1px solid var(--line);background:var(--wood);min-height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), border-color .14s var(--ease), color .14s var(--ease);border-radius:999px;flex:none;align-items:center;gap:6px;padding:0 6px 0 8px;font-size:11px;font-weight:500;display:inline-flex}.panel-quick-enable:hover{background:var(--wood-raised);color:var(--paper)}.panel-quick-state{min-width:16px;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600}.panel-quick-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line));color:var(--sage)}.panel-quick-enable[aria-pressed=true] .panel-quick-state{color:var(--sage)}.panel-switch{flex:none;align-items:center;width:34px;height:20px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{background:var(--line);transition:background .16s var(--ease);border-radius:999px;position:absolute;inset:0}.panel-switch-knob{background:var(--muted);pointer-events:none;width:14px;height:14px;transition:transform .16s var(--ease), background .16s var(--ease);border-radius:50%;position:absolute;top:3px;left:3px}.panel-enable .panel-switch-knob,.panel-quick-enable .panel-switch-knob{background:var(--paper)}.panel-switch-input:checked~.panel-switch-track,.panel-enable[aria-pressed=true] .panel-switch-track,.panel-quick-enable[aria-pressed=true] .panel-switch-track{background:var(--sage)}.panel-switch-input:checked~.panel-switch-knob,.panel-enable[aria-pressed=true] .panel-switch-knob,.panel-quick-enable[aria-pressed=true] .panel-switch-knob{background:var(--ink);transform:translate(14px)}.panel-body{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(76vh,680px);animation:panel-rise .18s var(--ease);overflow:auto}@keyframes panel-rise{0%{opacity:0;transform:translateY(-4px)}}.panel-guide{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(76vh,680px);animation:panel-rise .18s var(--ease);flex-direction:column;gap:14px;padding:14px 16px 16px;display:flex;overflow-y:auto}.panel-guide-head{border-bottom:1px solid var(--line);justify-content:space-between;align-items:center;padding-bottom:10px;display:flex}.panel-guide-title{color:var(--paper);align-items:center;gap:8px;font-size:13px;font-weight:600;display:flex}.panel-guide-title svg{color:var(--brass)}.panel-guide-section{flex-direction:column;gap:8px;display:flex}.panel-guide-heading{color:var(--brass);letter-spacing:.06em;text-transform:uppercase;font-size:11px;font-weight:700}.panel-guide-item{border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);padding:8px 10px;font-size:12px;line-height:1.45}.panel-guide-item strong{color:var(--paper);margin-bottom:3px;font-weight:600;display:block}.panel-guide-item p{color:var(--muted);margin:0}.panel-hero{padding:14px 16px}.panel-move-row{justify-content:space-between;align-items:baseline;gap:12px;display:flex}.panel-move{overflow-wrap:anywhere;color:var(--paper);font:600 36px / 1.05 var(--serif);letter-spacing:.01em}.panel-score{color:var(--brass);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600}.panel-line{color:var(--muted);font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap;margin:6px 0 0;font-size:12px;overflow:hidden}.panel-multipv-list{border-top:1px dashed var(--line);flex-direction:column;gap:4px;margin-top:10px;padding-top:8px;display:flex}.panel-multipv-row{background:var(--well);font-variant-numeric:tabular-nums;border-radius:4px;grid-template-columns:24px 44px 50px 1fr;align-items:center;gap:6px;padding:3px 6px;font-size:11px;display:grid}.panel-multipv-row[data-rank=\"1\"]{border-left:2px solid var(--sage)}.panel-multipv-row[data-rank=\"2\"]{border-left:2px solid #50b4ff}.panel-multipv-row[data-rank=\"3\"]{border-left:2px solid #ffb432}.panel-multipv-badge{color:var(--muted);font-weight:600}.panel-multipv-move{color:var(--paper);font-weight:600;font-family:var(--serif)}.panel-multipv-eval{color:var(--brass);font-weight:500}.panel-multipv-pv{color:var(--muted);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-trend{border-radius:var(--radius-control);background:var(--well);border:1px solid var(--line);margin-top:10px;padding:8px 10px}.panel-trend-head{justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;display:flex}.panel-trend-title{color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:500}.panel-trend-val{color:var(--brass);font-variant-numeric:tabular-nums;font-weight:600}.panel-trend-svg{width:100%;height:32px;display:block;overflow:visible}.panel-notice{border-radius:var(--radius-control);background:var(--wood);box-shadow:inset 0 0 0 1px var(--line);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;margin-top:12px;padding:10px 12px;font-size:12px;display:grid}.panel-notice p{margin:0}.panel-notice[data-kind=retry]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brick) 60%, transparent)}.panel-notice[data-kind=resume]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brass) 60%, transparent)}.panel-button{min-height:var(--target);border:1px solid var(--brass);border-radius:var(--radius-control);background:var(--brass);color:var(--ink);white-space:nowrap;cursor:pointer;padding:0 14px;font-size:13px;font-weight:600}.panel-button:hover{filter:brightness(1.06)}.panel-settings{border-top:1px solid var(--line);gap:2px;padding:12px 16px 16px;display:grid}.panel-toggles{margin-top:6px;display:grid}.panel-toggle{cursor:pointer;justify-content:space-between;align-items:center;gap:12px;min-height:44px;display:flex}.panel-note{color:var(--muted);margin:4px 0 0;font-size:12px}.panel-field{gap:6px;padding:8px 0 4px;display:grid}.panel-field-head{justify-content:space-between;align-items:baseline;gap:10px;display:flex}.panel-field-head output{font-variant-numeric:tabular-nums;font-weight:600}.panel-field-label{color:var(--muted);font-size:12px}.panel-field-hint{color:var(--muted);margin-top:2px;font-size:11px;line-height:1.35;display:block}.panel-range{appearance:none;cursor:pointer;width:100%;height:28px;accent-color:var(--brass);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-moz-range-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px;margin-top:-8px}.panel-range::-moz-range-thumb{border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px}.panel-segmented{border-radius:var(--radius-control);background:var(--wood);grid-auto-columns:1fr;grid-auto-flow:column;gap:4px;padding:4px;display:grid}.panel-segment{min-height:var(--target);color:var(--muted);cursor:pointer;background:0 0;border:0;border-radius:6px;font-weight:500}.panel-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-timing-row{justify-content:space-between;align-items:center;gap:12px;padding:8px 0 4px;display:flex}.panel-timing-label{color:var(--paper);font-size:13px;font-weight:500}.panel-timing-segmented{border-radius:var(--radius-control);background:var(--wood);border:1px solid var(--line);grid-auto-columns:minmax(78px,1fr);grid-auto-flow:column;gap:3px;padding:3px;display:inline-grid}.panel-timing-segment{min-height:28px;color:var(--muted);transition:background .14s var(--ease), color .14s var(--ease);border-radius:6px;justify-content:center;align-items:center;gap:6px;padding:0 10px;font-size:11px;font-weight:500;display:inline-flex}.panel-timing-segment svg{width:13px;height:13px;color:var(--muted);transition:color .14s var(--ease);flex-shrink:0;display:block}.panel-timing-segment:hover,.panel-timing-segment:hover svg{color:var(--paper)}.panel-timing-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-timing-segment[aria-pressed=true] svg{color:var(--brass)}.panel-opening-style-section{gap:6px;padding:2px 0 4px;display:grid}.panel-opening-style-picker{grid-auto-columns:1fr;grid-auto-flow:column}.panel-opening-style-picker .panel-segment{min-height:34px;transition:background .14s var(--ease), color .14s var(--ease);justify-content:center;align-items:center;padding:0;display:flex}.panel-opening-style-picker .panel-segment svg{color:var(--muted);transition:color .14s var(--ease), transform .14s var(--ease);display:block}.panel-opening-style-picker .panel-segment:hover svg{color:var(--paper);transform:scale(1.08)}.panel-opening-style-picker .panel-segment[aria-pressed=true] svg{color:var(--brass);transform:scale(1.05)}.panel-activity{border-top:1px solid var(--line);background:var(--well)}.panel-activity-head{justify-content:space-between;align-items:center;gap:8px;min-height:44px;padding:0 8px 0 16px;display:flex}.panel-disclosure{min-height:var(--target);cursor:pointer;background:0 0;border:0;align-items:center;gap:8px;padding:0;font-size:13px;font-weight:600;display:inline-flex}.panel-count{background:var(--wood-raised);min-width:24px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:center;border-radius:999px;padding:2px 6px;font-size:11px}.panel-activity-actions{gap:4px;display:flex}.panel-icon-btn{border-radius:var(--radius-control);width:32px;height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), color .14s var(--ease);background:0 0;border:0;justify-content:center;align-items:center;display:inline-flex}.panel-icon-btn:hover{background:var(--wood-raised);color:var(--paper)}.panel-icon-btn.is-success{color:var(--sage)}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;gap:6px;min-height:80px;max-height:240px;padding:2px 16px 14px;display:grid;overflow:auto}.panel-log-empty{color:var(--muted);margin:0;font-size:12px}.panel-scoresheet{font-variant-numeric:tabular-nums;flex-direction:column;gap:2px;width:100%;margin-bottom:6px;display:flex}.panel-scoresheet-row{transition:background .12s var(--ease);border-radius:4px;grid-template-columns:28px 1fr 1fr;align-items:center;gap:6px;padding:3px 6px;font-size:12px;display:grid}.panel-scoresheet-row:hover{background:var(--wood-raised)}.panel-scoresheet-num{color:var(--muted);text-align:right;padding-right:4px;font-size:11px;font-weight:600}.panel-scoresheet-cell{border-radius:3px;justify-content:space-between;align-items:center;gap:4px;min-width:0;padding:1px 4px;display:flex}.panel-scoresheet-san{color:var(--paper);font-family:var(--serif);font-size:12px;font-weight:600}.panel-scoresheet-time{color:var(--muted);background:var(--wood);border:1px solid var(--line);border-radius:3px;flex-shrink:0;padding:1px 4px;font-size:10px}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:44px minmax(0,1fr);gap:8px;margin:0;font-size:12px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--muted);font-variant-numeric:tabular-nums}.log-text-info{color:var(--paper)}.log-text-status{color:var(--muted)}.log-text-move{color:var(--sage)}.log-text-warn{color:var(--brass)}.log-text-error{color:var(--brick)}@media (pointer:coarse){:host{--target:48px}.panel-range::-webkit-slider-runnable-track{height:6px}.panel-range::-webkit-slider-thumb{width:28px;height:28px;margin-top:-11px}.panel-range::-moz-range-thumb{width:28px;height:28px}.panel-icon-btn{width:44px;height:44px}}@media (width<=560px){:host{width:100%;inset:auto 0 0!important}.panel{padding-bottom:env(safe-area-inset-bottom,0px);border-bottom:0;border-left:0;border-right:0;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px #0000005c}.panel-bar{cursor:default;touch-action:manipulation;gap:8px;padding:8px 8px 8px 10px}.panel-body,.panel-guide{-webkit-overflow-scrolling:touch;max-height:min(70vh,580px)}.panel-log{-webkit-overflow-scrolling:touch;max-height:180px}}@media (width<=380px){.panel-title{font-size:13px}.panel-quick-enable{gap:4px;padding:0 4px 0 6px}.panel-notice{grid-template-columns:1fr;gap:8px}}@media (prefers-reduced-motion:reduce){.panel *,.panel :before,.panel :after{transition-duration:1ms!important;animation-duration:1ms!important;animation-iteration-count:1!important}}";
+	var panel_default = ":host{--ink:#1b1a17;--well:#151411;--wood:#252420;--wood-raised:#302e28;--line:#3b3932;--paper:#efe9dc;--muted:#a8a193;--brass:#d9a94f;--sage:#8fb996;--brick:#d8826b;--serif:\"Iowan Old Style\", \"Palatino Linotype\", Palatino, \"Book Antiqua\", Georgia, serif;--sans:system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif;--radius:14px;--radius-control:8px;--target:40px;--ease:cubic-bezier(.2, .7, .2, 1);all:initial;z-index:9999999;width:min(380px,100vw - 24px);color:var(--paper);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font:13px / 1.45 var(--sans);-webkit-font-smoothing:antialiased;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}.panel button{font:inherit;color:inherit}.panel :is(button,input):focus-visible,.panel-log:focus-visible{outline:2px solid var(--brass);outline-offset:2px}.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--ink);overflow:hidden;box-shadow:0 16px 40px #0000006b}.panel-bar{cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:60px;padding:8px 8px 8px 12px;display:flex}.panel[data-state=open] .panel-bar{border-bottom:1px solid var(--line)}:host(.dragging) .panel-bar{cursor:grabbing}.panel-mark{border-radius:var(--radius-control);background:var(--wood-raised);width:32px;height:32px;color:var(--brass);flex:none;place-items:center;display:grid}.panel-mark-icon{display:block}.panel-bar-text{flex-direction:column;flex:auto;gap:3px;min-width:0;display:flex}.panel-title{letter-spacing:-.005em;white-space:nowrap;flex-shrink:0;font-size:14px;font-weight:600}.panel-status,.panel-summary{min-width:0;color:var(--muted);align-items:center;gap:7px;font-size:12px;display:flex}.panel-status-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-summary b{color:var(--paper);font:600 17px / 1 var(--serif)}.panel-summary>span:last-child{color:var(--brass);font-variant-numeric:tabular-nums}.panel-dot{background:var(--muted);border-radius:50%;flex:none;width:7px;height:7px}.panel[data-tone=ready] .panel-dot{background:var(--sage)}.panel[data-tone=working] .panel-dot{background:var(--sage);animation:panel-pulse 1.6s var(--ease) infinite}.panel[data-tone=paused] .panel-dot{background:var(--brass)}.panel[data-tone=error] .panel-dot{background:var(--brick)}.panel[data-tone=error] .panel-status{color:var(--brick)}.panel[data-tone=paused] .panel-status{color:var(--brass)}@keyframes panel-pulse{0%,to{box-shadow:0 0 #8fb99680}50%{box-shadow:0 0 0 5px #8fb99600}}.panel-icon{width:var(--target);height:var(--target);border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);cursor:pointer;flex:none;place-items:center;display:grid}.panel-icon:hover{background:var(--wood-raised)}.panel-help-toggle{color:var(--muted);transition:color .14s var(--ease), border-color .14s var(--ease), background .14s var(--ease)}.panel-help-toggle:hover{color:var(--paper)}.panel-help-toggle.is-active{border-color:color-mix(in oklab, var(--brass) 55%, var(--line));color:var(--brass);background:color-mix(in oklab, var(--brass) 12%, var(--wood))}.panel-chevron{transition:transform .18s var(--ease)}.panel[data-state=collapsed] .panel-chevron{transform:rotate(180deg)}.panel-enable{min-height:var(--target);border:1px solid var(--line);background:var(--wood);cursor:pointer;border-radius:999px;flex:none;align-items:center;gap:8px;padding:0 10px 0 12px;font-size:12px;font-weight:500;display:inline-flex}.panel-enable:hover{background:var(--wood-raised)}.panel-enable-state{min-width:18px;color:var(--muted);font-variant-numeric:tabular-nums}.panel-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line))}.panel-enable[aria-pressed=true] .panel-enable-state{color:var(--sage)}.panel-enable-wide{border-radius:var(--radius-control);justify-content:space-between;width:100%;padding:0 12px;font-size:13px}.panel-enable-action{align-items:center;gap:8px;display:inline-flex}.panel-quick-enable{border:1px solid var(--line);background:var(--wood);min-height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), border-color .14s var(--ease), color .14s var(--ease);border-radius:999px;flex:none;align-items:center;gap:6px;padding:0 6px 0 8px;font-size:11px;font-weight:500;display:inline-flex}.panel-quick-enable:hover{background:var(--wood-raised);color:var(--paper)}.panel-quick-state{min-width:16px;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600}.panel-quick-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--sage) 55%, var(--line));color:var(--sage)}.panel-quick-enable[aria-pressed=true] .panel-quick-state{color:var(--sage)}.panel-switch{flex:none;align-items:center;width:34px;height:20px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{background:var(--line);transition:background .16s var(--ease);border-radius:999px;position:absolute;inset:0}.panel-switch-knob{background:var(--muted);pointer-events:none;width:14px;height:14px;transition:transform .16s var(--ease), background .16s var(--ease);border-radius:50%;position:absolute;top:3px;left:3px}.panel-enable .panel-switch-knob,.panel-quick-enable .panel-switch-knob{background:var(--paper)}.panel-switch-input:checked~.panel-switch-track,.panel-enable[aria-pressed=true] .panel-switch-track,.panel-quick-enable[aria-pressed=true] .panel-switch-track{background:var(--sage)}.panel-switch-input:checked~.panel-switch-knob,.panel-enable[aria-pressed=true] .panel-switch-knob,.panel-quick-enable[aria-pressed=true] .panel-switch-knob{background:var(--ink);transform:translate(14px)}.panel-body{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(76vh,680px);animation:panel-rise .18s var(--ease);overflow:auto}@keyframes panel-rise{0%{opacity:0;transform:translateY(-4px)}}.panel-guide{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(76vh,680px);animation:panel-rise .18s var(--ease);flex-direction:column;gap:14px;padding:14px 16px 16px;display:flex;overflow-y:auto}.panel-guide-head{border-bottom:1px solid var(--line);justify-content:space-between;align-items:center;padding-bottom:10px;display:flex}.panel-guide-title{color:var(--paper);align-items:center;gap:8px;font-size:13px;font-weight:600;display:flex}.panel-guide-title svg{color:var(--brass)}.panel-guide-section{flex-direction:column;gap:8px;display:flex}.panel-guide-heading{color:var(--brass);letter-spacing:.06em;text-transform:uppercase;font-size:11px;font-weight:700}.panel-guide-item{border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);padding:8px 10px;font-size:12px;line-height:1.45}.panel-guide-item strong{color:var(--paper);margin-bottom:3px;font-weight:600;display:block}.panel-guide-item p{color:var(--muted);margin:0}.panel-hero{padding:14px 16px}.panel-move-row{justify-content:space-between;align-items:baseline;gap:12px;display:flex}.panel-move{overflow-wrap:anywhere;color:var(--paper);font:600 36px / 1.05 var(--serif);letter-spacing:.01em}.panel-score{color:var(--brass);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600}.panel-line{color:var(--muted);font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap;margin:6px 0 0;font-size:12px;overflow:hidden}.panel-multipv-list{border-top:1px dashed var(--line);flex-direction:column;gap:4px;margin-top:10px;padding-top:8px;display:flex}.panel-multipv-row{background:var(--well);font-variant-numeric:tabular-nums;border-radius:4px;grid-template-columns:24px 44px 50px 1fr;align-items:center;gap:6px;padding:3px 6px;font-size:11px;display:grid}.panel-multipv-row[data-rank=\"1\"]{border-left:2px solid var(--sage)}.panel-multipv-row[data-rank=\"2\"]{border-left:2px solid #50b4ff}.panel-multipv-row[data-rank=\"3\"]{border-left:2px solid #ffb432}.panel-multipv-badge{color:var(--muted);font-weight:600}.panel-multipv-move{color:var(--paper);font-weight:600;font-family:var(--serif)}.panel-multipv-eval{color:var(--brass);font-weight:500}.panel-multipv-pv{color:var(--muted);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-trend{flex-direction:column;gap:6px;margin-top:12px;display:flex}.panel-trend-head{justify-content:space-between;align-items:baseline;padding:0 2px;font-size:11px;display:flex}.panel-trend-label-wrap{align-items:baseline;gap:6px;display:flex}.panel-trend-title{color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-size:11px;font-weight:600}.panel-trend-subtitle{color:color-mix(in srgb, var(--muted) 65%, transparent);font-variant-numeric:tabular-nums;font-size:10px;font-weight:400}.panel-trend-val{color:var(--brass);font-variant-numeric:tabular-nums;font-size:12px;font-weight:700}.panel-trend-val[data-tone=sage]{color:var(--sage)}.panel-trend-val[data-tone=brick]{color:var(--brick)}.panel-trend-box{border-radius:var(--radius-control);background:var(--well);border:1px solid var(--line);padding:6px 8px;overflow:hidden}.panel-trend-svg{width:100%;height:56px;display:block;overflow:visible}.panel-trend-axis-text{font-size:8.5px;font-weight:500;font-family:var(--sans);fill:var(--muted);opacity:.7}.panel-notice{border-radius:var(--radius-control);background:var(--wood);box-shadow:inset 0 0 0 1px var(--line);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;margin-top:12px;padding:10px 12px;font-size:12px;display:grid}.panel-notice p{margin:0}.panel-notice[data-kind=retry]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brick) 60%, transparent)}.panel-notice[data-kind=resume]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brass) 60%, transparent)}.panel-button{min-height:var(--target);border:1px solid var(--brass);border-radius:var(--radius-control);background:var(--brass);color:var(--ink);white-space:nowrap;cursor:pointer;padding:0 14px;font-size:13px;font-weight:600}.panel-button:hover{filter:brightness(1.06)}.panel-button:disabled{opacity:.45;cursor:not-allowed;filter:none}.panel-settings{border-top:1px solid var(--line);gap:2px;padding:12px 16px 16px;display:grid}.panel-toggles{margin-top:6px;display:grid}.panel-toggle{cursor:pointer;justify-content:space-between;align-items:center;gap:12px;min-height:44px;display:flex}.panel-toggle-enable-label{color:var(--paper);letter-spacing:.04em;text-transform:uppercase;font-size:13px;font-weight:700}.panel-note{color:var(--muted);margin:4px 0 0;font-size:12px}.panel-field{gap:6px;padding:8px 0 4px;display:grid}.panel-field-head{justify-content:space-between;align-items:baseline;gap:10px;display:flex}.panel-field-head output{font-variant-numeric:tabular-nums;font-weight:600}.panel-field-label{color:var(--muted);font-size:12px}.panel-field-hint{color:var(--muted);margin-top:2px;font-size:11px;line-height:1.35;display:block}.panel-range{appearance:none;cursor:pointer;width:100%;height:28px;accent-color:var(--brass);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-moz-range-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px;margin-top:-8px}.panel-range::-moz-range-thumb{border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px}.panel-segmented{border-radius:var(--radius-control);background:var(--wood);grid-auto-columns:1fr;grid-auto-flow:column;gap:4px;padding:4px;display:grid}.panel-segment{min-height:var(--target);color:var(--muted);cursor:pointer;background:0 0;border:0;border-radius:6px;font-weight:500}.panel-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-timing-row{justify-content:space-between;align-items:center;gap:12px;padding:8px 0 4px;display:flex}.panel-timing-label{color:var(--paper);font-size:13px;font-weight:500}.panel-timing-segmented{border-radius:var(--radius-control);background:var(--wood);border:1px solid var(--line);grid-auto-columns:minmax(78px,1fr);grid-auto-flow:column;gap:3px;padding:3px;display:inline-grid}.panel-timing-segment{min-height:28px;color:var(--muted);transition:background .14s var(--ease), color .14s var(--ease);border-radius:6px;justify-content:center;align-items:center;gap:6px;padding:0 10px;font-size:11px;font-weight:500;display:inline-flex}.panel-timing-segment svg{width:13px;height:13px;color:var(--muted);transition:color .14s var(--ease);flex-shrink:0;display:block}.panel-timing-segment:hover,.panel-timing-segment:hover svg{color:var(--paper)}.panel-timing-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-timing-segment[aria-pressed=true] svg{color:var(--brass)}.panel-opening-style-section{gap:6px;padding:2px 0 4px;display:grid}.panel-opening-style-picker{grid-auto-columns:1fr;grid-auto-flow:column}.panel-opening-style-picker .panel-segment{min-height:34px;transition:background .14s var(--ease), color .14s var(--ease);justify-content:center;align-items:center;padding:0;display:flex}.panel-opening-style-picker .panel-segment svg{color:var(--muted);transition:color .14s var(--ease), transform .14s var(--ease);display:block}.panel-opening-style-picker .panel-segment:hover svg{color:var(--paper);transform:scale(1.08)}.panel-opening-style-picker .panel-segment[aria-pressed=true] svg{color:var(--brass);transform:scale(1.05)}.panel-activity{border-top:1px solid var(--line);background:var(--well)}.panel-activity-head{justify-content:space-between;align-items:center;gap:8px;min-height:44px;padding:0 8px 0 16px;display:flex}.panel-disclosure{min-height:var(--target);cursor:pointer;background:0 0;border:0;align-items:center;gap:8px;padding:0;font-size:13px;font-weight:600;display:inline-flex}.panel-count{background:var(--wood-raised);min-width:24px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:center;border-radius:999px;padding:2px 6px;font-size:11px}.panel-activity-actions{gap:4px;display:flex}.panel-icon-btn{border-radius:var(--radius-control);width:32px;height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), color .14s var(--ease);background:0 0;border:0;justify-content:center;align-items:center;display:inline-flex}.panel-icon-btn:hover{background:var(--wood-raised);color:var(--paper)}.panel-icon-btn.is-success{color:var(--sage)}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;gap:6px;min-height:80px;max-height:240px;padding:2px 16px 14px;display:grid;overflow:auto}.panel-log-empty{color:var(--muted);margin:0;font-size:12px}.panel-report{border-bottom:1px solid var(--line);flex-direction:column;gap:10px;padding:12px 16px;display:flex}.panel-report-head{justify-content:space-between;align-items:baseline;gap:8px;display:flex}.panel-report-title{color:var(--paper);letter-spacing:.01em;font-size:12px;font-weight:600}.panel-report-note{color:var(--muted);font-size:10px}.panel-report-actions{gap:8px;margin-top:2px;display:flex}.panel-report-btn{width:100%}.panel-report-cancel-btn{border-color:var(--brick);background:var(--brick);color:#fff;flex:none}.panel-report-player{border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);flex-direction:column;gap:7px;padding:9px 10px;display:flex}.panel-report-name{color:var(--paper);font-size:12px;font-weight:600}.panel-report-accuracy{font-variant-numeric:tabular-nums;font-size:17px;font-weight:600}.panel-report-accuracy[data-tone=high]{color:var(--sage)}.panel-report-accuracy[data-tone=mid]{color:var(--brass)}.panel-report-accuracy[data-tone=low]{color:var(--brick)}.panel-report-stats{grid-template-columns:1fr 1fr;gap:5px 10px;margin:0;display:grid}.panel-report-stat{align-items:baseline;gap:5px;min-width:0;display:flex}.panel-report-stat dt{font-variant-numeric:tabular-nums;font-size:13px;font-weight:600}.panel-report-stat dd{color:var(--muted);text-overflow:ellipsis;white-space:nowrap;margin:0;font-size:11px;overflow:hidden}.panel-report-stat[data-kind=inaccuracy] dt{color:#7fc4d8}.panel-report-stat[data-kind=mistake] dt{color:var(--brass)}.panel-report-stat[data-kind=blunder] dt{color:var(--brick)}.panel-report-stat[data-kind=acpl] dt{color:var(--muted)}.panel-report-status{color:var(--muted);margin:0;font-size:11px}.panel-report-status-quiet{color:color-mix(in srgb, var(--muted) 80%, transparent);font-size:10px;line-height:1.4}.panel-scoresheet{font-variant-numeric:tabular-nums;flex-direction:column;width:100%;margin-bottom:6px;display:flex}.panel-scoresheet-row{transition:background .12s var(--ease);grid-template-columns:20px minmax(0,1fr) minmax(0,1fr) 62px 62px;align-items:center;gap:4px;padding:5px 6px;font-size:12px;display:grid}.panel-scoresheet-row[data-stripe=even]{background:color-mix(in srgb, var(--paper) 5%, transparent)}.panel-scoresheet-row:hover{background:var(--wood-raised)}.panel-scoresheet-num{color:var(--muted);text-align:right;font-size:11px;font-weight:600}.panel-scoresheet-move{color:var(--paper);text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600;line-height:1.3;overflow:hidden}.panel-scoresheet-move[data-active]{background:var(--wood-raised);border-radius:3px;padding:1px 5px}.panel-scoresheet-time{justify-content:flex-end;align-items:center;gap:5px;min-width:0;display:flex}.panel-scoresheet-bar{background:var(--line);border-radius:3px;flex:none;width:26px;height:5px;overflow:hidden}.panel-scoresheet-bar:after{width:var(--fill);background:var(--brass);content:\"\";border-radius:3px;height:100%;display:block}.panel-scoresheet-time-label{color:var(--muted);font-size:10px}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:44px minmax(0,1fr);gap:8px;margin:0;font-size:12px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--muted);font-variant-numeric:tabular-nums}.log-text-info{color:var(--paper)}.log-text-status{color:var(--muted)}.log-text-move{color:var(--sage)}.log-text-warn{color:var(--brass)}.log-text-error{color:var(--brick)}@media (pointer:coarse){:host{--target:48px}.panel-range::-webkit-slider-runnable-track{height:6px}.panel-range::-webkit-slider-thumb{width:28px;height:28px;margin-top:-11px}.panel-range::-moz-range-thumb{width:28px;height:28px}.panel-icon-btn{width:44px;height:44px}}@media (width<=560px){:host{width:100%;inset:auto 0 0!important}.panel{padding-bottom:env(safe-area-inset-bottom,0px);border-bottom:0;border-left:0;border-right:0;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px #0000005c}.panel-bar{cursor:default;touch-action:manipulation;gap:8px;padding:8px 8px 8px 10px}.panel-body,.panel-guide{-webkit-overflow-scrolling:touch;max-height:min(70vh,580px)}.panel-log{-webkit-overflow-scrolling:touch;max-height:180px}}@media (width<=380px){.panel-title{font-size:13px}.panel-quick-enable{gap:4px;padding:0 4px 0 6px}.panel-notice{grid-template-columns:1fr;gap:8px}}@media (prefers-reduced-motion:reduce){.panel *,.panel :before,.panel :after{transition-duration:1ms!important;animation-duration:1ms!important;animation-iteration-count:1!important}}";
 	var o = 0;
 	Array.isArray;
 	function u(t, e, n, f, u, i) {
@@ -6192,6 +6190,206 @@
 			]
 		});
 	}
+	var CPL_CAP = 1e3;
+	function winPercent(cp) {
+		return 50 + 50 * (2 / (1 + Math.exp(-.00368208 * cp)) - 1);
+	}
+	function moveAccuracy(wpBefore, wpAfter) {
+		return 103.1668 * Math.exp(-.04354 * (wpBefore - wpAfter)) - 3.1669;
+	}
+	var VERDICT_CPL = {
+		excellent: {
+			max: 10,
+			label: "Excellent"
+		},
+		good: {
+			max: 25,
+			label: "Good"
+		},
+		inaccuracy: {
+			max: 50,
+			label: "Inaccuracy"
+		},
+		mistake: {
+			max: 100,
+			label: "Mistake"
+		},
+		blunder: {
+			max: Number.POSITIVE_INFINITY,
+			label: "Blunder"
+		}
+	};
+	function classifyByLoss(cpLoss) {
+		const loss = Math.max(0, cpLoss);
+		if (loss <= VERDICT_CPL.excellent.max) return "excellent";
+		if (loss <= VERDICT_CPL.good.max) return "good";
+		if (loss <= VERDICT_CPL.inaccuracy.max) return "inaccuracy";
+		if (loss <= VERDICT_CPL.mistake.max) return "mistake";
+		return "blunder";
+	}
+	function emptyPlayer() {
+		return {
+			accuracy: 0,
+			acpl: 0,
+			inaccuracy: 0,
+			mistake: 0,
+			blunder: 0,
+			moveCount: 0
+		};
+	}
+	function meanAccuracy(plies) {
+		if (plies.length === 0) return 0;
+		return plies.reduce((sum, ply) => sum + ply.accuracy, 0) / plies.length;
+	}
+	function buildPlayer(plies) {
+		if (plies.length === 0) return emptyPlayer();
+		const counts = {
+			excellent: 0,
+			good: 0,
+			inaccuracy: 0,
+			mistake: 0,
+			blunder: 0
+		};
+		let lossTotal = 0;
+		for (const ply of plies) {
+			counts[ply.verdict]++;
+			lossTotal += ply.cpLoss;
+		}
+		return {
+			accuracy: meanAccuracy(plies),
+			acpl: lossTotal / plies.length,
+			inaccuracy: counts.inaccuracy,
+			mistake: counts.mistake,
+			blunder: counts.blunder,
+			moveCount: plies.length
+		};
+	}
+	function buildGameReport(plies, total) {
+		if (plies.length === 0) return null;
+		return {
+			white: buildPlayer(plies.filter((ply) => ply.color === "w")),
+			black: buildPlayer(plies.filter((ply) => ply.color === "b")),
+			analyzed: plies.length,
+			total
+		};
+	}
+	var REPORT_DEPTH = 18;
+	var REPORT_TIME_MS = 350;
+	var initial = {
+		running: false,
+		done: false,
+		analyzed: 0,
+		total: 0,
+		report: null
+	};
+	var gameReportSignal = y$1(initial);
+	var active$1 = null;
+	var lastKey = "";
+	function toCp(score) {
+		if (typeof score.mate === "number" && Number.isFinite(score.mate)) return score.mate > 0 ? CPL_CAP : -CPL_CAP;
+		if (typeof score.cp === "number" && Number.isFinite(score.cp)) return Math.max(-CPL_CAP, Math.min(CPL_CAP, score.cp));
+		return 0;
+	}
+	function scorePly(before, afterOpponentView) {
+		const after = -afterOpponentView;
+		const cpLoss = Math.max(0, Math.min(CPL_CAP, before - after));
+		const wpBefore = winPercent(before);
+		const wpAfter = winPercent(after);
+		return {
+			cpLoss,
+			accuracy: Math.min(100, Math.max(0, moveAccuracy(wpBefore, wpAfter))),
+			verdict: classifyByLoss(cpLoss)
+		};
+	}
+	async function runGameReport(moves, startFen, gameId, depth = REPORT_DEPTH, force = false) {
+		if (moves.length === 0) {
+			gameReportSignal.value = initial;
+			lastKey = "";
+			return;
+		}
+		const key = `${gameId}:${moves.length}:${depth}`;
+		if (key === lastKey && !force) return;
+		lastKey = key;
+		active$1?.abort();
+		const ctrl = new AbortController();
+		active$1 = ctrl;
+		gameReportSignal.value = {
+			running: true,
+			done: false,
+			analyzed: 0,
+			total: moves.length,
+			report: null
+		};
+		const positions = [startFen, ...moves.map((move) => move.fen)];
+		const scores = [];
+		try {
+			for (let i = 0; i < positions.length; i++) {
+				if (ctrl.signal.aborted) return;
+				const history = {
+					startFen,
+					moves: moves.slice(0, i).map((move) => move.uci)
+				};
+				const result = await getAnalysis(positions[i], depth, REPORT_TIME_MS, ctrl.signal, history);
+				if (ctrl.signal.aborted) return;
+				scores.push(toCp(result.evaluation));
+				if (i > 0) gameReportSignal.value = {
+					...gameReportSignal.value,
+					analyzed: i
+				};
+			}
+			const plies = [];
+			for (let i = 0; i < moves.length; i++) {
+				const record = moves[i];
+				const before = scores[i];
+				const after = scores[i + 1] ?? before;
+				if (before === void 0 || after === void 0) continue;
+				const scored = scorePly(before, after);
+				plies.push({
+					ply: record.ply,
+					color: record.turn,
+					san: record.san,
+					cpLoss: scored.cpLoss,
+					accuracy: scored.accuracy,
+					verdict: scored.verdict
+				});
+			}
+			const report = buildGameReport(plies, moves.length);
+			if (ctrl.signal.aborted) return;
+			gameReportSignal.value = {
+				running: false,
+				done: true,
+				analyzed: plies.length,
+				total: moves.length,
+				report
+			};
+		} catch (error) {
+			if (ctrl.signal.aborted) return;
+			gameReportSignal.value = {
+				running: false,
+				done: false,
+				analyzed: 0,
+				total: moves.length,
+				report: null
+			};
+			console.warn("Super Chess Bot: game report analysis failed.", error);
+		} finally {
+			if (active$1 === ctrl) active$1 = null;
+		}
+	}
+	function resetGameReport() {
+		active$1?.abort();
+		active$1 = null;
+		lastKey = "";
+		gameReportSignal.value = initial;
+	}
+	function cancelGameReport() {
+		active$1?.abort();
+		active$1 = null;
+		gameReportSignal.value = {
+			...gameReportSignal.value,
+			running: false
+		};
+	}
 	var EDGE_MARGIN = 8;
 	var DOCK_QUERY = "(max-width: 560px)";
 	var COLLAPSED_KEY = "scb_panel_collapsed";
@@ -6209,7 +6407,9 @@
 		targetElo: BotState.targetElo,
 		blunderShield: !!BotState.blunderShield,
 		ghostMode: !!BotState.ghostMode,
-		autoRetry: !!BotState.autoRetry
+		autoRetry: !!BotState.autoRetry,
+		gameReport: !!BotState.gameReport,
+		reportDepth: BotState.reportDepth
 	});
 	var settingsSignal = y$1(readSettings());
 	var analysisSignal = y$1({
@@ -6303,7 +6503,13 @@
 				BotState.ghostMode = value ? 1 : 0;
 				setGhostMode(!!value);
 				break;
-			case "autoRetry": BotState.autoRetry = value ? 1 : 0;
+			case "autoRetry":
+				BotState.autoRetry = value ? 1 : 0;
+				break;
+			case "gameReport":
+				BotState.gameReport = value ? 1 : 0;
+				break;
+			case "reportDepth": BotState.reportDepth = Number(value);
 		}
 	}
 	var SEARCH_ALTERING_SETTINGS = new Set([
@@ -6407,27 +6613,31 @@
 			]
 		});
 	}
-	function EnableButton({ enabled, onToggle }) {
-		return u("button", {
-			type: "button",
-			class: "panel-enable panel-enable-wide",
-			"aria-pressed": enabled,
-			"aria-label": enabled ? "Disable bot" : "Enable bot",
-			title: enabled ? "Disable bot" : "Enable bot",
-			onClick: () => onToggle(!enabled),
+	function EnableToggle({ enabled, onToggle }) {
+		return u("label", {
+			class: "panel-toggle panel-toggle-enable",
 			children: [u("span", {
-				class: "panel-enable-label",
-				children: "Enable bot"
+				class: "panel-toggle-enable-label",
+				children: "ENABLE BOT"
 			}), u("span", {
-				class: "panel-enable-action",
-				children: [u("span", {
-					class: "panel-enable-state",
-					children: enabled ? "On" : "Off"
-				}), u("span", {
-					class: "panel-switch",
-					"aria-hidden": "true",
-					children: [u("span", { class: "panel-switch-track" }), u("span", { class: "panel-switch-knob" })]
-				})]
+				class: "panel-switch",
+				children: [
+					u("input", {
+						class: "panel-switch-input",
+						type: "checkbox",
+						checked: enabled,
+						"aria-label": "ENABLE BOT",
+						onChange: (event) => onToggle(event.currentTarget.checked)
+					}),
+					u("span", {
+						class: "panel-switch-track",
+						"aria-hidden": "true"
+					}),
+					u("span", {
+						class: "panel-switch-knob",
+						"aria-hidden": "true"
+					})
+				]
 			})]
 		});
 	}
@@ -6538,14 +6748,16 @@
 	}
 	function EvalTrendGraph({ history }) {
 		if (!history || history.length < 2) return null;
-		const width = 240;
-		const height = 32;
+		const width = 280;
+		const height = 56;
+		const startX = 26;
 		const zeroY = height / 2;
-		const maxEval = 6;
+		const maxEval = 10;
+		const usableHalf = 22;
 		const coords = history.map((val, idx) => {
 			return {
-				x: idx / (history.length - 1) * width,
-				y: zeroY - Math.max(-6, Math.min(maxEval, val)) / maxEval * (height / 2 - 4)
+				x: startX + idx / (history.length - 1) * 252,
+				y: zeroY - Math.max(-10, Math.min(maxEval, val)) / maxEval * usableHalf
 			};
 		});
 		const pathD = coords.reduce((acc, pt, i) => `${acc} ${i === 0 ? "M" : "L"} ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`, "");
@@ -6553,50 +6765,116 @@
 		const latest = coords[coords.length - 1];
 		const latestVal = history[history.length - 1];
 		const latestFormatted = latestVal > 0 ? `+${latestVal.toFixed(1)}` : latestVal.toFixed(1);
+		const valTone = latestVal > .3 ? "sage" : latestVal < -.3 ? "brick" : "brass";
 		return u("div", {
 			class: "panel-trend",
 			children: [u("div", {
 				class: "panel-trend-head",
-				children: [u("span", {
-					class: "panel-trend-title",
-					children: "Eval Trend"
+				children: [u("div", {
+					class: "panel-trend-label-wrap",
+					children: [u("span", {
+						class: "panel-trend-title",
+						children: "Eval Trend"
+					}), u("span", {
+						class: "panel-trend-subtitle",
+						children: [history.length, " plies"]
+					})]
 				}), u("span", {
 					class: "panel-trend-val",
+					"data-tone": valTone,
 					children: latestFormatted
 				})]
-			}), u("svg", {
-				class: "panel-trend-svg",
-				viewBox: `0 0 ${width} ${height}`,
-				preserveAspectRatio: "none",
-				"aria-hidden": "true",
-				children: [
-					u("line", {
-						x1: "0",
-						y1: zeroY,
-						x2: width,
-						y2: zeroY,
-						stroke: "var(--line)",
-						"stroke-dasharray": "3 3",
-						"stroke-width": "1"
-					}),
-					u("path", {
-						d: areaD,
-						fill: "rgba(217, 169, 79, 0.12)"
-					}),
-					u("path", {
-						d: pathD,
-						fill: "none",
-						stroke: "var(--brass)",
-						"stroke-width": "1.75",
-						"stroke-linejoin": "round"
-					}),
-					u("circle", {
-						cx: latest.x,
-						cy: latest.y,
-						r: "2.5",
-						fill: "var(--brass)"
-					})
-				]
+			}), u("div", {
+				class: "panel-trend-box",
+				children: u("svg", {
+					class: "panel-trend-svg",
+					viewBox: `0 0 ${width} ${height}`,
+					preserveAspectRatio: "none",
+					"aria-hidden": "true",
+					children: [
+						u("defs", { children: u("linearGradient", {
+							id: "scb-eval-fill",
+							x1: "0",
+							y1: "0",
+							x2: "0",
+							y2: "1",
+							children: [
+								u("stop", {
+									offset: "0%",
+									"stop-color": "var(--sage)",
+									"stop-opacity": "0.22"
+								}),
+								u("stop", {
+									offset: "50%",
+									"stop-color": "var(--brass)",
+									"stop-opacity": "0.08"
+								}),
+								u("stop", {
+									offset: "100%",
+									"stop-color": "var(--brick)",
+									"stop-opacity": "0.22"
+								})
+							]
+						}) }),
+						u("text", {
+							x: "21",
+							y: "10",
+							"text-anchor": "end",
+							class: "panel-trend-axis-text",
+							children: "+10"
+						}),
+						u("text", {
+							x: "21",
+							y: 31,
+							"text-anchor": "end",
+							class: "panel-trend-axis-text",
+							children: "0"
+						}),
+						u("text", {
+							x: "21",
+							y: "52",
+							"text-anchor": "end",
+							class: "panel-trend-axis-text",
+							children: "-10"
+						}),
+						u("line", {
+							x1: startX,
+							y1: zeroY,
+							x2: 278,
+							y2: zeroY,
+							stroke: "var(--muted)",
+							"stroke-dasharray": "3 3",
+							"stroke-width": "1",
+							"stroke-opacity": "0.6"
+						}),
+						u("path", {
+							d: areaD,
+							fill: "url(#scb-eval-fill)"
+						}),
+						u("path", {
+							d: pathD,
+							fill: "none",
+							stroke: "var(--brass)",
+							"stroke-width": "1.75",
+							"stroke-linejoin": "round"
+						}),
+						u("circle", {
+							cx: latest.x,
+							cy: latest.y,
+							r: "4",
+							fill: "none",
+							stroke: "var(--brass)",
+							"stroke-width": "1.2",
+							"stroke-opacity": "0.6"
+						}),
+						u("circle", {
+							cx: latest.x,
+							cy: latest.y,
+							r: "2.2",
+							fill: "var(--brass)"
+						})
+					]
+				})
 			})]
 		});
 	}
@@ -6672,6 +6950,184 @@
 					]
 				})
 			]
+		});
+	}
+	function percent(value) {
+		if (value == null) return "—";
+		return `${Math.round(value)}%`;
+	}
+	function accuracyTone(value) {
+		if (value == null) return "none";
+		if (value >= 90) return "high";
+		if (value >= 75) return "mid";
+		return "low";
+	}
+	function ReportPlayer({ label, report }) {
+		return u("div", {
+			class: "panel-report-player",
+			children: [u("div", {
+				class: "panel-report-head",
+				children: [u("span", {
+					class: "panel-report-name",
+					children: label
+				}), u("span", {
+					class: "panel-report-accuracy",
+					"data-tone": accuracyTone(report.accuracy),
+					children: percent(report.accuracy)
+				})]
+			}), u("dl", {
+				class: "panel-report-stats",
+				children: [
+					u("div", {
+						class: "panel-report-stat",
+						"data-kind": "inaccuracy",
+						children: [u("dt", { children: report.inaccuracy }), u("dd", { children: "Inaccuracies" })]
+					}),
+					u("div", {
+						class: "panel-report-stat",
+						"data-kind": "mistake",
+						children: [u("dt", { children: report.mistake }), u("dd", { children: "Mistakes" })]
+					}),
+					u("div", {
+						class: "panel-report-stat",
+						"data-kind": "blunder",
+						children: [u("dt", { children: report.blunder }), u("dd", { children: "Blunders" })]
+					}),
+					u("div", {
+						class: "panel-report-stat",
+						"data-kind": "acpl",
+						children: [u("dt", { children: report.acpl.toFixed(0) }), u("dd", { children: "Avg centipawn loss" })]
+					})
+				]
+			})]
+		});
+	}
+	function GameReportPanel({ reportDepth, onDepthChange }) {
+		const progress = gameReportSignal.value;
+		const movesCount = gameHistoryTracker.getMoves().length;
+		const handleGenerate = () => {
+			const currentMoves = gameHistoryTracker.getMoves();
+			const startFen = gameHistoryTracker.getStartFen();
+			const read = readSite();
+			runGameReport(currentMoves, startFen, (read.kind === "game" ? read.snapshot.gameId : null) ?? "game", reportDepth, true);
+		};
+		return u("section", {
+			class: "panel-report",
+			"aria-label": "Game report",
+			children: [
+				u("div", {
+					class: "panel-report-head",
+					children: [u("span", {
+						class: "panel-report-title",
+						children: "Game report"
+					}), u("span", {
+						class: "panel-report-note",
+						children: "Local engine estimate"
+					})]
+				}),
+				u(Slider, {
+					id: "bot-report-depth",
+					label: "Report depth",
+					value: reportDepth,
+					min: 10,
+					max: 26,
+					step: 1,
+					format: (value) => `${value}`,
+					hint: "Search depth per move for accuracy evaluation.",
+					onPreview: onDepthChange,
+					onCommit: onDepthChange
+				}),
+				u("div", {
+					class: "panel-report-actions",
+					children: [u("button", {
+						type: "button",
+						class: "panel-button panel-report-btn",
+						disabled: movesCount === 0 || progress.running,
+						onClick: handleGenerate,
+						children: progress.running ? `Analyzing ${progress.analyzed}/${progress.total}…` : progress.done ? "Regenerate report" : "Generate report"
+					}), progress.running && u("button", {
+						type: "button",
+						class: "panel-button panel-report-cancel-btn",
+						onClick: cancelGameReport,
+						children: "Cancel"
+					})]
+				}),
+				progress.running && u("p", {
+					class: "panel-report-status",
+					children: [
+						"Analyzing ",
+						progress.analyzed,
+						"/",
+						progress.total,
+						" positions…"
+					]
+				}),
+				progress.report && u(M, { children: [u(ReportPlayer, {
+					label: "White",
+					report: progress.report.white
+				}), u(ReportPlayer, {
+					label: "Black",
+					report: progress.report.black
+				})] })
+			]
+		});
+	}
+	function MoveTime({ ms, max }) {
+		if (ms == null) return u("span", { class: "panel-scoresheet-time" });
+		const fill = max > 0 ? Math.max(6, Math.min(100, Math.round(ms / max * 100))) : 6;
+		return u("span", {
+			class: "panel-scoresheet-time",
+			title: `${(ms / 1e3).toFixed(1)}s`,
+			children: [u("span", {
+				class: "panel-scoresheet-bar",
+				style: { "--fill": `${fill}%` },
+				"aria-hidden": "true"
+			}), u("span", {
+				class: "panel-scoresheet-time-label",
+				children: [(ms / 1e3).toFixed(1), "s"]
+			})]
+		});
+	}
+	function Scoresheet({ pairs }) {
+		const max = pairs.reduce((peak, pair) => Math.max(peak, pair.white?.elapsedMs ?? 0, pair.black?.elapsedMs ?? 0), 0);
+		const lastNumber = pairs.at(-1)?.moveNumber ?? -1;
+		return u("div", {
+			class: "panel-scoresheet",
+			children: pairs.map((pair) => {
+				const isLastPair = pair.moveNumber === lastNumber;
+				const whiteActive = isLastPair && pair.black == null;
+				const blackActive = isLastPair && pair.black != null;
+				return u("div", {
+					class: "panel-scoresheet-row",
+					"data-stripe": pair.moveNumber % 2 === 0 ? "odd" : "even",
+					children: [
+						u("span", {
+							class: "panel-scoresheet-num",
+							children: [pair.moveNumber, "."]
+						}),
+						u("span", {
+							class: "panel-scoresheet-move",
+							"data-turn": "w",
+							"data-active": whiteActive || void 0,
+							children: pair.white?.san ?? ""
+						}),
+						u("span", {
+							class: "panel-scoresheet-move",
+							"data-turn": "b",
+							"data-active": blackActive || void 0,
+							children: pair.black?.san ?? ""
+						}),
+						u(MoveTime, {
+							ms: pair.white?.elapsedMs,
+							max
+						}),
+						u(MoveTime, {
+							ms: pair.black?.elapsedMs,
+							max
+						})
+					]
+				}, pair.moveNumber);
+			})
 		});
 	}
 	function Panel({ host, actions }) {
@@ -6907,17 +7363,21 @@
 							})
 						]
 					}),
+					u(GameReportPanel, {
+						reportDepth: settings.reportDepth,
+						onDepthChange: (next) => updateSetting("reportDepth", next)
+					}),
 					u("section", {
 						class: "panel-settings",
 						"aria-label": "Bot settings",
 						children: [
-							u(EnableButton, {
-								enabled: settings.enabled,
-								onToggle: (next) => updateSetting("enabled", next)
-							}),
 							u("div", {
 								class: "panel-toggles",
 								children: [
+									u(EnableToggle, {
+										enabled: settings.enabled,
+										onToggle: (next) => updateSetting("enabled", next)
+									}),
 									u(Toggle, {
 										label: "Auto move",
 										checked: settings.autoMove,
@@ -7069,38 +7529,7 @@
 							children: movePairs.length === 0 && logs.length === 0 ? u("p", {
 								class: "panel-log-empty",
 								children: "Game moves and system events will appear here."
-							}) : u(M, { children: [movePairs.length > 0 && u("div", {
-								class: "panel-scoresheet",
-								children: movePairs.map((pair) => u("div", {
-									class: "panel-scoresheet-row",
-									children: [
-										u("span", {
-											class: "panel-scoresheet-num",
-											children: [pair.moveNumber, "."]
-										}),
-										u("span", {
-											class: "panel-scoresheet-cell",
-											children: pair.white ? u(M, { children: [u("span", {
-												class: "panel-scoresheet-san",
-												children: pair.white.san
-											}), pair.white.elapsedMs != null && u("span", {
-												class: "panel-scoresheet-time",
-												children: [(pair.white.elapsedMs / 1e3).toFixed(1), "s"]
-											})] }) : null
-										}),
-										u("span", {
-											class: "panel-scoresheet-cell",
-											children: pair.black ? u(M, { children: [u("span", {
-												class: "panel-scoresheet-san",
-												children: pair.black.san
-											}), pair.black.elapsedMs != null && u("span", {
-												class: "panel-scoresheet-time",
-												children: [(pair.black.elapsedMs / 1e3).toFixed(1), "s"]
-											})] }) : null
-										})
-									]
-								}, pair.moveNumber))
-							}), logs.filter((entry) => entry.type === "error" || entry.type === "warn" || movePairs.length === 0).map((entry) => u("p", {
+							}) : u(M, { children: [movePairs.length > 0 && u(Scoresheet, { pairs: movePairs }), logs.filter((entry) => entry.type === "error" || entry.type === "warn" || movePairs.length === 0).map((entry) => u("p", {
 								class: `panel-log-entry ${logTextClass[entry.type]}`,
 								children: [u("time", { children: entry.time }), u("span", { children: entry.text })]
 							}, entry.id))] })
@@ -7126,13 +7555,14 @@
 		clearConsole() {
 			clearPanelLogs();
 			gameHistoryTracker.reset();
+			resetGameReport();
 			this.lastStatus = "";
 			this.lastBestMove = "";
 		},
 		updateDisplay(playingAs) {
 			syncPanelSettings();
 			const read = readSite();
-			const fen = read.kind === "game" ? read.snapshot.fen : null;
+			const fen = (read.kind === "game" ? read.snapshot : null)?.fen ?? null;
 			const san = fen && BotState.bestMove !== "-" ? uciToSan(fen, BotState.bestMove) : BotState.bestMove;
 			const suggestedMove = typeof san === "string" ? san : BotState.bestMove;
 			if (BotState.statusInfo !== this.lastStatus) {
@@ -9241,7 +9671,6 @@
 			this.interruptedFen = null;
 			this.previousInputReady = null;
 			this.clearRecommendation();
-			gameHistoryTracker.reset();
 			BotState.recoveryAction = null;
 			BotState.statusInfo = read.reason;
 			ui.updateDisplay(pa());
@@ -9261,6 +9690,7 @@
 				BotState.statusInfo = snapshot.phase === "replay" ? "Replay mode" : "Game finished";
 				ui.updateDisplay(pa());
 			}
+			if (snapshot.phase === "finished" && BotState.gameReport) runGameReport(gameHistoryTracker.getMoves(), gameHistoryTracker.getStartFen(), snapshot.gameId);
 			return true;
 		}
 		tick() {
