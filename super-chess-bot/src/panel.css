@@ -1057,10 +1057,6 @@
   color: var(--brick);
 }
 
-.log-text-opponent {
-  color: #cfc7b5;
-}
-
 /* Layout: touch targets on coarse pointers */
 
 @media (pointer: coarse) {

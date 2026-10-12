@@ -28,8 +28,9 @@ export function getAnalysis(
   timeLimit: number,
   signal?: AbortSignal,
   history?: PositionHistory,
+  slackMs?: number,
 ): Promise<AnalysisResult> {
-  return engineWorker.analyze(fen, depth, timeLimit, signal, history);
+  return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs);
 }
 
 /** Return legal-move availability for a standard chess FEN; null means it could not be validated. */

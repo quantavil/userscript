@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { attachToBoard, onBoardMutation, startMoveWatcher, stopMoveWatcher } from '../src/board.js';
 import { resetCapturedChesscomController } from '../src/sites/chesscom-bridge.js';
-import { invalidateGameCache, isBoardFlipped } from '../src/state.js';
+import { invalidateGameCache, isBoardFlipped } from '../src/sites/chesscom-state.js';
 
 afterEach(() => {
   stopMoveWatcher();

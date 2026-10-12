@@ -184,11 +184,19 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     } else {
       const isTbEligible = kind === 'main' && hasLegalMoves(fen) !== false && isTablebaseEligible(fen);
       let tbResult: TablebaseResponse | null = null;
+      const remainingMs = snapshot.remainingMs;
+      const slackMs =
+        remainingMs !== undefined && remainingMs !== null
+          ? Math.min(3000, Math.max(200, Math.floor(remainingMs / 20)))
+          : undefined;
 
       if (isTbEligible) {
         const tbTimeout = Math.min(1500, Math.max(100, Math.floor((snapshot.remainingMs ?? 60000) / 4)));
         const tbPromise = lookupTablebase(fen, ctrl.signal, tbTimeout).catch(() => null);
-        const analysisPromise = getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
+        const analysisPromise =
+          slackMs !== undefined
+            ? getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs)
+            : getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
 
         const winner = await Promise.race([
           tbPromise.then((tb) => (tb?.success ? { kind: 'tb' as const, tb } : null)),
@@ -215,7 +223,10 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
           result = await analysisPromise;
         }
       } else {
-        result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
+        result =
+          slackMs !== undefined
+            ? await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs)
+            : await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
       }
 
       if (!current()) return;

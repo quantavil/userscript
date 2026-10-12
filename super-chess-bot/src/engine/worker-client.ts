@@ -84,12 +84,13 @@ class EngineWorkerClient {
     timeLimit: number,
     signal?: AbortSignal,
     history?: PositionHistory,
+    slackMs?: number,
   ): Promise<AnalysisResult> {
     if (!signal?.aborted) {
       // UciClient promotes an exact match or cancels a miss before queuing search.
       this.ponderSearch = null;
     }
-    return this.client.analyze(fen, depth, timeLimit, signal, history);
+    return this.client.analyze(fen, depth, timeLimit, signal, history, slackMs);
   }
 
   ponder(fen: string, depth: number, history?: PositionHistory): boolean {

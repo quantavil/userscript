@@ -17,11 +17,12 @@ import {
   OpeningStyleIcon,
   PowerIcon,
 } from './icons.js';
+import { MAX_MOVE_TIME, MIN_MOVE_TIME } from './settings.js';
 import type { SiteCapabilities } from './sites/types.js';
 import { BotState, Settings } from './state.js';
 import type { CandidateLine, OpeningStyle, RecoveryAction, TimingMode } from './types/chess.js';
 
-export type PanelLogType = 'info' | 'status' | 'error' | 'warn' | 'move' | 'opponent';
+export type PanelLogType = 'info' | 'status' | 'error' | 'warn' | 'move';
 
 export interface PanelActions {
   setEnabled?: (enabled: boolean) => void;
@@ -120,7 +121,6 @@ const logTextClass: Record<PanelLogType, string> = {
   error: 'log-text-error',
   warn: 'log-text-warn',
   move: 'log-text-move',
-  opponent: 'log-text-opponent',
 };
 
 /** Field-by-field equality over the keys of `b`; handles arrays and skips no-op signal writes. */
@@ -204,6 +204,17 @@ function writeBotState<K extends keyof PanelSettings>(key: K, value: PanelSettin
   }
 }
 
+const SEARCH_ALTERING_SETTINGS = new Set<keyof PanelSettings>([
+  'depth',
+  'moveTimeMs',
+  'timingMode',
+  'targetElo',
+  'blunderShield',
+  'openingBook',
+  'openingStyle',
+  'ponder',
+]);
+
 export function updatePanelSetting<K extends keyof PanelSettings>(
   key: K,
   value: PanelSettings[K],
@@ -213,7 +224,7 @@ export function updatePanelSetting<K extends keyof PanelSettings>(
   writeBotState(key, value);
   Settings.save();
   if (key === 'enabled') actions?.setEnabled?.(!!value);
-  else actions?.refreshSettings?.();
+  else if (SEARCH_ALTERING_SETTINGS.has(key)) actions?.refreshSettings?.();
 }
 
 export function toggleGhostMode(actions?: PanelActions): boolean {
@@ -284,7 +295,7 @@ function displayValue(value: string | null | undefined): string {
 }
 
 function hasLine(value: string): boolean {
-  return !!value && value !== '-' && value !== 'Not available';
+  return !!value && value !== '-';
 }
 
 function statusTone(analysis: PanelAnalysis, enabled: boolean): Tone {
@@ -455,6 +466,15 @@ function RecoveryNotice({ kind, onRecover }: { kind: RecoveryAction; onRecover: 
       <button type="button" class="panel-button" onClick={onRecover}>
         {resume ? 'Resume bot' : 'Retry position'}
       </button>
+    </div>
+  );
+}
+
+function SetupNotice({ status }: { status?: string }) {
+  if (!status || !/controller not captured|Enable synchronous/i.test(status)) return null;
+  return (
+    <div class="panel-notice" role="alert" data-kind="error">
+      <p>{status}</p>
     </div>
   );
 }
@@ -731,7 +751,7 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
               )}
             </span>
           ) : (
-            <span class="panel-status" title={analysis.status}>
+            <span class="panel-status" title={analysis.status} aria-live="polite">
               <span class="panel-dot" aria-hidden="true" />
               <span class="panel-status-text">{analysis.status || 'Ready'}</span>
             </span>
@@ -809,6 +829,7 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
                 </div>
               )}
               <EvalTrendGraph history={analysis.evalHistory} />
+              <SetupNotice status={analysis.status} />
               {analysis.recoveryAction && (
                 <RecoveryNotice kind={analysis.recoveryAction} onRecover={() => actions.recover?.()} />
               )}
@@ -901,8 +922,8 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
                 id="move-budget"
                 label={settings.timingMode === 'dynamic' ? 'Move budget' : 'Move time'}
                 value={settings.moveTimeMs}
-                min={25}
-                max={5000}
+                min={MIN_MOVE_TIME}
+                max={MAX_MOVE_TIME}
                 step={25}
                 format={formatBudget}
                 onPreview={(value) => previewSlider('moveTimeMs', value)}
@@ -970,7 +991,7 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
                   class="panel-log"
                   role="log"
                   aria-label="Engine activity"
-                  aria-live="off"
+                  aria-live="polite"
                   tabIndex={0}
                   onScroll={() => {
                     const log = logElement.current;

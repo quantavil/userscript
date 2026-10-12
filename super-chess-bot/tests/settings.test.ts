@@ -57,6 +57,14 @@ describe('loadSettings', () => {
     expect(BotState.botPower).toBe(30);
   });
 
+  it('falls back individual invalid fields to defaults while preserving valid settings', () => {
+    const settings = loadStoredSettings('{"moveTime":250,"botPower":99}');
+    expect(settings).toMatchObject({
+      moveTime: 250,
+      botPower: 30,
+    });
+  });
+
   it('resets malformed JSON to safe defaults', () => {
     expect(loadStoredSettings('{')).toEqual({
       hackEnabled: 0,

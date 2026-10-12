@@ -1,7 +1,7 @@
 import { getCapturedChesscomController } from './chesscom-bridge.js';
 import { pageDocument } from './types.js';
 
-export const GAME_CACHE_TTL = 100;
+const GAME_CACHE_TTL = 100;
 
 /** Internal Chess.com game controller surface used by the adapter. */
 export interface ChessGame {
@@ -134,14 +134,6 @@ export function getColorRemainingMs(doc: Pick<Document, 'querySelector'>, color:
   return parseClockText(text);
 }
 
-export const getPlayerColor = (game: ChessGame | null | undefined): string => {
-  try {
-    return game?.getPlayingAs?.() === 2 ? 'b' : 'w';
-  } catch {
-    return 'w';
-  }
-};
-
 export const getSideToMove = (game: ChessGame | null | undefined): string | null => {
   try {
     const turn = game?.getTurn?.();
@@ -152,12 +144,6 @@ export const getSideToMove = (game: ChessGame | null | undefined): string | null
   }
   const fen = getFen(game);
   return fen ? fen.split(' ')[1] || null : null;
-};
-
-export const isPlayersTurn = (game: ChessGame | null | undefined): boolean => {
-  const me = getPlayerColor(game);
-  const sideToMove = getSideToMove(game);
-  return me === sideToMove;
 };
 
 export const getOrientation = (game: ChessGame | null | undefined): 'white' | 'black' => {

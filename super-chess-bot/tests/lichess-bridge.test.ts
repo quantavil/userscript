@@ -71,4 +71,26 @@ describe('Lichess round controller bridge', () => {
     expect(loadEsm).toHaveBeenCalledOnce();
     expect(captured).toHaveBeenCalledWith(controller);
   });
+
+  it('falls back to original loadEsmPage if page-init-data parsing throws', async () => {
+    const originalResult = { fallback: 'round-original' };
+    const loadEsm = vi.fn();
+    const loadEsmPage = vi.fn(async () => originalResult);
+    const brokenData = { innerHTML: '{invalid json', remove: vi.fn() };
+    const page = {
+      document: {
+        getElementById: (id: string) => (id === 'page-init-data' ? brokenData : null),
+      },
+    } as unknown as Window & { site?: Record<string, unknown> };
+    const captured = vi.fn();
+
+    installLichessControllerBridge(page, captured);
+    page.site = {};
+    page.site.asset = Object.freeze({ loadEsm, loadEsmPage });
+
+    const asset = page.site.asset as { loadEsmPage: (name: string) => Promise<unknown> };
+    await expect(asset.loadEsmPage('round')).resolves.toBe(originalResult);
+    expect(loadEsmPage).toHaveBeenCalledWith('round');
+    expect(captured).not.toHaveBeenCalled();
+  });
 });

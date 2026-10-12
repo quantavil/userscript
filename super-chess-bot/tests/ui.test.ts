@@ -35,7 +35,8 @@ vi.mock('../src/panel.js', () => ({
 }));
 vi.mock('../src/sites/index.js', () => ({ readSite: () => site.read }));
 
-import { BotState, invalidateGameCache } from '../src/state.js';
+import { invalidateGameCache } from '../src/sites/chesscom-state.js';
+import { BotState } from '../src/state.js';
 import { ui } from '../src/ui.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';

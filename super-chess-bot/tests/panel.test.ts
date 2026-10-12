@@ -72,10 +72,14 @@ describe('panel settings and state management', () => {
     expect(setEnabledMock).toHaveBeenCalledWith(false);
   });
 
-  it('calls refreshSettings on non-enabled setting change', () => {
+  it('calls refreshSettings only on search-altering setting changes', () => {
     const actions = { setEnabled: setEnabledMock, refreshSettings: refreshSettingsMock };
     updatePanelSetting('autoMove', false, actions);
     expect(BotState.autoMove).toBe(0);
+    expect(refreshSettingsMock).not.toHaveBeenCalled();
+
+    updatePanelSetting('depth', 15, actions);
+    expect(BotState.botPower).toBe(15);
     expect(refreshSettingsMock).toHaveBeenCalledOnce();
   });
 

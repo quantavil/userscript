@@ -51,10 +51,21 @@ export function installLichessControllerBridge(
         if (name !== 'round') return Reflect.apply(originalPageInitializer, asset, [name, ...args]);
 
         const initElement = page.document.getElementById('page-init-data');
-        const initOptions = initElement ? JSON.parse(initElement.innerHTML) : undefined;
-        initElement?.remove();
+        if (initElement) {
+          try {
+            const initOptions = JSON.parse(initElement.innerHTML);
+            initElement.remove();
+            return Reflect.apply(wrappedRoundInitializer, wrappedAsset, [name, { init: initOptions }]);
+          } catch (error) {
+            console.warn(
+              'Super Chess Bot: Failed to parse Lichess page-init-data, delegating to original loader',
+              error,
+            );
+            return Reflect.apply(originalPageInitializer, asset, [name, ...args]);
+          }
+        }
 
-        return Reflect.apply(wrappedRoundInitializer, wrappedAsset, [name, { init: initOptions }]);
+        return Reflect.apply(wrappedRoundInitializer, wrappedAsset, [name, ...args]);
       },
     });
     hookedAssets.set(asset, wrappedAsset);

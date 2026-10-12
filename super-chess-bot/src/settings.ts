@@ -17,6 +17,9 @@ export const DEFAULT_SETTINGS: SettingsData = {
   menuPosition: null,
 };
 
+export const MIN_MOVE_TIME = 25;
+export const MAX_MOVE_TIME = 5000;
+
 const flagSchema = v.union([v.literal(0), v.literal(1)]);
 const integerInRange = (minimum: number, maximum: number) =>
   v.pipe(v.number(), v.integer(), v.minValue(minimum), v.maxValue(maximum));
@@ -28,22 +31,21 @@ const openingStyleSchema = v.picklist(['hyper-defensive', 'defensive', 'balanced
 const timingModeSchema = v.picklist(['dynamic', 'fixed']);
 
 const savedSettingsSchema = v.object({
-  hackEnabled: v.optional(flagSchema),
-  botPower: v.optional(integerInRange(1, 30)),
-  moveTime: v.optional(integerInRange(25, 10_000)),
-  timingMode: v.optional(timingModeSchema),
-  autoMove: v.optional(flagSchema),
-  openingBook: v.optional(flagSchema),
-  openingStyle: v.optional(openingStyleSchema),
-  ponderEnabled: v.optional(flagSchema),
-  targetElo: v.optional(integerInRange(0, 3200)),
-  blunderShield: v.optional(flagSchema),
-  ghostMode: v.optional(flagSchema),
-  autoRetry: v.optional(flagSchema),
-  menuPosition: v.optional(v.nullable(positionSchema)),
+  botPower: v.fallback(integerInRange(1, 30), DEFAULT_SETTINGS.botPower),
+  moveTime: v.fallback(integerInRange(MIN_MOVE_TIME, MAX_MOVE_TIME), DEFAULT_SETTINGS.moveTime),
+  timingMode: v.fallback(timingModeSchema, DEFAULT_SETTINGS.timingMode),
+  autoMove: v.fallback(flagSchema, DEFAULT_SETTINGS.autoMove as 0 | 1),
+  openingBook: v.fallback(flagSchema, DEFAULT_SETTINGS.openingBook as 0 | 1),
+  openingStyle: v.fallback(openingStyleSchema, DEFAULT_SETTINGS.openingStyle),
+  ponderEnabled: v.fallback(flagSchema, DEFAULT_SETTINGS.ponderEnabled as 0 | 1),
+  targetElo: v.fallback(integerInRange(0, 3200), DEFAULT_SETTINGS.targetElo),
+  blunderShield: v.fallback(flagSchema, DEFAULT_SETTINGS.blunderShield as 0 | 1),
+  ghostMode: v.fallback(flagSchema, DEFAULT_SETTINGS.ghostMode as 0 | 1),
+  autoRetry: v.fallback(flagSchema, DEFAULT_SETTINGS.autoRetry as 0 | 1),
+  menuPosition: v.fallback(v.nullable(positionSchema), DEFAULT_SETTINGS.menuPosition),
 });
 
-/** Parse persisted JSON, filling old partial settings and failing closed on invalid data. */
+/** Parse persisted JSON, filling invalid/missing fields with safe defaults. */
 export function loadSettings(serialized: string | null): SettingsData {
   if (serialized === null) return { ...DEFAULT_SETTINGS };
 

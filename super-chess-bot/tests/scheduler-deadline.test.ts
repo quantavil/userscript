@@ -343,6 +343,7 @@ describe('site-backed search and execution', () => {
     await scheduleAnalysis('main', dependencies.snapshot.fen);
 
     expect(dependencies.analyze.mock.calls[0]?.[2]).toBe(48);
+    expect(dependencies.analyze.mock.calls[0]?.[5]).toBe(200);
   });
 
   it('uses the configured budget when the adapter clock is unavailable', async () => {
@@ -352,6 +353,7 @@ describe('site-backed search and execution', () => {
     await scheduleAnalysis('main', dependencies.snapshot.fen);
 
     expect(dependencies.analyze.mock.calls[0]?.[2]).toBe(100);
+    expect(dependencies.analyze.mock.calls[0]?.[5]).toBeUndefined();
   });
 
   it('reserves time according to the configured and remaining player clocks', async () => {
@@ -361,6 +363,7 @@ describe('site-backed search and execution', () => {
     await scheduleAnalysis('main', dependencies.snapshot.fen);
 
     expect(dependencies.analyze.mock.calls[0]?.[2]).toBe(88);
+    expect(dependencies.analyze.mock.calls[0]?.[5]).toBe(3000);
   });
 
   it('does not ponder a replay or finished snapshot', async () => {

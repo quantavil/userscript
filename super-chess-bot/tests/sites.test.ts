@@ -5,7 +5,12 @@ import { createChesscomAdapter } from '../src/sites/chesscom.js';
 import { resetCapturedChesscomController } from '../src/sites/chesscom-bridge.js';
 import { selectSite as selectChesscomOnlySite } from '../src/sites/chesscom-only.js';
 import { selectSite } from '../src/sites/index.js';
-import { getUserscriptMetadata, userscriptMetadata } from '../src/userscript-metadata.js';
+import {
+  getUserscriptMetadata,
+  STOCKFISH_JS_HASH,
+  STOCKFISH_WASM_HASH,
+  userscriptMetadata,
+} from '../src/userscript-metadata.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
@@ -279,8 +284,8 @@ describe('userscript package metadata', () => {
 
     const worker = `https://unpkg.com/stockfish@${stockfishPackage.version}/bin/stockfish-${stockfishPackage.buildVersion}-lite-single`;
     expect(userscriptMetadata.resource).toEqual({
-      'stockfish.js': `${worker}.js`,
-      'stockfish.wasm': `${worker}.wasm`,
+      'stockfish.js': `${worker}.js#sha256=${STOCKFISH_JS_HASH}`,
+      'stockfish.wasm': `${worker}.wasm#sha256=${STOCKFISH_WASM_HASH}`,
     });
   });
 
@@ -295,8 +300,8 @@ describe('userscript package metadata', () => {
 
     const worker = `https://unpkg.com/stockfish@${stockfishPackage.version}/bin/stockfish-${stockfishPackage.buildVersion}-lite-single`;
     expect(meta.resource).toEqual({
-      'stockfish.js': `${worker}.js`,
-      'stockfish.wasm': `${worker}.wasm`,
+      'stockfish.js': `${worker}.js#sha256=${STOCKFISH_JS_HASH}`,
+      'stockfish.wasm': `${worker}.wasm#sha256=${STOCKFISH_WASM_HASH}`,
     });
   });
 });

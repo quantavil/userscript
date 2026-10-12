@@ -1,20 +1,7 @@
 import { DEFAULT_SETTINGS, loadSettings } from './settings.js';
 import { getActiveSite } from './sites/active.js';
-import {
-  GAME_CACHE_TTL,
-  getBoard,
-  getFen as getChesscomFen,
-  getPlayerColor as getChesscomPlayerColor,
-  getSideToMove as getChesscomSideToMove,
-  getGame,
-  invalidateGameCache,
-  isBoardFlipped as isChesscomBoardFlipped,
-  isPlayersTurn as isChesscomPlayersTurn,
-} from './sites/chesscom-state.js';
 import type { BotState as BotStateInterface, SettingsData } from './types/chess';
 import { debounce } from './utils.js';
-
-export { GAME_CACHE_TTL, getBoard, getGame, invalidateGameCache };
 
 function snapshot() {
   try {
@@ -25,30 +12,25 @@ function snapshot() {
   }
 }
 
-export function getFen(...args: [] | [game: Parameters<typeof getChesscomFen>[0]]): string | null {
-  if (args.length > 0) return getChesscomFen(args[0]);
-  return snapshot()?.fen ?? getChesscomFen(getGame());
+export function getFen(): string | null {
+  return snapshot()?.fen ?? null;
 }
 
-export function getPlayerColor(...args: [] | [game: Parameters<typeof getChesscomPlayerColor>[0]]): string {
-  if (args.length > 0) return getChesscomPlayerColor(args[0]);
-  return snapshot()?.playerColor ?? getChesscomPlayerColor(getGame());
+export function getPlayerColor(): string | null {
+  return snapshot()?.playerColor ?? null;
 }
 
-export function getSideToMove(...args: [] | [game: Parameters<typeof getChesscomSideToMove>[0]]): string | null {
-  if (args.length > 0) return getChesscomSideToMove(args[0]);
-  return snapshot()?.sideToMove ?? getChesscomSideToMove(getGame());
+export function getSideToMove(): string | null {
+  return snapshot()?.sideToMove ?? null;
 }
 
-export function isPlayersTurn(...args: [] | [game: Parameters<typeof isChesscomPlayersTurn>[0]]): boolean {
-  if (args.length > 0) return isChesscomPlayersTurn(args[0]);
+export function isPlayersTurn(): boolean {
   const current = snapshot();
-  return current ? current.playerColor === current.sideToMove : isChesscomPlayersTurn(getGame());
+  return current ? current.playerColor === current.sideToMove : false;
 }
 
 export function isBoardFlipped(): boolean {
-  const current = snapshot();
-  return current ? current.orientation === 'black' : isChesscomBoardFlipped();
+  return snapshot()?.orientation === 'black';
 }
 
 export function pa(): number {
@@ -90,7 +72,7 @@ export const Settings = {
     try {
       const position = menuPositionGetter?.() ?? null;
       const settings: SettingsData = {
-        hackEnabled: BotState.hackEnabled,
+        hackEnabled: 0,
         botPower: BotState.botPower,
         moveTime: BotState.moveTime,
         timingMode: BotState.timingMode,

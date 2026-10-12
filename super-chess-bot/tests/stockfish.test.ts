@@ -98,6 +98,23 @@ describe('UCI Stockfish client', () => {
     expect(result.multiPv?.[2]).toMatchObject({ multipv: 3, uci: 'c2c4', evaluation: { cp: -10 } });
   });
 
+  it('ignores lowerbound and upperbound score lines so bound leaks do not overwrite exact evaluation', async () => {
+    const worker = new FakeUciWorker();
+    const client = new UciClient(() => worker);
+
+    const resultPromise = client.analyze(START_FEN, 12, 250);
+    await waitUntil(() => worker.commands.some((command) => command.startsWith('go ')));
+
+    worker.emit('info depth 10 multipv 1 score cp 55 pv e2e4 e7e5');
+    worker.emit('info depth 11 multipv 1 score cp 80 lowerbound pv e2e4 e7e5');
+    worker.emit('info depth 11 multipv 1 score cp 20 upperbound pv e2e4 e7e5');
+    worker.emit('bestmove e2e4');
+
+    const result = await resultPromise;
+    expect(result.evaluation).toEqual({ cp: 55 });
+    expect(result.multiPv?.[0]?.evaluation).toEqual({ cp: 55 });
+  });
+
   it('sends stop on cancellation, drains bestmove, then reuses the worker for the next search', async () => {
     const worker = new FakeUciWorker();
     let constructions = 0;

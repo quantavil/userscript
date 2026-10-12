@@ -26,7 +26,7 @@ flowchart LR
     controller[src/controller.ts<br/>lifecycle and position owner]
     scheduler[src/engine/scheduler.ts<br/>search and move scheduling]
     history[src/history.ts<br/>chessops history]
-    rules[src/engine/san.ts<br/>move and FEN validation]
+    san[src/engine/san.ts<br/>SAN and PGN formatting]
     panel[Preact + Signals panel]
   end
 
@@ -52,8 +52,9 @@ flowchart LR
   history -->|FEN and UCI moves| scheduler
   scheduler -->|predicted opponent reply and legal history| analysis --> uci --> worker --> stockfish
   stockfish -->|info and bestmove| worker --> uci --> analysis --> scheduler
-  scheduler -->|candidate move| rules
-  rules -->|validated move| adapter
+  scheduler -->|evaluated move| adapter
+  scheduler -.->|format moves| san
+  san -.->|scoresheet & PGN| panel
   adapter -->|Chess.com controller move| board
   adapter -->|PyChess legal square selection| cg
   adapter -->|Lichess pluginMove| round

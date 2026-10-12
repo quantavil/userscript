@@ -35,7 +35,7 @@ const BOARD_SELECTOR = 'wc-chess-board, chess-board, .board';
 const CLOCK_REGION_SELECTOR = '.clock-player-turn';
 const RESULT_SELECTOR = '.game-over-modal-content';
 
-function readFingerprint(result: SiteRead): { identity: object | null; value: string } {
+function fingerprint(result: SiteRead): { identity: object | null; value: string } {
   if (result.kind !== 'game') return { identity: null, value: JSON.stringify([result.kind, result.reason]) };
   const snapshot = result.snapshot;
   return {
@@ -161,29 +161,15 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
     return { kind: 'game', snapshot };
   };
 
-  const fingerprint = (read: SiteRead): string =>
-    read.kind === 'game'
-      ? JSON.stringify([
-          read.snapshot.gameId,
-          read.snapshot.fen,
-          read.snapshot.playerColor,
-          read.snapshot.sideToMove,
-          read.snapshot.orientation,
-          read.snapshot.phase,
-          read.snapshot.inputReady,
-          read.snapshot.history?.moves,
-        ])
-      : JSON.stringify([read.kind, read.reason]);
-
   const notify = () => {
     const next = read();
-    const nextFingerprint = fingerprint(next);
-    if (next.kind === 'game' && lastNotifiedIdentity !== next.snapshot.identity) {
-      lastNotifiedIdentity = next.snapshot.identity;
+    const fp = fingerprint(next);
+    if (next.kind === 'game' && lastNotifiedIdentity !== fp.identity) {
+      lastNotifiedIdentity = fp.identity;
       previousFingerprint = '';
     }
-    if (nextFingerprint === previousFingerprint) return;
-    previousFingerprint = nextFingerprint;
+    if (fp.value === previousFingerprint) return;
+    previousFingerprint = fp.value;
     for (const listener of [...listeners]) {
       try {
         listener();
@@ -229,8 +215,8 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
       let queued = false;
       let active = true;
       const initial = read();
-      let previous = readFingerprint(initial);
-      previousFingerprint = fingerprint(initial);
+      let previous = fingerprint(initial);
+      previousFingerprint = previous.value;
       if (initial.kind === 'game') lastNotifiedIdentity = initial.snapshot.identity;
       const detachGame = () => {
         if (observedGame && moveListener) observedGame.off?.('Move', moveListener);
@@ -251,7 +237,7 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
         if (!active) return;
         const result = read();
         bind(result);
-        const next = readFingerprint(result);
+        const next = fingerprint(result);
         if (next.identity === previous.identity && next.value === previous.value) return;
         previous = next;
         try {

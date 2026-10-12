@@ -1,7 +1,8 @@
 import type { Coordinates } from './board-input.js';
 import { canonicalFen } from './history.js';
+import { getBoard, getGame, invalidateGameCache } from './sites/chesscom-state.js';
 import type { MoveRequest, SiteAdapter, SiteRead } from './sites/types.js';
-import { BotState, getBoard, getGame, getPlayerColor, invalidateGameCache, isBoardFlipped, pa } from './state.js';
+import { BotState, getPlayerColor, isBoardFlipped, pa } from './state.js';
 
 interface BoardContext {
   boardEl: HTMLElement;

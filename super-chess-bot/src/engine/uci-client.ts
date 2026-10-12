@@ -67,6 +67,7 @@ interface SearchJob {
   timeLimit: number;
   history?: PositionHistory;
   pondering: boolean;
+  slackMs?: number;
   promise: Promise<AnalysisResult>;
   signal?: AbortSignal;
   resolve(result: AnalysisResult): void;
@@ -162,12 +163,15 @@ function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchI
   const cpIndex = tokens.indexOf('cp');
   const mateIndex = tokens.indexOf('mate');
   let evaluation: AnalysisEvaluation = multipv === 1 ? previous.evaluation : (existingLine?.evaluation ?? {});
-  if (cpIndex >= 0) {
-    const cp = finiteInteger(tokens[cpIndex + 1]);
-    if (cp !== undefined) evaluation = { cp };
-  } else if (mateIndex >= 0) {
-    const mate = finiteInteger(tokens[mateIndex + 1]);
-    if (mate !== undefined) evaluation = { mate };
+  const isBound = tokens.includes('lowerbound') || tokens.includes('upperbound');
+  if (!isBound) {
+    if (cpIndex >= 0) {
+      const cp = finiteInteger(tokens[cpIndex + 1]);
+      if (cp !== undefined) evaluation = { cp };
+    } else if (mateIndex >= 0) {
+      const mate = finiteInteger(tokens[mateIndex + 1]);
+      if (mate !== undefined) evaluation = { mate };
+    }
   }
 
   const pvIndex = tokens.indexOf('pv');
@@ -267,6 +271,7 @@ export class UciClient {
     timeLimit: number,
     signal?: AbortSignal,
     history?: PositionHistory,
+    slackMs?: number,
   ): Promise<AnalysisResult> {
     if (signal?.aborted) return Promise.reject(abortError());
     if (!fen || /[\r\n]/.test(fen)) return Promise.reject(new Error('A valid position FEN is required'));
@@ -286,12 +291,13 @@ export class UciClient {
     if (ponderJob) {
       if (ponderJob.positionKey === positionKey && ponderJob.depth === requestedDepth) {
         this.promotePonder(ponderJob, timeLimit, signal);
+        if (slackMs !== undefined) ponderJob.slackMs = slackMs;
         return ponderJob.promise;
       }
       this.cancelPonder();
     }
 
-    return this.enqueue(fen, depth, timeLimit, signal, history, false);
+    return this.enqueue(fen, depth, timeLimit, signal, history, false, slackMs);
   }
 
   /** Start an un-timed UCI ponder search that can be promoted on a matching position. */
@@ -321,6 +327,7 @@ export class UciClient {
     signal: AbortSignal | undefined,
     history: PositionHistory | undefined,
     pondering: boolean,
+    slackMs?: number,
   ): Promise<AnalysisResult> {
     let resolve!: (result: AnalysisResult) => void;
     let reject!: (reason: unknown) => void;
@@ -335,6 +342,7 @@ export class UciClient {
       timeLimit: Math.max(1, Math.min(120_000, Math.floor(timeLimit) || 1)),
       history,
       pondering,
+      slackMs,
       promise,
       signal,
       resolve,
@@ -597,10 +605,11 @@ export class UciClient {
         throw error;
       }
     }
+    const slack = job.slackMs ?? this.searchTimeoutSlackMs;
     job.searchTimer = safeTimeout(() => {
-      job.timeoutReason = new Error(`Stockfish search exceeded ${timeLimit + this.searchTimeoutSlackMs} ms`);
+      job.timeoutReason = new Error(`Stockfish search exceeded ${timeLimit + slack} ms`);
       this.stopActiveSearch(job);
-    }, timeLimit + this.searchTimeoutSlackMs);
+    }, timeLimit + slack);
     this.send(`go depth ${job.depth} movetime ${timeLimit}`);
 
     try {

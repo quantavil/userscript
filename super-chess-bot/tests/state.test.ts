@@ -1,15 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setActiveSite } from '../src/sites/active.js';
-import {
-  getBoard,
-  getFen,
-  getGame,
-  getPlayerColor,
-  invalidateGameCache,
-  isBoardFlipped,
-  isPlayersTurn,
-  pa,
-} from '../src/state.js';
+import { getBoard, getGame, invalidateGameCache } from '../src/sites/chesscom-state.js';
+import { getFen, getPlayerColor, isBoardFlipped, isPlayersTurn, pa } from '../src/state.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -88,5 +80,14 @@ describe('snapshot-derived compatibility helpers', () => {
     expect(isPlayersTurn()).toBe(true);
     expect(isBoardFlipped()).toBe(true);
     expect(pa()).toBe(2);
+  });
+
+  it('returns null and does not fall back to Chess.com when no active site exists', () => {
+    setActiveSite(null);
+    expect(getFen()).toBeNull();
+    expect(getPlayerColor()).toBeNull();
+    expect(isPlayersTurn()).toBe(false);
+    expect(isBoardFlipped()).toBe(false);
+    expect(pa()).toBe(1);
   });
 });
