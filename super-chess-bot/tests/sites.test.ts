@@ -319,6 +319,7 @@ describe('userscript package metadata', () => {
       'https://www.pychess.org/*',
       'https://pychess.org/*',
     ]);
+    expect(userscriptMetadata.namespace).toBe('https://github.com/quantavil/userscript');
     expect(userscriptMetadata['run-at']).toBe('document-start');
     expect(userscriptMetadata['inject-into']).toBe('page');
     expect(userscriptMetadata.license).toBe('GPL-3.0-or-later');
@@ -335,6 +336,7 @@ describe('userscript package metadata', () => {
   it('provides dedicated Chess.com-only userscript metadata matching only Chess.com', () => {
     const meta = getUserscriptMetadata('chesscom');
     expect(meta.name).toBe('♟Super-chess-Bot (Chess.com)');
+    expect(meta.namespace).toBe('https://github.com/quantavil/userscript');
     expect(meta.description).toBe('Local Stockfish analysis and move automation for Chess.com standard games');
     expect(meta.match).toEqual(['https://chess.com/*', 'https://www.chess.com/*']);
     expect(meta.license).toBe('GPL-3.0-or-later');

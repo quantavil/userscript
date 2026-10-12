@@ -14,7 +14,7 @@ export function getUserscriptMetadata(target: BuildTarget = 'all'): MonkeyUserSc
   const isChesscom = target === 'chesscom';
   return {
     name: isChesscom ? '♟Super-chess-Bot (Chess.com)' : '♟Super-chess-Bot',
-    namespace: 'https://github.com/quantavil/super-chess-bot',
+    namespace: 'https://github.com/quantavil/userscript',
     version: pkg.version,
     description: isChesscom
       ? 'Local Stockfish analysis and move automation for Chess.com standard games'

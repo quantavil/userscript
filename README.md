@@ -77,7 +77,7 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 | **[impex-cube-dropdown](./impex-cube-dropdown)** | Transforms native select dropdowns into searchable, keyboard-friendly fuzzy dropdowns on Impex Cube portals. |
 | **[impex-cube-better-dates](./impex-cube-better-dates)** | Replaces ASP.NET calendars with a fast, manual-typing enabled, smart date picker on Impex Cube portals. |
 | **[floating-stopwatch](./floating-stopwatch)** | High-performance, tab-isolated floating stopwatch overlay with millisecond precision that persists seamlessly across page reloads. |
-| **[super-chess-bot](./super-chess-bot)** | Local Stockfish 19 analysis and automated move play for Chess.com, PyChess, and Lichess standard games with mobile bottom-sheet and desktop panel. |
+| **[super-chess-bot](./super-chess-bot)** ([Chess.com](./super-chess-bot/README-c.md)) | Local Stockfish 19 analysis and automated move play for Chess.com, PyChess, and Lichess standard games with mobile bottom-sheet and desktop panel. |
 
 ---
 
