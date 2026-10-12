@@ -10,7 +10,6 @@ import {
   Chevron,
   ClearIcon,
   CopyIcon,
-  GhostIcon,
   HelpIcon,
   KnightIcon,
   LightningIcon,
@@ -720,26 +719,18 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
             </span>
           )}
         </div>
-        <button
-          type="button"
-          class={`panel-icon panel-ghost-toggle ${settings.ghostMode ? 'is-active' : ''}`}
-          aria-pressed={settings.ghostMode}
-          aria-label={settings.ghostMode ? 'Disable ghost mode' : 'Enable ghost mode'}
-          title={settings.ghostMode ? 'Ghost mode active' : 'Enable stream-safe ghost mode'}
-          onClick={() => updateSetting('ghostMode', !settings.ghostMode)}
-        >
-          <GhostIcon />
-        </button>
-        <button
-          type="button"
-          class={`panel-icon panel-help-toggle ${helpOpen ? 'is-active' : ''}`}
-          aria-expanded={helpOpen}
-          aria-label="Bot guide"
-          title="Bot guide"
-          onClick={() => setHelpOpen((v) => !v)}
-        >
-          <HelpIcon />
-        </button>
+        {!collapsed && (
+          <button
+            type="button"
+            class={`panel-icon panel-help-toggle ${helpOpen ? 'is-active' : ''}`}
+            aria-expanded={helpOpen}
+            aria-label="Bot guide"
+            title="Bot guide"
+            onClick={() => setHelpOpen((v) => !v)}
+          >
+            <HelpIcon />
+          </button>
+        )}
         {collapsed && (
           <QuickEnableButton enabled={settings.enabled} onToggle={(next) => updateSetting('enabled', next)} />
         )}

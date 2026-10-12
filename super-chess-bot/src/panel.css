@@ -203,24 +203,6 @@
   background: var(--wood-raised);
 }
 
-.panel-ghost-toggle {
-  color: var(--muted);
-  transition:
-    color 140ms var(--ease),
-    border-color 140ms var(--ease),
-    background 140ms var(--ease);
-}
-
-.panel-ghost-toggle:hover {
-  color: var(--paper);
-}
-
-.panel-ghost-toggle.is-active {
-  border-color: color-mix(in oklab, var(--sage) 55%, var(--line));
-  color: var(--sage);
-  background: color-mix(in oklab, var(--sage) 12%, var(--wood));
-}
-
 .panel-help-toggle {
   color: var(--muted);
   transition:
