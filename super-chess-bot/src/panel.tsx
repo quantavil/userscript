@@ -737,6 +737,9 @@ function GameReportPanel({
     void runGameReport(currentMoves, startFen, gameId, reportDepth, true);
   };
 
+  const decDepth = () => onDepthChange(Math.max(10, reportDepth - 1));
+  const incDepth = () => onDepthChange(Math.min(26, reportDepth + 1));
+
   return (
     <section class="panel-report" aria-label="Game report">
       <div class="panel-report-head">
@@ -744,23 +747,32 @@ function GameReportPanel({
         <span class="panel-report-note">Local engine estimate</span>
       </div>
 
-      <Slider
-        id="bot-report-depth"
-        label="Report depth"
-        value={reportDepth}
-        min={10}
-        max={26}
-        step={1}
-        format={(value) => `${value}`}
-        hint="Search depth per move for accuracy evaluation."
-        onPreview={onDepthChange}
-        onCommit={onDepthChange}
-      />
+      <div class="panel-report-split">
+        <div class="panel-report-stepper" title={`Search depth per move: ${reportDepth}`}>
+          <button
+            type="button"
+            class="panel-report-step-btn"
+            disabled={reportDepth <= 10 || progress.running}
+            aria-label="Decrease depth"
+            onClick={decDepth}
+          >
+            −
+          </button>
+          <span class="panel-report-depth-val">{reportDepth}</span>
+          <button
+            type="button"
+            class="panel-report-step-btn"
+            disabled={reportDepth >= 26 || progress.running}
+            aria-label="Increase depth"
+            onClick={incDepth}
+          >
+            +
+          </button>
+        </div>
 
-      <div class="panel-report-actions">
         <button
           type="button"
-          class="panel-button panel-report-btn"
+          class="panel-report-action-btn"
           disabled={movesCount === 0 || progress.running}
           onClick={handleGenerate}
         >
@@ -770,18 +782,19 @@ function GameReportPanel({
               ? 'Regenerate report'
               : 'Generate report'}
         </button>
+
         {progress.running && (
-          <button type="button" class="panel-button panel-report-cancel-btn" onClick={cancelGameReport}>
-            Cancel
+          <button
+            type="button"
+            class="panel-report-cancel-mini"
+            title="Cancel analysis"
+            aria-label="Cancel analysis"
+            onClick={cancelGameReport}
+          >
+            ✕
           </button>
         )}
       </div>
-
-      {progress.running && (
-        <p class="panel-report-status">
-          Analyzing {progress.analyzed}/{progress.total} positions…
-        </p>
-      )}
 
       {progress.report && (
         <>
@@ -1124,7 +1137,14 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
                   checked={settings.ponder}
                   onChange={(next) => updateSetting('ponder', next)}
                 />
+                <Toggle
+                  label="Blunder shield"
+                  checked={settings.blunderShield}
+                  onChange={(next) => updateSetting('blunderShield', next)}
+                />
               </div>
+
+              <hr class="panel-section-divider" />
 
               <div class="panel-timing-row">
                 <span class="panel-timing-label">Timing mode</span>
@@ -1187,13 +1207,6 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions;
                 onPreview={(value) => previewSlider('targetElo', value)}
                 onCommit={(value) => updateSetting('targetElo', value)}
               />
-              {settings.targetElo > 0 && (
-                <Toggle
-                  label="Blunder shield"
-                  checked={settings.blunderShield}
-                  onChange={(next) => updateSetting('blunderShield', next)}
-                />
-              )}
             </section>
 
             <section class="panel-activity" aria-label="Activity log">

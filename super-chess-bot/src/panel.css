@@ -714,6 +714,13 @@
   text-transform: uppercase;
 }
 
+.panel-section-divider {
+  border: none;
+  height: 1px;
+  margin: 10px 0;
+  background: var(--line);
+}
+
 .panel-note {
   margin: 4px 0 0;
   color: var(--muted);
@@ -1042,21 +1049,99 @@
   font-size: 10px;
 }
 
-.panel-report-actions {
+.panel-report-split {
   display: flex;
-  gap: 8px;
-  margin-top: 2px;
+  min-height: var(--target);
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--wood);
 }
 
-.panel-report-btn {
-  width: 100%;
-}
-
-.panel-report-cancel-btn {
+.panel-report-stepper {
+  display: inline-flex;
   flex: 0 0 auto;
-  border-color: var(--brick);
+  align-items: center;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.panel-report-step-btn {
+  display: inline-flex;
+  width: 32px;
+  min-height: var(--target);
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  transition: background 0.15s ease;
+}
+
+.panel-report-step-btn:hover:not(:disabled) {
+  background: var(--wood-raised);
+}
+
+.panel-report-step-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.panel-report-depth-val {
+  min-width: 26px;
+  padding: 0 2px;
+  color: var(--paper);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  user-select: none;
+}
+
+.panel-report-action-btn {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
+  border: none;
+  background: var(--brass);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: filter 0.15s ease;
+  white-space: nowrap;
+}
+
+.panel-report-action-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.panel-report-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+
+.panel-report-cancel-mini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: none;
+  border-left: 1px solid var(--line);
   background: var(--brick);
   color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .panel-report-player {
