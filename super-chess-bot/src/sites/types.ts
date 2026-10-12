@@ -21,6 +21,8 @@ export interface GameSnapshot {
   history?: PositionHistory;
   /** Canonical accepted FENs indexed by ply, with the root at index zero. */
   confirmedFens?: readonly string[];
+  variant?: string;
+  boardDimensions?: { width: number; height: number };
 }
 
 export type SiteRead = { kind: 'game'; snapshot: GameSnapshot } | { kind: 'waiting' | 'ineligible'; reason: string };

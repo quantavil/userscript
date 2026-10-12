@@ -1,9 +1,10 @@
-import { Chess, normalizeMove } from 'chessops/chess';
+import { normalizeMove } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { makeSquare, parseUci } from 'chessops/util';
+import { setupPosition } from 'chessops/variant';
 import { isBotOwnedNode, notifyBoardInput } from '../board.js';
 import { activateElement } from '../board-input.js';
-import { canonicalFen } from '../history.js';
+import { canonicalFen, parseRules } from '../history.js';
 import {
   type PychessClockObservation,
   type PychessMove,
@@ -64,25 +65,33 @@ const PROMOTION_ROLE: Record<string, string> = {
 
 const INPUT_TIMEOUT_MS = 1000;
 
-function cleanFen(fen: string): string | null {
-  return canonicalFen(fen);
+function cleanFen(fen: string, variant = 'chess'): string | null {
+  return canonicalFen(fen, variant);
 }
 
-function moveDetails(request: MoveRequest): { from: string; toCandidates: string[]; promotion: boolean } | null {
-  const sourceFen = cleanFen(request.fromFen);
-  const expectedFen = cleanFen(request.expectedFen);
+function moveDetails(
+  request: MoveRequest,
+  variant = 'chess',
+): { from: string; toCandidates: string[]; promotion: boolean } | null {
+  const sourceFen = cleanFen(request.fromFen, variant);
+  const expectedFen = cleanFen(request.expectedFen, variant);
   if (!sourceFen || !expectedFen) return null;
   const setup = parseFen(sourceFen);
   if (setup.isErr) return null;
-  const position = Chess.fromSetup(setup.value);
-  if (position.isErr) return null;
+  const rules = parseRules(variant);
+  const position = rules ? setupPosition(rules, setup.value) : null;
+  if (!position || position.isErr) {
+    const match = /^([a-j](?:10|[0-9]))([a-j](?:10|[0-9]))([a-zA-Z+]?)$/.exec(request.uci);
+    if (!match) return null;
+    return { from: match[1], toCandidates: [match[2]], promotion: !!match[3] };
+  }
   const move = parseUci(request.uci);
   if (!move || !('from' in move) || !position.value.isLegal(move)) return null;
   const normalized = normalizeMove(position.value, move);
   const from = makeSquare(move.from);
   const candidates = [...new Set([makeSquare(move.to), makeSquare(normalized.to)])];
   position.value.play(move);
-  const predictedFen = cleanFen(makeFen(position.value.toSetup()));
+  const predictedFen = cleanFen(makeFen(position.value.toSetup()), variant);
   if (predictedFen !== expectedFen) return null;
   return { from, toCandidates: candidates, promotion: !!move.promotion };
 }
@@ -361,11 +370,12 @@ export function createPychessAdapter(page: () => Window = pageWindow): SiteAdapt
         const cg = currentPage.cg;
         const state = cg?.state;
         const board = initial.kind === 'game' ? initial.snapshot.board : null;
+        const variant = initial.kind === 'game' ? (initial.snapshot.variant ?? 'chess') : 'chess';
         if (
           initial.kind !== 'game' ||
           !board ||
           initial.snapshot.identity !== request.identity ||
-          cleanFen(initial.snapshot.fen) !== cleanFen(request.fromFen) ||
+          cleanFen(initial.snapshot.fen, variant) !== cleanFen(request.fromFen, variant) ||
           !initial.snapshot.inputReady ||
           !cg ||
           !state ||
@@ -375,7 +385,7 @@ export function createPychessAdapter(page: () => Window = pageWindow): SiteAdapt
           state.selectable?.selected
         )
           return false;
-        const detail = moveDetails(request);
+        const detail = moveDetails(request, variant);
         if (!detail) return false;
         const destinations = state.movable?.dests?.get(detail.from);
         if (!destinations) return false;

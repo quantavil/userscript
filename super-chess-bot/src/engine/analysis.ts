@@ -2,7 +2,7 @@ import { Chess } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { parseUci } from 'chessops/util';
 import type { Evaluation } from '../types/chess.js';
-import type { AnalysisResult, MultiPvLine, PositionHistory } from './uci-client.js';
+import { type AnalysisResult, isValidUciMove, type MultiPvLine, type PositionHistory } from './uci-client.js';
 import { engineWorker } from './worker-client.js';
 
 export type { AnalysisResult, PositionHistory } from './uci-client.js';
@@ -29,8 +29,9 @@ export function getAnalysis(
   signal?: AbortSignal,
   history?: PositionHistory,
   slackMs?: number,
+  variant?: string,
 ): Promise<AnalysisResult> {
-  return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs);
+  return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs, variant);
 }
 
 /** Return legal-move availability for a standard chess FEN; null means it could not be validated. */
@@ -97,7 +98,7 @@ export function parseBestLine(data: unknown): BestLine | null {
   if (!data || typeof data !== 'object') return null;
   const result = data as Partial<AnalysisResult>;
   const uci = typeof result.bestmove === 'string' ? result.bestmove.trim() : '';
-  if (!result.success || !/^[a-h][1-8][a-h][1-8][nbrq]?$/.test(uci)) return null;
+  if (!result.success || !isValidUciMove(uci)) return null;
   const score: Evaluation = {};
   if (typeof result.evaluation?.cp === 'number' && Number.isFinite(result.evaluation.cp)) {
     score.cp = result.evaluation.cp;

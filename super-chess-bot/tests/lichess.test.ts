@@ -41,12 +41,12 @@ describe('Lichess player-round adapter', () => {
     });
   });
 
-  it('rejects only non-standard or spectator rounds', async () => {
-    const variant = makeFixture({ variant: 'chess960' });
+  it('rejects unsupported variants or spectator rounds', async () => {
+    const variant = makeFixture({ variant: 'unsupportedVariant123' });
     await variant.captureRound();
     expect(variant.adapter.read()).toMatchObject({
       kind: 'ineligible',
-      reason: expect.stringContaining('standard chess'),
+      reason: expect.stringContaining('not supported'),
     });
 
     const fromPosition = makeFixture({ variant: 'fromPosition' });

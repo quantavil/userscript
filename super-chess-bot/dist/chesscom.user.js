@@ -294,152 +294,6 @@
 	];
 	var CASTLING_SIDES = ["a", "h"];
 	var isDrop = (v) => "role" in v;
-	var defined = (v) => v !== void 0;
-	var opposite = (color) => color === "white" ? "black" : "white";
-	var squareRank = (square) => square >> 3;
-	var squareFile = (square) => square & 7;
-	var squareFromCoords = (file, rank) => 0 <= file && file < 8 && 0 <= rank && rank < 8 ? file + 8 * rank : void 0;
-	var roleToChar = (role) => {
-		switch (role) {
-			case "pawn": return "p";
-			case "knight": return "n";
-			case "bishop": return "b";
-			case "rook": return "r";
-			case "queen": return "q";
-			case "king": return "k";
-		}
-	};
-	function charToRole(ch) {
-		switch (ch.toLowerCase()) {
-			case "p": return "pawn";
-			case "n": return "knight";
-			case "b": return "bishop";
-			case "r": return "rook";
-			case "q": return "queen";
-			case "k": return "king";
-			default: return;
-		}
-	}
-	function parseSquare(str) {
-		if (str.length !== 2) return;
-		return squareFromCoords(str.charCodeAt(0) - "a".charCodeAt(0), str.charCodeAt(1) - "1".charCodeAt(0));
-	}
-	var makeSquare = (square) => FILE_NAMES[squareFile(square)] + RANK_NAMES[squareRank(square)];
-	var parseUci = (str) => {
-		if (str[1] === "@" && str.length === 4) {
-			const role = charToRole(str[0]);
-			const to = parseSquare(str.slice(2));
-			if (role && defined(to)) return {
-				role,
-				to
-			};
-		} else if (str.length === 4 || str.length === 5) {
-			const from = parseSquare(str.slice(0, 2));
-			const to = parseSquare(str.slice(2, 4));
-			let promotion;
-			if (str.length === 5) {
-				promotion = charToRole(str[4]);
-				if (!promotion) return;
-			}
-			if (defined(from) && defined(to)) return {
-				from,
-				to,
-				promotion
-			};
-		}
-	};
-	var makeUci = (move) => isDrop(move) ? `${roleToChar(move.role).toUpperCase()}@${makeSquare(move.to)}` : makeSquare(move.from) + makeSquare(move.to) + (move.promotion ? roleToChar(move.promotion) : "");
-	var kingCastlesTo = (color, side) => color === "white" ? side === "a" ? 2 : 6 : side === "a" ? 58 : 62;
-	var rookCastlesTo = (color, side) => color === "white" ? side === "a" ? 3 : 5 : side === "a" ? 59 : 61;
-	var computeRange = (square, deltas) => {
-		let range = SquareSet.empty();
-		for (const delta of deltas) {
-			const sq = square + delta;
-			if (0 <= sq && sq < 64 && Math.abs(squareFile(square) - squareFile(sq)) <= 2) range = range.with(sq);
-		}
-		return range;
-	};
-	var tabulate = (f) => {
-		const table = [];
-		for (let square = 0; square < 64; square++) table[square] = f(square);
-		return table;
-	};
-	var KING_ATTACKS = tabulate((sq) => computeRange(sq, [
-		-9,
-		-8,
-		-7,
-		-1,
-		1,
-		7,
-		8,
-		9
-	]));
-	var KNIGHT_ATTACKS = tabulate((sq) => computeRange(sq, [
-		-17,
-		-15,
-		-10,
-		-6,
-		6,
-		10,
-		15,
-		17
-	]));
-	var PAWN_ATTACKS = {
-		white: tabulate((sq) => computeRange(sq, [7, 9])),
-		black: tabulate((sq) => computeRange(sq, [-7, -9]))
-	};
-	var kingAttacks = (square) => KING_ATTACKS[square];
-	var knightAttacks = (square) => KNIGHT_ATTACKS[square];
-	var pawnAttacks = (color, square) => PAWN_ATTACKS[color][square];
-	var FILE_RANGE = tabulate((sq) => SquareSet.fromFile(squareFile(sq)).without(sq));
-	var RANK_RANGE = tabulate((sq) => SquareSet.fromRank(squareRank(sq)).without(sq));
-	var DIAG_RANGE = tabulate((sq) => {
-		const diag = new SquareSet(134480385, 2151686160);
-		const shift = 8 * (squareRank(sq) - squareFile(sq));
-		return (shift >= 0 ? diag.shl64(shift) : diag.shr64(-shift)).without(sq);
-	});
-	var ANTI_DIAG_RANGE = tabulate((sq) => {
-		const diag = new SquareSet(270549120, 16909320);
-		const shift = 8 * (squareRank(sq) + squareFile(sq) - 7);
-		return (shift >= 0 ? diag.shl64(shift) : diag.shr64(-shift)).without(sq);
-	});
-	var hyperbola = (sq, range, occupied) => {
-		const o = range.intersect(occupied);
-		const fwd = o.minus64(SquareSet.fromSquare(sq));
-		const rev = o.bswap64().minus64(SquareSet.fromSquare(56 ^ sq));
-		return fwd.xor(rev.bswap64()).intersect(range);
-	};
-	var rankAttacks = (sq, occupied) => {
-		const range = RANK_RANGE[sq];
-		const o = range.intersect(occupied);
-		const fwd = o.minus64(SquareSet.fromSquare(sq));
-		const rev = o.rbit64().minus64(SquareSet.fromSquare(63 - sq));
-		return fwd.xor(rev.rbit64()).intersect(range);
-	};
-	var bishopAttacks = (square, occupied) => {
-		return hyperbola(square, DIAG_RANGE[square], occupied).xor(hyperbola(square, ANTI_DIAG_RANGE[square], occupied));
-	};
-	var rookAttacks = (square, occupied) => hyperbola(square, FILE_RANGE[square], occupied).xor(rankAttacks(square, occupied));
-	var queenAttacks = (square, occupied) => bishopAttacks(square, occupied).xor(rookAttacks(square, occupied));
-	var attacks = (piece, square, occupied) => {
-		switch (piece.role) {
-			case "pawn": return pawnAttacks(piece.color, square);
-			case "knight": return knightAttacks(square);
-			case "bishop": return bishopAttacks(square, occupied);
-			case "rook": return rookAttacks(square, occupied);
-			case "queen": return queenAttacks(square, occupied);
-			case "king": return kingAttacks(square);
-		}
-	};
-	var ray = (a, b) => {
-		const other = SquareSet.fromSquare(b);
-		if (RANK_RANGE[a].intersects(other)) return RANK_RANGE[a].with(a);
-		if (ANTI_DIAG_RANGE[a].intersects(other)) return ANTI_DIAG_RANGE[a].with(a);
-		if (DIAG_RANGE[a].intersects(other)) return DIAG_RANGE[a].with(a);
-		if (FILE_RANGE[a].intersects(other)) return FILE_RANGE[a].with(a);
-		return SquareSet.empty();
-	};
-	var between = (a, b) => ray(a, b).intersect(SquareSet.full().shl64(a).xor(SquareSet.full().shl64(b))).withoutFirst();
 	var Board = class Board {
 		constructor() {}
 		static default() {
@@ -536,6 +390,573 @@
 		kingOf(color) {
 			return this.pieces(color, "king").singleSquare();
 		}
+	};
+	var MaterialSide = class MaterialSide {
+		constructor() {}
+		static empty() {
+			const m = new MaterialSide();
+			for (const role of ROLES) m[role] = 0;
+			return m;
+		}
+		static fromBoard(board, color) {
+			const m = new MaterialSide();
+			for (const role of ROLES) m[role] = board.pieces(color, role).size();
+			return m;
+		}
+		clone() {
+			const m = new MaterialSide();
+			for (const role of ROLES) m[role] = this[role];
+			return m;
+		}
+		equals(other) {
+			return ROLES.every((role) => this[role] === other[role]);
+		}
+		add(other) {
+			const m = new MaterialSide();
+			for (const role of ROLES) m[role] = this[role] + other[role];
+			return m;
+		}
+		subtract(other) {
+			const m = new MaterialSide();
+			for (const role of ROLES) m[role] = this[role] - other[role];
+			return m;
+		}
+		nonEmpty() {
+			return ROLES.some((role) => this[role] > 0);
+		}
+		isEmpty() {
+			return !this.nonEmpty();
+		}
+		hasPawns() {
+			return this.pawn > 0;
+		}
+		hasNonPawns() {
+			return this.knight > 0 || this.bishop > 0 || this.rook > 0 || this.queen > 0 || this.king > 0;
+		}
+		size() {
+			return this.pawn + this.knight + this.bishop + this.rook + this.queen + this.king;
+		}
+	};
+	var Material = class Material {
+		constructor(white, black) {
+			this.white = white;
+			this.black = black;
+		}
+		static empty() {
+			return new Material(MaterialSide.empty(), MaterialSide.empty());
+		}
+		static fromBoard(board) {
+			return new Material(MaterialSide.fromBoard(board, "white"), MaterialSide.fromBoard(board, "black"));
+		}
+		clone() {
+			return new Material(this.white.clone(), this.black.clone());
+		}
+		equals(other) {
+			return this.white.equals(other.white) && this.black.equals(other.black);
+		}
+		add(other) {
+			return new Material(this.white.add(other.white), this.black.add(other.black));
+		}
+		subtract(other) {
+			return new Material(this.white.subtract(other.white), this.black.subtract(other.black));
+		}
+		count(role) {
+			return this.white[role] + this.black[role];
+		}
+		size() {
+			return this.white.size() + this.black.size();
+		}
+		isEmpty() {
+			return this.white.isEmpty() && this.black.isEmpty();
+		}
+		nonEmpty() {
+			return !this.isEmpty();
+		}
+		hasPawns() {
+			return this.white.hasPawns() || this.black.hasPawns();
+		}
+		hasNonPawns() {
+			return this.white.hasNonPawns() || this.black.hasNonPawns();
+		}
+	};
+	var RemainingChecks = class RemainingChecks {
+		constructor(white, black) {
+			this.white = white;
+			this.black = black;
+		}
+		static default() {
+			return new RemainingChecks(3, 3);
+		}
+		clone() {
+			return new RemainingChecks(this.white, this.black);
+		}
+		equals(other) {
+			return this.white === other.white && this.black === other.black;
+		}
+	};
+	var defined = (v) => v !== void 0;
+	var opposite = (color) => color === "white" ? "black" : "white";
+	var squareRank = (square) => square >> 3;
+	var squareFile = (square) => square & 7;
+	var squareFromCoords = (file, rank) => 0 <= file && file < 8 && 0 <= rank && rank < 8 ? file + 8 * rank : void 0;
+	var roleToChar = (role) => {
+		switch (role) {
+			case "pawn": return "p";
+			case "knight": return "n";
+			case "bishop": return "b";
+			case "rook": return "r";
+			case "queen": return "q";
+			case "king": return "k";
+		}
+	};
+	function charToRole(ch) {
+		switch (ch.toLowerCase()) {
+			case "p": return "pawn";
+			case "n": return "knight";
+			case "b": return "bishop";
+			case "r": return "rook";
+			case "q": return "queen";
+			case "k": return "king";
+			default: return;
+		}
+	}
+	function parseSquare(str) {
+		if (str.length !== 2) return;
+		return squareFromCoords(str.charCodeAt(0) - "a".charCodeAt(0), str.charCodeAt(1) - "1".charCodeAt(0));
+	}
+	var makeSquare = (square) => FILE_NAMES[squareFile(square)] + RANK_NAMES[squareRank(square)];
+	var parseUci = (str) => {
+		if (str[1] === "@" && str.length === 4) {
+			const role = charToRole(str[0]);
+			const to = parseSquare(str.slice(2));
+			if (role && defined(to)) return {
+				role,
+				to
+			};
+		} else if (str.length === 4 || str.length === 5) {
+			const from = parseSquare(str.slice(0, 2));
+			const to = parseSquare(str.slice(2, 4));
+			let promotion;
+			if (str.length === 5) {
+				promotion = charToRole(str[4]);
+				if (!promotion) return;
+			}
+			if (defined(from) && defined(to)) return {
+				from,
+				to,
+				promotion
+			};
+		}
+	};
+	var makeUci = (move) => isDrop(move) ? `${roleToChar(move.role).toUpperCase()}@${makeSquare(move.to)}` : makeSquare(move.from) + makeSquare(move.to) + (move.promotion ? roleToChar(move.promotion) : "");
+	var kingCastlesTo = (color, side) => color === "white" ? side === "a" ? 2 : 6 : side === "a" ? 58 : 62;
+	var rookCastlesTo = (color, side) => color === "white" ? side === "a" ? 3 : 5 : side === "a" ? 59 : 61;
+	var InvalidFen;
+	(function(InvalidFen) {
+		InvalidFen["Fen"] = "ERR_FEN";
+		InvalidFen["Board"] = "ERR_BOARD";
+		InvalidFen["Pockets"] = "ERR_POCKETS";
+		InvalidFen["Turn"] = "ERR_TURN";
+		InvalidFen["Castling"] = "ERR_CASTLING";
+		InvalidFen["EpSquare"] = "ERR_EP_SQUARE";
+		InvalidFen["RemainingChecks"] = "ERR_REMAINING_CHECKS";
+		InvalidFen["Halfmoves"] = "ERR_HALFMOVES";
+		InvalidFen["Fullmoves"] = "ERR_FULLMOVES";
+	})(InvalidFen || (InvalidFen = {}));
+	var FenError = class extends Error {};
+	var nthIndexOf = (haystack, needle, n) => {
+		let index = haystack.indexOf(needle);
+		while (n-- > 0) {
+			if (index === -1) break;
+			index = haystack.indexOf(needle, index + needle.length);
+		}
+		return index;
+	};
+	var parseSmallUint = (str) => /^\d{1,4}$/.test(str) ? parseInt(str, 10) : void 0;
+	var charToPiece = (ch) => {
+		const role = charToRole(ch);
+		return role && {
+			role,
+			color: ch.toLowerCase() === ch ? "black" : "white"
+		};
+	};
+	var parseBoardFen = (boardPart) => {
+		const board = Board.empty();
+		let rank = 7;
+		let file = 0;
+		for (let i = 0; i < boardPart.length; i++) {
+			const c = boardPart[i];
+			if (c === "/" && file === 8) {
+				file = 0;
+				rank--;
+			} else {
+				const step = parseInt(c, 10);
+				if (step > 0) file += step;
+				else {
+					if (file >= 8 || rank < 0) return Result.err(new FenError(InvalidFen.Board));
+					const square = file + rank * 8;
+					const piece = charToPiece(c);
+					if (!piece) return Result.err(new FenError(InvalidFen.Board));
+					if (boardPart[i + 1] === "~") {
+						piece.promoted = true;
+						i++;
+					}
+					board.set(square, piece);
+					file++;
+				}
+			}
+		}
+		if (rank !== 0 || file !== 8) return Result.err(new FenError(InvalidFen.Board));
+		return Result.ok(board);
+	};
+	var parsePockets = (pocketPart) => {
+		if (pocketPart.length > 64) return Result.err(new FenError(InvalidFen.Pockets));
+		const pockets = Material.empty();
+		for (const c of pocketPart) {
+			const piece = charToPiece(c);
+			if (!piece) return Result.err(new FenError(InvalidFen.Pockets));
+			pockets[piece.color][piece.role]++;
+		}
+		return Result.ok(pockets);
+	};
+	var parseCastlingFen = (board, castlingPart) => {
+		let castlingRights = SquareSet.empty();
+		if (castlingPart === "-") return Result.ok(castlingRights);
+		for (const c of castlingPart) {
+			const lower = c.toLowerCase();
+			const color = c === lower ? "black" : "white";
+			const rank = color === "white" ? 0 : 7;
+			if ("a" <= lower && lower <= "h") castlingRights = castlingRights.with(squareFromCoords(lower.charCodeAt(0) - "a".charCodeAt(0), rank));
+			else if (lower === "k" || lower === "q") {
+				const rooksAndKings = board[color].intersect(SquareSet.backrank(color)).intersect(board.rook.union(board.king));
+				const candidate = lower === "k" ? rooksAndKings.last() : rooksAndKings.first();
+				castlingRights = castlingRights.with(defined(candidate) && board.rook.has(candidate) ? candidate : squareFromCoords(lower === "k" ? 7 : 0, rank));
+			} else return Result.err(new FenError(InvalidFen.Castling));
+		}
+		if (COLORS.some((color) => SquareSet.backrank(color).intersect(castlingRights).size() > 2)) return Result.err(new FenError(InvalidFen.Castling));
+		return Result.ok(castlingRights);
+	};
+	var parseRemainingChecks = (part) => {
+		const parts = part.split("+");
+		if (parts.length === 3 && parts[0] === "") {
+			const white = parseSmallUint(parts[1]);
+			const black = parseSmallUint(parts[2]);
+			if (!defined(white) || white > 3 || !defined(black) || black > 3) return Result.err(new FenError(InvalidFen.RemainingChecks));
+			return Result.ok(new RemainingChecks(3 - white, 3 - black));
+		} else if (parts.length === 2) {
+			const white = parseSmallUint(parts[0]);
+			const black = parseSmallUint(parts[1]);
+			if (!defined(white) || white > 3 || !defined(black) || black > 3) return Result.err(new FenError(InvalidFen.RemainingChecks));
+			return Result.ok(new RemainingChecks(white, black));
+		} else return Result.err(new FenError(InvalidFen.RemainingChecks));
+	};
+	var parseFen = (fen) => {
+		const parts = fen.split(/[\s_]+/);
+		const boardPart = parts.shift();
+		let board;
+		let pockets = Result.ok(void 0);
+		if (boardPart.endsWith("]")) {
+			const pocketStart = boardPart.indexOf("[");
+			if (pocketStart === -1) return Result.err(new FenError(InvalidFen.Fen));
+			board = parseBoardFen(boardPart.slice(0, pocketStart));
+			pockets = parsePockets(boardPart.slice(pocketStart + 1, -1));
+		} else {
+			const pocketStart = nthIndexOf(boardPart, "/", 7);
+			if (pocketStart === -1) board = parseBoardFen(boardPart);
+			else {
+				board = parseBoardFen(boardPart.slice(0, pocketStart));
+				pockets = parsePockets(boardPart.slice(pocketStart + 1));
+			}
+		}
+		let turn;
+		const turnPart = parts.shift();
+		if (!defined(turnPart) || turnPart === "w") turn = "white";
+		else if (turnPart === "b") turn = "black";
+		else return Result.err(new FenError(InvalidFen.Turn));
+		return board.chain((board) => {
+			const castlingPart = parts.shift();
+			const castlingRights = defined(castlingPart) ? parseCastlingFen(board, castlingPart) : Result.ok(SquareSet.empty());
+			const epPart = parts.shift();
+			let epSquare;
+			if (defined(epPart) && epPart !== "-") {
+				epSquare = parseSquare(epPart);
+				if (!defined(epSquare)) return Result.err(new FenError(InvalidFen.EpSquare));
+			}
+			let halfmovePart = parts.shift();
+			let earlyRemainingChecks;
+			if (defined(halfmovePart) && halfmovePart.includes("+")) {
+				earlyRemainingChecks = parseRemainingChecks(halfmovePart);
+				halfmovePart = parts.shift();
+			}
+			const halfmoves = defined(halfmovePart) ? parseSmallUint(halfmovePart) : 0;
+			if (!defined(halfmoves)) return Result.err(new FenError(InvalidFen.Halfmoves));
+			const fullmovesPart = parts.shift();
+			const fullmoves = defined(fullmovesPart) ? parseSmallUint(fullmovesPart) : 1;
+			if (!defined(fullmoves)) return Result.err(new FenError(InvalidFen.Fullmoves));
+			const remainingChecksPart = parts.shift();
+			let remainingChecks = Result.ok(void 0);
+			if (defined(remainingChecksPart)) {
+				if (defined(earlyRemainingChecks)) return Result.err(new FenError(InvalidFen.RemainingChecks));
+				remainingChecks = parseRemainingChecks(remainingChecksPart);
+			} else if (defined(earlyRemainingChecks)) remainingChecks = earlyRemainingChecks;
+			if (parts.length > 0) return Result.err(new FenError(InvalidFen.Fen));
+			return pockets.chain((pockets) => castlingRights.chain((castlingRights) => remainingChecks.map((remainingChecks) => {
+				return {
+					board,
+					pockets,
+					turn,
+					castlingRights,
+					remainingChecks,
+					epSquare,
+					halfmoves,
+					fullmoves: Math.max(1, fullmoves)
+				};
+			})));
+		});
+	};
+	var makePiece = (piece) => {
+		let r = roleToChar(piece.role);
+		if (piece.color === "white") r = r.toUpperCase();
+		if (piece.promoted) r += "~";
+		return r;
+	};
+	var makeBoardFen = (board) => {
+		let fen = "";
+		let empty = 0;
+		for (let rank = 7; rank >= 0; rank--) for (let file = 0; file < 8; file++) {
+			const square = file + rank * 8;
+			const piece = board.get(square);
+			if (!piece) empty++;
+			else {
+				if (empty > 0) {
+					fen += empty;
+					empty = 0;
+				}
+				fen += makePiece(piece);
+			}
+			if (file === 7) {
+				if (empty > 0) {
+					fen += empty;
+					empty = 0;
+				}
+				if (rank !== 0) fen += "/";
+			}
+		}
+		return fen;
+	};
+	var makePocket = (material) => ROLES.map((role) => roleToChar(role).repeat(material[role])).join("");
+	var makePockets = (pocket) => makePocket(pocket.white).toUpperCase() + makePocket(pocket.black);
+	var makeCastlingFen = (board, castlingRights) => {
+		let fen = "";
+		for (const color of COLORS) {
+			const backrank = SquareSet.backrank(color);
+			let king = board.kingOf(color);
+			if (defined(king) && !backrank.has(king)) king = void 0;
+			const candidates = board.pieces(color, "rook").intersect(backrank);
+			for (const rook of castlingRights.intersect(backrank).reversed()) if (rook === candidates.first() && defined(king) && rook < king) fen += color === "white" ? "Q" : "q";
+			else if (rook === candidates.last() && defined(king) && king < rook) fen += color === "white" ? "K" : "k";
+			else {
+				const file = FILE_NAMES[squareFile(rook)];
+				fen += color === "white" ? file.toUpperCase() : file;
+			}
+		}
+		return fen || "-";
+	};
+	var makeRemainingChecks = (checks) => `${checks.white}+${checks.black}`;
+	var makeFen = (setup, opts) => [
+		makeBoardFen(setup.board) + (setup.pockets ? `[${makePockets(setup.pockets)}]` : ""),
+		setup.turn[0],
+		makeCastlingFen(setup.board, setup.castlingRights),
+		defined(setup.epSquare) ? makeSquare(setup.epSquare) : "-",
+		...setup.remainingChecks ? [makeRemainingChecks(setup.remainingChecks)] : [],
+		...(opts === null || opts === void 0 ? void 0 : opts.epd) ? [] : [Math.max(0, Math.min(setup.halfmoves, 9999)), Math.max(1, Math.min(setup.fullmoves, 9999))]
+	].join(" ");
+	var computeRange = (square, deltas) => {
+		let range = SquareSet.empty();
+		for (const delta of deltas) {
+			const sq = square + delta;
+			if (0 <= sq && sq < 64 && Math.abs(squareFile(square) - squareFile(sq)) <= 2) range = range.with(sq);
+		}
+		return range;
+	};
+	var tabulate = (f) => {
+		const table = [];
+		for (let square = 0; square < 64; square++) table[square] = f(square);
+		return table;
+	};
+	var KING_ATTACKS = tabulate((sq) => computeRange(sq, [
+		-9,
+		-8,
+		-7,
+		-1,
+		1,
+		7,
+		8,
+		9
+	]));
+	var KNIGHT_ATTACKS = tabulate((sq) => computeRange(sq, [
+		-17,
+		-15,
+		-10,
+		-6,
+		6,
+		10,
+		15,
+		17
+	]));
+	var PAWN_ATTACKS = {
+		white: tabulate((sq) => computeRange(sq, [7, 9])),
+		black: tabulate((sq) => computeRange(sq, [-7, -9]))
+	};
+	var kingAttacks = (square) => KING_ATTACKS[square];
+	var knightAttacks = (square) => KNIGHT_ATTACKS[square];
+	var pawnAttacks = (color, square) => PAWN_ATTACKS[color][square];
+	var FILE_RANGE = tabulate((sq) => SquareSet.fromFile(squareFile(sq)).without(sq));
+	var RANK_RANGE = tabulate((sq) => SquareSet.fromRank(squareRank(sq)).without(sq));
+	var DIAG_RANGE = tabulate((sq) => {
+		const diag = new SquareSet(134480385, 2151686160);
+		const shift = 8 * (squareRank(sq) - squareFile(sq));
+		return (shift >= 0 ? diag.shl64(shift) : diag.shr64(-shift)).without(sq);
+	});
+	var ANTI_DIAG_RANGE = tabulate((sq) => {
+		const diag = new SquareSet(270549120, 16909320);
+		const shift = 8 * (squareRank(sq) + squareFile(sq) - 7);
+		return (shift >= 0 ? diag.shl64(shift) : diag.shr64(-shift)).without(sq);
+	});
+	var hyperbola = (sq, range, occupied) => {
+		const o = range.intersect(occupied);
+		const fwd = o.minus64(SquareSet.fromSquare(sq));
+		const rev = o.bswap64().minus64(SquareSet.fromSquare(56 ^ sq));
+		return fwd.xor(rev.bswap64()).intersect(range);
+	};
+	var rankAttacks = (sq, occupied) => {
+		const range = RANK_RANGE[sq];
+		const o = range.intersect(occupied);
+		const fwd = o.minus64(SquareSet.fromSquare(sq));
+		const rev = o.rbit64().minus64(SquareSet.fromSquare(63 - sq));
+		return fwd.xor(rev.rbit64()).intersect(range);
+	};
+	var bishopAttacks = (square, occupied) => {
+		return hyperbola(square, DIAG_RANGE[square], occupied).xor(hyperbola(square, ANTI_DIAG_RANGE[square], occupied));
+	};
+	var rookAttacks = (square, occupied) => hyperbola(square, FILE_RANGE[square], occupied).xor(rankAttacks(square, occupied));
+	var queenAttacks = (square, occupied) => bishopAttacks(square, occupied).xor(rookAttacks(square, occupied));
+	var attacks = (piece, square, occupied) => {
+		switch (piece.role) {
+			case "pawn": return pawnAttacks(piece.color, square);
+			case "knight": return knightAttacks(square);
+			case "bishop": return bishopAttacks(square, occupied);
+			case "rook": return rookAttacks(square, occupied);
+			case "queen": return queenAttacks(square, occupied);
+			case "king": return kingAttacks(square);
+		}
+	};
+	var ray = (a, b) => {
+		const other = SquareSet.fromSquare(b);
+		if (RANK_RANGE[a].intersects(other)) return RANK_RANGE[a].with(a);
+		if (ANTI_DIAG_RANGE[a].intersects(other)) return ANTI_DIAG_RANGE[a].with(a);
+		if (DIAG_RANGE[a].intersects(other)) return DIAG_RANGE[a].with(a);
+		if (FILE_RANGE[a].intersects(other)) return FILE_RANGE[a].with(a);
+		return SquareSet.empty();
+	};
+	var between = (a, b) => ray(a, b).intersect(SquareSet.full().shl64(a).xor(SquareSet.full().shl64(b))).withoutFirst();
+	var makeSanWithoutSuffix = (pos, move) => {
+		let san = "";
+		if (isDrop(move)) {
+			if (move.role !== "pawn") san = roleToChar(move.role).toUpperCase();
+			san += "@" + makeSquare(move.to);
+		} else {
+			const role = pos.board.getRole(move.from);
+			if (!role) return "--";
+			if (role === "king" && (pos.board[pos.turn].has(move.to) || Math.abs(move.to - move.from) === 2)) san = move.to > move.from ? "O-O" : "O-O-O";
+			else {
+				const capture = pos.board.occupied.has(move.to) || role === "pawn" && squareFile(move.from) !== squareFile(move.to);
+				if (role !== "pawn") {
+					san = roleToChar(role).toUpperCase();
+					let others;
+					if (role === "king") others = kingAttacks(move.to).intersect(pos.board.king);
+					else if (role === "queen") others = queenAttacks(move.to, pos.board.occupied).intersect(pos.board.queen);
+					else if (role === "rook") others = rookAttacks(move.to, pos.board.occupied).intersect(pos.board.rook);
+					else if (role === "bishop") others = bishopAttacks(move.to, pos.board.occupied).intersect(pos.board.bishop);
+					else others = knightAttacks(move.to).intersect(pos.board.knight);
+					others = others.intersect(pos.board[pos.turn]).without(move.from);
+					if (others.nonEmpty()) {
+						const ctx = pos.ctx();
+						for (const from of others) if (!pos.dests(from, ctx).has(move.to)) others = others.without(from);
+						if (others.nonEmpty()) {
+							let row = false;
+							let column = others.intersects(SquareSet.fromRank(squareRank(move.from)));
+							if (others.intersects(SquareSet.fromFile(squareFile(move.from)))) row = true;
+							else column = true;
+							if (column) san += FILE_NAMES[squareFile(move.from)];
+							if (row) san += RANK_NAMES[squareRank(move.from)];
+						}
+					}
+				} else if (capture) san = FILE_NAMES[squareFile(move.from)];
+				if (capture) san += "x";
+				san += makeSquare(move.to);
+				if (move.promotion) san += "=" + roleToChar(move.promotion).toUpperCase();
+			}
+		}
+		return san;
+	};
+	var makeSanAndPlay = (pos, move) => {
+		var _a;
+		const san = makeSanWithoutSuffix(pos, move);
+		pos.play(move);
+		if ((_a = pos.outcome()) === null || _a === void 0 ? void 0 : _a.winner) return san + "#";
+		if (pos.isCheck()) return san + "+";
+		return san;
+	};
+	var makeSan = (pos, move) => makeSanAndPlay(pos.clone(), move);
+	var parseSan = (pos, san) => {
+		const ctx = pos.ctx();
+		const match = san.match(/^([NBRQK])?([a-h])?([1-8])?[-x]?([a-h][1-8])(?:=?([nbrqkNBRQK]))?[+#]?$/);
+		if (!match) {
+			let castlingSide;
+			if (san === "O-O" || san === "O-O+" || san === "O-O#") castlingSide = "h";
+			else if (san === "O-O-O" || san === "O-O-O+" || san === "O-O-O#") castlingSide = "a";
+			if (castlingSide) {
+				const rook = pos.castles.rook[pos.turn][castlingSide];
+				if (!defined(ctx.king) || !defined(rook) || !pos.dests(ctx.king, ctx).has(rook)) return;
+				return {
+					from: ctx.king,
+					to: rook
+				};
+			}
+			const match = san.match(/^([pnbrqkPNBRQK])?@([a-h][1-8])[+#]?$/);
+			if (!match) return;
+			const move = {
+				role: match[1] ? charToRole(match[1]) : "pawn",
+				to: parseSquare(match[2])
+			};
+			return pos.isLegal(move, ctx) ? move : void 0;
+		}
+		const role = match[1] ? charToRole(match[1]) : "pawn";
+		const to = parseSquare(match[4]);
+		const promotion = match[5] ? charToRole(match[5]) : void 0;
+		if (!!promotion !== (role === "pawn" && SquareSet.backranks().has(to))) return;
+		if (promotion === "king" && pos.rules !== "antichess") return;
+		let candidates = pos.board.pieces(pos.turn, role);
+		if (role === "pawn" && !match[2]) candidates = candidates.intersect(SquareSet.fromFile(squareFile(to)));
+		else if (match[2]) candidates = candidates.intersect(SquareSet.fromFile(match[2].charCodeAt(0) - "a".charCodeAt(0)));
+		if (match[3]) candidates = candidates.intersect(SquareSet.fromRank(match[3].charCodeAt(0) - "1".charCodeAt(0)));
+		const pawnAdvance = role === "pawn" ? SquareSet.fromFile(squareFile(to)) : SquareSet.empty();
+		candidates = candidates.intersect(pawnAdvance.union(attacks({
+			color: opposite(pos.turn),
+			role
+		}, to, pos.board.occupied)));
+		let from;
+		for (const candidate of candidates) if (pos.dests(candidate, ctx).has(to)) {
+			if (defined(from)) return;
+			from = candidate;
+		}
+		if (!defined(from)) return;
+		return {
+			from,
+			to,
+			promotion
+		};
 	};
 	var IllegalSetup;
 	(function(IllegalSetup) {
@@ -962,6 +1383,28 @@
 		if (pos.kingAttackers(kingTo, opposite(pos.turn), after).nonEmpty()) return SquareSet.empty();
 		return SquareSet.fromSquare(rook);
 	};
+	var pseudoDests = (pos, square, ctx) => {
+		if (ctx.variantEnd) return SquareSet.empty();
+		const piece = pos.board.get(square);
+		if (!piece || piece.color !== pos.turn) return SquareSet.empty();
+		let pseudo = attacks(piece, square, pos.board.occupied);
+		if (piece.role === "pawn") {
+			let captureTargets = pos.board[opposite(pos.turn)];
+			if (defined(pos.epSquare)) captureTargets = captureTargets.with(pos.epSquare);
+			pseudo = pseudo.intersect(captureTargets);
+			const delta = pos.turn === "white" ? 8 : -8;
+			const step = square + delta;
+			if (0 <= step && step < 64 && !pos.board.occupied.has(step)) {
+				pseudo = pseudo.with(step);
+				const canDoubleStep = pos.turn === "white" ? square < 16 : square >= 48;
+				const doubleStep = step + delta;
+				if (canDoubleStep && !pos.board.occupied.has(doubleStep)) pseudo = pseudo.with(doubleStep);
+			}
+			return pseudo;
+		} else pseudo = pseudo.diff(pos.board[pos.turn]);
+		if (square === ctx.king) return pseudo.union(castlingDest(pos, "a", ctx)).union(castlingDest(pos, "h", ctx));
+		else return pseudo;
+	};
 	var castlingSide = (pos, move) => {
 		if (isDrop(move)) return;
 		const delta = move.to - move.from;
@@ -978,427 +1421,495 @@
 			to: defined(rookFrom) ? rookFrom : move.to
 		};
 	};
-	var MaterialSide = class MaterialSide {
-		constructor() {}
-		static empty() {
-			const m = new MaterialSide();
-			for (const role of ROLES) m[role] = 0;
-			return m;
+	var Crazyhouse = class extends Position {
+		constructor() {
+			super("crazyhouse");
 		}
-		static fromBoard(board, color) {
-			const m = new MaterialSide();
-			for (const role of ROLES) m[role] = board.pieces(color, role).size();
-			return m;
+		reset() {
+			super.reset();
+			this.pockets = Material.empty();
 		}
-		clone() {
-			const m = new MaterialSide();
-			for (const role of ROLES) m[role] = this[role];
-			return m;
-		}
-		equals(other) {
-			return ROLES.every((role) => this[role] === other[role]);
-		}
-		add(other) {
-			const m = new MaterialSide();
-			for (const role of ROLES) m[role] = this[role] + other[role];
-			return m;
-		}
-		subtract(other) {
-			const m = new MaterialSide();
-			for (const role of ROLES) m[role] = this[role] - other[role];
-			return m;
-		}
-		nonEmpty() {
-			return ROLES.some((role) => this[role] > 0);
-		}
-		isEmpty() {
-			return !this.nonEmpty();
-		}
-		hasPawns() {
-			return this.pawn > 0;
-		}
-		hasNonPawns() {
-			return this.knight > 0 || this.bishop > 0 || this.rook > 0 || this.queen > 0 || this.king > 0;
-		}
-		size() {
-			return this.pawn + this.knight + this.bishop + this.rook + this.queen + this.king;
-		}
-	};
-	var Material = class Material {
-		constructor(white, black) {
-			this.white = white;
-			this.black = black;
-		}
-		static empty() {
-			return new Material(MaterialSide.empty(), MaterialSide.empty());
-		}
-		static fromBoard(board) {
-			return new Material(MaterialSide.fromBoard(board, "white"), MaterialSide.fromBoard(board, "black"));
-		}
-		clone() {
-			return new Material(this.white.clone(), this.black.clone());
-		}
-		equals(other) {
-			return this.white.equals(other.white) && this.black.equals(other.black);
-		}
-		add(other) {
-			return new Material(this.white.add(other.white), this.black.add(other.black));
-		}
-		subtract(other) {
-			return new Material(this.white.subtract(other.white), this.black.subtract(other.black));
-		}
-		count(role) {
-			return this.white[role] + this.black[role];
-		}
-		size() {
-			return this.white.size() + this.black.size();
-		}
-		isEmpty() {
-			return this.white.isEmpty() && this.black.isEmpty();
-		}
-		nonEmpty() {
-			return !this.isEmpty();
-		}
-		hasPawns() {
-			return this.white.hasPawns() || this.black.hasPawns();
-		}
-		hasNonPawns() {
-			return this.white.hasNonPawns() || this.black.hasNonPawns();
-		}
-	};
-	var RemainingChecks = class RemainingChecks {
-		constructor(white, black) {
-			this.white = white;
-			this.black = black;
+		setupUnchecked(setup) {
+			super.setupUnchecked(setup);
+			this.board.promoted = setup.board.promoted.intersect(setup.board.occupied).diff(setup.board.king).diff(setup.board.pawn);
+			this.pockets = setup.pockets ? setup.pockets.clone() : Material.empty();
 		}
 		static default() {
-			return new RemainingChecks(3, 3);
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
 		}
 		clone() {
-			return new RemainingChecks(this.white, this.black);
+			return super.clone();
 		}
-		equals(other) {
-			return this.white === other.white && this.black === other.black;
+		validate() {
+			return super.validate().chain((_) => {
+				var _a, _b;
+				if ((_a = this.pockets) === null || _a === void 0 ? void 0 : _a.count("king")) return Result.err(new PositionError(IllegalSetup.Kings));
+				if ((((_b = this.pockets) === null || _b === void 0 ? void 0 : _b.size()) || 0) + this.board.occupied.size() > 64) return Result.err(new PositionError(IllegalSetup.Variant));
+				return Result.ok(void 0);
+			});
+		}
+		hasInsufficientMaterial(color) {
+			if (!this.pockets) return super.hasInsufficientMaterial(color);
+			return this.board.occupied.size() + this.pockets.size() <= 3 && this.board.pawn.isEmpty() && this.board.promoted.isEmpty() && this.board.rooksAndQueens().isEmpty() && this.pockets.count("pawn") <= 0 && this.pockets.count("rook") <= 0 && this.pockets.count("queen") <= 0;
+		}
+		dropDests(ctx) {
+			var _a, _b;
+			const mask = this.board.occupied.complement().intersect(((_a = this.pockets) === null || _a === void 0 ? void 0 : _a[this.turn].hasNonPawns()) ? SquareSet.full() : ((_b = this.pockets) === null || _b === void 0 ? void 0 : _b[this.turn].hasPawns()) ? SquareSet.backranks().complement() : SquareSet.empty());
+			ctx = ctx || this.ctx();
+			if (defined(ctx.king) && ctx.checkers.nonEmpty()) {
+				const checker = ctx.checkers.singleSquare();
+				if (!defined(checker)) return SquareSet.empty();
+				return mask.intersect(between(checker, ctx.king));
+			} else return mask;
 		}
 	};
-	var InvalidFen;
-	(function(InvalidFen) {
-		InvalidFen["Fen"] = "ERR_FEN";
-		InvalidFen["Board"] = "ERR_BOARD";
-		InvalidFen["Pockets"] = "ERR_POCKETS";
-		InvalidFen["Turn"] = "ERR_TURN";
-		InvalidFen["Castling"] = "ERR_CASTLING";
-		InvalidFen["EpSquare"] = "ERR_EP_SQUARE";
-		InvalidFen["RemainingChecks"] = "ERR_REMAINING_CHECKS";
-		InvalidFen["Halfmoves"] = "ERR_HALFMOVES";
-		InvalidFen["Fullmoves"] = "ERR_FULLMOVES";
-	})(InvalidFen || (InvalidFen = {}));
-	var FenError = class extends Error {};
-	var nthIndexOf = (haystack, needle, n) => {
-		let index = haystack.indexOf(needle);
-		while (n-- > 0) {
-			if (index === -1) break;
-			index = haystack.indexOf(needle, index + needle.length);
+	var Atomic = class extends Position {
+		constructor() {
+			super("atomic");
 		}
-		return index;
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		validate() {
+			if (this.board.occupied.isEmpty()) return Result.err(new PositionError(IllegalSetup.Empty));
+			if (this.board.king.size() > 2) return Result.err(new PositionError(IllegalSetup.Kings));
+			const otherKing = this.board.kingOf(opposite(this.turn));
+			if (!defined(otherKing)) return Result.err(new PositionError(IllegalSetup.Kings));
+			if (this.kingAttackers(otherKing, this.turn, this.board.occupied).nonEmpty()) return Result.err(new PositionError(IllegalSetup.OppositeCheck));
+			if (SquareSet.backranks().intersects(this.board.pawn)) return Result.err(new PositionError(IllegalSetup.PawnsOnBackrank));
+			return Result.ok(void 0);
+		}
+		kingAttackers(square, attacker, occupied) {
+			const attackerKings = this.board.pieces(attacker, "king");
+			if (attackerKings.isEmpty() || kingAttacks(square).intersects(attackerKings)) return SquareSet.empty();
+			return super.kingAttackers(square, attacker, occupied);
+		}
+		playCaptureAt(square, captured) {
+			super.playCaptureAt(square, captured);
+			this.board.take(square);
+			for (const explode of kingAttacks(square).intersect(this.board.occupied).diff(this.board.pawn)) {
+				const piece = this.board.take(explode);
+				if ((piece === null || piece === void 0 ? void 0 : piece.role) === "rook") this.castles.discardRook(explode);
+				if ((piece === null || piece === void 0 ? void 0 : piece.role) === "king") this.castles.discardColor(piece.color);
+			}
+		}
+		hasInsufficientMaterial(color) {
+			if (this.board.pieces(opposite(color), "king").isEmpty()) return false;
+			if (this.board[color].diff(this.board.king).isEmpty()) return true;
+			if (this.board[opposite(color)].diff(this.board.king).nonEmpty()) {
+				if (this.board.occupied.equals(this.board.bishop.union(this.board.king))) {
+					if (!this.board.bishop.intersect(this.board.white).intersects(SquareSet.darkSquares())) return !this.board.bishop.intersect(this.board.black).intersects(SquareSet.lightSquares());
+					if (!this.board.bishop.intersect(this.board.white).intersects(SquareSet.lightSquares())) return !this.board.bishop.intersect(this.board.black).intersects(SquareSet.darkSquares());
+				}
+				return false;
+			}
+			if (this.board.queen.nonEmpty() || this.board.pawn.nonEmpty()) return false;
+			if (this.board.knight.union(this.board.bishop).union(this.board.rook).size() === 1) return true;
+			if (this.board.occupied.equals(this.board.knight.union(this.board.king))) return this.board.knight.size() <= 2;
+			return false;
+		}
+		dests(square, ctx) {
+			ctx = ctx || this.ctx();
+			let dests = SquareSet.empty();
+			for (const to of pseudoDests(this, square, ctx)) {
+				const after = this.clone();
+				after.play({
+					from: square,
+					to
+				});
+				const ourKing = after.board.kingOf(this.turn);
+				if (defined(ourKing) && (!defined(after.board.kingOf(after.turn)) || after.kingAttackers(ourKing, after.turn, after.board.occupied).isEmpty())) dests = dests.with(to);
+			}
+			return dests;
+		}
+		isVariantEnd() {
+			return !!this.variantOutcome();
+		}
+		variantOutcome(_ctx) {
+			for (const color of COLORS) if (this.board.pieces(color, "king").isEmpty()) return { winner: opposite(color) };
+		}
 	};
-	var parseSmallUint = (str) => /^\d{1,4}$/.test(str) ? parseInt(str, 10) : void 0;
-	var charToPiece = (ch) => {
-		const role = charToRole(ch);
-		return role && {
-			role,
-			color: ch.toLowerCase() === ch ? "black" : "white"
-		};
+	var Antichess = class extends Position {
+		constructor() {
+			super("antichess");
+		}
+		reset() {
+			super.reset();
+			this.castles = Castles.empty();
+		}
+		setupUnchecked(setup) {
+			super.setupUnchecked(setup);
+			this.castles = Castles.empty();
+		}
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		validate() {
+			if (this.board.occupied.isEmpty()) return Result.err(new PositionError(IllegalSetup.Empty));
+			if (SquareSet.backranks().intersects(this.board.pawn)) return Result.err(new PositionError(IllegalSetup.PawnsOnBackrank));
+			return Result.ok(void 0);
+		}
+		kingAttackers(_square, _attacker, _occupied) {
+			return SquareSet.empty();
+		}
+		ctx() {
+			const ctx = super.ctx();
+			if (defined(this.epSquare) && pawnAttacks(opposite(this.turn), this.epSquare).intersects(this.board.pieces(this.turn, "pawn"))) {
+				ctx.mustCapture = true;
+				return ctx;
+			}
+			const enemy = this.board[opposite(this.turn)];
+			for (const from of this.board[this.turn]) if (pseudoDests(this, from, ctx).intersects(enemy)) {
+				ctx.mustCapture = true;
+				return ctx;
+			}
+			return ctx;
+		}
+		dests(square, ctx) {
+			ctx = ctx || this.ctx();
+			const dests = pseudoDests(this, square, ctx);
+			const enemy = this.board[opposite(this.turn)];
+			return dests.intersect(ctx.mustCapture ? defined(this.epSquare) && this.board.getRole(square) === "pawn" ? enemy.with(this.epSquare) : enemy : SquareSet.full());
+		}
+		hasInsufficientMaterial(color) {
+			if (this.board[color].isEmpty()) return false;
+			if (this.board[opposite(color)].isEmpty()) return true;
+			if (this.board.occupied.equals(this.board.bishop)) {
+				const weSomeOnLight = this.board[color].intersects(SquareSet.lightSquares());
+				const weSomeOnDark = this.board[color].intersects(SquareSet.darkSquares());
+				const theyAllOnDark = this.board[opposite(color)].isDisjoint(SquareSet.lightSquares());
+				const theyAllOnLight = this.board[opposite(color)].isDisjoint(SquareSet.darkSquares());
+				return weSomeOnLight && theyAllOnDark || weSomeOnDark && theyAllOnLight;
+			}
+			if (this.board.occupied.equals(this.board.knight) && this.board.occupied.size() === 2) return this.board.white.intersects(SquareSet.lightSquares()) !== this.board.black.intersects(SquareSet.darkSquares()) !== (this.turn === color);
+			return false;
+		}
+		isVariantEnd() {
+			return this.board[this.turn].isEmpty();
+		}
+		variantOutcome(ctx) {
+			ctx = ctx || this.ctx();
+			if (ctx.variantEnd || this.isStalemate(ctx)) return { winner: this.turn };
+		}
 	};
-	var parseBoardFen = (boardPart) => {
+	var KingOfTheHill = class extends Position {
+		constructor() {
+			super("kingofthehill");
+		}
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		hasInsufficientMaterial(_color) {
+			return false;
+		}
+		isVariantEnd() {
+			return this.board.king.intersects(SquareSet.center());
+		}
+		variantOutcome(_ctx) {
+			for (const color of COLORS) if (this.board.pieces(color, "king").intersects(SquareSet.center())) return { winner: color };
+		}
+	};
+	var ThreeCheck = class extends Position {
+		constructor() {
+			super("3check");
+		}
+		reset() {
+			super.reset();
+			this.remainingChecks = RemainingChecks.default();
+		}
+		setupUnchecked(setup) {
+			var _a;
+			super.setupUnchecked(setup);
+			this.remainingChecks = ((_a = setup.remainingChecks) === null || _a === void 0 ? void 0 : _a.clone()) || RemainingChecks.default();
+		}
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		hasInsufficientMaterial(color) {
+			return this.board.pieces(color, "king").equals(this.board[color]);
+		}
+		isVariantEnd() {
+			return !!this.remainingChecks && (this.remainingChecks.white <= 0 || this.remainingChecks.black <= 0);
+		}
+		variantOutcome(_ctx) {
+			if (this.remainingChecks) {
+				for (const color of COLORS) if (this.remainingChecks[color] <= 0) return { winner: color };
+			}
+		}
+	};
+	var racingKingsBoard = () => {
 		const board = Board.empty();
-		let rank = 7;
-		let file = 0;
-		for (let i = 0; i < boardPart.length; i++) {
-			const c = boardPart[i];
-			if (c === "/" && file === 8) {
-				file = 0;
-				rank--;
-			} else {
-				const step = parseInt(c, 10);
-				if (step > 0) file += step;
-				else {
-					if (file >= 8 || rank < 0) return Result.err(new FenError(InvalidFen.Board));
-					const square = file + rank * 8;
-					const piece = charToPiece(c);
-					if (!piece) return Result.err(new FenError(InvalidFen.Board));
-					if (boardPart[i + 1] === "~") {
-						piece.promoted = true;
-						i++;
-					}
-					board.set(square, piece);
-					file++;
-				}
-			}
-		}
-		if (rank !== 0 || file !== 8) return Result.err(new FenError(InvalidFen.Board));
-		return Result.ok(board);
+		board.occupied = new SquareSet(65535, 0);
+		board.promoted = SquareSet.empty();
+		board.white = new SquareSet(61680, 0);
+		board.black = new SquareSet(3855, 0);
+		board.pawn = SquareSet.empty();
+		board.knight = new SquareSet(6168, 0);
+		board.bishop = new SquareSet(9252, 0);
+		board.rook = new SquareSet(16962, 0);
+		board.queen = new SquareSet(129, 0);
+		board.king = new SquareSet(33024, 0);
+		return board;
 	};
-	var parsePockets = (pocketPart) => {
-		if (pocketPart.length > 64) return Result.err(new FenError(InvalidFen.Pockets));
-		const pockets = Material.empty();
-		for (const c of pocketPart) {
-			const piece = charToPiece(c);
-			if (!piece) return Result.err(new FenError(InvalidFen.Pockets));
-			pockets[piece.color][piece.role]++;
+	var RacingKings = class extends Position {
+		constructor() {
+			super("racingkings");
 		}
-		return Result.ok(pockets);
-	};
-	var parseCastlingFen = (board, castlingPart) => {
-		let castlingRights = SquareSet.empty();
-		if (castlingPart === "-") return Result.ok(castlingRights);
-		for (const c of castlingPart) {
-			const lower = c.toLowerCase();
-			const color = c === lower ? "black" : "white";
-			const rank = color === "white" ? 0 : 7;
-			if ("a" <= lower && lower <= "h") castlingRights = castlingRights.with(squareFromCoords(lower.charCodeAt(0) - "a".charCodeAt(0), rank));
-			else if (lower === "k" || lower === "q") {
-				const rooksAndKings = board[color].intersect(SquareSet.backrank(color)).intersect(board.rook.union(board.king));
-				const candidate = lower === "k" ? rooksAndKings.last() : rooksAndKings.first();
-				castlingRights = castlingRights.with(defined(candidate) && board.rook.has(candidate) ? candidate : squareFromCoords(lower === "k" ? 7 : 0, rank));
-			} else return Result.err(new FenError(InvalidFen.Castling));
+		reset() {
+			this.board = racingKingsBoard();
+			this.pockets = void 0;
+			this.turn = "white";
+			this.castles = Castles.empty();
+			this.epSquare = void 0;
+			this.remainingChecks = void 0;
+			this.halfmoves = 0;
+			this.fullmoves = 1;
 		}
-		if (COLORS.some((color) => SquareSet.backrank(color).intersect(castlingRights).size() > 2)) return Result.err(new FenError(InvalidFen.Castling));
-		return Result.ok(castlingRights);
-	};
-	var parseRemainingChecks = (part) => {
-		const parts = part.split("+");
-		if (parts.length === 3 && parts[0] === "") {
-			const white = parseSmallUint(parts[1]);
-			const black = parseSmallUint(parts[2]);
-			if (!defined(white) || white > 3 || !defined(black) || black > 3) return Result.err(new FenError(InvalidFen.RemainingChecks));
-			return Result.ok(new RemainingChecks(3 - white, 3 - black));
-		} else if (parts.length === 2) {
-			const white = parseSmallUint(parts[0]);
-			const black = parseSmallUint(parts[1]);
-			if (!defined(white) || white > 3 || !defined(black) || black > 3) return Result.err(new FenError(InvalidFen.RemainingChecks));
-			return Result.ok(new RemainingChecks(white, black));
-		} else return Result.err(new FenError(InvalidFen.RemainingChecks));
-	};
-	var parseFen = (fen) => {
-		const parts = fen.split(/[\s_]+/);
-		const boardPart = parts.shift();
-		let board;
-		let pockets = Result.ok(void 0);
-		if (boardPart.endsWith("]")) {
-			const pocketStart = boardPart.indexOf("[");
-			if (pocketStart === -1) return Result.err(new FenError(InvalidFen.Fen));
-			board = parseBoardFen(boardPart.slice(0, pocketStart));
-			pockets = parsePockets(boardPart.slice(pocketStart + 1, -1));
-		} else {
-			const pocketStart = nthIndexOf(boardPart, "/", 7);
-			if (pocketStart === -1) board = parseBoardFen(boardPart);
-			else {
-				board = parseBoardFen(boardPart.slice(0, pocketStart));
-				pockets = parsePockets(boardPart.slice(pocketStart + 1));
-			}
+		setupUnchecked(setup) {
+			super.setupUnchecked(setup);
+			this.castles = Castles.empty();
 		}
-		let turn;
-		const turnPart = parts.shift();
-		if (!defined(turnPart) || turnPart === "w") turn = "white";
-		else if (turnPart === "b") turn = "black";
-		else return Result.err(new FenError(InvalidFen.Turn));
-		return board.chain((board) => {
-			const castlingPart = parts.shift();
-			const castlingRights = defined(castlingPart) ? parseCastlingFen(board, castlingPart) : Result.ok(SquareSet.empty());
-			const epPart = parts.shift();
-			let epSquare;
-			if (defined(epPart) && epPart !== "-") {
-				epSquare = parseSquare(epPart);
-				if (!defined(epSquare)) return Result.err(new FenError(InvalidFen.EpSquare));
-			}
-			let halfmovePart = parts.shift();
-			let earlyRemainingChecks;
-			if (defined(halfmovePart) && halfmovePart.includes("+")) {
-				earlyRemainingChecks = parseRemainingChecks(halfmovePart);
-				halfmovePart = parts.shift();
-			}
-			const halfmoves = defined(halfmovePart) ? parseSmallUint(halfmovePart) : 0;
-			if (!defined(halfmoves)) return Result.err(new FenError(InvalidFen.Halfmoves));
-			const fullmovesPart = parts.shift();
-			const fullmoves = defined(fullmovesPart) ? parseSmallUint(fullmovesPart) : 1;
-			if (!defined(fullmoves)) return Result.err(new FenError(InvalidFen.Fullmoves));
-			const remainingChecksPart = parts.shift();
-			let remainingChecks = Result.ok(void 0);
-			if (defined(remainingChecksPart)) {
-				if (defined(earlyRemainingChecks)) return Result.err(new FenError(InvalidFen.RemainingChecks));
-				remainingChecks = parseRemainingChecks(remainingChecksPart);
-			} else if (defined(earlyRemainingChecks)) remainingChecks = earlyRemainingChecks;
-			if (parts.length > 0) return Result.err(new FenError(InvalidFen.Fen));
-			return pockets.chain((pockets) => castlingRights.chain((castlingRights) => remainingChecks.map((remainingChecks) => {
-				return {
-					board,
-					pockets,
-					turn,
-					castlingRights,
-					remainingChecks,
-					epSquare,
-					halfmoves,
-					fullmoves: Math.max(1, fullmoves)
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		validate() {
+			if (this.isCheck() || this.board.pawn.nonEmpty()) return Result.err(new PositionError(IllegalSetup.Variant));
+			return super.validate();
+		}
+		dests(square, ctx) {
+			ctx = ctx || this.ctx();
+			let dests = SquareSet.empty();
+			for (const to of super.dests(square, ctx)) {
+				const move = {
+					from: square,
+					to
 				};
-			})));
-		});
-	};
-	var makePiece = (piece) => {
-		let r = roleToChar(piece.role);
-		if (piece.color === "white") r = r.toUpperCase();
-		if (piece.promoted) r += "~";
-		return r;
-	};
-	var makeBoardFen = (board) => {
-		let fen = "";
-		let empty = 0;
-		for (let rank = 7; rank >= 0; rank--) for (let file = 0; file < 8; file++) {
-			const square = file + rank * 8;
-			const piece = board.get(square);
-			if (!piece) empty++;
-			else {
-				if (empty > 0) {
-					fen += empty;
-					empty = 0;
-				}
-				fen += makePiece(piece);
+				const after = this.clone();
+				after.play(move);
+				if (!after.isCheck()) dests = dests.with(to);
 			}
-			if (file === 7) {
-				if (empty > 0) {
-					fen += empty;
-					empty = 0;
-				}
-				if (rank !== 0) fen += "/";
-			}
+			return dests;
 		}
-		return fen;
-	};
-	var makePocket = (material) => ROLES.map((role) => roleToChar(role).repeat(material[role])).join("");
-	var makePockets = (pocket) => makePocket(pocket.white).toUpperCase() + makePocket(pocket.black);
-	var makeCastlingFen = (board, castlingRights) => {
-		let fen = "";
-		for (const color of COLORS) {
-			const backrank = SquareSet.backrank(color);
-			let king = board.kingOf(color);
-			if (defined(king) && !backrank.has(king)) king = void 0;
-			const candidates = board.pieces(color, "rook").intersect(backrank);
-			for (const rook of castlingRights.intersect(backrank).reversed()) if (rook === candidates.first() && defined(king) && rook < king) fen += color === "white" ? "Q" : "q";
-			else if (rook === candidates.last() && defined(king) && king < rook) fen += color === "white" ? "K" : "k";
-			else {
-				const file = FILE_NAMES[squareFile(rook)];
-				fen += color === "white" ? file.toUpperCase() : file;
-			}
+		hasInsufficientMaterial(_color) {
+			return false;
 		}
-		return fen || "-";
-	};
-	var makeRemainingChecks = (checks) => `${checks.white}+${checks.black}`;
-	var makeFen = (setup, opts) => [
-		makeBoardFen(setup.board) + (setup.pockets ? `[${makePockets(setup.pockets)}]` : ""),
-		setup.turn[0],
-		makeCastlingFen(setup.board, setup.castlingRights),
-		defined(setup.epSquare) ? makeSquare(setup.epSquare) : "-",
-		...setup.remainingChecks ? [makeRemainingChecks(setup.remainingChecks)] : [],
-		...(opts === null || opts === void 0 ? void 0 : opts.epd) ? [] : [Math.max(0, Math.min(setup.halfmoves, 9999)), Math.max(1, Math.min(setup.fullmoves, 9999))]
-	].join(" ");
-	var makeSanWithoutSuffix = (pos, move) => {
-		let san = "";
-		if (isDrop(move)) {
-			if (move.role !== "pawn") san = roleToChar(move.role).toUpperCase();
-			san += "@" + makeSquare(move.to);
-		} else {
-			const role = pos.board.getRole(move.from);
-			if (!role) return "--";
-			if (role === "king" && (pos.board[pos.turn].has(move.to) || Math.abs(move.to - move.from) === 2)) san = move.to > move.from ? "O-O" : "O-O-O";
-			else {
-				const capture = pos.board.occupied.has(move.to) || role === "pawn" && squareFile(move.from) !== squareFile(move.to);
-				if (role !== "pawn") {
-					san = roleToChar(role).toUpperCase();
-					let others;
-					if (role === "king") others = kingAttacks(move.to).intersect(pos.board.king);
-					else if (role === "queen") others = queenAttacks(move.to, pos.board.occupied).intersect(pos.board.queen);
-					else if (role === "rook") others = rookAttacks(move.to, pos.board.occupied).intersect(pos.board.rook);
-					else if (role === "bishop") others = bishopAttacks(move.to, pos.board.occupied).intersect(pos.board.bishop);
-					else others = knightAttacks(move.to).intersect(pos.board.knight);
-					others = others.intersect(pos.board[pos.turn]).without(move.from);
-					if (others.nonEmpty()) {
-						const ctx = pos.ctx();
-						for (const from of others) if (!pos.dests(from, ctx).has(move.to)) others = others.without(from);
-						if (others.nonEmpty()) {
-							let row = false;
-							let column = others.intersects(SquareSet.fromRank(squareRank(move.from)));
-							if (others.intersects(SquareSet.fromFile(squareFile(move.from)))) row = true;
-							else column = true;
-							if (column) san += FILE_NAMES[squareFile(move.from)];
-							if (row) san += RANK_NAMES[squareRank(move.from)];
-						}
-					}
-				} else if (capture) san = FILE_NAMES[squareFile(move.from)];
-				if (capture) san += "x";
-				san += makeSquare(move.to);
-				if (move.promotion) san += "=" + roleToChar(move.promotion).toUpperCase();
+		isVariantEnd() {
+			const goal = SquareSet.fromRank(7);
+			const inGoal = this.board.king.intersect(goal);
+			if (inGoal.isEmpty()) return false;
+			if (this.turn === "white" || inGoal.intersects(this.board.black)) return true;
+			const blackKing = this.board.kingOf("black");
+			if (defined(blackKing)) {
+				const occ = this.board.occupied.without(blackKing);
+				for (const target of kingAttacks(blackKing).intersect(goal).diff(this.board.black)) if (this.kingAttackers(target, "white", occ).isEmpty()) return false;
 			}
+			return true;
 		}
-		return san;
+		variantOutcome(ctx) {
+			if (ctx ? !ctx.variantEnd : !this.isVariantEnd()) return;
+			const goal = SquareSet.fromRank(7);
+			const blackInGoal = this.board.pieces("black", "king").intersects(goal);
+			const whiteInGoal = this.board.pieces("white", "king").intersects(goal);
+			if (blackInGoal && !whiteInGoal) return { winner: "black" };
+			if (whiteInGoal && !blackInGoal) return { winner: "white" };
+			return { winner: void 0 };
+		}
 	};
-	var makeSanAndPlay = (pos, move) => {
-		var _a;
-		const san = makeSanWithoutSuffix(pos, move);
-		pos.play(move);
-		if ((_a = pos.outcome()) === null || _a === void 0 ? void 0 : _a.winner) return san + "#";
-		if (pos.isCheck()) return san + "+";
-		return san;
+	var hordeBoard = () => {
+		const board = Board.empty();
+		board.occupied = new SquareSet(4294967295, 4294901862);
+		board.promoted = SquareSet.empty();
+		board.white = new SquareSet(4294967295, 102);
+		board.black = new SquareSet(0, 4294901760);
+		board.pawn = new SquareSet(4294967295, 16711782);
+		board.knight = new SquareSet(0, 1107296256);
+		board.bishop = new SquareSet(0, 603979776);
+		board.rook = new SquareSet(0, 2164260864);
+		board.queen = new SquareSet(0, 134217728);
+		board.king = new SquareSet(0, 268435456);
+		return board;
 	};
-	var makeSan = (pos, move) => makeSanAndPlay(pos.clone(), move);
-	var parseSan = (pos, san) => {
-		const ctx = pos.ctx();
-		const match = san.match(/^([NBRQK])?([a-h])?([1-8])?[-x]?([a-h][1-8])(?:=?([nbrqkNBRQK]))?[+#]?$/);
-		if (!match) {
-			let castlingSide;
-			if (san === "O-O" || san === "O-O+" || san === "O-O#") castlingSide = "h";
-			else if (san === "O-O-O" || san === "O-O-O+" || san === "O-O-O#") castlingSide = "a";
-			if (castlingSide) {
-				const rook = pos.castles.rook[pos.turn][castlingSide];
-				if (!defined(ctx.king) || !defined(rook) || !pos.dests(ctx.king, ctx).has(rook)) return;
-				return {
-					from: ctx.king,
-					to: rook
-				};
+	var Horde = class extends Position {
+		constructor() {
+			super("horde");
+		}
+		reset() {
+			this.board = hordeBoard();
+			this.pockets = void 0;
+			this.turn = "white";
+			this.castles = Castles.default();
+			this.castles.discardColor("white");
+			this.epSquare = void 0;
+			this.remainingChecks = void 0;
+			this.halfmoves = 0;
+			this.fullmoves = 1;
+		}
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		validate() {
+			if (this.board.occupied.isEmpty()) return Result.err(new PositionError(IllegalSetup.Empty));
+			if (this.board.king.size() !== 1) return Result.err(new PositionError(IllegalSetup.Kings));
+			const otherKing = this.board.kingOf(opposite(this.turn));
+			if (defined(otherKing) && this.kingAttackers(otherKing, this.turn, this.board.occupied).nonEmpty()) return Result.err(new PositionError(IllegalSetup.OppositeCheck));
+			for (const color of COLORS) {
+				const backranks = this.board.pieces(color, "king").isEmpty() ? SquareSet.backrank(opposite(color)) : SquareSet.backranks();
+				if (this.board.pieces(color, "pawn").intersects(backranks)) return Result.err(new PositionError(IllegalSetup.PawnsOnBackrank));
 			}
-			const match = san.match(/^([pnbrqkPNBRQK])?@([a-h][1-8])[+#]?$/);
-			if (!match) return;
-			const move = {
-				role: match[1] ? charToRole(match[1]) : "pawn",
-				to: parseSquare(match[2])
+			return Result.ok(void 0);
+		}
+		hasInsufficientMaterial(color) {
+			if (this.board.pieces(color, "king").nonEmpty()) return false;
+			const oppositeSquareColor = (squareColor) => squareColor === "light" ? "dark" : "light";
+			const coloredSquares = (squareColor) => squareColor === "light" ? SquareSet.lightSquares() : SquareSet.darkSquares();
+			const hasBishopPair = (side) => {
+				const bishops = this.board.pieces(side, "bishop");
+				return bishops.intersects(SquareSet.darkSquares()) && bishops.intersects(SquareSet.lightSquares());
 			};
-			return pos.isLegal(move, ctx) ? move : void 0;
+			const horde = MaterialSide.fromBoard(this.board, color);
+			const hordeBishops = (squareColor) => coloredSquares(squareColor).intersect(this.board.pieces(color, "bishop")).size();
+			const hordeBishopColor = hordeBishops("light") >= 1 ? "light" : "dark";
+			const hordeNum = horde.pawn + horde.knight + horde.rook + horde.queen + Math.min(hordeBishops("dark"), 2) + Math.min(hordeBishops("light"), 2);
+			const pieces = MaterialSide.fromBoard(this.board, opposite(color));
+			const piecesBishops = (squareColor) => coloredSquares(squareColor).intersect(this.board.pieces(opposite(color), "bishop")).size();
+			const piecesNum = pieces.size();
+			const piecesOfRoleNot = (piece) => piecesNum - piece;
+			if (hordeNum === 0) return true;
+			if (hordeNum >= 4) return false;
+			if ((horde.pawn >= 1 || horde.queen >= 1) && hordeNum >= 2) return false;
+			if (horde.rook >= 1 && hordeNum >= 2) {
+				if (!(hordeNum === 2 && horde.rook === 1 && horde.bishop === 1 && piecesOfRoleNot(piecesBishops(hordeBishopColor)) === 1)) return false;
+			}
+			if (hordeNum === 1) {
+				if (piecesNum === 1) return true;
+				else if (horde.queen === 1) return !(pieces.pawn >= 1 || pieces.rook >= 1 || piecesBishops("light") >= 2 || piecesBishops("dark") >= 2);
+				else if (horde.pawn === 1) {
+					const pawnSquare = this.board.pieces(color, "pawn").last();
+					const promoteToQueen = this.clone();
+					promoteToQueen.board.set(pawnSquare, {
+						color,
+						role: "queen"
+					});
+					const promoteToKnight = this.clone();
+					promoteToKnight.board.set(pawnSquare, {
+						color,
+						role: "knight"
+					});
+					return promoteToQueen.hasInsufficientMaterial(color) && promoteToKnight.hasInsufficientMaterial(color);
+				} else if (horde.rook === 1) return !(pieces.pawn >= 2 || pieces.rook >= 1 && pieces.pawn >= 1 || pieces.rook >= 1 && pieces.knight >= 1 || pieces.pawn >= 1 && pieces.knight >= 1);
+				else if (horde.bishop === 1) return !(piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 2 || piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 1 && pieces.pawn >= 1 || pieces.pawn >= 2);
+				else if (horde.knight === 1) return !(piecesNum >= 4 && (pieces.knight >= 2 || pieces.pawn >= 2 || pieces.rook >= 1 && pieces.knight >= 1 || pieces.rook >= 1 && pieces.bishop >= 1 || pieces.knight >= 1 && pieces.bishop >= 1 || pieces.rook >= 1 && pieces.pawn >= 1 || pieces.knight >= 1 && pieces.pawn >= 1 || pieces.bishop >= 1 && pieces.pawn >= 1 || hasBishopPair(opposite(color)) && pieces.pawn >= 1) && (piecesBishops("dark") < 2 || piecesOfRoleNot(piecesBishops("dark")) >= 3) && (piecesBishops("light") < 2 || piecesOfRoleNot(piecesBishops("light")) >= 3));
+			} else if (hordeNum === 2) {
+				if (piecesNum === 1) return true;
+				else if (horde.knight === 2) return pieces.pawn + pieces.bishop + pieces.knight < 1;
+				else if (hasBishopPair(color)) return !(pieces.pawn >= 1 || pieces.bishop >= 1 || pieces.knight >= 1 && pieces.rook + pieces.queen >= 1);
+				else if (horde.bishop >= 1 && horde.knight >= 1) return !(pieces.pawn >= 1 || piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 1 || piecesOfRoleNot(piecesBishops(hordeBishopColor)) >= 3);
+				else return !(pieces.pawn >= 1 && piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 1 || pieces.pawn >= 1 && pieces.knight >= 1 || piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 1 && pieces.knight >= 1 || piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 2 || pieces.knight >= 2 || pieces.pawn >= 2);
+			} else if (hordeNum === 3) {
+				if (horde.knight === 2 && horde.bishop === 1 || horde.knight === 3 || hasBishopPair(color)) return false;
+				else return piecesNum === 1;
+			}
+			return true;
 		}
-		const role = match[1] ? charToRole(match[1]) : "pawn";
-		const to = parseSquare(match[4]);
-		const promotion = match[5] ? charToRole(match[5]) : void 0;
-		if (!!promotion !== (role === "pawn" && SquareSet.backranks().has(to))) return;
-		if (promotion === "king" && pos.rules !== "antichess") return;
-		let candidates = pos.board.pieces(pos.turn, role);
-		if (role === "pawn" && !match[2]) candidates = candidates.intersect(SquareSet.fromFile(squareFile(to)));
-		else if (match[2]) candidates = candidates.intersect(SquareSet.fromFile(match[2].charCodeAt(0) - "a".charCodeAt(0)));
-		if (match[3]) candidates = candidates.intersect(SquareSet.fromRank(match[3].charCodeAt(0) - "1".charCodeAt(0)));
-		const pawnAdvance = role === "pawn" ? SquareSet.fromFile(squareFile(to)) : SquareSet.empty();
-		candidates = candidates.intersect(pawnAdvance.union(attacks({
-			color: opposite(pos.turn),
-			role
-		}, to, pos.board.occupied)));
-		let from;
-		for (const candidate of candidates) if (pos.dests(candidate, ctx).has(to)) {
-			if (defined(from)) return;
-			from = candidate;
+		isVariantEnd() {
+			return this.board.white.isEmpty() || this.board.black.isEmpty();
 		}
-		if (!defined(from)) return;
-		return {
-			from,
-			to,
-			promotion
-		};
+		variantOutcome(_ctx) {
+			if (this.board.white.isEmpty()) return { winner: "black" };
+			if (this.board.black.isEmpty()) return { winner: "white" };
+		}
 	};
+	var setupPosition = (rules, setup) => {
+		switch (rules) {
+			case "chess": return Chess.fromSetup(setup);
+			case "antichess": return Antichess.fromSetup(setup);
+			case "atomic": return Atomic.fromSetup(setup);
+			case "horde": return Horde.fromSetup(setup);
+			case "racingkings": return RacingKings.fromSetup(setup);
+			case "kingofthehill": return KingOfTheHill.fromSetup(setup);
+			case "3check": return ThreeCheck.fromSetup(setup);
+			case "crazyhouse": return Crazyhouse.fromSetup(setup);
+		}
+	};
+	function parseRules(variant) {
+		if (!variant || variant === "standard" || variant === "chess" || variant === "fromPosition") return "chess";
+		const v = variant.toLowerCase().replace(/[\s\-_]/g, "");
+		if (v === "crazyhouse") return "crazyhouse";
+		if (v === "atomic") return "atomic";
+		if (v === "antichess") return "antichess";
+		if (v === "kingofthehill") return "kingofthehill";
+		if (v === "threecheck" || v === "3check") return "3check";
+		if (v === "racingkings") return "racingkings";
+		if (v === "horde") return "horde";
+		return null;
+	}
 	function makeEngineUci(position, move) {
 		if ("from" in move && move.from === position.board.kingOf(position.turn)) {
 			const rooks = position.castles.rook[position.turn];
@@ -1407,25 +1918,37 @@
 		}
 		return makeUci(move);
 	}
-	function canonicalFen(fen) {
-		if (typeof fen !== "string" || fen.trim().split(/\s+/).length !== 6) return null;
+	function canonicalFen(fen, variant) {
+		if (typeof fen !== "string") return null;
+		const trimmed = fen.trim();
+		const rules = parseRules(variant);
+		if (!rules) return trimmed.split(/\s+/).length >= 4 ? trimmed : null;
+		if (trimmed.split(/\s+/).length !== 6 && rules !== "crazyhouse") return null;
 		try {
-			const setup = parseFen(fen.trim());
+			const setup = parseFen(trimmed);
 			if (setup.isErr) return null;
-			const position = Chess.fromSetup(setup.value);
+			const position = setupPosition(rules, setup.value);
 			if (position.isErr) return null;
 			return makeFen(position.value.toSetup());
 		} catch {
 			return null;
 		}
 	}
-	function replaySanLine(startFen, sans) {
-		const rootFen = canonicalFen(startFen);
+	function replaySanLine(startFen, sans, variant) {
+		const rootFen = canonicalFen(startFen, variant);
 		if (!rootFen) return void 0;
+		const rules = parseRules(variant);
+		if (!rules) return {
+			history: {
+				startFen: rootFen,
+				moves: []
+			},
+			fens: [rootFen]
+		};
 		try {
 			const setup = parseFen(rootFen);
 			if (setup.isErr) return void 0;
-			const position = Chess.fromSetup(setup.value);
+			const position = setupPosition(rules, setup.value);
 			if (position.isErr) return void 0;
 			const moves = [];
 			const fens = [rootFen];
@@ -1436,7 +1959,7 @@
 				moves.push(makeEngineUci(position.value, move));
 				position.value.play(move);
 				const fen = makeFen(position.value.toSetup());
-				if (!canonicalFen(fen)) return void 0;
+				if (!canonicalFen(fen, variant)) return void 0;
 				fens.push(fen);
 			}
 			return {
@@ -2629,15 +3152,18 @@
 		};
 		return previous;
 	}
+	function isValidUciMove(move) {
+		return /^(?:[a-j](?:10|[0-9])[a-j](?:10|[0-9])[a-zA-Z+]?|[a-zA-Z]@[a-j](?:10|[0-9])|[a-h][1-8][a-h][1-8][nbrq]?)$/.test(move);
+	}
 	function positionCommand(fen, history) {
-		if (history && typeof history.startFen === "string" && history.startFen.length > 0 && !/[\r\n]/.test(history.startFen) && Array.isArray(history.moves) && history.moves.every((move) => /^[a-h][1-8][a-h][1-8][nbrq]?$/.test(move))) {
+		if (history && typeof history.startFen === "string" && history.startFen.length > 0 && !/[\r\n]/.test(history.startFen) && Array.isArray(history.moves) && history.moves.every(isValidUciMove)) {
 			const moves = history.moves.join(" ");
 			return `position fen ${history.startFen}${moves ? ` moves ${moves}` : ""}`;
 		}
 		return `position fen ${fen}`;
 	}
 	function validBestMove(move) {
-		return /^[a-h][1-8][a-h][1-8][nbrq]?$/.test(move);
+		return isValidUciMove(move);
 	}
 	var UciClient = class {
 		workerFactory;
@@ -2652,6 +3178,7 @@
 		queue = [];
 		pumping = false;
 		resetRequested = false;
+		variant;
 		initTimeoutMs;
 		searchTimeoutSlackMs;
 		stopTimeoutMs;
@@ -2660,9 +3187,31 @@
 			this.initTimeoutMs = options.initTimeoutMs ?? 25e3;
 			this.searchTimeoutSlackMs = options.searchTimeoutSlackMs ?? 3e3;
 			this.stopTimeoutMs = options.stopTimeoutMs ?? 2e3;
+			this.variant = options.variant?.toLowerCase().trim() || "chess";
 		}
 		get busy() {
 			return this.pumping || this.queue.length > 0 || this.active !== null;
+		}
+		get activeVariant() {
+			return this.variant;
+		}
+		async setVariant(variant) {
+			const normalized = variant.toLowerCase().trim() || "chess";
+			if (this.variant === normalized) return;
+			this.variant = normalized;
+			if (!this.worker || !this.ready) return;
+			const waiter = deferred();
+			this.readyWaiter = waiter;
+			try {
+				this.send(`setoption name UCI_Variant value ${this.variant}`);
+				this.send("isready");
+				await withTimeout(waiter.promise, this.initTimeoutMs, "Engine variant update");
+			} catch (error) {
+				this.destroyWorker();
+				throw error;
+			} finally {
+				if (this.readyWaiter === waiter) this.readyWaiter = null;
+			}
 		}
 		async warm() {
 			await this.ensureReady();
@@ -2928,6 +3477,7 @@
 			}
 			const ready = deferred();
 			this.readyWaiter = ready;
+			if (this.variant && this.variant !== "chess" && this.variant !== "standard") this.send(`setoption name UCI_Variant value ${this.variant}`);
 			this.send("setoption name MultiPV value 3");
 			this.send("isready");
 			try {
@@ -3106,14 +3656,87 @@
 			throw new Error(`Stockfish worker could not start${detail}`);
 		}
 	}
+	async function createFairyStockfishWorker(signal) {
+		if (typeof Worker === "undefined") throw new Error("Fairy-Stockfish requires browser Web Worker support");
+		if (typeof Blob === "undefined" || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") throw new Error("Fairy-Stockfish worker resources are unavailable in this browser");
+		if (typeof GM_getResourceText !== "function" || typeof GM_getResourceURL !== "function") throw new Error("Fairy-Stockfish resources are missing; check userscript @resource permissions");
+		const source = GM_getResourceText("fairy-stockfish.js");
+		const wasmUrl = GM_getResourceURL("fairy-stockfish.wasm");
+		if (typeof source !== "string" || source.length === 0 || typeof wasmUrl !== "string" || wasmUrl.length === 0) throw new Error("Fairy-Stockfish JavaScript or WASM resource could not be loaded");
+		let wasmObjectUrl;
+		let workerObjectUrl;
+		try {
+			const response = await fetch(wasmUrl, { signal });
+			if (!response.ok) throw new Error(`WASM resource request failed with status ${response.status}`);
+			const wasm = await response.arrayBuffer();
+			if (signal.aborted) throw new DOMException("Worker setup aborted", "AbortError");
+			wasmObjectUrl = URL.createObjectURL(new Blob([wasm], { type: "application/wasm" }));
+			const bootstrap = `
+const wasmUrl = decodeURIComponent(location.hash.slice(1));
+let queue = [];
+let engine = null;
+self.onmessage = (e) => {
+  if (engine) engine.postMessage(e.data);
+  else queue.push(e.data);
+};
+${source}
+Stockfish({
+  locateFile: (path) => (path.endsWith('.wasm') ? wasmUrl : path),
+}).then((inst) => {
+  engine = inst;
+  inst.addMessageListener((line) => self.postMessage(line));
+  for (const cmd of queue) inst.postMessage(cmd);
+  queue = [];
+}).catch((err) => {
+  self.postMessage("info string fairy-stockfish init error: " + err);
+});
+`;
+			workerObjectUrl = URL.createObjectURL(new Blob([bootstrap], { type: "text/javascript" }));
+			const workerUrl = `${workerObjectUrl}#${encodeURIComponent(wasmObjectUrl)}`;
+			return new ResourceWorker(new Worker(workerUrl), [workerObjectUrl, wasmObjectUrl]);
+		} catch (error) {
+			if (workerObjectUrl) URL.revokeObjectURL(workerObjectUrl);
+			if (wasmObjectUrl) URL.revokeObjectURL(wasmObjectUrl);
+			const detail = error instanceof Error ? `: ${error.message}` : "";
+			throw new Error(`Fairy-Stockfish worker could not start${detail}`);
+		}
+	}
 	var EngineWorkerClient = class {
+		currentKind = "stockfish";
+		currentVariant = "chess";
 		client = new UciClient(createStockfishWorker);
 		ponderSearch = null;
+		get activeEngineKind() {
+			return this.currentKind;
+		}
+		get activeVariant() {
+			return this.currentVariant;
+		}
+		async ensureEngine(kind, variant = "chess") {
+			const normalizedVariant = variant.toLowerCase().trim() || "chess";
+			if (this.currentKind !== kind) {
+				this.cancelPonder();
+				this.client.reset();
+				this.currentKind = kind;
+				this.currentVariant = normalizedVariant;
+				const factory = kind === "fairy-stockfish" ? createFairyStockfishWorker : createStockfishWorker;
+				this.client = new UciClient(factory, { variant: normalizedVariant });
+				await this.client.warm();
+			} else if (kind === "fairy-stockfish" && this.currentVariant !== normalizedVariant) {
+				this.currentVariant = normalizedVariant;
+				await this.client.setVariant(normalizedVariant);
+			}
+			return this.client;
+		}
 		warm() {
 			return this.client.warm();
 		}
-		analyze(fen, depth, timeLimit, signal, history, slackMs) {
+		async analyze(fen, depth, timeLimit, signal, history, slackMs, variant) {
 			if (!signal?.aborted) this.ponderSearch = null;
+			const isVariantGame = !!variant && variant !== "standard" && variant !== "chess";
+			const targetKind = isVariantGame ? "fairy-stockfish" : "stockfish";
+			const targetVariant = isVariantGame ? variant : "chess";
+			await this.ensureEngine(targetKind, targetVariant);
 			return this.client.analyze(fen, depth, timeLimit, signal, history, slackMs);
 		}
 		ponder(fen, depth, history) {
@@ -3150,8 +3773,8 @@
 	function resetEngine() {
 		engineWorker.reset();
 	}
-	function getAnalysis(fen, depth, timeLimit, signal, history, slackMs) {
-		return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs);
+	function getAnalysis(fen, depth, timeLimit, signal, history, slackMs, variant) {
+		return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs, variant);
 	}
 	function hasLegalMoves(fen) {
 		try {
@@ -3203,7 +3826,7 @@
 		if (!data || typeof data !== "object") return null;
 		const result = data;
 		const uci = typeof result.bestmove === "string" ? result.bestmove.trim() : "";
-		if (!result.success || !/^[a-h][1-8][a-h][1-8][nbrq]?$/.test(uci)) return null;
+		if (!result.success || !isValidUciMove(uci)) return null;
 		const score = {};
 		if (typeof result.evaluation?.cp === "number" && Number.isFinite(result.evaluation.cp)) score.cp = result.evaluation.cp;
 		else if (typeof result.evaluation?.mate === "number" && Number.isFinite(result.evaluation.mate)) score.mate = result.evaluation.mate;
@@ -8174,7 +8797,8 @@
 				anticipatedPonder = null;
 				if (anticipated?.fromFen === fen && ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history)) return;
 			} else anticipatedPonder = null;
-			const bookMove = kind === "main" && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
+			const isStandard = !snapshot.variant || snapshot.variant === "standard" || snapshot.variant === "chess";
+			const bookMove = isStandard && kind === "main" && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
 			let result;
 			let best = null;
 			let isTablebase = false;
@@ -8193,14 +8817,14 @@
 					score: { cp: 20 }
 				};
 			} else {
-				const isTbEligible = kind === "main" && hasLegalMoves(fen) !== false && isTablebaseEligible(fen);
+				const isTbEligible = isStandard && kind === "main" && hasLegalMoves(fen) !== false && isTablebaseEligible(fen);
 				let tbResult = null;
 				const remainingMs = snapshot.remainingMs;
 				const slackMs = remainingMs !== void 0 && remainingMs !== null ? Math.min(3e3, Math.max(200, Math.floor(remainingMs / 20))) : void 0;
 				if (isTbEligible) {
 					const tbTimeout = Math.min(1500, Math.max(100, Math.floor((snapshot.remainingMs ?? 6e4) / 4)));
 					const tbPromise = lookupTablebase(fen, ctrl.signal, tbTimeout).catch(() => null);
-					const analysisPromise = slackMs !== void 0 ? getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs) : getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
+					const analysisPromise = snapshot.variant ? getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs, snapshot.variant) : slackMs !== void 0 ? getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs) : getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
 					const winner = await Promise.race([tbPromise.then((tb) => tb?.success ? {
 						kind: "tb",
 						tb
@@ -8225,7 +8849,7 @@
 							if (fastTb?.success) tbResult = fastTb;
 						}
 					} else result = await analysisPromise;
-				} else result = slackMs !== void 0 ? await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs) : await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
+				} else result = snapshot.variant ? await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs, snapshot.variant) : slackMs !== void 0 ? await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs) : await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
 				if (!current()) return;
 				if (tbResult?.success) {
 					isTablebase = true;

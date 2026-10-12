@@ -162,7 +162,9 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       anticipatedPonder = null;
     }
 
-    const bookMove = kind === 'main' && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
+    const isStandard = !snapshot.variant || snapshot.variant === 'standard' || snapshot.variant === 'chess';
+    const bookMove =
+      isStandard && kind === 'main' && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
     let result: AnalysisResult;
     let best: BestLine | null = null;
     let isTablebase = false;
@@ -182,7 +184,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
         score: { cp: 20 },
       };
     } else {
-      const isTbEligible = kind === 'main' && hasLegalMoves(fen) !== false && isTablebaseEligible(fen);
+      const isTbEligible = isStandard && kind === 'main' && hasLegalMoves(fen) !== false && isTablebaseEligible(fen);
       let tbResult: TablebaseResponse | null = null;
       const remainingMs = snapshot.remainingMs;
       const slackMs =
@@ -193,8 +195,9 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       if (isTbEligible) {
         const tbTimeout = Math.min(1500, Math.max(100, Math.floor((snapshot.remainingMs ?? 60000) / 4)));
         const tbPromise = lookupTablebase(fen, ctrl.signal, tbTimeout).catch(() => null);
-        const analysisPromise =
-          slackMs !== undefined
+        const analysisPromise = snapshot.variant
+          ? getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs, snapshot.variant)
+          : slackMs !== undefined
             ? getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs)
             : getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
 
@@ -223,8 +226,9 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
           result = await analysisPromise;
         }
       } else {
-        result =
-          slackMs !== undefined
+        result = snapshot.variant
+          ? await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs, snapshot.variant)
+          : slackMs !== undefined
             ? await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs)
             : await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
       }

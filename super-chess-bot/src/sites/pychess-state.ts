@@ -83,11 +83,15 @@ function unavailable(reason: string): SiteRead {
   return { kind: 'ineligible', reason };
 }
 
-function replayAcceptedHistory(startFen: string, sans: readonly string[]): ReturnType<typeof replaySanLine> {
-  const key = JSON.stringify([startFen, sans]);
+function replayAcceptedHistory(
+  startFen: string,
+  sans: readonly string[],
+  variant = 'chess',
+): ReturnType<typeof replaySanLine> {
+  const key = JSON.stringify([startFen, sans, variant]);
   if (key === cachedReplayKey) return cachedReplay;
   cachedReplayKey = key;
-  cachedReplay = replaySanLine(startFen, sans);
+  cachedReplay = replaySanLine(startFen, sans, variant);
   return cachedReplay;
 }
 
@@ -106,32 +110,32 @@ export function parsePychessObservation(observation: PychessObservation, identit
     return unavailable('PyChess player identity is unavailable or conflicting');
   if (username === whitePlayer && username === blackPlayer) return unavailable('PyChess player identity is ambiguous');
   const playerColor: Color = username === whitePlayer ? 'w' : 'b';
-  if (metadata.variant?.trim().toLowerCase() !== 'chess') return unavailable('PyChess chess variant required');
-  if (!['false', '0'].includes(metadata.chess960?.trim().toLowerCase() ?? ''))
-    return unavailable('PyChess Chess960 is not supported');
+  const variant = metadata.variant?.trim().toLowerCase();
+  if (!variant) return unavailable('PyChess variant is unavailable');
   if (!['false', '0'].includes(metadata.correspondence?.trim().toLowerCase() ?? ''))
     return unavailable('PyChess real-time game required');
   if (!board.element || !board.connected || !board.visible || !board.owned)
     return unavailable('PyChess board is disconnected, hidden, or not owned by this game');
-  if (board.width !== 8 || board.height !== 8) return unavailable('PyChess board is not 8×8');
+  if (board.width <= 0 || board.height <= 0) return unavailable('PyChess board dimensions are invalid');
   const orientation = state.orientation;
   if (orientation !== 'white' && orientation !== 'black')
     return unavailable('PyChess board orientation is unavailable');
   if (!state.fen) return unavailable('PyChess accepted FEN is unavailable');
-  const fen = canonicalFen(state.fen);
+  const fen = canonicalFen(state.fen, variant);
   if (!fen) return unavailable('PyChess accepted FEN is malformed');
   const sideField = fen.split(' ')[1];
   if (sideField !== 'w' && sideField !== 'b') return unavailable('PyChess side to move is unavailable');
   const sideToMove = sideField as Color;
 
   const startFen = metadata.initialFen?.trim() || STANDARD_START_FEN;
-  if (!canonicalFen(startFen)) return unavailable('PyChess initial FEN is malformed');
+  if (!canonicalFen(startFen, variant)) return unavailable('PyChess initial FEN is malformed');
   const orderedMoves = [...observation.moves];
   if (orderedMoves.some((move, index) => move.ply !== index + 1 || !move.san.trim()))
     return unavailable('PyChess move history is truncated or noncontiguous');
   const replay = replayAcceptedHistory(
     startFen,
     orderedMoves.map((move) => move.san),
+    variant,
   );
   if (!replay) return unavailable('PyChess move history contains invalid SAN');
   const activeMoves = orderedMoves.filter((move) => move.active);
@@ -183,6 +187,8 @@ export function parsePychessObservation(observation: PychessObservation, identit
     ...(blackRemainingMs != null ? { blackRemainingMs } : {}),
     history,
     confirmedFens: replay.fens,
+    variant,
+    boardDimensions: { width: board.width, height: board.height },
   };
   return { kind: 'game', snapshot };
 }

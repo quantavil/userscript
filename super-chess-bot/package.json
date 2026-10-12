@@ -29,6 +29,7 @@
   "dependencies": {
     "@preact/signals": "^2.11.3",
     "chessops": "^0.15.1",
+    "fairy-stockfish-nnue.wasm": "^1.1.12",
     "preact": "^11.0.1",
     "stockfish": "19.0.1",
     "valibot": "^1.5.0"

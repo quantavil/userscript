@@ -6,6 +6,8 @@ import { resetCapturedChesscomController } from '../src/sites/chesscom-bridge.js
 import { selectSite as selectChesscomOnlySite } from '../src/sites/chesscom-only.js';
 import { selectSite } from '../src/sites/index.js';
 import {
+  FAIRY_STOCKFISH_JS_HASH,
+  FAIRY_STOCKFISH_WASM_HASH,
   getUserscriptMetadata,
   STOCKFISH_JS_HASH,
   STOCKFISH_WASM_HASH,
@@ -327,9 +329,12 @@ describe('userscript package metadata', () => {
     expect(userscriptMetadata.description).toBe(pkg.description);
 
     const worker = `https://unpkg.com/stockfish@${stockfishPackage.version}/bin/stockfish-${stockfishPackage.buildVersion}-lite-single`;
+    const fairyWorker = 'https://unpkg.com/fairy-stockfish-nnue.wasm@1.1.12/stockfish';
     expect(userscriptMetadata.resource).toEqual({
       'stockfish.js': `${worker}.js#sha256=${STOCKFISH_JS_HASH}`,
       'stockfish.wasm': `${worker}.wasm#sha256=${STOCKFISH_WASM_HASH}`,
+      'fairy-stockfish.js': `${fairyWorker}.js#sha256=${FAIRY_STOCKFISH_JS_HASH}`,
+      'fairy-stockfish.wasm': `${fairyWorker}.wasm#sha256=${FAIRY_STOCKFISH_WASM_HASH}`,
     });
   });
 

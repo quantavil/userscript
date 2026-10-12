@@ -1,7 +1,8 @@
-import { Chess, normalizeMove } from 'chessops/chess';
+import { normalizeMove } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { makeSquare, parseUci } from 'chessops/util';
-import { canonicalFen, replaySanLine } from '../history.js';
+import { setupPosition } from 'chessops/variant';
+import { canonicalFen, parseRules, replaySanLine } from '../history.js';
 import { installLichessControllerBridge } from './lichess-bridge.js';
 import {
   type Color,
@@ -72,8 +73,19 @@ const PROMOTION_ROLE: Record<string, string> = {
   bishop: 'bishop',
   knight: 'knight',
 };
-/** Orthodox-chess variant keys. `fromPosition` is standard chess from a custom FEN. */
-const ORTHODOX_VARIANT_KEYS = new Set(['standard', 'fromPosition']);
+/** Supported Lichess variant keys. */
+const LICHESS_SUPPORTED_VARIANTS = new Set([
+  'standard',
+  'fromPosition',
+  'chess960',
+  'crazyhouse',
+  'antichess',
+  'atomic',
+  'horde',
+  'kingOfTheHill',
+  'racingKings',
+  'threeCheck',
+]);
 const DEFAULT_BRIDGE_ERROR =
   'Lichess round controller not captured. Enable synchronous page-context injection in your userscript manager, then reload.';
 
@@ -130,11 +142,13 @@ function buildHistoryFor(data: RoundData, selectedStep: LichessStep) {
   if (selectedIndex < 0) return undefined;
   const selectedSteps = steps.slice(0, selectedIndex + 1);
   if (selectedSteps.some((step, index) => step.ply !== index)) return undefined;
-  const startFen = canonicalFen(selectedSteps[0]?.fen ?? '');
+  const variant = data.game?.variant?.key ?? 'standard';
+  const startFen = canonicalFen(selectedSteps[0]?.fen ?? '', variant);
   if (!startFen) return undefined;
   const replay = replaySanLine(
     startFen,
     selectedSteps.slice(1).map((step) => step.san),
+    variant,
   );
   if (!replay) return undefined;
   if (replay.fens.some((position, index) => !matchesStepFen(selectedSteps[index]?.fen, position))) return undefined;
@@ -169,21 +183,30 @@ function createHistoryReader(): (data: RoundData, selectedStep: LichessStep) => 
   };
 }
 
-function moveDetails(request: MoveRequest): MoveDetails | null {
-  const sourceFen = canonicalFen(request.fromFen);
-  const expectedFen = canonicalFen(request.expectedFen);
+function moveDetails(request: MoveRequest, variant = 'standard'): MoveDetails | null {
+  const sourceFen = canonicalFen(request.fromFen, variant);
+  const expectedFen = canonicalFen(request.expectedFen, variant);
   if (!sourceFen || !expectedFen) return null;
   const setup = parseFen(sourceFen);
   if (setup.isErr) return null;
-  const position = Chess.fromSetup(setup.value);
-  if (position.isErr) return null;
+  const rules = parseRules(variant);
+  const position = rules ? setupPosition(rules, setup.value) : null;
+  if (!position || position.isErr) {
+    const match = /^([a-h][1-8])([a-h][1-8])([nbrq]?)$/.exec(request.uci);
+    if (!match) return null;
+    return {
+      from: match[1],
+      toCandidates: [match[2]],
+      ...(match[3] ? { promotionRole: PROMOTION_ROLE[match[3]] } : {}),
+    };
+  }
   const move = parseUci(request.uci);
   if (!move || !('from' in move) || !position.value.isLegal(move)) return null;
   const normalized = normalizeMove(position.value, move);
   const from = makeSquare(move.from);
   const toCandidates = [...new Set([makeSquare(move.to), makeSquare(normalized.to)])];
   position.value.play(move);
-  if (canonicalFen(makeFen(position.value.toSetup())) !== expectedFen) return null;
+  if (canonicalFen(makeFen(position.value.toSetup()), variant) !== expectedFen) return null;
   const promotionRole = move.promotion ? PROMOTION_ROLE[move.promotion] : undefined;
   if (move.promotion && !promotionRole) return null;
   return { from, toCandidates, ...(promotionRole ? { promotionRole } : {}) };
@@ -222,8 +245,8 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
       const game = data?.game;
       const player = data?.player;
       if (!data || !game || !player) return { kind: 'waiting', reason: 'Waiting for Lichess game state' };
-      if (typeof game.variant?.key !== 'string' || !ORTHODOX_VARIANT_KEYS.has(game.variant.key))
-        return { kind: 'ineligible', reason: 'Lichess standard chess is required' };
+      if (typeof game.variant?.key !== 'string' || !LICHESS_SUPPORTED_VARIANTS.has(game.variant.key))
+        return { kind: 'ineligible', reason: 'Lichess variant is not supported' };
       if (player.spectator === true) return { kind: 'ineligible', reason: 'Lichess player round is required' };
       if (typeof game.id !== 'string' || !game.id)
         return { kind: 'waiting', reason: 'Waiting for Lichess game identity' };
@@ -245,8 +268,9 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
         return { kind: 'ineligible', reason: 'Lichess player round is required' };
       const selectedStep = stepFen(round, phase);
       if (!selectedStep) return { kind: 'ineligible', reason: 'Lichess accepted FEN is unavailable' };
+      const variantKey = game.variant?.key ?? 'standard';
       const history = readHistory(data, selectedStep);
-      const fen = canonicalFen(selectedStep.fen) ?? history?.fen ?? null;
+      const fen = canonicalFen(selectedStep.fen, variantKey) ?? history?.fen ?? null;
       if (!fen) return { kind: 'ineligible', reason: 'Lichess accepted FEN is unavailable' };
       const sideToMove = fen.split(' ')[1];
       if (sideToMove !== 'w' && sideToMove !== 'b')
@@ -298,6 +322,7 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
         ...(whiteRemainingMs != null ? { whiteRemainingMs } : {}),
         ...(blackRemainingMs != null ? { blackRemainingMs } : {}),
         ...(history ? { history: history.history, confirmedFens: history.confirmedFens } : {}),
+        variant: variantKey,
       };
       return { kind: 'game', snapshot };
     } catch {
@@ -362,12 +387,13 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
     },
     async submitMove(request: MoveRequest) {
       const current = capture();
+      const variant = current.kind === 'game' ? current.snapshot.variant : 'standard';
       if (
         request.signal.aborted ||
         request.isCurrent() !== true ||
         current.kind !== 'game' ||
         current.snapshot.identity !== request.identity ||
-        canonicalFen(current.snapshot.fen) !== canonicalFen(request.fromFen) ||
+        canonicalFen(current.snapshot.fen, variant) !== canonicalFen(request.fromFen, variant) ||
         !current.snapshot.inputReady
       )
         return false;
@@ -375,7 +401,7 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
       const cgState = controller?.chessground?.state;
       const pluginMove = controller?.pluginMove;
       if (!controller || !cgState || typeof pluginMove !== 'function') return false;
-      const detail = moveDetails(request);
+      const detail = moveDetails(request, variant);
       if (!detail) return false;
       const destinations = cgState.movable?.dests?.get?.(detail.from);
       if (!destinations) return false;

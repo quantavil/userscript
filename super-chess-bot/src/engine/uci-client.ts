@@ -44,6 +44,7 @@ interface UciClientOptions {
   initTimeoutMs?: number;
   searchTimeoutSlackMs?: number;
   stopTimeoutMs?: number;
+  variant?: string;
 }
 
 interface Deferred<T> {
@@ -207,6 +208,12 @@ function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchI
   return previous;
 }
 
+export function isValidUciMove(move: string): boolean {
+  return /^(?:[a-j](?:10|[0-9])[a-j](?:10|[0-9])[a-zA-Z+]?|[a-zA-Z]@[a-j](?:10|[0-9])|[a-h][1-8][a-h][1-8][nbrq]?)$/.test(
+    move,
+  );
+}
+
 function positionCommand(fen: string, history?: PositionHistory): string {
   if (
     history &&
@@ -214,7 +221,7 @@ function positionCommand(fen: string, history?: PositionHistory): string {
     history.startFen.length > 0 &&
     !/[\r\n]/.test(history.startFen) &&
     Array.isArray(history.moves) &&
-    history.moves.every((move) => /^[a-h][1-8][a-h][1-8][nbrq]?$/.test(move))
+    history.moves.every(isValidUciMove)
   ) {
     const moves = history.moves.join(' ');
     return `position fen ${history.startFen}${moves ? ` moves ${moves}` : ''}`;
@@ -223,7 +230,7 @@ function positionCommand(fen: string, history?: PositionHistory): string {
 }
 
 function validBestMove(move: string): boolean {
-  return /^[a-h][1-8][a-h][1-8][nbrq]?$/.test(move);
+  return isValidUciMove(move);
 }
 
 /**
@@ -243,6 +250,7 @@ export class UciClient {
   private queue: SearchJob[] = [];
   private pumping = false;
   private resetRequested = false;
+  private variant: string;
 
   private readonly initTimeoutMs: number;
   private readonly searchTimeoutSlackMs: number;
@@ -255,10 +263,34 @@ export class UciClient {
     this.initTimeoutMs = options.initTimeoutMs ?? 25_000;
     this.searchTimeoutSlackMs = options.searchTimeoutSlackMs ?? 3_000;
     this.stopTimeoutMs = options.stopTimeoutMs ?? 2_000;
+    this.variant = options.variant?.toLowerCase().trim() || 'chess';
   }
 
   get busy(): boolean {
     return this.pumping || this.queue.length > 0 || this.active !== null;
+  }
+
+  get activeVariant(): string {
+    return this.variant;
+  }
+
+  async setVariant(variant: string): Promise<void> {
+    const normalized = variant.toLowerCase().trim() || 'chess';
+    if (this.variant === normalized) return;
+    this.variant = normalized;
+    if (!this.worker || !this.ready) return;
+    const waiter = deferred<void>();
+    this.readyWaiter = waiter;
+    try {
+      this.send(`setoption name UCI_Variant value ${this.variant}`);
+      this.send('isready');
+      await withTimeout(waiter.promise, this.initTimeoutMs, 'Engine variant update');
+    } catch (error) {
+      this.destroyWorker();
+      throw error;
+    } finally {
+      if (this.readyWaiter === waiter) this.readyWaiter = null;
+    }
   }
 
   async warm(): Promise<void> {
@@ -576,6 +608,9 @@ export class UciClient {
 
     const ready = deferred<void>();
     this.readyWaiter = ready;
+    if (this.variant && this.variant !== 'chess' && this.variant !== 'standard') {
+      this.send(`setoption name UCI_Variant value ${this.variant}`);
+    }
     this.send('setoption name MultiPV value 3');
     this.send('isready');
     try {
