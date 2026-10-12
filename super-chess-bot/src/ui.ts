@@ -1,4 +1,4 @@
-import { markBotNode, updateEvaluationBar } from './board.js';
+import { markBotNode } from './board.js';
 import { uciToSan } from './engine/san.js';
 import { gameHistoryTracker } from './game-history.js';
 import panelCss from './panel.css?inline';
@@ -92,7 +92,6 @@ export const ui: UI = {
         : {}),
       ...(BotState.evalHistory && BotState.evalHistory.length > 0 ? { evalHistory: BotState.evalHistory } : {}),
     });
-    updateEvaluationBar(BotState.currentEvaluation, playingAs);
   },
 };
 

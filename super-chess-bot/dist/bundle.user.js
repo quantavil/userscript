@@ -2305,19 +2305,6 @@
 			console.error("Super Chess Bot: Failed to get 2D context.");
 			return;
 		}
-		const evalBarWrap = document.createElement("div");
-		markBotNode(evalBarWrap);
-		evalBarWrap.style.cssText = "position:absolute;height:100%;width:14px;left:-22px;top:0;background:#111;z-index:50;overflow:hidden;pointer-events:none;border-radius:4px;border:1px solid rgba(255,255,255,0.2);box-sizing:border-box;";
-		if (BotState.ghostMode) evalBarWrap.style.display = "none";
-		const whiteBar = document.createElement("div");
-		markBotNode(whiteBar);
-		whiteBar.style.cssText = "position:absolute;left:0;right:0;bottom:0;height:50%;background:#f0d9b5;";
-		const blackBar = document.createElement("div");
-		markBotNode(blackBar);
-		blackBar.style.cssText = "position:absolute;left:0;right:0;top:0;height:50%;background:#111;";
-		evalBarWrap.appendChild(whiteBar);
-		evalBarWrap.appendChild(blackBar);
-		boardEl.appendChild(evalBarWrap);
 		boardEl.appendChild(drawingBoard);
 		const resizeCanvas = () => {
 			const rect = boardEl.getBoundingClientRect();
@@ -2337,14 +2324,10 @@
 			orientation: observedOrientation ?? (isBoardFlipped() ? "black" : "white"),
 			drawingBoard,
 			ctx,
-			evalBarWrap,
-			whiteBar,
-			blackBar,
 			detachListeners() {
 				for (const eventName of userInputEvents) boardEl.removeEventListener(eventName, cancelPendingOnUserAction, true);
 				ro.disconnect();
 				drawingBoard.remove();
-				evalBarWrap.remove();
 			}
 		};
 		if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
@@ -2486,12 +2469,8 @@
 		if (!boardCtx) return;
 		if (enabled) {
 			boardCtx.drawingBoard.style.display = "none";
-			boardCtx.evalBarWrap.style.display = "none";
 			clearArrows();
-		} else {
-			boardCtx.drawingBoard.style.display = "";
-			boardCtx.evalBarWrap.style.display = "";
-		}
+		} else boardCtx.drawingBoard.style.display = "";
 	}
 	function confirmSiteMove(request, adapter, timeout = 1e3) {
 		const expectedFen = canonicalFen(request.expectedFen);
@@ -2562,56 +2541,6 @@
 	}
 	function getMoveRevision() {
 		return moveRevision;
-	}
-	function setStyleIfChanged(element, property, value) {
-		if (element.style[property] !== value) element.style[property] = value;
-	}
-	function updateEvaluationBar(evaluation, _playingAs) {
-		if (!boardCtx) return;
-		if (BotState.ghostMode) {
-			boardCtx.evalBarWrap.style.display = "none";
-			return;
-		}
-		boardCtx.evalBarWrap.style.display = "";
-		const { whiteBar, blackBar } = boardCtx;
-		if (!whiteBar || !blackBar) return;
-		let score = 0;
-		if (typeof evaluation === "string") {
-			if (evaluation === "-" || evaluation === "Error") {
-				setStyleIfChanged(whiteBar, "height", "50%");
-				setStyleIfChanged(blackBar, "height", "50%");
-				return;
-			}
-			if (evaluation.includes("M")) score = parseInt(evaluation.replace("M", "").replace("+", ""), 10) > 0 ? 10 : -10;
-			else score = parseFloat(evaluation);
-		} else score = evaluation;
-		if (Number.isNaN(score)) {
-			setStyleIfChanged(whiteBar, "height", "50%");
-			setStyleIfChanged(blackBar, "height", "50%");
-			return;
-		}
-		const maxScore = 5;
-		const whitePercent = 50 + Math.max(-5, Math.min(maxScore, score)) / maxScore * 50;
-		const blackPercent = 100 - whitePercent;
-		if (isAttachedBoardFlipped()) {
-			setStyleIfChanged(blackBar, "bottom", "0");
-			setStyleIfChanged(blackBar, "top", "auto");
-			setStyleIfChanged(blackBar, "height", `${blackPercent}%`);
-			setStyleIfChanged(whiteBar, "top", "0");
-			setStyleIfChanged(whiteBar, "bottom", "auto");
-			setStyleIfChanged(whiteBar, "height", `${whitePercent}%`);
-		} else {
-			setStyleIfChanged(whiteBar, "bottom", "0");
-			setStyleIfChanged(whiteBar, "top", "auto");
-			setStyleIfChanged(whiteBar, "height", `${whitePercent}%`);
-			setStyleIfChanged(blackBar, "top", "0");
-			setStyleIfChanged(blackBar, "bottom", "auto");
-			setStyleIfChanged(blackBar, "height", `${blackPercent}%`);
-		}
-		const ourEval = (_playingAs === 2 ? "b" : _playingAs === 1 ? "w" : getPlayerColor()) === "w" ? score : -score;
-		if (ourEval < -2) setStyleIfChanged(boardCtx.evalBarWrap, "borderColor", "rgba(255, 100, 100, 0.5)");
-		else if (ourEval > 2) setStyleIfChanged(boardCtx.evalBarWrap, "borderColor", "rgba(100, 255, 100, 0.5)");
-		else setStyleIfChanged(boardCtx.evalBarWrap, "borderColor", "rgba(255, 255, 255, 0.2)");
 	}
 	var PONDER_REUSE_DEPTH = 12;
 	function deferred() {
@@ -6924,7 +6853,7 @@
 						}),
 						u("div", {
 							class: "panel-guide-item",
-							children: [u("strong", { children: "Stream-Safe Ghost Mode" }), u("p", { children: "Hides all board arrows, evaluation bars, and panel controls for clean streaming and recording. Toggle via the userscript menu command (GM menu: ♟ Toggle Ghost Mode)." })]
+							children: [u("strong", { children: "Stream-Safe Ghost Mode" }), u("p", { children: "Hides all board arrows and panel controls for clean streaming and recording. Toggle via the userscript menu command (GM menu: ♟ Toggle Ghost Mode)." })]
 						})
 					]
 				}),
@@ -7600,7 +7529,6 @@
 				}) } : {},
 				...BotState.evalHistory && BotState.evalHistory.length > 0 ? { evalHistory: BotState.evalHistory } : {}
 			});
-			updateEvaluationBar(BotState.currentEvaluation, playingAs);
 		}
 	};
 	async function buildUI(actions = {}, capabilities) {

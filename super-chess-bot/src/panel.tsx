@@ -628,8 +628,8 @@ function PanelGuide() {
         <div class="panel-guide-item">
           <strong>Stream-Safe Ghost Mode</strong>
           <p>
-            Hides all board arrows, evaluation bars, and panel controls for clean streaming and recording. Toggle via
-            the userscript menu command (GM menu: ♟ Toggle Ghost Mode).
+            Hides all board arrows and panel controls for clean streaming and recording. Toggle via the userscript menu
+            command (GM menu: ♟ Toggle Ghost Mode).
           </p>
         </div>
       </div>

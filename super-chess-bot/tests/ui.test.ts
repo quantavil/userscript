@@ -25,7 +25,7 @@ const site = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../src/board.js', () => ({ updateEvaluationBar: vi.fn() }));
+vi.mock('../src/board.js', () => ({ markBotNode: vi.fn() }));
 vi.mock('../src/panel.js', () => ({
   appendPanelLog: panel.appendLog,
   clearPanelLogs: panel.clearLogs,
