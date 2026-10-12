@@ -6,6 +6,7 @@ import {
   drawMultiPvArrows,
   getMoveRevision,
 } from '../board.js';
+import { parseRules } from '../history.js';
 import { getSite } from '../sites/index.js';
 import type { GameSnapshot, MoveRequest, SiteAdapter } from '../sites/types.js';
 import { BotState, pa } from '../state.js';
@@ -100,7 +101,7 @@ function searchBudget(snapshot: GameSnapshot, fen?: string): number {
 
   if (BotState.timingMode === 'fixed' || !fen) return baseBudget;
 
-  const legalCount = countLegalMoves(fen);
+  const legalCount = countLegalMoves(fen, snapshot.variant);
   if (legalCount === 1) {
     return Math.max(25, Math.min(baseBudget, Math.round(baseBudget * 0.2)));
   }
@@ -246,7 +247,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       } else {
         best = parseBestLine(result);
         if (!best) {
-          if (result.bestmove === '(none)' && hasLegalMoves(fen) === false) {
+          if (result.bestmove === '(none)' && hasLegalMoves(fen, snapshot.variant) === false) {
             BotState.statusInfo = 'Terminal position';
             ui.updateDisplay(pa());
             return;
@@ -256,7 +257,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       }
     }
     if (kind !== 'main') {
-      const predicted = predictFen(fen, best.uci);
+      const predicted = predictFen(fen, best.uci, snapshot.variant);
       if (predicted) {
         const predictedHistory = history ? { ...history, moves: [...history.moves, best.uci] } : undefined;
         ponderPosition(predicted, BotState.botPower, predictedHistory);
@@ -276,14 +277,15 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     }
 
     const currentPosition = matchingSnapshot(site, identity, fen);
-    const nextFen = predictFen(fen, best.uci);
-    if (!nextFen || fen.split(' ')[1] !== snapshot.playerColor)
+    const nextFen = predictFen(fen, best.uci, snapshot.variant);
+    const isSupportedRules = !snapshot.variant || Boolean(parseRules(snapshot.variant));
+    if ((isSupportedRules && !nextFen) || fen.split(' ')[1] !== snapshot.playerColor)
       throw new Error('Engine move failed position validation');
 
     const pvMoves = best.pv.split(/\s+/);
     const predictedReply = pvMoves[0] === best.uci ? pvMoves[1] : undefined;
-    const targetFen = predictedReply ? predictFen(nextFen, predictedReply) : null;
-    if (BotState.ponderEnabled && targetFen) {
+    const targetFen = predictedReply && nextFen ? predictFen(nextFen, predictedReply, snapshot.variant) : null;
+    if (isStandard && BotState.ponderEnabled && targetFen && nextFen) {
       anticipatedPonder = {
         fromFen: nextFen,
         targetFen,
@@ -335,7 +337,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       const delay = calculateMoveDelay({
         baseTimeMs: bookMove ? 150 : budget,
         remainingMs: snapshot.remainingMs,
-        legalMovesCount: countLegalMoves(fen),
+        legalMovesCount: countLegalMoves(fen, snapshot.variant),
         candidateScores,
       });
       const elapsed = performance.now() - started;
@@ -353,7 +355,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       identity,
       fromFen: fen,
       uci: best.uci,
-      expectedFen: nextFen,
+      expectedFen: nextFen ?? fen,
       expectedPly: requestPly(snapshot),
       signal: requestController.signal,
       isCurrent: () => current() && matchingSnapshot(site, identity, fen)?.inputReady === true,
@@ -386,7 +388,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     }
     if (accepted) {
       BotState.recoveryAction = null;
-      ui.log(formatMove(fen, best.uci), 'move');
+      ui.log(formatMove(fen, best.uci, snapshot.variant), 'move');
     } else if (positionIsCurrent()) {
       anticipatedPonder = null;
       clearArrows();

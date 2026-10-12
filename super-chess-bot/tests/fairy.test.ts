@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { countLegalMoves, hasLegalMoves, predictFen } from '../src/engine/analysis.js';
+import { formatMove, uciToSan } from '../src/engine/san.js';
 import { isValidUciMove, UciClient, type UciWorkerLike } from '../src/engine/uci-client.js';
+import { engineWorker } from '../src/engine/worker-client.js';
 import { canonicalFen, parseRules } from '../src/history.js';
 import { type PychessObservation, parsePychessObservation } from '../src/sites/pychess-state.js';
 
@@ -199,5 +202,76 @@ describe('PyChess variant observation parsing', () => {
       expect(result.snapshot.variant).toBe('capablanca');
       expect(result.snapshot.boardDimensions).toEqual({ width: 10, height: 8 });
     }
+  });
+});
+
+describe('Fairy chess position validation and SAN formatting', () => {
+  const antichessFen = 'r1b1kbnr/p2n1ppp/3pp3/1P6/P7/1P6/3PPPPP/RNq1KBNR w - - 0 7';
+
+  it('validates Antichess moves correctly where standard chess would reject them', () => {
+    // Under orthodox chess rules, White king is in check from Qc1, so d2d4 is illegal
+    expect(predictFen(antichessFen, 'd2d4', 'chess')).toBeNull();
+
+    // Under Antichess rules, king has no royal status and d2d4 is a legal move
+    const nextFen = predictFen(antichessFen, 'd2d4', 'antichess');
+    expect(nextFen).toBe('r1b1kbnr/p2n1ppp/3pp3/1P6/P2P4/1P6/4PPPP/RNq1KBNR b - d3 0 7');
+
+    expect(hasLegalMoves(antichessFen, 'antichess')).toBe(true);
+    expect(countLegalMoves(antichessFen, 'antichess')).toBeGreaterThan(0);
+  });
+
+  it('formats variant moves into SAN', () => {
+    expect(uciToSan(antichessFen, 'd2d4', 'antichess')).toBe('d4');
+    expect(formatMove(antichessFen, 'd2d4', 'antichess')).toBe('7. d4');
+  });
+
+  it('guards engineWorker against pondering when active engine is fairy-stockfish', async () => {
+    class MockWorker extends FakeUciWorker {}
+    vi.stubGlobal('Worker', MockWorker);
+    vi.stubGlobal('Blob', class {});
+    vi.stubGlobal('URL', { createObjectURL: () => 'blob:mock', revokeObjectURL: () => {} });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+      }),
+    );
+    vi.stubGlobal('GM_getResourceText', () => '/* fairy source */');
+    vi.stubGlobal('GM_getResourceURL', () => 'data:application/wasm;base64,AA==');
+
+    try {
+      await engineWorker.ensureEngine('fairy-stockfish', 'antichess');
+      expect(engineWorker.activeEngineKind).toBe('fairy-stockfish');
+
+      const ponderStarted = engineWorker.ponder(antichessFen, 20);
+      expect(ponderStarted).toBe(false);
+    } finally {
+      engineWorker.reset();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('formats Fairy-Stockfish in stop timeout error message', async () => {
+    class HangingWorker extends FakeUciWorker {
+      override postMessage(command: string): void {
+        this.commands.push(command);
+        if (command === 'uci') queueMicrotask(() => this.emit('uciok'));
+        if (command === 'isready') queueMicrotask(() => this.emit('readyok'));
+        // Never emit bestmove to force stop timeout
+      }
+    }
+
+    const worker = new HangingWorker();
+    const client = new UciClient(() => worker, {
+      variant: 'antichess',
+      searchTimeoutSlackMs: 5,
+      stopTimeoutMs: 15,
+    });
+    await client.warm();
+
+    const searchPromise = client.analyze('8/8/8/8/8/8/8/8 w - - 0 1', 10, 5, undefined, undefined, 0);
+
+    await expect(searchPromise).rejects.toThrow(/Fairy-Stockfish/);
   });
 });

@@ -186,6 +186,7 @@ class EngineWorkerClient {
   }
 
   ponder(fen: string, depth: number, history?: PositionHistory): boolean {
+    if (this.currentKind === 'fairy-stockfish') return false;
     if (!fen || this.client.busy || this.ponderSearch) return false;
     const controller = new AbortController();
     const promise = this.client.ponder(fen, depth, controller.signal, history);

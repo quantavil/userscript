@@ -1,6 +1,8 @@
 import { Chess } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { parseUci } from 'chessops/util';
+import { setupPosition } from 'chessops/variant';
+import { parseRules } from '../history.js';
 import type { Evaluation } from '../types/chess.js';
 import { type AnalysisResult, isValidUciMove, type MultiPvLine, type PositionHistory } from './uci-client.js';
 import { engineWorker } from './worker-client.js';
@@ -34,26 +36,28 @@ export function getAnalysis(
   return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs, variant);
 }
 
-/** Return legal-move availability for a standard chess FEN; null means it could not be validated. */
-export function hasLegalMoves(fen: string): boolean | null {
+/** Return legal-move availability for a chess or variant FEN; null means it could not be validated. */
+export function hasLegalMoves(fen: string, variant?: string): boolean | null {
   try {
     const setup = parseFen(fen);
     if (setup.isErr) return null;
-    const position = Chess.fromSetup(setup.value);
-    if (position.isErr) return null;
+    const rules = parseRules(variant);
+    const position = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
+    if (!position || position.isErr) return null;
     return position.value.hasDests();
   } catch {
     return null;
   }
 }
 
-/** Count total legal moves available in a standard chess FEN; null if position cannot be parsed. */
-export function countLegalMoves(fen: string): number | null {
+/** Count total legal moves available in a chess or variant FEN; null if position cannot be parsed. */
+export function countLegalMoves(fen: string, variant?: string): number | null {
   try {
     const setup = parseFen(fen);
     if (setup.isErr) return null;
-    const position = Chess.fromSetup(setup.value);
-    if (position.isErr) return null;
+    const rules = parseRules(variant);
+    const position = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
+    if (!position || position.isErr) return null;
     let total = 0;
     for (const dests of position.value.allDests().values()) {
       total += dests.size();
@@ -74,12 +78,13 @@ export function cancelPonder(preserveFen?: string): void {
 }
 
 /** Apply one legal UCI move with chessops, preserving all FEN counters and rights. */
-export function predictFen(fen: string, uci: string): string | null {
+export function predictFen(fen: string, uci: string, variant?: string): string | null {
   try {
     const setup = parseFen(fen);
     if (setup.isErr) return null;
-    const position = Chess.fromSetup(setup.value);
-    if (position.isErr) return null;
+    const rules = parseRules(variant);
+    const position = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
+    if (!position || position.isErr) return null;
     const move = parseUci(uci);
     if (!move || !position.value.isLegal(move)) return null;
     position.value.play(move);

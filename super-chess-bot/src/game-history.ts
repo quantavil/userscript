@@ -1,8 +1,11 @@
 import { signal } from '@preact/signals';
+import type { Position } from 'chessops/chess';
 import { Chess } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { makeSan } from 'chessops/san';
 import { parseUci } from 'chessops/util';
+import { setupPosition } from 'chessops/variant';
+import { parseRules } from './history.js';
 import { buildPgn, type PgnMove } from './pgn.js';
 import type { GameSnapshot } from './sites/types.js';
 
@@ -27,19 +30,20 @@ const STANDARD_INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq
 export class GameHistoryTracker {
   private activeGameId: string | null = null;
   private startFen = STANDARD_INITIAL_FEN;
-  private position: Chess = Chess.default();
+  private position: Position = Chess.default();
   private moves: GameMoveRecord[] = [];
   private lastWhiteClock: number | null = null;
   private lastBlackClock: number | null = null;
   private turnStartTime: number = performance.now();
 
-  reset(gameId?: string, startFen?: string, initialTime: number = performance.now()): void {
+  reset(gameId?: string, startFen?: string, initialTime: number = performance.now(), variant?: string): void {
     this.activeGameId = gameId ?? null;
     this.startFen = startFen?.trim() || STANDARD_INITIAL_FEN;
     try {
       const setup = parseFen(this.startFen);
       if (setup.isOk) {
-        const chessRes = Chess.fromSetup(setup.value);
+        const rules = parseRules(variant);
+        const chessRes = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
         if (chessRes.isOk) {
           this.position = chessRes.value;
         } else {
@@ -64,7 +68,7 @@ export class GameHistoryTracker {
 
     // Reset on new game or altered root position
     if (gameId !== this.activeGameId || historyStartFen !== this.startFen) {
-      this.reset(gameId, historyStartFen, now);
+      this.reset(gameId, historyStartFen, now, snapshot.variant);
     }
 
     const currWhiteClock = snapshot.whiteRemainingMs ?? (snapshot.playerColor === 'w' ? snapshot.remainingMs : null);
@@ -83,8 +87,15 @@ export class GameHistoryTracker {
         if (!move) break;
 
         const turn: 'w' | 'b' = this.position.turn === 'white' ? 'w' : 'b';
-        const san = makeSan(this.position, move);
-        this.position.play(move);
+        let san = uci;
+        try {
+          if (this.position.isLegal(move)) {
+            san = makeSan(this.position, move);
+            this.position.play(move);
+          }
+        } catch {
+          // Graceful fallback to raw UCI if position/move cannot be replayed
+        }
         const fen = makeFen(this.position.toSetup());
 
         let elapsedMs: number | null = null;

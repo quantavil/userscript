@@ -1905,7 +1905,7 @@
 		}
 	};
 	function parseRules(variant) {
-		if (!variant || variant === "standard" || variant === "chess" || variant === "fromPosition") return "chess";
+		if (!variant || variant === "standard" || variant === "chess" || variant === "fromPosition" || variant === "chess960") return "chess";
 		const v = variant.toLowerCase().replace(/[\s\-_]/g, "");
 		if (v === "crazyhouse") return "crazyhouse";
 		if (v === "atomic") return "atomic";
@@ -1914,6 +1914,7 @@
 		if (v === "threecheck" || v === "3check") return "3check";
 		if (v === "racingkings") return "racingkings";
 		if (v === "horde") return "horde";
+		if (v === "chess960" || v === "fischerandom") return "chess";
 		return null;
 	}
 	function makeEngineUci(position, move) {
@@ -3514,7 +3515,8 @@
 			}
 			const slack = job.slackMs ?? this.searchTimeoutSlackMs;
 			job.searchTimer = safeTimeout(() => {
-				job.timeoutReason = new Error(`Stockfish search exceeded ${timeLimit + slack} ms`);
+				const engineName = this.variant !== "chess" ? "Fairy-Stockfish" : "Stockfish";
+				job.timeoutReason = new Error(`${engineName} search exceeded ${timeLimit + slack} ms`);
 				this.stopActiveSearch(job);
 			}, timeLimit + slack);
 			this.send(`go depth ${job.depth} movetime ${timeLimit}`);
@@ -3538,7 +3540,8 @@
 			}
 			job.stopTimer = safeTimeout(() => {
 				if (this.active !== job) return;
-				const reason = job.abortReason ?? job.timeoutReason ?? new Error("Stockfish did not return bestmove after stop");
+				const engineName = this.variant !== "chess" ? "Fairy-Stockfish" : "Stockfish";
+				const reason = job.abortReason ?? job.timeoutReason ?? new Error(`${engineName} did not return bestmove after stop`);
 				job.result?.reject(reason);
 				this.destroyWorker();
 			}, this.stopTimeoutMs);
@@ -3747,6 +3750,7 @@ Stockfish({
 			return this.client.analyze(fen, depth, timeLimit, signal, history, slackMs);
 		}
 		ponder(fen, depth, history) {
+			if (this.currentKind === "fairy-stockfish") return false;
 			if (!fen || this.client.busy || this.ponderSearch) return false;
 			const controller = new AbortController();
 			const promise = this.client.ponder(fen, depth, controller.signal, history);
@@ -3783,23 +3787,25 @@ Stockfish({
 	function getAnalysis(fen, depth, timeLimit, signal, history, slackMs, variant) {
 		return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs, variant);
 	}
-	function hasLegalMoves(fen) {
+	function hasLegalMoves(fen, variant) {
 		try {
 			const setup = parseFen(fen);
 			if (setup.isErr) return null;
-			const position = Chess.fromSetup(setup.value);
-			if (position.isErr) return null;
+			const rules = parseRules(variant);
+			const position = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
+			if (!position || position.isErr) return null;
 			return position.value.hasDests();
 		} catch {
 			return null;
 		}
 	}
-	function countLegalMoves(fen) {
+	function countLegalMoves(fen, variant) {
 		try {
 			const setup = parseFen(fen);
 			if (setup.isErr) return null;
-			const position = Chess.fromSetup(setup.value);
-			if (position.isErr) return null;
+			const rules = parseRules(variant);
+			const position = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
+			if (!position || position.isErr) return null;
 			let total = 0;
 			for (const dests of position.value.allDests().values()) total += dests.size();
 			return total;
@@ -3813,12 +3819,13 @@ Stockfish({
 	function cancelPonder(preserveFen) {
 		engineWorker.cancelPonder(preserveFen);
 	}
-	function predictFen(fen, uci) {
+	function predictFen(fen, uci, variant) {
 		try {
 			const setup = parseFen(fen);
 			if (setup.isErr) return null;
-			const position = Chess.fromSetup(setup.value);
-			if (position.isErr) return null;
+			const rules = parseRules(variant);
+			const position = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
+			if (!position || position.isErr) return null;
 			const move = parseUci(uci);
 			if (!move || !position.value.isLegal(move)) return null;
 			position.value.play(move);
@@ -5226,11 +5233,12 @@ Stockfish({
 			reason: "Unsupported site"
 		};
 	}
-	function positionFromFen(fen) {
+	function positionFromFen(fen, variant) {
 		const setup = parseFen(fen);
 		if (setup.isErr) return null;
-		const position = Chess.fromSetup(setup.value);
-		return position.isOk ? position.value : null;
+		const rules = parseRules(variant);
+		const position = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
+		return position?.isOk ? position.value : null;
 	}
 	function asUci(move) {
 		if (typeof move === "string") return move;
@@ -5243,18 +5251,18 @@ Stockfish({
 		}
 		return null;
 	}
-	function uciToSan(fen, input) {
+	function uciToSan(fen, input, variant) {
 		if (!input) return "";
 		const uci = asUci(input);
 		if (!uci || uci.length < 4) return input;
-		const position = positionFromFen(fen);
+		const position = positionFromFen(fen, variant);
 		const move = parseUci(uci);
 		if (!position || !move || !position.isLegal(move)) return uci;
 		return makeSanAndPlay(position, move);
 	}
-	function formatMove(fen, uci) {
-		const position = positionFromFen(fen);
-		const san = uciToSan(fen, uci);
+	function formatMove(fen, uci, variant) {
+		const position = positionFromFen(fen, variant);
+		const san = uciToSan(fen, uci, variant);
 		const moveNumber = position?.fullmoves ?? (Number.parseInt(fen.split(/\s+/)[5] ?? "", 10) || 1);
 		const whiteToMove = position ? position.turn === "white" : fen.split(/\s+/)[1] === "w";
 		const sanText = typeof san === "string" ? san : String(san ?? "");
@@ -6391,13 +6399,14 @@ Stockfish({
 		lastWhiteClock = null;
 		lastBlackClock = null;
 		turnStartTime = performance.now();
-		reset(gameId, startFen, initialTime = performance.now()) {
+		reset(gameId, startFen, initialTime = performance.now(), variant) {
 			this.activeGameId = gameId ?? null;
 			this.startFen = startFen?.trim() || STANDARD_INITIAL_FEN;
 			try {
 				const setup = parseFen(this.startFen);
 				if (setup.isOk) {
-					const chessRes = Chess.fromSetup(setup.value);
+					const rules = parseRules(variant);
+					const chessRes = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
 					if (chessRes.isOk) this.position = chessRes.value;
 					else this.position = Chess.default();
 				} else this.position = Chess.default();
@@ -6413,7 +6422,7 @@ Stockfish({
 		updateFromSnapshot(snapshot, now = performance.now()) {
 			const gameId = snapshot.gameId;
 			const historyStartFen = snapshot.history?.startFen?.trim() || STANDARD_INITIAL_FEN;
-			if (gameId !== this.activeGameId || historyStartFen !== this.startFen) this.reset(gameId, historyStartFen, now);
+			if (gameId !== this.activeGameId || historyStartFen !== this.startFen) this.reset(gameId, historyStartFen, now, snapshot.variant);
 			const currWhiteClock = snapshot.whiteRemainingMs ?? (snapshot.playerColor === "w" ? snapshot.remainingMs : null);
 			const currBlackClock = snapshot.blackRemainingMs ?? (snapshot.playerColor === "b" ? snapshot.remainingMs : null);
 			const historyMoves = snapshot.history?.moves ?? [];
@@ -6426,8 +6435,13 @@ Stockfish({
 					const move = parseUci(uci);
 					if (!move) break;
 					const turn = this.position.turn === "white" ? "w" : "b";
-					const san = makeSan(this.position, move);
-					this.position.play(move);
+					let san = uci;
+					try {
+						if (this.position.isLegal(move)) {
+							san = makeSan(this.position, move);
+							this.position.play(move);
+						}
+					} catch {}
 					const fen = makeFen(this.position.toSetup());
 					let elapsedMs = null;
 					if (isSingleStep && i === currentPlyCount) {
@@ -9819,7 +9833,7 @@ Stockfish({
 		const configured = Math.max(25, BotState.moveTime);
 		const baseBudget = snapshot.remainingMs === null ? configured : Math.max(1, Math.floor(Math.min(configured, snapshot.remainingMs / 40) - 12));
 		if (BotState.timingMode === "fixed" || !fen) return baseBudget;
-		if (countLegalMoves(fen) === 1) return Math.max(25, Math.min(baseBudget, Math.round(baseBudget * .2)));
+		if (countLegalMoves(fen, snapshot.variant) === 1) return Math.max(25, Math.min(baseBudget, Math.round(baseBudget * .2)));
 		return baseBudget;
 	}
 	function requestPly(snapshot) {
@@ -9942,7 +9956,7 @@ Stockfish({
 				} else {
 					best = parseBestLine(result);
 					if (!best) {
-						if (result.bestmove === "(none)" && hasLegalMoves(fen) === false) {
+						if (result.bestmove === "(none)" && hasLegalMoves(fen, snapshot.variant) === false) {
 							BotState.statusInfo = "Terminal position";
 							ui.updateDisplay(pa());
 							return;
@@ -9952,7 +9966,7 @@ Stockfish({
 				}
 			}
 			if (kind !== "main") {
-				const predicted = predictFen(fen, best.uci);
+				const predicted = predictFen(fen, best.uci, snapshot.variant);
 				if (predicted) {
 					const predictedHistory = history ? {
 						...history,
@@ -9971,12 +9985,12 @@ Stockfish({
 				if (throttled.uci && throttled.uci !== best.uci) best.uci = throttled.uci;
 			}
 			const currentPosition = matchingSnapshot(site, identity, fen);
-			const nextFen = predictFen(fen, best.uci);
-			if (!nextFen || fen.split(" ")[1] !== snapshot.playerColor) throw new Error("Engine move failed position validation");
+			const nextFen = predictFen(fen, best.uci, snapshot.variant);
+			if ((!snapshot.variant || Boolean(parseRules(snapshot.variant))) && !nextFen || fen.split(" ")[1] !== snapshot.playerColor) throw new Error("Engine move failed position validation");
 			const pvMoves = best.pv.split(/\s+/);
 			const predictedReply = pvMoves[0] === best.uci ? pvMoves[1] : void 0;
-			const targetFen = predictedReply ? predictFen(nextFen, predictedReply) : null;
-			if (BotState.ponderEnabled && targetFen) anticipatedPonder = {
+			const targetFen = predictedReply && nextFen ? predictFen(nextFen, predictedReply, snapshot.variant) : null;
+			if (isStandard && BotState.ponderEnabled && targetFen && nextFen) anticipatedPonder = {
 				fromFen: nextFen,
 				targetFen,
 				...history ? { history: {
@@ -10018,7 +10032,7 @@ Stockfish({
 				const delay = calculateMoveDelay({
 					baseTimeMs: bookMove ? 150 : budget,
 					remainingMs: snapshot.remainingMs,
-					legalMovesCount: countLegalMoves(fen),
+					legalMovesCount: countLegalMoves(fen, snapshot.variant),
 					candidateScores
 				});
 				const elapsed = performance.now() - started;
@@ -10035,7 +10049,7 @@ Stockfish({
 				identity,
 				fromFen: fen,
 				uci: best.uci,
-				expectedFen: nextFen,
+				expectedFen: nextFen ?? fen,
 				expectedPly: requestPly(snapshot),
 				signal: requestController.signal,
 				isCurrent: () => current() && matchingSnapshot(site, identity, fen)?.inputReady === true
@@ -10067,7 +10081,7 @@ Stockfish({
 			}
 			if (accepted) {
 				BotState.recoveryAction = null;
-				ui.log(formatMove(fen, best.uci), "move");
+				ui.log(formatMove(fen, best.uci, snapshot.variant), "move");
 			} else if (positionIsCurrent()) {
 				anticipatedPonder = null;
 				clearArrows();

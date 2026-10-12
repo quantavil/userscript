@@ -642,7 +642,8 @@ export class UciClient {
     }
     const slack = job.slackMs ?? this.searchTimeoutSlackMs;
     job.searchTimer = safeTimeout(() => {
-      job.timeoutReason = new Error(`Stockfish search exceeded ${timeLimit + slack} ms`);
+      const engineName = this.variant !== 'chess' ? 'Fairy-Stockfish' : 'Stockfish';
+      job.timeoutReason = new Error(`${engineName} search exceeded ${timeLimit + slack} ms`);
       this.stopActiveSearch(job);
     }, timeLimit + slack);
     this.send(`go depth ${job.depth} movetime ${timeLimit}`);
@@ -668,7 +669,9 @@ export class UciClient {
     }
     job.stopTimer = safeTimeout(() => {
       if (this.active !== job) return;
-      const reason = job.abortReason ?? job.timeoutReason ?? new Error('Stockfish did not return bestmove after stop');
+      const engineName = this.variant !== 'chess' ? 'Fairy-Stockfish' : 'Stockfish';
+      const reason =
+        job.abortReason ?? job.timeoutReason ?? new Error(`${engineName} did not return bestmove after stop`);
       job.result?.reject(reason);
       this.destroyWorker();
     }, this.stopTimeoutMs);

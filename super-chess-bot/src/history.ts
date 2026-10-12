@@ -11,7 +11,8 @@ export interface PositionHistory {
 }
 
 export function parseRules(variant?: string): Rules | null {
-  if (!variant || variant === 'standard' || variant === 'chess' || variant === 'fromPosition') return 'chess';
+  if (!variant || variant === 'standard' || variant === 'chess' || variant === 'fromPosition' || variant === 'chess960')
+    return 'chess';
   const v = variant.toLowerCase().replace(/[\s\-_]/g, '');
   if (v === 'crazyhouse') return 'crazyhouse';
   if (v === 'atomic') return 'atomic';
@@ -20,6 +21,7 @@ export function parseRules(variant?: string): Rules | null {
   if (v === 'threecheck' || v === '3check') return '3check';
   if (v === 'racingkings') return 'racingkings';
   if (v === 'horde') return 'horde';
+  if (v === 'chess960' || v === 'fischerandom') return 'chess';
   return null;
 }
 
