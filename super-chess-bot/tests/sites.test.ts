@@ -329,7 +329,8 @@ describe('userscript package metadata', () => {
     expect(userscriptMetadata.description).toBe(pkg.description);
 
     const worker = `https://unpkg.com/stockfish@${stockfishPackage.version}/bin/stockfish-${stockfishPackage.buildVersion}-lite-single`;
-    const fairyWorker = 'https://unpkg.com/fairy-stockfish-nnue.wasm@1.1.12/stockfish';
+    const fairyWorker =
+      'https://github.com/quantavil/fairy-stockfish.wasm/releases/download/v1.0.0-single/fairy-stockfish';
     expect(userscriptMetadata.resource).toEqual({
       'stockfish.js': `${worker}.js#sha256=${STOCKFISH_JS_HASH}`,
       'stockfish.wasm': `${worker}.wasm#sha256=${STOCKFISH_WASM_HASH}`,

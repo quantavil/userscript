@@ -12,8 +12,8 @@
 // @match        https://www.chess.com/*
 // @match        https://www.pychess.org/*
 // @match        https://pychess.org/*
-// @resource     fairy-stockfish.js    https://unpkg.com/fairy-stockfish-nnue.wasm@1.1.12/stockfish.js#sha256=9080a62e3133e50da0c47b88b186d9c29ed37cc5129401bdeed8bffb5b9a4ca9
-// @resource     fairy-stockfish.wasm  https://unpkg.com/fairy-stockfish-nnue.wasm@1.1.12/stockfish.wasm#sha256=7cea742b8ca1a324fbc500f89112f168134cf68eb49475df23be6c42336255c6
+// @resource     fairy-stockfish.js    https://github.com/quantavil/fairy-stockfish.wasm/releases/download/v1.0.0-single/fairy-stockfish.js#sha256=604fb97b293a72f8d3452104e881acee5e4e507b79c0a060e3237e02ce70aa44
+// @resource     fairy-stockfish.wasm  https://github.com/quantavil/fairy-stockfish.wasm/releases/download/v1.0.0-single/fairy-stockfish.wasm#sha256=82a77d1b42f18cfdeb45b087984102160d715a61d9c64a7d82a74f43555351bc
 // @resource     stockfish.js          https://unpkg.com/stockfish@19.0.1/bin/stockfish-19-lite-single.js#sha256=ccb130d7ff29408531c47d859a49f91d59d4f482d05a53eb1a3231a4f624c91a
 // @resource     stockfish.wasm        https://unpkg.com/stockfish@19.0.1/bin/stockfish-19-lite-single.wasm#sha256=ee4f115bdb2d32cadf96cada104a05b5ec257d7ad6f57582190b49bc71f096de
 // @grant        GM_getResourceText
