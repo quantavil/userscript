@@ -255,11 +255,11 @@
 }
 
 .panel-enable[aria-pressed="true"] {
-  border-color: color-mix(in oklab, var(--sage) 55%, var(--line));
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--line));
 }
 
 .panel-enable[aria-pressed="true"] .panel-enable-state {
-  color: var(--sage);
+  color: var(--brass);
 }
 
 .panel-enable-wide {
@@ -309,12 +309,12 @@
 }
 
 .panel-quick-enable[aria-pressed="true"] {
-  border-color: color-mix(in oklab, var(--sage) 55%, var(--line));
-  color: var(--sage);
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--line));
+  color: var(--brass);
 }
 
 .panel-quick-enable[aria-pressed="true"] .panel-quick-state {
-  color: var(--sage);
+  color: var(--brass);
 }
 
 /* Switch: shared by the enable control and the setting toggles */
@@ -366,10 +366,14 @@
   background: var(--paper);
 }
 
-.panel-switch-input:checked ~ .panel-switch-track,
+.panel-switch-input:checked ~ .panel-switch-track {
+  background: var(--sage);
+}
+
+.panel-toggle-enable .panel-switch-input:checked ~ .panel-switch-track,
 .panel-enable[aria-pressed="true"] .panel-switch-track,
 .panel-quick-enable[aria-pressed="true"] .panel-switch-track {
-  background: var(--sage);
+  background: var(--brass);
 }
 
 .panel-switch-input:checked ~ .panel-switch-knob,
@@ -710,8 +714,7 @@
   color: var(--paper);
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 
 .panel-section-divider {

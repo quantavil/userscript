@@ -342,13 +342,13 @@ function QuickEnableButton({ enabled, onToggle }: { enabled: boolean; onToggle: 
 function EnableToggle({ enabled, onToggle }: { enabled: boolean; onToggle: (enabled: boolean) => void }) {
   return (
     <label class="panel-toggle panel-toggle-enable">
-      <span class="panel-toggle-enable-label">ENABLE BOT</span>
+      <span class="panel-toggle-enable-label">Enable Bot</span>
       <span class="panel-switch">
         <input
           class="panel-switch-input"
           type="checkbox"
           checked={enabled}
-          aria-label="ENABLE BOT"
+          aria-label="Enable Bot"
           onChange={(event) => onToggle(event.currentTarget.checked)}
         />
         <span class="panel-switch-track" aria-hidden="true" />
