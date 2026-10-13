@@ -8,7 +8,15 @@ import { setGhostMode } from '../board/overlays.js';
 import type { CandidateLine, OpeningStyle, RecoveryAction, SettingsData, TimingMode } from '../chess/types.js';
 import { LIVE_MULTI_PV } from '../engine/uci-client.js';
 import { gameHistoryTracker, gameMovesSignal } from '../game/history.js';
-import { MAX_MOVE_TIME, MIN_MOVE_TIME, OPENING_STYLES, TIMING_MODES } from '../settings/schema.js';
+import {
+  MAX_BOT_POWER,
+  MAX_MOVE_TIME,
+  MAX_TARGET_ELO,
+  MIN_BOT_POWER,
+  MIN_MOVE_TIME,
+  OPENING_STYLES,
+  TIMING_MODES,
+} from '../settings/schema.js';
 import { Settings } from '../settings/storage.js';
 import { scoreToDisplay } from '../shared/utils.js';
 import { EvalTrendGraph } from './components/eval-trend-graph.js';
@@ -39,12 +47,7 @@ export interface PanelActions {
   cancelReport?: () => void;
 }
 
-/**
- * The panel's view of the preferences.
- *
- * It is the settings record without panel chrome, under the same key names the live state uses,
- * so there is no name mapping to keep in step and no field list to repeat.
- */
+/** Preferences without panel chrome, under the same key names the live state uses. */
 type PanelSettings = Omit<SettingsData, 'menuPosition'>;
 
 export interface PanelAnalysis {
@@ -74,7 +77,6 @@ const MAX_LOG_ENTRIES = 100;
 const LOG_STICK_PX = 16;
 const COPY_FEEDBACK_MS = 1400;
 
-/** One projection over the live state, so a new preference needs no entry here. */
 const readSettings = (): PanelSettings => ({ ...(BotState as unknown as PanelSettings) });
 
 const settingsSignal = signal<PanelSettings>(readSettings());
@@ -98,12 +100,8 @@ const logTextClass: Record<PanelLogType, string> = {
   move: 'log-text-move',
 };
 
-/**
- * Field-by-field equality over the keys of `b`; skips no-op signal writes.
- *
- * Arrays are compared element-wise by identity, so this is a shallow check and callers must pass
- * referentially stable arrays. `mount.ts` keeps the Multi-PV array stable for that reason.
- */
+/** Shallow equality to skip no-op signal writes. Arrays compare by element identity, so callers
+ * must pass referentially stable arrays. */
 function shallowEqual<T extends object>(a: T, b: T): boolean {
   return (Object.keys(b) as (keyof T)[]).every((key) => {
     const valA = a[key];
@@ -149,11 +147,8 @@ function writeBotState<K extends keyof PanelSettings>(key: K, value: PanelSettin
   if (key === 'ghostMode') setGhostMode(value as boolean);
 }
 
-/**
- * Settings that change how the live search behaves. Report-only preferences are excluded on
- * purpose: restarting the in-game search because someone moved the report depth stepper is
- * both pointless and visible to the opponent.
- */
+// Report-only preferences are excluded on purpose: restarting the live search because someone
+// moved the report depth stepper is pointless and visible to the opponent.
 const SEARCH_ALTERING_SETTINGS = new Set<keyof PanelSettings>([
   'botPower',
   'moveTime',
@@ -810,8 +805,8 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
                 id="bot-depth"
                 label="Depth cap"
                 value={settings.botPower}
-                min={1}
-                max={30}
+                min={MIN_BOT_POWER}
+                max={MAX_BOT_POWER}
                 step={1}
                 format={String}
                 onPreview={(value) => previewSlider('botPower', value)}
@@ -833,7 +828,7 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
                 label="Target Elo"
                 value={settings.targetElo}
                 min={0}
-                max={3200}
+                max={MAX_TARGET_ELO}
                 step={50}
                 format={(v) => (v === 0 ? 'Max strength' : `${v} Elo target`)}
                 onPreview={(value) => previewSlider('targetElo', value)}

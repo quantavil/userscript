@@ -25,16 +25,8 @@ interface UI {
   updateDisplay(): void;
 }
 
-/**
- * Keep the panel's Multi-PV array referentially stable while its contents are unchanged.
- *
- * `updatePanelAnalysis` compares the new analysis against the previous one to skip no-op signal
- * writes, and it compares arrays element-wise by identity. Rebuilding `{ ...line, san }` objects
- * on every display update handed it a fresh array of fresh objects each time, so that comparison
- * always reported a change and always forced a panel render. `BotState.multiPvLines` is only
- * reassigned when a new search lands, so reusing the previous result whenever the source array
- * and the resolved SAN both still match makes the comparison exact instead of always-false.
- */
+// The panel compares analysis arrays by element identity, so a fresh `{ ...line, san }` build on
+// every update would always look like a change. Reuse the last array while it still matches.
 let lastMultiPvSource: readonly CandidateLine[] | null = null;
 let lastMultiPvLines: CandidateLine[] = [];
 

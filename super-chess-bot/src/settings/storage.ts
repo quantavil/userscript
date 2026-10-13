@@ -16,12 +16,7 @@ function readSetting<K extends PersistedSettingKey>(key: K): SettingsData[K] {
   return settingsModel[key] as SettingsData[K];
 }
 
-/**
- * Apply loaded settings to the state.
- *
- * Only keys with a live accessor are written. Blindly assigning the parsed object used to graft
- * `menuPosition` onto `BotState`, which has no accessor and no declared field for it.
- */
+/** Write only keys that have a live accessor, so panel chrome is not grafted onto `BotState`. */
 function applySettings(settings: SettingsData): void {
   for (const key of persistedSettingKeys()) {
     settingsModel[key] = settings[key] as never;
@@ -29,11 +24,9 @@ function applySettings(settings: SettingsData): void {
   BotState.hackEnabled = false;
 }
 
-// Settings persistence
 export const Settings = {
   save: debounce(() => {
     try {
-      // One entry per preference key, so a new preference cannot be forgotten here.
       const preferences = Object.fromEntries(persistedSettingKeys().map((key) => [key, readSetting(key)])) as Record<
         PersistedSettingKey,
         SettingsData[PersistedSettingKey]
@@ -66,12 +59,7 @@ export const Settings = {
   },
 };
 
-/**
- * Persist any trailing settings write before the page goes away.
- *
- * `Settings.save` is debounced, so without this a preference changed in the last 200 ms of a
- * session is silently lost.
- */
+/** Flush the debounced write on unload, or a change in the last 200 ms is lost. */
 export function flushSettingsOnUnload(): void {
   if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
   window.addEventListener('pagehide', () => Settings.save.flush());

@@ -346,8 +346,6 @@
 		};
 	}
 	var MAX_MOVE_TIME = 5e3;
-	var MIN_BOT_POWER = 1;
-	var MAX_BOT_POWER = 30;
 	var MAX_TARGET_ELO = 3200;
 	var OPENING_STYLES = [
 		"hyper-defensive",
@@ -373,8 +371,8 @@
 			kind: "number",
 			default: 30,
 			persisted: true,
-			min: MIN_BOT_POWER,
-			max: MAX_BOT_POWER
+			min: 1,
+			max: 30
 		},
 		{
 			key: "moveTime",

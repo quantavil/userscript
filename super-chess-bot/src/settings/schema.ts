@@ -3,9 +3,9 @@ import type { OpeningStyle, SettingsData, TimingMode } from '../chess/types.js';
 
 export const MIN_MOVE_TIME = 25;
 export const MAX_MOVE_TIME = 5000;
-const MIN_BOT_POWER = 1;
-const MAX_BOT_POWER = 30;
-const MAX_TARGET_ELO = 3200;
+export const MIN_BOT_POWER = 1;
+export const MAX_BOT_POWER = 30;
+export const MAX_TARGET_ELO = 3200;
 
 /** Report depth bounds. The stepper, the schema and the docs all read these, so they cannot drift. */
 export const REPORT_DEPTH_MIN = 10;
@@ -29,26 +29,18 @@ const panelPositionSchema = v.object({
 type PreferenceKey = keyof SettingsData;
 
 /**
- * The single settings-field table.
- *
- * Defaults, the persisted schema, what gets written back to storage and what the panel reads and
- * writes are all derived from this list, so adding a preference is one entry rather than seven
- * coordinated edits that can disagree.
- *
- * `persisted: false` marks a field that exists on `SettingsData` but is not a stored preference:
- * `hackEnabled` is runtime state that must never survive a reload.
+ * The single settings-field table. Defaults, the persisted schema, the live store, what
+ * `Settings.save` writes and what the panel reads all derive from it, so adding a preference is
+ * one entry. `persisted: false` marks runtime state that must never survive a reload.
  */
-export interface SettingSpec {
-  readonly key: PreferenceKey;
-  readonly kind: 'flag' | 'number' | 'enum';
-  readonly default: boolean | number | string;
-  readonly persisted: boolean;
-  readonly min?: number;
-  readonly max?: number;
-  readonly choices?: readonly string[];
-}
+type SettingSpec =
+  | { readonly kind: 'flag'; readonly default: boolean }
+  | { readonly kind: 'number'; readonly default: number; readonly min: number; readonly max: number }
+  | { readonly kind: 'enum'; readonly default: string; readonly choices: readonly string[] };
 
-export const SETTING_SPECS: readonly SettingSpec[] = [
+type SpecEntry = SettingSpec & { readonly key: PreferenceKey; readonly persisted: boolean };
+
+export const SETTING_SPECS = [
   { key: 'hackEnabled', kind: 'flag', default: false, persisted: false },
   { key: 'botPower', kind: 'number', default: 30, persisted: true, min: MIN_BOT_POWER, max: MAX_BOT_POWER },
   { key: 'moveTime', kind: 'number', default: 100, persisted: true, min: MIN_MOVE_TIME, max: MAX_MOVE_TIME },
@@ -63,11 +55,11 @@ export const SETTING_SPECS: readonly SettingSpec[] = [
   { key: 'autoRetry', kind: 'flag', default: true, persisted: true },
   { key: 'gameReport', kind: 'flag', default: true, persisted: true },
   { key: 'reportDepth', kind: 'number', default: 18, persisted: true, min: REPORT_DEPTH_MIN, max: REPORT_DEPTH_MAX },
-];
+] as const satisfies readonly SpecEntry[];
 
-/** Compile-time proof that the table covers every field of `SettingsData` except panel chrome. */
+/** Compile-time proof the table covers every preference. */
 type Uncovered = Exclude<PreferenceKey, 'menuPosition' | (typeof SETTING_SPECS)[number]['key']>;
-const _everyFieldIsSpecified: Record<Uncovered, never> = { ...(undefined as unknown as Record<Uncovered, never>) };
+const _tableCoversEveryPreference: Record<Uncovered, never> = {};
 
 function specValidator(spec: SettingSpec) {
   switch (spec.kind) {
@@ -90,13 +82,8 @@ export const DEFAULT_SETTINGS: SettingsData = Object.freeze({
   menuPosition: null,
 }) as SettingsData;
 
-/**
- * Each persisted field is validated against its own kind and falls back to its own default, so
- * an invalid value never silently adopts a neighbouring field's fallback.
- *
- * `menuPosition` is persisted panel chrome rather than a preference, so it is validated here but
- * deliberately absent from the field table and from the live state.
- */
+// `menuPosition` is persisted panel chrome, validated here but deliberately not a preference.
+// Each field falls back to its own default, so an invalid value never adopts a neighbour's.
 const savedSettingsSchema = v.object({
   ...(Object.fromEntries(
     SETTING_SPECS.filter((spec) => spec.persisted).map((spec) => [
@@ -107,7 +94,6 @@ const savedSettingsSchema = v.object({
   menuPosition: v.fallback(v.nullable(panelPositionSchema), DEFAULT_SETTINGS.menuPosition),
 });
 
-/** Parse persisted JSON, filling invalid/missing fields with safe defaults. */
 export function loadSettings(serialized: string): SettingsData {
   let saved: unknown;
   try {

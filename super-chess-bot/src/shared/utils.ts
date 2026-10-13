@@ -2,18 +2,13 @@ import type { Evaluation } from '../chess/types.js';
 
 export interface Debounced<Args extends unknown[]> {
   (...args: Args): void;
-  /** Run a pending trailing call immediately. Needed before the page goes away. */
+  /** Run a pending trailing call immediately. */
   flush(): void;
   /** Drop a pending trailing call without running it. */
   cancel(): void;
 }
 
-/**
- * Trailing-edge debounce.
- *
- * `flush` exists because the only caller persists settings, and a trailing call that is still
- * waiting when the page unloads is a silently lost write.
- */
+/** Trailing-edge debounce. */
 export function debounce<Args extends unknown[]>(fn: (...args: Args) => void, wait = 150): Debounced<Args> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pending: Args | null = null;
@@ -46,10 +41,7 @@ export function debounce<Args extends unknown[]>(fn: (...args: Args) => void, wa
   return debounced;
 }
 
-/**
- * Mate score as `+M3` / `-M3`. A negative mate distance is a mate against the side to move,
- * so the sign belongs in front of the `M`, and `mate: 0` is a real value rather than "no score".
- */
+/** `+M3` / `-M3`. A negative distance mates the side to move; `mate: 0` is a real score. */
 export function mateToDisplay(mate: number): string {
   return `${mate < 0 ? '-' : '+'}M${Math.abs(mate)}`;
 }

@@ -3,11 +3,8 @@ import { type PersistedSettingKey, settingsModel } from '../settings/model.js';
 import { getActiveSite } from '../sites/active.js';
 import type { GameSnapshot } from '../sites/types.js';
 
-/**
- * Site state cannot change inside one synchronous turn: the board only moves between tasks.
- * Caching for the current turn therefore collapses the several `read()` calls a single pass
- * makes into one, without ever serving a stale snapshot to the next pass.
- */
+// The board can only change between tasks, so one cache per turn collapses repeated `read()`
+// calls without ever serving a stale snapshot to the next turn.
 let cached: GameSnapshot | null = null;
 let cachedThisTurn = false;
 

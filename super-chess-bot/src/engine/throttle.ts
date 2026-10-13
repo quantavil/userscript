@@ -75,9 +75,8 @@ export function selectThrottledMove(lines: MultiPvLine[], options: ThrottleOptio
 
     // Blunder Shield check: reject candidate if it blunders mate or exceeds threshold
     if (blunderShield && i > 0) {
-      // Reject any candidate that walks into mate. No comparison against the best move is made
-      // here: `i > 0` already exempts `lines[0]`, so if the best move is also mated the candidate
-      // is still the worse option and the fallback below returns the best move either way.
+      // Reject any candidate that walks into mate. `i > 0` already exempts `lines[0]`, so no
+      // comparison against the best move is needed.
       if (typeof line.evaluation.mate === 'number' && line.evaluation.mate < 0) {
         shieldTriggered = true;
         continue;

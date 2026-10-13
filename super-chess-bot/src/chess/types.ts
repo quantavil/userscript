@@ -50,12 +50,7 @@ export interface BotState {
   onUpdateDisplay?: () => void;
 }
 
-/**
- * Every key that is a user preference, whichever view owns its runtime value.
- *
- * `SettingsData` is derived from `BotState` instead of being written out again, so a preference
- * cannot exist on one view and be missing from the other.
- */
+/** Preference keys. `SettingsData` is derived from `BotState` through this list. */
 export type PreferenceKey =
   | 'hackEnabled'
   | 'botPower'
