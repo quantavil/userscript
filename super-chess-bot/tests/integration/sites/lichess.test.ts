@@ -10,6 +10,9 @@ const PROMOTION_FEN = '7k/P7/8/8/8/8/8/7K w - - 0 1';
 const AFTER_UNDERPROMOTION = 'N6k/8/8/8/8/8/8/7K b - - 0 1';
 const CASTLE_FEN = 'r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1';
 const AFTER_CASTLE = 'r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1';
+/** Black has just played d7-d5, so the e5 pawn can take d6 en passant. */
+const EP_FEN = '4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1';
+const AFTER_EP = '4k3/8/3P4/8/8/8/8/4K3 b - - 0 1';
 
 describe('Lichess player-round adapter', () => {
   it('explains the synchronous page injection requirement before the round controller is captured', () => {
@@ -92,6 +95,29 @@ describe('Lichess player-round adapter', () => {
       promotion.adapter.submitMove(makeRequest(promotionRead.snapshot, 'a7a8n', AFTER_UNDERPROMOTION)),
     ).resolves.toBe(true);
     expect(promotion.round.pluginMove).toHaveBeenCalledWith('a7', 'a8', 'knight', true);
+  });
+
+  it('submits an en passant capture, which the round controller applies as a normal destination', async () => {
+    // The adapter replays the move and compares position FENs before dispatching, so this also
+    // proves the captured pawn is removed rather than left behind on its original square.
+    const capture = makeFixture({ fen: EP_FEN, legalFrom: 'e5', legalTo: 'd6' });
+    await capture.captureRound();
+    const read = capture.adapter.read();
+    if (read.kind !== 'game') throw new Error('Expected a Lichess en passant position');
+    await expect(capture.adapter.submitMove(makeRequest(read.snapshot, 'e5d6', AFTER_EP))).resolves.toBe(true);
+    expect(capture.round.pluginMove).toHaveBeenCalledWith('e5', 'd6', undefined, true);
+  });
+
+  it('refuses an en passant capture whose expected position keeps the captured pawn', async () => {
+    // A plain diagonal move to an empty square would pass isLegal but produce the wrong
+    // position, so the FEN comparison must reject it rather than dispatch a losing capture.
+    const capture = makeFixture({ fen: EP_FEN, legalFrom: 'e5', legalTo: 'd6' });
+    await capture.captureRound();
+    const read = capture.adapter.read();
+    if (read.kind !== 'game') throw new Error('Expected a Lichess en passant position');
+    const wrongTarget = AFTER_EP.replace('/3P4/8/', '/4P3/8/');
+    await expect(capture.adapter.submitMove(makeRequest(read.snapshot, 'e5d6', wrongTarget))).resolves.toBe(false);
+    expect(capture.round.pluginMove).not.toHaveBeenCalled();
   });
 
   it('maps standard castling through the round controller legal-destination map', async () => {

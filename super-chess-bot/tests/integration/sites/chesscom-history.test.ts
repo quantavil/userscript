@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { canonicalFen } from '../../../src/chess/position.js';
 import { createChesscomAdapter } from '../../../src/sites/chesscom/adapter.js';
 import { resetCapturedChesscomController } from '../../../src/sites/chesscom/bridge.js';
@@ -10,6 +10,9 @@ import { resetCapturedChesscomController } from '../../../src/sites/chesscom/bri
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
 const AFTER_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+/** Black has just played d7-d5, so the e5 pawn can take d6 en passant. */
+const EP_FEN = '4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1';
+const AFTER_EP = '4k3/8/3P4/8/8/8/8/4K3 b - - 0 1';
 
 afterEach(() => {
   resetCapturedChesscomController();
@@ -84,6 +87,67 @@ describe('Chess.com position history', () => {
       kind: 'game',
       snapshot: { confirmationSource: 'controller-local', confirmedFens: [canonicalFen(START_FEN)] },
     });
+  });
+
+  it('submits an en passant capture and lets the site controller remove the passed pawn', async () => {
+    // Chess.com applies the capture itself; the adapter only supplies the from/to squares, so
+    // there is no promotion role and no separate capture target to send.
+    const options = {
+      sans: [] as string[],
+      fen: EP_FEN,
+      onMove: () => {
+        options.sans.push('exd6');
+        options.fen = AFTER_EP;
+      },
+    };
+    const fixture = makeFixture(options);
+    const move = vi.fn(fixture.board.game.move);
+    fixture.board.game.move = move;
+    const adapter = createChesscomAdapter(() => fixture.page as unknown as Window);
+    const before = adapter.read();
+    if (before.kind !== 'game') throw new Error('Expected controller snapshot');
+
+    await expect(
+      adapter.submitMove({
+        identity: before.snapshot.identity,
+        fromFen: EP_FEN,
+        uci: 'e5d6',
+        expectedFen: AFTER_EP,
+        expectedPly: 1,
+        signal: new AbortController().signal,
+        isCurrent: () => true,
+      }),
+    ).resolves.toBe(true);
+
+    expect(move).toHaveBeenCalledWith({ from: 'e5', to: 'd6', userGenerated: true });
+    expect(adapter.read()).toMatchObject({ kind: 'game', snapshot: { fen: AFTER_EP } });
+  });
+
+  it('refuses an en passant capture the board controller reports as illegal', async () => {
+    // Chess.com owns legality checking on this path rather than replaying the move, so the
+    // controller's answer is the only gate before a dispatch.
+    const options = { sans: [] as string[], fen: EP_FEN, onMove: () => {} };
+    const fixture = makeFixture(options);
+    const move = vi.fn(fixture.board.game.move);
+    fixture.board.game.move = move;
+    fixture.board.game.isLegalMove = () => false;
+    const adapter = createChesscomAdapter(() => fixture.page as unknown as Window);
+    const before = adapter.read();
+    if (before.kind !== 'game') throw new Error('Expected controller snapshot');
+
+    await expect(
+      adapter.submitMove({
+        identity: before.snapshot.identity,
+        fromFen: EP_FEN,
+        uci: 'e5d6',
+        expectedFen: AFTER_EP,
+        expectedPly: 1,
+        signal: new AbortController().signal,
+        isCurrent: () => true,
+      }),
+    ).resolves.toBe(false);
+
+    expect(move).not.toHaveBeenCalled();
   });
 
   it('omits history entirely when the controller exposes no fingerprint root', () => {

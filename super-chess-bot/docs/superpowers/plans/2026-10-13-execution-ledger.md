@@ -120,6 +120,37 @@ suites, and both production bundles.
 Verification: `bun run check` PASS — Biome (86 files), TypeScript, Knip, 359 tests across 30
 suites, and both production bundles.
 
+## En passant coverage
+
+A follow-up audit reported that `nextSetup.epSquare = position.epSquare` in `predictFen` was dead
+code whose comment was factually wrong, and proposed deleting it. It is the opposite: `chessops`
+keeps two different en passant values. `Position.play` sets the raw `epSquare` after any double
+push with no legality check, while `Position.toSetup` runs it through `legalEpSquare` and strips it
+when no capture exists. The assignment restores the raw field, which is what the host conventions
+expect. Removing it drops the target square from every double-push prediction.
+
+En passant captures were supported on both sites but had no test that played one. Existing
+coverage only exercised the en passant *field* in a double push, never the capture itself, so a
+`chessops` change to `toSetup` would have started rejecting en passant moves at runtime unnoticed.
+Added:
+
+- `tests/unit/chess/position.test.ts` — the capture removes the passed pawn, leaves no en passant
+  field, an illegal diagonal to an empty square is rejected, the raw host field survives a double
+  push with no available capture, and the predicted position matches an independent replay after
+  canonicalization.
+- `tests/integration/sites/lichess.test.ts` — the adapter dispatches `e5` to `d6`, and refuses the
+  same capture when the expected position still holds the captured pawn. This is the one path that
+  replays the move and compares FENs before dispatching.
+- `tests/integration/sites/chesscom-history.test.ts` — the capture dispatches as a plain from/to
+  with no promotion role, and is refused when the board controller reports it illegal. Chess.com
+  owns legality checking on this path rather than replaying.
+
+The two assertions that lock in the `predictFen` behaviour were verified to fail when the
+assignment is removed.
+
+Verification: `bun run check` PASS — Biome (87 files), TypeScript, Knip, 371 tests across 31
+suites, and both production bundles.
+
 ## Deferred limits
 
 - Complete variant transport correctness on both Chess.com and Lichess remains deferred by user request. Shared rules/identity/engine plumbing is retained; the supported site matrix remains standard chess.
