@@ -110,13 +110,26 @@ export class DoubleTapDetector {
 			{ capture: true, signal: this.store.abortController.signal },
 		);
 
-		// Intercept pointerup and click events for the second tap
+		// Intercept pointerup, touchend, and click events for the second tap
 		window.addEventListener(
 			"pointerup",
 			(e) => {
 				if (this.store.isDoubleTapping && e.pointerType === "touch") {
 					e.preventDefault();
 					e.stopPropagation();
+					e.stopImmediatePropagation?.();
+				}
+			},
+			{ capture: true, signal: this.store.abortController.signal },
+		);
+
+		window.addEventListener(
+			"touchend",
+			(e) => {
+				if (this.store.isDoubleTapping) {
+					e.preventDefault();
+					e.stopPropagation();
+					e.stopImmediatePropagation?.();
 				}
 			},
 			{ capture: true, signal: this.store.abortController.signal },
@@ -128,6 +141,7 @@ export class DoubleTapDetector {
 				if (this.store.isDoubleTapping && e.isTrusted) {
 					e.preventDefault();
 					e.stopPropagation();
+					e.stopImmediatePropagation?.();
 				}
 			},
 			{ capture: true, signal: this.store.abortController.signal },
@@ -139,6 +153,7 @@ export class DoubleTapDetector {
 				if (this.store.isDoubleTapping) {
 					e.preventDefault();
 					e.stopPropagation();
+					e.stopImmediatePropagation?.();
 				}
 			},
 			{ capture: true, signal: this.store.abortController.signal },

@@ -1,7 +1,7 @@
 {
   "name": "glidevideo",
   "private": true,
-  "version": "8.8.0",
+  "version": "8.9.0",
   "license": "GPL-3.0-or-later",
   "author": "quantavil (https://github.com/quantavil)",
   "homepage": "https://github.com/quantavil/userscript",
@@ -17,18 +17,20 @@
     "test:e2e": "bun run build:userscript && playwright test",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
-    "lint:extension": "web-ext lint --source-dir dist-extension"
+    "lint:extension": "web-ext lint --source-dir dist-extension",
+    "knip": "knip"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
     "@playwright/test": "^1.64.0",
     "@types/greasemonkey": "^4.0.7",
     "@types/node": "^26.6.5",
-    "happy-dom": "^20.14.6",
+    "happy-dom": "^21.0.1",
+    "knip": "^6.41.0",
     "typescript": "~7.0.2",
     "vite": "^8.3.4",
     "vite-plugin-monkey": "^8.1.1",
-    "vitest": "^5.0.3",
+    "vitest": "^5.0.4",
     "web-ext": "^10.7.0"
   }
 }

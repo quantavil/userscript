@@ -385,4 +385,173 @@ describe('SwipeDetector', () => {
         expect(touchstartCall[2]).toMatchObject({ passive: false });
     });
 
+    it('should stopPropagation on touchmove and touchend after committing to swipe gesture', () => {
+        // Touch start on video
+        fireWindowEvent('touchstart', {
+            touches: [{ clientX: 200, clientY: 200 }],
+            target: {}
+        });
+
+        const { touchMoveHandler, touchEndHandler } = getGestureHandlers();
+
+        const moveEvent = {
+            touches: [{ clientX: 260, clientY: 200 }], // dx = 60px (seek)
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+            cancelable: true
+        };
+        touchMoveHandler(moveEvent);
+
+        expect(store.isSwipeSeeking).toBe(true);
+        expect(moveEvent.preventDefault).toHaveBeenCalled();
+        expect(moveEvent.stopPropagation).toHaveBeenCalled();
+
+        const endEvent = {
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+            cancelable: true
+        };
+        touchEndHandler(endEvent);
+
+        expect(endEvent.preventDefault).toHaveBeenCalled();
+        expect(endEvent.stopPropagation).toHaveBeenCalled();
+    });
+
+    it('should suppress pointerup and click events after a swipe gesture completes', () => {
+        // Touch start on right side of video (350 > 300)
+        fireWindowEvent('touchstart', {
+            touches: [{ clientX: 350, clientY: 200 }],
+            target: {}
+        });
+
+        const { touchMoveHandler, touchEndHandler } = getGestureHandlers();
+
+        // Commit to swipe (volume up)
+        touchMoveHandler({
+            touches: [{ clientX: 350, clientY: 100 }], // Right side, dy = -100px
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+            cancelable: true
+        });
+
+        expect(store.isVolumeControlling).toBe(true);
+
+        // While gesture is active, pointermove should be intercepted
+        const pointerMoveEv = fireWindowEvent('pointermove', {
+            pointerType: 'touch',
+            cancelable: true
+        });
+        expect(pointerMoveEv.preventDefault).toHaveBeenCalled();
+        expect(pointerMoveEv.stopPropagation).toHaveBeenCalled();
+
+        touchEndHandler({
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+            cancelable: true
+        });
+
+        // Subsequent pointerup, click, mousedown, mouseup events within suppression window
+        const pointerUpEv = fireWindowEvent('pointerup', {
+            pointerType: 'touch',
+            cancelable: true
+        });
+        expect(pointerUpEv.preventDefault).toHaveBeenCalled();
+        expect(pointerUpEv.stopPropagation).toHaveBeenCalled();
+
+        const clickEv = fireWindowEvent('click', {
+            cancelable: true
+        });
+        expect(clickEv.preventDefault).toHaveBeenCalled();
+        expect(clickEv.stopPropagation).toHaveBeenCalled();
+
+        const mouseDownEv = fireWindowEvent('mousedown', {
+            cancelable: true
+        });
+        expect(mouseDownEv.preventDefault).toHaveBeenCalled();
+        expect(mouseDownEv.stopPropagation).toHaveBeenCalled();
+
+        const mouseUpEv = fireWindowEvent('mouseup', {
+            cancelable: true
+        });
+        expect(mouseUpEv.preventDefault).toHaveBeenCalled();
+        expect(mouseUpEv.stopPropagation).toHaveBeenCalled();
+    });
+
+    it('should not suppress pointerup and click if gesture was undecided (normal tap)', () => {
+        // Touch start on video
+        fireWindowEvent('touchstart', {
+            touches: [{ clientX: 200, clientY: 200 }],
+            target: {}
+        });
+
+        const { touchMoveHandler, touchEndHandler } = getGestureHandlers();
+
+        // Move within deadzone / threshold (e.g. 2px, undecided)
+        touchMoveHandler({
+            touches: [{ clientX: 202, clientY: 200 }],
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+            cancelable: true
+        });
+
+        const endEvent = {
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+            cancelable: true
+        };
+        touchEndHandler(endEvent);
+
+        expect(endEvent.preventDefault).not.toHaveBeenCalled();
+        expect(endEvent.stopPropagation).not.toHaveBeenCalled();
+
+        // Pointerup and click should NOT be suppressed
+        const pointerUpEv = fireWindowEvent('pointerup', {
+            pointerType: 'touch',
+            cancelable: true
+        });
+        expect(pointerUpEv.preventDefault).not.toHaveBeenCalled();
+        expect(pointerUpEv.stopPropagation).not.toHaveBeenCalled();
+
+        const clickEv = fireWindowEvent('click', {
+            cancelable: true
+        });
+        expect(clickEv.preventDefault).not.toHaveBeenCalled();
+        expect(clickEv.stopPropagation).not.toHaveBeenCalled();
+    });
+
+    it('should suppress pointerup and click events after pinch zoom completes', () => {
+        // Touch start with 2 fingers on video
+        fireWindowEvent('touchstart', {
+            touches: [
+                { clientX: 200, clientY: 200 },
+                { clientX: 300, clientY: 200 }
+            ],
+            target: {}
+        });
+
+        expect(store.isPinching).toBe(true);
+
+        const endEvent = fireWindowEvent('touchend', {
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+            cancelable: true
+        });
+        expect(endEvent.preventDefault).toHaveBeenCalled();
+        expect(endEvent.stopPropagation).toHaveBeenCalled();
+
+        const pointerUpEv = fireWindowEvent('pointerup', {
+            pointerType: 'touch',
+            cancelable: true
+        });
+        expect(pointerUpEv.preventDefault).toHaveBeenCalled();
+        expect(pointerUpEv.stopPropagation).toHaveBeenCalled();
+
+        const clickEv = fireWindowEvent('click', {
+            cancelable: true
+        });
+        expect(clickEv.preventDefault).toHaveBeenCalled();
+        expect(clickEv.stopPropagation).toHaveBeenCalled();
+    });
+
 });
+

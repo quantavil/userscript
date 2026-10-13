@@ -1,9 +1,6 @@
-import type { PositionHistory } from '../history.js';
+import type { PositionHistory } from '../chess/position.js';
 
 export type Color = 'w' | 'b';
-export interface SiteCapabilities {
-  readonly input: 'selection' | 'controller';
-}
 
 export interface GameSnapshot {
   identity: object;
@@ -16,10 +13,13 @@ export interface GameSnapshot {
   phase: 'live' | 'replay' | 'finished';
   inputReady: boolean;
   remainingMs: number | null;
+  /** Known Fischer increment per move; absent means elapsed timing uses wall time. */
+  incrementMs?: number | null;
   whiteRemainingMs?: number | null;
   blackRemainingMs?: number | null;
   history?: PositionHistory;
-  /** Canonical accepted FENs indexed by ply, with the root at index zero. */
+  /** Observed FENs indexed by ply, root at zero; authority is explicit below. */
+  confirmationSource?: 'controller-local' | 'site-accepted';
   confirmedFens?: readonly string[];
   variant?: string;
   boardDimensions?: { width: number; height: number };
@@ -33,13 +33,15 @@ export interface MoveRequest {
   uci: string;
   expectedFen: string;
   expectedPly: number | null;
+  variant?: string;
   signal: AbortSignal;
   isCurrent: () => boolean;
+  /** Called immediately before a transport API may produce side effects. */
+  onDispatch?: () => void;
 }
 
 export interface SiteAdapter {
-  readonly id: 'chesscom' | 'pychess' | 'lichess';
-  readonly capabilities: SiteCapabilities;
+  readonly id: 'chesscom' | 'lichess';
   read(): SiteRead;
   subscribe(listener: () => void): () => void;
   /** Resolves when the adapter transport finishes; legacy transports may also await confirmation. */

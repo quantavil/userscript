@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GlideVideo",
-  "version": "8.8.0",
+  "version": "8.9.0",
   "description": "Makes mobile web video actually usable — control playback, volume, and zoom without fumbling for tiny buttons, all through natural touch gestures. Works on any browser that support extension like Edge, Firefox, Cromite etc.",
   "browser_specific_settings": {
     "gecko": {

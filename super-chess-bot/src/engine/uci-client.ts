@@ -1,27 +1,12 @@
-export interface PositionHistory {
-  startFen: string;
-  moves: string[];
-}
+import type { PositionHistory } from '../chess/position.js';
+import type { Evaluation, MultiPvLine } from '../chess/types';
 
-interface AnalysisEvaluation {
-  cp?: number;
-  mate?: number;
-}
-
-export interface MultiPvLine {
-  multipv: number;
-  depth: number;
-  uci: string;
-  pv: string;
-  evaluation: AnalysisEvaluation;
-  nodes?: number;
-  time?: number;
-}
+export type { MultiPvLine, PositionHistory };
 
 interface AnalysisResultFields {
   depth: number;
   pv: string;
-  evaluation: AnalysisEvaluation;
+  evaluation: Evaluation;
   nodes?: number;
   time?: number;
   multiPv?: MultiPvLine[];
@@ -44,7 +29,9 @@ interface UciClientOptions {
   initTimeoutMs?: number;
   searchTimeoutSlackMs?: number;
   stopTimeoutMs?: number;
-  variant?: string;
+  /** Wall-clock ceiling for a depth-driven search, which carries no `movetime`. */
+  depthOnlyTimeoutMs?: number;
+  chess960?: boolean;
 }
 
 interface Deferred<T> {
@@ -56,7 +43,7 @@ interface Deferred<T> {
 interface SearchInfo {
   depth: number;
   pv: string;
-  evaluation: AnalysisEvaluation;
+  evaluation: Evaluation;
   nodes?: number;
   time?: number;
 }
@@ -65,10 +52,12 @@ interface SearchJob {
   fen: string;
   positionKey: string;
   depth: number;
+  /** Engine time budget in milliseconds; 0 means "search to `depth` with no `movetime`". */
   timeLimit: number;
   history?: PositionHistory;
   pondering: boolean;
   slackMs?: number;
+  multiPv: number;
   promise: Promise<AnalysisResult>;
   signal?: AbortSignal;
   resolve(result: AnalysisResult): void;
@@ -88,14 +77,21 @@ interface SearchJob {
   onAbort?: () => void;
 }
 
-interface CompletedPonder {
-  fen: string;
-  positionKey: string;
-  depth: number;
-  result: AnalysisResult;
-}
-
 const PONDER_REUSE_DEPTH = 12;
+
+/** Candidate lines requested for every live search; the panel renders up to three. */
+export const LIVE_MULTI_PV = 3;
+
+/**
+ * `a-h` squares, ranks 1-8, and a promotion suffix. Chess960 king-takes-rook castling
+ * (`e1h1`) matches the plain form, so no separate alternative is needed, and a rank 0, a file
+ * beyond `h`, or a trailing `+` are all rejected.
+ */
+const UCI_MOVE_PATTERN = /^[a-h][1-8][a-h][1-8][nbrq]?$/;
+
+export function isValidUciMove(move: string): boolean {
+  return UCI_MOVE_PATTERN.test(move);
+}
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
@@ -116,16 +112,9 @@ function asError(reason: unknown): Error {
   return new Error(typeof reason === 'string' ? reason : 'Stockfish worker failed');
 }
 
-function safeTimeout(callback: () => void, delay: number): ReturnType<typeof setTimeout> {
-  const timer = setTimeout(callback, delay);
-  const maybeNodeTimer = timer as unknown as { unref?: () => void };
-  maybeNodeTimer.unref?.();
-  return timer;
-}
-
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = safeTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs} ms`)), timeoutMs);
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs} ms`)), timeoutMs);
     promise.then(
       (value) => {
         clearTimeout(timer);
@@ -150,6 +139,17 @@ function finiteInteger(raw: string | undefined): number | undefined {
   return Number.isSafeInteger(value) ? value : undefined;
 }
 
+function clampSearchDepth(depth: number): number {
+  return Math.max(1, Math.min(100, Math.floor(depth) || 1));
+}
+
+/** 0 is a valid budget meaning "no `movetime`", so it cannot use the `|| default` idiom. */
+function clampTimeLimit(timeLimit: number): number {
+  const value = Math.floor(timeLimit);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(120_000, value);
+}
+
 function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchInfo {
   const tokens = line.trim().split(/\s+/);
   if (tokens[0] !== 'info' || tokens[1] === 'string') return previous;
@@ -158,12 +158,13 @@ function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchI
   const multipv = hasMultipvToken ? (finiteInteger(tokens[multipvIndex + 1]) ?? 1) : 1;
 
   const existingLine = job?.multiPvLines.get(multipv);
+  const pvIndex = tokens.indexOf('pv');
   const depth =
     finiteInteger(tokenValue(tokens, 'depth')) ?? (multipv === 1 ? previous.depth : (existingLine?.depth ?? 0));
 
   const cpIndex = tokens.indexOf('cp');
   const mateIndex = tokens.indexOf('mate');
-  let evaluation: AnalysisEvaluation = multipv === 1 ? previous.evaluation : (existingLine?.evaluation ?? {});
+  let evaluation: Evaluation = multipv === 1 ? previous.evaluation : (existingLine?.evaluation ?? {});
   const isBound = tokens.includes('lowerbound') || tokens.includes('upperbound');
   if (!isBound) {
     if (cpIndex >= 0) {
@@ -175,7 +176,6 @@ function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchI
     }
   }
 
-  const pvIndex = tokens.indexOf('pv');
   const pv =
     pvIndex >= 0 ? tokens.slice(pvIndex + 1).join(' ') : multipv === 1 ? previous.pv : (existingLine?.pv ?? '');
 
@@ -184,16 +184,19 @@ function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchI
 
   if (job && (hasMultipvToken || pvIndex >= 0)) {
     if (hasMultipvToken) job.hasMultiPv = true;
-    const uci = pv ? (pv.split(/\s+/)[0] ?? '') : '';
-    job.multiPvLines.set(multipv, {
-      multipv,
-      depth,
-      uci,
-      pv,
-      evaluation,
-      ...(nodes !== undefined ? { nodes } : {}),
-      ...(time !== undefined ? { time } : {}),
-    });
+    // A `currmove`-only line repeats the depth of the line it is exploring. It must not
+    // overwrite the recorded depth, which belongs to the last line that carried a real PV.
+    if (pvIndex >= 0 || existingLine === undefined) {
+      job.multiPvLines.set(multipv, {
+        multipv,
+        depth,
+        uci: pv ? (pv.split(/\s+/)[0] ?? '') : '',
+        pv,
+        evaluation,
+        ...(nodes !== undefined ? { nodes } : {}),
+        ...(time !== undefined ? { time } : {}),
+      });
+    }
   }
 
   if (multipv === 1) {
@@ -206,12 +209,6 @@ function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchI
     };
   }
   return previous;
-}
-
-export function isValidUciMove(move: string): boolean {
-  return /^(?:[a-j](?:10|[0-9])[a-j](?:10|[0-9])[a-zA-Z+]?|[a-zA-Z]@[a-j](?:10|[0-9])|[a-h][1-8][a-h][1-8][nbrq]?)$/.test(
-    move,
-  );
 }
 
 function positionCommand(fen: string, history?: PositionHistory): string {
@@ -229,10 +226,6 @@ function positionCommand(fen: string, history?: PositionHistory): string {
   return `position fen ${fen}`;
 }
 
-function validBestMove(move: string): boolean {
-  return isValidUciMove(move);
-}
-
 /**
  * Owns a single persistent UCI worker and serializes every position/search pair.
  * A canceled search rejects for its caller immediately, sends `stop`, and keeps
@@ -240,21 +233,27 @@ function validBestMove(move: string): boolean {
  */
 export class UciClient {
   private worker: UciWorkerLike | null = null;
+  private disposed = false;
+  private setupController: AbortController | null = null;
+  private setupWaiter: Deferred<UciWorkerLike> | null = null;
+  private drainWaiter: Deferred<void> | null = null;
   private ready = false;
   private readyPromise: Promise<void> | null = null;
   private uciWaiter: Deferred<void> | null = null;
   private readyWaiter: Deferred<void> | null = null;
   private active: SearchJob | null = null;
+  /** MultiPV value currently applied on the worker. */
+  private appliedMultiPv = LIVE_MULTI_PV;
   private ponderJob: SearchJob | null = null;
-  private completedPonder: CompletedPonder | null = null;
   private queue: SearchJob[] = [];
   private pumping = false;
   private resetRequested = false;
-  private variant: string;
+  private readonly chess960: boolean;
 
   private readonly initTimeoutMs: number;
   private readonly searchTimeoutSlackMs: number;
   private readonly stopTimeoutMs: number;
+  private readonly depthOnlyTimeoutMs: number;
 
   constructor(
     private readonly workerFactory: UciWorkerFactory,
@@ -263,34 +262,12 @@ export class UciClient {
     this.initTimeoutMs = options.initTimeoutMs ?? 25_000;
     this.searchTimeoutSlackMs = options.searchTimeoutSlackMs ?? 3_000;
     this.stopTimeoutMs = options.stopTimeoutMs ?? 2_000;
-    this.variant = options.variant?.toLowerCase().trim() || 'chess';
+    this.depthOnlyTimeoutMs = options.depthOnlyTimeoutMs ?? 120_000;
+    this.chess960 = options.chess960 ?? false;
   }
 
   get busy(): boolean {
     return this.pumping || this.queue.length > 0 || this.active !== null;
-  }
-
-  get activeVariant(): string {
-    return this.variant;
-  }
-
-  async setVariant(variant: string): Promise<void> {
-    const normalized = variant.toLowerCase().trim() || 'chess';
-    if (this.variant === normalized) return;
-    this.variant = normalized;
-    if (!this.worker || !this.ready) return;
-    const waiter = deferred<void>();
-    this.readyWaiter = waiter;
-    try {
-      this.send(`setoption name UCI_Variant value ${this.variant}`);
-      this.send('isready');
-      await withTimeout(waiter.promise, this.initTimeoutMs, 'Engine variant update');
-    } catch (error) {
-      this.destroyWorker();
-      throw error;
-    } finally {
-      if (this.readyWaiter === waiter) this.readyWaiter = null;
-    }
   }
 
   async warm(): Promise<void> {
@@ -304,51 +281,50 @@ export class UciClient {
     signal?: AbortSignal,
     history?: PositionHistory,
     slackMs?: number,
+    multiPv: number = LIVE_MULTI_PV,
   ): Promise<AnalysisResult> {
+    return this.analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv);
+  }
+
+  private analyzeReady(
+    fen: string,
+    depth: number,
+    timeLimit: number,
+    signal?: AbortSignal,
+    history?: PositionHistory,
+    slackMs?: number,
+    multiPv: number = LIVE_MULTI_PV,
+  ): Promise<AnalysisResult> {
+    if (this.disposed) return Promise.reject(new Error('Engine client is disposed'));
     if (signal?.aborted) return Promise.reject(abortError());
     if (!fen || /[\r\n]/.test(fen)) return Promise.reject(new Error('A valid position FEN is required'));
 
     const positionKey = positionCommand(fen, history);
-    const requestedDepth = Math.max(1, Math.min(100, Math.floor(depth) || 1));
-    const completedPonder = this.completedPonder;
-    this.completedPonder = null;
-    if (
-      completedPonder?.positionKey === positionKey &&
-      completedPonder.depth === requestedDepth &&
-      completedPonder.result.success
-    ) {
-      return Promise.resolve(completedPonder.result);
-    }
+    const requestedDepth = clampSearchDepth(depth);
     const ponderJob = this.ponderJob;
     if (ponderJob) {
       if (ponderJob.positionKey === positionKey && ponderJob.depth === requestedDepth) {
         this.promotePonder(ponderJob, timeLimit, signal);
-        if (slackMs !== undefined) ponderJob.slackMs = slackMs;
         return ponderJob.promise;
       }
       this.cancelPonder();
     }
 
-    return this.enqueue(fen, depth, timeLimit, signal, history, false, slackMs);
+    return this.enqueue(fen, depth, timeLimit, signal, history, false, slackMs, multiPv);
   }
 
   /** Start an un-timed UCI ponder search that can be promoted on a matching position. */
   ponder(fen: string, depth: number, signal?: AbortSignal, history?: PositionHistory): Promise<AnalysisResult> | null {
-    if (signal?.aborted || !fen || /[\r\n]/.test(fen) || this.busy || this.ponderJob) return null;
-    this.completedPonder = null;
-    return this.enqueue(fen, depth, 1, signal, history, true);
+    if (this.disposed || signal?.aborted || !fen || /[\r\n]/.test(fen) || this.busy || this.ponderJob) return null;
+    return this.enqueue(fen, depth, 1, signal, history, true, undefined, LIVE_MULTI_PV);
   }
 
   /** Cancel speculative work, keeping it only when its predicted FEN still matches. */
   cancelPonder(preserveFen?: string): void {
     const job = this.ponderJob;
-    if (!job) {
-      if (preserveFen === undefined || this.completedPonder?.fen !== preserveFen) this.completedPonder = null;
-      return;
-    }
+    if (!job) return;
     if (preserveFen !== undefined && job.fen === preserveFen) return;
     this.ponderJob = null;
-    this.completedPonder = null;
     this.abortJob(job);
   }
 
@@ -360,6 +336,7 @@ export class UciClient {
     history: PositionHistory | undefined,
     pondering: boolean,
     slackMs?: number,
+    multiPv: number = LIVE_MULTI_PV,
   ): Promise<AnalysisResult> {
     let resolve!: (result: AnalysisResult) => void;
     let reject!: (reason: unknown) => void;
@@ -370,11 +347,12 @@ export class UciClient {
     const job: SearchJob = {
       fen,
       positionKey: positionCommand(fen, history),
-      depth: Math.max(1, Math.min(100, Math.floor(depth) || 1)),
-      timeLimit: Math.max(1, Math.min(120_000, Math.floor(timeLimit) || 1)),
+      depth: clampSearchDepth(depth),
+      timeLimit: clampTimeLimit(timeLimit),
       history,
       pondering,
       slackMs,
+      multiPv,
       promise,
       signal,
       resolve,
@@ -403,9 +381,11 @@ export class UciClient {
     if (job.onAbort) job.signal?.removeEventListener('abort', job.onAbort);
     job.onAbort = undefined;
     job.signal = undefined;
-    job.timeLimit = Math.max(1, Math.min(120_000, Math.floor(timeLimit) || 1));
     job.pondering = false;
     this.ponderJob = null;
+    const limit = clampTimeLimit(timeLimit);
+    // A depth-driven promotion has no `movetime`, so the wall-clock ceiling takes over.
+    job.timeLimit = limit > 0 ? limit : this.depthOnlyTimeoutMs;
     if (signal) this.attachAbort(job, signal);
     if (signal?.aborted) {
       this.abortJob(job);
@@ -419,7 +399,9 @@ export class UciClient {
     }
     try {
       this.send('ponderhit');
-      job.searchTimer = safeTimeout(() => {
+      // The ponder was started with no `movetime`, so the foreground budget is a hard ceiling
+      // here: there is no engine-side limit to overrun and therefore no slack to allow.
+      job.searchTimer = setTimeout(() => {
         this.stopActiveSearch(job);
       }, job.timeLimit);
     } catch (error) {
@@ -430,7 +412,10 @@ export class UciClient {
 
   /** Reject current/queued callers while letting an active search drain safely. */
   cancelAll(reason: unknown = abortError()): void {
-    this.completedPonder = null;
+    this.cancelSearches(reason);
+  }
+
+  private cancelSearches(reason: unknown): void {
     const queued = this.queue.splice(0);
     for (const job of queued) {
       job.abortReason = reason;
@@ -451,6 +436,30 @@ export class UciClient {
     if (!this.worker) return;
     this.resetRequested = true;
     void this.drain();
+  }
+
+  /** Permanently release ownership, including setup resources that arrive late. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    const reason = new Error('Engine client is disposed');
+    this.resetRequested = false;
+    this.ponderJob = null;
+    for (const job of this.queue.splice(0)) {
+      this.rejectJob(job, reason);
+      this.cleanupJob(job);
+    }
+    if (this.active) {
+      this.active.abortReason = reason;
+      this.rejectJob(this.active, reason);
+      this.active.result?.reject(reason);
+      this.cleanupJob(this.active);
+    }
+    this.setupController?.abort();
+    this.setupWaiter?.reject(reason);
+    this.uciWaiter?.reject(reason);
+    this.readyWaiter?.reject(reason);
+    this.destroyWorker();
   }
 
   private abortJob(job: SearchJob): void {
@@ -489,6 +498,8 @@ export class UciClient {
   private async drain(): Promise<void> {
     if (this.pumping) return;
     this.pumping = true;
+    const drained = deferred<void>();
+    this.drainWaiter = drained;
     try {
       while (this.resetRequested || this.queue.length > 0) {
         if (this.resetRequested) {
@@ -511,14 +522,6 @@ export class UciClient {
           const result = await this.runSearch(job);
           if (job.timeoutReason) throw job.timeoutReason;
           if (job.abortReason || job.signal?.aborted) throw job.abortReason ?? abortError();
-          if (job.pondering && result.success) {
-            this.completedPonder = {
-              fen: job.fen,
-              positionKey: job.positionKey,
-              depth: job.depth,
-              result,
-            };
-          }
           this.resolveJob(job, result);
         } catch (error) {
           this.rejectJob(job, error);
@@ -537,6 +540,8 @@ export class UciClient {
       this.resetRequested = false;
     } finally {
       this.pumping = false;
+      drained.resolve();
+      if (this.drainWaiter === drained) this.drainWaiter = null;
       if (this.resetRequested || this.queue.length > 0) void this.drain();
     }
   }
@@ -563,6 +568,7 @@ export class UciClient {
   }
 
   private async ensureReady(): Promise<void> {
+    if (this.disposed) throw new Error('Engine client is disposed');
     if (this.ready) return;
     if (this.readyPromise) return this.readyPromise;
 
@@ -578,16 +584,37 @@ export class UciClient {
   private async initialize(): Promise<void> {
     if (!this.worker) {
       const setupController = new AbortController();
+      const setup = deferred<UciWorkerLike>();
+      this.setupController = setupController;
+      this.setupWaiter = setup;
+      // Observe the factory independently: a timeout or disposal must also clean
+      // resources from factories that ignore their AbortSignal.
+      void Promise.resolve()
+        .then(() => {
+          if (setupController.signal.aborted) throw new Error('Engine client is disposed');
+          return this.workerFactory(setupController.signal);
+        })
+        .then((worker) => {
+          if (setupController.signal.aborted || this.disposed) {
+            worker.terminate();
+            return;
+          }
+          setup.resolve(worker);
+        })
+        .catch((error: unknown) => setup.reject(error));
       let worker: UciWorkerLike;
       try {
-        worker = await withTimeout(
-          Promise.resolve().then(() => this.workerFactory(setupController.signal)),
-          this.initTimeoutMs,
-          'Stockfish worker setup',
-        );
+        worker = await withTimeout(setup.promise, this.initTimeoutMs, 'Stockfish worker setup');
+        if (this.disposed || setupController.signal.aborted) {
+          worker.terminate();
+          throw new Error('Engine client is disposed');
+        }
       } catch (error) {
         setupController.abort();
         throw error;
+      } finally {
+        if (this.setupController === setupController) this.setupController = null;
+        if (this.setupWaiter === setup) this.setupWaiter = null;
       }
       worker.onmessage = (event) => this.handleMessage(String(event.data));
       worker.onerror = (event) => this.handleError(event.error ?? new Error(event.message || 'Stockfish worker error'));
@@ -599,6 +626,7 @@ export class UciClient {
     this.send('uci');
     try {
       await withTimeout(uci.promise, this.initTimeoutMs, 'Stockfish UCI initialization');
+      if (this.disposed) throw new Error('Engine client is disposed');
     } catch (error) {
       this.destroyWorker();
       throw error;
@@ -608,13 +636,13 @@ export class UciClient {
 
     const ready = deferred<void>();
     this.readyWaiter = ready;
-    if (this.variant && this.variant !== 'chess' && this.variant !== 'standard') {
-      this.send(`setoption name UCI_Variant value ${this.variant}`);
-    }
-    this.send('setoption name MultiPV value 3');
+    this.send(`setoption name UCI_Chess960 value ${this.chess960}`);
+    this.appliedMultiPv = LIVE_MULTI_PV;
+    this.send(`setoption name MultiPV value ${this.appliedMultiPv}`);
     this.send('isready');
     try {
       await withTimeout(ready.promise, this.initTimeoutMs, 'Stockfish readiness');
+      if (this.disposed) throw new Error('Engine client is disposed');
       this.ready = true;
     } catch (error) {
       this.destroyWorker();
@@ -627,9 +655,18 @@ export class UciClient {
   private async runSearch(job: SearchJob): Promise<AnalysisResult> {
     const result = deferred<AnalysisResult>();
     job.result = result;
-    const timeLimit = job.timeLimit;
+    // A zero budget means "search to `depth`": the report pass wants a stable depth rather than a
+    // stable duration, so it carries no `movetime` and is bounded only by the wall-clock ceiling.
+    const depthOnly = job.timeLimit <= 0;
+    const budget = depthOnly ? this.depthOnlyTimeoutMs : job.timeLimit;
 
-    this.send(positionCommand(job.fen, job.history));
+    // UCI processes commands in order, so this lands before `go` without an extra readiness round trip.
+    if (job.multiPv !== this.appliedMultiPv) {
+      this.send(`setoption name MultiPV value ${job.multiPv}`);
+      this.appliedMultiPv = job.multiPv;
+    }
+
+    this.send(job.positionKey);
     job.searchStarted = true;
     if (job.pondering) {
       this.send(`go ponder depth ${job.depth}`);
@@ -641,12 +678,11 @@ export class UciClient {
       }
     }
     const slack = job.slackMs ?? this.searchTimeoutSlackMs;
-    job.searchTimer = safeTimeout(() => {
-      const engineName = this.variant !== 'chess' ? 'Fairy-Stockfish' : 'Stockfish';
-      job.timeoutReason = new Error(`${engineName} search exceeded ${timeLimit + slack} ms`);
+    job.searchTimer = setTimeout(() => {
+      job.timeoutReason = new Error(`Stockfish search exceeded ${budget + slack} ms`);
       this.stopActiveSearch(job);
-    }, timeLimit + slack);
-    this.send(`go depth ${job.depth} movetime ${timeLimit}`);
+    }, budget + slack);
+    this.send(depthOnly ? `go depth ${job.depth}` : `go depth ${job.depth} movetime ${job.timeLimit}`);
 
     try {
       return await result.promise;
@@ -667,11 +703,9 @@ export class UciClient {
       this.destroyWorker();
       return;
     }
-    job.stopTimer = safeTimeout(() => {
+    job.stopTimer = setTimeout(() => {
       if (this.active !== job) return;
-      const engineName = this.variant !== 'chess' ? 'Fairy-Stockfish' : 'Stockfish';
-      const reason =
-        job.abortReason ?? job.timeoutReason ?? new Error(`${engineName} did not return bestmove after stop`);
+      const reason = job.abortReason ?? job.timeoutReason ?? new Error('Stockfish did not return bestmove after stop');
       job.result?.reject(reason);
       this.destroyWorker();
     }, this.stopTimeoutMs);
@@ -712,7 +746,7 @@ export class UciClient {
         ...(job.info.time === undefined ? {} : { time: job.info.time }),
         ...(multiPv ? { multiPv } : {}),
       };
-      job.resultValue = validBestMove(bestmove)
+      job.resultValue = isValidUciMove(bestmove)
         ? { ...common, success: true, bestmove }
         : { ...common, success: false, bestmove: terminal ? '(none)' : '' };
       job.result?.resolve(job.resultValue);
@@ -733,7 +767,6 @@ export class UciClient {
   }
 
   private destroyWorker(): void {
-    this.completedPonder = null;
     const worker = this.worker;
     this.worker = null;
     this.ready = false;

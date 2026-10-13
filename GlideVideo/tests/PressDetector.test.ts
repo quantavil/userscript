@@ -123,11 +123,18 @@ describe('PressDetector', () => {
         expect(rateSpy).toHaveBeenLastCalledWith({ rate: 2.0, saveToSettings: false });
 
         // User releases finger
-        fireEvent('pointerup', { pointerType: 'touch' });
+        const upEv = fireEvent('pointerup', { pointerType: 'touch', cancelable: true });
 
         expect(rateSpy).toHaveBeenLastCalledWith({ rate: 1.0, saveToSettings: false });
         expect(uiSpy).toHaveBeenLastCalledWith(null);
         expect(detector.inLongPressGesture).toBe(false);
+        expect(upEv.preventDefault).toHaveBeenCalled();
+        expect(upEv.stopPropagation).toHaveBeenCalled();
+
+        // Following click within suppression delay
+        const clickEv = fireEvent('click', { cancelable: true });
+        expect(clickEv.preventDefault).toHaveBeenCalled();
+        expect(clickEv.stopPropagation).toHaveBeenCalled();
     });
 
     it('should not cancel speed boost for pointermove under 24px, but should cancel for pointermove over 24px', () => {

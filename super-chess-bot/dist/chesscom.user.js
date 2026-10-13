@@ -20,2190 +20,23 @@
 
 (function() {
 	"use strict";
-	var _Result = class {
-		unwrap(ok, err) {
-			const r = this._chain((value) => Result.ok(ok ? ok(value) : value), (error) => err ? Result.ok(err(error)) : Result.err(error));
-			if (r.isErr) throw r.error;
-			return r.value;
-		}
-		map(ok, err) {
-			return this._chain((value) => Result.ok(ok(value)), (error) => Result.err(err ? err(error) : error));
-		}
-		chain(ok, err) {
-			return this._chain(ok, err !== null && err !== void 0 ? err : ((error) => Result.err(error)));
-		}
-	};
-	var _Ok = class extends _Result {
-		constructor(value) {
-			super();
-			this.value = value;
-			this.isOk = true;
-			this.isErr = false;
-		}
-		_chain(ok, _err) {
-			return ok(this.value);
-		}
-	};
-	var _Err = class extends _Result {
-		constructor(error) {
-			super();
-			this.error = error;
-			this.isOk = false;
-			this.isErr = true;
-		}
-		_chain(_ok, err) {
-			return err(this.error);
-		}
-	};
-	var Result;
-	(function(Result) {
-		function ok(value) {
-			return new _Ok(value);
-		}
-		Result.ok = ok;
-		function err(error) {
-			return new _Err(error || new Error());
-		}
-		Result.err = err;
-		function all(obj) {
-			if (Array.isArray(obj)) {
-				const res = [];
-				for (let i = 0; i < obj.length; i++) {
-					const item = obj[i];
-					if (item.isErr) return item;
-					res.push(item.value);
-				}
-				return Result.ok(res);
-			}
-			const res = {};
-			const keys = Object.keys(obj);
-			for (let i = 0; i < keys.length; i++) {
-				const item = obj[keys[i]];
-				if (item.isErr) return item;
-				res[keys[i]] = item.value;
-			}
-			return Result.ok(res);
-		}
-		Result.all = all;
-	})(Result || (Result = {}));
-	var popcnt32 = (n) => {
-		n = n - (n >>> 1 & 1431655765);
-		n = (n & 858993459) + (n >>> 2 & 858993459);
-		return Math.imul(n + (n >>> 4) & 252645135, 16843009) >> 24;
-	};
-	var bswap32 = (n) => {
-		n = n >>> 8 & 16711935 | (n & 16711935) << 8;
-		return n >>> 16 & 65535 | (n & 65535) << 16;
-	};
-	var rbit32 = (n) => {
-		n = n >>> 1 & 1431655765 | (n & 1431655765) << 1;
-		n = n >>> 2 & 858993459 | (n & 858993459) << 2;
-		n = n >>> 4 & 252645135 | (n & 252645135) << 4;
-		return bswap32(n);
-	};
-	var SquareSet = class SquareSet {
-		constructor(lo, hi) {
-			this.lo = lo | 0;
-			this.hi = hi | 0;
-		}
-		static fromSquare(square) {
-			return square >= 32 ? new SquareSet(0, 1 << square - 32) : new SquareSet(1 << square, 0);
-		}
-		static fromRank(rank) {
-			return new SquareSet(255, 0).shl64(8 * rank);
-		}
-		static fromFile(file) {
-			return new SquareSet(16843009 << file, 16843009 << file);
-		}
-		static empty() {
-			return new SquareSet(0, 0);
-		}
-		static full() {
-			return new SquareSet(4294967295, 4294967295);
-		}
-		static corners() {
-			return new SquareSet(129, 2164260864);
-		}
-		static center() {
-			return new SquareSet(402653184, 24);
-		}
-		static backranks() {
-			return new SquareSet(255, 4278190080);
-		}
-		static backrank(color) {
-			return color === "white" ? new SquareSet(255, 0) : new SquareSet(0, 4278190080);
-		}
-		static lightSquares() {
-			return new SquareSet(1437226410, 1437226410);
-		}
-		static darkSquares() {
-			return new SquareSet(2857740885, 2857740885);
-		}
-		complement() {
-			return new SquareSet(~this.lo, ~this.hi);
-		}
-		xor(other) {
-			return new SquareSet(this.lo ^ other.lo, this.hi ^ other.hi);
-		}
-		union(other) {
-			return new SquareSet(this.lo | other.lo, this.hi | other.hi);
-		}
-		intersect(other) {
-			return new SquareSet(this.lo & other.lo, this.hi & other.hi);
-		}
-		diff(other) {
-			return new SquareSet(this.lo & ~other.lo, this.hi & ~other.hi);
-		}
-		intersects(other) {
-			return this.intersect(other).nonEmpty();
-		}
-		isDisjoint(other) {
-			return this.intersect(other).isEmpty();
-		}
-		supersetOf(other) {
-			return other.diff(this).isEmpty();
-		}
-		subsetOf(other) {
-			return this.diff(other).isEmpty();
-		}
-		shr64(shift) {
-			if (shift >= 64) return SquareSet.empty();
-			if (shift >= 32) return new SquareSet(this.hi >>> shift - 32, 0);
-			if (shift > 0) return new SquareSet(this.lo >>> shift ^ this.hi << 32 - shift, this.hi >>> shift);
-			return this;
-		}
-		shl64(shift) {
-			if (shift >= 64) return SquareSet.empty();
-			if (shift >= 32) return new SquareSet(0, this.lo << shift - 32);
-			if (shift > 0) return new SquareSet(this.lo << shift, this.hi << shift ^ this.lo >>> 32 - shift);
-			return this;
-		}
-		bswap64() {
-			return new SquareSet(bswap32(this.hi), bswap32(this.lo));
-		}
-		rbit64() {
-			return new SquareSet(rbit32(this.hi), rbit32(this.lo));
-		}
-		minus64(other) {
-			const lo = this.lo - other.lo;
-			const c = (lo & other.lo & 1) + (other.lo >>> 1) + (lo >>> 1) >>> 31;
-			return new SquareSet(lo, this.hi - (other.hi + c));
-		}
-		equals(other) {
-			return this.lo === other.lo && this.hi === other.hi;
-		}
-		size() {
-			return popcnt32(this.lo) + popcnt32(this.hi);
-		}
-		isEmpty() {
-			return this.lo === 0 && this.hi === 0;
-		}
-		nonEmpty() {
-			return this.lo !== 0 || this.hi !== 0;
-		}
-		has(square) {
-			return (square >= 32 ? this.hi & 1 << square - 32 : this.lo & 1 << square) !== 0;
-		}
-		set(square, on) {
-			return on ? this.with(square) : this.without(square);
-		}
-		with(square) {
-			return square >= 32 ? new SquareSet(this.lo, this.hi | 1 << square - 32) : new SquareSet(this.lo | 1 << square, this.hi);
-		}
-		without(square) {
-			return square >= 32 ? new SquareSet(this.lo, this.hi & ~(1 << square - 32)) : new SquareSet(this.lo & ~(1 << square), this.hi);
-		}
-		toggle(square) {
-			return square >= 32 ? new SquareSet(this.lo, this.hi ^ 1 << square - 32) : new SquareSet(this.lo ^ 1 << square, this.hi);
-		}
-		last() {
-			if (this.hi !== 0) return 63 - Math.clz32(this.hi);
-			if (this.lo !== 0) return 31 - Math.clz32(this.lo);
-		}
-		first() {
-			if (this.lo !== 0) return 31 - Math.clz32(this.lo & -this.lo);
-			if (this.hi !== 0) return 63 - Math.clz32(this.hi & -this.hi);
-		}
-		withoutFirst() {
-			if (this.lo !== 0) return new SquareSet(this.lo & this.lo - 1, this.hi);
-			return new SquareSet(0, this.hi & this.hi - 1);
-		}
-		moreThanOne() {
-			return this.hi !== 0 && this.lo !== 0 || (this.lo & this.lo - 1) !== 0 || (this.hi & this.hi - 1) !== 0;
-		}
-		singleSquare() {
-			return this.moreThanOne() ? void 0 : this.last();
-		}
-		*[Symbol.iterator]() {
-			let lo = this.lo;
-			let hi = this.hi;
-			while (lo !== 0) {
-				const idx = 31 - Math.clz32(lo & -lo);
-				lo ^= 1 << idx;
-				yield idx;
-			}
-			while (hi !== 0) {
-				const idx = 31 - Math.clz32(hi & -hi);
-				hi ^= 1 << idx;
-				yield 32 + idx;
-			}
-		}
-		*reversed() {
-			let lo = this.lo;
-			let hi = this.hi;
-			while (hi !== 0) {
-				const idx = 31 - Math.clz32(hi);
-				hi ^= 1 << idx;
-				yield 32 + idx;
-			}
-			while (lo !== 0) {
-				const idx = 31 - Math.clz32(lo);
-				lo ^= 1 << idx;
-				yield idx;
-			}
-		}
-	};
-	var FILE_NAMES = [
-		"a",
-		"b",
-		"c",
-		"d",
-		"e",
-		"f",
-		"g",
-		"h"
-	];
-	var RANK_NAMES = [
-		"1",
-		"2",
-		"3",
-		"4",
-		"5",
-		"6",
-		"7",
-		"8"
-	];
-	var COLORS = ["white", "black"];
-	var ROLES = [
-		"pawn",
-		"knight",
-		"bishop",
-		"rook",
-		"queen",
-		"king"
-	];
-	var CASTLING_SIDES = ["a", "h"];
-	var isDrop = (v) => "role" in v;
-	var Board = class Board {
-		constructor() {}
-		static default() {
-			const board = new Board();
-			board.reset();
-			return board;
-		}
-		reset() {
-			this.occupied = new SquareSet(65535, 4294901760);
-			this.promoted = SquareSet.empty();
-			this.white = new SquareSet(65535, 0);
-			this.black = new SquareSet(0, 4294901760);
-			this.pawn = new SquareSet(65280, 16711680);
-			this.knight = new SquareSet(66, 1107296256);
-			this.bishop = new SquareSet(36, 603979776);
-			this.rook = new SquareSet(129, 2164260864);
-			this.queen = new SquareSet(8, 134217728);
-			this.king = new SquareSet(16, 268435456);
-		}
-		static empty() {
-			const board = new Board();
-			board.clear();
-			return board;
-		}
-		clear() {
-			this.occupied = SquareSet.empty();
-			this.promoted = SquareSet.empty();
-			for (const color of COLORS) this[color] = SquareSet.empty();
-			for (const role of ROLES) this[role] = SquareSet.empty();
-		}
-		clone() {
-			const board = new Board();
-			board.occupied = this.occupied;
-			board.promoted = this.promoted;
-			for (const color of COLORS) board[color] = this[color];
-			for (const role of ROLES) board[role] = this[role];
-			return board;
-		}
-		getColor(square) {
-			if (this.white.has(square)) return "white";
-			if (this.black.has(square)) return "black";
-		}
-		getRole(square) {
-			for (const role of ROLES) if (this[role].has(square)) return role;
-		}
-		get(square) {
-			const color = this.getColor(square);
-			if (!color) return;
-			return {
-				color,
-				role: this.getRole(square),
-				promoted: this.promoted.has(square)
-			};
-		}
-		take(square) {
-			const piece = this.get(square);
-			if (piece) {
-				this.occupied = this.occupied.without(square);
-				this[piece.color] = this[piece.color].without(square);
-				this[piece.role] = this[piece.role].without(square);
-				if (piece.promoted) this.promoted = this.promoted.without(square);
-			}
-			return piece;
-		}
-		set(square, piece) {
-			const old = this.take(square);
-			this.occupied = this.occupied.with(square);
-			this[piece.color] = this[piece.color].with(square);
-			this[piece.role] = this[piece.role].with(square);
-			if (piece.promoted) this.promoted = this.promoted.with(square);
-			return old;
-		}
-		has(square) {
-			return this.occupied.has(square);
-		}
-		*[Symbol.iterator]() {
-			for (const square of this.occupied) yield [square, this.get(square)];
-		}
-		pieces(color, role) {
-			return this[color].intersect(this[role]);
-		}
-		rooksAndQueens() {
-			return this.rook.union(this.queen);
-		}
-		bishopsAndQueens() {
-			return this.bishop.union(this.queen);
-		}
-		steppers() {
-			return this.knight.union(this.pawn).union(this.king);
-		}
-		sliders() {
-			return this.bishop.union(this.rook).union(this.queen);
-		}
-		kingOf(color) {
-			return this.pieces(color, "king").singleSquare();
-		}
-	};
-	var MaterialSide = class MaterialSide {
-		constructor() {}
-		static empty() {
-			const m = new MaterialSide();
-			for (const role of ROLES) m[role] = 0;
-			return m;
-		}
-		static fromBoard(board, color) {
-			const m = new MaterialSide();
-			for (const role of ROLES) m[role] = board.pieces(color, role).size();
-			return m;
-		}
-		clone() {
-			const m = new MaterialSide();
-			for (const role of ROLES) m[role] = this[role];
-			return m;
-		}
-		equals(other) {
-			return ROLES.every((role) => this[role] === other[role]);
-		}
-		add(other) {
-			const m = new MaterialSide();
-			for (const role of ROLES) m[role] = this[role] + other[role];
-			return m;
-		}
-		subtract(other) {
-			const m = new MaterialSide();
-			for (const role of ROLES) m[role] = this[role] - other[role];
-			return m;
-		}
-		nonEmpty() {
-			return ROLES.some((role) => this[role] > 0);
-		}
-		isEmpty() {
-			return !this.nonEmpty();
-		}
-		hasPawns() {
-			return this.pawn > 0;
-		}
-		hasNonPawns() {
-			return this.knight > 0 || this.bishop > 0 || this.rook > 0 || this.queen > 0 || this.king > 0;
-		}
-		size() {
-			return this.pawn + this.knight + this.bishop + this.rook + this.queen + this.king;
-		}
-	};
-	var Material = class Material {
-		constructor(white, black) {
-			this.white = white;
-			this.black = black;
-		}
-		static empty() {
-			return new Material(MaterialSide.empty(), MaterialSide.empty());
-		}
-		static fromBoard(board) {
-			return new Material(MaterialSide.fromBoard(board, "white"), MaterialSide.fromBoard(board, "black"));
-		}
-		clone() {
-			return new Material(this.white.clone(), this.black.clone());
-		}
-		equals(other) {
-			return this.white.equals(other.white) && this.black.equals(other.black);
-		}
-		add(other) {
-			return new Material(this.white.add(other.white), this.black.add(other.black));
-		}
-		subtract(other) {
-			return new Material(this.white.subtract(other.white), this.black.subtract(other.black));
-		}
-		count(role) {
-			return this.white[role] + this.black[role];
-		}
-		size() {
-			return this.white.size() + this.black.size();
-		}
-		isEmpty() {
-			return this.white.isEmpty() && this.black.isEmpty();
-		}
-		nonEmpty() {
-			return !this.isEmpty();
-		}
-		hasPawns() {
-			return this.white.hasPawns() || this.black.hasPawns();
-		}
-		hasNonPawns() {
-			return this.white.hasNonPawns() || this.black.hasNonPawns();
-		}
-	};
-	var RemainingChecks = class RemainingChecks {
-		constructor(white, black) {
-			this.white = white;
-			this.black = black;
-		}
-		static default() {
-			return new RemainingChecks(3, 3);
-		}
-		clone() {
-			return new RemainingChecks(this.white, this.black);
-		}
-		equals(other) {
-			return this.white === other.white && this.black === other.black;
-		}
-	};
-	var defined = (v) => v !== void 0;
-	var opposite = (color) => color === "white" ? "black" : "white";
-	var squareRank = (square) => square >> 3;
-	var squareFile = (square) => square & 7;
-	var squareFromCoords = (file, rank) => 0 <= file && file < 8 && 0 <= rank && rank < 8 ? file + 8 * rank : void 0;
-	var roleToChar = (role) => {
-		switch (role) {
-			case "pawn": return "p";
-			case "knight": return "n";
-			case "bishop": return "b";
-			case "rook": return "r";
-			case "queen": return "q";
-			case "king": return "k";
-		}
-	};
-	function charToRole(ch) {
-		switch (ch.toLowerCase()) {
-			case "p": return "pawn";
-			case "n": return "knight";
-			case "b": return "bishop";
-			case "r": return "rook";
-			case "q": return "queen";
-			case "k": return "king";
-			default: return;
-		}
+	var boardInputListeners = new Set();
+	var moveRevision = 0;
+	function onBoardInput(cb) {
+		boardInputListeners.add(cb);
+		return () => boardInputListeners.delete(cb);
 	}
-	function parseSquare(str) {
-		if (str.length !== 2) return;
-		return squareFromCoords(str.charCodeAt(0) - "a".charCodeAt(0), str.charCodeAt(1) - "1".charCodeAt(0));
+	function notifyBoardInput(event) {
+		if (!event.isTrusted) return;
+		if ("button" in event && typeof event.button === "number" && event.button !== 0) return;
+		cancelPendingMove();
+		for (const listener of [...boardInputListeners]) listener();
 	}
-	var makeSquare = (square) => FILE_NAMES[squareFile(square)] + RANK_NAMES[squareRank(square)];
-	var parseUci = (str) => {
-		if (str[1] === "@" && str.length === 4) {
-			const role = charToRole(str[0]);
-			const to = parseSquare(str.slice(2));
-			if (role && defined(to)) return {
-				role,
-				to
-			};
-		} else if (str.length === 4 || str.length === 5) {
-			const from = parseSquare(str.slice(0, 2));
-			const to = parseSquare(str.slice(2, 4));
-			let promotion;
-			if (str.length === 5) {
-				promotion = charToRole(str[4]);
-				if (!promotion) return;
-			}
-			if (defined(from) && defined(to)) return {
-				from,
-				to,
-				promotion
-			};
-		}
-	};
-	var makeUci = (move) => isDrop(move) ? `${roleToChar(move.role).toUpperCase()}@${makeSquare(move.to)}` : makeSquare(move.from) + makeSquare(move.to) + (move.promotion ? roleToChar(move.promotion) : "");
-	var kingCastlesTo = (color, side) => color === "white" ? side === "a" ? 2 : 6 : side === "a" ? 58 : 62;
-	var rookCastlesTo = (color, side) => color === "white" ? side === "a" ? 3 : 5 : side === "a" ? 59 : 61;
-	var InvalidFen;
-	(function(InvalidFen) {
-		InvalidFen["Fen"] = "ERR_FEN";
-		InvalidFen["Board"] = "ERR_BOARD";
-		InvalidFen["Pockets"] = "ERR_POCKETS";
-		InvalidFen["Turn"] = "ERR_TURN";
-		InvalidFen["Castling"] = "ERR_CASTLING";
-		InvalidFen["EpSquare"] = "ERR_EP_SQUARE";
-		InvalidFen["RemainingChecks"] = "ERR_REMAINING_CHECKS";
-		InvalidFen["Halfmoves"] = "ERR_HALFMOVES";
-		InvalidFen["Fullmoves"] = "ERR_FULLMOVES";
-	})(InvalidFen || (InvalidFen = {}));
-	var FenError = class extends Error {};
-	var nthIndexOf = (haystack, needle, n) => {
-		let index = haystack.indexOf(needle);
-		while (n-- > 0) {
-			if (index === -1) break;
-			index = haystack.indexOf(needle, index + needle.length);
-		}
-		return index;
-	};
-	var parseSmallUint = (str) => /^\d{1,4}$/.test(str) ? parseInt(str, 10) : void 0;
-	var charToPiece = (ch) => {
-		const role = charToRole(ch);
-		return role && {
-			role,
-			color: ch.toLowerCase() === ch ? "black" : "white"
-		};
-	};
-	var parseBoardFen = (boardPart) => {
-		const board = Board.empty();
-		let rank = 7;
-		let file = 0;
-		for (let i = 0; i < boardPart.length; i++) {
-			const c = boardPart[i];
-			if (c === "/" && file === 8) {
-				file = 0;
-				rank--;
-			} else {
-				const step = parseInt(c, 10);
-				if (step > 0) file += step;
-				else {
-					if (file >= 8 || rank < 0) return Result.err(new FenError(InvalidFen.Board));
-					const square = file + rank * 8;
-					const piece = charToPiece(c);
-					if (!piece) return Result.err(new FenError(InvalidFen.Board));
-					if (boardPart[i + 1] === "~") {
-						piece.promoted = true;
-						i++;
-					}
-					board.set(square, piece);
-					file++;
-				}
-			}
-		}
-		if (rank !== 0 || file !== 8) return Result.err(new FenError(InvalidFen.Board));
-		return Result.ok(board);
-	};
-	var parsePockets = (pocketPart) => {
-		if (pocketPart.length > 64) return Result.err(new FenError(InvalidFen.Pockets));
-		const pockets = Material.empty();
-		for (const c of pocketPart) {
-			const piece = charToPiece(c);
-			if (!piece) return Result.err(new FenError(InvalidFen.Pockets));
-			pockets[piece.color][piece.role]++;
-		}
-		return Result.ok(pockets);
-	};
-	var parseCastlingFen = (board, castlingPart) => {
-		let castlingRights = SquareSet.empty();
-		if (castlingPart === "-") return Result.ok(castlingRights);
-		for (const c of castlingPart) {
-			const lower = c.toLowerCase();
-			const color = c === lower ? "black" : "white";
-			const rank = color === "white" ? 0 : 7;
-			if ("a" <= lower && lower <= "h") castlingRights = castlingRights.with(squareFromCoords(lower.charCodeAt(0) - "a".charCodeAt(0), rank));
-			else if (lower === "k" || lower === "q") {
-				const rooksAndKings = board[color].intersect(SquareSet.backrank(color)).intersect(board.rook.union(board.king));
-				const candidate = lower === "k" ? rooksAndKings.last() : rooksAndKings.first();
-				castlingRights = castlingRights.with(defined(candidate) && board.rook.has(candidate) ? candidate : squareFromCoords(lower === "k" ? 7 : 0, rank));
-			} else return Result.err(new FenError(InvalidFen.Castling));
-		}
-		if (COLORS.some((color) => SquareSet.backrank(color).intersect(castlingRights).size() > 2)) return Result.err(new FenError(InvalidFen.Castling));
-		return Result.ok(castlingRights);
-	};
-	var parseRemainingChecks = (part) => {
-		const parts = part.split("+");
-		if (parts.length === 3 && parts[0] === "") {
-			const white = parseSmallUint(parts[1]);
-			const black = parseSmallUint(parts[2]);
-			if (!defined(white) || white > 3 || !defined(black) || black > 3) return Result.err(new FenError(InvalidFen.RemainingChecks));
-			return Result.ok(new RemainingChecks(3 - white, 3 - black));
-		} else if (parts.length === 2) {
-			const white = parseSmallUint(parts[0]);
-			const black = parseSmallUint(parts[1]);
-			if (!defined(white) || white > 3 || !defined(black) || black > 3) return Result.err(new FenError(InvalidFen.RemainingChecks));
-			return Result.ok(new RemainingChecks(white, black));
-		} else return Result.err(new FenError(InvalidFen.RemainingChecks));
-	};
-	var parseFen = (fen) => {
-		const parts = fen.split(/[\s_]+/);
-		const boardPart = parts.shift();
-		let board;
-		let pockets = Result.ok(void 0);
-		if (boardPart.endsWith("]")) {
-			const pocketStart = boardPart.indexOf("[");
-			if (pocketStart === -1) return Result.err(new FenError(InvalidFen.Fen));
-			board = parseBoardFen(boardPart.slice(0, pocketStart));
-			pockets = parsePockets(boardPart.slice(pocketStart + 1, -1));
-		} else {
-			const pocketStart = nthIndexOf(boardPart, "/", 7);
-			if (pocketStart === -1) board = parseBoardFen(boardPart);
-			else {
-				board = parseBoardFen(boardPart.slice(0, pocketStart));
-				pockets = parsePockets(boardPart.slice(pocketStart + 1));
-			}
-		}
-		let turn;
-		const turnPart = parts.shift();
-		if (!defined(turnPart) || turnPart === "w") turn = "white";
-		else if (turnPart === "b") turn = "black";
-		else return Result.err(new FenError(InvalidFen.Turn));
-		return board.chain((board) => {
-			const castlingPart = parts.shift();
-			const castlingRights = defined(castlingPart) ? parseCastlingFen(board, castlingPart) : Result.ok(SquareSet.empty());
-			const epPart = parts.shift();
-			let epSquare;
-			if (defined(epPart) && epPart !== "-") {
-				epSquare = parseSquare(epPart);
-				if (!defined(epSquare)) return Result.err(new FenError(InvalidFen.EpSquare));
-			}
-			let halfmovePart = parts.shift();
-			let earlyRemainingChecks;
-			if (defined(halfmovePart) && halfmovePart.includes("+")) {
-				earlyRemainingChecks = parseRemainingChecks(halfmovePart);
-				halfmovePart = parts.shift();
-			}
-			const halfmoves = defined(halfmovePart) ? parseSmallUint(halfmovePart) : 0;
-			if (!defined(halfmoves)) return Result.err(new FenError(InvalidFen.Halfmoves));
-			const fullmovesPart = parts.shift();
-			const fullmoves = defined(fullmovesPart) ? parseSmallUint(fullmovesPart) : 1;
-			if (!defined(fullmoves)) return Result.err(new FenError(InvalidFen.Fullmoves));
-			const remainingChecksPart = parts.shift();
-			let remainingChecks = Result.ok(void 0);
-			if (defined(remainingChecksPart)) {
-				if (defined(earlyRemainingChecks)) return Result.err(new FenError(InvalidFen.RemainingChecks));
-				remainingChecks = parseRemainingChecks(remainingChecksPart);
-			} else if (defined(earlyRemainingChecks)) remainingChecks = earlyRemainingChecks;
-			if (parts.length > 0) return Result.err(new FenError(InvalidFen.Fen));
-			return pockets.chain((pockets) => castlingRights.chain((castlingRights) => remainingChecks.map((remainingChecks) => {
-				return {
-					board,
-					pockets,
-					turn,
-					castlingRights,
-					remainingChecks,
-					epSquare,
-					halfmoves,
-					fullmoves: Math.max(1, fullmoves)
-				};
-			})));
-		});
-	};
-	var makePiece = (piece) => {
-		let r = roleToChar(piece.role);
-		if (piece.color === "white") r = r.toUpperCase();
-		if (piece.promoted) r += "~";
-		return r;
-	};
-	var makeBoardFen = (board) => {
-		let fen = "";
-		let empty = 0;
-		for (let rank = 7; rank >= 0; rank--) for (let file = 0; file < 8; file++) {
-			const square = file + rank * 8;
-			const piece = board.get(square);
-			if (!piece) empty++;
-			else {
-				if (empty > 0) {
-					fen += empty;
-					empty = 0;
-				}
-				fen += makePiece(piece);
-			}
-			if (file === 7) {
-				if (empty > 0) {
-					fen += empty;
-					empty = 0;
-				}
-				if (rank !== 0) fen += "/";
-			}
-		}
-		return fen;
-	};
-	var makePocket = (material) => ROLES.map((role) => roleToChar(role).repeat(material[role])).join("");
-	var makePockets = (pocket) => makePocket(pocket.white).toUpperCase() + makePocket(pocket.black);
-	var makeCastlingFen = (board, castlingRights) => {
-		let fen = "";
-		for (const color of COLORS) {
-			const backrank = SquareSet.backrank(color);
-			let king = board.kingOf(color);
-			if (defined(king) && !backrank.has(king)) king = void 0;
-			const candidates = board.pieces(color, "rook").intersect(backrank);
-			for (const rook of castlingRights.intersect(backrank).reversed()) if (rook === candidates.first() && defined(king) && rook < king) fen += color === "white" ? "Q" : "q";
-			else if (rook === candidates.last() && defined(king) && king < rook) fen += color === "white" ? "K" : "k";
-			else {
-				const file = FILE_NAMES[squareFile(rook)];
-				fen += color === "white" ? file.toUpperCase() : file;
-			}
-		}
-		return fen || "-";
-	};
-	var makeRemainingChecks = (checks) => `${checks.white}+${checks.black}`;
-	var makeFen = (setup, opts) => [
-		makeBoardFen(setup.board) + (setup.pockets ? `[${makePockets(setup.pockets)}]` : ""),
-		setup.turn[0],
-		makeCastlingFen(setup.board, setup.castlingRights),
-		defined(setup.epSquare) ? makeSquare(setup.epSquare) : "-",
-		...setup.remainingChecks ? [makeRemainingChecks(setup.remainingChecks)] : [],
-		...(opts === null || opts === void 0 ? void 0 : opts.epd) ? [] : [Math.max(0, Math.min(setup.halfmoves, 9999)), Math.max(1, Math.min(setup.fullmoves, 9999))]
-	].join(" ");
-	var computeRange = (square, deltas) => {
-		let range = SquareSet.empty();
-		for (const delta of deltas) {
-			const sq = square + delta;
-			if (0 <= sq && sq < 64 && Math.abs(squareFile(square) - squareFile(sq)) <= 2) range = range.with(sq);
-		}
-		return range;
-	};
-	var tabulate = (f) => {
-		const table = [];
-		for (let square = 0; square < 64; square++) table[square] = f(square);
-		return table;
-	};
-	var KING_ATTACKS = tabulate((sq) => computeRange(sq, [
-		-9,
-		-8,
-		-7,
-		-1,
-		1,
-		7,
-		8,
-		9
-	]));
-	var KNIGHT_ATTACKS = tabulate((sq) => computeRange(sq, [
-		-17,
-		-15,
-		-10,
-		-6,
-		6,
-		10,
-		15,
-		17
-	]));
-	var PAWN_ATTACKS = {
-		white: tabulate((sq) => computeRange(sq, [7, 9])),
-		black: tabulate((sq) => computeRange(sq, [-7, -9]))
-	};
-	var kingAttacks = (square) => KING_ATTACKS[square];
-	var knightAttacks = (square) => KNIGHT_ATTACKS[square];
-	var pawnAttacks = (color, square) => PAWN_ATTACKS[color][square];
-	var FILE_RANGE = tabulate((sq) => SquareSet.fromFile(squareFile(sq)).without(sq));
-	var RANK_RANGE = tabulate((sq) => SquareSet.fromRank(squareRank(sq)).without(sq));
-	var DIAG_RANGE = tabulate((sq) => {
-		const diag = new SquareSet(134480385, 2151686160);
-		const shift = 8 * (squareRank(sq) - squareFile(sq));
-		return (shift >= 0 ? diag.shl64(shift) : diag.shr64(-shift)).without(sq);
-	});
-	var ANTI_DIAG_RANGE = tabulate((sq) => {
-		const diag = new SquareSet(270549120, 16909320);
-		const shift = 8 * (squareRank(sq) + squareFile(sq) - 7);
-		return (shift >= 0 ? diag.shl64(shift) : diag.shr64(-shift)).without(sq);
-	});
-	var hyperbola = (sq, range, occupied) => {
-		const o = range.intersect(occupied);
-		const fwd = o.minus64(SquareSet.fromSquare(sq));
-		const rev = o.bswap64().minus64(SquareSet.fromSquare(56 ^ sq));
-		return fwd.xor(rev.bswap64()).intersect(range);
-	};
-	var rankAttacks = (sq, occupied) => {
-		const range = RANK_RANGE[sq];
-		const o = range.intersect(occupied);
-		const fwd = o.minus64(SquareSet.fromSquare(sq));
-		const rev = o.rbit64().minus64(SquareSet.fromSquare(63 - sq));
-		return fwd.xor(rev.rbit64()).intersect(range);
-	};
-	var bishopAttacks = (square, occupied) => {
-		return hyperbola(square, DIAG_RANGE[square], occupied).xor(hyperbola(square, ANTI_DIAG_RANGE[square], occupied));
-	};
-	var rookAttacks = (square, occupied) => hyperbola(square, FILE_RANGE[square], occupied).xor(rankAttacks(square, occupied));
-	var queenAttacks = (square, occupied) => bishopAttacks(square, occupied).xor(rookAttacks(square, occupied));
-	var attacks = (piece, square, occupied) => {
-		switch (piece.role) {
-			case "pawn": return pawnAttacks(piece.color, square);
-			case "knight": return knightAttacks(square);
-			case "bishop": return bishopAttacks(square, occupied);
-			case "rook": return rookAttacks(square, occupied);
-			case "queen": return queenAttacks(square, occupied);
-			case "king": return kingAttacks(square);
-		}
-	};
-	var ray = (a, b) => {
-		const other = SquareSet.fromSquare(b);
-		if (RANK_RANGE[a].intersects(other)) return RANK_RANGE[a].with(a);
-		if (ANTI_DIAG_RANGE[a].intersects(other)) return ANTI_DIAG_RANGE[a].with(a);
-		if (DIAG_RANGE[a].intersects(other)) return DIAG_RANGE[a].with(a);
-		if (FILE_RANGE[a].intersects(other)) return FILE_RANGE[a].with(a);
-		return SquareSet.empty();
-	};
-	var between = (a, b) => ray(a, b).intersect(SquareSet.full().shl64(a).xor(SquareSet.full().shl64(b))).withoutFirst();
-	var makeSanWithoutSuffix = (pos, move) => {
-		let san = "";
-		if (isDrop(move)) {
-			if (move.role !== "pawn") san = roleToChar(move.role).toUpperCase();
-			san += "@" + makeSquare(move.to);
-		} else {
-			const role = pos.board.getRole(move.from);
-			if (!role) return "--";
-			if (role === "king" && (pos.board[pos.turn].has(move.to) || Math.abs(move.to - move.from) === 2)) san = move.to > move.from ? "O-O" : "O-O-O";
-			else {
-				const capture = pos.board.occupied.has(move.to) || role === "pawn" && squareFile(move.from) !== squareFile(move.to);
-				if (role !== "pawn") {
-					san = roleToChar(role).toUpperCase();
-					let others;
-					if (role === "king") others = kingAttacks(move.to).intersect(pos.board.king);
-					else if (role === "queen") others = queenAttacks(move.to, pos.board.occupied).intersect(pos.board.queen);
-					else if (role === "rook") others = rookAttacks(move.to, pos.board.occupied).intersect(pos.board.rook);
-					else if (role === "bishop") others = bishopAttacks(move.to, pos.board.occupied).intersect(pos.board.bishop);
-					else others = knightAttacks(move.to).intersect(pos.board.knight);
-					others = others.intersect(pos.board[pos.turn]).without(move.from);
-					if (others.nonEmpty()) {
-						const ctx = pos.ctx();
-						for (const from of others) if (!pos.dests(from, ctx).has(move.to)) others = others.without(from);
-						if (others.nonEmpty()) {
-							let row = false;
-							let column = others.intersects(SquareSet.fromRank(squareRank(move.from)));
-							if (others.intersects(SquareSet.fromFile(squareFile(move.from)))) row = true;
-							else column = true;
-							if (column) san += FILE_NAMES[squareFile(move.from)];
-							if (row) san += RANK_NAMES[squareRank(move.from)];
-						}
-					}
-				} else if (capture) san = FILE_NAMES[squareFile(move.from)];
-				if (capture) san += "x";
-				san += makeSquare(move.to);
-				if (move.promotion) san += "=" + roleToChar(move.promotion).toUpperCase();
-			}
-		}
-		return san;
-	};
-	var makeSanAndPlay = (pos, move) => {
-		var _a;
-		const san = makeSanWithoutSuffix(pos, move);
-		pos.play(move);
-		if ((_a = pos.outcome()) === null || _a === void 0 ? void 0 : _a.winner) return san + "#";
-		if (pos.isCheck()) return san + "+";
-		return san;
-	};
-	var makeSan = (pos, move) => makeSanAndPlay(pos.clone(), move);
-	var parseSan = (pos, san) => {
-		const ctx = pos.ctx();
-		const match = san.match(/^([NBRQK])?([a-h])?([1-8])?[-x]?([a-h][1-8])(?:=?([nbrqkNBRQK]))?[+#]?$/);
-		if (!match) {
-			let castlingSide;
-			if (san === "O-O" || san === "O-O+" || san === "O-O#") castlingSide = "h";
-			else if (san === "O-O-O" || san === "O-O-O+" || san === "O-O-O#") castlingSide = "a";
-			if (castlingSide) {
-				const rook = pos.castles.rook[pos.turn][castlingSide];
-				if (!defined(ctx.king) || !defined(rook) || !pos.dests(ctx.king, ctx).has(rook)) return;
-				return {
-					from: ctx.king,
-					to: rook
-				};
-			}
-			const match = san.match(/^([pnbrqkPNBRQK])?@([a-h][1-8])[+#]?$/);
-			if (!match) return;
-			const move = {
-				role: match[1] ? charToRole(match[1]) : "pawn",
-				to: parseSquare(match[2])
-			};
-			return pos.isLegal(move, ctx) ? move : void 0;
-		}
-		const role = match[1] ? charToRole(match[1]) : "pawn";
-		const to = parseSquare(match[4]);
-		const promotion = match[5] ? charToRole(match[5]) : void 0;
-		if (!!promotion !== (role === "pawn" && SquareSet.backranks().has(to))) return;
-		if (promotion === "king" && pos.rules !== "antichess") return;
-		let candidates = pos.board.pieces(pos.turn, role);
-		if (role === "pawn" && !match[2]) candidates = candidates.intersect(SquareSet.fromFile(squareFile(to)));
-		else if (match[2]) candidates = candidates.intersect(SquareSet.fromFile(match[2].charCodeAt(0) - "a".charCodeAt(0)));
-		if (match[3]) candidates = candidates.intersect(SquareSet.fromRank(match[3].charCodeAt(0) - "1".charCodeAt(0)));
-		const pawnAdvance = role === "pawn" ? SquareSet.fromFile(squareFile(to)) : SquareSet.empty();
-		candidates = candidates.intersect(pawnAdvance.union(attacks({
-			color: opposite(pos.turn),
-			role
-		}, to, pos.board.occupied)));
-		let from;
-		for (const candidate of candidates) if (pos.dests(candidate, ctx).has(to)) {
-			if (defined(from)) return;
-			from = candidate;
-		}
-		if (!defined(from)) return;
-		return {
-			from,
-			to,
-			promotion
-		};
-	};
-	var IllegalSetup;
-	(function(IllegalSetup) {
-		IllegalSetup["Empty"] = "ERR_EMPTY";
-		IllegalSetup["OppositeCheck"] = "ERR_OPPOSITE_CHECK";
-		IllegalSetup["PawnsOnBackrank"] = "ERR_PAWNS_ON_BACKRANK";
-		IllegalSetup["Kings"] = "ERR_KINGS";
-		IllegalSetup["Variant"] = "ERR_VARIANT";
-	})(IllegalSetup || (IllegalSetup = {}));
-	var PositionError = class extends Error {};
-	var attacksTo = (square, attacker, board, occupied) => board[attacker].intersect(rookAttacks(square, occupied).intersect(board.rooksAndQueens()).union(bishopAttacks(square, occupied).intersect(board.bishopsAndQueens())).union(knightAttacks(square).intersect(board.knight)).union(kingAttacks(square).intersect(board.king)).union(pawnAttacks(opposite(attacker), square).intersect(board.pawn)));
-	var Castles = class Castles {
-		constructor() {}
-		static default() {
-			const castles = new Castles();
-			castles.castlingRights = SquareSet.corners();
-			castles.rook = {
-				white: {
-					a: 0,
-					h: 7
-				},
-				black: {
-					a: 56,
-					h: 63
-				}
-			};
-			castles.path = {
-				white: {
-					a: new SquareSet(14, 0),
-					h: new SquareSet(96, 0)
-				},
-				black: {
-					a: new SquareSet(0, 234881024),
-					h: new SquareSet(0, 1610612736)
-				}
-			};
-			return castles;
-		}
-		static empty() {
-			const castles = new Castles();
-			castles.castlingRights = SquareSet.empty();
-			castles.rook = {
-				white: {
-					a: void 0,
-					h: void 0
-				},
-				black: {
-					a: void 0,
-					h: void 0
-				}
-			};
-			castles.path = {
-				white: {
-					a: SquareSet.empty(),
-					h: SquareSet.empty()
-				},
-				black: {
-					a: SquareSet.empty(),
-					h: SquareSet.empty()
-				}
-			};
-			return castles;
-		}
-		clone() {
-			const castles = new Castles();
-			castles.castlingRights = this.castlingRights;
-			castles.rook = {
-				white: {
-					a: this.rook.white.a,
-					h: this.rook.white.h
-				},
-				black: {
-					a: this.rook.black.a,
-					h: this.rook.black.h
-				}
-			};
-			castles.path = {
-				white: {
-					a: this.path.white.a,
-					h: this.path.white.h
-				},
-				black: {
-					a: this.path.black.a,
-					h: this.path.black.h
-				}
-			};
-			return castles;
-		}
-		add(color, side, king, rook) {
-			const kingTo = kingCastlesTo(color, side);
-			const rookTo = rookCastlesTo(color, side);
-			this.castlingRights = this.castlingRights.with(rook);
-			this.rook[color][side] = rook;
-			this.path[color][side] = between(rook, rookTo).with(rookTo).union(between(king, kingTo).with(kingTo)).without(king).without(rook);
-		}
-		static fromSetup(setup) {
-			const castles = Castles.empty();
-			const rooks = setup.castlingRights.intersect(setup.board.rook);
-			for (const color of COLORS) {
-				const backrank = SquareSet.backrank(color);
-				const king = setup.board.kingOf(color);
-				if (!defined(king) || !backrank.has(king)) continue;
-				const side = rooks.intersect(setup.board[color]).intersect(backrank);
-				const aSide = side.first();
-				if (defined(aSide) && aSide < king) castles.add(color, "a", king, aSide);
-				const hSide = side.last();
-				if (defined(hSide) && king < hSide) castles.add(color, "h", king, hSide);
-			}
-			return castles;
-		}
-		discardRook(square) {
-			if (this.castlingRights.has(square)) {
-				this.castlingRights = this.castlingRights.without(square);
-				for (const color of COLORS) for (const side of CASTLING_SIDES) if (this.rook[color][side] === square) this.rook[color][side] = void 0;
-			}
-		}
-		discardColor(color) {
-			this.castlingRights = this.castlingRights.diff(SquareSet.backrank(color));
-			this.rook[color].a = void 0;
-			this.rook[color].h = void 0;
-		}
-	};
-	var Position = class {
-		constructor(rules) {
-			this.rules = rules;
-		}
-		reset() {
-			this.board = Board.default();
-			this.pockets = void 0;
-			this.turn = "white";
-			this.castles = Castles.default();
-			this.epSquare = void 0;
-			this.remainingChecks = void 0;
-			this.halfmoves = 0;
-			this.fullmoves = 1;
-		}
-		setupUnchecked(setup) {
-			this.board = setup.board.clone();
-			this.board.promoted = SquareSet.empty();
-			this.pockets = void 0;
-			this.turn = setup.turn;
-			this.castles = Castles.fromSetup(setup);
-			this.epSquare = validEpSquare(this, setup.epSquare);
-			this.remainingChecks = void 0;
-			this.halfmoves = setup.halfmoves;
-			this.fullmoves = setup.fullmoves;
-		}
-		kingAttackers(square, attacker, occupied) {
-			return attacksTo(square, attacker, this.board, occupied);
-		}
-		playCaptureAt(square, captured) {
-			this.halfmoves = 0;
-			if (captured.role === "rook") this.castles.discardRook(square);
-			if (this.pockets) this.pockets[opposite(captured.color)][captured.promoted ? "pawn" : captured.role]++;
-		}
-		ctx() {
-			const variantEnd = this.isVariantEnd();
-			const king = this.board.kingOf(this.turn);
-			if (!defined(king)) return {
-				king,
-				blockers: SquareSet.empty(),
-				checkers: SquareSet.empty(),
-				variantEnd,
-				mustCapture: false
-			};
-			const snipers = rookAttacks(king, SquareSet.empty()).intersect(this.board.rooksAndQueens()).union(bishopAttacks(king, SquareSet.empty()).intersect(this.board.bishopsAndQueens())).intersect(this.board[opposite(this.turn)]);
-			let blockers = SquareSet.empty();
-			for (const sniper of snipers) {
-				const b = between(king, sniper).intersect(this.board.occupied);
-				if (!b.moreThanOne()) blockers = blockers.union(b);
-			}
-			const checkers = this.kingAttackers(king, opposite(this.turn), this.board.occupied);
-			return {
-				king,
-				blockers,
-				checkers,
-				variantEnd,
-				mustCapture: false
-			};
-		}
-		clone() {
-			var _a, _b;
-			const pos = new this.constructor();
-			pos.board = this.board.clone();
-			pos.pockets = (_a = this.pockets) === null || _a === void 0 ? void 0 : _a.clone();
-			pos.turn = this.turn;
-			pos.castles = this.castles.clone();
-			pos.epSquare = this.epSquare;
-			pos.remainingChecks = (_b = this.remainingChecks) === null || _b === void 0 ? void 0 : _b.clone();
-			pos.halfmoves = this.halfmoves;
-			pos.fullmoves = this.fullmoves;
-			return pos;
-		}
-		validate() {
-			if (this.board.occupied.isEmpty()) return Result.err(new PositionError(IllegalSetup.Empty));
-			if (this.board.king.size() !== 2) return Result.err(new PositionError(IllegalSetup.Kings));
-			if (!defined(this.board.kingOf(this.turn))) return Result.err(new PositionError(IllegalSetup.Kings));
-			const otherKing = this.board.kingOf(opposite(this.turn));
-			if (!defined(otherKing)) return Result.err(new PositionError(IllegalSetup.Kings));
-			if (this.kingAttackers(otherKing, this.turn, this.board.occupied).nonEmpty()) return Result.err(new PositionError(IllegalSetup.OppositeCheck));
-			if (SquareSet.backranks().intersects(this.board.pawn)) return Result.err(new PositionError(IllegalSetup.PawnsOnBackrank));
-			return Result.ok(void 0);
-		}
-		dropDests(_ctx) {
-			return SquareSet.empty();
-		}
-		dests(square, ctx) {
-			ctx = ctx || this.ctx();
-			if (ctx.variantEnd) return SquareSet.empty();
-			const piece = this.board.get(square);
-			if (!piece || piece.color !== this.turn) return SquareSet.empty();
-			let pseudo, legal;
-			if (piece.role === "pawn") {
-				pseudo = pawnAttacks(this.turn, square).intersect(this.board[opposite(this.turn)]);
-				const delta = this.turn === "white" ? 8 : -8;
-				const step = square + delta;
-				if (0 <= step && step < 64 && !this.board.occupied.has(step)) {
-					pseudo = pseudo.with(step);
-					const canDoubleStep = this.turn === "white" ? square < 16 : square >= 48;
-					const doubleStep = step + delta;
-					if (canDoubleStep && !this.board.occupied.has(doubleStep)) pseudo = pseudo.with(doubleStep);
-				}
-				if (defined(this.epSquare) && canCaptureEp(this, square, ctx)) legal = SquareSet.fromSquare(this.epSquare);
-			} else if (piece.role === "bishop") pseudo = bishopAttacks(square, this.board.occupied);
-			else if (piece.role === "knight") pseudo = knightAttacks(square);
-			else if (piece.role === "rook") pseudo = rookAttacks(square, this.board.occupied);
-			else if (piece.role === "queen") pseudo = queenAttacks(square, this.board.occupied);
-			else pseudo = kingAttacks(square);
-			pseudo = pseudo.diff(this.board[this.turn]);
-			if (defined(ctx.king)) {
-				if (piece.role === "king") {
-					const occ = this.board.occupied.without(square);
-					for (const to of pseudo) if (this.kingAttackers(to, opposite(this.turn), occ).nonEmpty()) pseudo = pseudo.without(to);
-					return pseudo.union(castlingDest(this, "a", ctx)).union(castlingDest(this, "h", ctx));
-				}
-				if (ctx.checkers.nonEmpty()) {
-					const checker = ctx.checkers.singleSquare();
-					if (!defined(checker)) return SquareSet.empty();
-					pseudo = pseudo.intersect(between(checker, ctx.king).with(checker));
-				}
-				if (ctx.blockers.has(square)) pseudo = pseudo.intersect(ray(square, ctx.king));
-			}
-			if (legal) pseudo = pseudo.union(legal);
-			return pseudo;
-		}
-		isVariantEnd() {
-			return false;
-		}
-		variantOutcome(_ctx) {}
-		hasInsufficientMaterial(color) {
-			if (this.board[color].intersect(this.board.pawn.union(this.board.rooksAndQueens())).nonEmpty()) return false;
-			if (this.board[color].intersects(this.board.knight)) return this.board[color].size() <= 2 && this.board[opposite(color)].diff(this.board.king).diff(this.board.queen).isEmpty();
-			if (this.board[color].intersects(this.board.bishop)) return (!this.board.bishop.intersects(SquareSet.darkSquares()) || !this.board.bishop.intersects(SquareSet.lightSquares())) && this.board.pawn.isEmpty() && this.board.knight.isEmpty();
-			return true;
-		}
-		toSetup() {
-			var _a, _b;
-			return {
-				board: this.board.clone(),
-				pockets: (_a = this.pockets) === null || _a === void 0 ? void 0 : _a.clone(),
-				turn: this.turn,
-				castlingRights: this.castles.castlingRights,
-				epSquare: legalEpSquare(this),
-				remainingChecks: (_b = this.remainingChecks) === null || _b === void 0 ? void 0 : _b.clone(),
-				halfmoves: Math.min(this.halfmoves, 150),
-				fullmoves: Math.min(Math.max(this.fullmoves, 1), 9999)
-			};
-		}
-		isInsufficientMaterial() {
-			return COLORS.every((color) => this.hasInsufficientMaterial(color));
-		}
-		hasDests(ctx) {
-			ctx = ctx || this.ctx();
-			for (const square of this.board[this.turn]) if (this.dests(square, ctx).nonEmpty()) return true;
-			return this.dropDests(ctx).nonEmpty();
-		}
-		isLegal(move, ctx) {
-			if (isDrop(move)) {
-				if (!this.pockets || this.pockets[this.turn][move.role] <= 0) return false;
-				if (move.role === "pawn" && SquareSet.backranks().has(move.to)) return false;
-				return this.dropDests(ctx).has(move.to);
-			} else {
-				if (move.promotion === "pawn") return false;
-				if (move.promotion === "king" && this.rules !== "antichess") return false;
-				if (!!move.promotion !== (this.board.pawn.has(move.from) && SquareSet.backranks().has(move.to))) return false;
-				const dests = this.dests(move.from, ctx);
-				return dests.has(move.to) || dests.has(normalizeMove(this, move).to);
-			}
-		}
-		isCheck() {
-			const king = this.board.kingOf(this.turn);
-			return defined(king) && this.kingAttackers(king, opposite(this.turn), this.board.occupied).nonEmpty();
-		}
-		isEnd(ctx) {
-			if (ctx ? ctx.variantEnd : this.isVariantEnd()) return true;
-			return this.isInsufficientMaterial() || !this.hasDests(ctx);
-		}
-		isCheckmate(ctx) {
-			ctx = ctx || this.ctx();
-			return !ctx.variantEnd && ctx.checkers.nonEmpty() && !this.hasDests(ctx);
-		}
-		isStalemate(ctx) {
-			ctx = ctx || this.ctx();
-			return !ctx.variantEnd && ctx.checkers.isEmpty() && !this.hasDests(ctx);
-		}
-		outcome(ctx) {
-			const variantOutcome = this.variantOutcome(ctx);
-			if (variantOutcome) return variantOutcome;
-			ctx = ctx || this.ctx();
-			if (this.isCheckmate(ctx)) return { winner: opposite(this.turn) };
-			else if (this.isInsufficientMaterial() || this.isStalemate(ctx)) return { winner: void 0 };
-			else return;
-		}
-		allDests(ctx) {
-			ctx = ctx || this.ctx();
-			const d = new Map();
-			if (ctx.variantEnd) return d;
-			for (const square of this.board[this.turn]) d.set(square, this.dests(square, ctx));
-			return d;
-		}
-		play(move) {
-			const turn = this.turn;
-			const epSquare = this.epSquare;
-			const castling = castlingSide(this, move);
-			this.epSquare = void 0;
-			this.halfmoves += 1;
-			if (turn === "black") this.fullmoves += 1;
-			this.turn = opposite(turn);
-			if (isDrop(move)) {
-				this.board.set(move.to, {
-					role: move.role,
-					color: turn
-				});
-				if (this.pockets) this.pockets[turn][move.role]--;
-				if (move.role === "pawn") this.halfmoves = 0;
-			} else {
-				const piece = this.board.take(move.from);
-				if (!piece) return;
-				let epCapture;
-				if (piece.role === "pawn") {
-					this.halfmoves = 0;
-					if (move.to === epSquare) epCapture = this.board.take(move.to + (turn === "white" ? -8 : 8));
-					const delta = move.from - move.to;
-					if (Math.abs(delta) === 16 && 8 <= move.from && move.from <= 55) this.epSquare = move.from + move.to >> 1;
-					if (move.promotion) {
-						piece.role = move.promotion;
-						piece.promoted = !!this.pockets;
-					}
-				} else if (piece.role === "rook") this.castles.discardRook(move.from);
-				else if (piece.role === "king") {
-					if (castling) {
-						const rookFrom = this.castles.rook[turn][castling];
-						if (defined(rookFrom)) {
-							const rook = this.board.take(rookFrom);
-							this.board.set(kingCastlesTo(turn, castling), piece);
-							if (rook) this.board.set(rookCastlesTo(turn, castling), rook);
-						}
-					}
-					this.castles.discardColor(turn);
-				}
-				if (!castling) {
-					const capture = this.board.set(move.to, piece) || epCapture;
-					if (capture) this.playCaptureAt(move.to, capture);
-				}
-			}
-			if (this.remainingChecks) {
-				if (this.isCheck()) this.remainingChecks[turn] = Math.max(this.remainingChecks[turn] - 1, 0);
-			}
-		}
-	};
-	var Chess = class extends Position {
-		constructor() {
-			super("chess");
-		}
-		static default() {
-			const pos = new this();
-			pos.reset();
-			return pos;
-		}
-		static fromSetup(setup) {
-			const pos = new this();
-			pos.setupUnchecked(setup);
-			return pos.validate().map((_) => pos);
-		}
-		clone() {
-			return super.clone();
-		}
-	};
-	var validEpSquare = (pos, square) => {
-		if (!defined(square)) return;
-		const epRank = pos.turn === "white" ? 5 : 2;
-		const forward = pos.turn === "white" ? 8 : -8;
-		if (squareRank(square) !== epRank) return;
-		if (pos.board.occupied.has(square + forward)) return;
-		const pawn = square - forward;
-		if (!pos.board.pawn.has(pawn) || !pos.board[opposite(pos.turn)].has(pawn)) return;
-		return square;
-	};
-	var legalEpSquare = (pos) => {
-		if (!defined(pos.epSquare)) return;
-		const ctx = pos.ctx();
-		const candidates = pos.board.pieces(pos.turn, "pawn").intersect(pawnAttacks(opposite(pos.turn), pos.epSquare));
-		for (const candidate of candidates) if (pos.dests(candidate, ctx).has(pos.epSquare)) return pos.epSquare;
-	};
-	var canCaptureEp = (pos, pawnFrom, ctx) => {
-		if (!defined(pos.epSquare)) return false;
-		if (!pawnAttacks(pos.turn, pawnFrom).has(pos.epSquare)) return false;
-		if (!defined(ctx.king)) return true;
-		const delta = pos.turn === "white" ? 8 : -8;
-		const captured = pos.epSquare - delta;
-		return pos.kingAttackers(ctx.king, opposite(pos.turn), pos.board.occupied.toggle(pawnFrom).toggle(captured).with(pos.epSquare)).without(captured).isEmpty();
-	};
-	var castlingDest = (pos, side, ctx) => {
-		if (!defined(ctx.king) || ctx.checkers.nonEmpty()) return SquareSet.empty();
-		const rook = pos.castles.rook[pos.turn][side];
-		if (!defined(rook)) return SquareSet.empty();
-		if (pos.castles.path[pos.turn][side].intersects(pos.board.occupied)) return SquareSet.empty();
-		const kingTo = kingCastlesTo(pos.turn, side);
-		const kingPath = between(ctx.king, kingTo);
-		const occ = pos.board.occupied.without(ctx.king);
-		for (const sq of kingPath) if (pos.kingAttackers(sq, opposite(pos.turn), occ).nonEmpty()) return SquareSet.empty();
-		const rookTo = rookCastlesTo(pos.turn, side);
-		const after = pos.board.occupied.toggle(ctx.king).toggle(rook).toggle(rookTo);
-		if (pos.kingAttackers(kingTo, opposite(pos.turn), after).nonEmpty()) return SquareSet.empty();
-		return SquareSet.fromSquare(rook);
-	};
-	var pseudoDests = (pos, square, ctx) => {
-		if (ctx.variantEnd) return SquareSet.empty();
-		const piece = pos.board.get(square);
-		if (!piece || piece.color !== pos.turn) return SquareSet.empty();
-		let pseudo = attacks(piece, square, pos.board.occupied);
-		if (piece.role === "pawn") {
-			let captureTargets = pos.board[opposite(pos.turn)];
-			if (defined(pos.epSquare)) captureTargets = captureTargets.with(pos.epSquare);
-			pseudo = pseudo.intersect(captureTargets);
-			const delta = pos.turn === "white" ? 8 : -8;
-			const step = square + delta;
-			if (0 <= step && step < 64 && !pos.board.occupied.has(step)) {
-				pseudo = pseudo.with(step);
-				const canDoubleStep = pos.turn === "white" ? square < 16 : square >= 48;
-				const doubleStep = step + delta;
-				if (canDoubleStep && !pos.board.occupied.has(doubleStep)) pseudo = pseudo.with(doubleStep);
-			}
-			return pseudo;
-		} else pseudo = pseudo.diff(pos.board[pos.turn]);
-		if (square === ctx.king) return pseudo.union(castlingDest(pos, "a", ctx)).union(castlingDest(pos, "h", ctx));
-		else return pseudo;
-	};
-	var castlingSide = (pos, move) => {
-		if (isDrop(move)) return;
-		const delta = move.to - move.from;
-		if (Math.abs(delta) !== 2 && !pos.board[pos.turn].has(move.to)) return;
-		if (!pos.board.king.has(move.from)) return;
-		return delta > 0 ? "h" : "a";
-	};
-	var normalizeMove = (pos, move) => {
-		const side = castlingSide(pos, move);
-		if (!side) return move;
-		const rookFrom = pos.castles.rook[pos.turn][side];
-		return {
-			from: move.from,
-			to: defined(rookFrom) ? rookFrom : move.to
-		};
-	};
-	var Crazyhouse = class extends Position {
-		constructor() {
-			super("crazyhouse");
-		}
-		reset() {
-			super.reset();
-			this.pockets = Material.empty();
-		}
-		setupUnchecked(setup) {
-			super.setupUnchecked(setup);
-			this.board.promoted = setup.board.promoted.intersect(setup.board.occupied).diff(setup.board.king).diff(setup.board.pawn);
-			this.pockets = setup.pockets ? setup.pockets.clone() : Material.empty();
-		}
-		static default() {
-			const pos = new this();
-			pos.reset();
-			return pos;
-		}
-		static fromSetup(setup) {
-			const pos = new this();
-			pos.setupUnchecked(setup);
-			return pos.validate().map((_) => pos);
-		}
-		clone() {
-			return super.clone();
-		}
-		validate() {
-			return super.validate().chain((_) => {
-				var _a, _b;
-				if ((_a = this.pockets) === null || _a === void 0 ? void 0 : _a.count("king")) return Result.err(new PositionError(IllegalSetup.Kings));
-				if ((((_b = this.pockets) === null || _b === void 0 ? void 0 : _b.size()) || 0) + this.board.occupied.size() > 64) return Result.err(new PositionError(IllegalSetup.Variant));
-				return Result.ok(void 0);
-			});
-		}
-		hasInsufficientMaterial(color) {
-			if (!this.pockets) return super.hasInsufficientMaterial(color);
-			return this.board.occupied.size() + this.pockets.size() <= 3 && this.board.pawn.isEmpty() && this.board.promoted.isEmpty() && this.board.rooksAndQueens().isEmpty() && this.pockets.count("pawn") <= 0 && this.pockets.count("rook") <= 0 && this.pockets.count("queen") <= 0;
-		}
-		dropDests(ctx) {
-			var _a, _b;
-			const mask = this.board.occupied.complement().intersect(((_a = this.pockets) === null || _a === void 0 ? void 0 : _a[this.turn].hasNonPawns()) ? SquareSet.full() : ((_b = this.pockets) === null || _b === void 0 ? void 0 : _b[this.turn].hasPawns()) ? SquareSet.backranks().complement() : SquareSet.empty());
-			ctx = ctx || this.ctx();
-			if (defined(ctx.king) && ctx.checkers.nonEmpty()) {
-				const checker = ctx.checkers.singleSquare();
-				if (!defined(checker)) return SquareSet.empty();
-				return mask.intersect(between(checker, ctx.king));
-			} else return mask;
-		}
-	};
-	var Atomic = class extends Position {
-		constructor() {
-			super("atomic");
-		}
-		static default() {
-			const pos = new this();
-			pos.reset();
-			return pos;
-		}
-		static fromSetup(setup) {
-			const pos = new this();
-			pos.setupUnchecked(setup);
-			return pos.validate().map((_) => pos);
-		}
-		clone() {
-			return super.clone();
-		}
-		validate() {
-			if (this.board.occupied.isEmpty()) return Result.err(new PositionError(IllegalSetup.Empty));
-			if (this.board.king.size() > 2) return Result.err(new PositionError(IllegalSetup.Kings));
-			const otherKing = this.board.kingOf(opposite(this.turn));
-			if (!defined(otherKing)) return Result.err(new PositionError(IllegalSetup.Kings));
-			if (this.kingAttackers(otherKing, this.turn, this.board.occupied).nonEmpty()) return Result.err(new PositionError(IllegalSetup.OppositeCheck));
-			if (SquareSet.backranks().intersects(this.board.pawn)) return Result.err(new PositionError(IllegalSetup.PawnsOnBackrank));
-			return Result.ok(void 0);
-		}
-		kingAttackers(square, attacker, occupied) {
-			const attackerKings = this.board.pieces(attacker, "king");
-			if (attackerKings.isEmpty() || kingAttacks(square).intersects(attackerKings)) return SquareSet.empty();
-			return super.kingAttackers(square, attacker, occupied);
-		}
-		playCaptureAt(square, captured) {
-			super.playCaptureAt(square, captured);
-			this.board.take(square);
-			for (const explode of kingAttacks(square).intersect(this.board.occupied).diff(this.board.pawn)) {
-				const piece = this.board.take(explode);
-				if ((piece === null || piece === void 0 ? void 0 : piece.role) === "rook") this.castles.discardRook(explode);
-				if ((piece === null || piece === void 0 ? void 0 : piece.role) === "king") this.castles.discardColor(piece.color);
-			}
-		}
-		hasInsufficientMaterial(color) {
-			if (this.board.pieces(opposite(color), "king").isEmpty()) return false;
-			if (this.board[color].diff(this.board.king).isEmpty()) return true;
-			if (this.board[opposite(color)].diff(this.board.king).nonEmpty()) {
-				if (this.board.occupied.equals(this.board.bishop.union(this.board.king))) {
-					if (!this.board.bishop.intersect(this.board.white).intersects(SquareSet.darkSquares())) return !this.board.bishop.intersect(this.board.black).intersects(SquareSet.lightSquares());
-					if (!this.board.bishop.intersect(this.board.white).intersects(SquareSet.lightSquares())) return !this.board.bishop.intersect(this.board.black).intersects(SquareSet.darkSquares());
-				}
-				return false;
-			}
-			if (this.board.queen.nonEmpty() || this.board.pawn.nonEmpty()) return false;
-			if (this.board.knight.union(this.board.bishop).union(this.board.rook).size() === 1) return true;
-			if (this.board.occupied.equals(this.board.knight.union(this.board.king))) return this.board.knight.size() <= 2;
-			return false;
-		}
-		dests(square, ctx) {
-			ctx = ctx || this.ctx();
-			let dests = SquareSet.empty();
-			for (const to of pseudoDests(this, square, ctx)) {
-				const after = this.clone();
-				after.play({
-					from: square,
-					to
-				});
-				const ourKing = after.board.kingOf(this.turn);
-				if (defined(ourKing) && (!defined(after.board.kingOf(after.turn)) || after.kingAttackers(ourKing, after.turn, after.board.occupied).isEmpty())) dests = dests.with(to);
-			}
-			return dests;
-		}
-		isVariantEnd() {
-			return !!this.variantOutcome();
-		}
-		variantOutcome(_ctx) {
-			for (const color of COLORS) if (this.board.pieces(color, "king").isEmpty()) return { winner: opposite(color) };
-		}
-	};
-	var Antichess = class extends Position {
-		constructor() {
-			super("antichess");
-		}
-		reset() {
-			super.reset();
-			this.castles = Castles.empty();
-		}
-		setupUnchecked(setup) {
-			super.setupUnchecked(setup);
-			this.castles = Castles.empty();
-		}
-		static default() {
-			const pos = new this();
-			pos.reset();
-			return pos;
-		}
-		static fromSetup(setup) {
-			const pos = new this();
-			pos.setupUnchecked(setup);
-			return pos.validate().map((_) => pos);
-		}
-		clone() {
-			return super.clone();
-		}
-		validate() {
-			if (this.board.occupied.isEmpty()) return Result.err(new PositionError(IllegalSetup.Empty));
-			if (SquareSet.backranks().intersects(this.board.pawn)) return Result.err(new PositionError(IllegalSetup.PawnsOnBackrank));
-			return Result.ok(void 0);
-		}
-		kingAttackers(_square, _attacker, _occupied) {
-			return SquareSet.empty();
-		}
-		ctx() {
-			const ctx = super.ctx();
-			if (defined(this.epSquare) && pawnAttacks(opposite(this.turn), this.epSquare).intersects(this.board.pieces(this.turn, "pawn"))) {
-				ctx.mustCapture = true;
-				return ctx;
-			}
-			const enemy = this.board[opposite(this.turn)];
-			for (const from of this.board[this.turn]) if (pseudoDests(this, from, ctx).intersects(enemy)) {
-				ctx.mustCapture = true;
-				return ctx;
-			}
-			return ctx;
-		}
-		dests(square, ctx) {
-			ctx = ctx || this.ctx();
-			const dests = pseudoDests(this, square, ctx);
-			const enemy = this.board[opposite(this.turn)];
-			return dests.intersect(ctx.mustCapture ? defined(this.epSquare) && this.board.getRole(square) === "pawn" ? enemy.with(this.epSquare) : enemy : SquareSet.full());
-		}
-		hasInsufficientMaterial(color) {
-			if (this.board[color].isEmpty()) return false;
-			if (this.board[opposite(color)].isEmpty()) return true;
-			if (this.board.occupied.equals(this.board.bishop)) {
-				const weSomeOnLight = this.board[color].intersects(SquareSet.lightSquares());
-				const weSomeOnDark = this.board[color].intersects(SquareSet.darkSquares());
-				const theyAllOnDark = this.board[opposite(color)].isDisjoint(SquareSet.lightSquares());
-				const theyAllOnLight = this.board[opposite(color)].isDisjoint(SquareSet.darkSquares());
-				return weSomeOnLight && theyAllOnDark || weSomeOnDark && theyAllOnLight;
-			}
-			if (this.board.occupied.equals(this.board.knight) && this.board.occupied.size() === 2) return this.board.white.intersects(SquareSet.lightSquares()) !== this.board.black.intersects(SquareSet.darkSquares()) !== (this.turn === color);
-			return false;
-		}
-		isVariantEnd() {
-			return this.board[this.turn].isEmpty();
-		}
-		variantOutcome(ctx) {
-			ctx = ctx || this.ctx();
-			if (ctx.variantEnd || this.isStalemate(ctx)) return { winner: this.turn };
-		}
-	};
-	var KingOfTheHill = class extends Position {
-		constructor() {
-			super("kingofthehill");
-		}
-		static default() {
-			const pos = new this();
-			pos.reset();
-			return pos;
-		}
-		static fromSetup(setup) {
-			const pos = new this();
-			pos.setupUnchecked(setup);
-			return pos.validate().map((_) => pos);
-		}
-		clone() {
-			return super.clone();
-		}
-		hasInsufficientMaterial(_color) {
-			return false;
-		}
-		isVariantEnd() {
-			return this.board.king.intersects(SquareSet.center());
-		}
-		variantOutcome(_ctx) {
-			for (const color of COLORS) if (this.board.pieces(color, "king").intersects(SquareSet.center())) return { winner: color };
-		}
-	};
-	var ThreeCheck = class extends Position {
-		constructor() {
-			super("3check");
-		}
-		reset() {
-			super.reset();
-			this.remainingChecks = RemainingChecks.default();
-		}
-		setupUnchecked(setup) {
-			var _a;
-			super.setupUnchecked(setup);
-			this.remainingChecks = ((_a = setup.remainingChecks) === null || _a === void 0 ? void 0 : _a.clone()) || RemainingChecks.default();
-		}
-		static default() {
-			const pos = new this();
-			pos.reset();
-			return pos;
-		}
-		static fromSetup(setup) {
-			const pos = new this();
-			pos.setupUnchecked(setup);
-			return pos.validate().map((_) => pos);
-		}
-		clone() {
-			return super.clone();
-		}
-		hasInsufficientMaterial(color) {
-			return this.board.pieces(color, "king").equals(this.board[color]);
-		}
-		isVariantEnd() {
-			return !!this.remainingChecks && (this.remainingChecks.white <= 0 || this.remainingChecks.black <= 0);
-		}
-		variantOutcome(_ctx) {
-			if (this.remainingChecks) {
-				for (const color of COLORS) if (this.remainingChecks[color] <= 0) return { winner: color };
-			}
-		}
-	};
-	var racingKingsBoard = () => {
-		const board = Board.empty();
-		board.occupied = new SquareSet(65535, 0);
-		board.promoted = SquareSet.empty();
-		board.white = new SquareSet(61680, 0);
-		board.black = new SquareSet(3855, 0);
-		board.pawn = SquareSet.empty();
-		board.knight = new SquareSet(6168, 0);
-		board.bishop = new SquareSet(9252, 0);
-		board.rook = new SquareSet(16962, 0);
-		board.queen = new SquareSet(129, 0);
-		board.king = new SquareSet(33024, 0);
-		return board;
-	};
-	var RacingKings = class extends Position {
-		constructor() {
-			super("racingkings");
-		}
-		reset() {
-			this.board = racingKingsBoard();
-			this.pockets = void 0;
-			this.turn = "white";
-			this.castles = Castles.empty();
-			this.epSquare = void 0;
-			this.remainingChecks = void 0;
-			this.halfmoves = 0;
-			this.fullmoves = 1;
-		}
-		setupUnchecked(setup) {
-			super.setupUnchecked(setup);
-			this.castles = Castles.empty();
-		}
-		static default() {
-			const pos = new this();
-			pos.reset();
-			return pos;
-		}
-		static fromSetup(setup) {
-			const pos = new this();
-			pos.setupUnchecked(setup);
-			return pos.validate().map((_) => pos);
-		}
-		clone() {
-			return super.clone();
-		}
-		validate() {
-			if (this.isCheck() || this.board.pawn.nonEmpty()) return Result.err(new PositionError(IllegalSetup.Variant));
-			return super.validate();
-		}
-		dests(square, ctx) {
-			ctx = ctx || this.ctx();
-			let dests = SquareSet.empty();
-			for (const to of super.dests(square, ctx)) {
-				const move = {
-					from: square,
-					to
-				};
-				const after = this.clone();
-				after.play(move);
-				if (!after.isCheck()) dests = dests.with(to);
-			}
-			return dests;
-		}
-		hasInsufficientMaterial(_color) {
-			return false;
-		}
-		isVariantEnd() {
-			const goal = SquareSet.fromRank(7);
-			const inGoal = this.board.king.intersect(goal);
-			if (inGoal.isEmpty()) return false;
-			if (this.turn === "white" || inGoal.intersects(this.board.black)) return true;
-			const blackKing = this.board.kingOf("black");
-			if (defined(blackKing)) {
-				const occ = this.board.occupied.without(blackKing);
-				for (const target of kingAttacks(blackKing).intersect(goal).diff(this.board.black)) if (this.kingAttackers(target, "white", occ).isEmpty()) return false;
-			}
-			return true;
-		}
-		variantOutcome(ctx) {
-			if (ctx ? !ctx.variantEnd : !this.isVariantEnd()) return;
-			const goal = SquareSet.fromRank(7);
-			const blackInGoal = this.board.pieces("black", "king").intersects(goal);
-			const whiteInGoal = this.board.pieces("white", "king").intersects(goal);
-			if (blackInGoal && !whiteInGoal) return { winner: "black" };
-			if (whiteInGoal && !blackInGoal) return { winner: "white" };
-			return { winner: void 0 };
-		}
-	};
-	var hordeBoard = () => {
-		const board = Board.empty();
-		board.occupied = new SquareSet(4294967295, 4294901862);
-		board.promoted = SquareSet.empty();
-		board.white = new SquareSet(4294967295, 102);
-		board.black = new SquareSet(0, 4294901760);
-		board.pawn = new SquareSet(4294967295, 16711782);
-		board.knight = new SquareSet(0, 1107296256);
-		board.bishop = new SquareSet(0, 603979776);
-		board.rook = new SquareSet(0, 2164260864);
-		board.queen = new SquareSet(0, 134217728);
-		board.king = new SquareSet(0, 268435456);
-		return board;
-	};
-	var Horde = class extends Position {
-		constructor() {
-			super("horde");
-		}
-		reset() {
-			this.board = hordeBoard();
-			this.pockets = void 0;
-			this.turn = "white";
-			this.castles = Castles.default();
-			this.castles.discardColor("white");
-			this.epSquare = void 0;
-			this.remainingChecks = void 0;
-			this.halfmoves = 0;
-			this.fullmoves = 1;
-		}
-		static default() {
-			const pos = new this();
-			pos.reset();
-			return pos;
-		}
-		static fromSetup(setup) {
-			const pos = new this();
-			pos.setupUnchecked(setup);
-			return pos.validate().map((_) => pos);
-		}
-		clone() {
-			return super.clone();
-		}
-		validate() {
-			if (this.board.occupied.isEmpty()) return Result.err(new PositionError(IllegalSetup.Empty));
-			if (this.board.king.size() !== 1) return Result.err(new PositionError(IllegalSetup.Kings));
-			const otherKing = this.board.kingOf(opposite(this.turn));
-			if (defined(otherKing) && this.kingAttackers(otherKing, this.turn, this.board.occupied).nonEmpty()) return Result.err(new PositionError(IllegalSetup.OppositeCheck));
-			for (const color of COLORS) {
-				const backranks = this.board.pieces(color, "king").isEmpty() ? SquareSet.backrank(opposite(color)) : SquareSet.backranks();
-				if (this.board.pieces(color, "pawn").intersects(backranks)) return Result.err(new PositionError(IllegalSetup.PawnsOnBackrank));
-			}
-			return Result.ok(void 0);
-		}
-		hasInsufficientMaterial(color) {
-			if (this.board.pieces(color, "king").nonEmpty()) return false;
-			const oppositeSquareColor = (squareColor) => squareColor === "light" ? "dark" : "light";
-			const coloredSquares = (squareColor) => squareColor === "light" ? SquareSet.lightSquares() : SquareSet.darkSquares();
-			const hasBishopPair = (side) => {
-				const bishops = this.board.pieces(side, "bishop");
-				return bishops.intersects(SquareSet.darkSquares()) && bishops.intersects(SquareSet.lightSquares());
-			};
-			const horde = MaterialSide.fromBoard(this.board, color);
-			const hordeBishops = (squareColor) => coloredSquares(squareColor).intersect(this.board.pieces(color, "bishop")).size();
-			const hordeBishopColor = hordeBishops("light") >= 1 ? "light" : "dark";
-			const hordeNum = horde.pawn + horde.knight + horde.rook + horde.queen + Math.min(hordeBishops("dark"), 2) + Math.min(hordeBishops("light"), 2);
-			const pieces = MaterialSide.fromBoard(this.board, opposite(color));
-			const piecesBishops = (squareColor) => coloredSquares(squareColor).intersect(this.board.pieces(opposite(color), "bishop")).size();
-			const piecesNum = pieces.size();
-			const piecesOfRoleNot = (piece) => piecesNum - piece;
-			if (hordeNum === 0) return true;
-			if (hordeNum >= 4) return false;
-			if ((horde.pawn >= 1 || horde.queen >= 1) && hordeNum >= 2) return false;
-			if (horde.rook >= 1 && hordeNum >= 2) {
-				if (!(hordeNum === 2 && horde.rook === 1 && horde.bishop === 1 && piecesOfRoleNot(piecesBishops(hordeBishopColor)) === 1)) return false;
-			}
-			if (hordeNum === 1) {
-				if (piecesNum === 1) return true;
-				else if (horde.queen === 1) return !(pieces.pawn >= 1 || pieces.rook >= 1 || piecesBishops("light") >= 2 || piecesBishops("dark") >= 2);
-				else if (horde.pawn === 1) {
-					const pawnSquare = this.board.pieces(color, "pawn").last();
-					const promoteToQueen = this.clone();
-					promoteToQueen.board.set(pawnSquare, {
-						color,
-						role: "queen"
-					});
-					const promoteToKnight = this.clone();
-					promoteToKnight.board.set(pawnSquare, {
-						color,
-						role: "knight"
-					});
-					return promoteToQueen.hasInsufficientMaterial(color) && promoteToKnight.hasInsufficientMaterial(color);
-				} else if (horde.rook === 1) return !(pieces.pawn >= 2 || pieces.rook >= 1 && pieces.pawn >= 1 || pieces.rook >= 1 && pieces.knight >= 1 || pieces.pawn >= 1 && pieces.knight >= 1);
-				else if (horde.bishop === 1) return !(piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 2 || piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 1 && pieces.pawn >= 1 || pieces.pawn >= 2);
-				else if (horde.knight === 1) return !(piecesNum >= 4 && (pieces.knight >= 2 || pieces.pawn >= 2 || pieces.rook >= 1 && pieces.knight >= 1 || pieces.rook >= 1 && pieces.bishop >= 1 || pieces.knight >= 1 && pieces.bishop >= 1 || pieces.rook >= 1 && pieces.pawn >= 1 || pieces.knight >= 1 && pieces.pawn >= 1 || pieces.bishop >= 1 && pieces.pawn >= 1 || hasBishopPair(opposite(color)) && pieces.pawn >= 1) && (piecesBishops("dark") < 2 || piecesOfRoleNot(piecesBishops("dark")) >= 3) && (piecesBishops("light") < 2 || piecesOfRoleNot(piecesBishops("light")) >= 3));
-			} else if (hordeNum === 2) {
-				if (piecesNum === 1) return true;
-				else if (horde.knight === 2) return pieces.pawn + pieces.bishop + pieces.knight < 1;
-				else if (hasBishopPair(color)) return !(pieces.pawn >= 1 || pieces.bishop >= 1 || pieces.knight >= 1 && pieces.rook + pieces.queen >= 1);
-				else if (horde.bishop >= 1 && horde.knight >= 1) return !(pieces.pawn >= 1 || piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 1 || piecesOfRoleNot(piecesBishops(hordeBishopColor)) >= 3);
-				else return !(pieces.pawn >= 1 && piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 1 || pieces.pawn >= 1 && pieces.knight >= 1 || piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 1 && pieces.knight >= 1 || piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 2 || pieces.knight >= 2 || pieces.pawn >= 2);
-			} else if (hordeNum === 3) {
-				if (horde.knight === 2 && horde.bishop === 1 || horde.knight === 3 || hasBishopPair(color)) return false;
-				else return piecesNum === 1;
-			}
-			return true;
-		}
-		isVariantEnd() {
-			return this.board.white.isEmpty() || this.board.black.isEmpty();
-		}
-		variantOutcome(_ctx) {
-			if (this.board.white.isEmpty()) return { winner: "black" };
-			if (this.board.black.isEmpty()) return { winner: "white" };
-		}
-	};
-	var setupPosition = (rules, setup) => {
-		switch (rules) {
-			case "chess": return Chess.fromSetup(setup);
-			case "antichess": return Antichess.fromSetup(setup);
-			case "atomic": return Atomic.fromSetup(setup);
-			case "horde": return Horde.fromSetup(setup);
-			case "racingkings": return RacingKings.fromSetup(setup);
-			case "kingofthehill": return KingOfTheHill.fromSetup(setup);
-			case "3check": return ThreeCheck.fromSetup(setup);
-			case "crazyhouse": return Crazyhouse.fromSetup(setup);
-		}
-	};
-	function parseRules(variant) {
-		if (!variant || variant === "standard" || variant === "chess" || variant === "fromPosition" || variant === "chess960") return "chess";
-		const v = variant.toLowerCase().replace(/[\s\-_]/g, "");
-		if (v === "crazyhouse") return "crazyhouse";
-		if (v === "atomic") return "atomic";
-		if (v === "antichess") return "antichess";
-		if (v === "kingofthehill") return "kingofthehill";
-		if (v === "threecheck" || v === "3check") return "3check";
-		if (v === "racingkings") return "racingkings";
-		if (v === "horde") return "horde";
-		if (v === "chess960" || v === "fischerandom") return "chess";
-		return null;
+	function cancelPendingMove() {
+		moveRevision++;
 	}
-	function makeEngineUci(position, move) {
-		if ("from" in move && move.from === position.board.kingOf(position.turn)) {
-			const rooks = position.castles.rook[position.turn];
-			const side = move.to === rooks.a ? "a" : move.to === rooks.h ? "h" : void 0;
-			if (side) return makeSquare(move.from) + makeSquare(kingCastlesTo(position.turn, side));
-		}
-		return makeUci(move);
-	}
-	function canonicalFen(fen, variant) {
-		if (typeof fen !== "string") return null;
-		const trimmed = fen.trim();
-		const rules = parseRules(variant);
-		if (!rules) return trimmed.split(/\s+/).length >= 4 ? trimmed : null;
-		if (trimmed.split(/\s+/).length !== 6 && rules !== "crazyhouse") return null;
-		try {
-			const setup = parseFen(trimmed);
-			if (setup.isErr) return null;
-			const position = setupPosition(rules, setup.value);
-			if (position.isErr) return null;
-			return makeFen(position.value.toSetup());
-		} catch {
-			return null;
-		}
-	}
-	function replaySanLine(startFen, sans, variant) {
-		const rootFen = canonicalFen(startFen, variant);
-		if (!rootFen) return void 0;
-		const rules = parseRules(variant);
-		if (!rules) return {
-			history: {
-				startFen: rootFen,
-				moves: []
-			},
-			fens: [rootFen]
-		};
-		try {
-			const setup = parseFen(rootFen);
-			if (setup.isErr) return void 0;
-			const position = setupPosition(rules, setup.value);
-			if (position.isErr) return void 0;
-			const moves = [];
-			const fens = [rootFen];
-			for (const san of sans) {
-				if (typeof san !== "string" || !san.trim()) return void 0;
-				const move = parseSan(position.value, san.trim());
-				if (!move) return void 0;
-				moves.push(makeEngineUci(position.value, move));
-				position.value.play(move);
-				const fen = makeFen(position.value.toSetup());
-				if (!canonicalFen(fen, variant)) return void 0;
-				fens.push(fen);
-			}
-			return {
-				history: {
-					startFen: rootFen,
-					moves
-				},
-				fens
-			};
-		} catch {
-			return;
-		}
-	}
-	function isObject(value) {
-		return typeof value === "object" && value !== null || typeof value === "function";
-	}
-	var capturedController = null;
-	var wrappedPrototypes = new WeakSet();
-	var hookedRegistries = new WeakSet();
-	function getCapturedChesscomController() {
-		return capturedController ?? null;
-	}
-	function setCapturedChesscomController(controller) {
-		if (!isObject(controller)) return;
-		capturedController = controller;
-	}
-	function installChesscomControllerBridge(page, onController) {
-		const notify = (controller) => {
-			if (!isObject(controller)) return;
-			capturedController = controller;
-			try {
-				onController(controller);
-			} catch {}
-		};
-		const controllerFrom = (owner, result) => {
-			if (isObject(result)) {
-				const nested = Reflect.get(result, "game");
-				if (isObject(nested)) return nested;
-				if (typeof Reflect.get(result, "getFEN") === "function") return result;
-			}
-			return owner?.game ?? result;
-		};
-		const wrapPrototype = (proto) => {
-			if (!isObject(proto) || wrappedPrototypes.has(proto)) return;
-			wrappedPrototypes.add(proto);
-			const originalInit = Reflect.get(proto, "init");
-			if (typeof originalInit === "function") {
-				const init = originalInit;
-				try {
-					Object.defineProperty(proto, "init", {
-						configurable: true,
-						writable: true,
-						value(...args) {
-							const result = Reflect.apply(init, this, args);
-							try {
-								notify(controllerFrom(this, result));
-							} catch {}
-							return result;
-						}
-					});
-				} catch {}
-			}
-			const originalCreateGame = Reflect.get(proto, "createGame");
-			if (typeof originalCreateGame === "function") {
-				const createGame = originalCreateGame;
-				try {
-					Object.defineProperty(proto, "createGame", {
-						configurable: true,
-						writable: true,
-						value(...args) {
-							const result = Reflect.apply(createGame, this, args);
-							try {
-								notify(controllerFrom(this, result));
-							} catch {}
-							return result;
-						}
-					});
-				} catch {}
-			}
-		};
-		const wrapConstructor = (candidate) => {
-			if (!isObject(candidate)) return;
-			const prototype = Reflect.get(candidate, "prototype");
-			if (isObject(prototype)) wrapPrototype(prototype);
-		};
-		try {
-			const registry = page.customElements;
-			if (registry && typeof registry.define === "function" && !hookedRegistries.has(registry)) {
-				hookedRegistries.add(registry);
-				const originalDefine = registry.define.bind(registry);
-				try {
-					registry.define = ((name, ctor, options) => {
-						try {
-							if (name === "wc-chess-board") wrapConstructor(ctor);
-						} catch {}
-						return originalDefine(name, ctor, options);
-					});
-				} catch {}
-			}
-		} catch {}
-		try {
-			wrapConstructor(page.customElements?.get?.("wc-chess-board"));
-		} catch {}
-		try {
-			const boards = page.document?.querySelectorAll?.("wc-chess-board");
-			if (boards) for (const board of Array.from(boards)) try {
-				if (isObject(board?.game)) notify(board.game);
-			} catch {}
-		} catch {}
-		return true;
-	}
-	function pageWindow() {
-		return typeof unsafeWindow === "undefined" ? window : unsafeWindow;
-	}
-	function pageDocument() {
-		return typeof unsafeWindow === "undefined" ? document : unsafeWindow.document;
-	}
-	function mutationElement(target) {
-		return target.nodeType === 1 ? target : target.parentElement ?? null;
-	}
-	var GAME_CACHE_TTL = 100;
-	var PROMOTION_CHOOSER_STATE = "PomotionAreaShowing";
-	var BOARD_SELECTOR$1 = "wc-chess-board, chess-board, .board";
-	var cachedGame = null;
-	var cachedGameTimestamp = 0;
-	function hasGameApi(board) {
-		return typeof board.game?.getFEN === "function";
-	}
-	function isVisibleBoard(board) {
-		try {
-			const style = (board.ownerDocument?.defaultView)?.getComputedStyle(board) ?? (typeof getComputedStyle === "function" ? getComputedStyle(board) : null);
-			if (style?.display === "none" || style?.visibility === "hidden" || style?.visibility === "collapse") return false;
-			if (typeof board.getClientRects === "function" && board.getClientRects().length === 0) return false;
-			const rect = board.getBoundingClientRect?.();
-			return !rect || rect.width > 0 && rect.height > 0;
-		} catch {
-			return false;
-		}
-	}
-	function boardArea(board) {
-		const rect = board.getBoundingClientRect?.();
-		return rect ? rect.width * rect.height : 0;
-	}
-	function getBoard(doc = pageDocument()) {
-		const visible = (typeof doc.querySelectorAll === "function" ? Array.from(doc.querySelectorAll(BOARD_SELECTOR$1)) : [doc.querySelector(BOARD_SELECTOR$1)].filter((board) => !!board)).filter(isVisibleBoard);
-		visible.sort((a, b) => Number(hasGameApi(b)) - Number(hasGameApi(a)) || boardArea(b) - boardArea(a));
-		return visible[0] ?? null;
-	}
-	function getGame() {
-		const captured = getCapturedChesscomController();
-		if (captured && typeof captured.getFEN === "function") return captured;
-		const now = Date.now();
-		if (cachedGame && now - cachedGameTimestamp < GAME_CACHE_TTL) return cachedGame;
-		cachedGame = getBoard(pageDocument())?.game || null;
-		cachedGameTimestamp = now;
-		return cachedGame;
-	}
-	var getFen = (game) => {
-		try {
-			return game?.getFEN ? game.getFEN() : null;
-		} catch {
-			return null;
-		}
-	};
-	function getStartingFen(game) {
-		try {
-			const starting = game?.getFingerprints?.()?.startingFen;
-			return typeof starting === "string" && starting.trim() ? starting : null;
-		} catch {
-			return null;
-		}
-	}
-	var CLOCK_SELECTOR = ".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time, .clock-player-turn .move-time-content, .clock-player-turn.move-time-content";
-	var WHITE_CLOCK_SELECTOR = ".clock-white .clock-time-monospace, .clock-white .clock-time, .clock-white .move-time-content, .clock-white.move-time-content";
-	var BLACK_CLOCK_SELECTOR = ".clock-black .clock-time-monospace, .clock-black .clock-time, .clock-black .move-time-content, .clock-black.move-time-content";
-	function parseClockText(text) {
-		if (!text) return null;
-		const trimmed = text.trim();
-		let seconds;
-		const minutesAndSeconds = /^(\d+):(\d{2}(?:\.\d+)?)$/.exec(trimmed);
-		if (minutesAndSeconds) {
-			const minutes = Number(minutesAndSeconds[1]);
-			const remainder = Number(minutesAndSeconds[2]);
-			if (!Number.isFinite(minutes) || !Number.isFinite(remainder) || remainder >= 60) return null;
-			seconds = minutes * 60 + remainder;
-		} else if (/^\d+(?:\.\d+)?$/.test(trimmed)) seconds = Number(trimmed);
-		else return null;
-		return Number.isFinite(seconds) ? Math.round(seconds * 1e3) : null;
-	}
-	function getRemainingMs(doc) {
-		const text = doc.querySelector(CLOCK_SELECTOR)?.textContent?.trim();
-		return parseClockText(text);
-	}
-	function getColorRemainingMs(doc, color) {
-		const selector = color === "w" ? WHITE_CLOCK_SELECTOR : BLACK_CLOCK_SELECTOR;
-		const text = doc.querySelector(selector)?.textContent?.trim();
-		return parseClockText(text);
-	}
-	var getSideToMove = (game) => {
-		try {
-			const turn = game?.getTurn?.();
-			if (turn === 1) return "w";
-			if (turn === 2) return "b";
-		} catch {}
-		const fen = getFen(game);
-		return fen ? fen.split(" ")[1] || null : null;
-	};
-	var getOrientation = (game) => {
-		try {
-			const options = game?.getOptions?.();
-			if (options) {
-				if (typeof options.flipped === "boolean") return options.flipped ? "black" : "white";
-				if (typeof options.isWhiteOnBottom === "boolean") return options.isWhiteOnBottom ? "white" : "black";
-			}
-		} catch {}
-		try {
-			return game?.getPlayingAs?.() === 2 ? "black" : "white";
-		} catch {
-			return "white";
-		}
-	};
-	function isLegalChesscomMove(game, from, to, promotion) {
-		try {
-			const checker = game?.isLegalMove;
-			if (typeof checker !== "function") return false;
-			return checker.call(game, {
-				from,
-				to,
-				...promotion ? { promotion } : {}
-			}) === true;
-		} catch {
-			return false;
-		}
-	}
-	function resetStuckPromotionWindow(game) {
-		try {
-			if (game?.getState?.() !== PROMOTION_CHOOSER_STATE) return;
-			game?.getRenderer?.()?.closePromotionWindow?.();
-		} catch {}
-	}
-	function invalidateGameCache() {
-		cachedGame = null;
-		cachedGameTimestamp = 0;
+	function getMoveRevision() {
+		return moveRevision;
 	}
 	var DEFAULT_CONFIG = {
 		lang: void 0,
@@ -2251,9 +84,6 @@
 		if (isSchema) dataset.typed = false;
 		if (dataset.issues) dataset.issues.push(issue);
 		else dataset.issues = [issue];
-	}
-	function _isSameValueZero(value1, value2) {
-		return value1 === value2 || Number.isNaN(value1) && Number.isNaN(value2);
 	}
 	function _joinExpects(values$1, separator) {
 		const list = [...new Set(values$1)];
@@ -2347,17 +177,16 @@
 	function getDefault(schema, dataset, config$1) {
 		return typeof schema.default === "function" ? schema.default(dataset, config$1) : schema.default;
 	}
-	function literal(literal_, message$1) {
+	function boolean(message$1) {
 		return _standardSchema({
 			kind: "schema",
-			type: "literal",
-			reference: literal,
-			expects: _stringify(literal_),
+			type: "boolean",
+			reference: boolean,
+			expects: "boolean",
 			async: false,
-			literal: literal_,
 			message: message$1,
 			"~run"(dataset, config$1) {
-				if (_isSameValueZero(dataset.value, this.literal)) dataset.typed = true;
+				if (typeof dataset.value === "boolean") dataset.typed = true;
 				else _addIssue(this, "type", dataset, config$1);
 				return dataset;
 			}
@@ -2491,47 +320,6 @@
 			}
 		});
 	}
-	function _subIssues(datasets) {
-		let issues;
-		if (datasets) for (const dataset of datasets) if (issues) for (const issue of dataset.issues) issues.push(issue);
-		else issues = dataset.issues;
-		return issues;
-	}
-	function union(options, message$1) {
-		return _standardSchema({
-			kind: "schema",
-			type: "union",
-			reference: union,
-			expects: _joinExpects(options.map((option) => option.expects), "|"),
-			async: false,
-			options,
-			message: message$1,
-			"~run"(dataset, config$1) {
-				let validDataset;
-				let typedDatasets;
-				let untypedDatasets;
-				for (const schema of this.options) {
-					const optionDataset = schema["~run"]({ value: dataset.value }, config$1);
-					if (optionDataset.typed) if (optionDataset.issues) if (typedDatasets) typedDatasets.push(optionDataset);
-					else typedDatasets = [optionDataset];
-					else {
-						validDataset = optionDataset;
-						break;
-					}
-					else if (untypedDatasets) untypedDatasets.push(optionDataset);
-					else untypedDatasets = [optionDataset];
-				}
-				if (validDataset) return validDataset;
-				if (typedDatasets) {
-					if (typedDatasets.length === 1) return typedDatasets[0];
-					_addIssue(this, "type", dataset, config$1, { issues: _subIssues(typedDatasets) });
-					dataset.typed = true;
-				} else if (untypedDatasets?.length === 1) return untypedDatasets[0];
-				else _addIssue(this, "type", dataset, config$1, { issues: _subIssues(untypedDatasets) });
-				return dataset;
-			}
-		});
-	}
 	function pipe(...pipe$1) {
 		return _standardSchema({
 			...pipe$1[0],
@@ -2557,56 +345,134 @@
 			issues: dataset.issues
 		};
 	}
-	var DEFAULT_SETTINGS = {
-		hackEnabled: 0,
-		botPower: 30,
-		moveTime: 100,
-		timingMode: "dynamic",
-		autoMove: 1,
-		openingBook: 1,
-		openingStyle: "balanced",
-		ponderEnabled: 1,
-		targetElo: 0,
-		blunderShield: 1,
-		ghostMode: 0,
-		autoRetry: 1,
-		gameReport: 1,
-		reportDepth: 18,
-		menuPosition: null
-	};
 	var MAX_MOVE_TIME = 5e3;
-	var flagSchema = union([literal(0), literal(1)]);
-	var integerInRange = (minimum, maximum) => pipe(number(), integer(), minValue(minimum), maxValue(maximum));
-	var positionSchema = object({
-		top: pipe(string(), maxLength(32)),
-		left: pipe(string(), maxLength(32))
-	});
-	var openingStyleSchema = picklist([
+	var MIN_BOT_POWER = 1;
+	var MAX_BOT_POWER = 30;
+	var MAX_TARGET_ELO = 3200;
+	var OPENING_STYLES = [
 		"hyper-defensive",
 		"defensive",
 		"balanced",
 		"aggressive",
 		"hyper-aggressive"
-	]);
-	var timingModeSchema = picklist(["dynamic", "fixed"]);
+	];
+	var TIMING_MODES = ["dynamic", "fixed"];
+	var panelPositionSchema = object({
+		top: pipe(string(), maxLength(32)),
+		left: pipe(string(), maxLength(32))
+	});
+	var SETTING_SPECS = [
+		{
+			key: "hackEnabled",
+			kind: "flag",
+			default: false,
+			persisted: false
+		},
+		{
+			key: "botPower",
+			kind: "number",
+			default: 30,
+			persisted: true,
+			min: MIN_BOT_POWER,
+			max: MAX_BOT_POWER
+		},
+		{
+			key: "moveTime",
+			kind: "number",
+			default: 100,
+			persisted: true,
+			min: 25,
+			max: MAX_MOVE_TIME
+		},
+		{
+			key: "timingMode",
+			kind: "enum",
+			default: "dynamic",
+			persisted: true,
+			choices: TIMING_MODES
+		},
+		{
+			key: "autoMove",
+			kind: "flag",
+			default: true,
+			persisted: true
+		},
+		{
+			key: "openingBook",
+			kind: "flag",
+			default: true,
+			persisted: true
+		},
+		{
+			key: "openingStyle",
+			kind: "enum",
+			default: "balanced",
+			persisted: true,
+			choices: OPENING_STYLES
+		},
+		{
+			key: "ponderEnabled",
+			kind: "flag",
+			default: true,
+			persisted: true
+		},
+		{
+			key: "targetElo",
+			kind: "number",
+			default: 0,
+			persisted: true,
+			min: 0,
+			max: MAX_TARGET_ELO
+		},
+		{
+			key: "blunderShield",
+			kind: "flag",
+			default: true,
+			persisted: true
+		},
+		{
+			key: "ghostMode",
+			kind: "flag",
+			default: false,
+			persisted: true
+		},
+		{
+			key: "autoRetry",
+			kind: "flag",
+			default: true,
+			persisted: true
+		},
+		{
+			key: "gameReport",
+			kind: "flag",
+			default: true,
+			persisted: true
+		},
+		{
+			key: "reportDepth",
+			kind: "number",
+			default: 18,
+			persisted: true,
+			min: 10,
+			max: 26
+		}
+	];
+	function specValidator(spec) {
+		switch (spec.kind) {
+			case "flag": return boolean();
+			case "number": return pipe(number(), integer(), minValue(spec.min ?? 0), maxValue(spec.max ?? Number.MAX_SAFE_INTEGER));
+			case "enum": return picklist([...spec.choices ?? []]);
+		}
+	}
+	var DEFAULT_SETTINGS = Object.freeze({
+		...Object.fromEntries(SETTING_SPECS.map((spec) => [spec.key, spec.default])),
+		menuPosition: null
+	});
 	var savedSettingsSchema = object({
-		botPower: fallback(integerInRange(1, 30), DEFAULT_SETTINGS.botPower),
-		moveTime: fallback(integerInRange(25, MAX_MOVE_TIME), DEFAULT_SETTINGS.moveTime),
-		timingMode: fallback(timingModeSchema, DEFAULT_SETTINGS.timingMode),
-		autoMove: fallback(flagSchema, DEFAULT_SETTINGS.autoMove),
-		openingBook: fallback(flagSchema, DEFAULT_SETTINGS.openingBook),
-		openingStyle: fallback(openingStyleSchema, DEFAULT_SETTINGS.openingStyle),
-		ponderEnabled: fallback(flagSchema, DEFAULT_SETTINGS.ponderEnabled),
-		targetElo: fallback(integerInRange(0, 3200), DEFAULT_SETTINGS.targetElo),
-		blunderShield: fallback(flagSchema, DEFAULT_SETTINGS.blunderShield),
-		ghostMode: fallback(flagSchema, DEFAULT_SETTINGS.ghostMode),
-		autoRetry: fallback(flagSchema, DEFAULT_SETTINGS.autoRetry),
-		gameReport: fallback(flagSchema, DEFAULT_SETTINGS.gameReport),
-		reportDepth: fallback(integerInRange(10, 26), DEFAULT_SETTINGS.reportDepth),
-		menuPosition: fallback(nullable(positionSchema), DEFAULT_SETTINGS.menuPosition)
+		...Object.fromEntries(SETTING_SPECS.filter((spec) => spec.persisted).map((spec) => [spec.key, fallback(specValidator(spec), spec.default)])),
+		menuPosition: fallback(nullable(panelPositionSchema), DEFAULT_SETTINGS.menuPosition)
 	});
 	function loadSettings(serialized) {
-		if (serialized === null) return { ...DEFAULT_SETTINGS };
 		let saved;
 		try {
 			saved = JSON.parse(serialized);
@@ -2618,8 +484,14 @@
 		return {
 			...DEFAULT_SETTINGS,
 			...result.output,
-			hackEnabled: 0
+			hackEnabled: false
 		};
+	}
+	var PERSISTED_KEYS = SETTING_SPECS.filter((spec) => spec.persisted).map((spec) => spec.key);
+	if (PERSISTED_KEYS.length !== SETTING_SPECS.length - 1) throw new Error("settings table must mark exactly one non-persisted field: hackEnabled");
+	var settingsModel = Object.fromEntries(PERSISTED_KEYS.map((key) => [key, DEFAULT_SETTINGS[key]]));
+	function persistedSettingKeys() {
+		return PERSISTED_KEYS;
 	}
 	var activeSite$1 = null;
 	function setActiveSite(site) {
@@ -2628,120 +500,47 @@
 	function getActiveSite() {
 		return activeSite$1;
 	}
-	function debounce(fn, wait = 150) {
-		let t = null;
-		return (...args) => {
-			if (t !== null) clearTimeout(t);
-			t = setTimeout(() => fn(...args), wait);
-		};
-	}
-	function scoreToDisplay(score) {
-		if (typeof score?.mate === "number" && score.mate !== 0) return `M${score.mate}`;
-		if (typeof score?.cp === "number") return (score.cp / 100).toFixed(2);
-		return "-";
-	}
-	function snapshot() {
+	var cached = null;
+	var cachedThisTurn = false;
+	function readSiteSnapshot() {
+		if (cachedThisTurn) return cached;
 		try {
 			const read = getActiveSite()?.read();
-			return read?.kind === "game" ? read.snapshot : null;
+			cached = read?.kind === "game" ? read.snapshot : null;
 		} catch {
-			return null;
+			cached = null;
 		}
+		cachedThisTurn = true;
+		queueMicrotask(() => {
+			cachedThisTurn = false;
+			cached = null;
+		});
+		return cached;
 	}
-	function getPlayerColor() {
-		return snapshot()?.playerColor ?? null;
+	function snapshot() {
+		return readSiteSnapshot();
 	}
 	function isBoardFlipped() {
 		return snapshot()?.orientation === "black";
 	}
-	function pa() {
-		return getPlayerColor() === "b" ? 2 : 1;
-	}
-	var menuPositionGetter = null;
-	function setMenuPositionGetter(getter) {
-		menuPositionGetter = getter;
-	}
-	var BotState = {
-		hackEnabled: 0,
-		botPower: 30,
-		moveTime: 100,
-		timingMode: "dynamic",
-		autoMove: 1,
-		openingBook: 1,
-		openingStyle: "balanced",
+	var runtimeState = {
+		hackEnabled: false,
 		currentEvaluation: "-",
 		bestMove: "-",
 		principalVariation: "-",
 		statusInfo: "Ready",
 		recoveryAction: null,
-		ponderEnabled: 1,
-		targetElo: 0,
-		blunderShield: 1,
-		ghostMode: 0,
-		autoRetry: 1,
-		gameReport: 1,
-		reportDepth: 18,
-		multiPvLines: void 0,
+		multiPvLines: [],
 		evalHistory: []
 	};
-	var Settings = {
-		save: debounce(() => {
-			try {
-				const position = menuPositionGetter?.() ?? null;
-				const settings = {
-					hackEnabled: 0,
-					botPower: BotState.botPower,
-					moveTime: BotState.moveTime,
-					timingMode: BotState.timingMode,
-					autoMove: BotState.autoMove,
-					openingBook: BotState.openingBook,
-					openingStyle: BotState.openingStyle,
-					ponderEnabled: BotState.ponderEnabled,
-					targetElo: BotState.targetElo,
-					blunderShield: BotState.blunderShield,
-					ghostMode: BotState.ghostMode,
-					autoRetry: BotState.autoRetry,
-					gameReport: BotState.gameReport,
-					reportDepth: BotState.reportDepth,
-					menuPosition: position
-				};
-				localStorage.setItem("scb_settings", JSON.stringify(settings));
-			} catch (e) {
-				console.warn("Failed to save settings:", e);
-			}
-		}, 200),
-		load() {
-			try {
-				const saved = localStorage.getItem("scb_settings");
-				if (!saved) {
-					BotState.hackEnabled = 0;
-					return null;
-				}
-				const settings = loadSettings(saved);
-				Object.assign(BotState, settings, { hackEnabled: 0 });
-				return settings;
-			} catch {
-				Object.assign(BotState, DEFAULT_SETTINGS, { hackEnabled: 0 });
-				return { ...DEFAULT_SETTINGS };
-			}
+	var preferenceKeys = Object.keys(settingsModel);
+	var BotState = Object.defineProperties(runtimeState, Object.fromEntries(preferenceKeys.map((key) => [key, {
+		enumerable: true,
+		get: () => settingsModel[key],
+		set: (value) => {
+			settingsModel[key] = value;
 		}
-	};
-	var boardCtx = null;
-	var observedOrientation = null;
-	var moveRevision = 0;
-	var boardInputListeners = new Set();
-	var boardMoveObserver = null;
-	var mutationListeners = new Set();
-	var unsubscribeGame = null;
-	var watcherRevision = 0;
-	var moveWatcherRequested = false;
-	function clearMoveWatcher() {
-		watcherRevision++;
-		unsubscribeGame?.();
-		unsubscribeGame = null;
-		boardMoveObserver?.disconnect();
-		boardMoveObserver = null;
-	}
+	}])));
 	var OVERLAY_ATTR = "data-engine-layer";
 	var botOwnedNodes = new WeakSet();
 	function markBotNode(node) {
@@ -2765,54 +564,10 @@
 		const changedNodes = [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)];
 		return changedNodes.length > 0 && changedNodes.every(isBotOwnedNode);
 	}
-	function notifyMutationListeners() {
-		invalidateGameCache();
-		for (const callback of [...mutationListeners]) try {
-			callback();
-		} catch (error) {
-			console.error("Super Chess Bot: Board mutation listener failed.", error);
-		}
-	}
-	function attachMoveWatcher() {
-		if (!moveWatcherRequested) return;
-		const board = getBoard();
-		if (!board) return;
-		const game = getGame();
-		const revision = watcherRevision;
-		const notify = () => {
-			if (revision !== watcherRevision) return;
-			notifyMutationListeners();
-		};
-		if (typeof game?.on === "function" && typeof game?.off === "function") {
-			game.on("Move", notify);
-			const off = game.off.bind(game);
-			unsubscribeGame = () => off("Move", notify);
-		}
-		let queued = false;
-		boardMoveObserver = new MutationObserver((records) => {
-			if (!records.some((record) => !isBotOwnedMutation(record))) return;
-			if (queued) return;
-			queued = true;
-			queueMicrotask(() => {
-				queued = false;
-				notify();
-			});
-		});
-		boardMoveObserver.observe(board, {
-			childList: true,
-			subtree: true,
-			attributes: true,
-			attributeFilter: [
-				"class",
-				"style",
-				"data-piece"
-			]
-		});
-	}
+	var boardCtx = null;
+	var observedOrientation = null;
 	function attachToBoard(boardEl) {
-		invalidateGameCache();
 		detachFromBoard();
-		clearMoveWatcher();
 		if (!boardEl) return;
 		if (getComputedStyle(boardEl).position === "static") boardEl.style.position = "relative";
 		const drawingBoard = document.createElement("canvas");
@@ -2849,8 +604,7 @@
 				drawingBoard.remove();
 			}
 		};
-		if (BotState.onUpdateDisplay) BotState.onUpdateDisplay(pa());
-		attachMoveWatcher();
+		if (BotState.onUpdateDisplay) BotState.onUpdateDisplay();
 	}
 	function setBoardOrientation(orientation) {
 		observedOrientation = orientation;
@@ -2865,29 +619,6 @@
 			boardCtx.detachListeners();
 		} catch {}
 		boardCtx = null;
-	}
-	function onBoardMutation(cb) {
-		mutationListeners.add(cb);
-		return () => mutationListeners.delete(cb);
-	}
-	function onBoardInput(cb) {
-		boardInputListeners.add(cb);
-		return () => boardInputListeners.delete(cb);
-	}
-	function notifyBoardInput(event) {
-		if (!event.isTrusted) return;
-		if ("button" in event && typeof event.button === "number" && event.button !== 0) return;
-		cancelPendingMove();
-		for (const listener of [...boardInputListeners]) listener();
-	}
-	function startMoveWatcher() {
-		moveWatcherRequested = true;
-		clearMoveWatcher();
-		attachMoveWatcher();
-	}
-	function stopMoveWatcher() {
-		moveWatcherRequested = false;
-		clearMoveWatcher();
 	}
 	function clearArrows() {
 		if (!boardCtx) return;
@@ -2991,77 +722,11 @@
 			clearArrows();
 		} else boardCtx.drawingBoard.style.display = "";
 	}
-	function confirmSiteMove(request, adapter, timeout = 1e3) {
-		const expectedFen = canonicalFen(request.expectedFen);
-		if (!expectedFen || request.expectedPly !== null && (!Number.isInteger(request.expectedPly) || request.expectedPly < 0)) return Promise.resolve(false);
-		return new Promise((resolve) => {
-			let done = false;
-			let unsubscribe = null;
-			let unsubscribeWhenReady = false;
-			let timer;
-			const finish = (accepted) => {
-				if (done) return;
-				done = true;
-				if (unsubscribe) try {
-					unsubscribe();
-				} catch {}
-				else unsubscribeWhenReady = true;
-				request.signal.removeEventListener("abort", onAbort);
-				if (timer) clearTimeout(timer);
-				resolve(accepted);
-			};
-			const check = () => {
-				if (done) return;
-				let current;
-				try {
-					current = adapter.read();
-				} catch (error) {
-					console.error("Super Chess Bot: adapter read failed during move confirmation.", error);
-					finish(false);
-					return;
-				}
-				if (current.kind !== "game") return;
-				if (current.snapshot.identity !== request.identity) {
-					finish(false);
-					return;
-				}
-				if (request.expectedPly !== null) {
-					const confirmed = current.snapshot.confirmedFens?.[request.expectedPly];
-					if (typeof confirmed !== "string") return;
-					finish(canonicalFen(confirmed) === expectedFen);
-					return;
-				}
-				if (canonicalFen(current.snapshot.fen) === expectedFen) finish(true);
-			};
-			const onAbort = () => {
-				check();
-				if (!done) finish(false);
-			};
-			try {
-				unsubscribe = adapter.subscribe(check);
-				if (unsubscribeWhenReady) {
-					unsubscribe();
-					unsubscribe = null;
-				}
-			} catch (error) {
-				console.error("Super Chess Bot: adapter subscribe failed during move confirmation.", error);
-				finish(false);
-				return;
-			}
-			if (done) return;
-			request.signal.addEventListener("abort", onAbort, { once: true });
-			timer = setTimeout(() => finish(false), Math.max(0, timeout));
-			check();
-			if (request.signal.aborted && !done) onAbort();
-		});
-	}
-	function cancelPendingMove() {
-		moveRevision++;
-	}
-	function getMoveRevision() {
-		return moveRevision;
-	}
 	var PONDER_REUSE_DEPTH = 12;
+	var UCI_MOVE_PATTERN = /^[a-h][1-8][a-h][1-8][nbrq]?$/;
+	function isValidUciMove(move) {
+		return UCI_MOVE_PATTERN.test(move);
+	}
 	function deferred() {
 		let resolve;
 		let reject;
@@ -3081,14 +746,9 @@
 		if (reason instanceof Error) return reason;
 		return new Error(typeof reason === "string" ? reason : "Stockfish worker failed");
 	}
-	function safeTimeout(callback, delay) {
-		const timer = setTimeout(callback, delay);
-		timer.unref?.();
-		return timer;
-	}
 	function withTimeout(promise, timeoutMs, label) {
 		return new Promise((resolve, reject) => {
-			const timer = safeTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs} ms`)), timeoutMs);
+			const timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs} ms`)), timeoutMs);
 			promise.then((value) => {
 				clearTimeout(timer);
 				resolve(value);
@@ -3107,6 +767,14 @@
 		const value = Number(raw);
 		return Number.isSafeInteger(value) ? value : void 0;
 	}
+	function clampSearchDepth(depth) {
+		return Math.max(1, Math.min(100, Math.floor(depth) || 1));
+	}
+	function clampTimeLimit(timeLimit) {
+		const value = Math.floor(timeLimit);
+		if (!Number.isFinite(value) || value <= 0) return 0;
+		return Math.min(12e4, value);
+	}
 	function parseInfo(line, previous, job) {
 		const tokens = line.trim().split(/\s+/);
 		if (tokens[0] !== "info" || tokens[1] === "string") return previous;
@@ -3114,6 +782,7 @@
 		const hasMultipvToken = multipvIndex >= 0;
 		const multipv = hasMultipvToken ? finiteInteger(tokens[multipvIndex + 1]) ?? 1 : 1;
 		const existingLine = job?.multiPvLines.get(multipv);
+		const pvIndex = tokens.indexOf("pv");
 		const depth = finiteInteger(tokenValue(tokens, "depth")) ?? (multipv === 1 ? previous.depth : existingLine?.depth ?? 0);
 		const cpIndex = tokens.indexOf("cp");
 		const mateIndex = tokens.indexOf("mate");
@@ -3127,17 +796,15 @@
 				if (mate !== void 0) evaluation = { mate };
 			}
 		}
-		const pvIndex = tokens.indexOf("pv");
 		const pv = pvIndex >= 0 ? tokens.slice(pvIndex + 1).join(" ") : multipv === 1 ? previous.pv : existingLine?.pv ?? "";
 		const nodes = finiteInteger(tokenValue(tokens, "nodes")) ?? previous.nodes;
 		const time = finiteInteger(tokenValue(tokens, "time")) ?? previous.time;
 		if (job && (hasMultipvToken || pvIndex >= 0)) {
 			if (hasMultipvToken) job.hasMultiPv = true;
-			const uci = pv ? pv.split(/\s+/)[0] ?? "" : "";
-			job.multiPvLines.set(multipv, {
+			if (pvIndex >= 0 || existingLine === void 0) job.multiPvLines.set(multipv, {
 				multipv,
 				depth,
-				uci,
+				uci: pv ? pv.split(/\s+/)[0] ?? "" : "",
 				pv,
 				evaluation,
 				...nodes !== void 0 ? { nodes } : {},
@@ -3153,9 +820,6 @@
 		};
 		return previous;
 	}
-	function isValidUciMove(move) {
-		return /^(?:[a-j](?:10|[0-9])[a-j](?:10|[0-9])[a-zA-Z+]?|[a-zA-Z]@[a-j](?:10|[0-9])|[a-h][1-8][a-h][1-8][nbrq]?)$/.test(move);
-	}
 	function positionCommand(fen, history) {
 		if (history && typeof history.startFen === "string" && history.startFen.length > 0 && !/[\r\n]/.test(history.startFen) && Array.isArray(history.moves) && history.moves.every(isValidUciMove)) {
 			const moves = history.moves.join(" ");
@@ -3163,96 +827,73 @@
 		}
 		return `position fen ${fen}`;
 	}
-	function validBestMove(move) {
-		return isValidUciMove(move);
-	}
 	var UciClient = class {
 		workerFactory;
 		worker = null;
+		disposed = false;
+		setupController = null;
+		setupWaiter = null;
+		drainWaiter = null;
 		ready = false;
 		readyPromise = null;
 		uciWaiter = null;
 		readyWaiter = null;
 		active = null;
+		appliedMultiPv = 3;
 		ponderJob = null;
-		completedPonder = null;
 		queue = [];
 		pumping = false;
 		resetRequested = false;
-		variant;
+		chess960;
 		initTimeoutMs;
 		searchTimeoutSlackMs;
 		stopTimeoutMs;
+		depthOnlyTimeoutMs;
 		constructor(workerFactory, options = {}) {
 			this.workerFactory = workerFactory;
 			this.initTimeoutMs = options.initTimeoutMs ?? 25e3;
 			this.searchTimeoutSlackMs = options.searchTimeoutSlackMs ?? 3e3;
 			this.stopTimeoutMs = options.stopTimeoutMs ?? 2e3;
-			this.variant = options.variant?.toLowerCase().trim() || "chess";
+			this.depthOnlyTimeoutMs = options.depthOnlyTimeoutMs ?? 12e4;
+			this.chess960 = options.chess960 ?? false;
 		}
 		get busy() {
 			return this.pumping || this.queue.length > 0 || this.active !== null;
 		}
-		get activeVariant() {
-			return this.variant;
-		}
-		async setVariant(variant) {
-			const normalized = variant.toLowerCase().trim() || "chess";
-			if (this.variant === normalized) return;
-			this.variant = normalized;
-			if (!this.worker || !this.ready) return;
-			const waiter = deferred();
-			this.readyWaiter = waiter;
-			try {
-				this.send(`setoption name UCI_Variant value ${this.variant}`);
-				this.send("isready");
-				await withTimeout(waiter.promise, this.initTimeoutMs, "Engine variant update");
-			} catch (error) {
-				this.destroyWorker();
-				throw error;
-			} finally {
-				if (this.readyWaiter === waiter) this.readyWaiter = null;
-			}
-		}
 		async warm() {
 			await this.ensureReady();
 		}
-		analyze(fen, depth, timeLimit, signal, history, slackMs) {
+		analyze(fen, depth, timeLimit, signal, history, slackMs, multiPv = 3) {
+			return this.analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv);
+		}
+		analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv = 3) {
+			if (this.disposed) return Promise.reject(new Error("Engine client is disposed"));
 			if (signal?.aborted) return Promise.reject(abortError());
 			if (!fen || /[\r\n]/.test(fen)) return Promise.reject(new Error("A valid position FEN is required"));
 			const positionKey = positionCommand(fen, history);
-			const requestedDepth = Math.max(1, Math.min(100, Math.floor(depth) || 1));
-			const completedPonder = this.completedPonder;
-			this.completedPonder = null;
-			if (completedPonder?.positionKey === positionKey && completedPonder.depth === requestedDepth && completedPonder.result.success) return Promise.resolve(completedPonder.result);
+			const requestedDepth = clampSearchDepth(depth);
 			const ponderJob = this.ponderJob;
 			if (ponderJob) {
 				if (ponderJob.positionKey === positionKey && ponderJob.depth === requestedDepth) {
 					this.promotePonder(ponderJob, timeLimit, signal);
-					if (slackMs !== void 0) ponderJob.slackMs = slackMs;
 					return ponderJob.promise;
 				}
 				this.cancelPonder();
 			}
-			return this.enqueue(fen, depth, timeLimit, signal, history, false, slackMs);
+			return this.enqueue(fen, depth, timeLimit, signal, history, false, slackMs, multiPv);
 		}
 		ponder(fen, depth, signal, history) {
-			if (signal?.aborted || !fen || /[\r\n]/.test(fen) || this.busy || this.ponderJob) return null;
-			this.completedPonder = null;
-			return this.enqueue(fen, depth, 1, signal, history, true);
+			if (this.disposed || signal?.aborted || !fen || /[\r\n]/.test(fen) || this.busy || this.ponderJob) return null;
+			return this.enqueue(fen, depth, 1, signal, history, true, void 0, 3);
 		}
 		cancelPonder(preserveFen) {
 			const job = this.ponderJob;
-			if (!job) {
-				if (preserveFen === void 0 || this.completedPonder?.fen !== preserveFen) this.completedPonder = null;
-				return;
-			}
+			if (!job) return;
 			if (preserveFen !== void 0 && job.fen === preserveFen) return;
 			this.ponderJob = null;
-			this.completedPonder = null;
 			this.abortJob(job);
 		}
-		enqueue(fen, depth, timeLimit, signal, history, pondering, slackMs) {
+		enqueue(fen, depth, timeLimit, signal, history, pondering, slackMs, multiPv = 3) {
 			let resolve;
 			let reject;
 			const promise = new Promise((res, rej) => {
@@ -3262,11 +903,12 @@
 			const job = {
 				fen,
 				positionKey: positionCommand(fen, history),
-				depth: Math.max(1, Math.min(100, Math.floor(depth) || 1)),
-				timeLimit: Math.max(1, Math.min(12e4, Math.floor(timeLimit) || 1)),
+				depth: clampSearchDepth(depth),
+				timeLimit: clampTimeLimit(timeLimit),
 				history,
 				pondering,
 				slackMs,
+				multiPv,
 				promise,
 				signal,
 				resolve,
@@ -3297,9 +939,10 @@
 			if (job.onAbort) job.signal?.removeEventListener("abort", job.onAbort);
 			job.onAbort = void 0;
 			job.signal = void 0;
-			job.timeLimit = Math.max(1, Math.min(12e4, Math.floor(timeLimit) || 1));
 			job.pondering = false;
 			this.ponderJob = null;
+			const limit = clampTimeLimit(timeLimit);
+			job.timeLimit = limit > 0 ? limit : this.depthOnlyTimeoutMs;
 			if (signal) this.attachAbort(job, signal);
 			if (signal?.aborted) {
 				this.abortJob(job);
@@ -3312,7 +955,7 @@
 			}
 			try {
 				this.send("ponderhit");
-				job.searchTimer = safeTimeout(() => {
+				job.searchTimer = setTimeout(() => {
 					this.stopActiveSearch(job);
 				}, job.timeLimit);
 			} catch (error) {
@@ -3321,7 +964,9 @@
 			}
 		}
 		cancelAll(reason = abortError()) {
-			this.completedPonder = null;
+			this.cancelSearches(reason);
+		}
+		cancelSearches(reason) {
 			const queued = this.queue.splice(0);
 			for (const job of queued) {
 				job.abortReason = reason;
@@ -3340,6 +985,28 @@
 			if (!this.worker) return;
 			this.resetRequested = true;
 			this.drain();
+		}
+		dispose() {
+			if (this.disposed) return;
+			this.disposed = true;
+			const reason = new Error("Engine client is disposed");
+			this.resetRequested = false;
+			this.ponderJob = null;
+			for (const job of this.queue.splice(0)) {
+				this.rejectJob(job, reason);
+				this.cleanupJob(job);
+			}
+			if (this.active) {
+				this.active.abortReason = reason;
+				this.rejectJob(this.active, reason);
+				this.active.result?.reject(reason);
+				this.cleanupJob(this.active);
+			}
+			this.setupController?.abort();
+			this.setupWaiter?.reject(reason);
+			this.uciWaiter?.reject(reason);
+			this.readyWaiter?.reject(reason);
+			this.destroyWorker();
 		}
 		abortJob(job) {
 			const reason = abortError();
@@ -3373,6 +1040,8 @@
 		async drain() {
 			if (this.pumping) return;
 			this.pumping = true;
+			const drained = deferred();
+			this.drainWaiter = drained;
 			try {
 				while (this.resetRequested || this.queue.length > 0) {
 					if (this.resetRequested) {
@@ -3393,12 +1062,6 @@
 						const result = await this.runSearch(job);
 						if (job.timeoutReason) throw job.timeoutReason;
 						if (job.abortReason || job.signal?.aborted) throw job.abortReason ?? abortError();
-						if (job.pondering && result.success) this.completedPonder = {
-							fen: job.fen,
-							positionKey: job.positionKey,
-							depth: job.depth,
-							result
-						};
 						this.resolveJob(job, result);
 					} catch (error) {
 						this.rejectJob(job, error);
@@ -3417,6 +1080,8 @@
 				this.resetRequested = false;
 			} finally {
 				this.pumping = false;
+				drained.resolve();
+				if (this.drainWaiter === drained) this.drainWaiter = null;
 				if (this.resetRequested || this.queue.length > 0) this.drain();
 			}
 		}
@@ -3441,6 +1106,7 @@
 			}
 		}
 		async ensureReady() {
+			if (this.disposed) throw new Error("Engine client is disposed");
 			if (this.ready) return;
 			if (this.readyPromise) return this.readyPromise;
 			const readyPromise = this.initialize();
@@ -3454,12 +1120,32 @@
 		async initialize() {
 			if (!this.worker) {
 				const setupController = new AbortController();
+				const setup = deferred();
+				this.setupController = setupController;
+				this.setupWaiter = setup;
+				Promise.resolve().then(() => {
+					if (setupController.signal.aborted) throw new Error("Engine client is disposed");
+					return this.workerFactory(setupController.signal);
+				}).then((worker) => {
+					if (setupController.signal.aborted || this.disposed) {
+						worker.terminate();
+						return;
+					}
+					setup.resolve(worker);
+				}).catch((error) => setup.reject(error));
 				let worker;
 				try {
-					worker = await withTimeout(Promise.resolve().then(() => this.workerFactory(setupController.signal)), this.initTimeoutMs, "Stockfish worker setup");
+					worker = await withTimeout(setup.promise, this.initTimeoutMs, "Stockfish worker setup");
+					if (this.disposed || setupController.signal.aborted) {
+						worker.terminate();
+						throw new Error("Engine client is disposed");
+					}
 				} catch (error) {
 					setupController.abort();
 					throw error;
+				} finally {
+					if (this.setupController === setupController) this.setupController = null;
+					if (this.setupWaiter === setup) this.setupWaiter = null;
 				}
 				worker.onmessage = (event) => this.handleMessage(String(event.data));
 				worker.onerror = (event) => this.handleError(event.error ?? new Error(event.message || "Stockfish worker error"));
@@ -3470,6 +1156,7 @@
 			this.send("uci");
 			try {
 				await withTimeout(uci.promise, this.initTimeoutMs, "Stockfish UCI initialization");
+				if (this.disposed) throw new Error("Engine client is disposed");
 			} catch (error) {
 				this.destroyWorker();
 				throw error;
@@ -3478,11 +1165,13 @@
 			}
 			const ready = deferred();
 			this.readyWaiter = ready;
-			if (this.variant && this.variant !== "chess" && this.variant !== "standard") this.send(`setoption name UCI_Variant value ${this.variant}`);
-			this.send("setoption name MultiPV value 3");
+			this.send(`setoption name UCI_Chess960 value ${this.chess960}`);
+			this.appliedMultiPv = 3;
+			this.send(`setoption name MultiPV value ${this.appliedMultiPv}`);
 			this.send("isready");
 			try {
 				await withTimeout(ready.promise, this.initTimeoutMs, "Stockfish readiness");
+				if (this.disposed) throw new Error("Engine client is disposed");
 				this.ready = true;
 			} catch (error) {
 				this.destroyWorker();
@@ -3494,8 +1183,13 @@
 		async runSearch(job) {
 			const result = deferred();
 			job.result = result;
-			const timeLimit = job.timeLimit;
-			this.send(positionCommand(job.fen, job.history));
+			const depthOnly = job.timeLimit <= 0;
+			const budget = depthOnly ? this.depthOnlyTimeoutMs : job.timeLimit;
+			if (job.multiPv !== this.appliedMultiPv) {
+				this.send(`setoption name MultiPV value ${job.multiPv}`);
+				this.appliedMultiPv = job.multiPv;
+			}
+			this.send(job.positionKey);
 			job.searchStarted = true;
 			if (job.pondering) {
 				this.send(`go ponder depth ${job.depth}`);
@@ -3507,12 +1201,11 @@
 				}
 			}
 			const slack = job.slackMs ?? this.searchTimeoutSlackMs;
-			job.searchTimer = safeTimeout(() => {
-				const engineName = this.variant !== "chess" ? "Fairy-Stockfish" : "Stockfish";
-				job.timeoutReason = new Error(`${engineName} search exceeded ${timeLimit + slack} ms`);
+			job.searchTimer = setTimeout(() => {
+				job.timeoutReason = new Error(`Stockfish search exceeded ${budget + slack} ms`);
 				this.stopActiveSearch(job);
-			}, timeLimit + slack);
-			this.send(`go depth ${job.depth} movetime ${timeLimit}`);
+			}, budget + slack);
+			this.send(depthOnly ? `go depth ${job.depth}` : `go depth ${job.depth} movetime ${job.timeLimit}`);
 			try {
 				return await result.promise;
 			} catch (error) {
@@ -3531,10 +1224,9 @@
 				this.destroyWorker();
 				return;
 			}
-			job.stopTimer = safeTimeout(() => {
+			job.stopTimer = setTimeout(() => {
 				if (this.active !== job) return;
-				const engineName = this.variant !== "chess" ? "Fairy-Stockfish" : "Stockfish";
-				const reason = job.abortReason ?? job.timeoutReason ?? new Error(`${engineName} did not return bestmove after stop`);
+				const reason = job.abortReason ?? job.timeoutReason ?? new Error("Stockfish did not return bestmove after stop");
 				job.result?.reject(reason);
 				this.destroyWorker();
 			}, this.stopTimeoutMs);
@@ -3570,7 +1262,7 @@
 					...job.info.time === void 0 ? {} : { time: job.info.time },
 					...multiPv ? { multiPv } : {}
 				};
-				job.resultValue = validBestMove(bestmove) ? {
+				job.resultValue = isValidUciMove(bestmove) ? {
 					...common,
 					success: true,
 					bestmove
@@ -3594,7 +1286,6 @@
 			this.worker.postMessage(command);
 		}
 		destroyWorker() {
-			this.completedPonder = null;
 			const worker = this.worker;
 			this.worker = null;
 			this.ready = false;
@@ -3607,6 +1298,22 @@
 			} catch {}
 		}
 	};
+	var standard = {
+		id: "standard",
+		rules: "chess",
+		chess960: false
+	};
+	var chess960 = {
+		...standard,
+		id: "chess960",
+		chess960: true
+	};
+	function getVariantDefinition(variant) {
+		const key = (variant || "standard").toLowerCase().replace(/[\s_-]/g, "");
+		if (key === "chess" || key === "fromposition" || key === "standard") return standard;
+		if (key === "chess960" || key === "fischerandom") return chess960;
+		return null;
+	}
 	var ResourceWorker = class {
 		worker;
 		objectUrls;
@@ -3659,110 +1366,45 @@
 			throw new Error(`Stockfish worker could not start${detail}`);
 		}
 	}
-	async function createFairyStockfishWorker(signal) {
-		if (typeof Worker === "undefined") throw new Error("Fairy-Stockfish requires browser Web Worker support");
-		if (typeof Blob === "undefined" || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") throw new Error("Fairy-Stockfish worker resources are unavailable in this browser");
-		if (typeof GM_getResourceText !== "function" || typeof GM_getResourceURL !== "function") throw new Error("Fairy-Stockfish resources are missing; check userscript @resource permissions");
-		const source = GM_getResourceText("fairy-stockfish.js");
-		const wasmUrl = GM_getResourceURL("fairy-stockfish.wasm");
-		if (typeof source !== "string" || source.length === 0 || typeof wasmUrl !== "string" || wasmUrl.length === 0) throw new Error("Fairy-Stockfish JavaScript or WASM resource could not be loaded");
-		let wasmObjectUrl;
-		let workerObjectUrl;
-		try {
-			const response = await fetch(wasmUrl, { signal });
-			if (!response.ok) throw new Error(`WASM resource request failed with status ${response.status}`);
-			const wasm = await response.arrayBuffer();
-			if (signal.aborted) throw new DOMException("Worker setup aborted", "AbortError");
-			wasmObjectUrl = URL.createObjectURL(new Blob([wasm], { type: "application/wasm" }));
-			const bootstrap = `
-const wasmUrl = decodeURIComponent(location.hash.slice(1));
-let queue = [];
-let engine = null;
-self.onmessage = (e) => {
-  if (engine) engine.postMessage(e.data);
-  else queue.push(e.data);
-};
-${source}
-Stockfish({
-  locateFile: (path) => (path.endsWith('.wasm') ? wasmUrl : path),
-}).then((inst) => {
-  engine = inst;
-  inst.addMessageListener((line) => self.postMessage(line));
-  for (const cmd of queue) inst.postMessage(cmd);
-  queue = [];
-}).catch((err) => {
-  self.postMessage("info string fairy-stockfish init error: " + err);
-});
-`;
-			workerObjectUrl = URL.createObjectURL(new Blob([bootstrap], { type: "text/javascript" }));
-			const workerUrl = `${workerObjectUrl}#${encodeURIComponent(wasmObjectUrl)}`;
-			return new ResourceWorker(new Worker(workerUrl), [workerObjectUrl, wasmObjectUrl]);
-		} catch (error) {
-			if (workerObjectUrl) URL.revokeObjectURL(workerObjectUrl);
-			if (wasmObjectUrl) URL.revokeObjectURL(wasmObjectUrl);
-			const detail = error instanceof Error ? `: ${error.message}` : "";
-			throw new Error(`Fairy-Stockfish worker could not start${detail}`);
-		}
-	}
 	var EngineWorkerClient = class {
-		currentKind = "stockfish";
-		currentVariant = "chess";
+		currentChess960 = false;
 		client = new UciClient(createStockfishWorker);
-		ponderSearch = null;
-		get activeEngineKind() {
-			return this.currentKind;
-		}
-		get activeVariant() {
-			return this.currentVariant;
-		}
-		async ensureEngine(kind, variant = "chess") {
-			const normalizedVariant = variant.toLowerCase().trim() || "chess";
-			if (this.currentKind !== kind) {
+		ponderFen = null;
+		async ensureEngine(chess960 = false) {
+			if (this.currentChess960 !== chess960) {
 				this.cancelPonder();
-				this.client.reset();
-				this.currentKind = kind;
-				this.currentVariant = normalizedVariant;
-				const factory = kind === "fairy-stockfish" ? createFairyStockfishWorker : createStockfishWorker;
-				this.client = new UciClient(factory, { variant: normalizedVariant });
-				await this.client.warm();
-			} else if (kind === "fairy-stockfish" && this.currentVariant !== normalizedVariant) {
-				this.currentVariant = normalizedVariant;
-				await this.client.setVariant(normalizedVariant);
+				this.client.dispose();
+				this.currentChess960 = chess960;
+				this.client = new UciClient(createStockfishWorker, { chess960 });
 			}
-			return this.client;
+			const client = this.client;
+			await client.warm();
+			if (client !== this.client) throw new Error("Engine request was replaced");
+			return client;
 		}
 		warm() {
 			return this.client.warm();
 		}
-		async analyze(fen, depth, timeLimit, signal, history, slackMs, variant) {
-			if (!signal?.aborted) this.ponderSearch = null;
-			const isVariantGame = !!variant && variant !== "standard" && variant !== "chess";
-			const targetKind = isVariantGame ? "fairy-stockfish" : "stockfish";
-			const targetVariant = isVariantGame ? variant : "chess";
-			await this.ensureEngine(targetKind, targetVariant);
-			return this.client.analyze(fen, depth, timeLimit, signal, history, slackMs);
+		async analyze(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv) {
+			if (signal?.aborted) throw new DOMException("Search aborted", "AbortError");
+			const definition = getVariantDefinition(variant);
+			if (!definition) throw new Error(`Unknown variant: ${variant}`);
+			this.ponderFen = null;
+			return (await this.ensureEngine(definition.chess960)).analyze(fen, depth, timeLimit, signal, history, slackMs, multiPv);
 		}
 		ponder(fen, depth, history) {
-			if (this.currentKind === "fairy-stockfish") return false;
-			if (!fen || this.client.busy || this.ponderSearch) return false;
-			const controller = new AbortController();
-			const promise = this.client.ponder(fen, depth, controller.signal, history);
+			if (!fen || this.client.busy || this.ponderFen) return false;
+			const promise = this.client.ponder(fen, depth, void 0, history);
 			if (!promise) return false;
-			const search = {
-				fen,
-				controller
-			};
-			this.ponderSearch = search;
+			this.ponderFen = fen;
 			promise.catch(() => {}).finally(() => {
-				if (this.ponderSearch === search) this.ponderSearch = null;
+				if (this.ponderFen === fen) this.ponderFen = null;
 			});
 			return true;
 		}
 		cancelPonder(preserveFen) {
-			const search = this.ponderSearch;
-			if (search && preserveFen !== void 0 && search.fen === preserveFen) return;
-			this.ponderSearch = null;
-			search?.controller.abort();
+			if (this.ponderFen && preserveFen !== void 0 && this.ponderFen === preserveFen) return;
+			this.ponderFen = null;
 			this.client.cancelPonder(preserveFen);
 		}
 		reset() {
@@ -3777,57 +1419,14 @@ Stockfish({
 	function resetEngine() {
 		engineWorker.reset();
 	}
-	function getAnalysis(fen, depth, timeLimit, signal, history, slackMs, variant) {
-		return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs, variant);
-	}
-	function hasLegalMoves(fen, variant) {
-		try {
-			const setup = parseFen(fen);
-			if (setup.isErr) return null;
-			const rules = parseRules(variant);
-			const position = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
-			if (!position || position.isErr) return null;
-			return position.value.hasDests();
-		} catch {
-			return null;
-		}
-	}
-	function countLegalMoves(fen, variant) {
-		try {
-			const setup = parseFen(fen);
-			if (setup.isErr) return null;
-			const rules = parseRules(variant);
-			const position = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
-			if (!position || position.isErr) return null;
-			let total = 0;
-			for (const dests of position.value.allDests().values()) total += dests.size();
-			return total;
-		} catch {
-			return null;
-		}
+	function getAnalysis(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv) {
+		return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv);
 	}
 	function ponderPosition(fen, depth, history) {
 		return engineWorker.ponder(fen, depth, history);
 	}
 	function cancelPonder(preserveFen) {
 		engineWorker.cancelPonder(preserveFen);
-	}
-	function predictFen(fen, uci, variant) {
-		try {
-			const setup = parseFen(fen);
-			if (setup.isErr) return null;
-			const rules = parseRules(variant);
-			const position = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
-			if (!position || position.isErr) return null;
-			const move = parseUci(uci);
-			if (!move || !position.value.isLegal(move)) return null;
-			position.value.play(move);
-			const nextSetup = position.value.toSetup();
-			nextSetup.epSquare = position.value.epSquare;
-			return makeFen(nextSetup);
-		} catch {
-			return null;
-		}
 	}
 	function parseBestLine(data) {
 		if (!data || typeof data !== "object") return null;
@@ -3843,350 +1442,6 @@ Stockfish({
 			score,
 			...result.multiPv && result.multiPv.length > 0 ? { multiPv: result.multiPv } : {}
 		};
-	}
-	var DEFAULT_BRIDGE_ERROR = "Chess.com board controller not captured. Enable synchronous page-context injection in your userscript manager, then reload.";
-	var nextGameId = 0;
-	var BOARD_SELECTOR = "wc-chess-board, chess-board, .board";
-	var CLOCK_REGION_SELECTOR = ".clock-player-turn";
-	var RESULT_SELECTOR = ".game-over-modal-content";
-	function fingerprint(result) {
-		if (result.kind !== "game") return {
-			identity: null,
-			value: JSON.stringify([result.kind, result.reason])
-		};
-		const snapshot = result.snapshot;
-		return {
-			identity: snapshot.identity,
-			value: JSON.stringify([
-				snapshot.gameId,
-				snapshot.fen,
-				snapshot.playerColor,
-				snapshot.sideToMove,
-				snapshot.orientation,
-				snapshot.phase,
-				snapshot.inputReady,
-				snapshot.remainingMs,
-				snapshot.history?.startFen,
-				snapshot.history?.moves,
-				snapshot.confirmedFens
-			])
-		};
-	}
-	function closestOrSelf(element, selector) {
-		return element.matches(selector) ? element : element.closest(selector);
-	}
-	function nodeContainsSelector(node, selector) {
-		const element = mutationElement(node);
-		return !!element && (element.matches(selector) || !!element.querySelector(selector));
-	}
-	function isRelevantMutation(records) {
-		return records.some((record) => {
-			const target = mutationElement(record.target);
-			if (!target || isBotOwnedNode(target) || target.closest("[data-engine-layer], [data-scb-overlay]")) return false;
-			const onBoard = !!closestOrSelf(target, BOARD_SELECTOR);
-			const onClock = !!closestOrSelf(target, CLOCK_REGION_SELECTOR);
-			const onResult = !!closestOrSelf(target, RESULT_SELECTOR);
-			if (record.type === "attributes") {
-				if (record.attributeName === "data-game-id") return onBoard;
-				if (record.attributeName === "class") return onBoard || onClock || onResult;
-				return false;
-			}
-			if (record.type === "characterData") return onClock || onResult;
-			if (record.type !== "childList") return false;
-			if (onClock || onResult) return true;
-			return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some((node) => nodeContainsSelector(node, BOARD_SELECTOR) || nodeContainsSelector(node, ".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time, .clock-player-turn .move-time-content, .clock-player-turn.move-time-content") || nodeContainsSelector(node, RESULT_SELECTOR));
-		});
-	}
-	function readChesscomHistory(game) {
-		const startingFen = getStartingFen(game);
-		const sans = game.getHistorySANs?.();
-		if (!startingFen || !Array.isArray(sans)) return void 0;
-		const replay = replaySanLine(startingFen, sans.filter((san) => typeof san === "string" && san.trim().length > 0));
-		if (!replay) return void 0;
-		return {
-			history: replay.history,
-			confirmedFens: replay.fens
-		};
-	}
-	function createChesscomAdapter(page = pageWindow) {
-		let currentBoard = null;
-		let currentGame = null;
-		let currentIdentity = null;
-		let currentGameId = "";
-		let lastPlayerColor = null;
-		let controller = null;
-		let bridgeInstalled = false;
-		const read = () => {
-			if (!ensureBridge()) return {
-				kind: "ineligible",
-				reason: "Chess.com controller hook is unavailable"
-			};
-			const doc = page().document;
-			const board = getBoard(doc);
-			if (!board) return {
-				kind: "waiting",
-				reason: "Waiting for board"
-			};
-			const liveGame = board.game ?? null;
-			if (liveGame && typeof liveGame.getFEN === "function" && liveGame !== controller) {
-				controller = liveGame;
-				setCapturedChesscomController(liveGame);
-			}
-			const game = controller ?? liveGame;
-			if (!game || typeof game.getFEN !== "function") return {
-				kind: "waiting",
-				reason: DEFAULT_BRIDGE_ERROR
-			};
-			const fen = getFen(game);
-			if (!fen) return {
-				kind: "ineligible",
-				reason: "Chess.com position is unavailable"
-			};
-			const sideToMove = getSideToMove(game);
-			if (sideToMove !== "w" && sideToMove !== "b") return {
-				kind: "ineligible",
-				reason: "Chess.com position is malformed"
-			};
-			if (board !== currentBoard || game !== currentGame) {
-				currentBoard = board;
-				currentGame = game;
-				currentIdentity = {};
-				lastPlayerColor = null;
-				const declaredId = game.id ?? board.getAttribute("data-game-id");
-				currentGameId = declaredId == null ? `chesscom-${++nextGameId}` : String(declaredId);
-			}
-			const isFinished = Boolean(game.isGameOver?.() || typeof game.getResult === "function" && /^(1-0|0-1|1\/2-1\/2)$/.test(String(game.getResult())) || doc.querySelector(".game-over-modal-content"));
-			const playingAs = game.getPlayingAs?.();
-			let playerColor = null;
-			if (playingAs === 1) {
-				playerColor = "w";
-				lastPlayerColor = "w";
-			} else if (playingAs === 2) {
-				playerColor = "b";
-				lastPlayerColor = "b";
-			} else if (isFinished) {
-				const orientation = getOrientation(game);
-				playerColor = lastPlayerColor ?? (orientation === "black" ? "b" : "w");
-			}
-			if (!playerColor) return {
-				kind: "ineligible",
-				reason: "Chess.com player color is unavailable"
-			};
-			const orientation = getOrientation(game);
-			const phase = isFinished ? "finished" : "live";
-			const controllerState = game.getState?.();
-			const settled = controllerState === void 0 || controllerState === "Idle";
-			const history = readChesscomHistory(game);
-			const confirmedFens = history?.confirmedFens;
-			const remainingMs = getRemainingMs(doc);
-			const whiteRemainingMs = getColorRemainingMs(doc, "w");
-			const blackRemainingMs = getColorRemainingMs(doc, "b");
-			return {
-				kind: "game",
-				snapshot: {
-					identity: currentIdentity ?? {},
-					gameId: currentGameId,
-					board,
-					fen,
-					playerColor,
-					sideToMove,
-					orientation,
-					phase,
-					inputReady: phase === "live" && sideToMove === playerColor && settled,
-					remainingMs,
-					...whiteRemainingMs != null ? { whiteRemainingMs } : {},
-					...blackRemainingMs != null ? { blackRemainingMs } : {},
-					...history ? { history: history.history } : {},
-					...confirmedFens ? { confirmedFens } : {}
-				}
-			};
-		};
-		const notify = () => {
-			const next = read();
-			const fp = fingerprint(next);
-			if (next.kind === "game" && lastNotifiedIdentity !== fp.identity) {
-				lastNotifiedIdentity = fp.identity;
-				previousFingerprint = "";
-			}
-			if (fp.value === previousFingerprint) return;
-			previousFingerprint = fp.value;
-			for (const listener of [...listeners]) try {
-				listener();
-			} catch (error) {
-				console.error("Super Chess Bot: site listener failed.", error);
-			}
-		};
-		let lastNotifiedIdentity = null;
-		let previousFingerprint = "";
-		const listeners = new Set();
-		const instrumentController = (captured) => {
-			if (!captured || typeof captured !== "object") return;
-			controller = captured;
-			notify();
-		};
-		const ensureBridge = () => {
-			if (bridgeInstalled) return true;
-			try {
-				bridgeInstalled = installChesscomControllerBridge(page(), instrumentController);
-			} catch {
-				bridgeInstalled = false;
-			}
-			return bridgeInstalled;
-		};
-		ensureBridge();
-		return {
-			id: "chesscom",
-			capabilities: { input: "controller" },
-			read: () => read(),
-			subscribe(listener) {
-				listeners.add(listener);
-				let stopObserving = () => {};
-				let observedGame = null;
-				let moveListener = null;
-				let queued = false;
-				let active = true;
-				const initial = read();
-				let previous = fingerprint(initial);
-				previousFingerprint = previous.value;
-				if (initial.kind === "game") lastNotifiedIdentity = initial.snapshot.identity;
-				const detachGame = () => {
-					if (observedGame && moveListener) observedGame.off?.("Move", moveListener);
-					observedGame = null;
-					moveListener = null;
-				};
-				const bind = (result) => {
-					const game = result.kind === "game" ? currentGame : null;
-					if (game === observedGame) return;
-					detachGame();
-					if (game && typeof game.on === "function" && typeof game.off === "function") {
-						observedGame = game;
-						moveListener = notifySubscribed;
-						game.on("Move", moveListener);
-					}
-				};
-				const notifySubscribed = () => {
-					if (!active) return;
-					const result = read();
-					bind(result);
-					const next = fingerprint(result);
-					if (next.identity === previous.identity && next.value === previous.value) return;
-					previous = next;
-					try {
-						listener();
-					} catch (error) {
-						console.error("Super Chess Bot: site listener failed.", error);
-					}
-				};
-				bind(initial);
-				const doc = page().document;
-				const Observer = page().MutationObserver;
-				if (doc.body && Observer) {
-					const observer = new Observer((records) => {
-						if (!isRelevantMutation(records)) return;
-						if (queued) return;
-						queued = true;
-						queueMicrotask(() => {
-							queued = false;
-							notifySubscribed();
-						});
-					});
-					observer.observe(doc.body, {
-						childList: true,
-						subtree: true,
-						attributes: true,
-						attributeFilter: ["class", "data-game-id"],
-						characterData: true
-					});
-					stopObserving = () => observer.disconnect();
-				}
-				return () => {
-					active = false;
-					listeners.delete(listener);
-					stopObserving();
-					detachGame();
-				};
-			},
-			async submitMove(request) {
-				if (request.signal.aborted || !request.isCurrent()) return false;
-				if (currentGame) resetStuckPromotionWindow(currentGame);
-				const current = read();
-				if (current.kind !== "game" || current.snapshot.identity !== request.identity || canonicalFen(current.snapshot.fen) !== canonicalFen(request.fromFen) || !current.snapshot.inputReady) return false;
-				const game = currentGame;
-				if (!game || typeof game.move !== "function") return false;
-				const uci = request.uci;
-				if (typeof uci !== "string" || uci.length < 4) return false;
-				const from = uci.slice(0, 2);
-				const to = uci.slice(2, 4);
-				const promotionChar = uci.length > 4 ? uci[4].toLowerCase() : "";
-				const promotion = /^[qrbn]$/.test(promotionChar) ? promotionChar : void 0;
-				if (!isLegalChesscomMove(game, from, to, promotion)) return false;
-				if (request.signal.aborted || !request.isCurrent() || currentGame !== game) return false;
-				try {
-					return game.move({
-						from,
-						to,
-						...promotion ? { promotion } : {},
-						userGenerated: true
-					})?.type === "Move";
-				} catch {
-					return false;
-				}
-			},
-			cancelInput() {}
-		};
-	}
-	var activeSite;
-	function selectSite(hostname, page) {
-		if (hostname === "chess.com" || hostname === "www.chess.com") return createChesscomAdapter(page);
-		return null;
-	}
-	function getSite() {
-		if (activeSite === void 0) {
-			activeSite = selectSite(pageWindow().location.hostname);
-			setActiveSite(activeSite);
-		}
-		return activeSite;
-	}
-	function readSite() {
-		return getSite()?.read() ?? {
-			kind: "ineligible",
-			reason: "Unsupported site"
-		};
-	}
-	function positionFromFen(fen, variant) {
-		const setup = parseFen(fen);
-		if (setup.isErr) return null;
-		const rules = parseRules(variant);
-		const position = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
-		return position?.isOk ? position.value : null;
-	}
-	function asUci(move) {
-		if (typeof move === "string") return move;
-		if (!move || typeof move !== "object") return null;
-		const value = move;
-		if (typeof value.uci === "string") return value.uci;
-		if (typeof value.from === "string" && typeof value.to === "string") {
-			const promotion = value.promo ?? value.promotion;
-			return value.from + value.to + (typeof promotion === "string" ? promotion : "");
-		}
-		return null;
-	}
-	function uciToSan(fen, input, variant) {
-		if (!input) return "";
-		const uci = asUci(input);
-		if (!uci || uci.length < 4) return input;
-		const position = positionFromFen(fen, variant);
-		const move = parseUci(uci);
-		if (!position || !move || !position.isLegal(move)) return uci;
-		return makeSanAndPlay(position, move);
-	}
-	function formatMove(fen, uci, variant) {
-		const position = positionFromFen(fen, variant);
-		const san = uciToSan(fen, uci, variant);
-		const moveNumber = position?.fullmoves ?? (Number.parseInt(fen.split(/\s+/)[5] ?? "", 10) || 1);
-		const whiteToMove = position ? position.turn === "white" : fen.split(/\s+/)[1] === "w";
-		const sanText = typeof san === "string" ? san : String(san ?? "");
-		return whiteToMove ? `${moveNumber}. ${sanText}` : `${moveNumber}... ${sanText}`;
 	}
 	var n$1;
 	var t$2;
@@ -5255,11 +2510,1998 @@ Stockfish({
 	function F() {
 		if (1 === _.push(this)) (n$1.requestAnimationFrame || q)(x);
 	}
+	var _Result = class {
+		unwrap(ok, err) {
+			const r = this._chain((value) => Result.ok(ok ? ok(value) : value), (error) => err ? Result.ok(err(error)) : Result.err(error));
+			if (r.isErr) throw r.error;
+			return r.value;
+		}
+		map(ok, err) {
+			return this._chain((value) => Result.ok(ok(value)), (error) => Result.err(err ? err(error) : error));
+		}
+		chain(ok, err) {
+			return this._chain(ok, err !== null && err !== void 0 ? err : ((error) => Result.err(error)));
+		}
+	};
+	var _Ok = class extends _Result {
+		constructor(value) {
+			super();
+			this.value = value;
+			this.isOk = true;
+			this.isErr = false;
+		}
+		_chain(ok, _err) {
+			return ok(this.value);
+		}
+	};
+	var _Err = class extends _Result {
+		constructor(error) {
+			super();
+			this.error = error;
+			this.isOk = false;
+			this.isErr = true;
+		}
+		_chain(_ok, err) {
+			return err(this.error);
+		}
+	};
+	var Result;
+	(function(Result) {
+		function ok(value) {
+			return new _Ok(value);
+		}
+		Result.ok = ok;
+		function err(error) {
+			return new _Err(error || new Error());
+		}
+		Result.err = err;
+		function all(obj) {
+			if (Array.isArray(obj)) {
+				const res = [];
+				for (let i = 0; i < obj.length; i++) {
+					const item = obj[i];
+					if (item.isErr) return item;
+					res.push(item.value);
+				}
+				return Result.ok(res);
+			}
+			const res = {};
+			const keys = Object.keys(obj);
+			for (let i = 0; i < keys.length; i++) {
+				const item = obj[keys[i]];
+				if (item.isErr) return item;
+				res[keys[i]] = item.value;
+			}
+			return Result.ok(res);
+		}
+		Result.all = all;
+	})(Result || (Result = {}));
+	var popcnt32 = (n) => {
+		n = n - (n >>> 1 & 1431655765);
+		n = (n & 858993459) + (n >>> 2 & 858993459);
+		return Math.imul(n + (n >>> 4) & 252645135, 16843009) >> 24;
+	};
+	var bswap32 = (n) => {
+		n = n >>> 8 & 16711935 | (n & 16711935) << 8;
+		return n >>> 16 & 65535 | (n & 65535) << 16;
+	};
+	var rbit32 = (n) => {
+		n = n >>> 1 & 1431655765 | (n & 1431655765) << 1;
+		n = n >>> 2 & 858993459 | (n & 858993459) << 2;
+		n = n >>> 4 & 252645135 | (n & 252645135) << 4;
+		return bswap32(n);
+	};
+	var SquareSet = class SquareSet {
+		constructor(lo, hi) {
+			this.lo = lo | 0;
+			this.hi = hi | 0;
+		}
+		static fromSquare(square) {
+			return square >= 32 ? new SquareSet(0, 1 << square - 32) : new SquareSet(1 << square, 0);
+		}
+		static fromRank(rank) {
+			return new SquareSet(255, 0).shl64(8 * rank);
+		}
+		static fromFile(file) {
+			return new SquareSet(16843009 << file, 16843009 << file);
+		}
+		static empty() {
+			return new SquareSet(0, 0);
+		}
+		static full() {
+			return new SquareSet(4294967295, 4294967295);
+		}
+		static corners() {
+			return new SquareSet(129, 2164260864);
+		}
+		static center() {
+			return new SquareSet(402653184, 24);
+		}
+		static backranks() {
+			return new SquareSet(255, 4278190080);
+		}
+		static backrank(color) {
+			return color === "white" ? new SquareSet(255, 0) : new SquareSet(0, 4278190080);
+		}
+		static lightSquares() {
+			return new SquareSet(1437226410, 1437226410);
+		}
+		static darkSquares() {
+			return new SquareSet(2857740885, 2857740885);
+		}
+		complement() {
+			return new SquareSet(~this.lo, ~this.hi);
+		}
+		xor(other) {
+			return new SquareSet(this.lo ^ other.lo, this.hi ^ other.hi);
+		}
+		union(other) {
+			return new SquareSet(this.lo | other.lo, this.hi | other.hi);
+		}
+		intersect(other) {
+			return new SquareSet(this.lo & other.lo, this.hi & other.hi);
+		}
+		diff(other) {
+			return new SquareSet(this.lo & ~other.lo, this.hi & ~other.hi);
+		}
+		intersects(other) {
+			return this.intersect(other).nonEmpty();
+		}
+		isDisjoint(other) {
+			return this.intersect(other).isEmpty();
+		}
+		supersetOf(other) {
+			return other.diff(this).isEmpty();
+		}
+		subsetOf(other) {
+			return this.diff(other).isEmpty();
+		}
+		shr64(shift) {
+			if (shift >= 64) return SquareSet.empty();
+			if (shift >= 32) return new SquareSet(this.hi >>> shift - 32, 0);
+			if (shift > 0) return new SquareSet(this.lo >>> shift ^ this.hi << 32 - shift, this.hi >>> shift);
+			return this;
+		}
+		shl64(shift) {
+			if (shift >= 64) return SquareSet.empty();
+			if (shift >= 32) return new SquareSet(0, this.lo << shift - 32);
+			if (shift > 0) return new SquareSet(this.lo << shift, this.hi << shift ^ this.lo >>> 32 - shift);
+			return this;
+		}
+		bswap64() {
+			return new SquareSet(bswap32(this.hi), bswap32(this.lo));
+		}
+		rbit64() {
+			return new SquareSet(rbit32(this.hi), rbit32(this.lo));
+		}
+		minus64(other) {
+			const lo = this.lo - other.lo;
+			const c = (lo & other.lo & 1) + (other.lo >>> 1) + (lo >>> 1) >>> 31;
+			return new SquareSet(lo, this.hi - (other.hi + c));
+		}
+		equals(other) {
+			return this.lo === other.lo && this.hi === other.hi;
+		}
+		size() {
+			return popcnt32(this.lo) + popcnt32(this.hi);
+		}
+		isEmpty() {
+			return this.lo === 0 && this.hi === 0;
+		}
+		nonEmpty() {
+			return this.lo !== 0 || this.hi !== 0;
+		}
+		has(square) {
+			return (square >= 32 ? this.hi & 1 << square - 32 : this.lo & 1 << square) !== 0;
+		}
+		set(square, on) {
+			return on ? this.with(square) : this.without(square);
+		}
+		with(square) {
+			return square >= 32 ? new SquareSet(this.lo, this.hi | 1 << square - 32) : new SquareSet(this.lo | 1 << square, this.hi);
+		}
+		without(square) {
+			return square >= 32 ? new SquareSet(this.lo, this.hi & ~(1 << square - 32)) : new SquareSet(this.lo & ~(1 << square), this.hi);
+		}
+		toggle(square) {
+			return square >= 32 ? new SquareSet(this.lo, this.hi ^ 1 << square - 32) : new SquareSet(this.lo ^ 1 << square, this.hi);
+		}
+		last() {
+			if (this.hi !== 0) return 63 - Math.clz32(this.hi);
+			if (this.lo !== 0) return 31 - Math.clz32(this.lo);
+		}
+		first() {
+			if (this.lo !== 0) return 31 - Math.clz32(this.lo & -this.lo);
+			if (this.hi !== 0) return 63 - Math.clz32(this.hi & -this.hi);
+		}
+		withoutFirst() {
+			if (this.lo !== 0) return new SquareSet(this.lo & this.lo - 1, this.hi);
+			return new SquareSet(0, this.hi & this.hi - 1);
+		}
+		moreThanOne() {
+			return this.hi !== 0 && this.lo !== 0 || (this.lo & this.lo - 1) !== 0 || (this.hi & this.hi - 1) !== 0;
+		}
+		singleSquare() {
+			return this.moreThanOne() ? void 0 : this.last();
+		}
+		*[Symbol.iterator]() {
+			let lo = this.lo;
+			let hi = this.hi;
+			while (lo !== 0) {
+				const idx = 31 - Math.clz32(lo & -lo);
+				lo ^= 1 << idx;
+				yield idx;
+			}
+			while (hi !== 0) {
+				const idx = 31 - Math.clz32(hi & -hi);
+				hi ^= 1 << idx;
+				yield 32 + idx;
+			}
+		}
+		*reversed() {
+			let lo = this.lo;
+			let hi = this.hi;
+			while (hi !== 0) {
+				const idx = 31 - Math.clz32(hi);
+				hi ^= 1 << idx;
+				yield 32 + idx;
+			}
+			while (lo !== 0) {
+				const idx = 31 - Math.clz32(lo);
+				lo ^= 1 << idx;
+				yield idx;
+			}
+		}
+	};
+	var FILE_NAMES = [
+		"a",
+		"b",
+		"c",
+		"d",
+		"e",
+		"f",
+		"g",
+		"h"
+	];
+	var RANK_NAMES = [
+		"1",
+		"2",
+		"3",
+		"4",
+		"5",
+		"6",
+		"7",
+		"8"
+	];
+	var COLORS = ["white", "black"];
+	var ROLES = [
+		"pawn",
+		"knight",
+		"bishop",
+		"rook",
+		"queen",
+		"king"
+	];
+	var CASTLING_SIDES = ["a", "h"];
+	var isDrop = (v) => "role" in v;
+	var defined = (v) => v !== void 0;
+	var opposite = (color) => color === "white" ? "black" : "white";
+	var squareRank = (square) => square >> 3;
+	var squareFile = (square) => square & 7;
+	var squareFromCoords = (file, rank) => 0 <= file && file < 8 && 0 <= rank && rank < 8 ? file + 8 * rank : void 0;
+	var roleToChar = (role) => {
+		switch (role) {
+			case "pawn": return "p";
+			case "knight": return "n";
+			case "bishop": return "b";
+			case "rook": return "r";
+			case "queen": return "q";
+			case "king": return "k";
+		}
+	};
+	function charToRole(ch) {
+		switch (ch.toLowerCase()) {
+			case "p": return "pawn";
+			case "n": return "knight";
+			case "b": return "bishop";
+			case "r": return "rook";
+			case "q": return "queen";
+			case "k": return "king";
+			default: return;
+		}
+	}
+	function parseSquare(str) {
+		if (str.length !== 2) return;
+		return squareFromCoords(str.charCodeAt(0) - "a".charCodeAt(0), str.charCodeAt(1) - "1".charCodeAt(0));
+	}
+	var makeSquare = (square) => FILE_NAMES[squareFile(square)] + RANK_NAMES[squareRank(square)];
+	var parseUci = (str) => {
+		if (str[1] === "@" && str.length === 4) {
+			const role = charToRole(str[0]);
+			const to = parseSquare(str.slice(2));
+			if (role && defined(to)) return {
+				role,
+				to
+			};
+		} else if (str.length === 4 || str.length === 5) {
+			const from = parseSquare(str.slice(0, 2));
+			const to = parseSquare(str.slice(2, 4));
+			let promotion;
+			if (str.length === 5) {
+				promotion = charToRole(str[4]);
+				if (!promotion) return;
+			}
+			if (defined(from) && defined(to)) return {
+				from,
+				to,
+				promotion
+			};
+		}
+	};
+	var makeUci = (move) => isDrop(move) ? `${roleToChar(move.role).toUpperCase()}@${makeSquare(move.to)}` : makeSquare(move.from) + makeSquare(move.to) + (move.promotion ? roleToChar(move.promotion) : "");
+	var kingCastlesTo = (color, side) => color === "white" ? side === "a" ? 2 : 6 : side === "a" ? 58 : 62;
+	var rookCastlesTo = (color, side) => color === "white" ? side === "a" ? 3 : 5 : side === "a" ? 59 : 61;
+	var computeRange = (square, deltas) => {
+		let range = SquareSet.empty();
+		for (const delta of deltas) {
+			const sq = square + delta;
+			if (0 <= sq && sq < 64 && Math.abs(squareFile(square) - squareFile(sq)) <= 2) range = range.with(sq);
+		}
+		return range;
+	};
+	var tabulate = (f) => {
+		const table = [];
+		for (let square = 0; square < 64; square++) table[square] = f(square);
+		return table;
+	};
+	var KING_ATTACKS = tabulate((sq) => computeRange(sq, [
+		-9,
+		-8,
+		-7,
+		-1,
+		1,
+		7,
+		8,
+		9
+	]));
+	var KNIGHT_ATTACKS = tabulate((sq) => computeRange(sq, [
+		-17,
+		-15,
+		-10,
+		-6,
+		6,
+		10,
+		15,
+		17
+	]));
+	var PAWN_ATTACKS = {
+		white: tabulate((sq) => computeRange(sq, [7, 9])),
+		black: tabulate((sq) => computeRange(sq, [-7, -9]))
+	};
+	var kingAttacks = (square) => KING_ATTACKS[square];
+	var knightAttacks = (square) => KNIGHT_ATTACKS[square];
+	var pawnAttacks = (color, square) => PAWN_ATTACKS[color][square];
+	var FILE_RANGE = tabulate((sq) => SquareSet.fromFile(squareFile(sq)).without(sq));
+	var RANK_RANGE = tabulate((sq) => SquareSet.fromRank(squareRank(sq)).without(sq));
+	var DIAG_RANGE = tabulate((sq) => {
+		const diag = new SquareSet(134480385, 2151686160);
+		const shift = 8 * (squareRank(sq) - squareFile(sq));
+		return (shift >= 0 ? diag.shl64(shift) : diag.shr64(-shift)).without(sq);
+	});
+	var ANTI_DIAG_RANGE = tabulate((sq) => {
+		const diag = new SquareSet(270549120, 16909320);
+		const shift = 8 * (squareRank(sq) + squareFile(sq) - 7);
+		return (shift >= 0 ? diag.shl64(shift) : diag.shr64(-shift)).without(sq);
+	});
+	var hyperbola = (sq, range, occupied) => {
+		const o = range.intersect(occupied);
+		const fwd = o.minus64(SquareSet.fromSquare(sq));
+		const rev = o.bswap64().minus64(SquareSet.fromSquare(56 ^ sq));
+		return fwd.xor(rev.bswap64()).intersect(range);
+	};
+	var rankAttacks = (sq, occupied) => {
+		const range = RANK_RANGE[sq];
+		const o = range.intersect(occupied);
+		const fwd = o.minus64(SquareSet.fromSquare(sq));
+		const rev = o.rbit64().minus64(SquareSet.fromSquare(63 - sq));
+		return fwd.xor(rev.rbit64()).intersect(range);
+	};
+	var bishopAttacks = (square, occupied) => {
+		return hyperbola(square, DIAG_RANGE[square], occupied).xor(hyperbola(square, ANTI_DIAG_RANGE[square], occupied));
+	};
+	var rookAttacks = (square, occupied) => hyperbola(square, FILE_RANGE[square], occupied).xor(rankAttacks(square, occupied));
+	var queenAttacks = (square, occupied) => bishopAttacks(square, occupied).xor(rookAttacks(square, occupied));
+	var attacks = (piece, square, occupied) => {
+		switch (piece.role) {
+			case "pawn": return pawnAttacks(piece.color, square);
+			case "knight": return knightAttacks(square);
+			case "bishop": return bishopAttacks(square, occupied);
+			case "rook": return rookAttacks(square, occupied);
+			case "queen": return queenAttacks(square, occupied);
+			case "king": return kingAttacks(square);
+		}
+	};
+	var ray = (a, b) => {
+		const other = SquareSet.fromSquare(b);
+		if (RANK_RANGE[a].intersects(other)) return RANK_RANGE[a].with(a);
+		if (ANTI_DIAG_RANGE[a].intersects(other)) return ANTI_DIAG_RANGE[a].with(a);
+		if (DIAG_RANGE[a].intersects(other)) return DIAG_RANGE[a].with(a);
+		if (FILE_RANGE[a].intersects(other)) return FILE_RANGE[a].with(a);
+		return SquareSet.empty();
+	};
+	var between = (a, b) => ray(a, b).intersect(SquareSet.full().shl64(a).xor(SquareSet.full().shl64(b))).withoutFirst();
+	var Board = class Board {
+		constructor() {}
+		static default() {
+			const board = new Board();
+			board.reset();
+			return board;
+		}
+		reset() {
+			this.occupied = new SquareSet(65535, 4294901760);
+			this.promoted = SquareSet.empty();
+			this.white = new SquareSet(65535, 0);
+			this.black = new SquareSet(0, 4294901760);
+			this.pawn = new SquareSet(65280, 16711680);
+			this.knight = new SquareSet(66, 1107296256);
+			this.bishop = new SquareSet(36, 603979776);
+			this.rook = new SquareSet(129, 2164260864);
+			this.queen = new SquareSet(8, 134217728);
+			this.king = new SquareSet(16, 268435456);
+		}
+		static empty() {
+			const board = new Board();
+			board.clear();
+			return board;
+		}
+		clear() {
+			this.occupied = SquareSet.empty();
+			this.promoted = SquareSet.empty();
+			for (const color of COLORS) this[color] = SquareSet.empty();
+			for (const role of ROLES) this[role] = SquareSet.empty();
+		}
+		clone() {
+			const board = new Board();
+			board.occupied = this.occupied;
+			board.promoted = this.promoted;
+			for (const color of COLORS) board[color] = this[color];
+			for (const role of ROLES) board[role] = this[role];
+			return board;
+		}
+		getColor(square) {
+			if (this.white.has(square)) return "white";
+			if (this.black.has(square)) return "black";
+		}
+		getRole(square) {
+			for (const role of ROLES) if (this[role].has(square)) return role;
+		}
+		get(square) {
+			const color = this.getColor(square);
+			if (!color) return;
+			return {
+				color,
+				role: this.getRole(square),
+				promoted: this.promoted.has(square)
+			};
+		}
+		take(square) {
+			const piece = this.get(square);
+			if (piece) {
+				this.occupied = this.occupied.without(square);
+				this[piece.color] = this[piece.color].without(square);
+				this[piece.role] = this[piece.role].without(square);
+				if (piece.promoted) this.promoted = this.promoted.without(square);
+			}
+			return piece;
+		}
+		set(square, piece) {
+			const old = this.take(square);
+			this.occupied = this.occupied.with(square);
+			this[piece.color] = this[piece.color].with(square);
+			this[piece.role] = this[piece.role].with(square);
+			if (piece.promoted) this.promoted = this.promoted.with(square);
+			return old;
+		}
+		has(square) {
+			return this.occupied.has(square);
+		}
+		*[Symbol.iterator]() {
+			for (const square of this.occupied) yield [square, this.get(square)];
+		}
+		pieces(color, role) {
+			return this[color].intersect(this[role]);
+		}
+		rooksAndQueens() {
+			return this.rook.union(this.queen);
+		}
+		bishopsAndQueens() {
+			return this.bishop.union(this.queen);
+		}
+		steppers() {
+			return this.knight.union(this.pawn).union(this.king);
+		}
+		sliders() {
+			return this.bishop.union(this.rook).union(this.queen);
+		}
+		kingOf(color) {
+			return this.pieces(color, "king").singleSquare();
+		}
+	};
+	var IllegalSetup;
+	(function(IllegalSetup) {
+		IllegalSetup["Empty"] = "ERR_EMPTY";
+		IllegalSetup["OppositeCheck"] = "ERR_OPPOSITE_CHECK";
+		IllegalSetup["PawnsOnBackrank"] = "ERR_PAWNS_ON_BACKRANK";
+		IllegalSetup["Kings"] = "ERR_KINGS";
+		IllegalSetup["Variant"] = "ERR_VARIANT";
+	})(IllegalSetup || (IllegalSetup = {}));
+	var PositionError = class extends Error {};
+	var attacksTo = (square, attacker, board, occupied) => board[attacker].intersect(rookAttacks(square, occupied).intersect(board.rooksAndQueens()).union(bishopAttacks(square, occupied).intersect(board.bishopsAndQueens())).union(knightAttacks(square).intersect(board.knight)).union(kingAttacks(square).intersect(board.king)).union(pawnAttacks(opposite(attacker), square).intersect(board.pawn)));
+	var Castles = class Castles {
+		constructor() {}
+		static default() {
+			const castles = new Castles();
+			castles.castlingRights = SquareSet.corners();
+			castles.rook = {
+				white: {
+					a: 0,
+					h: 7
+				},
+				black: {
+					a: 56,
+					h: 63
+				}
+			};
+			castles.path = {
+				white: {
+					a: new SquareSet(14, 0),
+					h: new SquareSet(96, 0)
+				},
+				black: {
+					a: new SquareSet(0, 234881024),
+					h: new SquareSet(0, 1610612736)
+				}
+			};
+			return castles;
+		}
+		static empty() {
+			const castles = new Castles();
+			castles.castlingRights = SquareSet.empty();
+			castles.rook = {
+				white: {
+					a: void 0,
+					h: void 0
+				},
+				black: {
+					a: void 0,
+					h: void 0
+				}
+			};
+			castles.path = {
+				white: {
+					a: SquareSet.empty(),
+					h: SquareSet.empty()
+				},
+				black: {
+					a: SquareSet.empty(),
+					h: SquareSet.empty()
+				}
+			};
+			return castles;
+		}
+		clone() {
+			const castles = new Castles();
+			castles.castlingRights = this.castlingRights;
+			castles.rook = {
+				white: {
+					a: this.rook.white.a,
+					h: this.rook.white.h
+				},
+				black: {
+					a: this.rook.black.a,
+					h: this.rook.black.h
+				}
+			};
+			castles.path = {
+				white: {
+					a: this.path.white.a,
+					h: this.path.white.h
+				},
+				black: {
+					a: this.path.black.a,
+					h: this.path.black.h
+				}
+			};
+			return castles;
+		}
+		add(color, side, king, rook) {
+			const kingTo = kingCastlesTo(color, side);
+			const rookTo = rookCastlesTo(color, side);
+			this.castlingRights = this.castlingRights.with(rook);
+			this.rook[color][side] = rook;
+			this.path[color][side] = between(rook, rookTo).with(rookTo).union(between(king, kingTo).with(kingTo)).without(king).without(rook);
+		}
+		static fromSetup(setup) {
+			const castles = Castles.empty();
+			const rooks = setup.castlingRights.intersect(setup.board.rook);
+			for (const color of COLORS) {
+				const backrank = SquareSet.backrank(color);
+				const king = setup.board.kingOf(color);
+				if (!defined(king) || !backrank.has(king)) continue;
+				const side = rooks.intersect(setup.board[color]).intersect(backrank);
+				const aSide = side.first();
+				if (defined(aSide) && aSide < king) castles.add(color, "a", king, aSide);
+				const hSide = side.last();
+				if (defined(hSide) && king < hSide) castles.add(color, "h", king, hSide);
+			}
+			return castles;
+		}
+		discardRook(square) {
+			if (this.castlingRights.has(square)) {
+				this.castlingRights = this.castlingRights.without(square);
+				for (const color of COLORS) for (const side of CASTLING_SIDES) if (this.rook[color][side] === square) this.rook[color][side] = void 0;
+			}
+		}
+		discardColor(color) {
+			this.castlingRights = this.castlingRights.diff(SquareSet.backrank(color));
+			this.rook[color].a = void 0;
+			this.rook[color].h = void 0;
+		}
+	};
+	var Position = class {
+		constructor(rules) {
+			this.rules = rules;
+		}
+		reset() {
+			this.board = Board.default();
+			this.pockets = void 0;
+			this.turn = "white";
+			this.castles = Castles.default();
+			this.epSquare = void 0;
+			this.remainingChecks = void 0;
+			this.halfmoves = 0;
+			this.fullmoves = 1;
+		}
+		setupUnchecked(setup) {
+			this.board = setup.board.clone();
+			this.board.promoted = SquareSet.empty();
+			this.pockets = void 0;
+			this.turn = setup.turn;
+			this.castles = Castles.fromSetup(setup);
+			this.epSquare = validEpSquare(this, setup.epSquare);
+			this.remainingChecks = void 0;
+			this.halfmoves = setup.halfmoves;
+			this.fullmoves = setup.fullmoves;
+		}
+		kingAttackers(square, attacker, occupied) {
+			return attacksTo(square, attacker, this.board, occupied);
+		}
+		playCaptureAt(square, captured) {
+			this.halfmoves = 0;
+			if (captured.role === "rook") this.castles.discardRook(square);
+			if (this.pockets) this.pockets[opposite(captured.color)][captured.promoted ? "pawn" : captured.role]++;
+		}
+		ctx() {
+			const variantEnd = this.isVariantEnd();
+			const king = this.board.kingOf(this.turn);
+			if (!defined(king)) return {
+				king,
+				blockers: SquareSet.empty(),
+				checkers: SquareSet.empty(),
+				variantEnd,
+				mustCapture: false
+			};
+			const snipers = rookAttacks(king, SquareSet.empty()).intersect(this.board.rooksAndQueens()).union(bishopAttacks(king, SquareSet.empty()).intersect(this.board.bishopsAndQueens())).intersect(this.board[opposite(this.turn)]);
+			let blockers = SquareSet.empty();
+			for (const sniper of snipers) {
+				const b = between(king, sniper).intersect(this.board.occupied);
+				if (!b.moreThanOne()) blockers = blockers.union(b);
+			}
+			const checkers = this.kingAttackers(king, opposite(this.turn), this.board.occupied);
+			return {
+				king,
+				blockers,
+				checkers,
+				variantEnd,
+				mustCapture: false
+			};
+		}
+		clone() {
+			var _a, _b;
+			const pos = new this.constructor();
+			pos.board = this.board.clone();
+			pos.pockets = (_a = this.pockets) === null || _a === void 0 ? void 0 : _a.clone();
+			pos.turn = this.turn;
+			pos.castles = this.castles.clone();
+			pos.epSquare = this.epSquare;
+			pos.remainingChecks = (_b = this.remainingChecks) === null || _b === void 0 ? void 0 : _b.clone();
+			pos.halfmoves = this.halfmoves;
+			pos.fullmoves = this.fullmoves;
+			return pos;
+		}
+		validate() {
+			if (this.board.occupied.isEmpty()) return Result.err(new PositionError(IllegalSetup.Empty));
+			if (this.board.king.size() !== 2) return Result.err(new PositionError(IllegalSetup.Kings));
+			if (!defined(this.board.kingOf(this.turn))) return Result.err(new PositionError(IllegalSetup.Kings));
+			const otherKing = this.board.kingOf(opposite(this.turn));
+			if (!defined(otherKing)) return Result.err(new PositionError(IllegalSetup.Kings));
+			if (this.kingAttackers(otherKing, this.turn, this.board.occupied).nonEmpty()) return Result.err(new PositionError(IllegalSetup.OppositeCheck));
+			if (SquareSet.backranks().intersects(this.board.pawn)) return Result.err(new PositionError(IllegalSetup.PawnsOnBackrank));
+			return Result.ok(void 0);
+		}
+		dropDests(_ctx) {
+			return SquareSet.empty();
+		}
+		dests(square, ctx) {
+			ctx = ctx || this.ctx();
+			if (ctx.variantEnd) return SquareSet.empty();
+			const piece = this.board.get(square);
+			if (!piece || piece.color !== this.turn) return SquareSet.empty();
+			let pseudo, legal;
+			if (piece.role === "pawn") {
+				pseudo = pawnAttacks(this.turn, square).intersect(this.board[opposite(this.turn)]);
+				const delta = this.turn === "white" ? 8 : -8;
+				const step = square + delta;
+				if (0 <= step && step < 64 && !this.board.occupied.has(step)) {
+					pseudo = pseudo.with(step);
+					const canDoubleStep = this.turn === "white" ? square < 16 : square >= 48;
+					const doubleStep = step + delta;
+					if (canDoubleStep && !this.board.occupied.has(doubleStep)) pseudo = pseudo.with(doubleStep);
+				}
+				if (defined(this.epSquare) && canCaptureEp(this, square, ctx)) legal = SquareSet.fromSquare(this.epSquare);
+			} else if (piece.role === "bishop") pseudo = bishopAttacks(square, this.board.occupied);
+			else if (piece.role === "knight") pseudo = knightAttacks(square);
+			else if (piece.role === "rook") pseudo = rookAttacks(square, this.board.occupied);
+			else if (piece.role === "queen") pseudo = queenAttacks(square, this.board.occupied);
+			else pseudo = kingAttacks(square);
+			pseudo = pseudo.diff(this.board[this.turn]);
+			if (defined(ctx.king)) {
+				if (piece.role === "king") {
+					const occ = this.board.occupied.without(square);
+					for (const to of pseudo) if (this.kingAttackers(to, opposite(this.turn), occ).nonEmpty()) pseudo = pseudo.without(to);
+					return pseudo.union(castlingDest(this, "a", ctx)).union(castlingDest(this, "h", ctx));
+				}
+				if (ctx.checkers.nonEmpty()) {
+					const checker = ctx.checkers.singleSquare();
+					if (!defined(checker)) return SquareSet.empty();
+					pseudo = pseudo.intersect(between(checker, ctx.king).with(checker));
+				}
+				if (ctx.blockers.has(square)) pseudo = pseudo.intersect(ray(square, ctx.king));
+			}
+			if (legal) pseudo = pseudo.union(legal);
+			return pseudo;
+		}
+		isVariantEnd() {
+			return false;
+		}
+		variantOutcome(_ctx) {}
+		hasInsufficientMaterial(color) {
+			if (this.board[color].intersect(this.board.pawn.union(this.board.rooksAndQueens())).nonEmpty()) return false;
+			if (this.board[color].intersects(this.board.knight)) return this.board[color].size() <= 2 && this.board[opposite(color)].diff(this.board.king).diff(this.board.queen).isEmpty();
+			if (this.board[color].intersects(this.board.bishop)) return (!this.board.bishop.intersects(SquareSet.darkSquares()) || !this.board.bishop.intersects(SquareSet.lightSquares())) && this.board.pawn.isEmpty() && this.board.knight.isEmpty();
+			return true;
+		}
+		toSetup() {
+			var _a, _b;
+			return {
+				board: this.board.clone(),
+				pockets: (_a = this.pockets) === null || _a === void 0 ? void 0 : _a.clone(),
+				turn: this.turn,
+				castlingRights: this.castles.castlingRights,
+				epSquare: legalEpSquare(this),
+				remainingChecks: (_b = this.remainingChecks) === null || _b === void 0 ? void 0 : _b.clone(),
+				halfmoves: Math.min(this.halfmoves, 150),
+				fullmoves: Math.min(Math.max(this.fullmoves, 1), 9999)
+			};
+		}
+		isInsufficientMaterial() {
+			return COLORS.every((color) => this.hasInsufficientMaterial(color));
+		}
+		hasDests(ctx) {
+			ctx = ctx || this.ctx();
+			for (const square of this.board[this.turn]) if (this.dests(square, ctx).nonEmpty()) return true;
+			return this.dropDests(ctx).nonEmpty();
+		}
+		isLegal(move, ctx) {
+			if (isDrop(move)) {
+				if (!this.pockets || this.pockets[this.turn][move.role] <= 0) return false;
+				if (move.role === "pawn" && SquareSet.backranks().has(move.to)) return false;
+				return this.dropDests(ctx).has(move.to);
+			} else {
+				if (move.promotion === "pawn") return false;
+				if (move.promotion === "king" && this.rules !== "antichess") return false;
+				if (!!move.promotion !== (this.board.pawn.has(move.from) && SquareSet.backranks().has(move.to))) return false;
+				const dests = this.dests(move.from, ctx);
+				return dests.has(move.to) || dests.has(normalizeMove(this, move).to);
+			}
+		}
+		isCheck() {
+			const king = this.board.kingOf(this.turn);
+			return defined(king) && this.kingAttackers(king, opposite(this.turn), this.board.occupied).nonEmpty();
+		}
+		isEnd(ctx) {
+			if (ctx ? ctx.variantEnd : this.isVariantEnd()) return true;
+			return this.isInsufficientMaterial() || !this.hasDests(ctx);
+		}
+		isCheckmate(ctx) {
+			ctx = ctx || this.ctx();
+			return !ctx.variantEnd && ctx.checkers.nonEmpty() && !this.hasDests(ctx);
+		}
+		isStalemate(ctx) {
+			ctx = ctx || this.ctx();
+			return !ctx.variantEnd && ctx.checkers.isEmpty() && !this.hasDests(ctx);
+		}
+		outcome(ctx) {
+			const variantOutcome = this.variantOutcome(ctx);
+			if (variantOutcome) return variantOutcome;
+			ctx = ctx || this.ctx();
+			if (this.isCheckmate(ctx)) return { winner: opposite(this.turn) };
+			else if (this.isInsufficientMaterial() || this.isStalemate(ctx)) return { winner: void 0 };
+			else return;
+		}
+		allDests(ctx) {
+			ctx = ctx || this.ctx();
+			const d = new Map();
+			if (ctx.variantEnd) return d;
+			for (const square of this.board[this.turn]) d.set(square, this.dests(square, ctx));
+			return d;
+		}
+		play(move) {
+			const turn = this.turn;
+			const epSquare = this.epSquare;
+			const castling = castlingSide(this, move);
+			this.epSquare = void 0;
+			this.halfmoves += 1;
+			if (turn === "black") this.fullmoves += 1;
+			this.turn = opposite(turn);
+			if (isDrop(move)) {
+				this.board.set(move.to, {
+					role: move.role,
+					color: turn
+				});
+				if (this.pockets) this.pockets[turn][move.role]--;
+				if (move.role === "pawn") this.halfmoves = 0;
+			} else {
+				const piece = this.board.take(move.from);
+				if (!piece) return;
+				let epCapture;
+				if (piece.role === "pawn") {
+					this.halfmoves = 0;
+					if (move.to === epSquare) epCapture = this.board.take(move.to + (turn === "white" ? -8 : 8));
+					const delta = move.from - move.to;
+					if (Math.abs(delta) === 16 && 8 <= move.from && move.from <= 55) this.epSquare = move.from + move.to >> 1;
+					if (move.promotion) {
+						piece.role = move.promotion;
+						piece.promoted = !!this.pockets;
+					}
+				} else if (piece.role === "rook") this.castles.discardRook(move.from);
+				else if (piece.role === "king") {
+					if (castling) {
+						const rookFrom = this.castles.rook[turn][castling];
+						if (defined(rookFrom)) {
+							const rook = this.board.take(rookFrom);
+							this.board.set(kingCastlesTo(turn, castling), piece);
+							if (rook) this.board.set(rookCastlesTo(turn, castling), rook);
+						}
+					}
+					this.castles.discardColor(turn);
+				}
+				if (!castling) {
+					const capture = this.board.set(move.to, piece) || epCapture;
+					if (capture) this.playCaptureAt(move.to, capture);
+				}
+			}
+			if (this.remainingChecks) {
+				if (this.isCheck()) this.remainingChecks[turn] = Math.max(this.remainingChecks[turn] - 1, 0);
+			}
+		}
+	};
+	var Chess = class extends Position {
+		constructor() {
+			super("chess");
+		}
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+	};
+	var validEpSquare = (pos, square) => {
+		if (!defined(square)) return;
+		const epRank = pos.turn === "white" ? 5 : 2;
+		const forward = pos.turn === "white" ? 8 : -8;
+		if (squareRank(square) !== epRank) return;
+		if (pos.board.occupied.has(square + forward)) return;
+		const pawn = square - forward;
+		if (!pos.board.pawn.has(pawn) || !pos.board[opposite(pos.turn)].has(pawn)) return;
+		return square;
+	};
+	var legalEpSquare = (pos) => {
+		if (!defined(pos.epSquare)) return;
+		const ctx = pos.ctx();
+		const candidates = pos.board.pieces(pos.turn, "pawn").intersect(pawnAttacks(opposite(pos.turn), pos.epSquare));
+		for (const candidate of candidates) if (pos.dests(candidate, ctx).has(pos.epSquare)) return pos.epSquare;
+	};
+	var canCaptureEp = (pos, pawnFrom, ctx) => {
+		if (!defined(pos.epSquare)) return false;
+		if (!pawnAttacks(pos.turn, pawnFrom).has(pos.epSquare)) return false;
+		if (!defined(ctx.king)) return true;
+		const delta = pos.turn === "white" ? 8 : -8;
+		const captured = pos.epSquare - delta;
+		return pos.kingAttackers(ctx.king, opposite(pos.turn), pos.board.occupied.toggle(pawnFrom).toggle(captured).with(pos.epSquare)).without(captured).isEmpty();
+	};
+	var castlingDest = (pos, side, ctx) => {
+		if (!defined(ctx.king) || ctx.checkers.nonEmpty()) return SquareSet.empty();
+		const rook = pos.castles.rook[pos.turn][side];
+		if (!defined(rook)) return SquareSet.empty();
+		if (pos.castles.path[pos.turn][side].intersects(pos.board.occupied)) return SquareSet.empty();
+		const kingTo = kingCastlesTo(pos.turn, side);
+		const kingPath = between(ctx.king, kingTo);
+		const occ = pos.board.occupied.without(ctx.king);
+		for (const sq of kingPath) if (pos.kingAttackers(sq, opposite(pos.turn), occ).nonEmpty()) return SquareSet.empty();
+		const rookTo = rookCastlesTo(pos.turn, side);
+		const after = pos.board.occupied.toggle(ctx.king).toggle(rook).toggle(rookTo);
+		if (pos.kingAttackers(kingTo, opposite(pos.turn), after).nonEmpty()) return SquareSet.empty();
+		return SquareSet.fromSquare(rook);
+	};
+	var pseudoDests = (pos, square, ctx) => {
+		if (ctx.variantEnd) return SquareSet.empty();
+		const piece = pos.board.get(square);
+		if (!piece || piece.color !== pos.turn) return SquareSet.empty();
+		let pseudo = attacks(piece, square, pos.board.occupied);
+		if (piece.role === "pawn") {
+			let captureTargets = pos.board[opposite(pos.turn)];
+			if (defined(pos.epSquare)) captureTargets = captureTargets.with(pos.epSquare);
+			pseudo = pseudo.intersect(captureTargets);
+			const delta = pos.turn === "white" ? 8 : -8;
+			const step = square + delta;
+			if (0 <= step && step < 64 && !pos.board.occupied.has(step)) {
+				pseudo = pseudo.with(step);
+				const canDoubleStep = pos.turn === "white" ? square < 16 : square >= 48;
+				const doubleStep = step + delta;
+				if (canDoubleStep && !pos.board.occupied.has(doubleStep)) pseudo = pseudo.with(doubleStep);
+			}
+			return pseudo;
+		} else pseudo = pseudo.diff(pos.board[pos.turn]);
+		if (square === ctx.king) return pseudo.union(castlingDest(pos, "a", ctx)).union(castlingDest(pos, "h", ctx));
+		else return pseudo;
+	};
+	var castlingSide = (pos, move) => {
+		if (isDrop(move)) return;
+		const delta = move.to - move.from;
+		if (Math.abs(delta) !== 2 && !pos.board[pos.turn].has(move.to)) return;
+		if (!pos.board.king.has(move.from)) return;
+		return delta > 0 ? "h" : "a";
+	};
+	var normalizeMove = (pos, move) => {
+		const side = castlingSide(pos, move);
+		if (!side) return move;
+		const rookFrom = pos.castles.rook[pos.turn][side];
+		return {
+			from: move.from,
+			to: defined(rookFrom) ? rookFrom : move.to
+		};
+	};
+	var MaterialSide = class MaterialSide {
+		constructor() {}
+		static empty() {
+			const m = new MaterialSide();
+			for (const role of ROLES) m[role] = 0;
+			return m;
+		}
+		static fromBoard(board, color) {
+			const m = new MaterialSide();
+			for (const role of ROLES) m[role] = board.pieces(color, role).size();
+			return m;
+		}
+		clone() {
+			const m = new MaterialSide();
+			for (const role of ROLES) m[role] = this[role];
+			return m;
+		}
+		equals(other) {
+			return ROLES.every((role) => this[role] === other[role]);
+		}
+		add(other) {
+			const m = new MaterialSide();
+			for (const role of ROLES) m[role] = this[role] + other[role];
+			return m;
+		}
+		subtract(other) {
+			const m = new MaterialSide();
+			for (const role of ROLES) m[role] = this[role] - other[role];
+			return m;
+		}
+		nonEmpty() {
+			return ROLES.some((role) => this[role] > 0);
+		}
+		isEmpty() {
+			return !this.nonEmpty();
+		}
+		hasPawns() {
+			return this.pawn > 0;
+		}
+		hasNonPawns() {
+			return this.knight > 0 || this.bishop > 0 || this.rook > 0 || this.queen > 0 || this.king > 0;
+		}
+		size() {
+			return this.pawn + this.knight + this.bishop + this.rook + this.queen + this.king;
+		}
+	};
+	var Material = class Material {
+		constructor(white, black) {
+			this.white = white;
+			this.black = black;
+		}
+		static empty() {
+			return new Material(MaterialSide.empty(), MaterialSide.empty());
+		}
+		static fromBoard(board) {
+			return new Material(MaterialSide.fromBoard(board, "white"), MaterialSide.fromBoard(board, "black"));
+		}
+		clone() {
+			return new Material(this.white.clone(), this.black.clone());
+		}
+		equals(other) {
+			return this.white.equals(other.white) && this.black.equals(other.black);
+		}
+		add(other) {
+			return new Material(this.white.add(other.white), this.black.add(other.black));
+		}
+		subtract(other) {
+			return new Material(this.white.subtract(other.white), this.black.subtract(other.black));
+		}
+		count(role) {
+			return this.white[role] + this.black[role];
+		}
+		size() {
+			return this.white.size() + this.black.size();
+		}
+		isEmpty() {
+			return this.white.isEmpty() && this.black.isEmpty();
+		}
+		nonEmpty() {
+			return !this.isEmpty();
+		}
+		hasPawns() {
+			return this.white.hasPawns() || this.black.hasPawns();
+		}
+		hasNonPawns() {
+			return this.white.hasNonPawns() || this.black.hasNonPawns();
+		}
+	};
+	var RemainingChecks = class RemainingChecks {
+		constructor(white, black) {
+			this.white = white;
+			this.black = black;
+		}
+		static default() {
+			return new RemainingChecks(3, 3);
+		}
+		clone() {
+			return new RemainingChecks(this.white, this.black);
+		}
+		equals(other) {
+			return this.white === other.white && this.black === other.black;
+		}
+	};
+	var InvalidFen;
+	(function(InvalidFen) {
+		InvalidFen["Fen"] = "ERR_FEN";
+		InvalidFen["Board"] = "ERR_BOARD";
+		InvalidFen["Pockets"] = "ERR_POCKETS";
+		InvalidFen["Turn"] = "ERR_TURN";
+		InvalidFen["Castling"] = "ERR_CASTLING";
+		InvalidFen["EpSquare"] = "ERR_EP_SQUARE";
+		InvalidFen["RemainingChecks"] = "ERR_REMAINING_CHECKS";
+		InvalidFen["Halfmoves"] = "ERR_HALFMOVES";
+		InvalidFen["Fullmoves"] = "ERR_FULLMOVES";
+	})(InvalidFen || (InvalidFen = {}));
+	var FenError = class extends Error {};
+	var nthIndexOf = (haystack, needle, n) => {
+		let index = haystack.indexOf(needle);
+		while (n-- > 0) {
+			if (index === -1) break;
+			index = haystack.indexOf(needle, index + needle.length);
+		}
+		return index;
+	};
+	var parseSmallUint = (str) => /^\d{1,4}$/.test(str) ? parseInt(str, 10) : void 0;
+	var charToPiece = (ch) => {
+		const role = charToRole(ch);
+		return role && {
+			role,
+			color: ch.toLowerCase() === ch ? "black" : "white"
+		};
+	};
+	var parseBoardFen = (boardPart) => {
+		const board = Board.empty();
+		let rank = 7;
+		let file = 0;
+		for (let i = 0; i < boardPart.length; i++) {
+			const c = boardPart[i];
+			if (c === "/" && file === 8) {
+				file = 0;
+				rank--;
+			} else {
+				const step = parseInt(c, 10);
+				if (step > 0) file += step;
+				else {
+					if (file >= 8 || rank < 0) return Result.err(new FenError(InvalidFen.Board));
+					const square = file + rank * 8;
+					const piece = charToPiece(c);
+					if (!piece) return Result.err(new FenError(InvalidFen.Board));
+					if (boardPart[i + 1] === "~") {
+						piece.promoted = true;
+						i++;
+					}
+					board.set(square, piece);
+					file++;
+				}
+			}
+		}
+		if (rank !== 0 || file !== 8) return Result.err(new FenError(InvalidFen.Board));
+		return Result.ok(board);
+	};
+	var parsePockets = (pocketPart) => {
+		if (pocketPart.length > 64) return Result.err(new FenError(InvalidFen.Pockets));
+		const pockets = Material.empty();
+		for (const c of pocketPart) {
+			const piece = charToPiece(c);
+			if (!piece) return Result.err(new FenError(InvalidFen.Pockets));
+			pockets[piece.color][piece.role]++;
+		}
+		return Result.ok(pockets);
+	};
+	var parseCastlingFen = (board, castlingPart) => {
+		let castlingRights = SquareSet.empty();
+		if (castlingPart === "-") return Result.ok(castlingRights);
+		for (const c of castlingPart) {
+			const lower = c.toLowerCase();
+			const color = c === lower ? "black" : "white";
+			const rank = color === "white" ? 0 : 7;
+			if ("a" <= lower && lower <= "h") castlingRights = castlingRights.with(squareFromCoords(lower.charCodeAt(0) - "a".charCodeAt(0), rank));
+			else if (lower === "k" || lower === "q") {
+				const rooksAndKings = board[color].intersect(SquareSet.backrank(color)).intersect(board.rook.union(board.king));
+				const candidate = lower === "k" ? rooksAndKings.last() : rooksAndKings.first();
+				castlingRights = castlingRights.with(defined(candidate) && board.rook.has(candidate) ? candidate : squareFromCoords(lower === "k" ? 7 : 0, rank));
+			} else return Result.err(new FenError(InvalidFen.Castling));
+		}
+		if (COLORS.some((color) => SquareSet.backrank(color).intersect(castlingRights).size() > 2)) return Result.err(new FenError(InvalidFen.Castling));
+		return Result.ok(castlingRights);
+	};
+	var parseRemainingChecks = (part) => {
+		const parts = part.split("+");
+		if (parts.length === 3 && parts[0] === "") {
+			const white = parseSmallUint(parts[1]);
+			const black = parseSmallUint(parts[2]);
+			if (!defined(white) || white > 3 || !defined(black) || black > 3) return Result.err(new FenError(InvalidFen.RemainingChecks));
+			return Result.ok(new RemainingChecks(3 - white, 3 - black));
+		} else if (parts.length === 2) {
+			const white = parseSmallUint(parts[0]);
+			const black = parseSmallUint(parts[1]);
+			if (!defined(white) || white > 3 || !defined(black) || black > 3) return Result.err(new FenError(InvalidFen.RemainingChecks));
+			return Result.ok(new RemainingChecks(white, black));
+		} else return Result.err(new FenError(InvalidFen.RemainingChecks));
+	};
+	var parseFen = (fen) => {
+		const parts = fen.split(/[\s_]+/);
+		const boardPart = parts.shift();
+		let board;
+		let pockets = Result.ok(void 0);
+		if (boardPart.endsWith("]")) {
+			const pocketStart = boardPart.indexOf("[");
+			if (pocketStart === -1) return Result.err(new FenError(InvalidFen.Fen));
+			board = parseBoardFen(boardPart.slice(0, pocketStart));
+			pockets = parsePockets(boardPart.slice(pocketStart + 1, -1));
+		} else {
+			const pocketStart = nthIndexOf(boardPart, "/", 7);
+			if (pocketStart === -1) board = parseBoardFen(boardPart);
+			else {
+				board = parseBoardFen(boardPart.slice(0, pocketStart));
+				pockets = parsePockets(boardPart.slice(pocketStart + 1));
+			}
+		}
+		let turn;
+		const turnPart = parts.shift();
+		if (!defined(turnPart) || turnPart === "w") turn = "white";
+		else if (turnPart === "b") turn = "black";
+		else return Result.err(new FenError(InvalidFen.Turn));
+		return board.chain((board) => {
+			const castlingPart = parts.shift();
+			const castlingRights = defined(castlingPart) ? parseCastlingFen(board, castlingPart) : Result.ok(SquareSet.empty());
+			const epPart = parts.shift();
+			let epSquare;
+			if (defined(epPart) && epPart !== "-") {
+				epSquare = parseSquare(epPart);
+				if (!defined(epSquare)) return Result.err(new FenError(InvalidFen.EpSquare));
+			}
+			let halfmovePart = parts.shift();
+			let earlyRemainingChecks;
+			if (defined(halfmovePart) && halfmovePart.includes("+")) {
+				earlyRemainingChecks = parseRemainingChecks(halfmovePart);
+				halfmovePart = parts.shift();
+			}
+			const halfmoves = defined(halfmovePart) ? parseSmallUint(halfmovePart) : 0;
+			if (!defined(halfmoves)) return Result.err(new FenError(InvalidFen.Halfmoves));
+			const fullmovesPart = parts.shift();
+			const fullmoves = defined(fullmovesPart) ? parseSmallUint(fullmovesPart) : 1;
+			if (!defined(fullmoves)) return Result.err(new FenError(InvalidFen.Fullmoves));
+			const remainingChecksPart = parts.shift();
+			let remainingChecks = Result.ok(void 0);
+			if (defined(remainingChecksPart)) {
+				if (defined(earlyRemainingChecks)) return Result.err(new FenError(InvalidFen.RemainingChecks));
+				remainingChecks = parseRemainingChecks(remainingChecksPart);
+			} else if (defined(earlyRemainingChecks)) remainingChecks = earlyRemainingChecks;
+			if (parts.length > 0) return Result.err(new FenError(InvalidFen.Fen));
+			return pockets.chain((pockets) => castlingRights.chain((castlingRights) => remainingChecks.map((remainingChecks) => {
+				return {
+					board,
+					pockets,
+					turn,
+					castlingRights,
+					remainingChecks,
+					epSquare,
+					halfmoves,
+					fullmoves: Math.max(1, fullmoves)
+				};
+			})));
+		});
+	};
+	var makePiece = (piece) => {
+		let r = roleToChar(piece.role);
+		if (piece.color === "white") r = r.toUpperCase();
+		if (piece.promoted) r += "~";
+		return r;
+	};
+	var makeBoardFen = (board) => {
+		let fen = "";
+		let empty = 0;
+		for (let rank = 7; rank >= 0; rank--) for (let file = 0; file < 8; file++) {
+			const square = file + rank * 8;
+			const piece = board.get(square);
+			if (!piece) empty++;
+			else {
+				if (empty > 0) {
+					fen += empty;
+					empty = 0;
+				}
+				fen += makePiece(piece);
+			}
+			if (file === 7) {
+				if (empty > 0) {
+					fen += empty;
+					empty = 0;
+				}
+				if (rank !== 0) fen += "/";
+			}
+		}
+		return fen;
+	};
+	var makePocket = (material) => ROLES.map((role) => roleToChar(role).repeat(material[role])).join("");
+	var makePockets = (pocket) => makePocket(pocket.white).toUpperCase() + makePocket(pocket.black);
+	var makeCastlingFen = (board, castlingRights) => {
+		let fen = "";
+		for (const color of COLORS) {
+			const backrank = SquareSet.backrank(color);
+			let king = board.kingOf(color);
+			if (defined(king) && !backrank.has(king)) king = void 0;
+			const candidates = board.pieces(color, "rook").intersect(backrank);
+			for (const rook of castlingRights.intersect(backrank).reversed()) if (rook === candidates.first() && defined(king) && rook < king) fen += color === "white" ? "Q" : "q";
+			else if (rook === candidates.last() && defined(king) && king < rook) fen += color === "white" ? "K" : "k";
+			else {
+				const file = FILE_NAMES[squareFile(rook)];
+				fen += color === "white" ? file.toUpperCase() : file;
+			}
+		}
+		return fen || "-";
+	};
+	var makeRemainingChecks = (checks) => `${checks.white}+${checks.black}`;
+	var makeFen = (setup, opts) => [
+		makeBoardFen(setup.board) + (setup.pockets ? `[${makePockets(setup.pockets)}]` : ""),
+		setup.turn[0],
+		makeCastlingFen(setup.board, setup.castlingRights),
+		defined(setup.epSquare) ? makeSquare(setup.epSquare) : "-",
+		...setup.remainingChecks ? [makeRemainingChecks(setup.remainingChecks)] : [],
+		...(opts === null || opts === void 0 ? void 0 : opts.epd) ? [] : [Math.max(0, Math.min(setup.halfmoves, 9999)), Math.max(1, Math.min(setup.fullmoves, 9999))]
+	].join(" ");
+	var makeSanWithoutSuffix = (pos, move) => {
+		let san = "";
+		if (isDrop(move)) {
+			if (move.role !== "pawn") san = roleToChar(move.role).toUpperCase();
+			san += "@" + makeSquare(move.to);
+		} else {
+			const role = pos.board.getRole(move.from);
+			if (!role) return "--";
+			if (role === "king" && (pos.board[pos.turn].has(move.to) || Math.abs(move.to - move.from) === 2)) san = move.to > move.from ? "O-O" : "O-O-O";
+			else {
+				const capture = pos.board.occupied.has(move.to) || role === "pawn" && squareFile(move.from) !== squareFile(move.to);
+				if (role !== "pawn") {
+					san = roleToChar(role).toUpperCase();
+					let others;
+					if (role === "king") others = kingAttacks(move.to).intersect(pos.board.king);
+					else if (role === "queen") others = queenAttacks(move.to, pos.board.occupied).intersect(pos.board.queen);
+					else if (role === "rook") others = rookAttacks(move.to, pos.board.occupied).intersect(pos.board.rook);
+					else if (role === "bishop") others = bishopAttacks(move.to, pos.board.occupied).intersect(pos.board.bishop);
+					else others = knightAttacks(move.to).intersect(pos.board.knight);
+					others = others.intersect(pos.board[pos.turn]).without(move.from);
+					if (others.nonEmpty()) {
+						const ctx = pos.ctx();
+						for (const from of others) if (!pos.dests(from, ctx).has(move.to)) others = others.without(from);
+						if (others.nonEmpty()) {
+							let row = false;
+							let column = others.intersects(SquareSet.fromRank(squareRank(move.from)));
+							if (others.intersects(SquareSet.fromFile(squareFile(move.from)))) row = true;
+							else column = true;
+							if (column) san += FILE_NAMES[squareFile(move.from)];
+							if (row) san += RANK_NAMES[squareRank(move.from)];
+						}
+					}
+				} else if (capture) san = FILE_NAMES[squareFile(move.from)];
+				if (capture) san += "x";
+				san += makeSquare(move.to);
+				if (move.promotion) san += "=" + roleToChar(move.promotion).toUpperCase();
+			}
+		}
+		return san;
+	};
+	var makeSanAndPlay = (pos, move) => {
+		var _a;
+		const san = makeSanWithoutSuffix(pos, move);
+		pos.play(move);
+		if ((_a = pos.outcome()) === null || _a === void 0 ? void 0 : _a.winner) return san + "#";
+		if (pos.isCheck()) return san + "+";
+		return san;
+	};
+	var makeSan = (pos, move) => makeSanAndPlay(pos.clone(), move);
+	var parseSan = (pos, san) => {
+		const ctx = pos.ctx();
+		const match = san.match(/^([NBRQK])?([a-h])?([1-8])?[-x]?([a-h][1-8])(?:=?([nbrqkNBRQK]))?[+#]?$/);
+		if (!match) {
+			let castlingSide;
+			if (san === "O-O" || san === "O-O+" || san === "O-O#") castlingSide = "h";
+			else if (san === "O-O-O" || san === "O-O-O+" || san === "O-O-O#") castlingSide = "a";
+			if (castlingSide) {
+				const rook = pos.castles.rook[pos.turn][castlingSide];
+				if (!defined(ctx.king) || !defined(rook) || !pos.dests(ctx.king, ctx).has(rook)) return;
+				return {
+					from: ctx.king,
+					to: rook
+				};
+			}
+			const match = san.match(/^([pnbrqkPNBRQK])?@([a-h][1-8])[+#]?$/);
+			if (!match) return;
+			const move = {
+				role: match[1] ? charToRole(match[1]) : "pawn",
+				to: parseSquare(match[2])
+			};
+			return pos.isLegal(move, ctx) ? move : void 0;
+		}
+		const role = match[1] ? charToRole(match[1]) : "pawn";
+		const to = parseSquare(match[4]);
+		const promotion = match[5] ? charToRole(match[5]) : void 0;
+		if (!!promotion !== (role === "pawn" && SquareSet.backranks().has(to))) return;
+		if (promotion === "king" && pos.rules !== "antichess") return;
+		let candidates = pos.board.pieces(pos.turn, role);
+		if (role === "pawn" && !match[2]) candidates = candidates.intersect(SquareSet.fromFile(squareFile(to)));
+		else if (match[2]) candidates = candidates.intersect(SquareSet.fromFile(match[2].charCodeAt(0) - "a".charCodeAt(0)));
+		if (match[3]) candidates = candidates.intersect(SquareSet.fromRank(match[3].charCodeAt(0) - "1".charCodeAt(0)));
+		const pawnAdvance = role === "pawn" ? SquareSet.fromFile(squareFile(to)) : SquareSet.empty();
+		candidates = candidates.intersect(pawnAdvance.union(attacks({
+			color: opposite(pos.turn),
+			role
+		}, to, pos.board.occupied)));
+		let from;
+		for (const candidate of candidates) if (pos.dests(candidate, ctx).has(to)) {
+			if (defined(from)) return;
+			from = candidate;
+		}
+		if (!defined(from)) return;
+		return {
+			from,
+			to,
+			promotion
+		};
+	};
+	var Crazyhouse = class extends Position {
+		constructor() {
+			super("crazyhouse");
+		}
+		reset() {
+			super.reset();
+			this.pockets = Material.empty();
+		}
+		setupUnchecked(setup) {
+			super.setupUnchecked(setup);
+			this.board.promoted = setup.board.promoted.intersect(setup.board.occupied).diff(setup.board.king).diff(setup.board.pawn);
+			this.pockets = setup.pockets ? setup.pockets.clone() : Material.empty();
+		}
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		validate() {
+			return super.validate().chain((_) => {
+				var _a, _b;
+				if ((_a = this.pockets) === null || _a === void 0 ? void 0 : _a.count("king")) return Result.err(new PositionError(IllegalSetup.Kings));
+				if ((((_b = this.pockets) === null || _b === void 0 ? void 0 : _b.size()) || 0) + this.board.occupied.size() > 64) return Result.err(new PositionError(IllegalSetup.Variant));
+				return Result.ok(void 0);
+			});
+		}
+		hasInsufficientMaterial(color) {
+			if (!this.pockets) return super.hasInsufficientMaterial(color);
+			return this.board.occupied.size() + this.pockets.size() <= 3 && this.board.pawn.isEmpty() && this.board.promoted.isEmpty() && this.board.rooksAndQueens().isEmpty() && this.pockets.count("pawn") <= 0 && this.pockets.count("rook") <= 0 && this.pockets.count("queen") <= 0;
+		}
+		dropDests(ctx) {
+			var _a, _b;
+			const mask = this.board.occupied.complement().intersect(((_a = this.pockets) === null || _a === void 0 ? void 0 : _a[this.turn].hasNonPawns()) ? SquareSet.full() : ((_b = this.pockets) === null || _b === void 0 ? void 0 : _b[this.turn].hasPawns()) ? SquareSet.backranks().complement() : SquareSet.empty());
+			ctx = ctx || this.ctx();
+			if (defined(ctx.king) && ctx.checkers.nonEmpty()) {
+				const checker = ctx.checkers.singleSquare();
+				if (!defined(checker)) return SquareSet.empty();
+				return mask.intersect(between(checker, ctx.king));
+			} else return mask;
+		}
+	};
+	var Atomic = class extends Position {
+		constructor() {
+			super("atomic");
+		}
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		validate() {
+			if (this.board.occupied.isEmpty()) return Result.err(new PositionError(IllegalSetup.Empty));
+			if (this.board.king.size() > 2) return Result.err(new PositionError(IllegalSetup.Kings));
+			const otherKing = this.board.kingOf(opposite(this.turn));
+			if (!defined(otherKing)) return Result.err(new PositionError(IllegalSetup.Kings));
+			if (this.kingAttackers(otherKing, this.turn, this.board.occupied).nonEmpty()) return Result.err(new PositionError(IllegalSetup.OppositeCheck));
+			if (SquareSet.backranks().intersects(this.board.pawn)) return Result.err(new PositionError(IllegalSetup.PawnsOnBackrank));
+			return Result.ok(void 0);
+		}
+		kingAttackers(square, attacker, occupied) {
+			const attackerKings = this.board.pieces(attacker, "king");
+			if (attackerKings.isEmpty() || kingAttacks(square).intersects(attackerKings)) return SquareSet.empty();
+			return super.kingAttackers(square, attacker, occupied);
+		}
+		playCaptureAt(square, captured) {
+			super.playCaptureAt(square, captured);
+			this.board.take(square);
+			for (const explode of kingAttacks(square).intersect(this.board.occupied).diff(this.board.pawn)) {
+				const piece = this.board.take(explode);
+				if ((piece === null || piece === void 0 ? void 0 : piece.role) === "rook") this.castles.discardRook(explode);
+				if ((piece === null || piece === void 0 ? void 0 : piece.role) === "king") this.castles.discardColor(piece.color);
+			}
+		}
+		hasInsufficientMaterial(color) {
+			if (this.board.pieces(opposite(color), "king").isEmpty()) return false;
+			if (this.board[color].diff(this.board.king).isEmpty()) return true;
+			if (this.board[opposite(color)].diff(this.board.king).nonEmpty()) {
+				if (this.board.occupied.equals(this.board.bishop.union(this.board.king))) {
+					if (!this.board.bishop.intersect(this.board.white).intersects(SquareSet.darkSquares())) return !this.board.bishop.intersect(this.board.black).intersects(SquareSet.lightSquares());
+					if (!this.board.bishop.intersect(this.board.white).intersects(SquareSet.lightSquares())) return !this.board.bishop.intersect(this.board.black).intersects(SquareSet.darkSquares());
+				}
+				return false;
+			}
+			if (this.board.queen.nonEmpty() || this.board.pawn.nonEmpty()) return false;
+			if (this.board.knight.union(this.board.bishop).union(this.board.rook).size() === 1) return true;
+			if (this.board.occupied.equals(this.board.knight.union(this.board.king))) return this.board.knight.size() <= 2;
+			return false;
+		}
+		dests(square, ctx) {
+			ctx = ctx || this.ctx();
+			let dests = SquareSet.empty();
+			for (const to of pseudoDests(this, square, ctx)) {
+				const after = this.clone();
+				after.play({
+					from: square,
+					to
+				});
+				const ourKing = after.board.kingOf(this.turn);
+				if (defined(ourKing) && (!defined(after.board.kingOf(after.turn)) || after.kingAttackers(ourKing, after.turn, after.board.occupied).isEmpty())) dests = dests.with(to);
+			}
+			return dests;
+		}
+		isVariantEnd() {
+			return !!this.variantOutcome();
+		}
+		variantOutcome(_ctx) {
+			for (const color of COLORS) if (this.board.pieces(color, "king").isEmpty()) return { winner: opposite(color) };
+		}
+	};
+	var Antichess = class extends Position {
+		constructor() {
+			super("antichess");
+		}
+		reset() {
+			super.reset();
+			this.castles = Castles.empty();
+		}
+		setupUnchecked(setup) {
+			super.setupUnchecked(setup);
+			this.castles = Castles.empty();
+		}
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		validate() {
+			if (this.board.occupied.isEmpty()) return Result.err(new PositionError(IllegalSetup.Empty));
+			if (SquareSet.backranks().intersects(this.board.pawn)) return Result.err(new PositionError(IllegalSetup.PawnsOnBackrank));
+			return Result.ok(void 0);
+		}
+		kingAttackers(_square, _attacker, _occupied) {
+			return SquareSet.empty();
+		}
+		ctx() {
+			const ctx = super.ctx();
+			if (defined(this.epSquare) && pawnAttacks(opposite(this.turn), this.epSquare).intersects(this.board.pieces(this.turn, "pawn"))) {
+				ctx.mustCapture = true;
+				return ctx;
+			}
+			const enemy = this.board[opposite(this.turn)];
+			for (const from of this.board[this.turn]) if (pseudoDests(this, from, ctx).intersects(enemy)) {
+				ctx.mustCapture = true;
+				return ctx;
+			}
+			return ctx;
+		}
+		dests(square, ctx) {
+			ctx = ctx || this.ctx();
+			const dests = pseudoDests(this, square, ctx);
+			const enemy = this.board[opposite(this.turn)];
+			return dests.intersect(ctx.mustCapture ? defined(this.epSquare) && this.board.getRole(square) === "pawn" ? enemy.with(this.epSquare) : enemy : SquareSet.full());
+		}
+		hasInsufficientMaterial(color) {
+			if (this.board[color].isEmpty()) return false;
+			if (this.board[opposite(color)].isEmpty()) return true;
+			if (this.board.occupied.equals(this.board.bishop)) {
+				const weSomeOnLight = this.board[color].intersects(SquareSet.lightSquares());
+				const weSomeOnDark = this.board[color].intersects(SquareSet.darkSquares());
+				const theyAllOnDark = this.board[opposite(color)].isDisjoint(SquareSet.lightSquares());
+				const theyAllOnLight = this.board[opposite(color)].isDisjoint(SquareSet.darkSquares());
+				return weSomeOnLight && theyAllOnDark || weSomeOnDark && theyAllOnLight;
+			}
+			if (this.board.occupied.equals(this.board.knight) && this.board.occupied.size() === 2) return this.board.white.intersects(SquareSet.lightSquares()) !== this.board.black.intersects(SquareSet.darkSquares()) !== (this.turn === color);
+			return false;
+		}
+		isVariantEnd() {
+			return this.board[this.turn].isEmpty();
+		}
+		variantOutcome(ctx) {
+			ctx = ctx || this.ctx();
+			if (ctx.variantEnd || this.isStalemate(ctx)) return { winner: this.turn };
+		}
+	};
+	var KingOfTheHill = class extends Position {
+		constructor() {
+			super("kingofthehill");
+		}
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		hasInsufficientMaterial(_color) {
+			return false;
+		}
+		isVariantEnd() {
+			return this.board.king.intersects(SquareSet.center());
+		}
+		variantOutcome(_ctx) {
+			for (const color of COLORS) if (this.board.pieces(color, "king").intersects(SquareSet.center())) return { winner: color };
+		}
+	};
+	var ThreeCheck = class extends Position {
+		constructor() {
+			super("3check");
+		}
+		reset() {
+			super.reset();
+			this.remainingChecks = RemainingChecks.default();
+		}
+		setupUnchecked(setup) {
+			var _a;
+			super.setupUnchecked(setup);
+			this.remainingChecks = ((_a = setup.remainingChecks) === null || _a === void 0 ? void 0 : _a.clone()) || RemainingChecks.default();
+		}
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		hasInsufficientMaterial(color) {
+			return this.board.pieces(color, "king").equals(this.board[color]);
+		}
+		isVariantEnd() {
+			return !!this.remainingChecks && (this.remainingChecks.white <= 0 || this.remainingChecks.black <= 0);
+		}
+		variantOutcome(_ctx) {
+			if (this.remainingChecks) {
+				for (const color of COLORS) if (this.remainingChecks[color] <= 0) return { winner: color };
+			}
+		}
+	};
+	var racingKingsBoard = () => {
+		const board = Board.empty();
+		board.occupied = new SquareSet(65535, 0);
+		board.promoted = SquareSet.empty();
+		board.white = new SquareSet(61680, 0);
+		board.black = new SquareSet(3855, 0);
+		board.pawn = SquareSet.empty();
+		board.knight = new SquareSet(6168, 0);
+		board.bishop = new SquareSet(9252, 0);
+		board.rook = new SquareSet(16962, 0);
+		board.queen = new SquareSet(129, 0);
+		board.king = new SquareSet(33024, 0);
+		return board;
+	};
+	var RacingKings = class extends Position {
+		constructor() {
+			super("racingkings");
+		}
+		reset() {
+			this.board = racingKingsBoard();
+			this.pockets = void 0;
+			this.turn = "white";
+			this.castles = Castles.empty();
+			this.epSquare = void 0;
+			this.remainingChecks = void 0;
+			this.halfmoves = 0;
+			this.fullmoves = 1;
+		}
+		setupUnchecked(setup) {
+			super.setupUnchecked(setup);
+			this.castles = Castles.empty();
+		}
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		validate() {
+			if (this.isCheck() || this.board.pawn.nonEmpty()) return Result.err(new PositionError(IllegalSetup.Variant));
+			return super.validate();
+		}
+		dests(square, ctx) {
+			ctx = ctx || this.ctx();
+			let dests = SquareSet.empty();
+			for (const to of super.dests(square, ctx)) {
+				const move = {
+					from: square,
+					to
+				};
+				const after = this.clone();
+				after.play(move);
+				if (!after.isCheck()) dests = dests.with(to);
+			}
+			return dests;
+		}
+		hasInsufficientMaterial(_color) {
+			return false;
+		}
+		isVariantEnd() {
+			const goal = SquareSet.fromRank(7);
+			const inGoal = this.board.king.intersect(goal);
+			if (inGoal.isEmpty()) return false;
+			if (this.turn === "white" || inGoal.intersects(this.board.black)) return true;
+			const blackKing = this.board.kingOf("black");
+			if (defined(blackKing)) {
+				const occ = this.board.occupied.without(blackKing);
+				for (const target of kingAttacks(blackKing).intersect(goal).diff(this.board.black)) if (this.kingAttackers(target, "white", occ).isEmpty()) return false;
+			}
+			return true;
+		}
+		variantOutcome(ctx) {
+			if (ctx ? !ctx.variantEnd : !this.isVariantEnd()) return;
+			const goal = SquareSet.fromRank(7);
+			const blackInGoal = this.board.pieces("black", "king").intersects(goal);
+			const whiteInGoal = this.board.pieces("white", "king").intersects(goal);
+			if (blackInGoal && !whiteInGoal) return { winner: "black" };
+			if (whiteInGoal && !blackInGoal) return { winner: "white" };
+			return { winner: void 0 };
+		}
+	};
+	var hordeBoard = () => {
+		const board = Board.empty();
+		board.occupied = new SquareSet(4294967295, 4294901862);
+		board.promoted = SquareSet.empty();
+		board.white = new SquareSet(4294967295, 102);
+		board.black = new SquareSet(0, 4294901760);
+		board.pawn = new SquareSet(4294967295, 16711782);
+		board.knight = new SquareSet(0, 1107296256);
+		board.bishop = new SquareSet(0, 603979776);
+		board.rook = new SquareSet(0, 2164260864);
+		board.queen = new SquareSet(0, 134217728);
+		board.king = new SquareSet(0, 268435456);
+		return board;
+	};
+	var Horde = class extends Position {
+		constructor() {
+			super("horde");
+		}
+		reset() {
+			this.board = hordeBoard();
+			this.pockets = void 0;
+			this.turn = "white";
+			this.castles = Castles.default();
+			this.castles.discardColor("white");
+			this.epSquare = void 0;
+			this.remainingChecks = void 0;
+			this.halfmoves = 0;
+			this.fullmoves = 1;
+		}
+		static default() {
+			const pos = new this();
+			pos.reset();
+			return pos;
+		}
+		static fromSetup(setup) {
+			const pos = new this();
+			pos.setupUnchecked(setup);
+			return pos.validate().map((_) => pos);
+		}
+		clone() {
+			return super.clone();
+		}
+		validate() {
+			if (this.board.occupied.isEmpty()) return Result.err(new PositionError(IllegalSetup.Empty));
+			if (this.board.king.size() !== 1) return Result.err(new PositionError(IllegalSetup.Kings));
+			const otherKing = this.board.kingOf(opposite(this.turn));
+			if (defined(otherKing) && this.kingAttackers(otherKing, this.turn, this.board.occupied).nonEmpty()) return Result.err(new PositionError(IllegalSetup.OppositeCheck));
+			for (const color of COLORS) {
+				const backranks = this.board.pieces(color, "king").isEmpty() ? SquareSet.backrank(opposite(color)) : SquareSet.backranks();
+				if (this.board.pieces(color, "pawn").intersects(backranks)) return Result.err(new PositionError(IllegalSetup.PawnsOnBackrank));
+			}
+			return Result.ok(void 0);
+		}
+		hasInsufficientMaterial(color) {
+			if (this.board.pieces(color, "king").nonEmpty()) return false;
+			const oppositeSquareColor = (squareColor) => squareColor === "light" ? "dark" : "light";
+			const coloredSquares = (squareColor) => squareColor === "light" ? SquareSet.lightSquares() : SquareSet.darkSquares();
+			const hasBishopPair = (side) => {
+				const bishops = this.board.pieces(side, "bishop");
+				return bishops.intersects(SquareSet.darkSquares()) && bishops.intersects(SquareSet.lightSquares());
+			};
+			const horde = MaterialSide.fromBoard(this.board, color);
+			const hordeBishops = (squareColor) => coloredSquares(squareColor).intersect(this.board.pieces(color, "bishop")).size();
+			const hordeBishopColor = hordeBishops("light") >= 1 ? "light" : "dark";
+			const hordeNum = horde.pawn + horde.knight + horde.rook + horde.queen + Math.min(hordeBishops("dark"), 2) + Math.min(hordeBishops("light"), 2);
+			const pieces = MaterialSide.fromBoard(this.board, opposite(color));
+			const piecesBishops = (squareColor) => coloredSquares(squareColor).intersect(this.board.pieces(opposite(color), "bishop")).size();
+			const piecesNum = pieces.size();
+			const piecesOfRoleNot = (piece) => piecesNum - piece;
+			if (hordeNum === 0) return true;
+			if (hordeNum >= 4) return false;
+			if ((horde.pawn >= 1 || horde.queen >= 1) && hordeNum >= 2) return false;
+			if (horde.rook >= 1 && hordeNum >= 2) {
+				if (!(hordeNum === 2 && horde.rook === 1 && horde.bishop === 1 && piecesOfRoleNot(piecesBishops(hordeBishopColor)) === 1)) return false;
+			}
+			if (hordeNum === 1) {
+				if (piecesNum === 1) return true;
+				else if (horde.queen === 1) return !(pieces.pawn >= 1 || pieces.rook >= 1 || piecesBishops("light") >= 2 || piecesBishops("dark") >= 2);
+				else if (horde.pawn === 1) {
+					const pawnSquare = this.board.pieces(color, "pawn").last();
+					const promoteToQueen = this.clone();
+					promoteToQueen.board.set(pawnSquare, {
+						color,
+						role: "queen"
+					});
+					const promoteToKnight = this.clone();
+					promoteToKnight.board.set(pawnSquare, {
+						color,
+						role: "knight"
+					});
+					return promoteToQueen.hasInsufficientMaterial(color) && promoteToKnight.hasInsufficientMaterial(color);
+				} else if (horde.rook === 1) return !(pieces.pawn >= 2 || pieces.rook >= 1 && pieces.pawn >= 1 || pieces.rook >= 1 && pieces.knight >= 1 || pieces.pawn >= 1 && pieces.knight >= 1);
+				else if (horde.bishop === 1) return !(piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 2 || piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 1 && pieces.pawn >= 1 || pieces.pawn >= 2);
+				else if (horde.knight === 1) return !(piecesNum >= 4 && (pieces.knight >= 2 || pieces.pawn >= 2 || pieces.rook >= 1 && pieces.knight >= 1 || pieces.rook >= 1 && pieces.bishop >= 1 || pieces.knight >= 1 && pieces.bishop >= 1 || pieces.rook >= 1 && pieces.pawn >= 1 || pieces.knight >= 1 && pieces.pawn >= 1 || pieces.bishop >= 1 && pieces.pawn >= 1 || hasBishopPair(opposite(color)) && pieces.pawn >= 1) && (piecesBishops("dark") < 2 || piecesOfRoleNot(piecesBishops("dark")) >= 3) && (piecesBishops("light") < 2 || piecesOfRoleNot(piecesBishops("light")) >= 3));
+			} else if (hordeNum === 2) {
+				if (piecesNum === 1) return true;
+				else if (horde.knight === 2) return pieces.pawn + pieces.bishop + pieces.knight < 1;
+				else if (hasBishopPair(color)) return !(pieces.pawn >= 1 || pieces.bishop >= 1 || pieces.knight >= 1 && pieces.rook + pieces.queen >= 1);
+				else if (horde.bishop >= 1 && horde.knight >= 1) return !(pieces.pawn >= 1 || piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 1 || piecesOfRoleNot(piecesBishops(hordeBishopColor)) >= 3);
+				else return !(pieces.pawn >= 1 && piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 1 || pieces.pawn >= 1 && pieces.knight >= 1 || piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 1 && pieces.knight >= 1 || piecesBishops(oppositeSquareColor(hordeBishopColor)) >= 2 || pieces.knight >= 2 || pieces.pawn >= 2);
+			} else if (hordeNum === 3) {
+				if (horde.knight === 2 && horde.bishop === 1 || horde.knight === 3 || hasBishopPair(color)) return false;
+				else return piecesNum === 1;
+			}
+			return true;
+		}
+		isVariantEnd() {
+			return this.board.white.isEmpty() || this.board.black.isEmpty();
+		}
+		variantOutcome(_ctx) {
+			if (this.board.white.isEmpty()) return { winner: "black" };
+			if (this.board.black.isEmpty()) return { winner: "white" };
+		}
+	};
+	var setupPosition = (rules, setup) => {
+		switch (rules) {
+			case "chess": return Chess.fromSetup(setup);
+			case "antichess": return Antichess.fromSetup(setup);
+			case "atomic": return Atomic.fromSetup(setup);
+			case "horde": return Horde.fromSetup(setup);
+			case "racingkings": return RacingKings.fromSetup(setup);
+			case "kingofthehill": return KingOfTheHill.fromSetup(setup);
+			case "3check": return ThreeCheck.fromSetup(setup);
+			case "crazyhouse": return Crazyhouse.fromSetup(setup);
+		}
+	};
+	var STANDARD_INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+	function parseRules(variant) {
+		return getVariantDefinition(variant)?.rules ?? null;
+	}
+	function loadPosition(fen, variant, unknownVariant = "reject") {
+		const rules = parseRules(variant);
+		if (!rules && unknownVariant === "reject") return null;
+		try {
+			const setup = parseFen(fen);
+			if (setup.isErr) return null;
+			if (!rules) {
+				const standard = setupPosition("chess", setup.value);
+				return standard.isOk ? standard.value : null;
+			}
+			const position = setupPosition(rules, setup.value);
+			return position.isOk ? position.value : null;
+		} catch {
+			return null;
+		}
+	}
+	function makeEngineUci(position, move, chess960) {
+		if (!chess960 && "from" in move && move.from === position.board.kingOf(position.turn)) {
+			const rooks = position.castles.rook[position.turn];
+			const side = move.to === rooks.a ? "a" : move.to === rooks.h ? "h" : void 0;
+			if (side) return makeSquare(move.from) + makeSquare(kingCastlesTo(position.turn, side));
+		}
+		return makeUci(move);
+	}
+	function parseEngineUci(position, uci) {
+		const parsed = parseUci(uci);
+		if (!parsed) return null;
+		const king = position.board.kingOf(position.turn);
+		if ("from" in parsed && parsed.from === king) {
+			const rooks = position.castles.rook[position.turn];
+			if (rooks.a !== void 0 && parsed.to === kingCastlesTo(position.turn, "a")) return {
+				from: king,
+				to: rooks.a
+			};
+			if (rooks.h !== void 0 && parsed.to === kingCastlesTo(position.turn, "h")) return {
+				from: king,
+				to: rooks.h
+			};
+		}
+		let move;
+		try {
+			move = normalizeMove(position, parsed);
+		} catch {
+			return null;
+		}
+		return position.isLegal(move) ? move : null;
+	}
+	function canonicalFen(fen, variant) {
+		if (typeof fen !== "string") return null;
+		const trimmed = fen.trim();
+		if (trimmed.split(/\s+/).length !== 6) return null;
+		const position = loadPosition(trimmed, variant);
+		return position ? makeFen(position.toSetup()) : null;
+	}
+	function replaySanLine(startFen, sans, variant) {
+		const rootFen = canonicalFen(startFen, variant);
+		if (!rootFen) return void 0;
+		const chess960 = getVariantDefinition(variant)?.chess960 ?? false;
+		const root = loadPosition(rootFen, variant);
+		if (!root) return void 0;
+		const position = root.clone();
+		try {
+			const moves = [];
+			const fens = [rootFen];
+			for (const san of sans) {
+				if (typeof san !== "string" || !san.trim()) return void 0;
+				const move = parseSan(position, san.trim());
+				if (!move) return void 0;
+				moves.push(makeEngineUci(position, move, chess960));
+				position.play(move);
+				const fen = makeFen(position.toSetup());
+				if (!canonicalFen(fen, variant)) return void 0;
+				fens.push(fen);
+			}
+			return {
+				history: {
+					startFen: rootFen,
+					moves
+				},
+				fens
+			};
+		} catch {
+			return;
+		}
+	}
+	function hasLegalMoves(fen, variant) {
+		const position = loadPosition(fen, variant, "standard");
+		return position ? position.hasDests() : null;
+	}
+	function countLegalMoves(fen, variant) {
+		const position = loadPosition(fen, variant, "standard");
+		if (!position) return null;
+		let total = 0;
+		for (const dests of position.allDests().values()) total += dests.size();
+		return total;
+	}
+	function predictFen(fen, uci, variant) {
+		const position = loadPosition(fen, variant, "standard");
+		if (!position) return null;
+		const move = parseUci(uci);
+		if (!move || !position.isLegal(move)) return null;
+		position.play(move);
+		const nextSetup = position.toSetup();
+		nextSetup.epSquare = position.epSquare;
+		return makeFen(nextSetup);
+	}
 	var DEFAULT_WARNING = "Warning: Move timings and evaluations are client-side browser telemetry estimates.";
-	var STANDARD_INITIAL_FEN$1 = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 	function formatEmt(ms) {
 		if (!Number.isFinite(ms) || ms <= 0) return "0:00:00";
-		const totalSeconds = ms / 1e3;
+		const totalSeconds = Math.round(ms / 100) / 10;
 		const hours = Math.floor(totalSeconds / 3600);
 		const minutes = Math.floor(totalSeconds % 3600 / 60);
 		const remainderSec = totalSeconds % 60;
@@ -5269,15 +4511,26 @@ Stockfish({
 		return `${hours}:${minutes < 10 ? `0${minutes}` : `${minutes}`}:${paddedSec}`;
 	}
 	function escapeHeader(val) {
-		return val.replace(/["\\]/g, "\\$&");
+		return val.replace(/["\\]/g, "\\$&").replace(/\r?\n/g, " ");
 	}
 	function sanitizeComment(text) {
 		return text.replace(/[{}]/g, "").trim();
 	}
+	function localPgnDate(now) {
+		const pad = (value) => `${value}`.padStart(2, "0");
+		return `${now.getFullYear()}.${pad(now.getMonth() + 1)}.${pad(now.getDate())}`;
+	}
+	function rootMoveNumbering(startFen) {
+		const fields = startFen?.trim().split(/\s+/);
+		return {
+			fullmove: Math.max(1, Number.parseInt(fields?.[5] ?? "1", 10) || 1),
+			offset: fields?.[1] === "b" ? 1 : 0
+		};
+	}
 	function buildPgn(moves, options = {}) {
 		const event = options.event ?? "Live Chess";
 		const site = options.site ?? "Super Chess Bot";
-		const date = options.date ?? new Date().toISOString().slice(0, 10).replace(/-/g, ".");
+		const date = options.date ?? localPgnDate(new Date());
 		const round = options.round ?? "-";
 		const white = options.white ?? "White";
 		const black = options.black ?? "Black";
@@ -5293,15 +4546,20 @@ Stockfish({
 			["Black", black],
 			["Result", result]
 		];
-		if (startFen && startFen.trim() !== STANDARD_INITIAL_FEN$1) {
+		const trimmedStart = startFen?.trim();
+		if (trimmedStart && trimmedStart !== "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") {
 			headers.push(["SetUp", "1"]);
-			headers.push(["FEN", startFen.trim()]);
+			headers.push(["FEN", trimmedStart]);
 		}
+		const variantId = getVariantDefinition(options.variant)?.id ?? options.variant;
+		if (variantId && variantId !== "standard") headers.push(["Variant", variantId]);
 		const headerLines = headers.map(([k, v]) => `[${k} "${escapeHeader(v)}"]`).join("\n");
+		const { fullmove: rootFullmove, offset: rootOffset } = rootMoveNumbering(startFen);
 		const tokens = [];
 		for (const move of moves) {
-			const isWhite = move.ply % 2 === 1;
-			const moveNumber = Math.floor((move.ply - 1) / 2) + 1;
+			const relativePly = move.ply - 1 + rootOffset;
+			const isWhite = relativePly % 2 === 0;
+			const moveNumber = rootFullmove + Math.floor(relativePly / 2);
 			tokens.push(isWhite ? `${moveNumber}.` : `${moveNumber}...`);
 			tokens.push(move.san);
 			if (typeof move.elapsedMs === "number" && Number.isFinite(move.elapsedMs) && move.elapsedMs > 0) tokens.push(`{ [%emt ${formatEmt(move.elapsedMs)}] }`);
@@ -5310,29 +4568,22 @@ Stockfish({
 		tokens.push(result);
 		return `${headerLines}\n\n${tokens.join(" ")}\n`;
 	}
-	var STANDARD_INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 	var GameHistoryTracker = class {
 		activeGameId = null;
 		startFen = STANDARD_INITIAL_FEN;
 		position = Chess.default();
+		variant;
 		moves = [];
 		lastWhiteClock = null;
 		lastBlackClock = null;
 		turnStartTime = performance.now();
+		positionFailure = null;
 		reset(gameId, startFen, initialTime = performance.now(), variant) {
 			this.activeGameId = gameId ?? null;
-			this.startFen = startFen?.trim() || STANDARD_INITIAL_FEN;
-			try {
-				const setup = parseFen(this.startFen);
-				if (setup.isOk) {
-					const rules = parseRules(variant);
-					const chessRes = rules ? setupPosition(rules, setup.value) : Chess.fromSetup(setup.value);
-					if (chessRes.isOk) this.position = chessRes.value;
-					else this.position = Chess.default();
-				} else this.position = Chess.default();
-			} catch {
-				this.position = Chess.default();
-			}
+			this.startFen = startFen?.trim() || "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+			this.variant = variant;
+			this.position = loadPosition(this.startFen, variant);
+			this.positionFailure = this.position ? null : `root position "${this.startFen}" could not be built`;
 			this.moves = [];
 			this.lastWhiteClock = null;
 			this.lastBlackClock = null;
@@ -5341,37 +4592,43 @@ Stockfish({
 		}
 		updateFromSnapshot(snapshot, now = performance.now()) {
 			const gameId = snapshot.gameId;
-			const historyStartFen = snapshot.history?.startFen?.trim() || STANDARD_INITIAL_FEN;
-			if (gameId !== this.activeGameId || historyStartFen !== this.startFen) this.reset(gameId, historyStartFen, now, snapshot.variant);
+			const sameGame = gameId === this.activeGameId;
+			const variant = snapshot.variant ?? (sameGame ? this.variant : void 0);
+			const historyStartFen = snapshot.history?.startFen?.trim() || (sameGame ? this.startFen : "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+			if (gameId !== this.activeGameId || historyStartFen !== this.startFen || variant !== this.variant) this.reset(gameId, historyStartFen, now, variant);
 			const currWhiteClock = snapshot.whiteRemainingMs ?? (snapshot.playerColor === "w" ? snapshot.remainingMs : null);
 			const currBlackClock = snapshot.blackRemainingMs ?? (snapshot.playerColor === "b" ? snapshot.remainingMs : null);
-			const historyMoves = snapshot.history?.moves ?? [];
+			const historyMoves = snapshot.history?.moves ?? this.moves.map((move) => move.uci);
+			if (this.moves.some((move, index) => historyMoves[index] !== move.uci)) this.reset(gameId, historyStartFen, now, variant);
+			if (this.positionFailure) {
+				console.warn(`Super Chess Bot: ${this.positionFailure}; move recording is paused.`);
+				return;
+			}
 			const currentPlyCount = this.moves.length;
 			const targetPlyCount = historyMoves.length;
 			if (targetPlyCount > currentPlyCount) {
 				const isSingleStep = targetPlyCount === currentPlyCount + 1;
 				for (let i = currentPlyCount; i < targetPlyCount; i++) {
 					const uci = historyMoves[i];
-					const move = parseUci(uci);
-					if (!move) break;
+					if (!this.position) break;
 					const turn = this.position.turn === "white" ? "w" : "b";
-					let san = uci;
+					let san;
+					const move = parseEngineUci(this.position, uci);
+					if (!move) break;
 					try {
-						if (this.position.isLegal(move)) {
-							san = makeSan(this.position, move);
-							this.position.play(move);
-						}
-					} catch {}
+						san = makeSan(this.position, move);
+						this.position.play(move);
+					} catch {
+						break;
+					}
 					const fen = makeFen(this.position.toSetup());
 					let elapsedMs = null;
 					if (isSingleStep && i === currentPlyCount) {
 						const prevClock = turn === "w" ? this.lastWhiteClock : this.lastBlackClock;
 						const currClock = turn === "w" ? currWhiteClock : currBlackClock;
-						if (prevClock != null && currClock != null && prevClock > currClock) {
-							const delta = prevClock - currClock;
-							if (delta > 0 && delta < 36e5) elapsedMs = delta;
-							else elapsedMs = Math.max(100, Math.round(now - this.turnStartTime));
-						} else elapsedMs = Math.max(100, Math.round(now - this.turnStartTime));
+						const increment = snapshot.incrementMs;
+						const delta = prevClock != null && currClock != null && typeof increment === "number" && Number.isFinite(increment) && increment >= 0 ? prevClock - currClock + increment : null;
+						elapsedMs = delta != null && delta >= 0 && delta < 36e5 ? delta : Math.max(0, Math.round(now - this.turnStartTime));
 					}
 					const record = {
 						ply: i + 1,
@@ -5387,8 +4644,13 @@ Stockfish({
 				}
 				gameMovesSignal.value = [...this.moves];
 			}
-			if (currWhiteClock != null) this.lastWhiteClock = currWhiteClock;
-			if (currBlackClock != null) this.lastBlackClock = currBlackClock;
+			if (this.moves.length > currentPlyCount) {
+				this.lastWhiteClock = currWhiteClock;
+				this.lastBlackClock = currBlackClock;
+			} else {
+				if (this.lastWhiteClock == null) this.lastWhiteClock = currWhiteClock;
+				if (this.lastBlackClock == null) this.lastBlackClock = currBlackClock;
+			}
 		}
 		getMoves() {
 			return this.moves;
@@ -5401,8 +4663,9 @@ Stockfish({
 		}
 		getMovePairs() {
 			const pairs = [];
+			const { fullmove: rootFullmove, offset: rootOffset } = rootMoveNumbering(this.startFen);
 			for (const move of this.moves) {
-				const moveNumber = Math.floor((move.ply - 1) / 2) + 1;
+				const moveNumber = rootFullmove + Math.floor((move.ply - 1 + rootOffset) / 2);
 				let pair = pairs.find((p) => p.moveNumber === moveNumber);
 				if (!pair) {
 					pair = { moveNumber };
@@ -5421,13 +4684,917 @@ Stockfish({
 			})), {
 				site: siteName,
 				startFen: this.startFen,
-				result: result ?? "*"
+				result: result ?? "*",
+				...this.variant && this.variant !== "standard" ? { variant: this.variant } : {}
 			});
 		}
 	};
 	var gameHistoryTracker = new GameHistoryTracker();
 	var gameMovesSignal = y$1([]);
-	var panel_default = ":host{--ink:#1b1a17;--well:#151411;--wood:#252420;--wood-raised:#302e28;--line:#3b3932;--paper:#efe9dc;--muted:#a8a193;--brass:#d9a94f;--sage:#8fb996;--brick:#d8826b;--serif:\"Iowan Old Style\", \"Palatino Linotype\", Palatino, \"Book Antiqua\", Georgia, serif;--sans:system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif;--radius:14px;--radius-control:8px;--target:40px;--ease:cubic-bezier(.2, .7, .2, 1);all:initial;z-index:9999999;width:min(380px,100vw - 24px);color:var(--paper);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font:13px / 1.45 var(--sans);-webkit-font-smoothing:antialiased;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}.panel button{font:inherit;color:inherit}.panel :is(button,input):focus-visible,.panel-log:focus-visible{outline:2px solid var(--brass);outline-offset:2px}.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--ink);overflow:hidden;box-shadow:0 16px 40px #0000006b}.panel-bar{cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:60px;padding:8px 8px 8px 12px;display:flex}.panel[data-state=open] .panel-bar{border-bottom:1px solid var(--line)}:host(.dragging) .panel-bar{cursor:grabbing}.panel-mark{border-radius:var(--radius-control);background:var(--wood-raised);width:32px;height:32px;color:var(--brass);flex:none;place-items:center;display:grid}.panel-mark-icon{display:block}.panel-bar-text{flex-direction:column;flex:auto;gap:3px;min-width:0;display:flex}.panel-title{letter-spacing:-.005em;white-space:nowrap;flex-shrink:0;font-size:14px;font-weight:600}.panel-status,.panel-summary{min-width:0;color:var(--muted);align-items:center;gap:7px;font-size:12px;display:flex}.panel-status-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-summary b{color:var(--paper);font:600 17px / 1 var(--serif)}.panel-summary>span:last-child{color:var(--brass);font-variant-numeric:tabular-nums}.panel-dot{background:var(--muted);border-radius:50%;flex:none;width:7px;height:7px}.panel[data-tone=ready] .panel-dot{background:var(--sage)}.panel[data-tone=working] .panel-dot{background:var(--sage);animation:panel-pulse 1.6s var(--ease) infinite}.panel[data-tone=paused] .panel-dot{background:var(--brass)}.panel[data-tone=error] .panel-dot{background:var(--brick)}.panel[data-tone=error] .panel-status{color:var(--brick)}.panel[data-tone=paused] .panel-status{color:var(--brass)}@keyframes panel-pulse{0%,to{box-shadow:0 0 #8fb99680}50%{box-shadow:0 0 0 5px #8fb99600}}.panel-icon{width:var(--target);height:var(--target);border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);cursor:pointer;flex:none;place-items:center;display:grid}.panel-icon:hover{background:var(--wood-raised)}.panel-help-toggle{color:var(--muted);transition:color .14s var(--ease), border-color .14s var(--ease), background .14s var(--ease)}.panel-help-toggle:hover{color:var(--paper)}.panel-help-toggle.is-active{border-color:color-mix(in oklab, var(--brass) 55%, var(--line));color:var(--brass);background:color-mix(in oklab, var(--brass) 12%, var(--wood))}.panel-chevron{transition:transform .18s var(--ease)}.panel[data-state=collapsed] .panel-chevron{transform:rotate(180deg)}.panel-enable{min-height:var(--target);border:1px solid var(--line);background:var(--wood);cursor:pointer;border-radius:999px;flex:none;align-items:center;gap:8px;padding:0 10px 0 12px;font-size:12px;font-weight:500;display:inline-flex}.panel-enable:hover{background:var(--wood-raised)}.panel-enable-state{min-width:18px;color:var(--muted);font-variant-numeric:tabular-nums}.panel-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--brass) 55%, var(--line))}.panel-enable[aria-pressed=true] .panel-enable-state{color:var(--brass)}.panel-enable-wide{border-radius:var(--radius-control);justify-content:space-between;width:100%;padding:0 12px;font-size:13px}.panel-enable-action{align-items:center;gap:8px;display:inline-flex}.panel-quick-enable{border:1px solid var(--line);background:var(--wood);min-height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), border-color .14s var(--ease), color .14s var(--ease);border-radius:999px;flex:none;align-items:center;gap:6px;padding:0 6px 0 8px;font-size:11px;font-weight:500;display:inline-flex}.panel-quick-enable:hover{background:var(--wood-raised);color:var(--paper)}.panel-quick-state{min-width:16px;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600}.panel-quick-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--brass) 55%, var(--line));color:var(--brass)}.panel-quick-enable[aria-pressed=true] .panel-quick-state{color:var(--brass)}.panel-switch{flex:none;align-items:center;width:34px;height:20px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{background:var(--line);transition:background .16s var(--ease);border-radius:999px;position:absolute;inset:0}.panel-switch-knob{background:var(--muted);pointer-events:none;width:14px;height:14px;transition:transform .16s var(--ease), background .16s var(--ease);border-radius:50%;position:absolute;top:3px;left:3px}.panel-enable .panel-switch-knob,.panel-quick-enable .panel-switch-knob{background:var(--paper)}.panel-switch-input:checked~.panel-switch-track{background:var(--sage)}.panel-toggle-enable .panel-switch-input:checked~.panel-switch-track,.panel-enable[aria-pressed=true] .panel-switch-track,.panel-quick-enable[aria-pressed=true] .panel-switch-track{background:var(--brass)}.panel-switch-input:checked~.panel-switch-knob,.panel-enable[aria-pressed=true] .panel-switch-knob,.panel-quick-enable[aria-pressed=true] .panel-switch-knob{background:var(--ink);transform:translate(14px)}.panel-body{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(76vh,680px);animation:panel-rise .18s var(--ease);overflow:auto}@keyframes panel-rise{0%{opacity:0;transform:translateY(-4px)}}.panel-guide{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(76vh,680px);animation:panel-rise .18s var(--ease);flex-direction:column;gap:14px;padding:14px 16px 16px;display:flex;overflow-y:auto}.panel-guide-head{border-bottom:1px solid var(--line);justify-content:space-between;align-items:center;padding-bottom:10px;display:flex}.panel-guide-title{color:var(--paper);align-items:center;gap:8px;font-size:13px;font-weight:600;display:flex}.panel-guide-title svg{color:var(--brass)}.panel-guide-section{flex-direction:column;gap:8px;display:flex}.panel-guide-heading{color:var(--brass);letter-spacing:.06em;text-transform:uppercase;font-size:11px;font-weight:700}.panel-guide-item{border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);padding:8px 10px;font-size:12px;line-height:1.45}.panel-guide-item strong{color:var(--paper);margin-bottom:3px;font-weight:600;display:block}.panel-guide-item p{color:var(--muted);margin:0}.panel-hero{padding:14px 16px}.panel-move-row{justify-content:space-between;align-items:baseline;gap:12px;display:flex}.panel-move{overflow-wrap:anywhere;color:var(--paper);font:600 36px / 1.05 var(--serif);letter-spacing:.01em}.panel-score{color:var(--brass);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600}.panel-line{color:var(--muted);font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap;margin:6px 0 0;font-size:12px;overflow:hidden}.panel-multipv-list{border-top:1px dashed var(--line);flex-direction:column;gap:4px;margin-top:10px;padding-top:8px;display:flex}.panel-multipv-row{background:var(--well);font-variant-numeric:tabular-nums;border-radius:4px;grid-template-columns:24px 44px 50px 1fr;align-items:center;gap:6px;padding:3px 6px;font-size:11px;display:grid}.panel-multipv-row[data-rank=\"1\"]{border-left:2px solid var(--sage)}.panel-multipv-row[data-rank=\"2\"]{border-left:2px solid #50b4ff}.panel-multipv-row[data-rank=\"3\"]{border-left:2px solid #ffb432}.panel-multipv-badge{color:var(--muted);font-weight:600}.panel-multipv-move{color:var(--paper);font-weight:600;font-family:var(--serif)}.panel-multipv-eval{color:var(--brass);font-weight:500}.panel-multipv-pv{color:var(--muted);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-trend{flex-direction:column;gap:6px;margin-top:12px;display:flex}.panel-trend-head{justify-content:space-between;align-items:baseline;padding:0 2px;font-size:11px;display:flex}.panel-trend-label-wrap{align-items:baseline;gap:6px;display:flex}.panel-trend-title{color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-size:11px;font-weight:600}.panel-trend-subtitle{color:color-mix(in srgb, var(--muted) 65%, transparent);font-variant-numeric:tabular-nums;font-size:10px;font-weight:400}.panel-trend-val{color:var(--brass);font-variant-numeric:tabular-nums;font-size:12px;font-weight:700}.panel-trend-val[data-tone=sage]{color:var(--sage)}.panel-trend-val[data-tone=brick]{color:var(--brick)}.panel-trend-box{border-radius:var(--radius-control);background:var(--well);border:1px solid var(--line);padding:6px 8px;overflow:hidden}.panel-trend-svg{width:100%;height:56px;display:block;overflow:visible}.panel-trend-axis-text{font-size:8.5px;font-weight:500;font-family:var(--sans);fill:var(--muted);opacity:.7}.panel-notice{border-radius:var(--radius-control);background:var(--wood);box-shadow:inset 0 0 0 1px var(--line);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;margin-top:12px;padding:10px 12px;font-size:12px;display:grid}.panel-notice p{margin:0}.panel-notice[data-kind=retry]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brick) 60%, transparent)}.panel-notice[data-kind=resume]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brass) 60%, transparent)}.panel-button{min-height:var(--target);border:1px solid var(--brass);border-radius:var(--radius-control);background:var(--brass);color:var(--ink);white-space:nowrap;cursor:pointer;padding:0 14px;font-size:13px;font-weight:600}.panel-button:hover{filter:brightness(1.06)}.panel-button:disabled{opacity:.45;cursor:not-allowed;filter:none}.panel-settings{border-top:1px solid var(--line);gap:2px;padding:12px 16px 16px;display:grid}.panel-toggles{margin-top:6px;display:grid}.panel-toggle{cursor:pointer;justify-content:space-between;align-items:center;gap:12px;min-height:44px;display:flex}.panel-toggle-enable-label{color:var(--paper);letter-spacing:.01em;font-size:13px;font-weight:700}.panel-section-divider{background:var(--line);border:none;height:1px;margin:10px 0}.panel-note{color:var(--muted);margin:4px 0 0;font-size:12px}.panel-field{gap:6px;padding:8px 0 4px;display:grid}.panel-field-head{justify-content:space-between;align-items:baseline;gap:10px;display:flex}.panel-field-head output{font-variant-numeric:tabular-nums;font-weight:600}.panel-field-label{color:var(--muted);font-size:12px}.panel-field-hint{color:var(--muted);margin-top:2px;font-size:11px;line-height:1.35;display:block}.panel-range{appearance:none;cursor:pointer;width:100%;height:28px;accent-color:var(--brass);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-moz-range-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px;margin-top:-8px}.panel-range::-moz-range-thumb{border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px}.panel-segmented{border-radius:var(--radius-control);background:var(--wood);grid-auto-columns:1fr;grid-auto-flow:column;gap:4px;padding:4px;display:grid}.panel-segment{min-height:var(--target);color:var(--muted);cursor:pointer;background:0 0;border:0;border-radius:6px;font-weight:500}.panel-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-timing-row{justify-content:space-between;align-items:center;gap:12px;padding:8px 0 4px;display:flex}.panel-timing-label{color:var(--paper);font-size:13px;font-weight:500}.panel-timing-segmented{border-radius:var(--radius-control);background:var(--wood);border:1px solid var(--line);grid-auto-columns:minmax(78px,1fr);grid-auto-flow:column;gap:3px;padding:3px;display:inline-grid}.panel-timing-segment{min-height:28px;color:var(--muted);transition:background .14s var(--ease), color .14s var(--ease);border-radius:6px;justify-content:center;align-items:center;gap:6px;padding:0 10px;font-size:11px;font-weight:500;display:inline-flex}.panel-timing-segment svg{width:13px;height:13px;color:var(--muted);transition:color .14s var(--ease);flex-shrink:0;display:block}.panel-timing-segment:hover,.panel-timing-segment:hover svg{color:var(--paper)}.panel-timing-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-timing-segment[aria-pressed=true] svg{color:var(--brass)}.panel-opening-style-section{gap:6px;padding:2px 0 4px;display:grid}.panel-opening-style-picker{grid-auto-columns:1fr;grid-auto-flow:column}.panel-opening-style-picker .panel-segment{min-height:34px;transition:background .14s var(--ease), color .14s var(--ease);justify-content:center;align-items:center;padding:0;display:flex}.panel-opening-style-picker .panel-segment svg{color:var(--muted);transition:color .14s var(--ease), transform .14s var(--ease);display:block}.panel-opening-style-picker .panel-segment:hover svg{color:var(--paper);transform:scale(1.08)}.panel-opening-style-picker .panel-segment[aria-pressed=true] svg{color:var(--brass);transform:scale(1.05)}.panel-activity{border-top:1px solid var(--line);background:var(--well)}.panel-activity-head{justify-content:space-between;align-items:center;gap:8px;min-height:44px;padding:0 8px 0 16px;display:flex}.panel-disclosure{min-height:var(--target);cursor:pointer;background:0 0;border:0;align-items:center;gap:8px;padding:0;font-size:13px;font-weight:600;display:inline-flex}.panel-count{background:var(--wood-raised);min-width:24px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:center;border-radius:999px;padding:2px 6px;font-size:11px}.panel-activity-actions{gap:4px;display:flex}.panel-icon-btn{border-radius:var(--radius-control);width:32px;height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), color .14s var(--ease);background:0 0;border:0;justify-content:center;align-items:center;display:inline-flex}.panel-icon-btn:hover{background:var(--wood-raised);color:var(--paper)}.panel-icon-btn.is-success{color:var(--sage)}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;gap:6px;min-height:80px;max-height:240px;padding:2px 16px 14px;display:grid;overflow:auto}.panel-log-empty{color:var(--muted);margin:0;font-size:12px}.panel-report{border-bottom:1px solid var(--line);flex-direction:column;gap:10px;padding:12px 16px;display:flex}.panel-report-head{justify-content:space-between;align-items:baseline;gap:8px;display:flex}.panel-report-title{color:var(--paper);letter-spacing:.01em;font-size:12px;font-weight:600}.panel-report-note{color:var(--muted);font-size:10px}.panel-report-row{align-items:center;gap:8px;margin-top:6px;display:flex}.panel-report-stepper{min-height:var(--target);border:1px solid var(--line);border-radius:var(--radius-control);background:var(--surface);flex:none;align-items:center;display:inline-flex;overflow:hidden}.panel-report-step-btn{width:32px;min-height:var(--target);color:var(--paper);cursor:pointer;background:0 0;border:none;justify-content:center;align-items:center;padding:0;font-size:15px;font-weight:600;transition:background .15s;display:inline-flex}.panel-report-step-btn:hover:not(:disabled){background:var(--wood-raised)}.panel-report-step-btn:disabled{opacity:.35;cursor:not-allowed}.panel-report-depth-val{min-width:26px;color:var(--paper);font-variant-numeric:tabular-nums;text-align:center;-webkit-user-select:none;user-select:none;padding:0 2px;font-size:13px;font-weight:600}.panel-report-action-btn{min-height:var(--target);border:1px solid var(--brass);border-radius:var(--radius-control);background:var(--brass);color:var(--ink);cursor:pointer;white-space:nowrap;flex:auto;justify-content:center;align-items:center;gap:6px;padding:0 14px;font-size:13px;font-weight:600;transition:filter .15s;display:inline-flex}.panel-report-action-btn:hover:not(:disabled){filter:brightness(1.06)}.panel-report-action-btn:disabled{opacity:.45;cursor:not-allowed;filter:none}.panel-report-cancel-btn{min-height:var(--target);border:1px solid var(--brick);border-radius:var(--radius-control);background:var(--brick);color:#fff;cursor:pointer;justify-content:center;align-items:center;padding:0 12px;font-size:13px;font-weight:600;transition:filter .15s;display:inline-flex}.panel-report-cancel-btn:hover{filter:brightness(1.1)}.panel-report-player{border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);flex-direction:column;gap:7px;padding:9px 10px;display:flex}.panel-report-name{color:var(--paper);font-size:12px;font-weight:600}.panel-report-accuracy{font-variant-numeric:tabular-nums;font-size:17px;font-weight:600}.panel-report-accuracy[data-tone=high]{color:var(--sage)}.panel-report-accuracy[data-tone=mid]{color:var(--brass)}.panel-report-accuracy[data-tone=low]{color:var(--brick)}.panel-report-stats{grid-template-columns:1fr 1fr;gap:5px 10px;margin:0;display:grid}.panel-report-stat{align-items:baseline;gap:5px;min-width:0;display:flex}.panel-report-stat dt{font-variant-numeric:tabular-nums;font-size:13px;font-weight:600}.panel-report-stat dd{color:var(--muted);text-overflow:ellipsis;white-space:nowrap;margin:0;font-size:11px;overflow:hidden}.panel-report-stat[data-kind=inaccuracy] dt{color:#7fc4d8}.panel-report-stat[data-kind=mistake] dt{color:var(--brass)}.panel-report-stat[data-kind=blunder] dt{color:var(--brick)}.panel-report-stat[data-kind=acpl] dt{color:var(--muted)}.panel-report-status{color:var(--muted);margin:0;font-size:11px}.panel-report-status-quiet{color:color-mix(in srgb, var(--muted) 80%, transparent);font-size:10px;line-height:1.4}.panel-scoresheet{font-variant-numeric:tabular-nums;flex-direction:column;width:100%;margin-bottom:6px;display:flex}.panel-scoresheet-row{transition:background .12s var(--ease);grid-template-columns:20px minmax(0,1fr) minmax(0,1fr) 62px 62px;align-items:center;gap:4px;padding:5px 6px;font-size:12px;display:grid}.panel-scoresheet-row[data-stripe=even]{background:color-mix(in srgb, var(--paper) 5%, transparent)}.panel-scoresheet-row:hover{background:var(--wood-raised)}.panel-scoresheet-num{color:var(--muted);text-align:right;font-size:11px;font-weight:600}.panel-scoresheet-move{color:var(--paper);text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600;line-height:1.3;overflow:hidden}.panel-scoresheet-move[data-active]{background:var(--wood-raised);border-radius:3px;padding:1px 5px}.panel-scoresheet-time{justify-content:flex-end;align-items:center;gap:5px;min-width:0;display:flex}.panel-scoresheet-bar{background:var(--line);border-radius:3px;flex:none;width:26px;height:5px;overflow:hidden}.panel-scoresheet-bar:after{width:var(--fill);background:var(--brass);content:\"\";border-radius:3px;height:100%;display:block}.panel-scoresheet-time-label{color:var(--muted);font-size:10px}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:44px minmax(0,1fr);gap:8px;margin:0;font-size:12px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--muted);font-variant-numeric:tabular-nums}.log-text-info{color:var(--paper)}.log-text-status{color:var(--muted)}.log-text-move{color:var(--sage)}.log-text-warn{color:var(--brass)}.log-text-error{color:var(--brick)}@media (pointer:coarse){:host{--target:48px}.panel-range::-webkit-slider-runnable-track{height:6px}.panel-range::-webkit-slider-thumb{width:28px;height:28px;margin-top:-11px}.panel-range::-moz-range-thumb{width:28px;height:28px}.panel-icon-btn{width:44px;height:44px}}@media (width<=560px){:host{width:100%;inset:auto 0 0!important}.panel{padding-bottom:env(safe-area-inset-bottom,0px);border-bottom:0;border-left:0;border-right:0;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px #0000005c}.panel-bar{cursor:default;touch-action:manipulation;gap:8px;padding:8px 8px 8px 10px}.panel-body,.panel-guide{-webkit-overflow-scrolling:touch;max-height:min(70vh,580px)}.panel-log{-webkit-overflow-scrolling:touch;max-height:180px}}@media (width<=380px){.panel-title{font-size:13px}.panel-quick-enable{gap:4px;padding:0 4px 0 6px}.panel-notice{grid-template-columns:1fr;gap:8px}}@media (prefers-reduced-motion:reduce){.panel *,.panel :before,.panel :after{transition-duration:1ms!important;animation-duration:1ms!important;animation-iteration-count:1!important}}";
+	var CPL_CAP = 1e3;
+	function winPercent(cp) {
+		return 50 + 50 * (2 / (1 + Math.exp(-.00368208 * cp)) - 1);
+	}
+	function moveAccuracy(wpBefore, wpAfter) {
+		return 103.1668 * Math.exp(-.04354 * (wpBefore - wpAfter)) - 3.1669;
+	}
+	function clampAccuracy(value) {
+		return Math.min(100, Math.max(0, value));
+	}
+	var VERDICT_WP_DROP = {
+		excellent: 2,
+		good: 5,
+		inaccuracy: 10,
+		mistake: 20,
+		blunder: Number.POSITIVE_INFINITY
+	};
+	function classifyByWinPercentLoss(wpLoss) {
+		const loss = Math.max(0, wpLoss);
+		for (const verdict of [
+			"excellent",
+			"good",
+			"inaccuracy",
+			"mistake"
+		]) if (loss <= VERDICT_WP_DROP[verdict]) return verdict;
+		return "blunder";
+	}
+	function emptyPlayer() {
+		return {
+			accuracy: 0,
+			acpl: 0,
+			inaccuracy: 0,
+			mistake: 0,
+			blunder: 0,
+			moveCount: 0
+		};
+	}
+	function meanAccuracy(plies) {
+		if (plies.length === 0) return 0;
+		return plies.reduce((sum, ply) => sum + ply.accuracy, 0) / plies.length;
+	}
+	function buildPlayer(plies) {
+		if (plies.length === 0) return emptyPlayer();
+		const counts = {
+			excellent: 0,
+			good: 0,
+			inaccuracy: 0,
+			mistake: 0,
+			blunder: 0
+		};
+		let lossTotal = 0;
+		for (const ply of plies) {
+			counts[ply.verdict]++;
+			lossTotal += ply.cpLoss;
+		}
+		return {
+			accuracy: meanAccuracy(plies),
+			acpl: lossTotal / plies.length,
+			inaccuracy: counts.inaccuracy,
+			mistake: counts.mistake,
+			blunder: counts.blunder,
+			moveCount: plies.length
+		};
+	}
+	function buildGameReport(plies, total) {
+		if (plies.length === 0) return null;
+		return {
+			white: buildPlayer(plies.filter((ply) => ply.color === "w")),
+			black: buildPlayer(plies.filter((ply) => ply.color === "b")),
+			analyzed: plies.length,
+			total
+		};
+	}
+	var REPORT_DEPTH = 18;
+	var REPORT_MULTI_PV = 1;
+	var initial = {
+		running: false,
+		done: false,
+		analyzed: 0,
+		total: 0,
+		report: null,
+		error: null
+	};
+	var gameReportSignal = y$1(initial);
+	var active$1 = null;
+	var lastKey = "";
+	var activeKey = "";
+	function toCp(score) {
+		if (typeof score.mate === "number" && Number.isFinite(score.mate)) return score.mate > 0 ? CPL_CAP : -CPL_CAP;
+		if (typeof score.cp === "number" && Number.isFinite(score.cp)) return Math.max(-CPL_CAP, Math.min(CPL_CAP, score.cp));
+		return null;
+	}
+	function scorePly(before, afterOpponentView) {
+		const after = -afterOpponentView;
+		const cpLoss = Math.max(0, Math.min(CPL_CAP, before - after));
+		const wpBefore = winPercent(before);
+		const wpAfter = winPercent(after);
+		return {
+			cpLoss,
+			accuracy: clampAccuracy(moveAccuracy(wpBefore, wpAfter)),
+			verdict: classifyByWinPercentLoss(wpBefore - wpAfter)
+		};
+	}
+	async function runGameReport(moves, startFen, gameId, depth = REPORT_DEPTH, force = false, options = {}) {
+		const eligible = () => {
+			const read = getActiveSite()?.read();
+			if (!read) return false;
+			return read.kind === "game" && read.snapshot.phase === "finished" && (options.isEligible?.() ?? true);
+		};
+		if (!eligible()) {
+			cancelGameReport();
+			return;
+		}
+		if (moves.length === 0) {
+			resetGameReport();
+			return;
+		}
+		const key = JSON.stringify([
+			gameId,
+			startFen,
+			options.variant,
+			depth,
+			moves.map((move) => [move.uci, move.fen])
+		]);
+		if ((key === lastKey || active$1 && key === activeKey) && !force) return;
+		lastKey = "";
+		active$1?.abort();
+		const ctrl = new AbortController();
+		active$1 = ctrl;
+		activeKey = key;
+		gameReportSignal.value = {
+			running: true,
+			done: false,
+			analyzed: 0,
+			total: moves.length,
+			report: null,
+			error: null
+		};
+		const positions = [startFen, ...moves.map((move) => move.fen)];
+		const scores = [];
+		try {
+			for (let i = 0; i < positions.length; i++) {
+				if (ctrl.signal.aborted || !eligible()) return;
+				const history = {
+					startFen,
+					moves: moves.slice(0, i).map((move) => move.uci)
+				};
+				const result = await getAnalysis(positions[i], depth, 0, ctrl.signal, history, void 0, options.variant, REPORT_MULTI_PV);
+				if (ctrl.signal.aborted || !eligible()) return;
+				const score = toCp(result.evaluation);
+				if (score == null || result.success === false && result.bestmove !== "(none)") throw new Error("Report position has no valid evaluation");
+				scores.push(score);
+				if (i > 0) gameReportSignal.value = {
+					...gameReportSignal.value,
+					analyzed: i
+				};
+			}
+			const plies = [];
+			for (let i = 0; i < moves.length; i++) {
+				const record = moves[i];
+				const scored = scorePly(scores[i], scores[i + 1]);
+				plies.push({
+					ply: record.ply,
+					color: record.turn,
+					san: record.san,
+					cpLoss: scored.cpLoss,
+					accuracy: scored.accuracy,
+					verdict: scored.verdict
+				});
+			}
+			const report = buildGameReport(plies, moves.length);
+			if (ctrl.signal.aborted || !eligible()) return;
+			lastKey = key;
+			gameReportSignal.value = {
+				running: false,
+				done: true,
+				analyzed: plies.length,
+				total: moves.length,
+				report,
+				error: null
+			};
+		} catch (error) {
+			if (ctrl.signal.aborted) return;
+			const message = error instanceof Error ? error.message : String(error);
+			gameReportSignal.value = {
+				running: false,
+				done: false,
+				analyzed: 0,
+				total: moves.length,
+				report: null,
+				error: `Report analysis failed: ${message}`
+			};
+			console.warn("Super Chess Bot: game report analysis failed.", error);
+		} finally {
+			if (active$1 === ctrl) {
+				active$1 = null;
+				activeKey = "";
+				if (!gameReportSignal.value.done) gameReportSignal.value = {
+					...gameReportSignal.value,
+					running: false
+				};
+			}
+		}
+	}
+	function resetGameReport() {
+		active$1?.abort();
+		active$1 = null;
+		activeKey = "";
+		lastKey = "";
+		gameReportSignal.value = initial;
+	}
+	function cancelGameReport() {
+		lastKey = "";
+		active$1?.abort();
+		active$1 = null;
+		activeKey = "";
+		gameReportSignal.value = {
+			...gameReportSignal.value,
+			running: false,
+			error: null
+		};
+	}
+	function debounce(fn, wait = 150) {
+		let timer = null;
+		let pending = null;
+		const run = () => {
+			timer = null;
+			const args = pending;
+			pending = null;
+			if (args) fn(...args);
+		};
+		const debounced = ((...args) => {
+			pending = args;
+			if (timer !== null) clearTimeout(timer);
+			timer = setTimeout(run, wait);
+		});
+		debounced.flush = () => {
+			if (timer === null) return;
+			clearTimeout(timer);
+			run();
+		};
+		debounced.cancel = () => {
+			if (timer !== null) clearTimeout(timer);
+			timer = null;
+			pending = null;
+		};
+		return debounced;
+	}
+	function mateToDisplay(mate) {
+		return `${mate < 0 ? "-" : "+"}M${Math.abs(mate)}`;
+	}
+	function scoreToDisplay(score) {
+		if (typeof score?.mate === "number" && Number.isFinite(score.mate)) return mateToDisplay(score.mate);
+		if (typeof score?.cp === "number") return `${score.cp > 0 ? "+" : ""}${(score.cp / 100).toFixed(2)}`;
+		return "-";
+	}
+	var STORAGE_KEY = "scb_settings";
+	var menuPositionGetter = null;
+	function setMenuPositionGetter(getter) {
+		menuPositionGetter = getter;
+	}
+	function readSetting(key) {
+		return settingsModel[key];
+	}
+	function applySettings(settings) {
+		for (const key of persistedSettingKeys()) settingsModel[key] = settings[key];
+		BotState.hackEnabled = false;
+	}
+	var Settings = {
+		save: debounce(() => {
+			try {
+				const settings = {
+					...Object.fromEntries(persistedSettingKeys().map((key) => [key, readSetting(key)])),
+					hackEnabled: false,
+					menuPosition: menuPositionGetter?.() ?? null
+				};
+				localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+			} catch (e) {
+				console.warn("Failed to save settings:", e);
+			}
+		}, 200),
+		load() {
+			try {
+				const saved = localStorage.getItem(STORAGE_KEY);
+				if (!saved) {
+					BotState.hackEnabled = false;
+					return null;
+				}
+				const settings = loadSettings(saved);
+				applySettings(settings);
+				return settings;
+			} catch {
+				const settings = { ...DEFAULT_SETTINGS };
+				applySettings(settings);
+				return settings;
+			}
+		}
+	};
+	function flushSettingsOnUnload() {
+		if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+		window.addEventListener("pagehide", () => Settings.save.flush());
+		window.addEventListener("beforeunload", () => Settings.save.flush());
+	}
+	function pageWindow() {
+		return typeof unsafeWindow === "undefined" ? window : unsafeWindow;
+	}
+	function pageDocument() {
+		return typeof unsafeWindow === "undefined" ? document : unsafeWindow.document;
+	}
+	function mutationElement(target) {
+		return target.nodeType === 1 ? target : target.parentElement ?? null;
+	}
+	function isObject(value) {
+		return typeof value === "object" && value !== null || typeof value === "function";
+	}
+	var wrappedPrototypes = new WeakSet();
+	var hookedRegistries = new WeakSet();
+	function setCapturedChesscomController(controller) {
+		if (!isObject(controller)) return;
+	}
+	function installChesscomControllerBridge(page, onController) {
+		const notify = (controller) => {
+			if (!isObject(controller)) return;
+			try {
+				onController(controller);
+			} catch {}
+		};
+		const controllerFrom = (owner, result) => {
+			if (isObject(result)) {
+				const nested = Reflect.get(result, "game");
+				if (isObject(nested)) return nested;
+				if (typeof Reflect.get(result, "getFEN") === "function") return result;
+			}
+			return owner?.game ?? result;
+		};
+		const wrapPrototype = (proto) => {
+			if (!isObject(proto) || wrappedPrototypes.has(proto)) return;
+			wrappedPrototypes.add(proto);
+			const originalInit = Reflect.get(proto, "init");
+			if (typeof originalInit === "function") {
+				const init = originalInit;
+				try {
+					Object.defineProperty(proto, "init", {
+						configurable: true,
+						writable: true,
+						value(...args) {
+							const result = Reflect.apply(init, this, args);
+							try {
+								notify(controllerFrom(this, result));
+							} catch {}
+							return result;
+						}
+					});
+				} catch {}
+			}
+			const originalCreateGame = Reflect.get(proto, "createGame");
+			if (typeof originalCreateGame === "function") {
+				const createGame = originalCreateGame;
+				try {
+					Object.defineProperty(proto, "createGame", {
+						configurable: true,
+						writable: true,
+						value(...args) {
+							const result = Reflect.apply(createGame, this, args);
+							try {
+								notify(controllerFrom(this, result));
+							} catch {}
+							return result;
+						}
+					});
+				} catch {}
+			}
+		};
+		const wrapConstructor = (candidate) => {
+			if (!isObject(candidate)) return;
+			const prototype = Reflect.get(candidate, "prototype");
+			if (isObject(prototype)) wrapPrototype(prototype);
+		};
+		try {
+			const registry = page.customElements;
+			if (registry && typeof registry.define === "function" && !hookedRegistries.has(registry)) {
+				hookedRegistries.add(registry);
+				const originalDefine = registry.define.bind(registry);
+				try {
+					registry.define = ((name, ctor, options) => {
+						try {
+							if (name === "wc-chess-board") wrapConstructor(ctor);
+						} catch {}
+						return originalDefine(name, ctor, options);
+					});
+				} catch {}
+			}
+		} catch {}
+		try {
+			wrapConstructor(page.customElements?.get?.("wc-chess-board"));
+		} catch {}
+		try {
+			const boards = page.document?.querySelectorAll?.("wc-chess-board");
+			if (boards) for (const board of Array.from(boards)) try {
+				if (isObject(board?.game)) notify(board.game);
+			} catch {}
+		} catch {}
+		return true;
+	}
+	var PROMOTION_CHOOSER_STATE = "PomotionAreaShowing";
+	var BOARD_SELECTOR$1 = "wc-chess-board, chess-board, .board";
+	function hasGameApi(board) {
+		return typeof board.game?.getFEN === "function";
+	}
+	function isVisibleBoard(board) {
+		try {
+			const style = (board.ownerDocument?.defaultView)?.getComputedStyle(board) ?? (typeof getComputedStyle === "function" ? getComputedStyle(board) : null);
+			if (style?.display === "none" || style?.visibility === "hidden" || style?.visibility === "collapse") return false;
+			if (typeof board.getClientRects === "function" && board.getClientRects().length === 0) return false;
+			const rect = board.getBoundingClientRect?.();
+			return !rect || rect.width > 0 && rect.height > 0;
+		} catch {
+			return false;
+		}
+	}
+	function boardArea(board) {
+		const rect = board.getBoundingClientRect?.();
+		return rect ? rect.width * rect.height : 0;
+	}
+	function getBoard(doc = pageDocument()) {
+		const visible = (typeof doc.querySelectorAll === "function" ? Array.from(doc.querySelectorAll(BOARD_SELECTOR$1)) : [doc.querySelector(BOARD_SELECTOR$1)].filter((board) => !!board)).filter(isVisibleBoard);
+		visible.sort((a, b) => Number(hasGameApi(b)) - Number(hasGameApi(a)) || boardArea(b) - boardArea(a));
+		return visible[0] ?? null;
+	}
+	var getFen = (game) => {
+		try {
+			return game?.getFEN ? game.getFEN() : null;
+		} catch {
+			return null;
+		}
+	};
+	function getStartingFen(game) {
+		try {
+			const starting = game?.getFingerprints?.()?.startingFen;
+			return typeof starting === "string" && starting.trim() ? starting : null;
+		} catch {
+			return null;
+		}
+	}
+	var CLOCK_SELECTOR = ".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time, .clock-player-turn .move-time-content, .clock-player-turn.move-time-content";
+	var WHITE_CLOCK_SELECTOR = ".clock-white .clock-time-monospace, .clock-white .clock-time, .clock-white .move-time-content, .clock-white.move-time-content";
+	var BLACK_CLOCK_SELECTOR = ".clock-black .clock-time-monospace, .clock-black .clock-time, .clock-black .move-time-content, .clock-black.move-time-content";
+	function parseClockText(text) {
+		if (!text) return null;
+		const trimmed = text.trim();
+		let seconds;
+		const minutesAndSeconds = /^(\d+):(\d{2}(?:\.\d+)?)$/.exec(trimmed);
+		if (minutesAndSeconds) {
+			const minutes = Number(minutesAndSeconds[1]);
+			const remainder = Number(minutesAndSeconds[2]);
+			if (!Number.isFinite(minutes) || !Number.isFinite(remainder) || remainder >= 60) return null;
+			seconds = minutes * 60 + remainder;
+		} else if (/^\d+(?:\.\d+)?$/.test(trimmed)) seconds = Number(trimmed);
+		else return null;
+		return Number.isFinite(seconds) ? Math.round(seconds * 1e3) : null;
+	}
+	function getRemainingMs(doc) {
+		const text = doc.querySelector(CLOCK_SELECTOR)?.textContent?.trim();
+		return parseClockText(text);
+	}
+	function getColorRemainingMs(doc, color) {
+		const selector = color === "w" ? WHITE_CLOCK_SELECTOR : BLACK_CLOCK_SELECTOR;
+		const text = doc.querySelector(selector)?.textContent?.trim();
+		return parseClockText(text);
+	}
+	var getSideToMove = (game) => {
+		try {
+			const turn = game?.getTurn?.();
+			if (turn === 1) return "w";
+			if (turn === 2) return "b";
+		} catch {}
+		const fen = getFen(game);
+		return fen ? fen.split(" ")[1] || null : null;
+	};
+	var getOrientation = (game) => {
+		try {
+			const options = game?.getOptions?.();
+			if (options) {
+				if (typeof options.flipped === "boolean") return options.flipped ? "black" : "white";
+				if (typeof options.isWhiteOnBottom === "boolean") return options.isWhiteOnBottom ? "white" : "black";
+			}
+		} catch {}
+		try {
+			return game?.getPlayingAs?.() === 2 ? "black" : "white";
+		} catch {
+			return "white";
+		}
+	};
+	function isLegalChesscomMove(game, from, to, promotion) {
+		try {
+			const checker = game?.isLegalMove;
+			if (typeof checker !== "function") return false;
+			return checker.call(game, {
+				from,
+				to,
+				...promotion ? { promotion } : {}
+			}) === true;
+		} catch {
+			return false;
+		}
+	}
+	function resetStuckPromotionWindow(game) {
+		try {
+			if (game?.getState?.() !== PROMOTION_CHOOSER_STATE) return;
+			game?.getRenderer?.()?.closePromotionWindow?.();
+		} catch {}
+	}
+	function observeBoard(board, listener) {
+		const Observer = board.ownerDocument?.defaultView?.MutationObserver;
+		if (!Observer) return () => {};
+		let active = true;
+		let queued = false;
+		const observer = new Observer((records) => {
+			if (!active || !records.some((record) => !isBotOwnedMutation(record)) || queued) return;
+			queued = true;
+			queueMicrotask(() => {
+				queued = false;
+				if (active) listener();
+			});
+		});
+		observer.observe(board, {
+			childList: true,
+			subtree: true,
+			attributes: true,
+			attributeFilter: [
+				"class",
+				"style",
+				"data-piece"
+			]
+		});
+		return () => {
+			active = false;
+			observer.disconnect();
+		};
+	}
+	var DEFAULT_BRIDGE_ERROR = "Chess.com board controller not captured. Enable synchronous page-context injection in your userscript manager, then reload.";
+	var nextGameId = 0;
+	var BOARD_SELECTOR = "wc-chess-board, chess-board, .board";
+	var CLOCK_REGION_SELECTOR = ".clock-player-turn";
+	var RESULT_SELECTOR = ".game-over-modal-content";
+	function fingerprint(result) {
+		if (result.kind !== "game") return {
+			identity: null,
+			value: JSON.stringify([result.kind, result.reason])
+		};
+		const snapshot = result.snapshot;
+		return {
+			identity: snapshot.identity,
+			value: JSON.stringify([
+				snapshot.gameId,
+				snapshot.fen,
+				snapshot.playerColor,
+				snapshot.sideToMove,
+				snapshot.orientation,
+				snapshot.phase,
+				snapshot.inputReady,
+				snapshot.remainingMs,
+				snapshot.history?.startFen,
+				snapshot.history?.moves,
+				snapshot.confirmedFens,
+				snapshot.confirmationSource
+			])
+		};
+	}
+	function closestOrSelf(element, selector) {
+		return element.matches(selector) ? element : element.closest(selector);
+	}
+	function nodeContainsSelector(node, selector) {
+		const element = mutationElement(node);
+		return !!element && (element.matches(selector) || !!element.querySelector(selector));
+	}
+	function isRelevantMutation(records) {
+		return records.some((record) => {
+			const target = mutationElement(record.target);
+			if (!target || isBotOwnedNode(target) || target.closest("[data-engine-layer], [data-scb-overlay]")) return false;
+			const onBoard = !!closestOrSelf(target, BOARD_SELECTOR);
+			const onClock = !!closestOrSelf(target, CLOCK_REGION_SELECTOR);
+			const onResult = !!closestOrSelf(target, RESULT_SELECTOR);
+			if (record.type === "attributes") {
+				if (record.attributeName === "data-game-id") return onBoard;
+				if (record.attributeName === "class") return onBoard || onClock || onResult;
+				return false;
+			}
+			if (record.type === "characterData") return onClock || onResult;
+			if (record.type !== "childList") return false;
+			if (onClock || onResult) return true;
+			return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some((node) => nodeContainsSelector(node, BOARD_SELECTOR) || nodeContainsSelector(node, ".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time, .clock-player-turn .move-time-content, .clock-player-turn.move-time-content") || nodeContainsSelector(node, RESULT_SELECTOR));
+		});
+	}
+	function readChesscomHistory(game) {
+		const startingFen = getStartingFen(game);
+		const sans = game.getHistorySANs?.();
+		if (!startingFen || !Array.isArray(sans)) return void 0;
+		const replay = replaySanLine(startingFen, sans.filter((san) => typeof san === "string" && san.trim().length > 0));
+		if (!replay) return void 0;
+		return {
+			history: replay.history,
+			confirmedFens: replay.fens
+		};
+	}
+	function createChesscomAdapter(page = pageWindow) {
+		let currentBoard = null;
+		let currentGame = null;
+		let currentIdentity = null;
+		let currentGameId = "";
+		let lastPlayerColor = null;
+		let controller = null;
+		let bridgeInstalled = false;
+		const read = () => {
+			if (!ensureBridge()) return {
+				kind: "ineligible",
+				reason: "Chess.com controller hook is unavailable"
+			};
+			const doc = page().document;
+			const board = getBoard(doc);
+			if (!board) return {
+				kind: "waiting",
+				reason: "Waiting for board"
+			};
+			const liveGame = board.game ?? null;
+			if (liveGame && typeof liveGame.getFEN === "function" && liveGame !== controller) {
+				controller = liveGame;
+				setCapturedChesscomController(liveGame);
+			}
+			const game = controller ?? liveGame;
+			if (!game || typeof game.getFEN !== "function") return {
+				kind: "waiting",
+				reason: DEFAULT_BRIDGE_ERROR
+			};
+			const fen = getFen(game);
+			if (!fen) return {
+				kind: "ineligible",
+				reason: "Chess.com position is unavailable"
+			};
+			const sideToMove = getSideToMove(game);
+			if (sideToMove !== "w" && sideToMove !== "b") return {
+				kind: "ineligible",
+				reason: "Chess.com position is malformed"
+			};
+			if (board !== currentBoard || game !== currentGame) {
+				currentBoard = board;
+				currentGame = game;
+				currentIdentity = {};
+				lastPlayerColor = null;
+				const declaredId = game.id ?? board.getAttribute("data-game-id");
+				currentGameId = declaredId == null ? `chesscom-${++nextGameId}` : String(declaredId);
+			}
+			const isFinished = Boolean(game.isGameOver?.() || typeof game.getResult === "function" && /^(1-0|0-1|1\/2-1\/2)$/.test(String(game.getResult())) || doc.querySelector(".game-over-modal-content"));
+			const playingAs = game.getPlayingAs?.();
+			let playerColor = null;
+			if (playingAs === 1) {
+				playerColor = "w";
+				lastPlayerColor = "w";
+			} else if (playingAs === 2) {
+				playerColor = "b";
+				lastPlayerColor = "b";
+			} else if (isFinished) {
+				const orientation = getOrientation(game);
+				playerColor = lastPlayerColor ?? (orientation === "black" ? "b" : "w");
+			}
+			if (!playerColor) return {
+				kind: "ineligible",
+				reason: "Chess.com player color is unavailable"
+			};
+			const orientation = getOrientation(game);
+			const phase = isFinished ? "finished" : "live";
+			const controllerState = game.getState?.();
+			const settled = controllerState === void 0 || controllerState === "Idle";
+			const history = readChesscomHistory(game);
+			const confirmedFens = history?.confirmedFens;
+			const remainingMs = getRemainingMs(doc);
+			const whiteRemainingMs = getColorRemainingMs(doc, "w");
+			const blackRemainingMs = getColorRemainingMs(doc, "b");
+			return {
+				kind: "game",
+				snapshot: {
+					identity: currentIdentity ?? {},
+					gameId: currentGameId,
+					board,
+					fen,
+					playerColor,
+					sideToMove,
+					orientation,
+					phase,
+					inputReady: phase === "live" && sideToMove === playerColor && settled,
+					remainingMs,
+					confirmationSource: "controller-local",
+					...whiteRemainingMs != null ? { whiteRemainingMs } : {},
+					...blackRemainingMs != null ? { blackRemainingMs } : {},
+					...history ? { history: history.history } : {},
+					...confirmedFens ? { confirmedFens } : {}
+				}
+			};
+		};
+		const notify = () => {
+			const next = read();
+			const fp = fingerprint(next);
+			if (next.kind === "game" && lastNotifiedIdentity !== fp.identity) {
+				lastNotifiedIdentity = fp.identity;
+				previousFingerprint = "";
+			}
+			if (fp.value === previousFingerprint) return;
+			previousFingerprint = fp.value;
+			for (const listener of [...listeners]) try {
+				listener();
+			} catch (error) {
+				console.error("Super Chess Bot: site listener failed.", error);
+			}
+		};
+		let lastNotifiedIdentity = null;
+		let previousFingerprint = "";
+		const listeners = new Set();
+		const instrumentController = (captured) => {
+			if (!captured || typeof captured !== "object") return;
+			controller = captured;
+			notify();
+		};
+		const ensureBridge = () => {
+			if (bridgeInstalled) return true;
+			try {
+				bridgeInstalled = installChesscomControllerBridge(page(), instrumentController);
+			} catch {
+				bridgeInstalled = false;
+			}
+			return bridgeInstalled;
+		};
+		ensureBridge();
+		return {
+			id: "chesscom",
+			read: () => read(),
+			subscribe(listener) {
+				let stopObserving = () => {};
+				let stopObservingBoard = () => {};
+				let observedBoard = null;
+				let observedGame = null;
+				let moveListener = null;
+				let queued = false;
+				let active = true;
+				const initial = read();
+				let previous = fingerprint(initial);
+				previousFingerprint = previous.value;
+				if (initial.kind === "game") lastNotifiedIdentity = initial.snapshot.identity;
+				const detachGame = () => {
+					if (observedGame && moveListener) observedGame.off?.("Move", moveListener);
+					observedGame = null;
+					moveListener = null;
+				};
+				const detachBoard = () => {
+					stopObservingBoard();
+					stopObservingBoard = () => {};
+					observedBoard = null;
+				};
+				const bind = (result) => {
+					const board = result.kind === "game" ? result.snapshot.board : null;
+					if (board !== observedBoard) {
+						detachBoard();
+						observedBoard = board;
+						if (board) stopObservingBoard = observeBoard(board, notifySubscribed);
+					}
+					const game = result.kind === "game" ? currentGame : null;
+					if (game === observedGame) return;
+					detachGame();
+					if (game && typeof game.on === "function" && typeof game.off === "function") {
+						observedGame = game;
+						moveListener = notifySubscribed;
+						game.on("Move", moveListener);
+					}
+				};
+				const notifySubscribed = () => {
+					if (!active) return;
+					const result = read();
+					bind(result);
+					const next = fingerprint(result);
+					if (next.identity === previous.identity && next.value === previous.value) return;
+					previous = next;
+					try {
+						listener();
+					} catch (error) {
+						console.error("Super Chess Bot: site listener failed.", error);
+					}
+				};
+				listeners.add(notifySubscribed);
+				bind(initial);
+				const doc = page().document;
+				const Observer = page().MutationObserver;
+				if (doc.body && Observer) {
+					const observer = new Observer((records) => {
+						if (!isRelevantMutation(records)) return;
+						if (queued) return;
+						queued = true;
+						queueMicrotask(() => {
+							queued = false;
+							notifySubscribed();
+						});
+					});
+					observer.observe(doc.body, {
+						childList: true,
+						subtree: true,
+						attributes: true,
+						attributeFilter: ["class", "data-game-id"],
+						characterData: true
+					});
+					stopObserving = () => observer.disconnect();
+				}
+				return () => {
+					active = false;
+					listeners.delete(notifySubscribed);
+					stopObserving();
+					detachBoard();
+					detachGame();
+				};
+			},
+			async submitMove(request) {
+				if (request.signal.aborted || !request.isCurrent()) return false;
+				if (currentGame) resetStuckPromotionWindow(currentGame);
+				const current = read();
+				if (current.kind !== "game" || current.snapshot.identity !== request.identity || canonicalFen(current.snapshot.fen) !== canonicalFen(request.fromFen) || !current.snapshot.inputReady) return false;
+				const game = currentGame;
+				if (!game || typeof game.move !== "function") return false;
+				const uci = request.uci;
+				if (typeof uci !== "string" || uci.length < 4) return false;
+				const from = uci.slice(0, 2);
+				const to = uci.slice(2, 4);
+				const promotionChar = uci.length > 4 ? uci[4].toLowerCase() : "";
+				const promotion = /^[qrbn]$/.test(promotionChar) ? promotionChar : void 0;
+				if (!isLegalChesscomMove(game, from, to, promotion)) return false;
+				if (request.signal.aborted || !request.isCurrent() || currentGame !== game) return false;
+				try {
+					request.onDispatch?.();
+					return game.move({
+						from,
+						to,
+						...promotion ? { promotion } : {},
+						userGenerated: true
+					})?.type === "Move";
+				} catch {
+					return false;
+				}
+			},
+			cancelInput() {}
+		};
+	}
+	var activeSite;
+	function selectSite(hostname, page) {
+		if (hostname === "chess.com" || hostname === "www.chess.com") return createChesscomAdapter(page);
+		return null;
+	}
+	function getSite() {
+		if (activeSite === void 0) {
+			activeSite = selectSite(pageWindow().location.hostname);
+			setActiveSite(activeSite);
+		}
+		return activeSite;
+	}
+	function readSite() {
+		return getSite()?.read() ?? {
+			kind: "ineligible",
+			reason: "Unsupported site"
+		};
+	}
+	function asUci(move) {
+		if (typeof move === "string") return move;
+		if (!move || typeof move !== "object") return null;
+		const value = move;
+		if (typeof value.uci === "string") return value.uci;
+		if (typeof value.from === "string" && typeof value.to === "string") {
+			const promotion = value.promo ?? value.promotion;
+			return value.from + value.to + (typeof promotion === "string" ? promotion : "");
+		}
+		return null;
+	}
+	function sanOf(position, uci) {
+		const move = parseUci(uci);
+		if (!move || !position.isLegal(move)) return null;
+		return String(makeSanAndPlay(position, move));
+	}
+	function uciToSan(fen, input, variant) {
+		if (!input) return "";
+		const uci = asUci(input);
+		if (!uci || uci.length < 4) return typeof input === "string" ? input : "";
+		const position = loadPosition(fen, variant, "standard");
+		if (!position) return uci;
+		return sanOf(position, uci) ?? uci;
+	}
+	function uciListToSan(fen, moves, variant) {
+		const position = loadPosition(fen, variant, "standard");
+		if (!position) return [...moves];
+		return moves.map((uci) => {
+			return sanOf(position.clone(), uci) ?? uci;
+		});
+	}
+	function formatMove(fen, uci, variant) {
+		const position = loadPosition(fen, variant, "standard");
+		const moveNumber = position?.fullmoves ?? (Number.parseInt(fen.split(/\s+/)[5] ?? "", 10) || 1);
+		const whiteToMove = position ? position.turn === "white" : fen.split(/\s+/)[1] === "w";
+		const san = position ? sanOf(position.clone(), uci) ?? uci : uciToSan(fen, uci, variant);
+		return whiteToMove ? `${moveNumber}. ${san}` : `${moveNumber}... ${san}`;
+	}
+	var panel_default = ":host{--ink:#1b1a17;--well:#151411;--wood:#252420;--wood-raised:#302e28;--line:#3b3932;--paper:#efe9dc;--muted:#a8a193;--brass:#d9a94f;--sage:#8fb996;--brick:#d8826b;--serif:\"Iowan Old Style\", \"Palatino Linotype\", Palatino, \"Book Antiqua\", Georgia, serif;--sans:system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif;--radius:14px;--radius-control:8px;--target:40px;--ease:cubic-bezier(.2, .7, .2, 1);all:initial;z-index:9999999;width:min(380px,100vw - 24px);color:var(--paper);--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;font:13px / 1.45 var(--sans);-webkit-font-smoothing:antialiased;position:fixed;inset:20px 20px auto auto}:host *,:host :before,:host :after{box-sizing:border-box}.panel button{font:inherit;color:inherit}.panel :is(button,input):focus-visible,.panel-log:focus-visible{outline:2px solid var(--brass);outline-offset:2px}.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--ink);overflow:hidden;box-shadow:0 16px 40px #0000006b}.panel-bar{cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;align-items:center;gap:10px;min-height:60px;padding:8px 8px 8px 12px;display:flex}.panel[data-state=open] .panel-bar{border-bottom:1px solid var(--line)}:host(.dragging) .panel-bar{cursor:grabbing}.panel-mark{border-radius:var(--radius-control);background:var(--wood-raised);width:32px;height:32px;color:var(--brass);flex:none;place-items:center;display:grid}.panel-mark-icon{display:block}.panel-bar-text{flex-direction:column;flex:auto;gap:3px;min-width:0;display:flex}.panel-title{letter-spacing:-.005em;white-space:nowrap;flex-shrink:0;font-size:14px;font-weight:600}.panel-status,.panel-summary{min-width:0;color:var(--muted);align-items:center;gap:7px;font-size:12px;display:flex}.panel-status-text{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-summary b{color:var(--paper);font:600 17px / 1 var(--serif)}.panel-summary>span:last-child{color:var(--brass);font-variant-numeric:tabular-nums}.panel-dot{background:var(--muted);border-radius:50%;flex:none;width:7px;height:7px}.panel[data-tone=ready] .panel-dot{background:var(--sage)}.panel[data-tone=working] .panel-dot{background:var(--sage);animation:panel-pulse 1.6s var(--ease) infinite}.panel[data-tone=paused] .panel-dot{background:var(--brass)}.panel[data-tone=error] .panel-dot{background:var(--brick)}.panel[data-tone=error] .panel-status{color:var(--brick)}.panel[data-tone=paused] .panel-status{color:var(--brass)}@keyframes panel-pulse{0%,to{box-shadow:0 0 #8fb99680}50%{box-shadow:0 0 0 5px #8fb99600}}.panel-icon{width:var(--target);height:var(--target);border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);cursor:pointer;flex:none;place-items:center;display:grid}.panel-icon:hover{background:var(--wood-raised)}.panel-help-toggle{color:var(--muted);transition:color .14s var(--ease), border-color .14s var(--ease), background .14s var(--ease)}.panel-help-toggle:hover{color:var(--paper)}.panel-help-toggle.is-active{border-color:color-mix(in oklab, var(--brass) 55%, var(--line));color:var(--brass);background:color-mix(in oklab, var(--brass) 12%, var(--wood))}.panel-chevron{transition:transform .18s var(--ease)}.panel[data-state=collapsed] .panel-chevron{transform:rotate(180deg)}.panel-enable{min-height:var(--target);border:1px solid var(--line);background:var(--wood);cursor:pointer;border-radius:999px;flex:none;align-items:center;gap:8px;padding:0 10px 0 12px;font-size:12px;font-weight:500;display:inline-flex}.panel-enable:hover{background:var(--wood-raised)}.panel-enable-state{min-width:18px;color:var(--muted);font-variant-numeric:tabular-nums}.panel-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--brass) 55%, var(--line))}.panel-enable[aria-pressed=true] .panel-enable-state{color:var(--brass)}.panel-enable-wide{border-radius:var(--radius-control);justify-content:space-between;width:100%;padding:0 12px;font-size:13px}.panel-enable-action{align-items:center;gap:8px;display:inline-flex}.panel-quick-enable{border:1px solid var(--line);background:var(--wood);min-height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), border-color .14s var(--ease), color .14s var(--ease);border-radius:999px;flex:none;align-items:center;gap:6px;padding:0 6px 0 8px;font-size:11px;font-weight:500;display:inline-flex}.panel-quick-enable:hover{background:var(--wood-raised);color:var(--paper)}.panel-quick-state{min-width:16px;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600}.panel-quick-enable[aria-pressed=true]{border-color:color-mix(in oklab, var(--brass) 55%, var(--line));color:var(--brass)}.panel-quick-enable[aria-pressed=true] .panel-quick-state{color:var(--brass)}.panel-switch{flex:none;align-items:center;width:34px;height:20px;display:inline-flex;position:relative}.panel-switch-input{z-index:1;cursor:pointer;opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0}.panel-switch-track{background:var(--line);transition:background .16s var(--ease);border-radius:999px;position:absolute;inset:0}.panel-switch-knob{background:var(--muted);pointer-events:none;width:14px;height:14px;transition:transform .16s var(--ease), background .16s var(--ease);border-radius:50%;position:absolute;top:3px;left:3px}.panel-enable .panel-switch-knob,.panel-quick-enable .panel-switch-knob{background:var(--paper)}.panel-switch-input:checked~.panel-switch-track{background:var(--sage)}.panel-enable[aria-pressed=true] .panel-switch-track,.panel-quick-enable[aria-pressed=true] .panel-switch-track,.panel-toggle-enable .panel-switch-input:checked~.panel-switch-track{background:var(--brass)}.panel-switch-input:checked~.panel-switch-knob,.panel-enable[aria-pressed=true] .panel-switch-knob,.panel-quick-enable[aria-pressed=true] .panel-switch-knob{background:var(--ink);transform:translate(14px)}.panel-body{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(76vh,680px);animation:panel-rise .18s var(--ease);overflow:auto}@keyframes panel-rise{0%{opacity:0;transform:translateY(-4px)}}.panel-guide{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;max-height:min(76vh,680px);animation:panel-rise .18s var(--ease);flex-direction:column;gap:14px;padding:14px 16px 16px;display:flex;overflow-y:auto}.panel-guide-head{border-bottom:1px solid var(--line);justify-content:space-between;align-items:center;padding-bottom:10px;display:flex}.panel-guide-title{color:var(--paper);align-items:center;gap:8px;font-size:13px;font-weight:600;display:flex}.panel-guide-title svg{color:var(--brass)}.panel-guide-section{flex-direction:column;gap:8px;display:flex}.panel-guide-heading{color:var(--brass);letter-spacing:.06em;text-transform:uppercase;font-size:11px;font-weight:700}.panel-guide-item{border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);padding:8px 10px;font-size:12px;line-height:1.45}.panel-guide-item strong{color:var(--paper);margin-bottom:3px;font-weight:600;display:block}.panel-guide-item p{color:var(--muted);margin:0}.panel-hero{padding:14px 16px}.panel-move-row{justify-content:space-between;align-items:baseline;gap:12px;display:flex}.panel-move{overflow-wrap:anywhere;color:var(--paper);font:600 36px / 1.05 var(--serif);letter-spacing:.01em}.panel-score{color:var(--brass);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600}.panel-line{color:var(--muted);font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap;margin:6px 0 0;font-size:12px;overflow:hidden}.panel-multipv-list{border-top:1px dashed var(--line);flex-direction:column;gap:4px;margin-top:10px;padding-top:8px;display:flex}.panel-multipv-row{background:var(--well);font-variant-numeric:tabular-nums;border-radius:4px;grid-template-columns:24px 44px 50px 1fr;align-items:center;gap:6px;padding:3px 6px;font-size:11px;display:grid}.panel-multipv-row[data-rank=\"1\"]{border-left:2px solid var(--sage)}.panel-multipv-row[data-rank=\"2\"]{border-left:2px solid #50b4ff}.panel-multipv-row[data-rank=\"3\"]{border-left:2px solid #ffb432}.panel-multipv-badge{color:var(--muted);font-weight:600}.panel-multipv-move{color:var(--paper);font-weight:600;font-family:var(--serif)}.panel-multipv-eval{color:var(--brass);font-weight:500}.panel-multipv-pv{color:var(--muted);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.panel-trend{flex-direction:column;gap:6px;margin-top:12px;display:flex}.panel-trend-head{justify-content:space-between;align-items:baseline;padding:0 2px;font-size:11px;display:flex}.panel-trend-label-wrap{align-items:baseline;gap:6px;display:flex}.panel-trend-title{color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-size:11px;font-weight:600}.panel-trend-subtitle{color:color-mix(in srgb, var(--muted) 65%, transparent);font-variant-numeric:tabular-nums;font-size:10px;font-weight:400}.panel-trend-val{color:var(--brass);font-variant-numeric:tabular-nums;font-size:12px;font-weight:700}.panel-trend-val[data-tone=sage]{color:var(--sage)}.panel-trend-val[data-tone=brick]{color:var(--brick)}.panel-trend-box{border-radius:var(--radius-control);background:var(--well);border:1px solid var(--line);padding:6px 8px;overflow:hidden}.panel-trend-svg{width:100%;height:56px;display:block;overflow:visible}.panel-trend-axis-text{font-size:8.5px;font-weight:500;font-family:var(--sans);fill:var(--muted);opacity:.7}.panel-notice{border-radius:var(--radius-control);background:var(--wood);box-shadow:inset 0 0 0 1px var(--line);grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;margin-top:12px;padding:10px 12px;font-size:12px;display:grid}.panel-notice p{margin:0}.panel-notice[data-kind=retry]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brick) 60%, transparent)}.panel-notice[data-kind=resume]{box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--brass) 60%, transparent)}.panel-button{min-height:var(--target);border:1px solid var(--brass);border-radius:var(--radius-control);background:var(--brass);color:var(--ink);white-space:nowrap;cursor:pointer;padding:0 14px;font-size:13px;font-weight:600}.panel-button:hover{filter:brightness(1.06)}.panel-button:disabled{opacity:.45;cursor:not-allowed;filter:none}.panel-settings{border-top:1px solid var(--line);gap:2px;padding:12px 16px 16px;display:grid}.panel-toggles{margin-top:6px;display:grid}.panel-toggle{cursor:pointer;justify-content:space-between;align-items:center;gap:12px;min-height:44px;display:flex}.panel-toggle-enable-label{color:var(--paper);letter-spacing:.01em;font-size:13px;font-weight:700}.panel-section-divider{background:var(--line);border:none;height:1px;margin:10px 0}.panel-note{color:var(--muted);margin:4px 0 0;font-size:12px}.panel-field{gap:6px;padding:8px 0 4px;display:grid}.panel-field-head{justify-content:space-between;align-items:baseline;gap:10px;display:flex}.panel-field-head output{font-variant-numeric:tabular-nums;font-weight:600}.panel-field-label{color:var(--muted);font-size:12px}.panel-field-hint{color:var(--muted);margin-top:2px;font-size:11px;line-height:1.35;display:block}.panel-range{appearance:none;cursor:pointer;width:100%;height:28px;accent-color:var(--brass);background:0 0;margin:0;display:block}.panel-range::-webkit-slider-runnable-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-moz-range-track{background:var(--line);border-radius:999px;height:4px}.panel-range::-webkit-slider-thumb{appearance:none;border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px;margin-top:-8px}.panel-range::-moz-range-thumb{border:2px solid var(--ink);background:var(--brass);border-radius:50%;width:20px;height:20px}.panel-segmented{border-radius:var(--radius-control);background:var(--wood);grid-auto-columns:1fr;grid-auto-flow:column;gap:4px;padding:4px;display:grid}.panel-segment{min-height:var(--target);color:var(--muted);cursor:pointer;background:0 0;border:0;border-radius:6px;font-weight:500}.panel-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-timing-row{justify-content:space-between;align-items:center;gap:12px;padding:8px 0 4px;display:flex}.panel-timing-label{color:var(--paper);font-size:13px;font-weight:500}.panel-timing-segmented{border-radius:var(--radius-control);background:var(--wood);border:1px solid var(--line);grid-auto-columns:minmax(78px,1fr);grid-auto-flow:column;gap:3px;padding:3px;display:inline-grid}.panel-timing-segment{min-height:28px;color:var(--muted);transition:background .14s var(--ease), color .14s var(--ease);border-radius:6px;justify-content:center;align-items:center;gap:6px;padding:0 10px;font-size:11px;font-weight:500;display:inline-flex}.panel-timing-segment svg{width:13px;height:13px;color:var(--muted);transition:color .14s var(--ease);flex-shrink:0;display:block}.panel-timing-segment:hover,.panel-timing-segment:hover svg{color:var(--paper)}.panel-timing-segment[aria-pressed=true]{background:var(--wood-raised);box-shadow:inset 0 0 0 1px var(--line);color:var(--paper)}.panel-timing-segment[aria-pressed=true] svg{color:var(--brass)}.panel-opening-style-section{gap:6px;padding:2px 0 4px;display:grid}.panel-opening-style-picker{grid-auto-columns:1fr;grid-auto-flow:column}.panel-opening-style-picker .panel-segment{min-height:34px;transition:background .14s var(--ease), color .14s var(--ease);justify-content:center;align-items:center;padding:0;display:flex}.panel-opening-style-picker .panel-segment svg{color:var(--muted);transition:color .14s var(--ease), transform .14s var(--ease);display:block}.panel-opening-style-picker .panel-segment:hover svg{color:var(--paper);transform:scale(1.08)}.panel-opening-style-picker .panel-segment[aria-pressed=true] svg{color:var(--brass);transform:scale(1.05)}.panel-activity{border-top:1px solid var(--line);background:var(--well)}.panel-activity-head{justify-content:space-between;align-items:center;gap:8px;min-height:44px;padding:0 8px 0 16px;display:flex}.panel-disclosure{min-height:var(--target);cursor:pointer;background:0 0;border:0;align-items:center;gap:8px;padding:0;font-size:13px;font-weight:600;display:inline-flex}.panel-count{background:var(--wood-raised);min-width:24px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:center;border-radius:999px;padding:2px 6px;font-size:11px}.panel-activity-actions{gap:4px;display:flex}.panel-icon-btn{border-radius:var(--radius-control);width:32px;height:32px;color:var(--muted);cursor:pointer;transition:background .14s var(--ease), color .14s var(--ease);background:0 0;border:0;justify-content:center;align-items:center;display:inline-flex}.panel-icon-btn:hover{background:var(--wood-raised);color:var(--paper)}.panel-icon-btn.is-success{color:var(--sage)}.panel-log{overscroll-behavior:contain;scrollbar-color:var(--line) transparent;scrollbar-width:thin;gap:6px;min-height:80px;max-height:240px;padding:2px 16px 14px;display:grid;overflow:auto}.panel-log-empty{color:var(--muted);margin:0;font-size:12px}.panel-report{border-bottom:1px solid var(--line);flex-direction:column;gap:10px;padding:12px 16px;display:flex}.panel-report-head{justify-content:space-between;align-items:baseline;gap:8px;display:flex}.panel-report-title{color:var(--paper);letter-spacing:.01em;font-size:12px;font-weight:600}.panel-report-note{color:var(--muted);font-size:10px}.panel-report-error{color:var(--brick);margin:0;font-size:11px;line-height:1.4}.panel-report-row{align-items:center;gap:8px;margin-top:6px;display:flex}.panel-report-stepper{min-height:var(--target);border:1px solid var(--line);border-radius:var(--radius-control);background:var(--surface);flex:none;align-items:center;display:inline-flex;overflow:hidden}.panel-report-step-btn{width:32px;min-height:var(--target);color:var(--paper);cursor:pointer;background:0 0;border:none;justify-content:center;align-items:center;padding:0;font-size:15px;font-weight:600;transition:background .15s;display:inline-flex}.panel-report-step-btn:hover:not(:disabled){background:var(--wood-raised)}.panel-report-step-btn:disabled{opacity:.35;cursor:not-allowed}.panel-report-depth-val{min-width:26px;color:var(--paper);font-variant-numeric:tabular-nums;text-align:center;-webkit-user-select:none;user-select:none;padding:0 2px;font-size:13px;font-weight:600}.panel-report-action-btn{min-height:var(--target);border:1px solid var(--brass);border-radius:var(--radius-control);background:var(--brass);color:var(--ink);cursor:pointer;white-space:nowrap;flex:auto;justify-content:center;align-items:center;gap:6px;padding:0 14px;font-size:13px;font-weight:600;transition:filter .15s;display:inline-flex}.panel-report-action-btn:hover:not(:disabled){filter:brightness(1.06)}.panel-report-action-btn:disabled{opacity:.45;cursor:not-allowed;filter:none}.panel-report-cancel-btn{min-height:var(--target);border:1px solid var(--brick);border-radius:var(--radius-control);background:var(--brick);color:#fff;cursor:pointer;justify-content:center;align-items:center;padding:0 12px;font-size:13px;font-weight:600;transition:filter .15s;display:inline-flex}.panel-report-cancel-btn:hover{filter:brightness(1.1)}.panel-report-player{border:1px solid var(--line);border-radius:var(--radius-control);background:var(--wood);flex-direction:column;gap:7px;padding:9px 10px;display:flex}.panel-report-name{color:var(--paper);font-size:12px;font-weight:600}.panel-report-accuracy{font-variant-numeric:tabular-nums;font-size:17px;font-weight:600}.panel-report-accuracy[data-tone=high]{color:var(--sage)}.panel-report-accuracy[data-tone=mid]{color:var(--brass)}.panel-report-accuracy[data-tone=low]{color:var(--brick)}.panel-report-stats{grid-template-columns:1fr 1fr;gap:5px 10px;margin:0;display:grid}.panel-report-stat{align-items:baseline;gap:5px;min-width:0;display:flex}.panel-report-stat dt{font-variant-numeric:tabular-nums;font-size:13px;font-weight:600}.panel-report-stat dd{color:var(--muted);text-overflow:ellipsis;white-space:nowrap;margin:0;font-size:11px;overflow:hidden}.panel-report-stat[data-kind=inaccuracy] dt{color:#7fc4d8}.panel-report-stat[data-kind=mistake] dt{color:var(--brass)}.panel-report-stat[data-kind=blunder] dt{color:var(--brick)}.panel-report-stat[data-kind=acpl] dt{color:var(--muted)}.panel-report-status{color:var(--muted);margin:0;font-size:11px}.panel-report-status-quiet{color:color-mix(in srgb, var(--muted) 80%, transparent);font-size:10px;line-height:1.4}.panel-scoresheet{font-variant-numeric:tabular-nums;flex-direction:column;width:100%;margin-bottom:6px;display:flex}.panel-scoresheet-row{transition:background .12s var(--ease);grid-template-columns:20px minmax(0,1fr) minmax(0,1fr) 62px 62px;align-items:center;gap:4px;padding:5px 6px;font-size:12px;display:grid}.panel-scoresheet-row[data-stripe=even]{background:color-mix(in srgb, var(--paper) 5%, transparent)}.panel-scoresheet-row:hover{background:var(--wood-raised)}.panel-scoresheet-num{color:var(--muted);text-align:right;font-size:11px;font-weight:600}.panel-scoresheet-move{color:var(--paper);text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600;line-height:1.3;overflow:hidden}.panel-scoresheet-move[data-active]{background:var(--wood-raised);border-radius:3px;padding:1px 5px}.panel-scoresheet-time{justify-content:flex-end;align-items:center;gap:5px;min-width:0;display:flex}.panel-scoresheet-bar{background:var(--line);border-radius:3px;flex:none;width:26px;height:5px;overflow:hidden}.panel-scoresheet-bar:after{width:var(--fill);background:var(--brass);content:\"\";border-radius:3px;height:100%;display:block}.panel-scoresheet-time-label{color:var(--muted);font-size:10px}.panel-log-entry{overflow-wrap:anywhere;grid-template-columns:44px minmax(0,1fr);gap:8px;margin:0;font-size:12px;line-height:1.45;display:grid}.panel-log-entry time{color:var(--muted);font-variant-numeric:tabular-nums}.log-text-info{color:var(--paper)}.log-text-status{color:var(--muted)}.log-text-move{color:var(--sage)}.log-text-warn{color:var(--brass)}.log-text-error{color:var(--brick)}@media (pointer:coarse){:host{--target:48px}.panel-range::-webkit-slider-runnable-track{height:6px}.panel-range::-webkit-slider-thumb{width:28px;height:28px;margin-top:-11px}.panel-range::-moz-range-thumb{width:28px;height:28px}.panel-icon-btn{width:44px;height:44px}}@media (width<=560px){:host{width:100%;inset:auto 0 0!important}.panel{padding-bottom:env(safe-area-inset-bottom,0px);border-bottom:0;border-left:0;border-right:0;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px #0000005c}.panel-bar{cursor:default;touch-action:manipulation;gap:8px;padding:8px 8px 8px 10px}.panel-body,.panel-guide{-webkit-overflow-scrolling:touch;max-height:min(70vh,580px)}.panel-log{-webkit-overflow-scrolling:touch;max-height:180px}}@media (width<=380px){.panel-title{font-size:13px}.panel-quick-enable{gap:4px;padding:0 4px 0 6px}.panel-notice{grid-template-columns:1fr;gap:8px}}@media (prefers-reduced-motion:reduce){.panel *,.panel :before,.panel :after{transition-duration:1ms!important;animation-duration:1ms!important;animation-iteration-count:1!important}}";
 	var o = 0;
 	Array.isArray;
 	function u(t, e, n, f, u, i) {
@@ -5450,6 +5617,339 @@ Stockfish({
 			__u: 0
 		};
 		return (u || i) && (p.__source = u, p.__self = i), n$1.vnode && n$1.vnode(p), p;
+	}
+	function formatTrendValue(value) {
+		const text = value.toFixed(1);
+		if (value > 0) return `+${text}`;
+		return text === "-0.0" ? "0.0" : text;
+	}
+	function EvalTrendGraph({ history }) {
+		if (!history || history.length < 2) return null;
+		const width = 280;
+		const height = 56;
+		const startX = 26;
+		const zeroY = height / 2;
+		const maxEval = 10;
+		const usableHalf = 22;
+		const coords = history.map((val, idx) => {
+			return {
+				x: startX + idx / (history.length - 1) * 252,
+				y: zeroY - Math.max(-10, Math.min(maxEval, val)) / maxEval * usableHalf
+			};
+		});
+		const pathD = coords.reduce((acc, pt, i) => `${acc} ${i === 0 ? "M" : "L"} ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`, "");
+		const areaD = `${pathD} L ${coords[coords.length - 1].x.toFixed(1)},${zeroY} L ${coords[0].x.toFixed(1)},${zeroY} Z`;
+		const latest = coords[coords.length - 1];
+		const latestVal = history[history.length - 1];
+		const latestFormatted = formatTrendValue(latestVal);
+		const valTone = latestVal > .3 ? "sage" : latestVal < -.3 ? "brick" : "brass";
+		return u("div", {
+			class: "panel-trend",
+			children: [u("div", {
+				class: "panel-trend-head",
+				children: [u("div", {
+					class: "panel-trend-label-wrap",
+					children: [u("span", {
+						class: "panel-trend-title",
+						children: "Eval Trend"
+					}), u("span", {
+						class: "panel-trend-subtitle",
+						children: [history.length, " plies"]
+					})]
+				}), u("span", {
+					class: "panel-trend-val",
+					"data-tone": valTone,
+					children: latestFormatted
+				})]
+			}), u("div", {
+				class: "panel-trend-box",
+				children: u("svg", {
+					class: "panel-trend-svg",
+					viewBox: `0 0 ${width} ${height}`,
+					preserveAspectRatio: "none",
+					"aria-hidden": "true",
+					children: [
+						u("defs", { children: u("linearGradient", {
+							id: "scb-eval-fill",
+							x1: "0",
+							y1: "0",
+							x2: "0",
+							y2: "1",
+							children: [
+								u("stop", {
+									offset: "0%",
+									"stop-color": "var(--sage)",
+									"stop-opacity": "0.22"
+								}),
+								u("stop", {
+									offset: "50%",
+									"stop-color": "var(--brass)",
+									"stop-opacity": "0.08"
+								}),
+								u("stop", {
+									offset: "100%",
+									"stop-color": "var(--brick)",
+									"stop-opacity": "0.22"
+								})
+							]
+						}) }),
+						u("text", {
+							x: "21",
+							y: "10",
+							"text-anchor": "end",
+							class: "panel-trend-axis-text",
+							children: "+10"
+						}),
+						u("text", {
+							x: "21",
+							y: 31,
+							"text-anchor": "end",
+							class: "panel-trend-axis-text",
+							children: "0"
+						}),
+						u("text", {
+							x: "21",
+							y: "52",
+							"text-anchor": "end",
+							class: "panel-trend-axis-text",
+							children: "-10"
+						}),
+						u("line", {
+							x1: startX,
+							y1: zeroY,
+							x2: 278,
+							y2: zeroY,
+							stroke: "var(--muted)",
+							"stroke-dasharray": "3 3",
+							"stroke-width": "1",
+							"stroke-opacity": "0.6"
+						}),
+						u("path", {
+							d: areaD,
+							fill: "url(#scb-eval-fill)"
+						}),
+						u("path", {
+							d: pathD,
+							fill: "none",
+							stroke: "var(--brass)",
+							"stroke-width": "1.75",
+							"stroke-linejoin": "round"
+						}),
+						u("circle", {
+							cx: latest.x,
+							cy: latest.y,
+							r: "4",
+							fill: "none",
+							stroke: "var(--brass)",
+							"stroke-width": "1.2",
+							"stroke-opacity": "0.6"
+						}),
+						u("circle", {
+							cx: latest.x,
+							cy: latest.y,
+							r: "2.2",
+							fill: "var(--brass)"
+						})
+					]
+				})
+			})]
+		});
+	}
+	function percent(value) {
+		if (value == null) return "—";
+		return `${Math.round(value)}%`;
+	}
+	function stepReportDepth(depth, direction) {
+		return Math.min(26, Math.max(10, depth + direction));
+	}
+	function atDepthLimit(depth, direction) {
+		return direction < 0 ? depth <= 10 : depth >= 26;
+	}
+	function accuracyTone(value) {
+		if (value == null) return "none";
+		if (value >= 90) return "high";
+		if (value >= 75) return "mid";
+		return "low";
+	}
+	function ReportPlayer({ label, report }) {
+		return u("div", {
+			class: "panel-report-player",
+			children: [u("div", {
+				class: "panel-report-head",
+				children: [u("span", {
+					class: "panel-report-name",
+					children: label
+				}), u("span", {
+					class: "panel-report-accuracy",
+					"data-tone": accuracyTone(report.accuracy),
+					children: percent(report.accuracy)
+				})]
+			}), u("dl", {
+				class: "panel-report-stats",
+				children: [
+					u("div", {
+						class: "panel-report-stat",
+						"data-kind": "inaccuracy",
+						children: [u("dt", { children: report.inaccuracy }), u("dd", { children: "Inaccuracies" })]
+					}),
+					u("div", {
+						class: "panel-report-stat",
+						"data-kind": "mistake",
+						children: [u("dt", { children: report.mistake }), u("dd", { children: "Mistakes" })]
+					}),
+					u("div", {
+						class: "panel-report-stat",
+						"data-kind": "blunder",
+						children: [u("dt", { children: report.blunder }), u("dd", { children: "Blunders" })]
+					}),
+					u("div", {
+						class: "panel-report-stat",
+						"data-kind": "acpl",
+						children: [u("dt", { children: report.acpl.toFixed(0) }), u("dd", { children: "Avg centipawn loss" })]
+					})
+				]
+			})]
+		});
+	}
+	function GameReportPanel({ reportDepth, onDepthChange, onGenerate, onCancel, canGenerate }) {
+		const progress = gameReportSignal.value;
+		const movesCount = gameHistoryTracker.getMoves().length;
+		const decDepth = () => onDepthChange(stepReportDepth(reportDepth, -1));
+		const incDepth = () => onDepthChange(stepReportDepth(reportDepth, 1));
+		const atMinDepth = atDepthLimit(reportDepth, -1);
+		const atMaxDepth = atDepthLimit(reportDepth, 1);
+		return u("section", {
+			class: "panel-report",
+			"aria-label": "Game report",
+			children: [
+				u("div", {
+					class: "panel-report-head",
+					children: [u("span", {
+						class: "panel-report-title",
+						children: "Game report"
+					}), u("span", {
+						class: "panel-report-note",
+						children: "Local engine estimate"
+					})]
+				}),
+				u("div", {
+					class: "panel-report-row",
+					children: [
+						u("div", {
+							class: "panel-report-stepper",
+							title: `Search depth per move: ${reportDepth}`,
+							children: [
+								u("button", {
+									type: "button",
+									class: "panel-report-step-btn",
+									disabled: atMinDepth || progress.running,
+									"aria-label": "Decrease depth",
+									onClick: decDepth,
+									children: "−"
+								}),
+								u("span", {
+									class: "panel-report-depth-val",
+									children: reportDepth
+								}),
+								u("button", {
+									type: "button",
+									class: "panel-report-step-btn",
+									disabled: atMaxDepth || progress.running,
+									"aria-label": "Increase depth",
+									onClick: incDepth,
+									children: "+"
+								})
+							]
+						}),
+						u("button", {
+							type: "button",
+							class: "panel-report-action-btn",
+							disabled: !canGenerate || movesCount === 0 || progress.running,
+							onClick: onGenerate,
+							children: progress.running ? `Analyzing ${progress.analyzed}/${progress.total}…` : progress.done ? "Regenerate report" : "Generate report"
+						}),
+						progress.running && u("button", {
+							type: "button",
+							class: "panel-report-cancel-btn",
+							title: "Cancel analysis",
+							"aria-label": "Cancel analysis",
+							onClick: onCancel,
+							children: "✕"
+						})
+					]
+				}),
+				progress.error && u("p", {
+					class: "panel-report-error",
+					role: "alert",
+					children: progress.error
+				}),
+				progress.report && u(M, { children: [u(ReportPlayer, {
+					label: "White",
+					report: progress.report.white
+				}), u(ReportPlayer, {
+					label: "Black",
+					report: progress.report.black
+				})] })
+			]
+		});
+	}
+	function MoveTime({ ms, max }) {
+		if (ms == null) return u("span", { class: "panel-scoresheet-time" });
+		const fill = max > 0 ? Math.max(6, Math.min(100, Math.round(ms / max * 100))) : 6;
+		return u("span", {
+			class: "panel-scoresheet-time",
+			title: `${(ms / 1e3).toFixed(1)}s`,
+			children: [u("span", {
+				class: "panel-scoresheet-bar",
+				style: { "--fill": `${fill}%` },
+				"aria-hidden": "true"
+			}), u("span", {
+				class: "panel-scoresheet-time-label",
+				children: [(ms / 1e3).toFixed(1), "s"]
+			})]
+		});
+	}
+	function MoveScoresheet({ pairs }) {
+		const max = pairs.reduce((peak, pair) => Math.max(peak, pair.white?.elapsedMs ?? 0, pair.black?.elapsedMs ?? 0), 0);
+		const lastNumber = pairs.at(-1)?.moveNumber ?? -1;
+		return u("div", {
+			class: "panel-scoresheet",
+			children: pairs.map((pair) => {
+				const isLastPair = pair.moveNumber === lastNumber;
+				const whiteActive = isLastPair && pair.black == null;
+				const blackActive = isLastPair && pair.black != null;
+				return u("div", {
+					class: "panel-scoresheet-row",
+					"data-stripe": pair.moveNumber % 2 === 0 ? "even" : "odd",
+					children: [
+						u("span", {
+							class: "panel-scoresheet-num",
+							children: [pair.moveNumber, "."]
+						}),
+						u("span", {
+							class: "panel-scoresheet-move",
+							"data-turn": "w",
+							"data-active": whiteActive || void 0,
+							children: pair.white?.san ?? ""
+						}),
+						u("span", {
+							class: "panel-scoresheet-move",
+							"data-turn": "b",
+							"data-active": blackActive || void 0,
+							children: pair.black?.san ?? ""
+						}),
+						u(MoveTime, {
+							ms: pair.white?.elapsedMs,
+							max
+						}),
+						u(MoveTime, {
+							ms: pair.black?.elapsedMs,
+							max
+						})
+					]
+				}, pair.moveNumber);
+			})
+		});
 	}
 	function KnightIcon() {
 		return u("svg", {
@@ -5721,227 +6221,27 @@ Stockfish({
 			]
 		});
 	}
-	var CPL_CAP = 1e3;
-	function winPercent(cp) {
-		return 50 + 50 * (2 / (1 + Math.exp(-.00368208 * cp)) - 1);
+	var ROUTINE_STATUS = /^(?:Bot disabled|Preparing Stockfish|Loading Stockfish|Analyzing|Pondering|Submitting move|Move confirmed|Waiting for opponent|Waiting for board|Ready ·|Resuming\.\.\.)/;
+	var ERROR_STATUS = /error|failed|unavailable|not confirmed|crashed/i;
+	var WORKING_STATUS = /loading|analyz|ponder|submitting|resuming/i;
+	function isRoutineStatus(status) {
+		return ROUTINE_STATUS.test(status);
 	}
-	function moveAccuracy(wpBefore, wpAfter) {
-		return 103.1668 * Math.exp(-.04354 * (wpBefore - wpAfter)) - 3.1669;
+	function isErrorStatus(status) {
+		return ERROR_STATUS.test(status);
 	}
-	var VERDICT_CPL = {
-		excellent: {
-			max: 10,
-			label: "Excellent"
-		},
-		good: {
-			max: 25,
-			label: "Good"
-		},
-		inaccuracy: {
-			max: 50,
-			label: "Inaccuracy"
-		},
-		mistake: {
-			max: 100,
-			label: "Mistake"
-		},
-		blunder: {
-			max: Number.POSITIVE_INFINITY,
-			label: "Blunder"
-		}
-	};
-	function classifyByLoss(cpLoss) {
-		const loss = Math.max(0, cpLoss);
-		if (loss <= VERDICT_CPL.excellent.max) return "excellent";
-		if (loss <= VERDICT_CPL.good.max) return "good";
-		if (loss <= VERDICT_CPL.inaccuracy.max) return "inaccuracy";
-		if (loss <= VERDICT_CPL.mistake.max) return "mistake";
-		return "blunder";
+	function isWorkingStatus(status) {
+		return WORKING_STATUS.test(status);
 	}
-	function emptyPlayer() {
-		return {
-			accuracy: 0,
-			acpl: 0,
-			inaccuracy: 0,
-			mistake: 0,
-			blunder: 0,
-			moveCount: 0
-		};
-	}
-	function meanAccuracy(plies) {
-		if (plies.length === 0) return 0;
-		return plies.reduce((sum, ply) => sum + ply.accuracy, 0) / plies.length;
-	}
-	function buildPlayer(plies) {
-		if (plies.length === 0) return emptyPlayer();
-		const counts = {
-			excellent: 0,
-			good: 0,
-			inaccuracy: 0,
-			mistake: 0,
-			blunder: 0
-		};
-		let lossTotal = 0;
-		for (const ply of plies) {
-			counts[ply.verdict]++;
-			lossTotal += ply.cpLoss;
-		}
-		return {
-			accuracy: meanAccuracy(plies),
-			acpl: lossTotal / plies.length,
-			inaccuracy: counts.inaccuracy,
-			mistake: counts.mistake,
-			blunder: counts.blunder,
-			moveCount: plies.length
-		};
-	}
-	function buildGameReport(plies, total) {
-		if (plies.length === 0) return null;
-		return {
-			white: buildPlayer(plies.filter((ply) => ply.color === "w")),
-			black: buildPlayer(plies.filter((ply) => ply.color === "b")),
-			analyzed: plies.length,
-			total
-		};
-	}
-	var REPORT_DEPTH = 18;
-	var REPORT_TIME_MS = 350;
-	var initial = {
-		running: false,
-		done: false,
-		analyzed: 0,
-		total: 0,
-		report: null
-	};
-	var gameReportSignal = y$1(initial);
-	var active$1 = null;
-	var lastKey = "";
-	function toCp(score) {
-		if (typeof score.mate === "number" && Number.isFinite(score.mate)) return score.mate > 0 ? CPL_CAP : -CPL_CAP;
-		if (typeof score.cp === "number" && Number.isFinite(score.cp)) return Math.max(-CPL_CAP, Math.min(CPL_CAP, score.cp));
-		return 0;
-	}
-	function scorePly(before, afterOpponentView) {
-		const after = -afterOpponentView;
-		const cpLoss = Math.max(0, Math.min(CPL_CAP, before - after));
-		const wpBefore = winPercent(before);
-		const wpAfter = winPercent(after);
-		return {
-			cpLoss,
-			accuracy: Math.min(100, Math.max(0, moveAccuracy(wpBefore, wpAfter))),
-			verdict: classifyByLoss(cpLoss)
-		};
-	}
-	async function runGameReport(moves, startFen, gameId, depth = REPORT_DEPTH, force = false) {
-		if (moves.length === 0) {
-			gameReportSignal.value = initial;
-			lastKey = "";
-			return;
-		}
-		const key = `${gameId}:${moves.length}:${depth}`;
-		if (key === lastKey && !force) return;
-		lastKey = key;
-		active$1?.abort();
-		const ctrl = new AbortController();
-		active$1 = ctrl;
-		gameReportSignal.value = {
-			running: true,
-			done: false,
-			analyzed: 0,
-			total: moves.length,
-			report: null
-		};
-		const positions = [startFen, ...moves.map((move) => move.fen)];
-		const scores = [];
-		try {
-			for (let i = 0; i < positions.length; i++) {
-				if (ctrl.signal.aborted) return;
-				const history = {
-					startFen,
-					moves: moves.slice(0, i).map((move) => move.uci)
-				};
-				const result = await getAnalysis(positions[i], depth, REPORT_TIME_MS, ctrl.signal, history);
-				if (ctrl.signal.aborted) return;
-				scores.push(toCp(result.evaluation));
-				if (i > 0) gameReportSignal.value = {
-					...gameReportSignal.value,
-					analyzed: i
-				};
-			}
-			const plies = [];
-			for (let i = 0; i < moves.length; i++) {
-				const record = moves[i];
-				const before = scores[i];
-				const after = scores[i + 1] ?? before;
-				if (before === void 0 || after === void 0) continue;
-				const scored = scorePly(before, after);
-				plies.push({
-					ply: record.ply,
-					color: record.turn,
-					san: record.san,
-					cpLoss: scored.cpLoss,
-					accuracy: scored.accuracy,
-					verdict: scored.verdict
-				});
-			}
-			const report = buildGameReport(plies, moves.length);
-			if (ctrl.signal.aborted) return;
-			gameReportSignal.value = {
-				running: false,
-				done: true,
-				analyzed: plies.length,
-				total: moves.length,
-				report
-			};
-		} catch (error) {
-			if (ctrl.signal.aborted) return;
-			gameReportSignal.value = {
-				running: false,
-				done: false,
-				analyzed: 0,
-				total: moves.length,
-				report: null
-			};
-			console.warn("Super Chess Bot: game report analysis failed.", error);
-		} finally {
-			if (active$1 === ctrl) active$1 = null;
-		}
-	}
-	function resetGameReport() {
-		active$1?.abort();
-		active$1 = null;
-		lastKey = "";
-		gameReportSignal.value = initial;
-	}
-	function cancelGameReport() {
-		active$1?.abort();
-		active$1 = null;
-		gameReportSignal.value = {
-			...gameReportSignal.value,
-			running: false
-		};
+	function setupProblem(status) {
+		return /controller not captured|Enable synchronous/i.test(status);
 	}
 	var EDGE_MARGIN = 8;
 	var DOCK_QUERY = "(max-width: 560px)";
 	var COLLAPSED_KEY = "scb_panel_collapsed";
 	var LOG_STICK_PX = 16;
 	var COPY_FEEDBACK_MS = 1400;
-	var readSettings = () => ({
-		enabled: !!BotState.hackEnabled,
-		autoMove: !!BotState.autoMove,
-		openingBook: !!BotState.openingBook,
-		openingStyle: BotState.openingStyle,
-		ponder: !!BotState.ponderEnabled,
-		timingMode: BotState.timingMode,
-		depth: BotState.botPower,
-		moveTimeMs: BotState.moveTime,
-		targetElo: BotState.targetElo,
-		blunderShield: !!BotState.blunderShield,
-		ghostMode: !!BotState.ghostMode,
-		autoRetry: !!BotState.autoRetry,
-		gameReport: !!BotState.gameReport,
-		reportDepth: BotState.reportDepth
-	});
+	var readSettings = () => ({ ...BotState });
 	var settingsSignal = y$1(readSettings());
 	var analysisSignal = y$1({
 		status: BotState.statusInfo,
@@ -5999,59 +6299,19 @@ Stockfish({
 		analysisSignal.value = next;
 	}
 	function writeBotState(key, value) {
-		switch (key) {
-			case "enabled":
-				BotState.hackEnabled = value ? 1 : 0;
-				break;
-			case "autoMove":
-				BotState.autoMove = value ? 1 : 0;
-				break;
-			case "openingBook":
-				BotState.openingBook = value ? 1 : 0;
-				break;
-			case "openingStyle":
-				BotState.openingStyle = value;
-				break;
-			case "ponder":
-				BotState.ponderEnabled = value ? 1 : 0;
-				break;
-			case "timingMode":
-				BotState.timingMode = value;
-				break;
-			case "depth":
-				BotState.botPower = Number(value);
-				break;
-			case "moveTimeMs":
-				BotState.moveTime = Number(value);
-				break;
-			case "targetElo":
-				BotState.targetElo = Number(value);
-				break;
-			case "blunderShield":
-				BotState.blunderShield = value ? 1 : 0;
-				break;
-			case "ghostMode":
-				BotState.ghostMode = value ? 1 : 0;
-				setGhostMode(!!value);
-				break;
-			case "autoRetry":
-				BotState.autoRetry = value ? 1 : 0;
-				break;
-			case "gameReport":
-				BotState.gameReport = value ? 1 : 0;
-				break;
-			case "reportDepth": BotState.reportDepth = Number(value);
-		}
+		const target = BotState;
+		target[key] = value;
+		if (key === "ghostMode") setGhostMode(value);
 	}
 	var SEARCH_ALTERING_SETTINGS = new Set([
-		"depth",
-		"moveTimeMs",
+		"botPower",
+		"moveTime",
 		"timingMode",
 		"targetElo",
 		"blunderShield",
 		"openingBook",
 		"openingStyle",
-		"ponder"
+		"ponderEnabled"
 	]);
 	function updatePanelSetting(key, value, actions) {
 		settingsSignal.value = {
@@ -6060,7 +6320,7 @@ Stockfish({
 		};
 		writeBotState(key, value);
 		Settings.save();
-		if (key === "enabled") actions?.setEnabled?.(!!value);
+		if (key === "hackEnabled") actions?.setEnabled?.(value);
 		else if (SEARCH_ALTERING_SETTINGS.has(key)) actions?.refreshSettings?.();
 	}
 	function toggleGhostMode(actions) {
@@ -6099,11 +6359,10 @@ Stockfish({
 			localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
 		} catch {}
 	}
-	function mountPanel(root, host, actions, capabilities) {
+	function mountPanel(root, host, actions) {
 		G$1(u(Panel, {
 			host,
-			actions,
-			capabilities
+			actions
 		}), root);
 	}
 	function formatBudget(milliseconds) {
@@ -6118,8 +6377,8 @@ Stockfish({
 	function statusTone(analysis, enabled) {
 		if (analysis.recoveryAction === "retry") return "error";
 		if (analysis.recoveryAction === "resume") return "paused";
-		if (/error|failed|unavailable|not confirmed/i.test(analysis.status)) return "error";
-		if (/loading|analyz|ponder|submitting|resuming/i.test(analysis.status)) return "working";
+		if (isErrorStatus(analysis.status)) return "error";
+		if (isWorkingStatus(analysis.status)) return "working";
 		return enabled ? "ready" : "idle";
 	}
 	function QuickEnableButton({ enabled, onToggle }) {
@@ -6227,33 +6486,38 @@ Stockfish({
 			]
 		});
 	}
-	var OPENING_STYLES = [
-		{
-			id: "hyper-defensive",
+	var TIMING_MODE_PRESENTATION = {
+		dynamic: {
+			label: "Dynamic",
+			tooltip: "Dynamic: adaptive thinking time, natural pacing on forced moves & opening book"
+		},
+		fixed: {
+			label: "Fixed",
+			tooltip: "Fixed: rigid full-budget thinking time per move"
+		}
+	};
+	var OPENING_STYLE_PRESENTATION = {
+		"hyper-defensive": {
 			label: "Hyper-Defensive",
 			tooltip: "Hyper-Defensive: Ironclad fortresses & solid pawn structures (Berlin, Petroff, Slav, Réti)"
 		},
-		{
-			id: "defensive",
+		defensive: {
 			label: "Defensive",
 			tooltip: "Defensive: Positional control & resilient structures (Caro-Kann, French, QGD)"
 		},
-		{
-			id: "balanced",
+		balanced: {
 			label: "Balanced",
 			tooltip: "Balanced: Classical grandmaster mainlines & standard book (Ruy Lopez, Italian)"
 		},
-		{
-			id: "aggressive",
+		aggressive: {
 			label: "Aggressive",
 			tooltip: "Aggressive: Sharp tactical lines & active piece attacks (King’s Gambit, Scotch, Evans)"
 		},
-		{
-			id: "hyper-aggressive",
+		"hyper-aggressive": {
 			label: "Hyper-Aggressive (Gambit)",
 			tooltip: "Hyper-Aggressive: High-risk gambits & tactical fireworks (Danish, Traxler, Stafford)"
 		}
-	];
+	};
 	function RecoveryNotice({ kind, onRecover }) {
 		const resume = kind === "resume";
 		return u("div", {
@@ -6269,144 +6533,12 @@ Stockfish({
 		});
 	}
 	function SetupNotice({ status }) {
-		if (!status || !/controller not captured|Enable synchronous/i.test(status)) return null;
+		if (!status || !setupProblem(status)) return null;
 		return u("div", {
 			class: "panel-notice",
 			role: "alert",
 			"data-kind": "error",
 			children: u("p", { children: status })
-		});
-	}
-	function EvalTrendGraph({ history }) {
-		if (!history || history.length < 2) return null;
-		const width = 280;
-		const height = 56;
-		const startX = 26;
-		const zeroY = height / 2;
-		const maxEval = 10;
-		const usableHalf = 22;
-		const coords = history.map((val, idx) => {
-			return {
-				x: startX + idx / (history.length - 1) * 252,
-				y: zeroY - Math.max(-10, Math.min(maxEval, val)) / maxEval * usableHalf
-			};
-		});
-		const pathD = coords.reduce((acc, pt, i) => `${acc} ${i === 0 ? "M" : "L"} ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`, "");
-		const areaD = `${pathD} L ${coords[coords.length - 1].x.toFixed(1)},${zeroY} L ${coords[0].x.toFixed(1)},${zeroY} Z`;
-		const latest = coords[coords.length - 1];
-		const latestVal = history[history.length - 1];
-		const latestFormatted = latestVal > 0 ? `+${latestVal.toFixed(1)}` : latestVal.toFixed(1);
-		const valTone = latestVal > .3 ? "sage" : latestVal < -.3 ? "brick" : "brass";
-		return u("div", {
-			class: "panel-trend",
-			children: [u("div", {
-				class: "panel-trend-head",
-				children: [u("div", {
-					class: "panel-trend-label-wrap",
-					children: [u("span", {
-						class: "panel-trend-title",
-						children: "Eval Trend"
-					}), u("span", {
-						class: "panel-trend-subtitle",
-						children: [history.length, " plies"]
-					})]
-				}), u("span", {
-					class: "panel-trend-val",
-					"data-tone": valTone,
-					children: latestFormatted
-				})]
-			}), u("div", {
-				class: "panel-trend-box",
-				children: u("svg", {
-					class: "panel-trend-svg",
-					viewBox: `0 0 ${width} ${height}`,
-					preserveAspectRatio: "none",
-					"aria-hidden": "true",
-					children: [
-						u("defs", { children: u("linearGradient", {
-							id: "scb-eval-fill",
-							x1: "0",
-							y1: "0",
-							x2: "0",
-							y2: "1",
-							children: [
-								u("stop", {
-									offset: "0%",
-									"stop-color": "var(--sage)",
-									"stop-opacity": "0.22"
-								}),
-								u("stop", {
-									offset: "50%",
-									"stop-color": "var(--brass)",
-									"stop-opacity": "0.08"
-								}),
-								u("stop", {
-									offset: "100%",
-									"stop-color": "var(--brick)",
-									"stop-opacity": "0.22"
-								})
-							]
-						}) }),
-						u("text", {
-							x: "21",
-							y: "10",
-							"text-anchor": "end",
-							class: "panel-trend-axis-text",
-							children: "+10"
-						}),
-						u("text", {
-							x: "21",
-							y: 31,
-							"text-anchor": "end",
-							class: "panel-trend-axis-text",
-							children: "0"
-						}),
-						u("text", {
-							x: "21",
-							y: "52",
-							"text-anchor": "end",
-							class: "panel-trend-axis-text",
-							children: "-10"
-						}),
-						u("line", {
-							x1: startX,
-							y1: zeroY,
-							x2: 278,
-							y2: zeroY,
-							stroke: "var(--muted)",
-							"stroke-dasharray": "3 3",
-							"stroke-width": "1",
-							"stroke-opacity": "0.6"
-						}),
-						u("path", {
-							d: areaD,
-							fill: "url(#scb-eval-fill)"
-						}),
-						u("path", {
-							d: pathD,
-							fill: "none",
-							stroke: "var(--brass)",
-							"stroke-width": "1.75",
-							"stroke-linejoin": "round"
-						}),
-						u("circle", {
-							cx: latest.x,
-							cy: latest.y,
-							r: "4",
-							fill: "none",
-							stroke: "var(--brass)",
-							"stroke-width": "1.2",
-							"stroke-opacity": "0.6"
-						}),
-						u("circle", {
-							cx: latest.x,
-							cy: latest.y,
-							r: "2.2",
-							fill: "var(--brass)"
-						})
-					]
-				})
-			})]
 		});
 	}
 	function PanelGuide() {
@@ -6430,11 +6562,11 @@ Stockfish({
 						}),
 						u("div", {
 							class: "panel-guide-item",
-							children: [u("strong", { children: "Auto Move & Auto Retry" }), u("p", { children: "When Auto Move is on, moves are played automatically. Auto Retry handles site input drops and network blips with an immediate, smooth resync." })]
+							children: [u("strong", { children: "Auto Move & Auto Retry" }), u("p", { children: "Auto Move plays moves automatically. Auto Retry makes up to two retries for failed searches or input failures before dispatch. Uncertain move outcomes require manual recovery." })]
 						}),
 						u("div", {
 							class: "panel-guide-item",
-							children: [u("strong", { children: "Background Ponder" }), u("p", { children: "Anticipates the opponent's reply and searches during their clock for instant, natural moves." })]
+							children: [u("strong", { children: "Background Ponder" }), u("p", { children: "Searches predicted replies during the opponent's turn and reuses analysis when the position matches." })]
 						})
 					]
 				}),
@@ -6443,15 +6575,15 @@ Stockfish({
 					children: [
 						u("span", {
 							class: "panel-guide-heading",
-							children: "Human Stealth & Pacing"
+							children: "Move Pacing"
 						}),
 						u("div", {
 							class: "panel-guide-item",
-							children: [u("strong", { children: "Dynamic vs Fixed Timing" }), u("p", { children: "Dynamic timing uses Ex-Gaussian entropy distributions to scale thinking times with tactical complexity. Fixed timing respects strict clock budgets." })]
+							children: [u("strong", { children: "Dynamic vs Fixed Timing" }), u("p", { children: "Dynamic timing varies move delays with position complexity. Fixed timing uses the configured search budget; engine startup and site response can add latency." })]
 						}),
 						u("div", {
 							class: "panel-guide-item",
-							children: [u("strong", { children: "Target Elo & Blunder Shield" }), u("p", { children: "Boltzmann throttling naturally blends moves to a target rating (0 = full engine strength 3200+). The Blunder Shield prevents catastrophic tactical blunders." })]
+							children: [u("strong", { children: "Target Elo & Blunder Shield" }), u("p", { children: "Target Elo adjusts candidate selection; ratings are not calibrated. Set 0 for the strongest selected line. Blunder Shield filters candidates with large evaluation drops." })]
 						}),
 						u("div", {
 							class: "panel-guide-item",
@@ -6472,7 +6604,7 @@ Stockfish({
 						}),
 						u("div", {
 							class: "panel-guide-item",
-							children: [u("strong", { children: "Multi-PV & Syzygy 7-Piece" }), u("p", { children: "Displays the top 3 alternative candidate lines and queries Lichess Syzygy tablebases in 7-piece endgames for instant optimal play." })]
+							children: [u("strong", { children: "Multi-PV & Syzygy 7-Piece" }), u("p", { children: "Displays up to 3 candidate lines. Standard positions with up to 7 pieces query Lichess Syzygy tablebases alongside local search, using the first available valid result." })]
 						}),
 						u("div", {
 							class: "panel-guide-item",
@@ -6483,202 +6615,13 @@ Stockfish({
 			]
 		});
 	}
-	function percent(value) {
-		if (value == null) return "—";
-		return `${Math.round(value)}%`;
-	}
-	function accuracyTone(value) {
-		if (value == null) return "none";
-		if (value >= 90) return "high";
-		if (value >= 75) return "mid";
-		return "low";
-	}
-	function ReportPlayer({ label, report }) {
-		return u("div", {
-			class: "panel-report-player",
-			children: [u("div", {
-				class: "panel-report-head",
-				children: [u("span", {
-					class: "panel-report-name",
-					children: label
-				}), u("span", {
-					class: "panel-report-accuracy",
-					"data-tone": accuracyTone(report.accuracy),
-					children: percent(report.accuracy)
-				})]
-			}), u("dl", {
-				class: "panel-report-stats",
-				children: [
-					u("div", {
-						class: "panel-report-stat",
-						"data-kind": "inaccuracy",
-						children: [u("dt", { children: report.inaccuracy }), u("dd", { children: "Inaccuracies" })]
-					}),
-					u("div", {
-						class: "panel-report-stat",
-						"data-kind": "mistake",
-						children: [u("dt", { children: report.mistake }), u("dd", { children: "Mistakes" })]
-					}),
-					u("div", {
-						class: "panel-report-stat",
-						"data-kind": "blunder",
-						children: [u("dt", { children: report.blunder }), u("dd", { children: "Blunders" })]
-					}),
-					u("div", {
-						class: "panel-report-stat",
-						"data-kind": "acpl",
-						children: [u("dt", { children: report.acpl.toFixed(0) }), u("dd", { children: "Avg centipawn loss" })]
-					})
-				]
-			})]
-		});
-	}
-	function GameReportPanel({ reportDepth, onDepthChange }) {
-		const progress = gameReportSignal.value;
-		const movesCount = gameHistoryTracker.getMoves().length;
-		const handleGenerate = () => {
-			const currentMoves = gameHistoryTracker.getMoves();
-			const startFen = gameHistoryTracker.getStartFen();
-			const read = readSite();
-			runGameReport(currentMoves, startFen, (read.kind === "game" ? read.snapshot.gameId : null) ?? "game", reportDepth, true);
-		};
-		const decDepth = () => onDepthChange(Math.max(10, reportDepth - 1));
-		const incDepth = () => onDepthChange(Math.min(26, reportDepth + 1));
-		return u("section", {
-			class: "panel-report",
-			"aria-label": "Game report",
-			children: [
-				u("div", {
-					class: "panel-report-head",
-					children: [u("span", {
-						class: "panel-report-title",
-						children: "Game report"
-					}), u("span", {
-						class: "panel-report-note",
-						children: "Local engine estimate"
-					})]
-				}),
-				u("div", {
-					class: "panel-report-row",
-					children: [
-						u("div", {
-							class: "panel-report-stepper",
-							title: `Search depth per move: ${reportDepth}`,
-							children: [
-								u("button", {
-									type: "button",
-									class: "panel-report-step-btn",
-									disabled: reportDepth <= 10 || progress.running,
-									"aria-label": "Decrease depth",
-									onClick: decDepth,
-									children: "−"
-								}),
-								u("span", {
-									class: "panel-report-depth-val",
-									children: reportDepth
-								}),
-								u("button", {
-									type: "button",
-									class: "panel-report-step-btn",
-									disabled: reportDepth >= 26 || progress.running,
-									"aria-label": "Increase depth",
-									onClick: incDepth,
-									children: "+"
-								})
-							]
-						}),
-						u("button", {
-							type: "button",
-							class: "panel-report-action-btn",
-							disabled: movesCount === 0 || progress.running,
-							onClick: handleGenerate,
-							children: progress.running ? `Analyzing ${progress.analyzed}/${progress.total}…` : progress.done ? "Regenerate report" : "Generate report"
-						}),
-						progress.running && u("button", {
-							type: "button",
-							class: "panel-report-cancel-btn",
-							title: "Cancel analysis",
-							"aria-label": "Cancel analysis",
-							onClick: cancelGameReport,
-							children: "✕"
-						})
-					]
-				}),
-				progress.report && u(M, { children: [u(ReportPlayer, {
-					label: "White",
-					report: progress.report.white
-				}), u(ReportPlayer, {
-					label: "Black",
-					report: progress.report.black
-				})] })
-			]
-		});
-	}
-	function MoveTime({ ms, max }) {
-		if (ms == null) return u("span", { class: "panel-scoresheet-time" });
-		const fill = max > 0 ? Math.max(6, Math.min(100, Math.round(ms / max * 100))) : 6;
-		return u("span", {
-			class: "panel-scoresheet-time",
-			title: `${(ms / 1e3).toFixed(1)}s`,
-			children: [u("span", {
-				class: "panel-scoresheet-bar",
-				style: { "--fill": `${fill}%` },
-				"aria-hidden": "true"
-			}), u("span", {
-				class: "panel-scoresheet-time-label",
-				children: [(ms / 1e3).toFixed(1), "s"]
-			})]
-		});
-	}
-	function Scoresheet({ pairs }) {
-		const max = pairs.reduce((peak, pair) => Math.max(peak, pair.white?.elapsedMs ?? 0, pair.black?.elapsedMs ?? 0), 0);
-		const lastNumber = pairs.at(-1)?.moveNumber ?? -1;
-		return u("div", {
-			class: "panel-scoresheet",
-			children: pairs.map((pair) => {
-				const isLastPair = pair.moveNumber === lastNumber;
-				const whiteActive = isLastPair && pair.black == null;
-				const blackActive = isLastPair && pair.black != null;
-				return u("div", {
-					class: "panel-scoresheet-row",
-					"data-stripe": pair.moveNumber % 2 === 0 ? "odd" : "even",
-					children: [
-						u("span", {
-							class: "panel-scoresheet-num",
-							children: [pair.moveNumber, "."]
-						}),
-						u("span", {
-							class: "panel-scoresheet-move",
-							"data-turn": "w",
-							"data-active": whiteActive || void 0,
-							children: pair.white?.san ?? ""
-						}),
-						u("span", {
-							class: "panel-scoresheet-move",
-							"data-turn": "b",
-							"data-active": blackActive || void 0,
-							children: pair.black?.san ?? ""
-						}),
-						u(MoveTime, {
-							ms: pair.white?.elapsedMs,
-							max
-						}),
-						u(MoveTime, {
-							ms: pair.black?.elapsedMs,
-							max
-						})
-					]
-				}, pair.moveNumber);
-			})
-		});
-	}
 	function Panel({ host, actions }) {
 		const settings = settingsSignal.value;
 		const analysis = analysisSignal.value;
 		const logs = logsSignal.value;
 		const gameMoves = gameMovesSignal.value;
 		const movePairs = gameHistoryTracker.getMovePairs();
-		const tone = statusTone(analysis, settings.enabled);
+		const tone = statusTone(analysis, settings.hackEnabled);
 		const [collapsed, setCollapsed] = d$2(() => readStoredCollapsed() ?? isDocked());
 		const [helpOpen, setHelpOpen] = d$2(false);
 		const [activityOpen, setActivityOpen] = d$2(false);
@@ -6759,7 +6702,7 @@ Stockfish({
 		const copyLogs = async () => {
 			let text = "";
 			if (gameMoves.length > 0) {
-				const siteName = typeof window !== "undefined" && window.location?.hostname?.includes("lichess") ? "Lichess" : typeof window !== "undefined" && window.location?.hostname?.includes("pychess") ? "PyChess" : "Chess.com";
+				const siteName = typeof window !== "undefined" && window.location?.hostname?.includes("lichess") ? "Lichess" : "Chess.com";
 				text = gameHistoryTracker.exportPgn(siteName);
 			} else text = logs.map((entry) => `[${entry.time}] ${entry.text}`).join("\n");
 			if (!text || !navigator.clipboard?.writeText) return;
@@ -6829,8 +6772,8 @@ Stockfish({
 						children: u(HelpIcon, {})
 					}),
 					collapsed && u(QuickEnableButton, {
-						enabled: settings.enabled,
-						onToggle: (next) => updateSetting("enabled", next)
+						enabled: settings.hackEnabled,
+						onToggle: (next) => updateSetting("hackEnabled", next)
 					}),
 					u("button", {
 						type: "button",
@@ -6871,7 +6814,7 @@ Stockfish({
 							analysis.multiPvLines && analysis.multiPvLines.length > 1 && u("div", {
 								class: "panel-multipv-list",
 								children: analysis.multiPvLines.slice(0, 3).map((pvLine) => {
-									const lineScore = typeof pvLine.evaluation.mate === "number" ? `M${pvLine.evaluation.mate}` : typeof pvLine.evaluation.cp === "number" ? pvLine.evaluation.cp > 0 ? `+${(pvLine.evaluation.cp / 100).toFixed(2)}` : (pvLine.evaluation.cp / 100).toFixed(2) : "—";
+									const lineScore = scoreToDisplay(pvLine.evaluation);
 									return u("div", {
 										class: "panel-multipv-row",
 										"data-rank": pvLine.multipv,
@@ -6907,6 +6850,9 @@ Stockfish({
 					}),
 					u(GameReportPanel, {
 						reportDepth: settings.reportDepth,
+						canGenerate: !!analysis.reportAvailable,
+						onGenerate: () => actions.generateReport?.(),
+						onCancel: () => actions.cancelReport?.(),
 						onDepthChange: (next) => updateSetting("reportDepth", next)
 					}),
 					u("section", {
@@ -6917,8 +6863,8 @@ Stockfish({
 								class: "panel-toggles",
 								children: [
 									u(EnableToggle, {
-										enabled: settings.enabled,
-										onToggle: (next) => updateSetting("enabled", next)
+										enabled: settings.hackEnabled,
+										onToggle: (next) => updateSetting("hackEnabled", next)
 									}),
 									u(Toggle, {
 										label: "Auto move",
@@ -6932,8 +6878,8 @@ Stockfish({
 									}),
 									u(Toggle, {
 										label: "Background ponder",
-										checked: settings.ponder,
-										onChange: (next) => updateSetting("ponder", next)
+										checked: settings.ponderEnabled,
+										onChange: (next) => updateSetting("ponderEnabled", next)
 									}),
 									u(Toggle, {
 										label: "Blunder shield",
@@ -6949,15 +6895,15 @@ Stockfish({
 										class: "panel-opening-style-section",
 										children: u("div", {
 											class: "panel-segmented panel-opening-style-picker",
-											children: OPENING_STYLES.map((st) => u("button", {
+											children: OPENING_STYLES.map((id) => u("button", {
 												type: "button",
 												class: "panel-segment",
-												"aria-pressed": settings.openingStyle === st.id,
-												"aria-label": st.label,
-												title: st.tooltip,
-												onClick: () => updateSetting("openingStyle", st.id),
-												children: u(OpeningStyleIcon, { style: st.id })
-											}, st.id))
+												"aria-pressed": settings.openingStyle === id,
+												"aria-label": OPENING_STYLE_PRESENTATION[id].label,
+												title: OPENING_STYLE_PRESENTATION[id].tooltip,
+												onClick: () => updateSetting("openingStyle", id),
+												children: u(OpeningStyleIcon, { style: id })
+											}, id))
 										})
 									})
 								]
@@ -6970,46 +6916,38 @@ Stockfish({
 									children: "Timing mode"
 								}), u("div", {
 									class: "panel-segmented panel-timing-segmented",
-									children: [u("button", {
+									children: TIMING_MODES.map((mode) => u("button", {
 										type: "button",
 										class: "panel-segment panel-timing-segment",
-										"aria-pressed": settings.timingMode === "dynamic",
-										"aria-label": "Dynamic timing",
-										title: "Dynamic: adaptive thinking time, natural pacing on forced moves & opening book",
-										onClick: () => updateSetting("timingMode", "dynamic"),
-										children: [u(BrainIcon, {}), u("span", { children: "Dynamic" })]
-									}), u("button", {
-										type: "button",
-										class: "panel-segment panel-timing-segment",
-										"aria-pressed": settings.timingMode === "fixed",
-										"aria-label": "Fixed timing",
-										title: "Fixed: rigid full-budget thinking time per move",
-										onClick: () => updateSetting("timingMode", "fixed"),
-										children: [u(LightningIcon, {}), u("span", { children: "Fixed" })]
-									})]
+										"aria-pressed": settings.timingMode === mode,
+										"aria-label": TIMING_MODE_PRESENTATION[mode].label,
+										title: TIMING_MODE_PRESENTATION[mode].tooltip,
+										onClick: () => updateSetting("timingMode", mode),
+										children: [mode === "dynamic" ? u(BrainIcon, {}) : u(LightningIcon, {}), u("span", { children: TIMING_MODE_PRESENTATION[mode].label })]
+									}, mode))
 								})]
 							}),
 							u(Slider, {
 								id: "bot-depth",
 								label: "Depth cap",
-								value: settings.depth,
+								value: settings.botPower,
 								min: 1,
 								max: 30,
 								step: 1,
 								format: String,
-								onPreview: (value) => previewSlider("depth", value),
-								onCommit: (value) => updateSetting("depth", value)
+								onPreview: (value) => previewSlider("botPower", value),
+								onCommit: (value) => updateSetting("botPower", value)
 							}),
 							u(Slider, {
 								id: "move-budget",
 								label: settings.timingMode === "dynamic" ? "Move budget" : "Move time",
-								value: settings.moveTimeMs,
+								value: settings.moveTime,
 								min: 25,
 								max: 5e3,
 								step: 25,
 								format: formatBudget,
-								onPreview: (value) => previewSlider("moveTimeMs", value),
-								onCommit: (value) => updateSetting("moveTimeMs", value)
+								onPreview: (value) => previewSlider("moveTime", value),
+								onCommit: (value) => updateSetting("moveTime", value)
 							}),
 							u(Slider, {
 								id: "bot-elo",
@@ -7018,7 +6956,7 @@ Stockfish({
 								min: 0,
 								max: 3200,
 								step: 50,
-								format: (v) => v === 0 ? "Max (3200+)" : `${v} Elo`,
+								format: (v) => v === 0 ? "Max strength" : `${v} Elo target`,
 								onPreview: (value) => previewSlider("targetElo", value),
 								onCommit: (value) => updateSetting("targetElo", value)
 							})
@@ -7072,7 +7010,7 @@ Stockfish({
 							children: movePairs.length === 0 && logs.length === 0 ? u("p", {
 								class: "panel-log-empty",
 								children: "Game moves and system events will appear here."
-							}) : u(M, { children: [movePairs.length > 0 && u(Scoresheet, { pairs: movePairs }), logs.filter((entry) => entry.type === "error" || entry.type === "warn" || movePairs.length === 0).map((entry) => u("p", {
+							}) : u(M, { children: [movePairs.length > 0 && u(MoveScoresheet, { pairs: movePairs }), logs.filter((entry) => entry.type === "error" || entry.type === "warn" || movePairs.length === 0).map((entry) => u("p", {
 								class: `panel-log-entry ${logTextClass[entry.type]}`,
 								children: [u("time", { children: entry.time }), u("span", { children: entry.text })]
 							}, entry.id))] })
@@ -7082,32 +7020,36 @@ Stockfish({
 			})]
 		});
 	}
-	function isRoutineStatus(status) {
-		return /^(?:Bot disabled|Preparing Stockfish|Loading Stockfish|Analyzing|Pondering|Submitting move|Move confirmed|Waiting for opponent|Waiting for board|Ready ·|Resuming\.\.\.)/.test(status);
-	}
-	function isErrorStatus(status) {
-		return /error|failed|not confirmed|unavailable|crashed/i.test(status);
+	var lastMultiPvSource = null;
+	var lastMultiPvLines = [];
+	function multiPvWithSans(lines, sans) {
+		if (lines === lastMultiPvSource) {
+			if (lastMultiPvLines.length === sans.length && sans.every((san, index) => lastMultiPvLines[index]?.san === san)) return lastMultiPvLines;
+		}
+		lastMultiPvSource = lines;
+		lastMultiPvLines = lines.map((line, index) => ({
+			...line,
+			san: sans[index]
+		}));
+		return lastMultiPvLines;
 	}
 	var ui = {
 		menuWrap: null,
 		lastStatus: "",
-		lastBestMove: "",
 		log(msg, type = "info") {
 			appendPanelLog(msg, type);
 		},
 		clearConsole() {
 			clearPanelLogs();
-			gameHistoryTracker.reset();
-			resetGameReport();
 			this.lastStatus = "";
-			this.lastBestMove = "";
 		},
-		updateDisplay(playingAs) {
+		updateDisplay() {
 			syncPanelSettings();
 			const read = readSite();
-			const fen = (read.kind === "game" ? read.snapshot : null)?.fen ?? null;
-			const san = fen && BotState.bestMove !== "-" ? uciToSan(fen, BotState.bestMove) : BotState.bestMove;
-			const suggestedMove = typeof san === "string" ? san : BotState.bestMove;
+			const snapshot = read.kind === "game" ? read.snapshot : null;
+			const fen = snapshot?.fen ?? null;
+			const san = fen && BotState.bestMove !== "-" ? uciToSan(fen, BotState.bestMove, snapshot?.variant) : BotState.bestMove;
+			const suggestedMove = fen ? san : BotState.bestMove;
 			if (BotState.statusInfo !== this.lastStatus) {
 				if (!isRoutineStatus(BotState.statusInfo)) {
 					const type = BotState.recoveryAction === "retry" || isErrorStatus(BotState.statusInfo) ? "error" : "status";
@@ -7115,25 +7057,21 @@ Stockfish({
 				}
 				this.lastStatus = BotState.statusInfo;
 			}
-			if (BotState.bestMove !== "-" && BotState.bestMove !== this.lastBestMove) this.lastBestMove = BotState.bestMove;
+			const lines = BotState.multiPvLines ?? [];
+			const sans = fen ? uciListToSan(fen, lines.map((line) => line.uci), snapshot?.variant) : lines.map((line) => line.uci);
 			updatePanelAnalysis({
 				status: BotState.statusInfo,
 				evaluation: BotState.currentEvaluation,
 				bestMove: suggestedMove,
 				principalVariation: BotState.principalVariation,
 				recoveryAction: BotState.recoveryAction,
-				...BotState.multiPvLines ? { multiPvLines: BotState.multiPvLines.map((line) => {
-					const sanVal = fen && line.uci ? uciToSan(fen, line.uci) : line.uci;
-					return {
-						...line,
-						san: typeof sanVal === "string" ? sanVal : line.uci
-					};
-				}) } : {},
-				...BotState.evalHistory && BotState.evalHistory.length > 0 ? { evalHistory: BotState.evalHistory } : {}
+				reportAvailable: !!snapshot && snapshot.phase === "finished",
+				multiPvLines: multiPvWithSans(lines, sans),
+				evalHistory: BotState.evalHistory ?? []
 			});
 		}
 	};
-	async function buildUI(actions = {}, capabilities) {
+	async function buildUI(actions = {}) {
 		if (ui.menuWrap) return;
 		const host = document.createElement("div");
 		markBotNode(host);
@@ -7162,14 +7100,7 @@ Stockfish({
 		mountPanel(appRoot, host, {
 			...actions,
 			clearConsole: () => ui.clearConsole()
-		}, capabilities);
-	}
-	function normalizeEpd(fen) {
-		const parts = fen.trim().split(/\s+/);
-		return parts.length >= 4 ? parts.slice(0, 4).join(" ") : fen;
-	}
-	function bookKey(epd) {
-		return `${epd.split(" ").slice(0, 3).join(" ")} -`;
+		});
 	}
 	var EPD_BOOK = {
 		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -": {
@@ -8455,6 +8386,13 @@ Stockfish({
 			"hyper-aggressive": [["e2e4", 85], ["b1c3", 15]]
 		}
 	};
+	function normalizeEpd(fen) {
+		const parts = fen.trim().split(/\s+/);
+		return parts.length >= 4 ? parts.slice(0, 4).join(" ") : fen;
+	}
+	function bookKey(epd) {
+		return `${epd.split(" ").slice(0, 3).join(" ")} -`;
+	}
 	var EPD_INDEX = (() => {
 		const index = {};
 		for (const [epd, entry] of Object.entries(EPD_BOOK)) {
@@ -8489,6 +8427,20 @@ Stockfish({
 	}
 	var TABLEBASE_API = "https://tablebase.lichess.ovh/standard";
 	var DEFAULT_TIMEOUT_MS = 2e3;
+	var CACHE_CAPACITY = 256;
+	var PROBE_FIELDS = 4;
+	var FAILURE_COOLDOWN_MS = 3e4;
+	var resultCache = new Map();
+	var failureCooldown = new Map();
+	function cacheKey(fen) {
+		return fen.trim().split(/\s+/).slice(0, PROBE_FIELDS).join(" ");
+	}
+	function copyResult(result) {
+		return {
+			...result,
+			evaluation: { ...result.evaluation }
+		};
+	}
 	function countPiecesOnBoard(fen) {
 		if (!fen) return 32;
 		const boardPart = fen.split(" ")[0] ?? "";
@@ -8504,7 +8456,19 @@ Stockfish({
 		return countPiecesOnBoard(fen) <= 7;
 	}
 	async function lookupTablebase(fen, signal, timeoutMs = DEFAULT_TIMEOUT_MS) {
-		if (!isTablebaseEligible(fen)) return null;
+		if (signal?.aborted || !isTablebaseEligible(fen)) return null;
+		const key = cacheKey(fen);
+		const cached = resultCache.get(key);
+		if (cached) {
+			resultCache.delete(key);
+			resultCache.set(key, cached);
+			return copyResult(cached);
+		}
+		const retryAfter = failureCooldown.get(key);
+		if (retryAfter !== void 0) {
+			if (Date.now() < retryAfter) return null;
+			failureCooldown.delete(key);
+		}
 		const controller = new AbortController();
 		const timer = setTimeout(() => controller.abort(), timeoutMs);
 		const onAbort = () => controller.abort();
@@ -8512,32 +8476,32 @@ Stockfish({
 		try {
 			const url = `${TABLEBASE_API}?fen=${encodeURIComponent(fen)}`;
 			const response = await fetch(url, { signal: controller.signal });
-			if (!response.ok) return null;
+			if (!response.ok) {
+				suppress(key);
+				return null;
+			}
 			const data = await response.json();
-			if (!data.moves || data.moves.length === 0) return null;
+			if (controller.signal.aborted || !data.moves || data.moves.length === 0) return null;
 			const best = pickBestTablebaseMove(data.moves);
 			if (!best?.uci) return null;
 			const category = data.category ?? "unknown";
 			const dtz = data.dtz ?? null;
 			const dtm = data.dtm ?? null;
 			const wdl = data.wdl;
-			let cp = 0;
-			let mate;
-			let displayEval = "0.00 (Tablebase Draw)";
+			let evaluation = {};
+			let displayEval = `Tablebase ${category}`;
 			if (best.checkmate) {
-				mate = 1;
-				displayEval = "+M1 (Checkmate)";
-			} else if (category === "win" || category === "maybe-win") {
-				mate = Math.max(1, Math.ceil((dtm !== null && dtm !== void 0 ? Math.abs(dtm) : dtz !== null ? Math.abs(dtz) : 2) / 2));
-				displayEval = `+M${mate} (Tablebase)`;
-			} else if (category === "loss" || category === "maybe-loss") {
-				mate = -Math.max(1, Math.ceil((dtm !== null && dtm !== void 0 ? Math.abs(dtm) : dtz !== null ? Math.abs(dtz) : 2) / 2));
-				displayEval = `-M${Math.abs(mate)} (Tablebase)`;
-			} else {
-				cp = 0;
+				evaluation = { mate: 1 };
+				displayEval = `${mateToDisplay(1)} (Checkmate)`;
+			} else if ((category === "win" || category === "loss") && dtm !== null && Number.isFinite(dtm)) {
+				const mate = Math.max(1, Math.ceil(Math.abs(dtm) / 2)) * (category === "win" ? 1 : -1);
+				evaluation = { mate };
+				displayEval = `${mateToDisplay(mate)} (Tablebase)`;
+			} else if (category === "draw") {
+				evaluation = { cp: 0 };
 				displayEval = "0.00 (Tablebase Draw)";
-			}
-			return {
+			} else if (category === "win" || category === "loss") evaluation = { cp: category === "win" ? 1e3 : -1e3 };
+			const result = {
 				success: true,
 				category,
 				dtz,
@@ -8545,14 +8509,32 @@ Stockfish({
 				...wdl !== void 0 ? { wdl } : {},
 				bestMove: best.uci,
 				pv: best.uci,
-				evaluation: mate !== void 0 ? { mate } : { cp },
+				evaluation,
 				displayEval
 			};
+			resultCache.delete(key);
+			resultCache.set(key, copyResult(result));
+			trim(resultCache);
+			return result;
 		} catch {
 			return null;
 		} finally {
 			clearTimeout(timer);
 			signal?.removeEventListener("abort", onAbort);
+		}
+	}
+	function suppress(key) {
+		failureCooldown.set(key, Date.now() + FAILURE_COOLDOWN_MS);
+		if (failureCooldown.size > CACHE_CAPACITY) {
+			const oldest = failureCooldown.keys().next().value;
+			if (oldest !== void 0) failureCooldown.delete(oldest);
+		}
+	}
+	function trim(cache) {
+		while (cache.size > CACHE_CAPACITY) {
+			const oldest = cache.keys().next().value;
+			if (oldest === void 0) return;
+			cache.delete(oldest);
 		}
 	}
 	function moveOutcomeRank(move) {
@@ -8570,18 +8552,28 @@ Stockfish({
 		if (move.wdl === 2) return 1;
 		return 0;
 	}
+	function distancePair(a, b, fallback) {
+		if (a.dtm != null && b.dtm != null) return [Math.abs(a.dtm), Math.abs(b.dtm)];
+		if (a.dtz != null && b.dtz != null) return [Math.abs(a.dtz), Math.abs(b.dtz)];
+		return [fallback, fallback];
+	}
 	function pickBestTablebaseMove(moves) {
 		if (!moves || moves.length === 0) return null;
 		return [...moves].sort((a, b) => {
 			const rankA = moveOutcomeRank(a);
 			const rankB = moveOutcomeRank(b);
-			if (rankA !== rankB) return rankB - rankA;
-			if (rankA >= 4) return (a.dtm !== null && a.dtm !== void 0 ? Math.abs(a.dtm) : a.dtz !== null ? Math.abs(a.dtz) : 999) - (b.dtm !== null && b.dtm !== void 0 ? Math.abs(b.dtm) : b.dtz !== null ? Math.abs(b.dtz) : 999);
-			if (rankA <= 2) {
-				const distA = a.dtm !== null && a.dtm !== void 0 ? Math.abs(a.dtm) : a.dtz !== null ? Math.abs(a.dtz) : 0;
-				return (b.dtm !== null && b.dtm !== void 0 ? Math.abs(b.dtm) : b.dtz !== null ? Math.abs(b.dtz) : 0) - distA;
+			if (rankA !== rankB) {
+				if (rankA === 0) return 1;
+				if (rankB === 0) return -1;
+				return rankB - rankA;
 			}
-			return 0;
+			if (rankA === 0) return 0;
+			if (rankA >= 4) {
+				const [distA, distB] = distancePair(a, b, 999);
+				return distA - distB;
+			}
+			const [distA, distB] = distancePair(a, b, 0);
+			return distB - distA;
 		})[0] ?? null;
 	}
 	function scoreToCentipawns(line) {
@@ -8703,11 +8695,93 @@ Stockfish({
 		bounded = Math.min(bounded, maxCeiling);
 		return Math.round(bounded);
 	}
+	function confirmSiteMove(request, adapter, timeout = 1e3) {
+		const expectedFen = canonicalFen(request.expectedFen, request.variant);
+		if (request.signal.aborted || !expectedFen || request.expectedPly !== null && (!Number.isInteger(request.expectedPly) || request.expectedPly < 0)) return Promise.resolve({ status: "failed" });
+		return new Promise((resolve) => {
+			let done = false;
+			let unsubscribe;
+			let timer;
+			const finish = (result) => {
+				if (done) return;
+				done = true;
+				if (unsubscribe) {
+					try {
+						unsubscribe();
+					} catch {}
+					unsubscribe = void 0;
+				}
+				if (timer !== void 0) clearTimeout(timer);
+				request.signal.removeEventListener("abort", onAbort);
+				resolve(result);
+			};
+			const check = () => {
+				if (done) return;
+				try {
+					const current = adapter.read();
+					if (current.kind !== "game") return;
+					const snapshot = current.snapshot;
+					if (snapshot.identity !== request.identity) {
+						finish({ status: "failed" });
+						return;
+					}
+					const source = snapshot.confirmationSource;
+					if (source !== "controller-local" && source !== "site-accepted") {
+						finish({ status: "failed" });
+						return;
+					}
+					const observed = request.expectedPly === null ? snapshot.fen : snapshot.confirmedFens?.[request.expectedPly];
+					if (typeof observed !== "string") return;
+					if (canonicalFen(observed, request.variant) !== expectedFen) {
+						if (request.expectedPly !== null) finish({ status: "failed" });
+						return;
+					}
+					finish(source === "site-accepted" ? {
+						status: "confirmed",
+						source
+					} : {
+						status: "locally-applied",
+						source
+					});
+				} catch {
+					finish({ status: "failed" });
+				}
+			};
+			const onAbort = () => {
+				check();
+				finish({ status: "failed" });
+			};
+			request.signal.addEventListener("abort", onAbort, { once: true });
+			try {
+				const stop = adapter.subscribe(check);
+				if (done) try {
+					stop();
+				} catch {}
+				else unsubscribe = stop;
+			} catch {
+				finish({ status: "failed" });
+			}
+			if (done) return;
+			timer = setTimeout(() => finish({ status: "failed" }), Math.max(0, timeout));
+			check();
+			if (request.signal.aborted && !done) onAbort();
+		});
+	}
 	var revision = 0;
 	var active = null;
 	var processed = null;
 	var anticipatedPonder = null;
 	var pendingConfirmation = null;
+	var retryTimer = null;
+	var retryIdentity = null;
+	var retryCounts = new Map();
+	var MAX_AUTOMATIC_RETRIES = 2;
+	function resetRecovery() {
+		if (retryTimer !== null) clearTimeout(retryTimer);
+		retryTimer = null;
+		retryIdentity = null;
+		retryCounts.clear();
+	}
 	var confirmationSettledListeners = new Set();
 	function delayMs(ms, signal) {
 		return new Promise((resolve) => {
@@ -8740,6 +8814,8 @@ Stockfish({
 	}
 	function cancelAnalysis(preservePonderFen) {
 		revision++;
+		if (retryTimer !== null) clearTimeout(retryTimer);
+		retryTimer = null;
 		active?.abort();
 		active = null;
 		processed = null;
@@ -8771,6 +8847,10 @@ Stockfish({
 		const read = site.read();
 		if (read.kind !== "game") return;
 		const snapshot = read.snapshot;
+		if (retryIdentity !== snapshot.identity) {
+			resetRecovery();
+			retryIdentity = snapshot.identity;
+		}
 		if (snapshot.phase !== "live" || snapshot.fen !== fen) return;
 		if (kind === "main" && snapshot.sideToMove !== snapshot.playerColor) return;
 		if (kind === "main" && !snapshot.inputReady) return;
@@ -8796,6 +8876,8 @@ Stockfish({
 		};
 		const inputRevision = getMoveRevision();
 		const identity = snapshot.identity;
+		let moveDispatched = false;
+		const retryKey = `${fen}|${snapshot.history?.startFen ?? ""}|${snapshot.history?.moves.join(" ") ?? ""}`;
 		const positionIsCurrent = () => id === revision && !ctrl.signal.aborted && !!BotState.hackEnabled && !!matchingSnapshot(site, identity, fen);
 		const current = () => positionIsCurrent() && inputRevision === getMoveRevision();
 		if (!current()) return;
@@ -8804,14 +8886,14 @@ Stockfish({
 			const started = performance.now();
 			const budget = kind === "main" ? searchBudget(snapshot, fen) : Math.max(25, BotState.moveTime);
 			BotState.statusInfo = kind === "main" ? "Analyzing..." : "Pondering...";
-			ui.updateDisplay(pa());
+			ui.updateDisplay();
 			const history = requestHistory(snapshot);
 			const anticipated = anticipatedPonder;
 			if (kind !== "main") {
 				anticipatedPonder = null;
 				if (anticipated?.fromFen === fen && ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history)) return;
 			} else anticipatedPonder = null;
-			const isStandard = !snapshot.variant || snapshot.variant === "standard" || snapshot.variant === "chess";
+			const isStandard = getVariantDefinition(snapshot.variant)?.id === "standard";
 			const bookMove = isStandard && kind === "main" && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
 			let result;
 			let best = null;
@@ -8831,38 +8913,58 @@ Stockfish({
 					score: { cp: 20 }
 				};
 			} else {
-				const isTbEligible = isStandard && kind === "main" && hasLegalMoves(fen) !== false && isTablebaseEligible(fen);
+				const isTbEligible = isStandard && kind === "main" && hasLegalMoves(fen, snapshot.variant) !== false && isTablebaseEligible(fen);
 				let tbResult = null;
 				const remainingMs = snapshot.remainingMs;
 				const slackMs = remainingMs !== void 0 && remainingMs !== null ? Math.min(3e3, Math.max(200, Math.floor(remainingMs / 20))) : void 0;
 				if (isTbEligible) {
 					const tbTimeout = Math.min(1500, Math.max(100, Math.floor((snapshot.remainingMs ?? 6e4) / 4)));
-					const tbPromise = lookupTablebase(fen, ctrl.signal, tbTimeout).catch(() => null);
-					const analysisPromise = snapshot.variant ? getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs, snapshot.variant) : slackMs !== void 0 ? getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs) : getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
-					const winner = await Promise.race([tbPromise.then((tb) => tb?.success ? {
-						kind: "tb",
-						tb
-					} : null), analysisPromise.then((analysis) => ({
-						kind: "analysis",
-						analysis
-					}))]);
-					if (winner?.kind === "tb") {
-						tbResult = winner.tb;
-						result = {
-							success: true,
-							bestmove: tbResult.bestMove,
-							depth: 99,
-							pv: tbResult.pv,
-							evaluation: tbResult.evaluation
-						};
-					} else if (winner?.kind === "analysis") {
-						result = winner.analysis;
-						const graceMs = Math.min(200, Math.max(0, Math.floor((snapshot.remainingMs ?? 6e4) / 20)));
-						if (graceMs > 0) {
-							const fastTb = await Promise.race([tbPromise, delayMs(graceMs, ctrl.signal).then(() => null)]);
-							if (fastTb?.success) tbResult = fastTb;
+					const lookupController = new AbortController();
+					const analysisController = new AbortController();
+					const abortBranches = () => {
+						lookupController.abort();
+						analysisController.abort();
+					};
+					ctrl.signal.addEventListener("abort", abortBranches, { once: true });
+					if (ctrl.signal.aborted) abortBranches();
+					const tbPromise = lookupTablebase(fen, lookupController.signal, tbTimeout).catch(() => null);
+					const analysisPromise = snapshot.variant ? getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history, slackMs, snapshot.variant) : slackMs !== void 0 ? getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history, slackMs) : getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history);
+					try {
+						const winner = await Promise.any([tbPromise.then((tb) => {
+							if (!tb?.success) throw new Error("Tablebase unavailable");
+							return {
+								kind: "tb",
+								tb
+							};
+						}), analysisPromise.then((analysis) => {
+							const line = parseBestLine(analysis);
+							if (!line) throw new Error("Engine returned no legal move");
+							return {
+								kind: "analysis",
+								analysis,
+								line
+							};
+						})]).catch((error) => {
+							if (error instanceof AggregateError && error.errors[1] instanceof Error) throw error.errors[1];
+							throw error;
+						});
+						if (winner.kind === "tb") {
+							tbResult = winner.tb;
+							result = {
+								success: true,
+								bestmove: tbResult.bestMove,
+								depth: 99,
+								pv: tbResult.pv,
+								evaluation: tbResult.evaluation
+							};
+						} else {
+							result = winner.analysis;
+							best = winner.line;
 						}
-					} else result = await analysisPromise;
+					} finally {
+						abortBranches();
+						ctrl.signal.removeEventListener("abort", abortBranches);
+					}
 				} else result = snapshot.variant ? await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs, snapshot.variant) : slackMs !== void 0 ? await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs) : await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
 				if (!current()) return;
 				if (tbResult?.success) {
@@ -8874,11 +8976,11 @@ Stockfish({
 						score: tbResult.evaluation
 					};
 				} else {
-					best = parseBestLine(result);
+					best = best ?? parseBestLine(result);
 					if (!best) {
 						if (result.bestmove === "(none)" && hasLegalMoves(fen, snapshot.variant) === false) {
 							BotState.statusInfo = "Terminal position";
-							ui.updateDisplay(pa());
+							ui.updateDisplay();
 							return;
 						}
 						throw new Error("Engine returned no legal move");
@@ -8929,7 +9031,7 @@ Stockfish({
 				evaluation: scoreForWhite(line.evaluation, snapshot.sideToMove)
 			}));
 			BotState.currentEvaluation = bookMove ? "Book" : isTablebase ? tbDisplay : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
-			if (!bookMove) {
+			if (!bookMove && (typeof best.score.cp === "number" || typeof best.score.mate === "number")) {
 				const whiteScore = scoreForWhite(best.score, snapshot.sideToMove);
 				let numEval = 0;
 				if (typeof whiteScore.mate === "number") numEval = whiteScore.mate > 0 ? 10 : -10;
@@ -8942,7 +9044,7 @@ Stockfish({
 				clearArrows();
 				drawArrow(best.uci.slice(0, 2), best.uci.slice(2, 4), "rgba(100,255,100,0.7)", 3);
 			}
-			ui.updateDisplay(pa());
+			ui.updateDisplay();
 			if (!BotState.autoMove || !current() || !currentPosition?.inputReady) return;
 			if (BotState.timingMode === "dynamic") {
 				const candidateScores = best.multiPv?.map((line) => {
@@ -8971,6 +9073,10 @@ Stockfish({
 				uci: best.uci,
 				expectedFen: nextFen ?? fen,
 				expectedPly: requestPly(snapshot),
+				variant: snapshot.variant,
+				onDispatch: () => {
+					moveDispatched = true;
+				},
 				signal: requestController.signal,
 				isCurrent: () => current() && matchingSnapshot(site, identity, fen)?.inputReady === true
 			};
@@ -8980,13 +9086,13 @@ Stockfish({
 			};
 			const confirmation = confirmSiteMove(moveRequest, site);
 			let initiated = false;
-			let accepted = false;
+			let observed = { status: "failed" };
 			try {
 				initiated = await site.submitMove(moveRequest);
 				if (!initiated) {
 					requestController.abort();
-					accepted = false;
-				} else accepted = await confirmation;
+					observed = { status: "failed" };
+				} else observed = await confirmation;
 			} finally {
 				ctrl.signal.removeEventListener("abort", abortRequest);
 				requestController.abort();
@@ -8999,9 +9105,10 @@ Stockfish({
 					}
 				}
 			}
-			if (accepted) {
+			if (observed.status !== "failed") {
 				BotState.recoveryAction = null;
-				ui.log(formatMove(fen, best.uci, snapshot.variant), "move");
+				const provenance = observed.status === "locally-applied" ? " · applied locally; server acceptance unverified" : "";
+				ui.log(formatMove(fen, best.uci, snapshot.variant) + provenance, "move");
 			} else if (positionIsCurrent()) {
 				anticipatedPonder = null;
 				clearArrows();
@@ -9014,9 +9121,9 @@ Stockfish({
 				} else {
 					BotState.recoveryAction = "retry";
 					BotState.statusInfo = initiated ? "Move was not confirmed" : "Move input failed";
-					if (BotState.autoRetry && BotState.hackEnabled) triggerAutoRetry(fen);
+					if (!initiated && !moveDispatched && BotState.autoRetry && BotState.hackEnabled) triggerAutoRetry(fen, identity, retryKey, id);
 				}
-				ui.updateDisplay(pa());
+				ui.updateDisplay();
 			}
 		} catch (error) {
 			if (!current() || ctrl.signal.aborted) return;
@@ -9026,20 +9133,29 @@ Stockfish({
 			BotState.principalVariation = "-";
 			BotState.recoveryAction = "retry";
 			BotState.statusInfo = error instanceof Error ? error.message : "Engine failed";
-			if (BotState.autoRetry && BotState.hackEnabled) triggerAutoRetry(fen);
-			ui.updateDisplay(pa());
+			if (!moveDispatched && BotState.autoRetry && BotState.hackEnabled) triggerAutoRetry(fen, identity, retryKey, id);
+			ui.updateDisplay();
 		} finally {
 			if (active === ctrl) active = null;
 		}
 	}
-	function triggerAutoRetry(failedFen) {
-		setTimeout(() => {
-			if (BotState.recoveryAction === "retry" && BotState.hackEnabled) {
-				if (processed?.fen === failedFen) processed = null;
-				BotState.recoveryAction = null;
-				scheduleAnalysis("main", failedFen);
-			}
-		}, 300);
+	function triggerAutoRetry(failedFen, identity, key, failedRevision) {
+		const count = retryCounts.get(key) ?? 0;
+		if (count >= MAX_AUTOMATIC_RETRIES) {
+			BotState.statusInfo += " · automatic retries exhausted";
+			return;
+		}
+		retryCounts.set(key, count + 1);
+		if (retryTimer !== null) clearTimeout(retryTimer);
+		retryTimer = setTimeout(() => {
+			retryTimer = null;
+			if (revision !== failedRevision || retryIdentity !== identity || !BotState.autoRetry || !BotState.hackEnabled || BotState.recoveryAction !== "retry") return;
+			const site = getSite();
+			if (!site || !matchingSnapshot(site, identity, failedFen)?.inputReady) return;
+			if (processed?.fen === failedFen && processed.identity === identity) processed = null;
+			BotState.recoveryAction = null;
+			scheduleAnalysis("main", failedFen);
+		}, 300 * 2 ** count);
 	}
 	function formatPhaseKey(snapshot, currentIdentity) {
 		return `phase:${snapshot.identity === currentIdentity ? snapshot.phase : `${snapshot.gameId}:${snapshot.phase}`}`;
@@ -9047,12 +9163,13 @@ Stockfish({
 	var BotController = class {
 		isActive = false;
 		lastFenSeen = "";
-		cleanup = null;
 		cleanupBoardInput = null;
 		cleanupSite = null;
 		cleanupConfirmation = null;
 		interval = null;
 		generation = 0;
+		reportGeneration = 0;
+		automaticReportSuppressed = false;
 		ready = false;
 		waitingKey = null;
 		identity = null;
@@ -9066,7 +9183,9 @@ Stockfish({
 			if (!this.site) return;
 			this.cleanupConfirmation = onMoveConfirmationSettled(() => this.tick());
 			this.cleanupSite = this.site.subscribe(() => {
-				this.syncBoard();
+				const read = readSite();
+				if (read.kind !== "game" || read.snapshot.phase !== "finished") this.invalidateReport();
+				this.syncBoard(read);
 				this.tick();
 			});
 			this.syncBoard();
@@ -9085,14 +9204,12 @@ Stockfish({
 			setBoardOrientation(snapshot.orientation);
 		}
 		listenForLifecycle() {
-			if (this.cleanup) return;
-			this.cleanup = onBoardMutation(() => this.tick());
+			if (this.interval) return;
 			this.cleanupBoardInput = onBoardInput(() => this.pauseForBoardInput());
-			if (this.site?.id === "chesscom") startMoveWatcher();
 			this.interval = setInterval(() => this.tick(), 1e3);
 		}
 		setEnabled(enabled) {
-			BotState.hackEnabled = Number(enabled);
+			BotState.hackEnabled = enabled;
 			Settings.save();
 			if (enabled) {
 				this.init();
@@ -9106,10 +9223,12 @@ Stockfish({
 				return;
 			}
 			if (this.isActive) return;
+			this.invalidateReport();
+			resetRecovery();
 			this.isActive = true;
 			const generation = ++this.generation;
 			BotState.statusInfo = "Loading Stockfish...";
-			ui.updateDisplay(pa());
+			ui.updateDisplay();
 			try {
 				await warmEngine();
 				if (!this.isActive || generation !== this.generation || !BotState.hackEnabled) return;
@@ -9120,27 +9239,26 @@ Stockfish({
 			} catch (error) {
 				if (generation !== this.generation) return;
 				this.stop();
-				BotState.hackEnabled = 0;
+				BotState.hackEnabled = false;
 				BotState.statusInfo = error instanceof Error ? error.message : "Could not initialize Stockfish";
 				BotState.recoveryAction = "retry";
-				ui.updateDisplay(pa());
+				ui.updateDisplay();
 			}
 		}
 		stop() {
+			this.invalidateReport();
+			resetRecovery();
 			this.generation++;
 			this.isActive = false;
 			this.ready = false;
 			if (this.interval) clearInterval(this.interval);
 			this.interval = null;
-			this.cleanup?.();
-			this.cleanup = null;
 			this.cleanupBoardInput?.();
 			this.cleanupBoardInput = null;
 			this.cleanupSite?.();
 			this.cleanupSite = null;
 			this.cleanupConfirmation?.();
 			this.cleanupConfirmation = null;
-			stopMoveWatcher();
 			cancelAnalysis();
 			this.site?.cancelInput();
 			clearArrows();
@@ -9152,17 +9270,19 @@ Stockfish({
 			this.interruptedFen = null;
 			this.previousInputReady = null;
 			this.clearRecommendation();
-			gameHistoryTracker.reset();
 			BotState.recoveryAction = null;
 			BotState.statusInfo = "Bot disabled";
-			ui.updateDisplay(pa());
+			ui.updateDisplay();
 		}
 		clearRecommendation() {
 			BotState.bestMove = "-";
 			BotState.currentEvaluation = "-";
 			BotState.principalVariation = "-";
+			BotState.multiPvLines = [];
 		}
 		refreshSettings() {
+			this.invalidateReport();
+			resetRecovery();
 			cancelAnalysis();
 			if (BotState.recoveryAction === "retry") BotState.recoveryAction = null;
 			this.lastFenSeen = "";
@@ -9171,20 +9291,48 @@ Stockfish({
 		recover() {
 			const action = BotState.recoveryAction;
 			if (!action) return;
-			if (action === "retry") resetEngine();
+			if (action === "retry") {
+				resetEngine();
+				resetRecovery();
+			}
 			this.interruptedFen = null;
 			this.lastFenSeen = "";
 			BotState.recoveryAction = null;
 			BotState.statusInfo = "Resuming...";
-			ui.updateDisplay(pa());
+			ui.updateDisplay();
 			if (!this.isActive) {
-				BotState.hackEnabled = 1;
+				BotState.hackEnabled = true;
 				Settings.save();
 				this.init();
 				this.start();
 				return;
 			}
 			this.tick();
+		}
+		cancelReport() {
+			this.automaticReportSuppressed = true;
+			this.invalidateReport();
+		}
+		invalidateReport() {
+			this.reportGeneration++;
+			cancelGameReport();
+		}
+		async generateReport(force = true) {
+			const read = readSite();
+			if (read.kind !== "game" || read.snapshot.phase !== "finished") return;
+			if (!force && this.automaticReportSuppressed) return;
+			if (force) this.automaticReportSuppressed = false;
+			const snapshot = read.snapshot;
+			gameHistoryTracker.updateFromSnapshot(snapshot);
+			const generation = this.reportGeneration;
+			const isEligible = () => {
+				const current = readSite();
+				return generation === this.reportGeneration && current.kind === "game" && current.snapshot.identity === snapshot.identity && current.snapshot.phase === "finished";
+			};
+			await runGameReport(gameHistoryTracker.getMoves(), gameHistoryTracker.getStartFen(), snapshot.gameId, BotState.reportDepth, force, {
+				variant: snapshot.variant,
+				isEligible
+			});
 		}
 		cancelSiteWork() {
 			cancelAnalysis();
@@ -9199,13 +9347,14 @@ Stockfish({
 			this.clearRecommendation();
 			BotState.recoveryAction = "resume";
 			BotState.statusInfo = "Paused after board interaction";
-			ui.updateDisplay(pa());
+			ui.updateDisplay();
 		}
 		clearForUnavailable(read) {
 			const waitingKey = `${read.kind}:${read.reason}`;
 			if (this.identity && isMoveConfirmationPending(this.identity)) return;
 			if (this.waitingKey === waitingKey) return;
 			this.waitingKey = waitingKey;
+			this.invalidateReport();
 			this.cancelSiteWork();
 			clearArrows();
 			if (this.board) attachToBoard(null);
@@ -9216,7 +9365,7 @@ Stockfish({
 			this.clearRecommendation();
 			BotState.recoveryAction = null;
 			BotState.statusInfo = read.reason;
-			ui.updateDisplay(pa());
+			ui.updateDisplay();
 		}
 		handlePhase(snapshot) {
 			if (snapshot.phase === "live") return false;
@@ -9231,9 +9380,9 @@ Stockfish({
 				this.previousInputReady = snapshot.inputReady;
 				BotState.recoveryAction = null;
 				BotState.statusInfo = snapshot.phase === "replay" ? "Replay mode" : "Game finished";
-				ui.updateDisplay(pa());
+				ui.updateDisplay();
 			}
-			if (snapshot.phase === "finished" && BotState.gameReport) runGameReport(gameHistoryTracker.getMoves(), gameHistoryTracker.getStartFen(), snapshot.gameId);
+			if (snapshot.phase === "finished" && BotState.gameReport) this.generateReport(false);
 			return true;
 		}
 		tick() {
@@ -9249,6 +9398,10 @@ Stockfish({
 				const hadIdentity = this.identity !== null;
 				this.cancelSiteWork();
 				if (hadIdentity) resetEngine();
+				this.invalidateReport();
+				resetGameReport();
+				this.automaticReportSuppressed = false;
+				BotState.evalHistory = [];
 				this.identity = snapshot.identity;
 				this.lastFenSeen = "";
 				this.waitingKey = null;
@@ -9257,10 +9410,11 @@ Stockfish({
 				this.clearRecommendation();
 				BotState.recoveryAction = null;
 				ui.clearConsole();
-				gameHistoryTracker.reset(snapshot.gameId, snapshot.history?.startFen);
+				gameHistoryTracker.reset(snapshot.gameId, snapshot.history?.startFen, performance.now(), snapshot.variant);
 			}
 			gameHistoryTracker.updateFromSnapshot(snapshot);
 			if (this.handlePhase(snapshot)) return;
+			this.invalidateReport();
 			if (snapshot.identity === this.identity && snapshot.fen !== this.lastFenSeen && isMoveConfirmationPending(snapshot.identity)) return;
 			this.waitingKey = null;
 			const ourTurn = snapshot.sideToMove === snapshot.playerColor;
@@ -9282,11 +9436,11 @@ Stockfish({
 			BotState.recoveryAction = null;
 			if (ourTurn && !snapshot.inputReady) {
 				BotState.statusInfo = "Waiting for board";
-				ui.updateDisplay(pa());
+				ui.updateDisplay();
 				return;
 			}
 			BotState.statusInfo = ourTurn ? "Analyzing..." : "Waiting for opponent";
-			ui.updateDisplay(pa());
+			ui.updateDisplay();
 			scheduleAnalysis(ourTurn ? "main" : "ponder", snapshot.fen);
 		}
 	};
@@ -9309,40 +9463,45 @@ Stockfish({
 		if (page.__SCB_ACTIVE__) return;
 		page.__SCB_ACTIVE__ = true;
 		try {
-			BotState.onUpdateDisplay = (playingAs) => ui.updateDisplay(playingAs);
+			BotState.onUpdateDisplay = () => ui.updateDisplay();
 			const site = getSite();
 			await waitForDocumentBody();
 			const actions = {
 				setEnabled: (enabled) => controller.setEnabled(enabled),
 				refreshSettings: () => controller.refreshSettings(),
-				recover: () => controller.recover()
+				recover: () => controller.recover(),
+				generateReport: () => {
+					controller.generateReport();
+				},
+				cancelReport: () => controller.cancelReport()
 			};
-			await buildUI(actions, site?.capabilities);
+			await buildUI(actions);
+			flushSettingsOnUnload();
 			registerMenuCommands(actions);
 			controller.init();
+			if (!site) {
+				BotState.statusInfo = "Unsupported site";
+				ui.updateDisplay();
+				return;
+			}
 			if (!BotState.hackEnabled) {
 				BotState.statusInfo = "Preparing Stockfish...";
-				ui.updateDisplay(pa());
+				ui.updateDisplay();
 			}
 			warmEngine().then(() => {
 				if (BotState.hackEnabled) return;
 				BotState.statusInfo = "Ready";
-				ui.updateDisplay(pa());
+				ui.updateDisplay();
 			}, (error) => {
 				if (BotState.hackEnabled) return;
 				BotState.statusInfo = error instanceof Error ? `Stockfish warmup failed: ${error.message}` : "Stockfish warmup failed";
-				ui.updateDisplay(pa());
+				ui.updateDisplay();
 			});
-			if (!site) {
-				BotState.statusInfo = "Unsupported site";
-				ui.updateDisplay(pa());
-				return;
-			}
 		} catch (error) {
 			page.__SCB_ACTIVE__ = false;
 			BotState.statusInfo = error instanceof Error ? error.message : "Initialization failed";
 			BotState.recoveryAction = "retry";
-			ui.updateDisplay(1);
+			ui.updateDisplay();
 		}
 	}
 	function waitForDocumentBody() {

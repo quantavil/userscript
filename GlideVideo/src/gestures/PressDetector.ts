@@ -6,6 +6,7 @@ import { isPointInRect, vibrate } from "../utils";
 
 export class PressDetector {
 	public inLongPressGesture = false;
+	private suppressClickUntil = 0;
 
 	constructor(
 		private readonly eventBus: EventBus,
@@ -113,12 +114,29 @@ export class PressDetector {
 			(e) => {
 				if (e.pointerType !== "touch") return;
 				if (this.inLongPressGesture) {
+					if (e.cancelable) e.preventDefault();
+					e.stopPropagation();
+					e.stopImmediatePropagation?.();
+					this.suppressClickUntil =
+						Date.now() + MVC_CONFIG.SWIPE_SUPPRESS_CLICK_DELAY;
 					this.cancelLongPressSpeedBoost();
 				} else {
 					if (this.store.timers.longPressSpeed) {
 						clearTimeout(this.store.timers.longPressSpeed);
 						this.store.timers.longPressSpeed = undefined;
 					}
+				}
+			},
+			{ capture: true, signal: this.store.abortController.signal },
+		);
+
+		window.addEventListener(
+			"click",
+			(e) => {
+				if (Date.now() < this.suppressClickUntil) {
+					if (e.cancelable) e.preventDefault();
+					e.stopPropagation();
+					e.stopImmediatePropagation?.();
 				}
 			},
 			{ capture: true, signal: this.store.abortController.signal },

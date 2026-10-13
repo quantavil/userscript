@@ -203,6 +203,19 @@ ${THEMES}
             pointer-events: none !important;
         }
 
+        /* ── Neutralize site-native skip/rewind overlays ────────────────
+           Sites running Flowplayer/KVS (e.g. YesPorn, PornTrex) inject
+           left/right tap zones (.rewind-controls, .rewind-left, .rewind-right)
+           that compete with swipe gestures and double-tap detection.
+           Setting pointer-events: none ensures touches pass through cleanly
+           to GlideVideo without triggering site skip timers or overlays. */
+        .rewind-controls,
+        .rewind-controls *,
+        .rewind-left,
+        .rewind-right {
+            pointer-events: none !important;
+        }
+
         /* Top Header Bar Container.
            One filter here gives every glyph in the bar its halo in a single
            composited pass, instead of one filter per control. */

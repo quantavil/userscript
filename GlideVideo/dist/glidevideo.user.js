@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GlideVideo: Better Video Controls with Gesture for Mobile Web
 // @namespace    https://github.com/quantavil/userscript/GlideVideo
-// @version      8.8.0
+// @version      8.9.0
 // @author       quantavil (https://github.com/quantavil)
 // @description  Makes mobile web video actually usable — control playback, volume, and zoom without fumbling for tiny buttons, all through natural touch gestures. Works on any browser that support extension like Edge, Firefox, Cromite etc.
 // @license      GPL-3.0-or-later
@@ -83,6 +83,7 @@
 		DOUBLE_TAP_RESET_DELAY: 650,
 		DOUBLE_TAP_LOCK_RELEASE_MS: 250,
 		CLICK_DELAY: 250,
+		SWIPE_SUPPRESS_CLICK_DELAY: 400,
 		SPEED_MIN: .1,
 		SPEED_MAX: 16,
 		SPEED_DEFAULT: 1,
@@ -290,6 +291,17 @@
 				if (this.store.isDoubleTapping && e.pointerType === "touch") {
 					e.preventDefault();
 					e.stopPropagation();
+					e.stopImmediatePropagation?.();
+				}
+			}, {
+				capture: true,
+				signal: this.store.abortController.signal
+			});
+			window.addEventListener("touchend", (e) => {
+				if (this.store.isDoubleTapping) {
+					e.preventDefault();
+					e.stopPropagation();
+					e.stopImmediatePropagation?.();
 				}
 			}, {
 				capture: true,
@@ -299,6 +311,7 @@
 				if (this.store.isDoubleTapping && e.isTrusted) {
 					e.preventDefault();
 					e.stopPropagation();
+					e.stopImmediatePropagation?.();
 				}
 			}, {
 				capture: true,
@@ -308,6 +321,7 @@
 				if (this.store.isDoubleTapping) {
 					e.preventDefault();
 					e.stopPropagation();
+					e.stopImmediatePropagation?.();
 				}
 			}, {
 				capture: true,
@@ -319,6 +333,7 @@
 		eventBus;
 		store;
 		inLongPressGesture = false;
+		suppressClickUntil = 0;
 		constructor(eventBus, store) {
 			this.eventBus = eventBus;
 			this.store = store;
@@ -387,10 +402,25 @@
 			});
 			window.addEventListener("pointerup", (e) => {
 				if (e.pointerType !== "touch") return;
-				if (this.inLongPressGesture) this.cancelLongPressSpeedBoost();
-				else if (this.store.timers.longPressSpeed) {
+				if (this.inLongPressGesture) {
+					if (e.cancelable) e.preventDefault();
+					e.stopPropagation();
+					e.stopImmediatePropagation?.();
+					this.suppressClickUntil = Date.now() + MVC_CONFIG.SWIPE_SUPPRESS_CLICK_DELAY;
+					this.cancelLongPressSpeedBoost();
+				} else if (this.store.timers.longPressSpeed) {
 					clearTimeout(this.store.timers.longPressSpeed);
 					this.store.timers.longPressSpeed = void 0;
+				}
+			}, {
+				capture: true,
+				signal: this.store.abortController.signal
+			});
+			window.addEventListener("click", (e) => {
+				if (Date.now() < this.suppressClickUntil) {
+					if (e.cancelable) e.preventDefault();
+					e.stopPropagation();
+					e.stopImmediatePropagation?.();
 				}
 			}, {
 				capture: true,
@@ -420,6 +450,7 @@
 		isPinching = false;
 		initialDistance = 0;
 		initialZoom = 1;
+		suppressClickUntil = 0;
 		constructor(eventBus, store) {
 			this.eventBus = eventBus;
 			this.store = store;
@@ -516,6 +547,8 @@
 						this.eventBus.emit("gesture:cancel-speed-boost", void 0);
 					}
 					if (ev.cancelable) ev.preventDefault();
+					ev?.stopPropagation?.();
+					ev?.stopImmediatePropagation?.();
 					if (mode === "seek") {
 						let timeChange = dx * MVC_CONFIG.GESTURE_SEEK_SENSITIVITY;
 						if (Math.abs(timeChange) < MVC_CONFIG.GESTURE_SEEK_DEADZONE || Number.isNaN(video.duration) || video.duration === 0) timeChange = 0;
@@ -543,7 +576,13 @@
 						this.eventBus.emit("ui:brightness-changed", { brightness: newBrightness });
 					}
 				};
-				onTouchEnd = () => {
+				onTouchEnd = (ev) => {
+					if (mode !== "undecided") {
+						if (ev?.cancelable) ev.preventDefault();
+						ev?.stopPropagation?.();
+						ev?.stopImmediatePropagation?.();
+						this.suppressClickUntil = Date.now() + MVC_CONFIG.SWIPE_SUPPRESS_CLICK_DELAY;
+					}
 					if (mode === "seek") {
 						if (newTime !== initialTime) video.currentTime = newTime;
 						this.store.gestureCoordinator.release("swipe_seek");
@@ -552,16 +591,25 @@
 					if (mode === "volume") this.store.gestureCoordinator.release("volume_control");
 					if (mode === "brightness") this.store.gestureCoordinator.release("brightness_control");
 					mode = "undecided";
-					window.removeEventListener("touchmove", onTouchMove);
-					window.removeEventListener("touchend", onTouchEnd);
-					window.removeEventListener("touchcancel", onTouchEnd);
+					window.removeEventListener("touchmove", onTouchMove, true);
+					window.removeEventListener("touchend", onTouchEnd, true);
+					window.removeEventListener("touchcancel", onTouchEnd, true);
 				};
 				window.addEventListener("touchmove", onTouchMove, {
 					passive: false,
+					capture: true,
 					signal: this.store.abortController.signal
 				});
-				window.addEventListener("touchend", onTouchEnd, { signal: this.store.abortController.signal });
-				window.addEventListener("touchcancel", onTouchEnd, { signal: this.store.abortController.signal });
+				window.addEventListener("touchend", onTouchEnd, {
+					passive: false,
+					capture: true,
+					signal: this.store.abortController.signal
+				});
+				window.addEventListener("touchcancel", onTouchEnd, {
+					passive: false,
+					capture: true,
+					signal: this.store.abortController.signal
+				});
 			}, {
 				passive: false,
 				capture: true,
@@ -585,8 +633,12 @@
 				passive: false,
 				signal: this.store.abortController.signal
 			});
-			const onTouchEndOrCancel = () => {
+			const onTouchEndOrCancel = (ev) => {
 				if (this.isPinching) {
+					if (ev?.cancelable) ev.preventDefault();
+					ev?.stopPropagation?.();
+					ev?.stopImmediatePropagation?.();
+					this.suppressClickUntil = Date.now() + MVC_CONFIG.SWIPE_SUPPRESS_CLICK_DELAY;
 					this.isPinching = false;
 					this.store.gestureCoordinator.release("pinch");
 					this.eventBus.emit("ui:gesture-overlay", null);
@@ -607,11 +659,52 @@
 				}
 			};
 			window.addEventListener("touchend", onTouchEndOrCancel, {
-				passive: true,
+				passive: false,
+				capture: true,
 				signal: this.store.abortController.signal
 			});
 			window.addEventListener("touchcancel", onTouchEndOrCancel, {
-				passive: true,
+				passive: false,
+				capture: true,
+				signal: this.store.abortController.signal
+			});
+			window.addEventListener("pointermove", (e) => {
+				if (e.pointerType === "touch" && (this.isPinching || this.store.gestureCoordinator.isPointerGestureActive())) {
+					if (e.cancelable) e.preventDefault();
+					e.stopPropagation();
+					e.stopImmediatePropagation?.();
+				}
+			}, {
+				capture: true,
+				signal: this.store.abortController.signal
+			});
+			window.addEventListener("pointerup", (e) => {
+				if (e.pointerType === "touch" && (this.isPinching || this.store.gestureCoordinator.isPointerGestureActive() || Date.now() < this.suppressClickUntil)) {
+					if (e.cancelable) e.preventDefault();
+					e.stopPropagation();
+					e.stopImmediatePropagation?.();
+				}
+			}, {
+				capture: true,
+				signal: this.store.abortController.signal
+			});
+			const suppressSyntheticMouse = (e) => {
+				if (this.isPinching || this.store.gestureCoordinator.isPointerGestureActive() || Date.now() < this.suppressClickUntil) {
+					if (e.cancelable) e.preventDefault();
+					e.stopPropagation();
+					e.stopImmediatePropagation?.();
+				}
+			};
+			window.addEventListener("click", suppressSyntheticMouse, {
+				capture: true,
+				signal: this.store.abortController.signal
+			});
+			window.addEventListener("mousedown", suppressSyntheticMouse, {
+				capture: true,
+				signal: this.store.abortController.signal
+			});
+			window.addEventListener("mouseup", suppressSyntheticMouse, {
+				capture: true,
 				signal: this.store.abortController.signal
 			});
 		}
@@ -809,6 +902,19 @@ ${THEMES}
            control: everything inside wrap opts into pointer-events, so
            everything inside wrap has to opt back out. */
         .mvc-ui-wrap:not(.mvc-shown) * {
+            pointer-events: none !important;
+        }
+
+        /* ── Neutralize site-native skip/rewind overlays ────────────────
+           Sites running Flowplayer/KVS (e.g. YesPorn, PornTrex) inject
+           left/right tap zones (.rewind-controls, .rewind-left, .rewind-right)
+           that compete with swipe gestures and double-tap detection.
+           Setting pointer-events: none ensures touches pass through cleanly
+           to GlideVideo without triggering site skip timers or overlays. */
+        .rewind-controls,
+        .rewind-controls *,
+        .rewind-left,
+        .rewind-right {
             pointer-events: none !important;
         }
 

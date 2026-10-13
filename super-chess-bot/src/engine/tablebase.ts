@@ -1,3 +1,6 @@
+import type { Evaluation } from '../chess/types.js';
+import { mateToDisplay } from '../shared/utils.js';
+
 /**
  * Asynchronous Syzygy 7-piece Tablebase client.
  * Queries https://tablebase.lichess.ovh/standard?fen=... for instant endgame WDL/DTZ lookups
@@ -16,18 +19,39 @@ export interface TablebaseMove {
 
 export interface TablebaseResponse {
   success: boolean;
-  category: 'win' | 'loss' | 'draw' | 'unknown' | 'maybe-win' | 'maybe-loss';
+  category: NonNullable<TablebaseMove['category']>;
   dtz: number | null;
   dtm?: number | null;
   wdl?: number;
   bestMove: string;
   pv: string;
-  evaluation: { cp?: number; mate?: number };
+  evaluation: Evaluation;
   displayEval: string;
 }
 
 const TABLEBASE_API = 'https://tablebase.lichess.ovh/standard';
 const DEFAULT_TIMEOUT_MS = 2000;
+const CACHE_CAPACITY = 256;
+
+/**
+ * Syzygy is indexed on the position, not on the move counters, so halfmove and fullmove are
+ * excluded from the key. Keeping them would refetch the same position once per ply.
+ */
+const PROBE_FIELDS = 4;
+
+/** How long a failed lookup stays suppressed before it may be retried. */
+const FAILURE_COOLDOWN_MS = 30_000;
+
+const resultCache = new Map<string, TablebaseResponse>();
+const failureCooldown = new Map<string, number>();
+
+function cacheKey(fen: string): string {
+  return fen.trim().split(/\s+/).slice(0, PROBE_FIELDS).join(' ');
+}
+
+function copyResult(result: TablebaseResponse): TablebaseResponse {
+  return { ...result, evaluation: { ...result.evaluation } };
+}
 
 /** Count total number of pieces remaining on the board from a FEN string. */
 export function countPiecesOnBoard(fen: string): number {
@@ -59,7 +83,21 @@ export async function lookupTablebase(
   signal?: AbortSignal,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<TablebaseResponse | null> {
-  if (!isTablebaseEligible(fen)) return null;
+  if (signal?.aborted || !isTablebaseEligible(fen)) return null;
+  const key = cacheKey(fen);
+  const cached = resultCache.get(key);
+  if (cached) {
+    // Refresh recency so a hot position is never the next one evicted.
+    resultCache.delete(key);
+    resultCache.set(key, cached);
+    return copyResult(cached);
+  }
+  // A rate-limited or failed host must not be re-queried once per ply.
+  const retryAfter = failureCooldown.get(key);
+  if (retryAfter !== undefined) {
+    if (Date.now() < retryAfter) return null;
+    failureCooldown.delete(key);
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -70,17 +108,20 @@ export async function lookupTablebase(
   try {
     const url = `${TABLEBASE_API}?fen=${encodeURIComponent(fen)}`;
     const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      suppress(key);
+      return null;
+    }
 
     const data = (await response.json()) as {
-      category?: 'win' | 'loss' | 'draw' | 'unknown' | 'maybe-win' | 'maybe-loss';
+      category?: NonNullable<TablebaseMove['category']>;
       dtz?: number | null;
       dtm?: number | null;
       wdl?: number;
       moves?: TablebaseMove[];
     };
 
-    if (!data.moves || data.moves.length === 0) return null;
+    if (controller.signal.aborted || !data.moves || data.moves.length === 0) return null;
 
     const best = pickBestTablebaseMove(data.moves);
     if (!best?.uci) return null;
@@ -90,28 +131,27 @@ export async function lookupTablebase(
     const dtm = data.dtm ?? null;
     const wdl = data.wdl;
 
-    // Map tablebase outcome to evaluation
-    let cp = 0;
-    let mate: number | undefined;
-    let displayEval = '0.00 (Tablebase Draw)';
-
+    // DTZ measures distance to a pawn move/capture, never distance to mate.
+    // Keep WDL outcomes in the display when no exact DTM is available.
+    let evaluation: TablebaseResponse['evaluation'] = {};
+    let displayEval = `Tablebase ${category}`;
     if (best.checkmate) {
-      mate = 1;
-      displayEval = '+M1 (Checkmate)';
-    } else if (category === 'win' || category === 'maybe-win') {
-      const dist = dtm !== null && dtm !== undefined ? Math.abs(dtm) : dtz !== null ? Math.abs(dtz) : 2;
-      mate = Math.max(1, Math.ceil(dist / 2));
-      displayEval = `+M${mate} (Tablebase)`;
-    } else if (category === 'loss' || category === 'maybe-loss') {
-      const dist = dtm !== null && dtm !== undefined ? Math.abs(dtm) : dtz !== null ? Math.abs(dtz) : 2;
-      mate = -Math.max(1, Math.ceil(dist / 2));
-      displayEval = `-M${Math.abs(mate)} (Tablebase)`;
-    } else {
-      cp = 0;
+      evaluation = { mate: 1 };
+      displayEval = `${mateToDisplay(1)} (Checkmate)`;
+    } else if ((category === 'win' || category === 'loss') && dtm !== null && Number.isFinite(dtm)) {
+      const mate = Math.max(1, Math.ceil(Math.abs(dtm) / 2)) * (category === 'win' ? 1 : -1);
+      evaluation = { mate };
+      displayEval = `${mateToDisplay(mate)} (Tablebase)`;
+    } else if (category === 'draw') {
+      evaluation = { cp: 0 };
       displayEval = '0.00 (Tablebase Draw)';
+    } else if (category === 'win' || category === 'loss') {
+      // A decided position with no exact DTM still has a known outcome. Report it as a capped
+      // centipawn score so a consumer never reads an empty evaluation as "no score available".
+      evaluation = { cp: category === 'win' ? 1000 : -1000 };
     }
 
-    return {
+    const result: TablebaseResponse = {
       success: true,
       category,
       dtz,
@@ -119,15 +159,36 @@ export async function lookupTablebase(
       ...(wdl !== undefined ? { wdl } : {}),
       bestMove: best.uci,
       pv: best.uci,
-      evaluation: mate !== undefined ? { mate } : { cp },
+      evaluation,
       displayEval,
     };
+    resultCache.delete(key);
+    resultCache.set(key, copyResult(result));
+    trim(resultCache);
+    return result;
   } catch {
     // Network / timeout / parse error gracefully falls back
     return null;
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+/** Hold this position out of the network until the cooldown expires. */
+function suppress(key: string): void {
+  failureCooldown.set(key, Date.now() + FAILURE_COOLDOWN_MS);
+  if (failureCooldown.size > CACHE_CAPACITY) {
+    const oldest = failureCooldown.keys().next().value;
+    if (oldest !== undefined) failureCooldown.delete(oldest);
+  }
+}
+
+function trim(cache: Map<string, TablebaseResponse>): void {
+  while (cache.size > CACHE_CAPACITY) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) return;
+    cache.delete(oldest);
   }
 }
 
@@ -139,6 +200,7 @@ export async function lookupTablebase(
  * - 'draw' -> Position is drawn (Rank 3)
  * - 'cursed-win' -> Opponent has cursed win, PLAYER has blessed loss (Rank 2)
  * - 'win' -> Opponent wins, PLAYER LOSES (Rank 1)
+ * - unknown -> Rank 0, ranked below every known outcome rather than beside a loss.
  */
 function moveOutcomeRank(move: TablebaseMove): number {
   if (move.checkmate) return 6;
@@ -158,6 +220,18 @@ function moveOutcomeRank(move: TablebaseMove): number {
   return 0;
 }
 
+/**
+ * Comparable distance-to-resolution for a pair of moves.
+ *
+ * DTM counts full moves and DTZ counts plies, so the two are never compared against each other:
+ * a pair is only ordered on DTM when both moves actually have one.
+ */
+function distancePair(a: TablebaseMove, b: TablebaseMove, fallback: number): [number, number] {
+  if (a.dtm != null && b.dtm != null) return [Math.abs(a.dtm), Math.abs(b.dtm)];
+  if (a.dtz != null && b.dtz != null) return [Math.abs(a.dtz), Math.abs(b.dtz)];
+  return [fallback, fallback];
+}
+
 /** Selects the optimal move from the tablebase candidate moves. */
 export function pickBestTablebaseMove(moves: TablebaseMove[]): TablebaseMove | null {
   if (!moves || moves.length === 0) return null;
@@ -167,23 +241,24 @@ export function pickBestTablebaseMove(moves: TablebaseMove[]): TablebaseMove | n
       const rankA = moveOutcomeRank(a);
       const rankB = moveOutcomeRank(b);
 
-      if (rankA !== rankB) return rankB - rankA;
+      if (rankA !== rankB) {
+        // An unclassified move must never outrank a known outcome, in either direction.
+        if (rankA === 0) return 1;
+        if (rankB === 0) return -1;
+        return rankB - rankA;
+      }
+      // Two unclassified moves carry no usable information, so keep input order.
+      if (rankA === 0) return 0;
 
       // If both winning: prefer fastest conversion (smallest distance to mate/zeroing)
       if (rankA >= 4) {
-        const distA = a.dtm !== null && a.dtm !== undefined ? Math.abs(a.dtm) : a.dtz !== null ? Math.abs(a.dtz) : 999;
-        const distB = b.dtm !== null && b.dtm !== undefined ? Math.abs(b.dtm) : b.dtz !== null ? Math.abs(b.dtz) : 999;
+        const [distA, distB] = distancePair(a, b, 999);
         return distA - distB;
       }
 
       // If both losing: prefer stubborn defense (longest distance to mate/zeroing)
-      if (rankA <= 2) {
-        const distA = a.dtm !== null && a.dtm !== undefined ? Math.abs(a.dtm) : a.dtz !== null ? Math.abs(a.dtz) : 0;
-        const distB = b.dtm !== null && b.dtm !== undefined ? Math.abs(b.dtm) : b.dtz !== null ? Math.abs(b.dtz) : 0;
-        return distB - distA;
-      }
-
-      return 0;
+      const [distA, distB] = distancePair(a, b, 0);
+      return distB - distA;
     })[0] ?? null
   );
 }

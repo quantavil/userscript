@@ -16,6 +16,7 @@ export class SwipeDetector {
 	private isPinching = false;
 	private initialDistance = 0;
 	private initialZoom = 1;
+	private suppressClickUntil = 0;
 
 	constructor(
 		private readonly eventBus: EventBus,
@@ -176,6 +177,8 @@ export class SwipeDetector {
 					if (ev.cancelable) {
 						ev.preventDefault();
 					}
+					ev?.stopPropagation?.();
+					ev?.stopImmediatePropagation?.();
 
 					// ── Seek ───────────────────────────────────────────────────
 					if (mode === "seek") {
@@ -232,7 +235,18 @@ export class SwipeDetector {
 					}
 				};
 
-				onTouchEnd = () => {
+				onTouchEnd = (ev?: TouchEvent) => {
+					const hadGesture = mode !== "undecided";
+					if (hadGesture) {
+						if (ev?.cancelable) {
+							ev.preventDefault();
+						}
+						ev?.stopPropagation?.();
+						ev?.stopImmediatePropagation?.();
+						this.suppressClickUntil =
+							Date.now() + MVC_CONFIG.SWIPE_SUPPRESS_CLICK_DELAY;
+					}
+
 					if (mode === "seek") {
 						if (newTime !== initialTime) {
 							video.currentTime = newTime;
@@ -248,19 +262,24 @@ export class SwipeDetector {
 						this.store.gestureCoordinator.release("brightness_control");
 					}
 					mode = "undecided";
-					window.removeEventListener("touchmove", onTouchMove as any);
-					window.removeEventListener("touchend", onTouchEnd);
-					window.removeEventListener("touchcancel", onTouchEnd);
+					window.removeEventListener("touchmove", onTouchMove as any, true);
+					window.removeEventListener("touchend", onTouchEnd, true);
+					window.removeEventListener("touchcancel", onTouchEnd, true);
 				};
 
 				window.addEventListener("touchmove", onTouchMove as any, {
 					passive: false,
+					capture: true,
 					signal: this.store.abortController.signal,
 				});
 				window.addEventListener("touchend", onTouchEnd, {
+					passive: false,
+					capture: true,
 					signal: this.store.abortController.signal,
 				});
 				window.addEventListener("touchcancel", onTouchEnd, {
+					passive: false,
+					capture: true,
 					signal: this.store.abortController.signal,
 				});
 			},
@@ -304,8 +323,15 @@ export class SwipeDetector {
 			{ passive: false, signal: this.store.abortController.signal },
 		);
 
-		const onTouchEndOrCancel = () => {
+		const onTouchEndOrCancel = (ev?: TouchEvent) => {
 			if (this.isPinching) {
+				if (ev?.cancelable) {
+					ev.preventDefault();
+				}
+				ev?.stopPropagation?.();
+				ev?.stopImmediatePropagation?.();
+				this.suppressClickUntil =
+					Date.now() + MVC_CONFIG.SWIPE_SUPPRESS_CLICK_DELAY;
 				this.isPinching = false;
 				this.store.gestureCoordinator.release("pinch");
 				this.eventBus.emit("ui:gesture-overlay", null);
@@ -333,11 +359,71 @@ export class SwipeDetector {
 		};
 
 		window.addEventListener("touchend", onTouchEndOrCancel, {
-			passive: true,
+			passive: false,
+			capture: true,
 			signal: this.store.abortController.signal,
 		});
 		window.addEventListener("touchcancel", onTouchEndOrCancel, {
-			passive: true,
+			passive: false,
+			capture: true,
+			signal: this.store.abortController.signal,
+		});
+
+		window.addEventListener(
+			"pointermove",
+			(e) => {
+				if (
+					e.pointerType === "touch" &&
+					(this.isPinching ||
+						this.store.gestureCoordinator.isPointerGestureActive())
+				) {
+					if (e.cancelable) e.preventDefault();
+					e.stopPropagation();
+					e.stopImmediatePropagation?.();
+				}
+			},
+			{ capture: true, signal: this.store.abortController.signal },
+		);
+
+		window.addEventListener(
+			"pointerup",
+			(e) => {
+				if (
+					e.pointerType === "touch" &&
+					(this.isPinching ||
+						this.store.gestureCoordinator.isPointerGestureActive() ||
+						Date.now() < this.suppressClickUntil)
+				) {
+					if (e.cancelable) e.preventDefault();
+					e.stopPropagation();
+					e.stopImmediatePropagation?.();
+				}
+			},
+			{ capture: true, signal: this.store.abortController.signal },
+		);
+
+		const suppressSyntheticMouse = (e: MouseEvent) => {
+			if (
+				this.isPinching ||
+				this.store.gestureCoordinator.isPointerGestureActive() ||
+				Date.now() < this.suppressClickUntil
+			) {
+				if (e.cancelable) e.preventDefault();
+				e.stopPropagation();
+				e.stopImmediatePropagation?.();
+			}
+		};
+
+		window.addEventListener("click", suppressSyntheticMouse, {
+			capture: true,
+			signal: this.store.abortController.signal,
+		});
+		window.addEventListener("mousedown", suppressSyntheticMouse, {
+			capture: true,
+			signal: this.store.abortController.signal,
+		});
+		window.addEventListener("mouseup", suppressSyntheticMouse, {
+			capture: true,
 			signal: this.store.abortController.signal,
 		});
 	}

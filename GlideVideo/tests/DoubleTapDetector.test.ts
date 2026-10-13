@@ -200,7 +200,7 @@ describe('DoubleTapDetector', () => {
         expect(store.timers.videoClick).toBeUndefined();
     });
 
-    it('should call preventDefault and stopPropagation on pointerup, click, and dblclick during double tap', () => {
+    it('should call preventDefault and stopPropagation on pointerup, touchend, click, and dblclick during double tap', () => {
         // Trigger a double tap
         fireEvent('pointerdown', { clientX: 200, clientY: 200, pointerType: 'touch' });
         vi.advanceTimersByTime(100);
@@ -211,6 +211,10 @@ describe('DoubleTapDetector', () => {
         const pointerupEvent = fireEvent('pointerup', { pointerType: 'touch' });
         expect(pointerupEvent.preventDefault).toHaveBeenCalled();
         expect(pointerupEvent.stopPropagation).toHaveBeenCalled();
+
+        const touchendEvent = fireEvent('touchend', {});
+        expect(touchendEvent.preventDefault).toHaveBeenCalled();
+        expect(touchendEvent.stopPropagation).toHaveBeenCalled();
 
         const clickEvent = fireEvent('click', {});
         expect(clickEvent.preventDefault).toHaveBeenCalled();
