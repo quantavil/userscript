@@ -6,8 +6,11 @@
 
 import type { MultiPvLine } from './uci-client.js';
 
+const MIN_THROTTLED_ELO = 800;
+export const MAX_THROTTLED_ELO = 3200;
+
 export interface ThrottleOptions {
-  targetElo: number; // 0 for unrestricted (3000+), or 800 - 2800
+  targetElo: number; // 0 or >= 3200 for unrestricted (~3500+), or 800 - 3150
   blunderShield: boolean;
   sideToMove?: 'w' | 'b';
   randomFn?: () => number;
@@ -44,8 +47,8 @@ export function selectThrottledMove(lines: MultiPvLine[], options: ThrottleOptio
   const bestLine = lines[0];
   const bestUci = bestLine.uci || (bestLine.pv ? bestLine.pv.split(/\s+/)[0] : '');
 
-  // If unthrottled or only 1 line available, play best move
-  if (!options.targetElo || options.targetElo <= 0 || lines.length === 1) {
+  // If unthrottled (0 or >= MAX_THROTTLED_ELO) or only 1 line available, play best move
+  if (!options.targetElo || options.targetElo <= 0 || options.targetElo >= MAX_THROTTLED_ELO || lines.length === 1) {
     return { uci: bestUci, rank: 1, cpLoss: 0, shieldApplied: false };
   }
 
@@ -53,14 +56,16 @@ export function selectThrottledMove(lines: MultiPvLine[], options: ThrottleOptio
   const bestScore = scoreToCentipawns(bestLine);
 
   // Compute temperature T (in centipawns) inversely proportional to target Elo
-  // High Elo -> small T (tight selection around best move)
-  // Low Elo -> larger T (probabilistic selection across candidate moves)
-  const normalizedElo = Math.min(1, Math.max(0, (targetElo - 800) / 2000));
-  const temperature = Math.max(12, Math.round(160 * (1 - normalizedElo)));
+  // Domain: 800 (beginner) to 3200 (super-GM)
+  const normalizedElo = Math.min(
+    1,
+    Math.max(0, (targetElo - MIN_THROTTLED_ELO) / (MAX_THROTTLED_ELO - MIN_THROTTLED_ELO)),
+  );
+  const temperature = Math.max(1, Math.round(160 * (1 - normalizedElo)));
 
   // Blunder shield limits maximum centipawn loss allowed
-  // Standard blunder threshold is 150 centipawns (1.5 pawns)
-  const maxAllowedCpLoss = blunderShield ? Math.min(150, Math.max(45, (1 - normalizedElo) * 150)) : 400;
+  // Standard blunder threshold scales from 150 centipawns down to 10 centipawns at near-max
+  const maxAllowedCpLoss = blunderShield ? Math.min(150, Math.max(10, Math.round((1 - normalizedElo) * 150))) : 400;
 
   let shieldTriggered = false;
   const eligibleCandidates: { line: MultiPvLine; rank: number; cpLoss: number; weight: number }[] = [];

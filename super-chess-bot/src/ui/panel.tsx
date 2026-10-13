@@ -830,7 +830,9 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
                 min={0}
                 max={MAX_TARGET_ELO}
                 step={50}
-                format={(v) => (v === 0 ? 'Max strength' : `${v} Elo target`)}
+                format={(v) =>
+                  v === 0 ? 'Max strength' : v >= MAX_TARGET_ELO ? `${v} (Max strength)` : `${v} Elo target`
+                }
                 onPreview={(value) => previewSlider('targetElo', value)}
                 onCommit={(value) => updateSetting('targetElo', value)}
               />

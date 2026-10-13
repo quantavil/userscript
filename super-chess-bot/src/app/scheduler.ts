@@ -11,6 +11,7 @@ import { isTablebaseEligible, lookupTablebase, type TablebaseResponse } from '..
 import { selectThrottledMove } from '../engine/throttle.js';
 import { calculateMoveDelay } from '../engine/timing.js';
 import { confirmSiteMove, type MoveConfirmation } from '../game/confirmation.js';
+import { MAX_TARGET_ELO } from '../settings/schema.js';
 import { scoreToDisplay } from '../shared/utils.js';
 import { getSite } from '../sites/registry.js';
 import type { GameSnapshot, MoveRequest, SiteAdapter } from '../sites/types.js';
@@ -289,7 +290,14 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       return;
     }
 
-    if (!bookMove && !isTablebase && best.multiPv && best.multiPv.length > 1 && BotState.targetElo > 0) {
+    if (
+      !bookMove &&
+      !isTablebase &&
+      best.multiPv &&
+      best.multiPv.length > 1 &&
+      BotState.targetElo > 0 &&
+      BotState.targetElo < MAX_TARGET_ELO
+    ) {
       const throttled = selectThrottledMove(best.multiPv, {
         targetElo: BotState.targetElo,
         blunderShield: !!BotState.blunderShield,

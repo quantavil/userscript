@@ -6954,7 +6954,7 @@
 								min: 0,
 								max: 3200,
 								step: 50,
-								format: (v) => v === 0 ? "Max strength" : `${v} Elo target`,
+								format: (v) => v === 0 ? "Max strength" : v >= 3200 ? `${v} (Max strength)` : `${v} Elo target`,
 								onPreview: (value) => previewSlider("targetElo", value),
 								onCommit: (value) => updateSetting("targetElo", value)
 							})
@@ -8574,6 +8574,7 @@
 			return distB - distA;
 		})[0] ?? null;
 	}
+	var MIN_THROTTLED_ELO = 800;
 	function scoreToCentipawns(line) {
 		if (typeof line.evaluation.mate === "number") return line.evaluation.mate > 0 ? 1e4 - line.evaluation.mate * 100 : -1e4 - line.evaluation.mate * 100;
 		return line.evaluation.cp ?? 0;
@@ -8587,7 +8588,7 @@
 		};
 		const bestLine = lines[0];
 		const bestUci = bestLine.uci || (bestLine.pv ? bestLine.pv.split(/\s+/)[0] : "");
-		if (!options.targetElo || options.targetElo <= 0 || lines.length === 1) return {
+		if (!options.targetElo || options.targetElo <= 0 || options.targetElo >= 3200 || lines.length === 1) return {
 			uci: bestUci,
 			rank: 1,
 			cpLoss: 0,
@@ -8595,9 +8596,9 @@
 		};
 		const { targetElo, blunderShield, randomFn = Math.random } = options;
 		const bestScore = scoreToCentipawns(bestLine);
-		const normalizedElo = Math.min(1, Math.max(0, (targetElo - 800) / 2e3));
-		const temperature = Math.max(12, Math.round(160 * (1 - normalizedElo)));
-		const maxAllowedCpLoss = blunderShield ? Math.min(150, Math.max(45, (1 - normalizedElo) * 150)) : 400;
+		const normalizedElo = Math.min(1, Math.max(0, (targetElo - MIN_THROTTLED_ELO) / 2400));
+		const temperature = Math.max(1, Math.round(160 * (1 - normalizedElo)));
+		const maxAllowedCpLoss = blunderShield ? Math.min(150, Math.max(10, Math.round((1 - normalizedElo) * 150))) : 400;
 		let shieldTriggered = false;
 		const eligibleCandidates = [];
 		for (let i = 0; i < lines.length; i++) {
@@ -8996,7 +8997,7 @@
 				}
 				return;
 			}
-			if (!bookMove && !isTablebase && best.multiPv && best.multiPv.length > 1 && BotState.targetElo > 0) {
+			if (!bookMove && !isTablebase && best.multiPv && best.multiPv.length > 1 && BotState.targetElo > 0 && BotState.targetElo < 3200) {
 				const throttled = selectThrottledMove(best.multiPv, {
 					targetElo: BotState.targetElo,
 					blunderShield: !!BotState.blunderShield,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectThrottledMove, type ThrottleOptions } from '../../../src/engine/throttle.js';
+import { MAX_THROTTLED_ELO, selectThrottledMove, type ThrottleOptions } from '../../../src/engine/throttle.js';
 import type { MultiPvLine } from '../../../src/engine/uci-client.js';
 
 describe('elo throttling & blunder shield move selection', () => {
@@ -20,6 +20,40 @@ describe('elo throttling & blunder shield move selection', () => {
     expect(outcome.uci).toBe('e2e4');
     expect(outcome.rank).toBe(1);
     expect(outcome.shieldApplied).toBe(false);
+  });
+
+  it('plays rank 1 move when targetElo is >= MAX_THROTTLED_ELO (3200)', () => {
+    const outcome = selectThrottledMove(dummyLines, { targetElo: MAX_THROTTLED_ELO, blunderShield: true });
+    expect(outcome.uci).toBe('e2e4');
+    expect(outcome.rank).toBe(1);
+    expect(outcome.shieldApplied).toBe(false);
+  });
+
+  it('plays rank 1 move when targetElo exceeds 3200', () => {
+    const outcome = selectThrottledMove(dummyLines, { targetElo: 3500, blunderShield: true });
+    expect(outcome.uci).toBe('e2e4');
+    expect(outcome.rank).toBe(1);
+    expect(outcome.shieldApplied).toBe(false);
+  });
+
+  it('differentiates move selection probabilities across high Elo targets below 3200', () => {
+    const outcome3000 = selectThrottledMove(dummyLines, {
+      targetElo: 3000,
+      blunderShield: true,
+      randomFn: () => 0.99,
+    });
+    // At 3000 Elo, blunder threshold is 13 cp, so c2c4 (20 cp loss) is shielded out
+    expect(outcome3000.rank).toBe(2);
+    expect(outcome3000.shieldApplied).toBe(true);
+
+    const outcome3200 = selectThrottledMove(dummyLines, {
+      targetElo: 3200,
+      blunderShield: true,
+      randomFn: () => 0.99,
+    });
+    // At 3200 Elo, unthrottled maximum strength always plays best move
+    expect(outcome3200.rank).toBe(1);
+    expect(outcome3200.shieldApplied).toBe(false);
   });
 
   it('probabilistically selects sub-optimal candidate move on lower Elo targets', () => {
