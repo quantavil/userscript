@@ -9,6 +9,7 @@ import {
   type ArmedPremoveMap,
   fenKey,
   isLegalMove,
+  selectBookPremoveReplies,
   selectOpponentTurnPremove,
   selectOwnTurnChainPremove,
 } from '../engine/premove.js';
@@ -149,7 +150,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
   if (wasProcessed) return;
 
   active?.abort();
-  if (kind !== 'main' && !BotState.ponderEnabled) {
+  if (kind !== 'main' && !BotState.ponderEnabled && !BotState.premove) {
     cancelPonder();
     anticipatedPonder = null;
     processed = { kind, fen, identity: snapshot.identity };
@@ -248,14 +249,14 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
             ? Math.max(2, BotState.multiPvLines?.length ?? 1)
             : undefined
           : BotState.premove
-            ? 6
+            ? 4
             : undefined;
       const requestedDepth = kind !== 'main' && BotState.premove ? 8 : BotState.botPower;
       const legalMoves = requestedMultiPv ? (countLegalMoves(fen, snapshot.variant) ?? undefined) : undefined;
       const onDepth =
         kind !== 'main' && BotState.premove
           ? (depth: number, lines: MultiPvLine[]) => {
-              if (depth >= 3) {
+              if (depth >= 1) {
                 const armed = selectOpponentTurnPremove(fen, lines, snapshot.variant);
                 if (armed) {
                   if (!armedPremove) {
@@ -422,18 +423,25 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       }
     }
 
-    if (BotState.premove && !premoveHit && !bookMove && !isTablebase && best.multiPv && best.multiPv.length > 0) {
-      const chainResult = selectOwnTurnChainPremove(fen, best.multiPv, snapshot.variant);
-      if (chainResult.armed) {
-        armedPremove = chainResult.armed;
-      }
-    }
-
     const currentPosition = matchingSnapshot(site, identity, fen);
     const nextFen = predictFen(fen, best.uci, snapshot.variant);
     const isSupportedRules = !snapshot.variant || Boolean(parseRules(snapshot.variant));
     if ((isSupportedRules && !nextFen) || fen.split(' ')[1] !== snapshot.playerColor)
       throw new Error('Engine move failed position validation');
+
+    if (BotState.premove && !premoveHit && !isTablebase) {
+      if (best.multiPv && best.multiPv.length > 0) {
+        const chainResult = selectOwnTurnChainPremove(fen, best.multiPv, snapshot.variant);
+        if (chainResult.armed) {
+          armedPremove = chainResult.armed;
+        }
+      } else if (bookMove && isStandard && nextFen) {
+        const bookArmed = selectBookPremoveReplies(nextFen, BotState.openingStyle);
+        if (bookArmed) {
+          armedPremove = bookArmed;
+        }
+      }
+    }
 
     const pvMoves = best.pv.split(/\s+/);
     const predictedReply = pvMoves[0] === best.uci ? pvMoves[1] : undefined;
@@ -493,7 +501,8 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     ui.updateDisplay();
     if (!BotState.autoMove || !current() || !currentPosition?.inputReady) return;
 
-    if (!premoveHit && BotState.timingMode === 'dynamic') {
+    const isInstant = premoveHit || (BotState.premove && Boolean(bookMove));
+    if (!isInstant && BotState.timingMode === 'dynamic') {
       const candidateScores = best.multiPv?.map((line) => {
         if (typeof line.evaluation.mate === 'number') return line.evaluation.mate > 0 ? 1000 : -1000;
         return line.evaluation.cp ?? 0;
@@ -558,7 +567,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       BotState.recoveryAction = null;
       const provenance =
         observed.status === 'locally-applied' ? ' · applied locally; server acceptance unverified' : '';
-      const premoveTag = premoveHit ? ' · premove' : '';
+      const premoveTag = isInstant ? ' · premove' : '';
       ui.log(formatMove(fen, best.uci, snapshot.variant) + premoveTag + provenance, 'move');
     } else if (positionIsCurrent()) {
       anticipatedPonder = null;

@@ -2,8 +2,9 @@ import type { Position } from 'chessops/chess';
 import { makeFen } from 'chessops/fen';
 import { makeUci, squareRank } from 'chessops/util';
 import { loadPosition, parseEngineUci } from '../chess/position.js';
-import type { MultiPvLine } from '../chess/types.js';
+import type { MultiPvLine, OpeningStyle } from '../chess/types.js';
 import { evaluationToCentipawns } from '../shared/chess.js';
+import { lookupBookMove } from './book/lookup.js';
 
 export interface ArmedPremoveMap {
   /** Maps normalized 3-field post-trigger FEN (board turn castling) -> validated UCI reply */
@@ -158,14 +159,16 @@ export function selectOwnTurnChainPremove(
       // Pre-populate instant recapture fallbacks
       populateRecaptureFallbacks(pos, byExpectedFen);
 
-      // If chosen line has at least 3 plies (our move, opponent reply, our follow-up),
-      // arm chosenMoves[2] against chosenMoves[1] (overwriting fallback if any)
-      if (chosenMoves.length >= 3) {
-        const triggerUci = chosenMoves[1];
-        const replyUci = chosenMoves[2];
-        const triggerFen = resolveArmedTriggerFen(startFen, [bestMoveUci], triggerUci, replyUci, variant);
-        if (triggerFen) {
-          byExpectedFen.set(triggerFen, replyUci);
+      // Arm all lines starting with our move that have at least 3 plies
+      for (const line of lines) {
+        const moves = line.pv ? line.pv.trim().split(/\s+/) : [];
+        if (moves.length >= 3 && (moves[0] === bestMoveUci || line === chosen)) {
+          const triggerUci = moves[1];
+          const replyUci = moves[2];
+          const triggerFen = resolveArmedTriggerFen(startFen, [bestMoveUci], triggerUci, replyUci, variant);
+          if (triggerFen) {
+            byExpectedFen.set(triggerFen, replyUci);
+          }
         }
       }
     }
@@ -175,6 +178,30 @@ export function selectOwnTurnChainPremove(
     bestMoveUci,
     ...(byExpectedFen.size > 0 ? { armed: { byExpectedFen } } : {}),
   };
+}
+
+/**
+ * Opening book premove replies:
+ * Given the board position after our move, scans immediate legal opponent replies and
+ * pre-arms book responses so our follow-ups dispatch with 0ms delay.
+ */
+export function selectBookPremoveReplies(nextFen: string, style: OpeningStyle = 'balanced'): ArmedPremoveMap | null {
+  const pos = loadPosition(nextFen, 'standard', 'standard');
+  if (!pos) return null;
+  const byExpectedFen = new Map<string, string>();
+  for (const [from, dests] of pos.allDests()) {
+    for (const to of dests) {
+      const oppMove = { from, to };
+      const p = pos.clone();
+      p.play(oppMove);
+      const oppFen = makeFen(p.toSetup());
+      const reply = lookupBookMove(oppFen, style);
+      if (reply) {
+        byExpectedFen.set(fenKey(oppFen), reply);
+      }
+    }
+  }
+  return byExpectedFen.size > 0 ? { byExpectedFen } : null;
 }
 
 /**

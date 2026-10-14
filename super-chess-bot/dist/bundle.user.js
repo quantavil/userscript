@@ -9109,11 +9109,14 @@
 			if (parsedOurMove) {
 				pos.play(parsedOurMove);
 				populateRecaptureFallbacks(pos, byExpectedFen);
-				if (chosenMoves.length >= 3) {
-					const triggerUci = chosenMoves[1];
-					const replyUci = chosenMoves[2];
-					const triggerFen = resolveArmedTriggerFen(startFen, [bestMoveUci], triggerUci, replyUci, variant);
-					if (triggerFen) byExpectedFen.set(triggerFen, replyUci);
+				for (const line of lines) {
+					const moves = line.pv ? line.pv.trim().split(/\s+/) : [];
+					if (moves.length >= 3 && (moves[0] === bestMoveUci || line === chosen)) {
+						const triggerUci = moves[1];
+						const replyUci = moves[2];
+						const triggerFen = resolveArmedTriggerFen(startFen, [bestMoveUci], triggerUci, replyUci, variant);
+						if (triggerFen) byExpectedFen.set(triggerFen, replyUci);
+					}
 				}
 			}
 		}
@@ -9121,6 +9124,23 @@
 			bestMoveUci,
 			...byExpectedFen.size > 0 ? { armed: { byExpectedFen } } : {}
 		};
+	}
+	function selectBookPremoveReplies(nextFen, style = "balanced") {
+		const pos = loadPosition(nextFen, "standard", "standard");
+		if (!pos) return null;
+		const byExpectedFen = new Map();
+		for (const [from, dests] of pos.allDests()) for (const to of dests) {
+			const oppMove = {
+				from,
+				to
+			};
+			const p = pos.clone();
+			p.play(oppMove);
+			const oppFen = makeFen(p.toSetup());
+			const reply = lookupBookMove(oppFen, style);
+			if (reply) byExpectedFen.set(fenKey(oppFen), reply);
+		}
+		return byExpectedFen.size > 0 ? { byExpectedFen } : null;
 	}
 	function selectOpponentTurnPremove(opponentTurnFen, lines, variant) {
 		if (!lines || lines.length === 0) return null;
@@ -9580,7 +9600,7 @@
 		if (kind === "main" && !snapshot.inputReady) return;
 		if (processed?.kind === kind && processed.fen === fen && processed.identity === snapshot.identity) return;
 		active?.abort();
-		if (kind !== "main" && !BotState.ponderEnabled) {
+		if (kind !== "main" && !BotState.ponderEnabled && !BotState.premove) {
 			cancelPonder();
 			anticipatedPonder = null;
 			processed = {
@@ -9665,11 +9685,11 @@
 				let tbResult = null;
 				const remainingMs = snapshot.remainingMs;
 				const slackMs = remainingMs !== void 0 && remainingMs !== null ? Math.min(3e3, Math.max(200, Math.floor(remainingMs / 20))) : void 0;
-				const requestedMultiPv = kind === "main" ? BotState.premove ? Math.max(2, BotState.multiPvLines?.length ?? 1) : void 0 : BotState.premove ? 6 : void 0;
+				const requestedMultiPv = kind === "main" ? BotState.premove ? Math.max(2, BotState.multiPvLines?.length ?? 1) : void 0 : BotState.premove ? 4 : void 0;
 				const requestedDepth = kind !== "main" && BotState.premove ? 8 : BotState.botPower;
 				const legalMoves = requestedMultiPv ? countLegalMoves(fen, snapshot.variant) ?? void 0 : void 0;
 				const onDepth = kind !== "main" && BotState.premove ? (depth, lines) => {
-					if (depth >= 3) {
+					if (depth >= 1) {
 						const armed = selectOpponentTurnPremove(fen, lines, snapshot.variant);
 						if (armed) {
 							if (!armedPremove) armedPremove = armed;
@@ -9782,13 +9802,18 @@
 					}
 				}
 			}
-			if (BotState.premove && !premoveHit && !bookMove && !isTablebase && best.multiPv && best.multiPv.length > 0) {
-				const chainResult = selectOwnTurnChainPremove(fen, best.multiPv, snapshot.variant);
-				if (chainResult.armed) armedPremove = chainResult.armed;
-			}
 			const currentPosition = matchingSnapshot(site, identity, fen);
 			const nextFen = predictFen(fen, best.uci, snapshot.variant);
 			if ((!snapshot.variant || Boolean(parseRules(snapshot.variant))) && !nextFen || fen.split(" ")[1] !== snapshot.playerColor) throw new Error("Engine move failed position validation");
+			if (BotState.premove && !premoveHit && !isTablebase) {
+				if (best.multiPv && best.multiPv.length > 0) {
+					const chainResult = selectOwnTurnChainPremove(fen, best.multiPv, snapshot.variant);
+					if (chainResult.armed) armedPremove = chainResult.armed;
+				} else if (bookMove && isStandard && nextFen) {
+					const bookArmed = selectBookPremoveReplies(nextFen, BotState.openingStyle);
+					if (bookArmed) armedPremove = bookArmed;
+				}
+			}
 			const pvMoves = best.pv.split(/\s+/);
 			const predictedReply = pvMoves[0] === best.uci ? pvMoves[1] : void 0;
 			const targetFen = predictedReply && nextFen ? predictFen(nextFen, predictedReply, snapshot.variant) : null;
@@ -9835,7 +9860,8 @@
 			}
 			ui.updateDisplay();
 			if (!BotState.autoMove || !current() || !currentPosition?.inputReady) return;
-			if (!premoveHit && BotState.timingMode === "dynamic") {
+			const isInstant = premoveHit || BotState.premove && Boolean(bookMove);
+			if (!isInstant && BotState.timingMode === "dynamic") {
 				const candidateScores = best.multiPv?.map((line) => {
 					if (typeof line.evaluation.mate === "number") return line.evaluation.mate > 0 ? 1e3 : -1e3;
 					return line.evaluation.cp ?? 0;
@@ -9897,7 +9923,7 @@
 			if (observed.status !== "failed") {
 				BotState.recoveryAction = null;
 				const provenance = observed.status === "locally-applied" ? " · applied locally; server acceptance unverified" : "";
-				const premoveTag = premoveHit ? " · premove" : "";
+				const premoveTag = isInstant ? " · premove" : "";
 				ui.log(formatMove(fen, best.uci, snapshot.variant) + premoveTag + provenance, "move");
 			} else if (positionIsCurrent()) {
 				anticipatedPonder = null;

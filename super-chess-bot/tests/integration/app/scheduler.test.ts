@@ -408,4 +408,41 @@ describe('FEN-keyed ponder table and 0ms premove execution', () => {
     // Premove disabled: regular engine analysis MUST run!
     expect(mocks.analyze).toHaveBeenCalledTimes(1);
   });
+
+  it('arms book replies and dispatches them instantly when opening book and premove are enabled', async () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const logSpy = vi.spyOn(ui, 'log');
+    try {
+      BotState.premove = true;
+      BotState.autoMove = true;
+      BotState.openingBook = true;
+      BotState.openingStyle = 'balanced';
+
+      // Turn 1: White plays 1. e4 from opening book
+      await scheduleAnalysis('main', START_FEN);
+
+      // Book move e2e4 was submitted to site immediately without engine analyze
+      expect(mocks.analyze).not.toHaveBeenCalled();
+      expect(mocks.site.submitMove).toHaveBeenCalledTimes(1);
+      expect(mocks.site.submitMove.mock.calls[0][0].uci).toBe('e2e4');
+
+      mocks.site.submitMove.mockClear();
+
+      // Turn 2: Opponent plays 1... e5 -> White to move
+      const afterE5Fen = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+      mocks.snapshot.fen = afterE5Fen;
+      mocks.snapshot.history = { startFen: START_FEN, moves: ['e2e4', 'e7e5'] };
+      mocks.snapshot.sideToMove = 'w';
+
+      await scheduleAnalysis('main', afterE5Fen);
+
+      // Instant premove hit for 2. Nf3!
+      expect(mocks.analyze).not.toHaveBeenCalled();
+      expect(mocks.site.submitMove).toHaveBeenCalledTimes(1);
+      expect(mocks.site.submitMove.mock.calls[0][0].uci).toBe('g1f3');
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('premove'), 'move');
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
 });

@@ -11,6 +11,7 @@ import {
   orig,
   populateRecaptureFallbacks,
   resolveArmedTriggerFen,
+  selectBookPremoveReplies,
   selectOpponentTurnPremove,
   selectOwnTurnChainPremove,
 } from '../../../src/engine/premove.js';
@@ -298,5 +299,34 @@ describe('Stage 2: Opponent-turn Multi-Branch Ponder Table selector', () => {
       },
     ];
     expect(selectOpponentTurnPremove(fen, shortLines)).toBeNull();
+  });
+});
+
+describe('opening book premove selector', () => {
+  it('pre-arms book replies for legal opponent responses after 1. e4', () => {
+    // After 1. e4, White to Black turn
+    const pos = Chess.default();
+    playUci(pos, 'e2e4');
+    const fenAfterE4 = makeFen(pos.toSetup());
+
+    const armed = selectBookPremoveReplies(fenAfterE4, 'balanced');
+    expect(armed).not.toBeNull();
+    expect(armed?.byExpectedFen.size).toBeGreaterThan(0);
+
+    // After 1. e4 e5, White book reply should be g1f3
+    const p1 = pos.clone();
+    playUci(p1, 'e7e5');
+    const fenAfterE5 = fenKey(makeFen(p1.toSetup()));
+    expect(armed?.byExpectedFen.get(fenAfterE5)).toBe('g1f3');
+
+    // After 1. e4 e6, White book reply should be d2d4
+    const p2 = pos.clone();
+    playUci(p2, 'e7e6');
+    const fenAfterE6 = fenKey(makeFen(p2.toSetup()));
+    expect(armed?.byExpectedFen.get(fenAfterE6)).toBe('d2d4');
+  });
+
+  it('returns null for an invalid FEN', () => {
+    expect(selectBookPremoveReplies('invalid fen')).toBeNull();
   });
 });
