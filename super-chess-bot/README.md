@@ -1,5 +1,7 @@
 # Super Chess Bot
 
+Version **12.1.0** — Madman attack premoves.
+
 A GPL-3.0-or-later browser userscript for local chess analysis and move automation in standard player games on Chess.com and Lichess.
 
 [![Multi-site install](https://img.shields.io/badge/Install-bundle.user.js-success?logo=tampermonkey)](dist/bundle.user.js)
@@ -11,7 +13,7 @@ A GPL-3.0-or-later browser userscript for local chess analysis and move automati
 - Offers **Madman · max aggression**, an optional aggression-first policy with attacking candidate discovery and occasional evaluation concessions up to 120 cp.
 - Runs Stockfish locally in a worker for standard chess and Chess960 games.
 - Reads and submits standard moves through each site's controller integration. Automation starts disabled.
-- Instant 0 ms FEN-keyed premove engine combining own-turn recapture-chain steering, opening book replies, and an opponent-turn Multi-Branch Ponder Table (up to 4 branches).
+- FEN-keyed premoves with no intentional delay: normal mode combines recapture chains, book replies and six opponent branches; Madman prepares early attacks and up to four additional captures of offered pieces.
 - Shows up to three Multi-PV engine lines with colored arrows, persistent across plies, optional opening-book choices, and a local scoresheet with PGN export.
 - Offers an on-demand post-game report. Its search runs to depth — depth 18 by default, settable from 10 to 26 — and only starts once the adapter reports a finished game.
 - Queries the Lichess Syzygy service for eligible standard positions with up to seven pieces. Lookups race local search, use a 256-entry in-memory cache keyed by full FEN, and keep DTZ (distance to zeroing) separate from DTM (distance to mate). The first usable result wins; a valid local search result returns without tablebase grace time.
@@ -46,12 +48,12 @@ Enable **Madman · max aggression** below **Blunder shield** in the panel. It de
 
 1. **Establish a baseline.** Search up to six MultiPV lines. With a turn allocation of at least 80 ms, baseline search receives 65% of the allocation, reserving the rest for discovery. Below 80 ms, use the baseline alone.
 2. **Measure attacking pressure.** Legally replay each candidate. Count geometric attacks into the enemy king's surrounding squares, attacks by cheaper pieces on more valuable targets, pawn contact and checks. Also sample pressure after our next two moves in the legal searched PV. These style points rank candidates; they do not change engine centipawn scores or prove a tactic.
-3. **Apply the risk envelope.** Allow an estimated concession of up to 120 cp against the best analyzed candidate. After a submitted move with a concession above 50 cp is observed, limit the next three own-turn move numbers to 50 cp. Repeated analysis and recommendations do not consume cooldown. Preserve known winning mates and exact tablebase results. Incomplete, unknown, mixed-depth or shallow baseline comparisons retain the engine move.
+3. **Apply the risk envelope.** Allow an estimated concession of up to 120 cp against the best analyzed candidate. The same 120 cp ceiling applies every turn, with no cooldown. Preserve known winning mates and exact tablebase results. Incomplete, unknown, mixed-depth or shallow baseline comparisons retain the engine move.
 4. **Discover additional moves.** Rank legal moves outside the baseline by immediate attacking features and propose up to four. An enabled opening book can contribute a hyper-aggressive suggestion, but it must be searched. Re-evaluate the proposals alongside the original engine move in one restricted search, using up to 75% of the time still available. Require a complete same-depth batch at depth six or deeper, a stable baseline evaluation and compliance with the risk envelope before replacing the existing choice.
 5. **Optionally check bait.** At turn allocations of at least 400 ms, remaining time can probe legal captures of the selected offered piece, to depth ten at most. “Bait checked” requires at least depth six and an estimated improvement of 100 cp for us if the opponent takes the offer. The probe uses the opponent's score perspective correctly; it annotates the selected move and does not inflate its root evaluation or predict human behavior.
 6. **Validate and submit.** Recheck the current game and position, display the chosen PV/evaluation, and use the existing site adapter and move-confirmation path. Failed optional work falls back to a usable result; cancellation discards stale work.
 
-The 120/50 cp limits and style weights are experimental tuning, not guarantees of soundness or preserved engine strength. Optional searches share the turn deadline, but feature computation, graceful worker stop/drain and browser scheduling can exceed the search allocation. No full-game aggression, sacrifice-quality or strength benchmark has been established. The [verification record](docs/madman-verification.md) includes unit/integration checks and a small native-engine smoke test.
+The 120 cp limit and style weights are experimental tuning, not guarantees of soundness or preserved engine strength. Optional searches share the turn deadline, but feature computation, graceful worker stop/drain and browser scheduling can exceed the search allocation. No full-game aggression, sacrifice-quality or strength benchmark has been established. The [verification record](docs/madman-verification.md) includes unit/integration checks and a small native-engine smoke test.
 
 ### Interaction with other controls
 
@@ -60,17 +62,25 @@ The 120/50 cp limits and style weights are experimental tuning, not guarantees o
 | Target Elo | Deliberate weaker-move sampling is bypassed; Madman owns final selection. |
 | Blunder shield | The Elo shield is bypassed; Madman's own risk and mate rules apply. |
 | Opening book | Hyper-aggressive book suggestions require engine evaluation; instant book dispatch is suspended. |
-| Premove | Unchecked instant replies, recapture fallbacks and chain steering are suspended. The saved toggle resumes in normal mode. |
-| Background ponder | Analysis can still run during the opponent's turn; that does not mean an instant reply is armed. |
+| Premove | Enables early attacking replies, six predicted branches plus up to four offered-piece capture branches, and deeper upgrades. Valid cache hits dispatch without another search or intentional delay. |
+| Background ponder | Madman premove preparation runs on the opponent's clock when Premove is on, even if Background ponder is off. With Premove off, background analysis can still run. |
 | Tablebases | A tablebase result that wins the existing race remains authoritative. |
 
-### Why premoves are suspended
+### Madman premoves
 
-Normal premoves can steer toward a recapture chain, arm a reply from the opponent-turn PV, or immediately recapture an offered piece. Those replies are not selected by Madman for the resulting own-turn position. A matching position and legal reply do not establish that the move preserves an attacking idea or satisfies the current cooldown. Automatically recapturing can also undo an intentional sacrifice.
+Turn on the existing **Premove** control alongside Madman. The goal is maximum aggression and speed. Replies become available in stages:
 
-Suspending those paths gives each ordinary move one final policy and avoids stale replies bypassing its safeguards. The cost is losing instant responses, spending more of our own clock and potentially reducing bullet performance. It also means the visible Premove preference can be on while Madman prevents arming/dispatch.
+1. **Planned:** after our move is observed, arm the selected attack's legal PV continuation immediately. Also retain legal ways the opponent can capture the piece we just offered, even if the PV is short.
+2. **Prediction:** the opponent-turn depth-three search predicts six moves. Reuse its legal reply continuations immediately to fill empty branches. Their concession is unknown; they cannot replace our already planned attack.
+3. **Seed:** each branch's existing three-candidate depth-three search immediately selects an aggressive reply with the same 120 cp allowance. This adds no engine search.
+4. **Fast:** compare those candidates plus four extra attacking proposals at depth four and publish the selected attack. Add up to four omitted captures of our offered piece and prepare their replies first, so accepting bait can trigger an immediate punishment. A capture branch is prepared even if ordinary prediction fails. Each speculative search slice has an 80 ms deadline; worker draining can add overhead.
+5. **Full:** after breadth, upgrade branches using the six-line Madman baseline and optional attacking discovery, with 80–250 ms allocated per branch.
 
-A future staged approach is **forced replies first, then replies evaluated by Madman for specific opponent branches**. The current implementation does not include either stage. Forced single-legal-move replies offer limited coverage with little choice risk. Branch-specific replies offer more speed, but each needs an own-turn baseline and Madman selection before caching; reading the second move of an opponent PV is insufficient. One serialized worker makes broader coverage compete with search depth and pondering time. See [premove trade-offs](docs/madman-premove-options.md).
+The cache holds up to eleven entries: six ordinary branches, four additional captures and the independently planned continuation. Priority is full > fast > seed > planned > prediction, with known winning mates protected. All evaluated stages rank attacks within the same estimated 120 cp allowance; there is no cooldown. Depth-three and depth-four search can miss defenses or stronger legal moves. Planned/prediction continuations have no fresh comparison and no claimed cp guarantee. These are deliberate aggression/speed tradeoffs.
+
+The cache checks game identity, full canonical FEN including en passant and draw counters, history, relevant settings and legality. A hit submits through the normal site adapter after the opponent's move is observed; it does not queue a blind native site premove. A miss runs foreground Madman search. With Madman and Premove on, synthetic dynamic timing waits are skipped on both hits and misses. Cached dispatch does not wait for speculative worker drain.
+
+Normal-mode book/recapture/PV premoves remain separate. Madman does not blindly recapture offered pieces. Coverage depends on the opponent's reply and how much preparation finishes; **70% is a target, not a measured hit rate**. See the [research, measurements and trade-offs](docs/madman-improvement-research.md).
 
 See the [design](docs/superpowers/specs/2026-10-15-madman-design.md) and [implementation plan](docs/superpowers/plans/2026-10-15-madman-mode-pipeline.md).
 

@@ -115,6 +115,193 @@ describe('scheduler state consistency and multi-pv / elo throttling', () => {
     vi.restoreAllMocks();
   });
 
+  it('dispatches a planned Madman reply while canceled speculative work is still draining', async () => {
+    BotState.madmanMode = true;
+    BotState.premove = true;
+    BotState.autoMove = true;
+    BotState.moveTime = 25;
+    BotState.timingMode = 'dynamic';
+    mocks.analyze.mockResolvedValue({
+      success: true,
+      bestmove: 'e2e4',
+      pv: 'e2e4 e7e5 g1f3 b8c6',
+      evaluation: { cp: 20 },
+      depth: 12,
+    });
+    await scheduleAnalysis('main', START_FEN);
+    const opponentFen = predictFen(START_FEN, 'e2e4') ?? '';
+    const target = predictFen(opponentFen, 'e7e5') ?? '';
+    mocks.snapshot.fen = opponentFen;
+    mocks.snapshot.sideToMove = 'b';
+    mocks.snapshot.history.moves = ['e2e4'];
+    cancelAnalysis(opponentFen);
+    let finish!: (value: unknown) => void;
+    mocks.analyze.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pondering = scheduleAnalysis('ponder', opponentFen);
+    await Promise.resolve();
+    expect(finish).toBeDefined();
+    mocks.snapshot.fen = target;
+    mocks.snapshot.sideToMove = 'w';
+    mocks.snapshot.history.moves = ['e2e4', 'e7e5'];
+    cancelAnalysis(target);
+    const searches = mocks.analyze.mock.calls.length;
+    await scheduleAnalysis('main', target);
+    expect(mocks.site.submitMove.mock.calls.at(-1)?.[0].uci).toBe('g1f3');
+    expect(mocks.analyze).toHaveBeenCalledTimes(searches);
+    expect(BotState.statusInfo).toContain('Premove');
+    expect(BotState.statusInfo).toContain('planned');
+    finish({ success: false, bestmove: '', pv: '', evaluation: {}, depth: 0 });
+    await pondering;
+  });
+
+  it('rejects a Madman planned continuation when history changes', async () => {
+    BotState.madmanMode = true;
+    BotState.premove = true;
+    BotState.autoMove = true;
+    BotState.moveTime = 25;
+    BotState.timingMode = 'fixed';
+    mocks.analyze.mockResolvedValue({
+      success: true,
+      bestmove: 'e2e4',
+      pv: 'e2e4 e7e5 g1f3',
+      evaluation: { cp: 20 },
+      depth: 12,
+    });
+    await scheduleAnalysis('main', START_FEN);
+    const target = predictFen(predictFen(START_FEN, 'e2e4') ?? '', 'e7e5') ?? '';
+    mocks.snapshot.fen = target;
+    mocks.snapshot.history = { startFen: target, moves: [] };
+    cancelAnalysis(target);
+    mocks.analyze.mockResolvedValue({ success: true, bestmove: 'f1c4', pv: 'f1c4', evaluation: { cp: 20 }, depth: 12 });
+    await scheduleAnalysis('main', target);
+    expect(mocks.site.submitMove.mock.calls.at(-1)?.[0].uci).toBe('f1c4');
+    expect(BotState.statusInfo).not.toContain('Premove');
+  });
+
+  it('dispatches an evaluated attacking branch without repeating foreground search', async () => {
+    const root = 'rnbq1rk1/pppp1ppp/5n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b - - 4 5';
+    Object.assign(mocks.snapshot, { fen: root, sideToMove: 'b', history: { startFen: root, moves: [] } });
+    BotState.madmanMode = true;
+    BotState.premove = true;
+    BotState.autoMove = true;
+    BotState.moveTime = 25;
+    mocks.analyze.mockImplementation(
+      async (fen, _depth, _time, _signal, _history, _slack, _variant, _multi, _legal, _onDepth, options) => {
+        const move = fen === root ? 'd7d6' : 'h2h3';
+        const lines = options?.searchMoves
+          ? options.searchMoves.map((uci: string) => ({
+              uci,
+              pv: uci,
+              depth: 4,
+              multipv: 1,
+              evaluation: { cp: uci === 'h2h3' ? 20 : -100 },
+            }))
+          : [{ uci: move, pv: move, depth: 3, multipv: 1, evaluation: { cp: 20 } }];
+        return {
+          success: true,
+          bestmove: lines[0].uci,
+          pv: lines[0].pv,
+          depth: lines[0].depth,
+          evaluation: lines[0].evaluation,
+          multiPv: lines,
+        };
+      },
+    );
+    await scheduleAnalysis('ponder', root);
+    const target = predictFen(root, 'd7d6') ?? '';
+    Object.assign(mocks.snapshot, { fen: target, sideToMove: 'w', history: { startFen: root, moves: ['d7d6'] } });
+    cancelAnalysis(target);
+    const count = mocks.analyze.mock.calls.length;
+    await scheduleAnalysis('main', target);
+    expect(mocks.site.submitMove.mock.calls.at(-1)?.[0].uci).toBe('f3g5');
+    expect(mocks.analyze).toHaveBeenCalledTimes(count);
+    expect(BotState.statusInfo).toContain('fast');
+    expect(BotState.currentEvaluation).toBe('-1.00');
+  });
+
+  it('caches punishment for taking an observed offer even when best-play prediction omits the capture', async () => {
+    const start = '6k1/5ppp/8/8/8/8/3Q1PPP/6K1 w - - 0 1';
+    const offer = '6k1/5ppp/7Q/8/8/8/5PPP/6K1 b - - 1 1';
+    const taken = '6k1/5p1p/7p/8/8/8/5PPP/6K1 w - - 0 2';
+    Object.assign(mocks.snapshot, { fen: start, history: { startFen: start, moves: [] } });
+    BotState.madmanMode = true;
+    BotState.premove = true;
+    BotState.autoMove = true;
+    BotState.moveTime = 25;
+    mocks.analyze.mockResolvedValue({
+      success: true,
+      bestmove: 'd2h6',
+      pv: 'd2h6',
+      evaluation: { cp: -100 },
+      depth: 12,
+    });
+    await scheduleAnalysis('main', start);
+    Object.assign(mocks.snapshot, { fen: offer, sideToMove: 'b', history: { startFen: start, moves: ['d2h6'] } });
+    cancelAnalysis(offer);
+    mocks.analyze.mockImplementation(
+      async (fen, _depth, _time, _signal, _history, _slack, _variant, _multi, _legal, _onDepth, options) => {
+        if (fen !== offer && fen !== taken) throw new Error('unprepared ordinary branch');
+        const moves = fen === offer ? ['f7f6'] : (options?.searchMoves ?? ['f2f3', 'g2g3', 'h2h3']);
+        const lines = moves.map((uci: string) => ({
+          uci,
+          pv: uci,
+          evaluation: { cp: 0 },
+          depth: options?.searchMoves ? 4 : 3,
+          multipv: 1,
+        }));
+        return {
+          success: true,
+          bestmove: lines[0].uci,
+          pv: lines[0].pv,
+          evaluation: lines[0].evaluation,
+          depth: lines[0].depth,
+          multiPv: lines,
+        };
+      },
+    );
+    await scheduleAnalysis('ponder', offer);
+    Object.assign(mocks.snapshot, {
+      fen: taken,
+      sideToMove: 'w',
+      history: { startFen: start, moves: ['d2h6', 'g7h6'] },
+    });
+    cancelAnalysis(taken);
+    const searches = mocks.analyze.mock.calls.length;
+    await scheduleAnalysis('main', taken);
+    expect(mocks.site.submitMove.mock.calls.at(-1)?.[0].uci).toBe('f2f3');
+    expect(mocks.analyze).toHaveBeenCalledTimes(searches);
+    expect(BotState.statusInfo).toContain('Premove');
+  });
+
+  it('skips synthetic timing waits on a Madman premove cache miss', async () => {
+    vi.useFakeTimers();
+    try {
+      BotState.madmanMode = true;
+      BotState.premove = true;
+      BotState.autoMove = true;
+      BotState.moveTime = 25;
+      BotState.timingMode = 'dynamic';
+      mocks.analyze.mockResolvedValue({
+        success: true,
+        bestmove: 'e2e4',
+        pv: 'e2e4',
+        evaluation: { cp: 20 },
+        depth: 12,
+      });
+      const work = scheduleAnalysis('main', START_FEN);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mocks.site.submitMove).toHaveBeenCalledTimes(1);
+      await work;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('lets Madman choose attacking pressure instead of Elo sampling or premove chain steering', async () => {
     const fen = 'rnbq1rk1/pppp1ppp/5n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 w - - 4 5';
     mocks.snapshot.fen = fen;

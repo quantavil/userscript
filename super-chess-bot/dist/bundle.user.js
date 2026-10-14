@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ♟Super-chess-Bot
 // @namespace    https://github.com/quantavil/userscript
-// @version      12.0.0
+// @version      12.1.0
 // @author       quantavil
 // @description  Local Stockfish analysis and move automation for Chess.com and Lichess games
 // @license      GPL-3.0-or-later
@@ -9107,7 +9107,6 @@
 	function selectMadmanMove(fen, lines, options = {}) {
 		const pos = loadPosition(fen, options.variant);
 		if (!pos) return null;
-		const chess960 = getVariantDefinition(options.variant)?.chess960 ?? false;
 		const candidates = lines.flatMap((line) => {
 			const feature = features(pos, line.uci, line.pv);
 			const cp = line.evaluation.cp;
@@ -9123,10 +9122,10 @@
 		const winning = candidates.filter(({ line }) => (line.evaluation.mate ?? 0) > 0).sort((a, b) => (a.line.evaluation.mate ?? 0) - (b.line.evaluation.mate ?? 0));
 		const scored = candidates.filter(({ line }) => Number.isFinite(line.evaluation.cp)).sort((a, b) => (b.line.evaluation.cp ?? 0) - (a.line.evaluation.cp ?? 0));
 		const comparable = candidates.length === lines.length && new Set(lines.map((line) => line.uci)).size === lines.length && candidates.every(({ line }) => line.depth === candidates[0].line.depth);
-		const baseline = winning[0] ?? (comparable && candidates[0].line.depth >= 6 ? scored[0] : candidates[0]) ?? candidates[0];
+		const baseline = winning[0] ?? (comparable && candidates[0].line.depth >= (options.minimumDepth ?? 6) ? scored[0] : candidates[0]) ?? candidates[0];
 		let chosen = baseline;
-		if (comparable && !winning.length && scored.length && baseline.line.depth >= 6) {
-			const maxLoss = options.cooldown ? 50 : 120;
+		if (comparable && !winning.length && scored.length && baseline.line.depth >= (options.minimumDepth ?? 6)) {
+			const maxLoss = 120;
 			const eligible = scored.filter(({ line }) => line.depth === baseline.line.depth && (baseline.line.evaluation.cp ?? 0) - (line.evaluation.cp ?? 0) <= maxLoss);
 			eligible.sort((a, b) => b.aggression - a.aggression || b.sustained - a.sustained || (b.line.evaluation.cp ?? 0) - (a.line.evaluation.cp ?? 0));
 			chosen = eligible[0] ?? baseline;
@@ -9136,33 +9135,22 @@
 			lines: [chosen.line, ...lines.filter((line) => line.uci !== chosen.line.uci)],
 			cpLoss: winning.length ? 0 : Math.max(0, (baseline.line.evaluation.cp ?? 0) - (chosen.line.evaluation.cp ?? 0)),
 			aggression: chosen.aggression,
-			captureMoves: (() => {
-				const move = parseEngineUci(pos, chosen.line.uci);
-				if (!move || !("from" in move) || pos.board.getRole(move.from) === "king") return [];
-				const after = pos.clone();
-				after.play(move);
-				return legalMoves(after, chess960).filter((reply) => {
-					const capture = parseEngineUci(after, reply);
-					return capture && capture.to === move.to && after.board.getColor(move.to) === pos.turn;
-				});
-			})(),
+			captureMoves: capturesOfOfferedPiece(fen, chosen.line.uci, options.variant),
 			verifiedOffer: options.verifiedOffers?.has(chosen.line.uci) ?? false
 		};
 	}
-	var MadmanRiskTracker = class {
-		lastExpensiveTurn = null;
-		isCoolingDown(fen) {
-			const turn = Number(fen.split(" ")[5]);
-			return this.lastExpensiveTurn !== null && Number.isFinite(turn) && turn >= this.lastExpensiveTurn && turn - this.lastExpensiveTurn <= 3;
-		}
-		record(fen, cpLoss) {
-			const turn = Number(fen.split(" ")[5]);
-			if (cpLoss > 50 && Number.isFinite(turn)) this.lastExpensiveTurn = turn;
-		}
-		clear() {
-			this.lastExpensiveTurn = null;
-		}
-	};
+	function capturesOfOfferedPiece(fen, uci, variant) {
+		const pos = loadPosition(fen, variant);
+		if (!pos) return [];
+		const move = parseEngineUci(pos, uci);
+		if (!move || !pos.isLegal(move) || !("from" in move) || pos.board.getRole(move.from) === "king") return [];
+		const color = pos.turn;
+		pos.play(move);
+		return legalMoves(pos, getVariantDefinition(variant)?.chess960 ?? false).filter((reply) => {
+			const capture = parseEngineUci(pos, reply);
+			return capture && (capture.to === move.to && pos.board.getColor(move.to) === color || "from" in capture && pos.board.getRole(capture.from) === "pawn" && capture.to === pos.epSquare && pos.board.getRole(move.to) === "pawn");
+		});
+	}
 	async function analyzeMadman(fen, baseline, request, analyze = getAnalysis) {
 		request.signal.throwIfAborted();
 		const lines = baseline.multiPv?.length ? baseline.multiPv : [{
@@ -9172,10 +9160,7 @@
 			depth: 0,
 			multipv: 1
 		}];
-		const options = {
-			variant: request.variant,
-			cooldown: request.cooldown
-		};
+		const options = { variant: request.variant };
 		const anchor = lines.find((line) => line.uci === baseline.uci);
 		const fallback = selectMadmanMove(fen, [{
 			uci: baseline.uci,
@@ -9185,10 +9170,10 @@
 			multipv: 1
 		}], options);
 		if ((baseline.score.mate ?? 0) > 0) return fallback;
-		let selection = lines.length === (request.expectedCount ?? lines.length) && !!anchor && anchor.depth >= 6 && Number.isFinite(baseline.score.cp) && Number.isFinite(anchor.evaluation.cp) && Math.abs((baseline.score.cp ?? 0) - (anchor.evaluation.cp ?? 0)) <= 50 ? selectMadmanMove(fen, lines, options) : fallback;
+		let selection = lines.length === (request.expectedCount ?? lines.length) && !!anchor && anchor.depth >= 6 && Number.isFinite(baseline.score.cp) && Number.isFinite(anchor.evaluation.cp) && Math.abs((baseline.score.cp ?? 0) - (anchor.evaluation.cp ?? 0)) <= 120 ? selectMadmanMove(fen, lines, options) : fallback;
 		if (selection && Number.isFinite(baseline.score.cp)) {
 			const loss = Math.max(selection.cpLoss, (baseline.score.cp ?? 0) - (selection.chosenLine.evaluation.cp ?? 0));
-			selection = loss <= (request.cooldown ? 50 : 120) ? {
+			selection = loss <= 120 ? {
 				...selection,
 				cpLoss: Math.max(0, loss)
 			} : fallback;
@@ -9211,10 +9196,10 @@
 			request.signal.throwIfAborted();
 			const batch = probe.multiPv;
 			const batchAnchor = batch?.find((line) => line.uci === baseline.uci);
-			if (probe.success && batch && batch.length === searchMoves.length && batchAnchor && batchAnchor.depth >= 6 && Number.isFinite(batchAnchor.evaluation.cp) && Math.abs((batchAnchor.evaluation.cp ?? 0) - (anchor?.evaluation.cp ?? 0)) <= 50 && batch.every((line) => searchMoves.includes(line.uci) && line.depth === batchAnchor.depth && Number.isFinite(line.evaluation.cp)) && new Set(batch.map((line) => line.uci)).size === batch.length) {
+			if (probe.success && batch && batch.length === searchMoves.length && batchAnchor && batchAnchor.depth >= 6 && Number.isFinite(batchAnchor.evaluation.cp) && Math.abs((batchAnchor.evaluation.cp ?? 0) - (anchor?.evaluation.cp ?? 0)) <= 120 && batch.every((line) => searchMoves.includes(line.uci) && line.depth === batchAnchor.depth && Number.isFinite(line.evaluation.cp)) && new Set(batch.map((line) => line.uci)).size === batch.length) {
 				const discovered = selectMadmanMove(fen, batch, options);
 				const loss = discovered ? Math.max(discovered.cpLoss, (anchor?.evaluation.cp ?? 0) - (discovered.chosenLine.evaluation.cp ?? 0), (baseline.score.cp ?? 0) - (discovered.chosenLine.evaluation.cp ?? 0)) : Infinity;
-				if (discovered && loss <= (request.cooldown ? 50 : 120) && discovered.aggression > selection.aggression) selection = {
+				if (discovered && loss <= 120 && discovered.aggression > selection.aggression) selection = {
 					...discovered,
 					cpLoss: Math.max(0, loss)
 				};
@@ -9399,6 +9384,262 @@
 			if (expectedFen) byExpectedFen.set(expectedFen, replyOurUci);
 		}
 		return byExpectedFen.size > 0 ? { byExpectedFen } : null;
+	}
+	var CAPTURE_BRANCHES = 4;
+	var rank = {
+		prediction: 0,
+		planned: 1,
+		seed: 2,
+		fast: 3,
+		full: 4
+	};
+	var historyKey = (history) => history ? `${history.startFen}|${history.moves.join(" ")}` : "";
+	var sameContext = (a, b) => a.identity === b.identity && a.settings === b.settings && (a.variant ?? "standard") === (b.variant ?? "standard") && historyKey(a.history) === historyKey(b.history);
+	var MadmanPremoveCache = class {
+		root = null;
+		scope = null;
+		offer = null;
+		entries = new Map();
+		clear() {
+			this.root = null;
+			this.scope = null;
+			this.offer = null;
+			this.entries.clear();
+		}
+		preserve(fen) {
+			const key = canonicalFen(fen, this.scope?.variant);
+			if (!key || key !== this.root && !this.entries.has(key)) this.clear();
+		}
+		put(rootFen, fen, context, entry) {
+			const key = canonicalFen(fen, context.variant);
+			const root = canonicalFen(rootFen, context.variant);
+			if (!key || !root || !isLegalMove(fen, entry.uci, context.variant)) return;
+			if (this.root !== root || this.scope?.identity !== context.identity || this.scope?.settings !== context.settings) this.clear();
+			this.root = root;
+			this.scope = context;
+			const old = this.entries.get(key);
+			if (old && sameContext(old.context, context)) {
+				const oldMate = (old.entry.evaluation.mate ?? 0) > 0;
+				const newMate = (entry.evaluation.mate ?? 0) > 0;
+				if (oldMate && !newMate || oldMate === newMate && rank[old.entry.source] > rank[entry.source]) return;
+			}
+			if (!this.entries.has(key) && this.entries.size >= 6 + CAPTURE_BRANCHES + 1) return;
+			this.entries.set(key, {
+				context: {
+					...context,
+					history: context.history ? {
+						startFen: context.history.startFen,
+						moves: [...context.history.moves]
+					} : void 0
+				},
+				entry
+			});
+		}
+		take(fen, context) {
+			const key = canonicalFen(fen, context.variant);
+			const hit = key ? this.entries.get(key) : void 0;
+			this.clear();
+			return hit && sameContext(hit.context, context) && isLegalMove(fen, hit.entry.uci, context.variant) ? hit.entry : null;
+		}
+		captureHints(fen, context) {
+			return this.offer && canonicalFen(fen, context.variant) === this.root && sameContext(this.offer.context, context) ? [...this.offer.moves] : [];
+		}
+		seed(fen, best, context) {
+			const root = predictFen(fen, best.uci, context.variant);
+			if (!root) return;
+			const key = canonicalFen(root, context.variant);
+			if (this.root !== key || this.scope?.identity !== context.identity || this.scope?.settings !== context.settings) this.clear();
+			this.root = key;
+			this.scope = context;
+			this.offer = {
+				context: {
+					...context,
+					history: context.history ? {
+						startFen: context.history.startFen,
+						moves: [...context.history.moves, best.uci]
+					} : void 0
+				},
+				moves: capturesOfOfferedPiece(fen, best.uci, context.variant)
+			};
+			const moves = best.pv.trim().split(/\s+/);
+			if (moves.length < 3 || moves[0] !== best.uci) return;
+			const target = predictFen(root, moves[1], context.variant);
+			if (!target) return;
+			const history = context.history ? {
+				...context.history,
+				moves: [
+					...context.history.moves,
+					moves[0],
+					moves[1]
+				]
+			} : void 0;
+			this.put(root, target, {
+				...context,
+				history
+			}, {
+				uci: moves[2],
+				pv: moves.slice(2).join(" "),
+				evaluation: {},
+				depth: 0,
+				source: "planned",
+				cpLoss: null
+			});
+		}
+	};
+	function complete(lines, moves, minimumDepth) {
+		return !!lines && lines.length === moves.length && new Set(lines.map((line) => line.uci)).size === moves.length && lines.every((line) => moves.includes(line.uci) && line.depth >= minimumDepth && line.depth === lines[0].depth && (Number.isFinite(line.evaluation.cp) || Number.isFinite(line.evaluation.mate)));
+	}
+	async function prepareMadmanPremoves(fen, context, request, analyze = getAnalysis) {
+		const live = () => {
+			request.signal.throwIfAborted();
+			return request.current();
+		};
+		const search = (target, depth, multiPv, history, moves) => analyze(target, depth, 0, request.signal, history, void 0, context.variant, multiPv, moves?.length ?? countLegalMoves(target, context.variant) ?? void 0, void 0, {
+			searchMoves: moves,
+			deadline: performance.now() + 80
+		});
+		if (!live()) return;
+		let prediction;
+		try {
+			prediction = await search(fen, 3, 6, context.history);
+		} catch {
+			request.signal.throwIfAborted();
+		}
+		if (!live()) return;
+		const branches = new Map();
+		const addBranch = (uci) => {
+			const next = predictFen(fen, uci, context.variant);
+			if (!next) return null;
+			if (!branches.has(next)) branches.set(next, {
+				fen: next,
+				context: {
+					...context,
+					history: context.history ? {
+						...context.history,
+						moves: [...context.history.moves, uci]
+					} : void 0
+				}
+			});
+			return branches.get(next) ?? null;
+		};
+		const predictions = prediction?.multiPv?.slice(0, 6) ?? [];
+		const ordinary = new Set(predictions.map((line) => line.uci));
+		for (const capture of [...new Set(request.captureMoves ?? [])].filter((uci) => !ordinary.has(uci) && isLegalMove(fen, uci, context.variant)).slice(0, CAPTURE_BRANCHES)) addBranch(capture);
+		for (const line of predictions) {
+			const branch = addBranch(line.uci);
+			const moves = line.pv.trim().split(/\s+/);
+			if (branch && moves[0] === line.uci && moves.length >= 2 && isLegalMove(branch.fen, moves[1], context.variant)) {
+				if (!live()) return;
+				request.publish(branch.fen, branch.context, {
+					uci: moves[1],
+					pv: moves.slice(1).join(" "),
+					evaluation: {},
+					depth: 0,
+					source: "prediction",
+					cpLoss: null
+				});
+			}
+		}
+		for (const branch of branches.values()) {
+			if (!live()) return;
+			try {
+				const seeds = await search(branch.fen, 3, 3, branch.context.history);
+				if (!live()) return;
+				const seedBest = parseBestLine(seeds);
+				const seedLines = seeds.multiPv;
+				const expectedSeeds = Math.min(3, countLegalMoves(branch.fen, context.variant) ?? 3);
+				if (seedBest && (seedBest.score.mate ?? 0) > 0 && isLegalMove(branch.fen, seedBest.uci, context.variant)) request.publish(branch.fen, branch.context, {
+					uci: seedBest.uci,
+					pv: seedBest.pv,
+					evaluation: seedBest.score,
+					depth: seeds.depth,
+					source: "seed",
+					cpLoss: 0
+				});
+				else if (seeds.success && seedLines?.length === expectedSeeds && complete(seedLines, seedLines.map((line) => line.uci), 3)) {
+					const early = selectMadmanMove(branch.fen, seedLines, {
+						variant: context.variant,
+						minimumDepth: 3
+					});
+					if (early) request.publish(branch.fen, branch.context, {
+						...early.chosenLine,
+						source: "seed",
+						cpLoss: early.cpLoss
+					});
+				}
+				if (!live()) return;
+				const existing = [...new Set([seeds.bestmove, ...(seeds.multiPv ?? []).map((line) => line.uci)])].filter((move) => isLegalMove(branch.fen, move, context.variant)).slice(0, 3);
+				const moves = [...new Set([...existing, ...discoverMadmanMoves(branch.fen, existing, context.variant)])];
+				if (!moves.length) continue;
+				const batch = await search(branch.fen, 4, moves.length, branch.context.history, moves);
+				if (!live()) return;
+				const mating = parseBestLine(batch);
+				if (mating && (mating.score.mate ?? 0) > 0 && moves.includes(mating.uci) && isLegalMove(branch.fen, mating.uci, context.variant)) {
+					request.publish(branch.fen, branch.context, {
+						uci: mating.uci,
+						pv: mating.pv,
+						evaluation: mating.score,
+						depth: batch.depth,
+						source: "fast",
+						cpLoss: 0
+					});
+					continue;
+				}
+				if (!batch.success || !complete(batch.multiPv, moves, 4)) continue;
+				const selected = selectMadmanMove(branch.fen, batch.multiPv, {
+					variant: context.variant,
+					minimumDepth: 4
+				});
+				if (selected) request.publish(branch.fen, branch.context, {
+					...selected.chosenLine,
+					source: "fast",
+					cpLoss: selected.cpLoss
+				});
+			} catch {
+				request.signal.throwIfAborted();
+			}
+		}
+		for (const branch of branches.values()) {
+			if (!live()) return;
+			try {
+				const budget = Math.max(80, Math.min(250, request.budget));
+				const deadline = performance.now() + budget;
+				const baseline = await analyze(branch.fen, request.depth, Math.max(1, Math.floor(budget * .65)), request.signal, branch.context.history, void 0, context.variant, 6, countLegalMoves(branch.fen, context.variant) ?? void 0, void 0, { deadline });
+				if (!live()) return;
+				const best = parseBestLine(baseline);
+				if (best && (best.score.mate ?? 0) > 0 && isLegalMove(branch.fen, best.uci, context.variant)) {
+					request.publish(branch.fen, branch.context, {
+						uci: best.uci,
+						pv: best.pv,
+						evaluation: best.score,
+						depth: baseline.depth,
+						source: "full",
+						cpLoss: 0
+					});
+					continue;
+				}
+				const lines = baseline.multiPv;
+				const expected = Math.min(6, countLegalMoves(branch.fen, context.variant) ?? 6);
+				if (!best || lines?.length !== expected || !complete(lines, lines.map((line) => line.uci), 6)) continue;
+				const selected = await analyzeMadman(branch.fen, best, {
+					depth: request.depth,
+					budget,
+					deadline,
+					signal: request.signal,
+					history: branch.context.history,
+					variant: context.variant,
+					expectedCount: expected
+				}, analyze);
+				if (!live()) return;
+				if (selected && selected.chosenLine.depth >= 6) request.publish(branch.fen, branch.context, {
+					...selected.chosenLine,
+					source: "full",
+					cpLoss: selected.cpLoss
+				});
+			} catch {
+				request.signal.throwIfAborted();
+			}
+		}
 	}
 	var resultCache = new Map();
 	var failureCooldown = new Map();
@@ -9750,18 +9991,26 @@
 	var processed = null;
 	var anticipatedPonder = null;
 	var armedPremove = null;
+	var madmanPremoves = new MadmanPremoveCache();
+	var madmanSettingsKey = () => JSON.stringify([
+		BotState.madmanMode,
+		BotState.premove,
+		BotState.botPower,
+		BotState.moveTime,
+		BotState.openingBook,
+		BotState.ponderEnabled
+	]);
 	var pendingConfirmation = null;
 	var retryTimer = null;
 	var retryIdentity = null;
 	var lastEvalRecord = null;
 	var retryCounts = new Map();
-	var madmanRisk = new MadmanRiskTracker();
 	function resetRecovery() {
 		if (retryTimer !== null) clearTimeout(retryTimer);
 		retryTimer = null;
 		retryIdentity = null;
 		retryCounts.clear();
-		madmanRisk.clear();
+		madmanPremoves.clear();
 		armedPremove = null;
 	}
 	var confirmationSettledListeners = new Set();
@@ -9801,7 +10050,10 @@
 		active?.abort();
 		active = null;
 		processed = null;
-		if (!preservePonderFen) armedPremove = null;
+		if (!preservePonderFen) {
+			armedPremove = null;
+			madmanPremoves.clear();
+		} else madmanPremoves.preserve(preservePonderFen);
 		if (pendingConfirmation) pendingConfirmation.requestController.abort();
 		pendingConfirmation = null;
 		if (!anticipatedPonder || anticipatedPonder.fromFen !== preservePonderFen) anticipatedPonder = null;
@@ -9873,7 +10125,26 @@
 			ui.updateDisplay();
 			const history = requestHistory(snapshot);
 			const madman = Boolean(BotState.madmanMode);
-			if (!madman) madmanRisk.clear();
+			const madmanContext = {
+				identity,
+				settings: madmanSettingsKey(),
+				history,
+				variant: snapshot.variant
+			};
+			if (!madman || !BotState.premove) madmanPremoves.clear();
+			if (kind !== "main" && madman && BotState.premove) {
+				await prepareMadmanPremoves(fen, madmanContext, {
+					captureMoves: madmanPremoves.captureHints(fen, madmanContext),
+					depth: BotState.botPower,
+					budget: BotState.moveTime,
+					signal: ctrl.signal,
+					current: () => current() && madmanSettingsKey() === madmanContext.settings,
+					publish: (target, context, entry) => {
+						if (current() && madmanSettingsKey() === madmanContext.settings) madmanPremoves.put(fen, target, context, entry);
+					}
+				});
+				return;
+			}
 			let madmanLoss = 0;
 			let madmanVerified = false;
 			const primaryBudget = madman && kind === "main" && budget >= 80 ? Math.max(1, Math.floor(budget * .65)) : budget;
@@ -9887,6 +10158,15 @@
 			const bookMove = madman ? null : suggestedBookMove;
 			let premoveHit = false;
 			let premoveMove = null;
+			let madmanPremove = null;
+			if (kind === "main" && madman && BotState.premove) {
+				madmanPremove = madmanPremoves.take(fen, madmanContext);
+				if (madmanPremove) {
+					premoveHit = true;
+					premoveMove = madmanPremove.uci;
+					madmanLoss = madmanPremove.cpLoss ?? 0;
+				}
+			}
 			if (kind === "main" && !madman && BotState.premove && armedPremove) {
 				const key = fenKey(fen);
 				const replyUci = armedPremove.byExpectedFen.get(key);
@@ -9904,14 +10184,14 @@
 				result = {
 					success: true,
 					bestmove: premoveMove,
-					depth: 99,
-					pv: premoveMove,
-					evaluation: {}
+					depth: madmanPremove?.depth ?? 99,
+					pv: madmanPremove?.pv ?? premoveMove,
+					evaluation: madmanPremove?.evaluation ?? {}
 				};
 				best = {
 					uci: premoveMove,
-					pv: premoveMove,
-					score: {}
+					pv: madmanPremove?.pv ?? premoveMove,
+					score: madmanPremove?.evaluation ?? {}
 				};
 			} else if (bookMove) {
 				result = {
@@ -10031,7 +10311,7 @@
 				}
 				return;
 			}
-			if (madman && !isTablebase) {
+			if (madman && !isTablebase && !premoveHit) {
 				const selection = await analyzeMadman(fen, best, {
 					depth: BotState.botPower,
 					budget,
@@ -10039,7 +10319,6 @@
 					signal: ctrl.signal,
 					history,
 					variant: snapshot.variant,
-					cooldown: madmanRisk.isCoolingDown(fen),
 					bookMove: suggestedBookMove,
 					expectedCount: Math.min(6, countLegalMoves(fen, snapshot.variant) ?? 6)
 				});
@@ -10110,7 +10389,7 @@
 				...line,
 				evaluation: scoreForWhite(line.evaluation, snapshot.sideToMove)
 			}));
-			if (!premoveHit) BotState.currentEvaluation = bookMove ? "Book" : isTablebase ? tbDisplay : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
+			if (!premoveHit || madmanPremove) BotState.currentEvaluation = bookMove ? "Book" : isTablebase ? tbDisplay : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
 			if (!bookMove && !premoveHit && (typeof best.score.cp === "number" || typeof best.score.mate === "number")) {
 				const whiteScore = scoreForWhite(best.score, snapshot.sideToMove);
 				let numEval = 0;
@@ -10128,7 +10407,7 @@
 				}
 			}
 			BotState.statusInfo = premoveHit ? `Ready · Premove · ${Math.round(performance.now() - started)} ms` : bookMove ? `Ready · Book · ${Math.round(performance.now() - started)} ms` : isTablebase ? `Ready · Tablebase · ${Math.round(performance.now() - started)} ms` : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
-			if (madman && !isTablebase) BotState.statusInfo += ` · Madman${madmanLoss > 0 ? ` · -${Math.round(madmanLoss)} cp` : ""}${madmanVerified ? " · bait checked" : ""}`;
+			if (madman && !isTablebase) BotState.statusInfo += ` · Madman${madmanPremove ? ` · ${madmanPremove.source}` : ""}${madmanLoss > 0 ? ` · -${Math.round(madmanLoss)} cp` : ""}${madmanVerified ? " · bait checked" : ""}`;
 			if (best.multiPv && best.multiPv.length > 0) drawMultiPvArrows(best.multiPv);
 			else {
 				clearArrows();
@@ -10137,7 +10416,7 @@
 			ui.updateDisplay();
 			if (!BotState.autoMove || !current() || !currentPosition?.inputReady) return;
 			const isInstant = premoveHit || BotState.premove && Boolean(bookMove);
-			if (!isInstant && BotState.timingMode === "dynamic") {
+			if (!isInstant && !(madman && BotState.premove) && BotState.timingMode === "dynamic") {
 				const candidateScores = best.multiPv?.map((line) => {
 					if (typeof line.evaluation.mate === "number") return line.evaluation.mate > 0 ? 1e3 : -1e3;
 					return line.evaluation.cp ?? 0;
@@ -10183,7 +10462,10 @@
 				if (!initiated) {
 					requestController.abort();
 					observed = { status: "failed" };
-				} else observed = await confirmation;
+				} else {
+					observed = await confirmation;
+					if (observed.status !== "failed" && madman && BotState.premove && retryIdentity === identity && madmanSettingsKey() === madmanContext.settings) madmanPremoves.seed(fen, best, madmanContext);
+				}
 			} finally {
 				ctrl.signal.removeEventListener("abort", abortRequest);
 				requestController.abort();
@@ -10197,7 +10479,6 @@
 				}
 			}
 			if (observed.status !== "failed") {
-				if (madman && retryIdentity === identity) madmanRisk.record(fen, madmanLoss);
 				BotState.recoveryAction = null;
 				const premoveTag = isInstant ? " · premove" : "";
 				ui.log(formatMove(fen, best.uci, snapshot.variant) + premoveTag, "move");

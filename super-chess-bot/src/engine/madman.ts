@@ -5,7 +5,7 @@ import { opposite } from 'chessops/util';
 import { loadPosition, makeEngineUci, parseEngineUci } from '../chess/position.js';
 import type { MultiPvLine } from '../chess/types.js';
 import { getVariantDefinition } from '../chess/variants.js';
-import { MADMAN_COOLDOWN_TURNS, MADMAN_MAX_LOSS_CP, MADMAN_ROUTINE_LOSS_CP } from './config.js';
+import { MADMAN_MAX_LOSS_CP } from './config.js';
 
 const VALUES: Record<Role, number> = { pawn: 100, knight: 310, bishop: 330, rook: 500, queen: 950, king: 0 };
 
@@ -110,11 +110,10 @@ export function discoverMadmanMoves(fen: string, existing: readonly string[], va
 export function selectMadmanMove(
   fen: string,
   lines: readonly MultiPvLine[],
-  options: { cooldown?: boolean; verifiedOffers?: ReadonlySet<string>; variant?: string } = {},
+  options: { minimumDepth?: 3 | 4 | 6; verifiedOffers?: ReadonlySet<string>; variant?: string } = {},
 ): MadmanSelection | null {
   const pos = loadPosition(fen, options.variant);
   if (!pos) return null;
-  const chess960 = getVariantDefinition(options.variant)?.chess960 ?? false;
   const candidates = lines.flatMap((line) => {
     const feature = features(pos, line.uci, line.pv);
     const cp = line.evaluation.cp;
@@ -134,10 +133,12 @@ export function selectMadmanMove(
     new Set(lines.map((line) => line.uci)).size === lines.length &&
     candidates.every(({ line }) => line.depth === candidates[0].line.depth);
   const baseline =
-    winning[0] ?? (comparable && candidates[0].line.depth >= 6 ? scored[0] : candidates[0]) ?? candidates[0];
+    winning[0] ??
+    (comparable && candidates[0].line.depth >= (options.minimumDepth ?? 6) ? scored[0] : candidates[0]) ??
+    candidates[0];
   let chosen = baseline;
-  if (comparable && !winning.length && scored.length && baseline.line.depth >= 6) {
-    const maxLoss = options.cooldown ? MADMAN_ROUTINE_LOSS_CP : MADMAN_MAX_LOSS_CP;
+  if (comparable && !winning.length && scored.length && baseline.line.depth >= (options.minimumDepth ?? 6)) {
+    const maxLoss = MADMAN_MAX_LOSS_CP;
     const eligible = scored.filter(
       ({ line }) =>
         line.depth === baseline.line.depth && (baseline.line.evaluation.cp ?? 0) - (line.evaluation.cp ?? 0) <= maxLoss,
@@ -155,40 +156,29 @@ export function selectMadmanMove(
     lines: [chosen.line, ...lines.filter((line) => line.uci !== chosen.line.uci)],
     cpLoss: winning.length ? 0 : Math.max(0, (baseline.line.evaluation.cp ?? 0) - (chosen.line.evaluation.cp ?? 0)),
     aggression: chosen.aggression,
-    captureMoves: (() => {
-      const move = parseEngineUci(pos, chosen.line.uci);
-      if (!move || !('from' in move) || pos.board.getRole(move.from) === 'king') return [];
-      const after = pos.clone();
-      after.play(move);
-      return legalMoves(after, chess960).filter((reply) => {
-        const capture = parseEngineUci(after, reply);
-        return capture && capture.to === move.to && after.board.getColor(move.to) === pos.turn;
-      });
-    })(),
+    captureMoves: capturesOfOfferedPiece(fen, chosen.line.uci, options.variant),
     verifiedOffer: options.verifiedOffers?.has(chosen.line.uci) ?? false,
   };
 }
 
-/** Record only moves that were observed after submission; recommendations spend no risk. */
-export class MadmanRiskTracker {
-  private lastExpensiveTurn: number | null = null;
-
-  isCoolingDown(fen: string): boolean {
-    const turn = Number(fen.split(' ')[5]);
+/** Legal ways to take the just-moved piece, without assuming any capture is poisoned. */
+export function capturesOfOfferedPiece(fen: string, uci: string, variant?: string): string[] {
+  const pos = loadPosition(fen, variant);
+  if (!pos) return [];
+  const move = parseEngineUci(pos, uci);
+  if (!move || !pos.isLegal(move) || !('from' in move) || pos.board.getRole(move.from) === 'king') return [];
+  const color = pos.turn;
+  pos.play(move);
+  const chess960 = getVariantDefinition(variant)?.chess960 ?? false;
+  return legalMoves(pos, chess960).filter((reply) => {
+    const capture = parseEngineUci(pos, reply);
     return (
-      this.lastExpensiveTurn !== null &&
-      Number.isFinite(turn) &&
-      turn >= this.lastExpensiveTurn &&
-      turn - this.lastExpensiveTurn <= MADMAN_COOLDOWN_TURNS
+      capture &&
+      ((capture.to === move.to && pos.board.getColor(move.to) === color) ||
+        ('from' in capture &&
+          pos.board.getRole(capture.from) === 'pawn' &&
+          capture.to === pos.epSquare &&
+          pos.board.getRole(move.to) === 'pawn'))
     );
-  }
-
-  record(fen: string, cpLoss: number): void {
-    const turn = Number(fen.split(' ')[5]);
-    if (cpLoss > MADMAN_ROUTINE_LOSS_CP && Number.isFinite(turn)) this.lastExpensiveTurn = turn;
-  }
-
-  clear(): void {
-    this.lastExpensiveTurn = null;
-  }
+  });
 }

@@ -13,7 +13,7 @@ import {
   PREMOVE_PONDER_BRANCHES,
   PREMOVE_PONDER_DEPTH,
 } from '../engine/config.js';
-import { MadmanRiskTracker } from '../engine/madman.js';
+import { MadmanPremoveCache, type MadmanPremoveEntry, prepareMadmanPremoves } from '../engine/madman-premove.js';
 import { analyzeMadman } from '../engine/madman-search.js';
 import {
   type ArmedPremoveMap,
@@ -41,19 +41,28 @@ let active: AbortController | null = null;
 let processed: { kind: string; fen: string; identity: object } | null = null;
 let anticipatedPonder: { fromFen: string; targetFen: string; history?: PositionHistory } | null = null;
 let armedPremove: ArmedPremoveMap | null = null;
+const madmanPremoves = new MadmanPremoveCache();
+const madmanSettingsKey = () =>
+  JSON.stringify([
+    BotState.madmanMode,
+    BotState.premove,
+    BotState.botPower,
+    BotState.moveTime,
+    BotState.openingBook,
+    BotState.ponderEnabled,
+  ]);
 let pendingConfirmation: { identity: object; requestController: AbortController } | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryIdentity: object | null = null;
 let lastEvalRecord: { identity: object; plyKey: string } | null = null;
 const retryCounts = new Map<string, number>();
-const madmanRisk = new MadmanRiskTracker();
 
 export function resetRecovery(): void {
   if (retryTimer !== null) clearTimeout(retryTimer);
   retryTimer = null;
   retryIdentity = null;
   retryCounts.clear();
-  madmanRisk.clear();
+  madmanPremoves.clear();
   armedPremove = null;
 }
 
@@ -110,7 +119,12 @@ export function cancelAnalysis(preservePonderFen?: string): void {
   active?.abort();
   active = null;
   processed = null;
-  if (!preservePonderFen) armedPremove = null;
+  if (!preservePonderFen) {
+    armedPremove = null;
+    madmanPremoves.clear();
+  } else {
+    madmanPremoves.preserve(preservePonderFen);
+  }
   if (pendingConfirmation) pendingConfirmation.requestController.abort();
   pendingConfirmation = null;
   if (!anticipatedPonder || anticipatedPonder.fromFen !== preservePonderFen) anticipatedPonder = null;
@@ -188,7 +202,22 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     ui.updateDisplay();
     const history = requestHistory(snapshot);
     const madman = Boolean(BotState.madmanMode);
-    if (!madman) madmanRisk.clear();
+    const madmanContext = { identity, settings: madmanSettingsKey(), history, variant: snapshot.variant };
+    if (!madman || !BotState.premove) madmanPremoves.clear();
+    if (kind !== 'main' && madman && BotState.premove) {
+      await prepareMadmanPremoves(fen, madmanContext, {
+        captureMoves: madmanPremoves.captureHints(fen, madmanContext),
+        depth: BotState.botPower,
+        budget: BotState.moveTime,
+        signal: ctrl.signal,
+        current: () => current() && madmanSettingsKey() === madmanContext.settings,
+        publish: (target, context, entry) => {
+          if (current() && madmanSettingsKey() === madmanContext.settings)
+            madmanPremoves.put(fen, target, context, entry);
+        },
+      });
+      return;
+    }
     let madmanLoss = 0;
     let madmanVerified = false;
     // Reserve discovery time only when there is room for a positive-time search.
@@ -219,6 +248,15 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     const bookMove = madman ? null : suggestedBookMove;
     let premoveHit = false;
     let premoveMove: string | null = null;
+    let madmanPremove: MadmanPremoveEntry | null = null;
+    if (kind === 'main' && madman && BotState.premove) {
+      madmanPremove = madmanPremoves.take(fen, madmanContext);
+      if (madmanPremove) {
+        premoveHit = true;
+        premoveMove = madmanPremove.uci;
+        madmanLoss = madmanPremove.cpLoss ?? 0;
+      }
+    }
     if (kind === 'main' && !madman && BotState.premove && armedPremove) {
       const key = fenKey(fen);
       const replyUci = armedPremove.byExpectedFen.get(key);
@@ -240,14 +278,14 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       result = {
         success: true,
         bestmove: premoveMove,
-        depth: 99,
-        pv: premoveMove,
-        evaluation: {},
+        depth: madmanPremove?.depth ?? 99,
+        pv: madmanPremove?.pv ?? premoveMove,
+        evaluation: madmanPremove?.evaluation ?? {},
       };
       best = {
         uci: premoveMove,
-        pv: premoveMove,
-        score: {},
+        pv: madmanPremove?.pv ?? premoveMove,
+        score: madmanPremove?.evaluation ?? {},
       };
     } else if (bookMove) {
       result = {
@@ -428,7 +466,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       return;
     }
 
-    if (madman && !isTablebase) {
+    if (madman && !isTablebase && !premoveHit) {
       const selection = await analyzeMadman(fen, best, {
         depth: BotState.botPower,
         budget,
@@ -436,7 +474,6 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
         signal: ctrl.signal,
         history,
         variant: snapshot.variant,
-        cooldown: madmanRisk.isCoolingDown(fen),
         bookMove: suggestedBookMove,
         expectedCount: Math.min(MADMAN_MULTI_PV, countLegalMoves(fen, snapshot.variant) ?? MADMAN_MULTI_PV),
       });
@@ -533,7 +570,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
         evaluation: scoreForWhite(line.evaluation, snapshot.sideToMove),
       }));
     }
-    if (!premoveHit) {
+    if (!premoveHit || madmanPremove) {
       BotState.currentEvaluation = bookMove
         ? 'Book'
         : isTablebase
@@ -566,7 +603,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
           : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
 
     if (madman && !isTablebase) {
-      BotState.statusInfo += ` · Madman${madmanLoss > 0 ? ` · -${Math.round(madmanLoss)} cp` : ''}${madmanVerified ? ' · bait checked' : ''}`;
+      BotState.statusInfo += ` · Madman${madmanPremove ? ` · ${madmanPremove.source}` : ''}${madmanLoss > 0 ? ` · -${Math.round(madmanLoss)} cp` : ''}${madmanVerified ? ' · bait checked' : ''}`;
     }
     if (best.multiPv && best.multiPv.length > 0) {
       drawMultiPvArrows(best.multiPv);
@@ -578,7 +615,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     if (!BotState.autoMove || !current() || !currentPosition?.inputReady) return;
 
     const isInstant = premoveHit || (BotState.premove && Boolean(bookMove));
-    if (!isInstant && BotState.timingMode === 'dynamic') {
+    if (!isInstant && !(madman && BotState.premove) && BotState.timingMode === 'dynamic') {
       const candidateScores = best.multiPv?.map((line) => {
         if (typeof line.evaluation.mate === 'number') return line.evaluation.mate > 0 ? 1000 : -1000;
         return line.evaluation.cp ?? 0;
@@ -624,6 +661,15 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
         observed = { status: 'failed' };
       } else {
         observed = await confirmation;
+        if (
+          observed.status !== 'failed' &&
+          madman &&
+          BotState.premove &&
+          retryIdentity === identity &&
+          madmanSettingsKey() === madmanContext.settings
+        ) {
+          madmanPremoves.seed(fen, best, madmanContext);
+        }
       }
     } finally {
       ctrl.signal.removeEventListener('abort', abortRequest);
@@ -640,7 +686,6 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       }
     }
     if (observed.status !== 'failed') {
-      if (madman && retryIdentity === identity) madmanRisk.record(fen, madmanLoss);
       BotState.recoveryAction = null;
       const premoveTag = isInstant ? ' · premove' : '';
       ui.log(formatMove(fen, best.uci, snapshot.variant) + premoveTag, 'move');

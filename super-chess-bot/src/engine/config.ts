@@ -91,7 +91,5 @@ export const REPORT_CPL_CAP = 1000;
 // --- Maximum Aggression (experimental style tuning) ---
 export const MADMAN_MULTI_PV = 6;
 export const MADMAN_MAX_LOSS_CP = 120;
-export const MADMAN_ROUTINE_LOSS_CP = 50;
-export const MADMAN_COOLDOWN_TURNS = 3;
 export const MADMAN_DISCOVERY_MIN_BUDGET_MS = 80;
 export const MADMAN_VERIFY_MIN_BUDGET_MS = 400;

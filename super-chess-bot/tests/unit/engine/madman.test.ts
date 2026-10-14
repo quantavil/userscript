@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MultiPvLine } from '../../../src/chess/types.js';
-import { discoverMadmanMoves, MadmanRiskTracker, selectMadmanMove } from '../../../src/engine/madman.js';
+import { discoverMadmanMoves, selectMadmanMove } from '../../../src/engine/madman.js';
 
 const ATTACK = 'rnbq1rk1/pppp1ppp/5n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 w - - 4 5';
 const line = (uci: string, cp: number, depth = 12): MultiPvLine => ({
@@ -32,17 +32,13 @@ describe('maximum aggression selection', () => {
     const result = selectMadmanMove(ATTACK, [line('h2h3', 20), line('f3g5', 200, 4)]);
     expect(result?.chosenLine.uci).toBe('h2h3');
   });
-  it('counts cooldown by observed own-turn move number, not repeated analyses', () => {
-    const risk = new MadmanRiskTracker();
-    risk.record(ATTACK, 100);
-    expect(risk.isCoolingDown(ATTACK)).toBe(true);
-    expect(risk.isCoolingDown(ATTACK)).toBe(true);
-    expect(risk.isCoolingDown(ATTACK.replace('4 5', '4 8'))).toBe(true);
-    expect(risk.isCoolingDown(ATTACK.replace('4 5', '4 9'))).toBe(false);
-    risk.record(ATTACK.replace('4 5', '4 8'), 40);
-    expect(risk.isCoolingDown(ATTACK.replace('4 5', '4 9'))).toBe(false);
-    risk.clear();
-    expect(risk.isCoolingDown(ATTACK)).toBe(false);
+  it('selects an attacking move from a complete fast premove comparison at depth four', () => {
+    expect(
+      selectMadmanMove(ATTACK, [line('h2h3', 20, 4), line('f3g5', -100, 4)], { minimumDepth: 4 })?.chosenLine.uci,
+    ).toBe('f3g5');
+    expect(
+      selectMadmanMove(ATTACK, [line('h2h3', 20, 3), line('f3g5', -100, 3)], { minimumDepth: 4 })?.chosenLine.uci,
+    ).toBe('h2h3');
   });
   it('prefers knight pressure over a quiet move within 120 cp and keeps engine scores intact', () => {
     const result = selectMadmanMove(ATTACK, [line('h2h3', 20), line('f3g5', -100)]);
@@ -52,14 +48,13 @@ describe('maximum aggression selection', () => {
     expect(result?.lines[0].uci).toBe('f3g5');
   });
 
-  it('rejects a 121 cp concession and clamps to 50 cp during cooldown', () => {
+  it('rejects a 121 cp concession while allowing repeated 120 cp attacking choices', () => {
     expect(selectMadmanMove(ATTACK, [line('h2h3', 20), line('f3g5', -101)])?.chosenLine.uci).toBe('h2h3');
-    expect(selectMadmanMove(ATTACK, [line('h2h3', 20), line('f3g5', -31)], { cooldown: true })?.chosenLine.uci).toBe(
-      'h2h3',
-    );
-    expect(selectMadmanMove(ATTACK, [line('h2h3', 20), line('f3g5', -30)], { cooldown: true })?.chosenLine.uci).toBe(
-      'f3g5',
-    );
+    for (const turn of [5, 6, 7, 8]) {
+      expect(
+        selectMadmanMove(ATTACK.replace('4 5', `4 ${turn}`), [line('h2h3', 20), line('f3g5', -100)])?.chosenLine.uci,
+      ).toBe('f3g5');
+    }
   });
 
   it('keeps attacking alternatives available when already behind', () => {

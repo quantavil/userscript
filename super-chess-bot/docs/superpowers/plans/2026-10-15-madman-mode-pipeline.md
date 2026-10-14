@@ -1,5 +1,7 @@
 # Maximum Aggression Madman Implementation Plan
 
+> Historical initial implementation. The later approved 120 cp-only policy and planned/fast/full premove support supersede the cooldown and premove-suspension decisions here; see [premove implementation](2026-10-15-madman-premoves.md).
+
 > **For agentic workers:** Use executing-plans for implementation in this session. Steps use checkbox syntax for tracking.
 
 **Goal:** Make Stockfish 19 Lite prefer sustained attacks, accepting occasional concessions up to 120 cp.
@@ -50,4 +52,4 @@ User approved the aggression-first design and requested implementation. Work sta
 - Declined-to-judge behaviors from review: measured strength, practical aggression, live browser latency and site behavior. These require separate game/browser benchmarks; the native smoke test does not establish them.
 - Verification: bun install --frozen-lockfile; bun run check passed (458 tests across 36 suites, Biome, TypeScript, Knip and both production builds); git diff --check passed. Native Stockfish 19 Lite smoke: four positions at 100 and 400 ms; see docs/madman-verification.md.
 
-- Follow-up: user requested a commit, exact UI label `Madman · max aggression`, expanded README/AGENTS documentation and a premove pros/cons discussion. Updated these and added docs/madman-premove-options.md; premove behavior is unchanged. This supersedes the earlier decision to leave the work uncommitted.
+- Follow-up: user requested a commit, exact UI label `Madman · max aggression`, expanded README/AGENTS documentation and a premove pros/cons discussion. Updated these and added docs/madman-improvement-research.md; premove behavior is unchanged. This supersedes the earlier decision to leave the work uncommitted.

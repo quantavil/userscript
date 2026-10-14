@@ -1,11 +1,6 @@
 import { makeFen } from 'chessops/fen';
 import { loadPosition, type PositionHistory, parseEngineUci } from '../chess/position.js';
-import {
-  MADMAN_DISCOVERY_MIN_BUDGET_MS,
-  MADMAN_MAX_LOSS_CP,
-  MADMAN_ROUTINE_LOSS_CP,
-  MADMAN_VERIFY_MIN_BUDGET_MS,
-} from './config.js';
+import { MADMAN_DISCOVERY_MIN_BUDGET_MS, MADMAN_MAX_LOSS_CP, MADMAN_VERIFY_MIN_BUDGET_MS } from './config.js';
 import { discoverMadmanMoves, type MadmanSelection, selectMadmanMove } from './madman.js';
 import { type BestLine, getAnalysis } from './service.js';
 
@@ -16,7 +11,6 @@ interface MadmanRequest {
   signal: AbortSignal;
   history?: PositionHistory;
   variant?: string;
-  cooldown?: boolean;
   bookMove?: string | null;
   expectedCount?: number;
 }
@@ -40,7 +34,7 @@ export async function analyzeMadman(
           multipv: 1,
         },
       ];
-  const options = { variant: request.variant, cooldown: request.cooldown };
+  const options = { variant: request.variant };
   const anchor = lines.find((line) => line.uci === baseline.uci);
   const authoritative = {
     uci: baseline.uci,
@@ -57,14 +51,11 @@ export async function analyzeMadman(
     anchor.depth >= 6 &&
     Number.isFinite(baseline.score.cp) &&
     Number.isFinite(anchor.evaluation.cp) &&
-    Math.abs((baseline.score.cp ?? 0) - (anchor.evaluation.cp ?? 0)) <= MADMAN_ROUTINE_LOSS_CP;
+    Math.abs((baseline.score.cp ?? 0) - (anchor.evaluation.cp ?? 0)) <= MADMAN_MAX_LOSS_CP;
   let selection = complete ? selectMadmanMove(fen, lines, options) : fallback;
   if (selection && Number.isFinite(baseline.score.cp)) {
     const loss = Math.max(selection.cpLoss, (baseline.score.cp ?? 0) - (selection.chosenLine.evaluation.cp ?? 0));
-    selection =
-      loss <= (request.cooldown ? MADMAN_ROUTINE_LOSS_CP : MADMAN_MAX_LOSS_CP)
-        ? { ...selection, cpLoss: Math.max(0, loss) }
-        : fallback;
+    selection = loss <= MADMAN_MAX_LOSS_CP ? { ...selection, cpLoss: Math.max(0, loss) } : fallback;
   }
   if (selection?.chosenLine.uci === baseline.uci) selection = fallback;
   const remaining = () => Math.floor(request.deadline - performance.now());
@@ -111,7 +102,7 @@ export async function analyzeMadman(
         batchAnchor &&
         batchAnchor.depth >= 6 &&
         Number.isFinite(batchAnchor.evaluation.cp) &&
-        Math.abs((batchAnchor.evaluation.cp ?? 0) - (anchor?.evaluation.cp ?? 0)) <= 50 &&
+        Math.abs((batchAnchor.evaluation.cp ?? 0) - (anchor?.evaluation.cp ?? 0)) <= MADMAN_MAX_LOSS_CP &&
         batch.every(
           (line) =>
             searchMoves.includes(line.uci) && line.depth === batchAnchor.depth && Number.isFinite(line.evaluation.cp),
@@ -126,11 +117,7 @@ export async function analyzeMadman(
               (baseline.score.cp ?? 0) - (discovered.chosenLine.evaluation.cp ?? 0),
             )
           : Infinity;
-        if (
-          discovered &&
-          loss <= (request.cooldown ? MADMAN_ROUTINE_LOSS_CP : MADMAN_MAX_LOSS_CP) &&
-          discovered.aggression > selection.aggression
-        ) {
+        if (discovered && loss <= MADMAN_MAX_LOSS_CP && discovered.aggression > selection.aggression) {
           selection = { ...discovered, cpLoss: Math.max(0, loss) };
         }
       }
