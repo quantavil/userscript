@@ -1,3 +1,4 @@
+import { isVisibleBoard } from '../common.js';
 import { pageDocument } from '../types.js';
 import { getCapturedChesscomController } from './bridge.js';
 
@@ -41,20 +42,6 @@ let cachedGameTimestamp = 0;
 
 function hasGameApi(board: BoardElement): boolean {
   return typeof board.game?.getFEN === 'function';
-}
-
-function isVisibleBoard(board: HTMLElement): boolean {
-  try {
-    const view = board.ownerDocument?.defaultView;
-    const style =
-      view?.getComputedStyle(board) ?? (typeof getComputedStyle === 'function' ? getComputedStyle(board) : null);
-    if (style?.display === 'none' || style?.visibility === 'hidden' || style?.visibility === 'collapse') return false;
-    if (typeof board.getClientRects === 'function' && board.getClientRects().length === 0) return false;
-    const rect = board.getBoundingClientRect?.();
-    return !rect || (rect.width > 0 && rect.height > 0);
-  } catch {
-    return false;
-  }
 }
 
 function boardArea(board: HTMLElement): number {

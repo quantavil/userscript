@@ -3,6 +3,7 @@ import { makeFen, parseFen } from 'chessops/fen';
 import { makeSquare, parseUci } from 'chessops/util';
 import { setupPosition } from 'chessops/variant';
 import { canonicalFen, parseRules, replaySanLine } from '../../chess/position.js';
+import { isVisibleBoard } from '../common.js';
 import {
   type Color,
   type GameSnapshot,
@@ -88,18 +89,6 @@ function engineColor(color: unknown): Color | null {
   return null;
 }
 
-function visibleBoard(board: HTMLElement): boolean {
-  try {
-    if (!board.isConnected || board.getClientRects().length === 0) return false;
-    const rect = board.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return false;
-    const style = board.ownerDocument.defaultView?.getComputedStyle(board);
-    return style?.display !== 'none' && style?.visibility !== 'hidden';
-  } catch {
-    return false;
-  }
-}
-
 function stepFen(round: RoundController, phase: GameSnapshot['phase']): LichessStep | null {
   const lastPly = round.lastPly?.();
   const currentPly = phase === 'replay' && Number.isInteger(round.ply) ? round.ply : lastPly;
@@ -146,28 +135,39 @@ function buildHistoryFor(data: RoundData, selectedStep: LichessStep) {
   return { fen, history: replay.history, confirmedFens: replay.fens };
 }
 
-function createHistoryReader(): (data: RoundData, selectedStep: LichessStep) => ReturnType<typeof buildHistoryFor> {
+export function createHistoryReader(): (
+  data: RoundData,
+  selectedStep: LichessStep,
+) => ReturnType<typeof buildHistoryFor> {
   let cachedData: RoundData | null = null;
   let cachedSteps: LichessStep[] | undefined;
-  let cachedInput = '';
+  let cachedPly: number | undefined;
+  let cachedFen: string | undefined;
+  let cachedSan: string | undefined;
+  let cachedLength: number | undefined;
   let cachedResult: ReturnType<typeof buildHistoryFor>;
-  let hasCache = false;
 
   return (data, selectedStep) => {
     const steps = data.steps;
-    const selectedIndex = steps?.findIndex((step) => step.ply === selectedStep.ply) ?? -1;
-    const input = JSON.stringify([
-      selectedStep.ply,
-      selectedStep.fen,
-      selectedIndex >= 0 ? steps?.slice(0, selectedIndex + 1).map((step) => [step.ply, step.fen, step.san]) : null,
-    ]);
-    if (hasCache && data === cachedData && steps === cachedSteps && input === cachedInput) return cachedResult;
+    if (
+      cachedResult !== undefined &&
+      data === cachedData &&
+      steps === cachedSteps &&
+      selectedStep.ply === cachedPly &&
+      selectedStep.fen === cachedFen &&
+      selectedStep.san === cachedSan &&
+      steps?.length === cachedLength
+    ) {
+      return cachedResult;
+    }
 
     cachedData = data;
     cachedSteps = steps;
-    cachedInput = input;
+    cachedPly = selectedStep.ply;
+    cachedFen = selectedStep.fen;
+    cachedSan = selectedStep.san;
+    cachedLength = steps?.length;
     cachedResult = buildHistoryFor(data, selectedStep);
-    hasCache = true;
     return cachedResult;
   };
 }
@@ -268,7 +268,7 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
       if (statusId < 20) return { kind: 'waiting', reason: 'Lichess game has not started' };
 
       const board = currentPage.document.querySelector<HTMLElement>('.round__app .cg-wrap');
-      if (!board || !visibleBoard(board)) return { kind: 'waiting', reason: 'Waiting for Lichess chessboard' };
+      if (!board || !isVisibleBoard(board)) return { kind: 'waiting', reason: 'Waiting for Lichess chessboard' };
       const playerColor = engineColor(player.color);
       const orientation = round.chessground?.state?.orientation;
       if (!playerColor || (orientation !== 'white' && orientation !== 'black'))

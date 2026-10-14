@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalFen, countLegalMoves, predictFen } from '../../../src/chess/position.js';
+import {
+  canonicalFen,
+  countLegalMoves,
+  predictFen,
+  replaySanLine,
+  toFourFieldFen,
+} from '../../../src/chess/position.js';
 
 /** Black has just played d7-d5, leaving a live e5 pawn that can take d6 en passant. */
 const EP_CAPTURE_FEN = '4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1';
@@ -8,6 +14,7 @@ const AFTER_EP_CAPTURE = '4k3/8/3P4/8/8/8/8/4K3 b - - 0 1';
 
 /** A d2 pawn with no black pawn on c4 or e4, so the double push leaves no legal capture. */
 const NO_CAPTURE_PUSH_FEN = '4k3/8/8/8/8/8/3P4/4K3 w - - 0 1';
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 describe('predictFen with en passant', () => {
   it('plays an en passant capture, removing the passed pawn', () => {
@@ -55,5 +62,42 @@ describe('canonicalFen normalizes host en passant conventions', () => {
     // This is the comparison the Lichess adapter performs before it will dispatch a move.
     const predicted = canonicalFen(predictFen(EP_CAPTURE_FEN, 'e5d6') ?? '');
     expect(predicted).toBe(canonicalFen(AFTER_EP_CAPTURE));
+  });
+});
+
+describe('replaySanLine', () => {
+  it('correctly replays a sequence of SAN moves into UCI moves and canonical FENs', () => {
+    const replay = replaySanLine(START_FEN, ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+    expect(replay).toBeDefined();
+    expect(replay?.history.moves).toEqual(['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5']);
+    expect(replay?.fens).toHaveLength(6);
+    expect(replay?.fens[0]).toBe(canonicalFen(START_FEN));
+  });
+
+  it('handles castling and pawn promotion in replaySanLine', () => {
+    const replay = replaySanLine('3k4/P7/8/8/8/8/8/R3K2R w KQ - 0 1', ['O-O', 'Ke7', 'a8=Q']);
+    expect(replay).toBeDefined();
+    expect(replay?.history.moves).toEqual(['e1g1', 'd8e7', 'a7a8q']);
+    expect(replay?.fens).toHaveLength(4);
+  });
+
+  it('returns undefined if any SAN move is illegal or malformed', () => {
+    expect(replaySanLine(START_FEN, ['e4', 'e4'])).toBeUndefined();
+    expect(replaySanLine(START_FEN, ['invalidMove'])).toBeUndefined();
+    expect(replaySanLine(START_FEN, [''])).toBeUndefined();
+  });
+});
+
+describe('toFourFieldFen', () => {
+  it('extracts the first four fields from standard FEN', () => {
+    expect(toFourFieldFen('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1')).toBe(
+      'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3',
+    );
+  });
+
+  it('handles strings with fewer than four fields gracefully', () => {
+    expect(toFourFieldFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR')).toBe(
+      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
+    );
   });
 });

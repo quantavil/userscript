@@ -10,13 +10,13 @@
  * - hyper-aggressive: Danish Gambit, Halloween, Blackmar-Diemer, Traxler Counterattack, Stafford
  */
 
+import { toFourFieldFen } from '../../chess/position.js';
 import type { OpeningStyle } from '../../chess/types';
 
 import { type BookEntry, type CandidateMove, EPD_BOOK } from './positions.js';
 
 export function normalizeEpd(fen: string): string {
-  const parts = fen.trim().split(/\s+/);
-  return parts.length >= 4 ? parts.slice(0, 4).join(' ') : fen;
+  return toFourFieldFen(fen);
 }
 
 /**

@@ -122,7 +122,6 @@ export function replaySanLine(
       moves.push(makeEngineUci(position, move, chess960));
       position.play(move);
       const fen = makeFen(position.toSetup());
-      if (!canonicalFen(fen, variant)) return undefined;
       fens.push(fen);
     }
     return { history: { startFen: rootFen, moves }, fens };
@@ -160,4 +159,13 @@ export function predictFen(fen: string, uci: string, variant?: string): string |
   // the side to move has no legal capture. Chess.com includes this field.
   nextSetup.epSquare = position.epSquare;
   return makeFen(nextSetup);
+}
+
+/**
+ * Extract the four core position fields (placement, side to move, castling, en passant target),
+ * omitting halfmove and fullmove counters.
+ */
+export function toFourFieldFen(fen: string): string {
+  const parts = fen.trim().split(/\s+/);
+  return parts.length >= 4 ? parts.slice(0, 4).join(' ') : fen.trim();
 }

@@ -2680,7 +2680,6 @@
 				moves.push(makeEngineUci(position, move, chess960));
 				position.play(move);
 				const fen = makeFen(position.toSetup());
-				if (!canonicalFen(fen, variant)) return void 0;
 				fens.push(fen);
 			}
 			return {
@@ -2714,6 +2713,10 @@
 		const nextSetup = position.toSetup();
 		nextSetup.epSquare = position.epSquare;
 		return makeFen(nextSetup);
+	}
+	function toFourFieldFen(fen) {
+		const parts = fen.trim().split(/\s+/);
+		return parts.length >= 4 ? parts.slice(0, 4).join(" ") : fen.trim();
 	}
 	var PONDER_REUSE_DEPTH = 12;
 	var UCI_MOVE_PATTERN = /^[a-h][1-8][a-h][1-8][nbrq]?$/;
@@ -4999,6 +5002,18 @@
 	function isObject(value) {
 		return typeof value === "object" && value !== null || typeof value === "function";
 	}
+	function isVisibleBoard(board) {
+		try {
+			if (board.isConnected === false) return false;
+			const style = (board.ownerDocument?.defaultView)?.getComputedStyle(board) ?? (typeof getComputedStyle === "function" ? getComputedStyle(board) : null);
+			if (style?.display === "none" || style?.visibility === "hidden" || style?.visibility === "collapse") return false;
+			if (typeof board.getClientRects === "function" && board.getClientRects().length === 0) return false;
+			const rect = board.getBoundingClientRect?.();
+			return !rect || rect.width > 0 && rect.height > 0;
+		} catch {
+			return false;
+		}
+	}
 	var wrappedPrototypes = new WeakSet();
 	var hookedRegistries = new WeakSet();
 	function setCapturedChesscomController(controller) {
@@ -5092,17 +5107,6 @@
 	var BOARD_SELECTOR$1 = "wc-chess-board, chess-board, .board";
 	function hasGameApi(board) {
 		return typeof board.game?.getFEN === "function";
-	}
-	function isVisibleBoard(board) {
-		try {
-			const style = (board.ownerDocument?.defaultView)?.getComputedStyle(board) ?? (typeof getComputedStyle === "function" ? getComputedStyle(board) : null);
-			if (style?.display === "none" || style?.visibility === "hidden" || style?.visibility === "collapse") return false;
-			if (typeof board.getClientRects === "function" && board.getClientRects().length === 0) return false;
-			const rect = board.getBoundingClientRect?.();
-			return !rect || rect.width > 0 && rect.height > 0;
-		} catch {
-			return false;
-		}
 	}
 	function boardArea(board) {
 		const rect = board.getBoundingClientRect?.();
@@ -5282,16 +5286,39 @@
 			return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some((node) => nodeContainsSelector(node, BOARD_SELECTOR) || nodeContainsSelector(node, ".clock-player-turn .clock-time-monospace, .clock-player-turn .clock-time, .clock-player-turn .move-time-content, .clock-player-turn.move-time-content") || nodeContainsSelector(node, RESULT_SELECTOR));
 		});
 	}
+	var cachedStartingFen = null;
+	var cachedSansLength = -1;
+	var cachedLastSan;
+	var cachedHistoryResult;
+	function clearChesscomHistoryCache() {
+		cachedStartingFen = null;
+		cachedSansLength = -1;
+		cachedLastSan = void 0;
+		cachedHistoryResult = void 0;
+	}
 	function readChesscomHistory(game) {
 		const startingFen = getStartingFen(game);
 		const sans = game.getHistorySANs?.();
 		if (!startingFen || !Array.isArray(sans)) return void 0;
+		const sansLength = sans.length;
+		const lastSan = sansLength > 0 ? sans[sansLength - 1] : void 0;
+		if (cachedHistoryResult !== void 0 && startingFen === cachedStartingFen && sansLength === cachedSansLength && lastSan === cachedLastSan) return cachedHistoryResult;
 		const replay = replaySanLine(startingFen, sans.filter((san) => typeof san === "string" && san.trim().length > 0));
-		if (!replay) return void 0;
-		return {
+		if (!replay) {
+			cachedStartingFen = null;
+			cachedSansLength = -1;
+			cachedLastSan = void 0;
+			cachedHistoryResult = void 0;
+			return;
+		}
+		cachedStartingFen = startingFen;
+		cachedSansLength = sansLength;
+		cachedLastSan = lastSan;
+		cachedHistoryResult = {
 			history: replay.history,
 			confirmedFens: replay.fens
 		};
+		return cachedHistoryResult;
 	}
 	function extractChesscomIncrement(game) {
 		try {
@@ -5364,6 +5391,7 @@
 				currentGame = game;
 				currentIdentity = {};
 				lastPlayerColor = null;
+				clearChesscomHistoryCache();
 				const declaredId = game.id ?? board.getAttribute("data-game-id");
 				currentGameId = declaredId == null ? `chesscom-${++nextGameId}` : String(declaredId);
 			}
@@ -8416,8 +8444,7 @@
 		}
 	};
 	function normalizeEpd(fen) {
-		const parts = fen.trim().split(/\s+/);
-		return parts.length >= 4 ? parts.slice(0, 4).join(" ") : fen;
+		return toFourFieldFen(fen);
 	}
 	function bookKey(epd) {
 		return `${epd.split(" ").slice(0, 3).join(" ")} -`;
@@ -8457,12 +8484,11 @@
 	var TABLEBASE_API = "https://tablebase.lichess.ovh/standard";
 	var DEFAULT_TIMEOUT_MS = 2e3;
 	var CACHE_CAPACITY = 256;
-	var PROBE_FIELDS = 4;
 	var FAILURE_COOLDOWN_MS = 3e4;
 	var resultCache = new Map();
 	var failureCooldown = new Map();
 	function cacheKey(fen) {
-		return fen.trim().split(/\s+/).slice(0, PROBE_FIELDS).join(" ");
+		return toFourFieldFen(fen);
 	}
 	function copyResult(result) {
 		return {

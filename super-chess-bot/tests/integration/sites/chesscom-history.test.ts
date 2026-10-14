@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { canonicalFen } from '../../../src/chess/position.js';
-import { createChesscomAdapter } from '../../../src/sites/chesscom/adapter.js';
+import {
+  clearChesscomHistoryCache,
+  createChesscomAdapter,
+  readChesscomHistory,
+} from '../../../src/sites/chesscom/adapter.js';
 import { resetCapturedChesscomController } from '../../../src/sites/chesscom/bridge.js';
 
 // The real wc-chess-board controller, as measured on a live guest game:
@@ -16,6 +20,7 @@ const AFTER_EP = '4k3/8/3P4/8/8/8/8/4K3 b - - 0 1';
 
 afterEach(() => {
   resetCapturedChesscomController();
+  clearChesscomHistoryCache();
 });
 
 describe('Chess.com position history', () => {
@@ -164,6 +169,39 @@ describe('Chess.com position history', () => {
 
     expect(snapshot.history).toBeUndefined();
     expect(snapshot.confirmedFens).toBeUndefined();
+  });
+
+  it('memoizes readChesscomHistory by startingFen, sans.length, and the last SAN string', () => {
+    const game = {
+      getFingerprints: () => ({ startingFen: START_FEN, moves: ['', 'e4', 'e5'] }),
+      getHistorySANs: () => ['e4', 'e5'],
+    } as unknown as Parameters<typeof readChesscomHistory>[0];
+
+    const first = readChesscomHistory(game);
+    const second = readChesscomHistory(game);
+    expect(first).toBeDefined();
+    expect(second).toBe(first);
+
+    const game2 = {
+      getFingerprints: () => ({ startingFen: START_FEN, moves: ['', 'e4', 'e5', 'Nf3'] }),
+      getHistorySANs: () => ['e4', 'e5', 'Nf3'],
+    } as unknown as Parameters<typeof readChesscomHistory>[0];
+
+    const third = readChesscomHistory(game2);
+    expect(third).toBeDefined();
+    expect(third).not.toBe(first);
+    expect(third?.history.moves).toEqual(['e2e4', 'e7e5', 'g1f3']);
+  });
+
+  it('returns cached history across multiple adapter reads when SANs do not change', () => {
+    const fixture = makeFixture({ sans: ['e4'], fen: AFTER_E4 });
+    const adapter = createChesscomAdapter(() => fixture.page as unknown as Window);
+    const first = adapter.read();
+    const second = adapter.read();
+    if (first.kind !== 'game' || second.kind !== 'game') throw new Error('Expected game snapshot');
+    expect(first.snapshot.history).toBeDefined();
+    expect(first.snapshot.history).toBe(second.snapshot.history);
+    expect(first.snapshot.confirmedFens).toBe(second.snapshot.confirmedFens);
   });
 });
 

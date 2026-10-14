@@ -95,16 +95,51 @@ function isRelevantMutation(records: MutationRecord[]): boolean {
   });
 }
 
-function readChesscomHistory(
+let cachedStartingFen: string | null = null;
+let cachedSansLength = -1;
+let cachedLastSan: string | undefined;
+let cachedHistoryResult: { history: PositionHistory; confirmedFens: readonly string[] } | undefined;
+
+export function clearChesscomHistoryCache(): void {
+  cachedStartingFen = null;
+  cachedSansLength = -1;
+  cachedLastSan = undefined;
+  cachedHistoryResult = undefined;
+}
+
+export function readChesscomHistory(
   game: ChessGame,
 ): { history: PositionHistory; confirmedFens: readonly string[] } | undefined {
   const startingFen = getStartingFen(game);
   const sans = game.getHistorySANs?.();
   if (!startingFen || !Array.isArray(sans)) return undefined;
+
+  const sansLength = sans.length;
+  const lastSan = sansLength > 0 ? sans[sansLength - 1] : undefined;
+  if (
+    cachedHistoryResult !== undefined &&
+    startingFen === cachedStartingFen &&
+    sansLength === cachedSansLength &&
+    lastSan === cachedLastSan
+  ) {
+    return cachedHistoryResult;
+  }
+
   const line = sans.filter((san): san is string => typeof san === 'string' && san.trim().length > 0);
   const replay = replaySanLine(startingFen, line);
-  if (!replay) return undefined;
-  return { history: replay.history, confirmedFens: replay.fens };
+  if (!replay) {
+    cachedStartingFen = null;
+    cachedSansLength = -1;
+    cachedLastSan = undefined;
+    cachedHistoryResult = undefined;
+    return undefined;
+  }
+
+  cachedStartingFen = startingFen;
+  cachedSansLength = sansLength;
+  cachedLastSan = lastSan;
+  cachedHistoryResult = { history: replay.history, confirmedFens: replay.fens };
+  return cachedHistoryResult;
 }
 
 function extractChesscomIncrement(game: ChessGame | null | undefined): number | null {
@@ -182,6 +217,7 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
       currentGame = game;
       currentIdentity = {};
       lastPlayerColor = null;
+      clearChesscomHistoryCache();
       const declaredId = game.id ?? board.getAttribute('data-game-id');
       currentGameId = declaredId == null ? `chesscom-${++nextGameId}` : String(declaredId);
     }

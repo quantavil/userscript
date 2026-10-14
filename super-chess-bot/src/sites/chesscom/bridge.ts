@@ -1,12 +1,10 @@
+import { isObject } from '../common.js';
+
 type ChesscomWindow = Window & { customElements?: CustomElementRegistry | undefined };
 
 type BoardElement = HTMLElement & { game?: unknown };
 
 type BoardMethod = (this: BoardElement, ...args: unknown[]) => unknown;
-
-function isObject(value: unknown): value is Record<PropertyKey, unknown> {
-  return (typeof value === 'object' && value !== null) || typeof value === 'function';
-}
 
 /** Stable module reference to the last captured Chess.com game controller. */
 let capturedController: unknown = null;

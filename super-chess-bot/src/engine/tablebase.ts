@@ -1,3 +1,4 @@
+import { toFourFieldFen } from '../chess/position.js';
 import type { Evaluation } from '../chess/types.js';
 import { mateToDisplay } from '../shared/utils.js';
 
@@ -38,8 +39,6 @@ const CACHE_CAPACITY = 256;
  * Syzygy is indexed on the position, not on the move counters, so halfmove and fullmove are
  * excluded from the key. Keeping them would refetch the same position once per ply.
  */
-const PROBE_FIELDS = 4;
-
 /** How long a failed lookup stays suppressed before it may be retried. */
 const FAILURE_COOLDOWN_MS = 30_000;
 
@@ -47,7 +46,7 @@ const resultCache = new Map<string, TablebaseResponse>();
 const failureCooldown = new Map<string, number>();
 
 function cacheKey(fen: string): string {
-  return fen.trim().split(/\s+/).slice(0, PROBE_FIELDS).join(' ');
+  return toFourFieldFen(fen);
 }
 
 function copyResult(result: TablebaseResponse): TablebaseResponse {

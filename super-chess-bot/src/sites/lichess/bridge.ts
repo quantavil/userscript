@@ -1,11 +1,9 @@
+import { isObject } from '../common.js';
+
 type LichessWindow = Window & { site?: unknown };
 
 type RoundInitializer = (name: string, options?: unknown) => Promise<unknown>;
 type PageInitializer = (name: string, ...args: unknown[]) => unknown;
-
-function isObject(value: unknown): value is Record<PropertyKey, unknown> {
-  return (typeof value === 'object' && value !== null) || typeof value === 'function';
-}
 
 /** Capture the controller returned by Lichess's own round page initializer. */
 export function installLichessControllerBridge(

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createLichessAdapter } from '../../../src/sites/lichess/adapter.js';
+import { createHistoryReader, createLichessAdapter } from '../../../src/sites/lichess/adapter.js';
 import type { GameSnapshot, MoveRequest } from '../../../src/sites/types.js';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -229,6 +229,38 @@ describe('Lichess player-round adapter', () => {
 
     pending.round.data.game.status.id = 30;
     expect(pending.adapter.read()).toMatchObject({ kind: 'game', snapshot: { phase: 'finished', inputReady: false } });
+  });
+
+  it('memoizes history reader results when data, steps, ply, and fen are unchanged', () => {
+    const reader = createHistoryReader();
+    const roundData = {
+      game: { variant: { key: 'standard' } },
+      steps: [
+        { ply: 0, fen: START_FEN, san: '' },
+        { ply: 1, fen: AFTER_E4, san: 'e4' },
+      ],
+    } as unknown as Parameters<typeof reader>[0];
+    const selected = roundData.steps![1]!;
+
+    const first = reader(roundData, selected);
+    const second = reader(roundData, selected);
+    expect(first).toBeDefined();
+    expect(second).toBe(first);
+
+    const nextRoundData = {
+      game: { variant: { key: 'standard' } },
+      steps: [
+        { ply: 0, fen: START_FEN, san: '' },
+        { ply: 1, fen: AFTER_E4, san: 'e4' },
+        { ply: 2, fen: AFTER_E4_C5, san: 'c5' },
+      ],
+    } as unknown as Parameters<typeof reader>[0];
+    const nextSelected = nextRoundData.steps![2]!;
+
+    const third = reader(nextRoundData, nextSelected);
+    expect(third).toBeDefined();
+    expect(third).not.toBe(first);
+    expect(third?.history.moves).toEqual(['e2e4', 'c7c5']);
   });
 });
 
