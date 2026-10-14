@@ -172,7 +172,8 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
   active = ctrl;
   try {
     const started = performance.now();
-    const budget = kind === 'main' ? searchBudget(snapshot, fen) : Math.max(25, BotState.moveTime);
+    const budget =
+      kind === 'main' ? searchBudget(snapshot, fen) : BotState.premove ? 0 : Math.max(25, BotState.moveTime);
     BotState.statusInfo = kind === 'main' ? 'Analyzing...' : 'Pondering...';
     ui.updateDisplay();
     const history = requestHistory(snapshot);
@@ -180,7 +181,11 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     const anticipated = anticipatedPonder;
     if (kind !== 'main') {
       anticipatedPonder = null;
-      if (anticipated?.fromFen === fen && ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history))
+      if (
+        !BotState.premove &&
+        anticipated?.fromFen === fen &&
+        ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history)
+      )
         return;
     } else {
       anticipatedPonder = null;
@@ -449,7 +454,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     const pvMoves = best.pv.split(/\s+/);
     const predictedReply = pvMoves[0] === best.uci ? pvMoves[1] : undefined;
     const targetFen = predictedReply && nextFen ? predictFen(nextFen, predictedReply, snapshot.variant) : null;
-    if (isStandard && BotState.ponderEnabled && targetFen && nextFen) {
+    if (!BotState.premove && isStandard && BotState.ponderEnabled && targetFen && nextFen) {
       anticipatedPonder = {
         fromFen: nextFen,
         targetFen,

@@ -9628,14 +9628,14 @@
 		active = ctrl;
 		try {
 			const started = performance.now();
-			const budget = kind === "main" ? searchBudget(snapshot, fen) : Math.max(25, BotState.moveTime);
+			const budget = kind === "main" ? searchBudget(snapshot, fen) : BotState.premove ? 0 : Math.max(25, BotState.moveTime);
 			BotState.statusInfo = kind === "main" ? "Analyzing..." : "Pondering...";
 			ui.updateDisplay();
 			const history = requestHistory(snapshot);
 			const anticipated = anticipatedPonder;
 			if (kind !== "main") {
 				anticipatedPonder = null;
-				if (anticipated?.fromFen === fen && ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history)) return;
+				if (!BotState.premove && anticipated?.fromFen === fen && ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history)) return;
 			} else anticipatedPonder = null;
 			const isStandard = getVariantDefinition(snapshot.variant)?.id === "standard";
 			const bookMove = isStandard && kind === "main" && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
@@ -9824,7 +9824,7 @@
 			const pvMoves = best.pv.split(/\s+/);
 			const predictedReply = pvMoves[0] === best.uci ? pvMoves[1] : void 0;
 			const targetFen = predictedReply && nextFen ? predictFen(nextFen, predictedReply, snapshot.variant) : null;
-			if (isStandard && BotState.ponderEnabled && targetFen && nextFen) anticipatedPonder = {
+			if (!BotState.premove && isStandard && BotState.ponderEnabled && targetFen && nextFen) anticipatedPonder = {
 				fromFen: nextFen,
 				targetFen,
 				...history ? { history: {

@@ -116,6 +116,7 @@ describe('scheduler state consistency and multi-pv / elo throttling', () => {
   it('aligns best.pv, score, multiPv ordering, and anticipated ponder when Elo throttling picks a secondary candidate', async () => {
     BotState.targetElo = 1500;
     BotState.ponderEnabled = true;
+    BotState.premove = false;
 
     const line1 = { multipv: 1, depth: 20, evaluation: { cp: 50 }, pv: 'e2e4 e7e5 g1f3', uci: 'e2e4' };
     const line2 = { multipv: 2, depth: 20, evaluation: { cp: 20 }, pv: 'd2d4 d7d5 c2c4', uci: 'd2d4' };
