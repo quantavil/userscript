@@ -58,6 +58,15 @@ describe('syzygy tablebase client', () => {
       expect(best?.uci).toBe('e2e4');
     });
 
+    it('prefers a winning zeroing move over a waiting move with smaller |dtz|', () => {
+      const moves: TablebaseMove[] = [
+        { uci: 'e2e3', wdl: -2, category: 'loss', dtz: -2, zeroing: false }, // waiting move: |dtz| = 2
+        { uci: 'e2d4', wdl: -2, category: 'loss', dtz: -10, zeroing: true }, // zeroing move: |dtz| = 10
+      ];
+      const best = pickBestTablebaseMove(moves);
+      expect(best?.uci).toBe('e2d4');
+    });
+
     it('when immediate checkmate exists, prioritizes it over longer winning moves', () => {
       const moves: TablebaseMove[] = [
         { uci: 'e1a5', wdl: -2, category: 'loss', dtz: -12, dtm: -12 },

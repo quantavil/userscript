@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_THROTTLED_ELO, selectThrottledMove, type ThrottleOptions } from '../../../src/engine/throttle.js';
 import type { MultiPvLine } from '../../../src/engine/uci-client.js';
+import { evaluationToCentipawns } from '../../../src/shared/chess.js';
 
 describe('elo throttling & blunder shield move selection', () => {
   const dummyLines: MultiPvLine[] = [
@@ -136,6 +137,27 @@ describe('elo throttling & blunder shield move selection', () => {
     // Blunder shield should protect against candidate line 2 (-2.00 cp) and choose best move
     expect(outcome.uci).toBe('c7c5');
     expect(outcome.rank).toBe(1);
+    expect(outcome.shieldApplied).toBe(true);
+  });
+
+  it('clamps deep mate evaluations without inverting signs', () => {
+    expect(evaluationToCentipawns({ mate: 105 })).toBeGreaterThanOrEqual(9000);
+    expect(evaluationToCentipawns({ mate: -105 })).toBeLessThanOrEqual(-9000);
+    expect(evaluationToCentipawns({ mate: 105 })).toBe(9000);
+    expect(evaluationToCentipawns({ mate: -105 })).toBe(-9000);
+  });
+
+  it('correctly treats deep mate scores (> 100 plies) as winning without sign inversion', () => {
+    const deepMateLines: MultiPvLine[] = [
+      { multipv: 1, uci: 'e2e4', evaluation: { mate: 105 }, depth: 20, pv: 'e2e4' },
+      { multipv: 2, uci: 'd2d4', evaluation: { cp: 100 }, depth: 20, pv: 'd2d4' },
+    ];
+    const outcome = selectThrottledMove(deepMateLines, {
+      targetElo: 1500,
+      blunderShield: true,
+      randomFn: () => 0.99,
+    });
+    expect(outcome.uci).toBe('e2e4');
     expect(outcome.shieldApplied).toBe(true);
   });
 });

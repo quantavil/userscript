@@ -4,6 +4,7 @@
  * catastrophic tactical blunders.
  */
 
+import { evaluationToCentipawns } from '../shared/chess.js';
 import type { MultiPvLine } from './uci-client.js';
 
 const MIN_THROTTLED_ELO = 800;
@@ -24,18 +25,6 @@ export interface SelectedMoveOutcome {
 }
 
 /**
- * Convert Evaluation to centipawns from side to move's perspective.
- * In UCI protocol, Stockfish evaluations (cp and mate) are always relative to the side to move.
- */
-function scoreToCentipawns(line: MultiPvLine): number {
-  if (typeof line.evaluation.mate === 'number') {
-    // Mate in N moves
-    return line.evaluation.mate > 0 ? 10_000 - line.evaluation.mate * 100 : -10_000 - line.evaluation.mate * 100;
-  }
-  return line.evaluation.cp ?? 0;
-}
-
-/**
  * Selects a move from candidate Multi-PV lines according to target Elo,
  * subject to Blunder Shield constraints.
  */
@@ -45,7 +34,7 @@ export function selectThrottledMove(lines: MultiPvLine[], options: ThrottleOptio
   }
 
   const bestLine = lines[0];
-  const bestUci = bestLine.uci || (bestLine.pv ? bestLine.pv.split(/\s+/)[0] : '');
+  const bestUci = bestLine.uci;
 
   // If unthrottled (0 or >= MAX_THROTTLED_ELO) or only 1 line available, play best move
   if (!options.targetElo || options.targetElo <= 0 || options.targetElo >= MAX_THROTTLED_ELO || lines.length === 1) {
@@ -53,7 +42,7 @@ export function selectThrottledMove(lines: MultiPvLine[], options: ThrottleOptio
   }
 
   const { targetElo, blunderShield, randomFn = Math.random } = options;
-  const bestScore = scoreToCentipawns(bestLine);
+  const bestScore = evaluationToCentipawns(bestLine.evaluation);
 
   // Compute temperature T (in centipawns) inversely proportional to target Elo
   // Domain: 800 (beginner) to 3200 (super-GM)
@@ -72,10 +61,10 @@ export function selectThrottledMove(lines: MultiPvLine[], options: ThrottleOptio
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const uci = line.uci || (line.pv ? line.pv.split(/\s+/)[0] : '');
+    const uci = line.uci;
     if (!uci) continue;
 
-    const score = scoreToCentipawns(line);
+    const score = evaluationToCentipawns(line.evaluation);
     const cpLoss = Math.max(0, bestScore - score);
 
     // Blunder Shield check: reject candidate if it blunders mate or exceeds threshold
@@ -108,7 +97,7 @@ export function selectThrottledMove(lines: MultiPvLine[], options: ThrottleOptio
   for (const candidate of eligibleCandidates) {
     running += candidate.weight;
     if (r <= running) {
-      const chosenUci = candidate.line.uci || (candidate.line.pv ? candidate.line.pv.split(/\s+/)[0] : '');
+      const chosenUci = candidate.line.uci;
       return {
         uci: chosenUci,
         rank: candidate.rank,

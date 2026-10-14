@@ -8480,7 +8480,7 @@
 			}
 			const data = await response.json();
 			if (controller.signal.aborted || !data.moves || data.moves.length === 0) return null;
-			const best = pickBestTablebaseMove(data.moves);
+			const best = data.moves[0] ?? pickBestTablebaseMove(data.moves);
 			if (!best?.uci) return null;
 			const category = data.category ?? "unknown";
 			const dtz = data.dtz ?? null;
@@ -8567,6 +8567,8 @@
 			}
 			if (rankA === 0) return 0;
 			if (rankA >= 4) {
+				if (a.dtm != null && b.dtm != null) return Math.abs(a.dtm) - Math.abs(b.dtm);
+				if (Boolean(a.zeroing) !== Boolean(b.zeroing)) return a.zeroing ? -1 : 1;
 				const [distA, distB] = distancePair(a, b, 999);
 				return distA - distB;
 			}
@@ -8574,11 +8576,14 @@
 			return distB - distA;
 		})[0] ?? null;
 	}
-	var MIN_THROTTLED_ELO = 800;
-	function scoreToCentipawns(line) {
-		if (typeof line.evaluation.mate === "number") return line.evaluation.mate > 0 ? 1e4 - line.evaluation.mate * 100 : -1e4 - line.evaluation.mate * 100;
-		return line.evaluation.cp ?? 0;
+	function evaluationToCentipawns(evaluation, mateCap = 1e4) {
+		if (typeof evaluation?.mate === "number") {
+			const penalty = Math.min(1e3, Math.abs(evaluation.mate) * 10);
+			return evaluation.mate > 0 ? mateCap - penalty : -mateCap + penalty;
+		}
+		return evaluation?.cp ?? 0;
 	}
+	var MIN_THROTTLED_ELO = 800;
 	function selectThrottledMove(lines, options) {
 		if (!lines || lines.length === 0) return {
 			uci: "",
@@ -8587,7 +8592,7 @@
 			shieldApplied: false
 		};
 		const bestLine = lines[0];
-		const bestUci = bestLine.uci || (bestLine.pv ? bestLine.pv.split(/\s+/)[0] : "");
+		const bestUci = bestLine.uci;
 		if (!options.targetElo || options.targetElo <= 0 || options.targetElo >= 3200 || lines.length === 1) return {
 			uci: bestUci,
 			rank: 1,
@@ -8595,7 +8600,7 @@
 			shieldApplied: false
 		};
 		const { targetElo, blunderShield, randomFn = Math.random } = options;
-		const bestScore = scoreToCentipawns(bestLine);
+		const bestScore = evaluationToCentipawns(bestLine.evaluation);
 		const normalizedElo = Math.min(1, Math.max(0, (targetElo - MIN_THROTTLED_ELO) / 2400));
 		const temperature = Math.max(1, Math.round(160 * (1 - normalizedElo)));
 		const maxAllowedCpLoss = blunderShield ? Math.min(150, Math.max(10, Math.round((1 - normalizedElo) * 150))) : 400;
@@ -8603,8 +8608,8 @@
 		const eligibleCandidates = [];
 		for (let i = 0; i < lines.length; i++) {
 			const line = lines[i];
-			if (!(line.uci || (line.pv ? line.pv.split(/\s+/)[0] : ""))) continue;
-			const score = scoreToCentipawns(line);
+			if (!line.uci) continue;
+			const score = evaluationToCentipawns(line.evaluation);
 			const cpLoss = Math.max(0, bestScore - score);
 			if (blunderShield && i > 0) {
 				if (typeof line.evaluation.mate === "number" && line.evaluation.mate < 0) {
@@ -8636,7 +8641,7 @@
 		for (const candidate of eligibleCandidates) {
 			running += candidate.weight;
 			if (r <= running) return {
-				uci: candidate.line.uci || (candidate.line.pv ? candidate.line.pv.split(/\s+/)[0] : ""),
+				uci: candidate.line.uci,
 				rank: candidate.rank,
 				cpLoss: candidate.cpLoss,
 				shieldApplied: shieldTriggered

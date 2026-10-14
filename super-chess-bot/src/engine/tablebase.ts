@@ -15,6 +15,7 @@ export interface TablebaseMove {
   wdl?: number;
   category?: 'win' | 'loss' | 'draw' | 'unknown' | 'blessed-loss' | 'cursed-win' | 'maybe-win' | 'maybe-loss';
   checkmate?: boolean;
+  zeroing?: boolean;
 }
 
 export interface TablebaseResponse {
@@ -123,7 +124,7 @@ export async function lookupTablebase(
 
     if (controller.signal.aborted || !data.moves || data.moves.length === 0) return null;
 
-    const best = pickBestTablebaseMove(data.moves);
+    const best = data.moves[0] ?? pickBestTablebaseMove(data.moves);
     if (!best?.uci) return null;
 
     const category = data.category ?? 'unknown';
@@ -252,6 +253,12 @@ export function pickBestTablebaseMove(moves: TablebaseMove[]): TablebaseMove | n
 
       // If both winning: prefer fastest conversion (smallest distance to mate/zeroing)
       if (rankA >= 4) {
+        if (a.dtm != null && b.dtm != null) {
+          return Math.abs(a.dtm) - Math.abs(b.dtm);
+        }
+        if (Boolean(a.zeroing) !== Boolean(b.zeroing)) {
+          return a.zeroing ? -1 : 1;
+        }
         const [distA, distB] = distancePair(a, b, 999);
         return distA - distB;
       }
