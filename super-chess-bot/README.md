@@ -28,6 +28,15 @@ See the [support matrix](docs/support-matrix.md) for site scope and move-observa
 
 For Lichess, configure the userscript manager to inject into the page context. In Violentmonkey, enable **Settings → Advanced → Synchronous page mode** and reload the page.
 
+> [!WARNING]
+> **Mobile Firefox & Lichess CSP**: Firefox for Android does not support synchronous `webRequestBlocking`, preventing userscript managers from patching CSP headers or nonces. Because Lichess enforces a strict nonce-based `<meta>` Content Security Policy, userscript managers on Firefox for Android cannot inject into the required page context and will report *"Could not inject script"* (or fail to capture the round controller).
+>
+> **Mobile recommendations:**
+> - **Chromium-based mobile browsers**: Use a browser with extension support like Kiwi Browser, Lemur, or Cromite, where Violentmonkey or Tampermonkey can inject normally.
+> - **Chess.com**: Works on mobile browsers without this restriction, as Chess.com does not enforce the same meta CSP.
+> - **Firefox Nightly / Fennec / Mull**: If `about:config` is accessible, toggling `security.csp.enable` to `false` disables CSP enforcement globally.
+
+
 ## Development
 
 From this directory, run:

@@ -6,6 +6,12 @@ import type { Evaluation, MultiPvLine } from '../chess/types';
 import { getVariantDefinition } from '../chess/variants.js';
 import { lookupBookMove } from '../engine/book/lookup.js';
 import {
+  LIVE_MULTI_PV,
+  MAX_AUTOMATIC_RETRIES,
+  PREMOVE_PONDER_BRANCHES,
+  PREMOVE_PONDER_DEPTH,
+} from '../engine/config.js';
+import {
   type ArmedPremoveMap,
   fenKey,
   isLegalMove,
@@ -18,7 +24,6 @@ import { cancelPonder, getAnalysis, parseBestLine, ponderPosition } from '../eng
 import { isTablebaseEligible, lookupTablebase, type TablebaseResponse } from '../engine/tablebase.js';
 import { selectThrottledMove } from '../engine/throttle.js';
 import { calculateMoveDelay } from '../engine/timing.js';
-import { LIVE_MULTI_PV } from '../engine/uci-client.js';
 import { confirmSiteMove, type MoveConfirmation } from '../game/confirmation.js';
 import { MAX_TARGET_ELO } from '../settings/schema.js';
 import { scoreToDisplay } from '../shared/utils.js';
@@ -37,7 +42,6 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryIdentity: object | null = null;
 let lastEvalRecord: { identity: object; plyKey: string } | null = null;
 const retryCounts = new Map<string, number>();
-const MAX_AUTOMATIC_RETRIES = 2;
 
 export function resetRecovery(): void {
   if (retryTimer !== null) clearTimeout(retryTimer);
@@ -250,8 +254,14 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
           : undefined;
 
       const requestedMultiPv =
-        kind === 'main' ? (BotState.premove ? LIVE_MULTI_PV : undefined) : BotState.premove ? 4 : undefined;
-      const requestedDepth = kind !== 'main' && BotState.premove ? 8 : BotState.botPower;
+        kind === 'main'
+          ? BotState.premove
+            ? LIVE_MULTI_PV
+            : undefined
+          : BotState.premove
+            ? PREMOVE_PONDER_BRANCHES
+            : undefined;
+      const requestedDepth = kind !== 'main' && BotState.premove ? PREMOVE_PONDER_DEPTH : BotState.botPower;
       const legalMoves = requestedMultiPv ? (countLegalMoves(fen, snapshot.variant) ?? undefined) : undefined;
       const onDepth =
         kind !== 'main' && BotState.premove

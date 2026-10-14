@@ -80,10 +80,16 @@ interface SearchJob {
   onAbort?: () => void;
 }
 
-const PONDER_REUSE_DEPTH = 12;
+import {
+  LIVE_MULTI_PV,
+  PONDER_REUSE_DEPTH,
+  UCI_DEPTH_ONLY_TIMEOUT_MS,
+  UCI_INIT_TIMEOUT_MS,
+  UCI_SEARCH_SLACK_MS,
+  UCI_STOP_TIMEOUT_MS,
+} from './config.js';
 
-/** Candidate lines requested for every live search; the panel renders up to three. */
-export const LIVE_MULTI_PV = 3;
+export { LIVE_MULTI_PV };
 
 /**
  * `a-h` squares, ranks 1-8, and a promotion suffix. Chess960 king-takes-rook castling
@@ -276,10 +282,10 @@ export class UciClient {
     private readonly workerFactory: UciWorkerFactory,
     options: UciClientOptions = {},
   ) {
-    this.initTimeoutMs = options.initTimeoutMs ?? 25_000;
-    this.searchTimeoutSlackMs = options.searchTimeoutSlackMs ?? 3_000;
-    this.stopTimeoutMs = options.stopTimeoutMs ?? 2_000;
-    this.depthOnlyTimeoutMs = options.depthOnlyTimeoutMs ?? 120_000;
+    this.initTimeoutMs = options.initTimeoutMs ?? UCI_INIT_TIMEOUT_MS;
+    this.searchTimeoutSlackMs = options.searchTimeoutSlackMs ?? UCI_SEARCH_SLACK_MS;
+    this.stopTimeoutMs = options.stopTimeoutMs ?? UCI_STOP_TIMEOUT_MS;
+    this.depthOnlyTimeoutMs = options.depthOnlyTimeoutMs ?? UCI_DEPTH_ONLY_TIMEOUT_MS;
     this.chess960 = options.chess960 ?? false;
   }
 

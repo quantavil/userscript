@@ -31,16 +31,12 @@ export interface TablebaseResponse {
   displayEval: string;
 }
 
-const TABLEBASE_API = 'https://tablebase.lichess.ovh/standard';
-const DEFAULT_TIMEOUT_MS = 2000;
-const CACHE_CAPACITY = 256;
-
-/**
- * Syzygy is indexed on the position, not on the move counters, so halfmove and fullmove are
- * excluded from the key. Keeping them would refetch the same position once per ply.
- */
-/** How long a failed lookup stays suppressed before it may be retried. */
-const FAILURE_COOLDOWN_MS = 30_000;
+import {
+  TABLEBASE_API_URL,
+  TABLEBASE_CACHE_CAPACITY,
+  TABLEBASE_DEFAULT_TIMEOUT_MS,
+  TABLEBASE_FAILURE_COOLDOWN_MS,
+} from './config.js';
 
 const resultCache = new Map<string, TablebaseResponse>();
 const failureCooldown = new Map<string, number>();
@@ -81,7 +77,7 @@ export function isTablebaseEligible(fen: string): boolean {
 export async function lookupTablebase(
   fen: string,
   signal?: AbortSignal,
-  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  timeoutMs: number = TABLEBASE_DEFAULT_TIMEOUT_MS,
 ): Promise<TablebaseResponse | null> {
   if (signal?.aborted || !isTablebaseEligible(fen)) return null;
   const key = cacheKey(fen);
@@ -106,7 +102,7 @@ export async function lookupTablebase(
   signal?.addEventListener('abort', onAbort, { once: true });
 
   try {
-    const url = `${TABLEBASE_API}?fen=${encodeURIComponent(fen)}`;
+    const url = `${TABLEBASE_API_URL}?fen=${encodeURIComponent(fen)}`;
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
       suppress(key);
@@ -177,15 +173,15 @@ export async function lookupTablebase(
 
 /** Hold this position out of the network until the cooldown expires. */
 function suppress(key: string): void {
-  failureCooldown.set(key, Date.now() + FAILURE_COOLDOWN_MS);
-  if (failureCooldown.size > CACHE_CAPACITY) {
+  failureCooldown.set(key, Date.now() + TABLEBASE_FAILURE_COOLDOWN_MS);
+  if (failureCooldown.size > TABLEBASE_CACHE_CAPACITY) {
     const oldest = failureCooldown.keys().next().value;
     if (oldest !== undefined) failureCooldown.delete(oldest);
   }
 }
 
 function trim(cache: Map<string, TablebaseResponse>): void {
-  while (cache.size > CACHE_CAPACITY) {
+  while (cache.size > TABLEBASE_CACHE_CAPACITY) {
     const oldest = cache.keys().next().value;
     if (oldest === undefined) return;
     cache.delete(oldest);

@@ -6,10 +6,10 @@
 
 import type { Evaluation } from '../chess/types.js';
 import { evaluationToCentipawns } from '../shared/chess.js';
+import { MAX_THROTTLED_ELO, MIN_THROTTLED_ELO } from './config.js';
 import type { MultiPvLine } from './uci-client.js';
 
-const MIN_THROTTLED_ELO = 800;
-export const MAX_THROTTLED_ELO = 3200;
+export { MAX_THROTTLED_ELO };
 
 export interface ThrottleOptions {
   targetElo: number; // 0 or >= 3200 for unrestricted (~3500+), or 800 - 3150

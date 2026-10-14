@@ -1,6 +1,7 @@
 import { signal } from '@preact/signals';
 import type { PositionHistory } from '../../chess/position.js';
 import type { Evaluation } from '../../chess/types.js';
+import { DEFAULT_REPORT_DEPTH, REPORT_MULTI_PV } from '../../engine/config.js';
 import { getAnalysis } from '../../engine/service.js';
 import { getActiveSite } from '../../sites/active.js';
 import type { GameMoveRecord } from '../history.js';
@@ -15,20 +16,7 @@ import {
 } from './accuracy.js';
 import { buildGameReport, type GameReport } from './aggregate.js';
 
-/**
- * Fixed search budget for the report pass.
- *
- * This deliberately does not reuse `BotState.moveTime` or `BotState.botPower`: the live move
- * budget is tuned for speed under a game clock and usually stops in the low depths, which are
- * far too shallow to tell an inaccuracy from a mistake. The report wants a stable depth instead
- * of a stable duration, so it passes a time budget of 0, which the engine client turns into a
- * `go depth N` with no `movetime`, and it asks for a single candidate line because it reads only
- * the evaluation of each position.
- */
-const REPORT_DEPTH = 18;
-
-/** Report searches read only `evaluation`, so extra Multi-PV lines are wasted work. */
-const REPORT_MULTI_PV = 1;
+const REPORT_DEPTH = DEFAULT_REPORT_DEPTH;
 
 export interface ReportOptions {
   variant?: string;

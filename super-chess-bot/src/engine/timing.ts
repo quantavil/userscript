@@ -25,6 +25,13 @@ export function sampleExGaussian(mu: number, sigma: number, tau: number, randomF
  * When one move is vastly superior, H -> 0 (forced/obvious choice).
  * When candidate moves have nearly identical evaluations, H -> 1 (high decision dilemma).
  */
+import {
+  ENTROPY_TEMPERATURE_CP,
+  FORCED_MOVE_MAX_DELAY_MS,
+  MAX_DELAY_BUDGET_MULTIPLIER,
+  MIN_HUMAN_DELAY_MS,
+} from './config.js';
+
 export function computeShannonEntropy(candidateCentipawns: number[]): number {
   if (!candidateCentipawns || candidateCentipawns.length <= 1) return 0;
 
@@ -32,7 +39,8 @@ export function computeShannonEntropy(candidateCentipawns: number[]): number {
   if (validScores.length <= 1) return 0;
 
   // Temperature parameter T in centipawns: controls softmax sharpness
-  const T = 75; // 0.75 pawns
+  const T = ENTROPY_TEMPERATURE_CP;
+
   const maxScore = Math.max(...validScores);
 
   // Softmax with numerical stability
@@ -73,7 +81,7 @@ export function calculateMoveDelay(options: MoveDelayOptions): number {
 
   // Forced move (only 1 legal move)
   if (movesCount <= 1) {
-    const mu = Math.min(120, Math.max(25, baseTimeMs * 0.25));
+    const mu = Math.min(FORCED_MOVE_MAX_DELAY_MS, Math.max(MIN_HUMAN_DELAY_MS, baseTimeMs * 0.25));
     const sigma = mu * 0.2;
     const tau = mu * 0.15;
     const sample = sampleExGaussian(mu, sigma, tau, randomFn);
@@ -102,16 +110,16 @@ export function calculateMoveDelay(options: MoveDelayOptions): number {
 }
 
 function boundDelay(delay: number, remainingMs: number | null, baseTimeMs: number): number {
-  let bounded = Math.max(25, delay);
+  let bounded = Math.max(MIN_HUMAN_DELAY_MS, delay);
 
   // Strict clock safety: never exceed a reasonable fraction of remaining time
   if (remainingMs !== null && remainingMs > 0) {
-    const clockCeiling = Math.max(25, Math.floor(remainingMs / 25));
+    const clockCeiling = Math.max(MIN_HUMAN_DELAY_MS, Math.floor(remainingMs / 25));
     bounded = Math.min(bounded, clockCeiling);
   }
 
   // Cap at 3x base budget to prevent runaway delay
-  const maxCeiling = Math.max(100, baseTimeMs * 3);
+  const maxCeiling = Math.max(100, baseTimeMs * MAX_DELAY_BUDGET_MULTIPLIER);
   bounded = Math.min(bounded, maxCeiling);
 
   return Math.round(bounded);

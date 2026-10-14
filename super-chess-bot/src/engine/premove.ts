@@ -55,6 +55,8 @@ export function resolveArmedTriggerFen(
   return fenKey(makeFen(position.toSetup()));
 }
 
+import { MAX_CHAIN_STEERING_LOSS_CP, PREMOVE_PONDER_BRANCHES } from './config.js';
+
 const ROLE_VALUES: Record<string, number> = {
   pawn: 1,
   knight: 3,
@@ -110,7 +112,7 @@ export function populateRecaptureFallbacks(posAfterOurMove: Position, byExpected
 
 /**
  * Own-turn move selection and ponder table arming:
- * 1. Checks PV1 and PV2. If PV2 is a recapture chain and score loss <= 50cp, steers to PV2.
+ * 1. Checks PV1 and PV2. If PV2 is a recapture chain and score loss <= MAX_CHAIN_STEERING_LOSS_CP, steers to PV2.
  * 2. Pre-populates instant recaptures for all immediate opponent captures.
  * 3. Unconditionally arms chosen.pv[2] (our reply to their predicted reply pv[1]) if pv.length >= 3.
  */
@@ -136,7 +138,7 @@ export function selectOwnTurnChainPremove(
     if (!pv1IsChain && pv2IsChain) {
       const score1 = evaluationToCentipawns(pv1.evaluation);
       const score2 = evaluationToCentipawns(pv2.evaluation);
-      if (score1 - score2 <= 50) {
+      if (score1 - score2 <= MAX_CHAIN_STEERING_LOSS_CP) {
         chosen = pv2;
         chosenMoves = pv2Moves;
       }
@@ -222,7 +224,7 @@ export function selectOpponentTurnPremove(
   if (!lines || lines.length === 0) return null;
 
   const byExpectedFen = new Map<string, string>();
-  const topLines = lines.slice(0, 6);
+  const topLines = lines.slice(0, PREMOVE_PONDER_BRANCHES);
 
   for (const line of topLines) {
     const pvMoves = line.pv ? line.pv.trim().split(/\s+/) : [];

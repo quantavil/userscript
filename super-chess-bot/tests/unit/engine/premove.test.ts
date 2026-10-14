@@ -3,6 +3,7 @@ import { makeFen, parseFen } from 'chessops/fen';
 import { parseUci } from 'chessops/util';
 import { describe, expect, it } from 'vitest';
 import type { MultiPvLine } from '../../../src/chess/types.js';
+import { MAX_CHAIN_STEERING_LOSS_CP, PREMOVE_PONDER_BRANCHES } from '../../../src/engine/config.js';
 import {
   dest,
   fenKey,
@@ -199,7 +200,8 @@ describe('Stage 1: Own-turn chain steering and ponder table arming', () => {
     expect(selectOwnTurnChainPremove(fen, nonChainLines).bestMoveUci).toBe('g1f3');
   });
 
-  it('steers to PV2 when PV2 is a valid recapture chain within 50cp', () => {
+  it('steers to PV2 when PV2 is a valid recapture chain within 120cp', () => {
+    expect(MAX_CHAIN_STEERING_LOSS_CP).toBe(120);
     // Setup position where White has a trade chain on d5:
     // White pawn on e4, White pawn on c4. Black pawn on d5.
     // 1. exd5 (e4d5) Qxd5 (d8d5) 2. cxd5 (c4d5) -> dest is d5, d5, d5!
@@ -216,7 +218,7 @@ describe('Stage 1: Own-turn chain steering and ponder table arming', () => {
         multipv: 2,
         uci: 'e4d5',
         pv: 'e4d5 d8d5 c4d5',
-        evaluation: { cp: 30 }, // 45 - 30 = 15 <= 50cp loss
+        evaluation: { cp: -65 }, // 45 - (-65) = 110 <= 120cp loss
         depth: 12,
       },
     ];
@@ -231,6 +233,26 @@ describe('Stage 1: Own-turn chain steering and ponder table arming', () => {
     if (expectedFen) {
       expect(result.armed?.byExpectedFen.get(expectedFen)).toBe('c4d5');
     }
+
+    // Exceeding 120cp should NOT steer to PV2
+    const tooCostlyLines: MultiPvLine[] = [
+      {
+        multipv: 1,
+        uci: 'd2d4',
+        pv: 'd2d4 d5e4 c1e3',
+        evaluation: { cp: 45 },
+        depth: 12,
+      },
+      {
+        multipv: 2,
+        uci: 'e4d5',
+        pv: 'e4d5 d8d5 c4d5',
+        evaluation: { cp: -80 }, // 45 - (-80) = 125 > 120cp loss
+        depth: 12,
+      },
+    ];
+    const costlyResult = selectOwnTurnChainPremove(fen, tooCostlyLines);
+    expect(costlyResult.bestMoveUci).toBe('d2d4');
   });
 });
 
@@ -299,6 +321,22 @@ describe('Stage 2: Opponent-turn Multi-Branch Ponder Table selector', () => {
       },
     ];
     expect(selectOpponentTurnPremove(fen, shortLines)).toBeNull();
+  });
+
+  it('arms up to PREMOVE_PONDER_BRANCHES (6) candidate lines', () => {
+    const fen = START_FEN;
+    const lines: MultiPvLine[] = [
+      { multipv: 1, uci: 'e2e4', pv: 'e2e4 e7e5', evaluation: { cp: 20 }, depth: 10 },
+      { multipv: 2, uci: 'd2d4', pv: 'd2d4 d7d5', evaluation: { cp: 20 }, depth: 10 },
+      { multipv: 3, uci: 'c2c4', pv: 'c2c4 e7e5', evaluation: { cp: 15 }, depth: 10 },
+      { multipv: 4, uci: 'g1f3', pv: 'g1f3 d7d5', evaluation: { cp: 15 }, depth: 10 },
+      { multipv: 5, uci: 'b1c3', pv: 'b1c3 e7e5', evaluation: { cp: 10 }, depth: 10 },
+      { multipv: 6, uci: 'g2g3', pv: 'g2g3 e7e5', evaluation: { cp: 10 }, depth: 10 },
+      { multipv: 7, uci: 'b2b3', pv: 'b2b3 e7e5', evaluation: { cp: 5 }, depth: 10 },
+    ];
+    const armed = selectOpponentTurnPremove(fen, lines);
+    expect(armed).not.toBeNull();
+    expect(armed?.byExpectedFen.size).toBe(PREMOVE_PONDER_BRANCHES);
   });
 });
 

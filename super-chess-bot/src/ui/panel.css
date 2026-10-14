@@ -104,14 +104,17 @@
   flex: 1 1 auto;
   flex-direction: column;
   gap: 3px;
+  overflow: hidden;
 }
 
 .panel-title {
-  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.005em;
-  white-space: nowrap;
 }
 
 .panel-status,
@@ -204,21 +207,24 @@
 }
 
 .panel-help-toggle {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: transparent;
   color: var(--muted);
   transition:
     color 140ms var(--ease),
-    border-color 140ms var(--ease),
     background 140ms var(--ease);
 }
 
 .panel-help-toggle:hover {
+  background: var(--wood-raised);
   color: var(--paper);
 }
 
 .panel-help-toggle.is-active {
-  border-color: color-mix(in oklab, var(--brass) 55%, var(--line));
   color: var(--brass);
-  background: color-mix(in oklab, var(--brass) 12%, var(--wood));
+  background: color-mix(in oklab, var(--brass) 14%, transparent);
 }
 
 .panel-chevron {
@@ -1424,6 +1430,11 @@
     padding: 8px 8px 8px 10px;
     cursor: default;
     touch-action: manipulation;
+  }
+
+  .panel-bar .panel-icon {
+    width: 32px;
+    height: 32px;
   }
 
   .panel-body,

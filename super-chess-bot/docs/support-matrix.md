@@ -43,3 +43,6 @@ Move-time records preserve a per-turn clock baseline. When both clock readings a
 Post-game reports use a local search estimate, default to depth 18, and allow depth 10–26. The app permits reports only for finished games, including a guard against replay views of ongoing rounds, and cancels work when eligibility or the session changes. Manual cancellation keeps automatic reporting stopped until explicit generation or a new game. Automatic recovery is limited to two retries per session-position. It does not automatically repeat a move after a transport dispatch attempt with an uncertain outcome.
 
 Ghost Mode hides panel and board overlays for streaming. The panel uses closed Shadow DOM for UI encapsulation; that is not a security boundary or a zero-detectability guarantee.
+
+Browser compatibility notes: Lichess round controller bridge requires synchronous page-context injection (`// @inject-into page`). On Firefox for Android, Mozilla does not support `webRequestBlocking`, preventing userscript managers from patching CSP headers; consequently, Lichess's nonce-based `<meta>` Content Security Policy prevents script injection. Mobile users on Lichess should use a Chromium-based browser with extension support (e.g. Kiwi Browser, Lemur, Cromite) or use Chess.com.
+

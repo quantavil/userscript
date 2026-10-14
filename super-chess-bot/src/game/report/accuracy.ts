@@ -8,8 +8,10 @@
  * evaluations, and the panel labels the output as a local estimate for that reason.
  */
 
+import { REPORT_CPL_CAP } from '../../engine/config.js';
+
 /** Centipawn evaluations are capped before conversion so a won position cannot swing wildly. */
-export const CPL_CAP = 1000;
+export const CPL_CAP = REPORT_CPL_CAP;
 
 /** Lichess win-probability curve. `cp` is centipawns from the mover's point of view. */
 export function winPercent(cp: number): number {
