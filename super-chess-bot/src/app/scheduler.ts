@@ -2,9 +2,16 @@ import { cancelPendingMove, getMoveRevision } from '../board/input.js';
 import { clearArrows, drawArrow, drawMultiPvArrows } from '../board/overlays.js';
 import { formatMove } from '../chess/notation.js';
 import { countLegalMoves, hasLegalMoves, parseRules, predictFen } from '../chess/position.js';
-import type { Evaluation } from '../chess/types';
+import type { Evaluation, MultiPvLine } from '../chess/types';
 import { getVariantDefinition } from '../chess/variants.js';
 import { lookupBookMove } from '../engine/book/lookup.js';
+import {
+  type ArmedPremoveMap,
+  fenKey,
+  isLegalMove,
+  selectOpponentTurnPremove,
+  selectOwnTurnChainPremove,
+} from '../engine/premove.js';
 import type { AnalysisResult, BestLine, PositionHistory } from '../engine/service.js';
 import { cancelPonder, getAnalysis, parseBestLine, ponderPosition } from '../engine/service.js';
 import { isTablebaseEligible, lookupTablebase, type TablebaseResponse } from '../engine/tablebase.js';
@@ -22,6 +29,7 @@ let revision = 0;
 let active: AbortController | null = null;
 let processed: { kind: string; fen: string; identity: object } | null = null;
 let anticipatedPonder: { fromFen: string; targetFen: string; history?: PositionHistory } | null = null;
+let armedPremove: ArmedPremoveMap | null = null;
 let pendingConfirmation: { identity: object; requestController: AbortController } | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryIdentity: object | null = null;
@@ -34,6 +42,7 @@ export function resetRecovery(): void {
   retryTimer = null;
   retryIdentity = null;
   retryCounts.clear();
+  armedPremove = null;
 }
 
 const confirmationSettledListeners = new Set<() => void>();
@@ -89,6 +98,7 @@ export function cancelAnalysis(preservePonderFen?: string): void {
   active?.abort();
   active = null;
   processed = null;
+  if (!preservePonderFen) armedPremove = null;
   if (pendingConfirmation) pendingConfirmation.requestController.abort();
   pendingConfirmation = null;
   if (!anticipatedPonder || anticipatedPonder.fromFen !== preservePonderFen) anticipatedPonder = null;
@@ -177,12 +187,39 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     const isStandard = getVariantDefinition(snapshot.variant)?.id === 'standard';
     const bookMove =
       isStandard && kind === 'main' && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
+    let premoveHit = false;
+    let premoveMove: string | null = null;
+    if (kind === 'main' && BotState.premove && armedPremove) {
+      const key = fenKey(fen);
+      const replyUci = armedPremove.byExpectedFen.get(key);
+      armedPremove = null;
+      if (replyUci && isLegalMove(fen, replyUci, snapshot.variant)) {
+        premoveHit = true;
+        premoveMove = replyUci;
+      }
+    } else if (kind === 'main') {
+      armedPremove = null;
+    }
+
     let result: AnalysisResult;
     let best: BestLine | null = null;
     let isTablebase = false;
     let tbDisplay = '';
 
-    if (bookMove) {
+    if (premoveHit && premoveMove) {
+      result = {
+        success: true,
+        bestmove: premoveMove,
+        depth: 99,
+        pv: premoveMove,
+        evaluation: {},
+      };
+      best = {
+        uci: premoveMove,
+        pv: premoveMove,
+        score: {},
+      };
+    } else if (bookMove) {
       result = {
         success: true,
         bestmove: bookMove,
@@ -205,6 +242,34 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
           ? Math.min(3000, Math.max(200, Math.floor(remainingMs / 20)))
           : undefined;
 
+      const requestedMultiPv =
+        kind === 'main'
+          ? BotState.premove
+            ? Math.max(2, BotState.multiPvLines?.length ?? 1)
+            : undefined
+          : BotState.premove
+            ? 6
+            : undefined;
+      const requestedDepth = kind !== 'main' && BotState.premove ? 8 : BotState.botPower;
+      const legalMoves = requestedMultiPv ? (countLegalMoves(fen, snapshot.variant) ?? undefined) : undefined;
+      const onDepth =
+        kind !== 'main' && BotState.premove
+          ? (depth: number, lines: MultiPvLine[]) => {
+              if (depth >= 3) {
+                const armed = selectOpponentTurnPremove(fen, lines, snapshot.variant);
+                if (armed) {
+                  if (!armedPremove) {
+                    armedPremove = armed;
+                  } else {
+                    for (const [k, v] of armed.byExpectedFen) {
+                      armedPremove.byExpectedFen.set(k, v);
+                    }
+                  }
+                }
+              }
+            }
+          : undefined;
+
       if (isTbEligible) {
         const tbTimeout = Math.min(1500, Math.max(100, Math.floor((snapshot.remainingMs ?? 60000) / 4)));
         const lookupController = new AbortController();
@@ -216,15 +281,29 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
         ctrl.signal.addEventListener('abort', abortBranches, { once: true });
         if (ctrl.signal.aborted) abortBranches();
         const tbPromise = lookupTablebase(fen, lookupController.signal, tbTimeout).catch(() => null);
-        const analysisPromise = getAnalysis(
-          fen,
-          BotState.botPower,
-          budget,
-          analysisController.signal,
-          history,
-          slackMs,
-          snapshot.variant,
-        );
+        const analysisPromise =
+          requestedMultiPv !== undefined || legalMoves !== undefined || onDepth !== undefined
+            ? getAnalysis(
+                fen,
+                BotState.botPower,
+                budget,
+                analysisController.signal,
+                history,
+                slackMs,
+                snapshot.variant,
+                requestedMultiPv,
+                legalMoves,
+                onDepth,
+              )
+            : getAnalysis(
+                fen,
+                BotState.botPower,
+                budget,
+                analysisController.signal,
+                history,
+                slackMs,
+                snapshot.variant,
+              );
         try {
           const winner = await Promise.any([
             tbPromise.then((tb) => {
@@ -258,7 +337,21 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
           ctrl.signal.removeEventListener('abort', abortBranches);
         }
       } else {
-        result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs, snapshot.variant);
+        result =
+          requestedMultiPv !== undefined || legalMoves !== undefined || onDepth !== undefined
+            ? await getAnalysis(
+                fen,
+                requestedDepth,
+                budget,
+                ctrl.signal,
+                history,
+                slackMs,
+                snapshot.variant,
+                requestedMultiPv,
+                legalMoves,
+                onDepth,
+              )
+            : await getAnalysis(fen, requestedDepth, budget, ctrl.signal, history, slackMs, snapshot.variant);
       }
 
       if (!current()) return;
@@ -284,6 +377,18 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       }
     }
     if (kind !== 'main') {
+      if (BotState.premove && result.multiPv && result.multiPv.length > 0) {
+        const armed = selectOpponentTurnPremove(fen, result.multiPv, snapshot.variant);
+        if (armed) {
+          if (!armedPremove) {
+            armedPremove = armed;
+          } else {
+            for (const [k, v] of armed.byExpectedFen) {
+              armedPremove.byExpectedFen.set(k, v);
+            }
+          }
+        }
+      }
       const predicted = predictFen(fen, best.uci, snapshot.variant);
       if (predicted) {
         const predictedHistory = history ? { ...history, moves: [...history.moves, best.uci] } : undefined;
@@ -317,6 +422,13 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       }
     }
 
+    if (BotState.premove && !premoveHit && !bookMove && !isTablebase && best.multiPv && best.multiPv.length > 0) {
+      const chainResult = selectOwnTurnChainPremove(fen, best.multiPv, snapshot.variant);
+      if (chainResult.armed) {
+        armedPremove = chainResult.armed;
+      }
+    }
+
     const currentPosition = matchingSnapshot(site, identity, fen);
     const nextFen = predictFen(fen, best.uci, snapshot.variant);
     const isSupportedRules = !snapshot.variant || Boolean(parseRules(snapshot.variant));
@@ -340,12 +452,14 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       ...line,
       evaluation: scoreForWhite(line.evaluation, snapshot.sideToMove),
     }));
-    BotState.currentEvaluation = bookMove
-      ? 'Book'
-      : isTablebase
-        ? tbDisplay
-        : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
-    if (!bookMove && (typeof best.score.cp === 'number' || typeof best.score.mate === 'number')) {
+    BotState.currentEvaluation = premoveHit
+      ? '-'
+      : bookMove
+        ? 'Book'
+        : isTablebase
+          ? tbDisplay
+          : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
+    if (!bookMove && !premoveHit && (typeof best.score.cp === 'number' || typeof best.score.mate === 'number')) {
       const whiteScore = scoreForWhite(best.score, snapshot.sideToMove);
       let numEval = 0;
       if (typeof whiteScore.mate === 'number') {
@@ -362,11 +476,13 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
         lastEvalRecord = { identity, plyKey };
       }
     }
-    BotState.statusInfo = bookMove
-      ? `Ready · Book · ${Math.round(performance.now() - started)} ms`
-      : isTablebase
-        ? `Ready · Tablebase · ${Math.round(performance.now() - started)} ms`
-        : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
+    BotState.statusInfo = premoveHit
+      ? `Ready · Premove · ${Math.round(performance.now() - started)} ms`
+      : bookMove
+        ? `Ready · Book · ${Math.round(performance.now() - started)} ms`
+        : isTablebase
+          ? `Ready · Tablebase · ${Math.round(performance.now() - started)} ms`
+          : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
 
     if (best.multiPv && best.multiPv.length > 0) {
       drawMultiPvArrows(best.multiPv);
@@ -377,7 +493,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     ui.updateDisplay();
     if (!BotState.autoMove || !current() || !currentPosition?.inputReady) return;
 
-    if (BotState.timingMode === 'dynamic') {
+    if (!premoveHit && BotState.timingMode === 'dynamic') {
       const candidateScores = best.multiPv?.map((line) => {
         if (typeof line.evaluation.mate === 'number') return line.evaluation.mate > 0 ? 1000 : -1000;
         return line.evaluation.cp ?? 0;
@@ -442,7 +558,8 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       BotState.recoveryAction = null;
       const provenance =
         observed.status === 'locally-applied' ? ' · applied locally; server acceptance unverified' : '';
-      ui.log(formatMove(fen, best.uci, snapshot.variant) + provenance, 'move');
+      const premoveTag = premoveHit ? ' · premove' : '';
+      ui.log(formatMove(fen, best.uci, snapshot.variant) + premoveTag + provenance, 'move');
     } else if (positionIsCurrent()) {
       anticipatedPonder = null;
       clearArrows();

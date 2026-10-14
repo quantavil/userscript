@@ -4,6 +4,7 @@ import { BotState } from '../../../src/app/state.js';
 import { predictFen } from '../../../src/chess/position.js';
 import type { MoveConfirmation } from '../../../src/game/confirmation.js';
 import type { MoveRequest } from '../../../src/sites/types.js';
+import { ui } from '../../../src/ui/mount.js';
 
 const mocks = vi.hoisted(() => {
   const snapshot = {
@@ -234,5 +235,177 @@ describe('scheduler state consistency and multi-pv / elo throttling', () => {
 
     await scheduleAnalysis('main', turn2Fen);
     expect(BotState.evalHistory).toEqual([0.35, 0.45]);
+  });
+});
+
+describe('FEN-keyed ponder table and 0ms premove execution', () => {
+  beforeEach(() => {
+    cancelAnalysis();
+    vi.clearAllMocks();
+    Object.assign(mocks.snapshot, {
+      identity: {},
+      gameId: 'premove-game',
+      fen: START_FEN,
+      playerColor: 'w',
+      sideToMove: 'w',
+      orientation: 'white',
+      phase: 'live',
+      inputReady: true,
+      remainingMs: null,
+      history: { startFen: START_FEN, moves: [] },
+      confirmedFens: [START_FEN],
+    });
+    mocks.siteRead.kind = 'game';
+    mocks.confirmMove.mockResolvedValue({ status: 'confirmed', source: 'site-accepted' });
+    BotState.hackEnabled = true;
+    BotState.autoMove = true;
+    BotState.premove = true;
+    BotState.autoRetry = false;
+    BotState.openingBook = false;
+    BotState.ponderEnabled = false;
+    BotState.targetElo = 0;
+    BotState.blunderShield = false;
+    BotState.multiPvLines = [];
+  });
+
+  afterEach(() => {
+    cancelAnalysis();
+    vi.restoreAllMocks();
+  });
+
+  it('executes matching premove with 0ms engine delay when opponent plays predicted PV1 reply', async () => {
+    const logSpy = vi.spyOn(ui, 'log');
+
+    // Turn 1 (White to move): search yields e2e4 with reply e7e5 and follow-up g1f3
+    mocks.analyze.mockResolvedValue({
+      success: true,
+      bestmove: 'e2e4',
+      depth: 14,
+      pv: 'e2e4 e7e5 g1f3',
+      evaluation: { cp: 30 },
+      multiPv: [
+        {
+          multipv: 1,
+          depth: 14,
+          uci: 'e2e4',
+          pv: 'e2e4 e7e5 g1f3',
+          evaluation: { cp: 30 },
+        },
+      ],
+    });
+
+    await scheduleAnalysis('main', START_FEN);
+
+    // Turn 1 move e2e4 was submitted to site
+    expect(mocks.site.submitMove).toHaveBeenCalledTimes(1);
+    expect(mocks.site.submitMove.mock.calls[0][0].uci).toBe('e2e4');
+
+    // Reset mocks to inspect turn 2 behavior
+    mocks.analyze.mockClear();
+    mocks.site.submitMove.mockClear();
+
+    // Turn 2: Opponent confirms move e7e5 -> Black to move turns into White to move
+    const afterE5Fen = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+    mocks.snapshot.fen = afterE5Fen;
+    mocks.snapshot.history = { startFen: START_FEN, moves: ['e2e4', 'e7e5'] };
+    mocks.snapshot.sideToMove = 'w';
+
+    await scheduleAnalysis('main', afterE5Fen);
+
+    // PREMOVE HIT!
+    // 1. Engine getAnalysis must NOT have been called!
+    expect(mocks.analyze).not.toHaveBeenCalled();
+    // 2. Reply move g1f3 must have been immediately submitted!
+    expect(mocks.site.submitMove).toHaveBeenCalledTimes(1);
+    expect(mocks.site.submitMove.mock.calls[0][0].uci).toBe('g1f3');
+    // 3. Status info must report Premove
+    expect(BotState.statusInfo).toContain('Ready · Premove');
+    // 4. Activity log must report " · premove"
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('· premove'), 'move');
+  });
+
+  it('clears ponder table and runs regular engine search when opponent plays unexpected move', async () => {
+    mocks.analyze.mockResolvedValue({
+      success: true,
+      bestmove: 'e2e4',
+      depth: 14,
+      pv: 'e2e4 e7e5 g1f3',
+      evaluation: { cp: 30 },
+      multiPv: [
+        {
+          multipv: 1,
+          depth: 14,
+          uci: 'e2e4',
+          pv: 'e2e4 e7e5 g1f3',
+          evaluation: { cp: 30 },
+        },
+      ],
+    });
+
+    await scheduleAnalysis('main', START_FEN);
+    mocks.analyze.mockClear();
+    mocks.site.submitMove.mockClear();
+
+    // Turn 2: Opponent plays c7c5 (Sicilian) instead of e7e5!
+    const afterC5Fen = 'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+    mocks.snapshot.fen = afterC5Fen;
+    mocks.snapshot.history = { startFen: START_FEN, moves: ['e2e4', 'c7c5'] };
+    mocks.snapshot.sideToMove = 'w';
+
+    mocks.analyze.mockResolvedValue({
+      success: true,
+      bestmove: 'g1f3',
+      depth: 14,
+      pv: 'g1f3 d7d6',
+      evaluation: { cp: 25 },
+    });
+
+    await scheduleAnalysis('main', afterC5Fen);
+
+    // Opponent deviated: normal engine analysis ran!
+    expect(mocks.analyze).toHaveBeenCalledTimes(1);
+    expect(BotState.statusInfo).not.toContain('Premove');
+  });
+
+  it('does not arm or execute premoves when premove toggle is disabled', async () => {
+    BotState.premove = false;
+
+    mocks.analyze.mockResolvedValue({
+      success: true,
+      bestmove: 'e2e4',
+      depth: 14,
+      pv: 'e2e4 e7e5 g1f3',
+      evaluation: { cp: 30 },
+      multiPv: [
+        {
+          multipv: 1,
+          depth: 14,
+          uci: 'e2e4',
+          pv: 'e2e4 e7e5 g1f3',
+          evaluation: { cp: 30 },
+        },
+      ],
+    });
+
+    await scheduleAnalysis('main', START_FEN);
+    mocks.analyze.mockClear();
+
+    const afterE5Fen = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+    mocks.snapshot.fen = afterE5Fen;
+    mocks.snapshot.history = { startFen: START_FEN, moves: ['e2e4', 'e7e5'] };
+    mocks.snapshot.sideToMove = 'w';
+
+    mocks.analyze.mockResolvedValue({
+      success: true,
+      bestmove: 'g1f3',
+      depth: 14,
+      pv: 'g1f3 b8c6',
+      evaluation: { cp: 35 },
+    });
+
+    await scheduleAnalysis('main', afterE5Fen);
+
+    // Premove disabled: regular engine analysis MUST run!
+    expect(mocks.analyze).toHaveBeenCalledTimes(1);
   });
 });
