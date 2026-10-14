@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { gameReportSignal, resetGameReport } from '../../../src/game/report/analyzer.js';
 import { REPORT_DEPTH_MAX, REPORT_DEPTH_MIN } from '../../../src/settings/schema.js';
-import { formatTrendValue } from '../../../src/ui/components/eval-trend-graph.js';
+import { EvalTrendGraph, formatTrendValue } from '../../../src/ui/components/eval-trend-graph.js';
 import { atDepthLimit, stepReportDepth } from '../../../src/ui/components/game-report-panel.js';
 
 describe('eval trend headline', () => {
@@ -61,5 +61,13 @@ describe('report progress state', () => {
     expect(gameReportSignal.value.done).toBe(false);
     resetGameReport();
     expect(gameReportSignal.value.error).toBeNull();
+  });
+});
+
+describe('eval trend graph label', () => {
+  it('labels subtitle as turns rather than plies', () => {
+    const vnode = EvalTrendGraph({ history: [0.2, 0.4] });
+    expect(JSON.stringify(vnode)).toContain('" turns"');
+    expect(JSON.stringify(vnode)).not.toContain('plies');
   });
 });

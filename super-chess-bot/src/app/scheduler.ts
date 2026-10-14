@@ -16,7 +16,7 @@ import { scoreToDisplay } from '../shared/utils.js';
 import { getSite } from '../sites/registry.js';
 import type { GameSnapshot, MoveRequest, SiteAdapter } from '../sites/types.js';
 import { ui } from '../ui/mount.js';
-import { BotState } from './state.js';
+import { BotState, clearRecommendation } from './state.js';
 
 let revision = 0;
 let active: AbortController | null = null;
@@ -25,6 +25,7 @@ let anticipatedPonder: { fromFen: string; targetFen: string; history?: PositionH
 let pendingConfirmation: { identity: object; requestController: AbortController } | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryIdentity: object | null = null;
+let lastEvalRecord: { identity: object; plyKey: string } | null = null;
 const retryCounts = new Map<string, number>();
 const MAX_AUTOMATIC_RETRIES = 2;
 
@@ -129,6 +130,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
   if (retryIdentity !== snapshot.identity) {
     resetRecovery();
     retryIdentity = snapshot.identity;
+    lastEvalRecord = null;
   }
   if (snapshot.phase !== 'live' || snapshot.fen !== fen) return;
   if (kind === 'main' && snapshot.sideToMove !== snapshot.playerColor) return;
@@ -214,11 +216,15 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
         ctrl.signal.addEventListener('abort', abortBranches, { once: true });
         if (ctrl.signal.aborted) abortBranches();
         const tbPromise = lookupTablebase(fen, lookupController.signal, tbTimeout).catch(() => null);
-        const analysisPromise = snapshot.variant
-          ? getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history, slackMs, snapshot.variant)
-          : slackMs !== undefined
-            ? getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history, slackMs)
-            : getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history);
+        const analysisPromise = getAnalysis(
+          fen,
+          BotState.botPower,
+          budget,
+          analysisController.signal,
+          history,
+          slackMs,
+          snapshot.variant,
+        );
         try {
           const winner = await Promise.any([
             tbPromise.then((tb) => {
@@ -252,11 +258,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
           ctrl.signal.removeEventListener('abort', abortBranches);
         }
       } else {
-        result = snapshot.variant
-          ? await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs, snapshot.variant)
-          : slackMs !== undefined
-            ? await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs)
-            : await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
+        result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs, snapshot.variant);
       }
 
       if (!current()) return;
@@ -305,6 +307,13 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       });
       if (throttled.uci && throttled.uci !== best.uci) {
         best.uci = throttled.uci;
+        best.pv = throttled.pv;
+        best.score = throttled.evaluation;
+        const chosenIndex = best.multiPv.findIndex((line) => line.uci === throttled.uci);
+        if (chosenIndex > 0) {
+          const chosen = best.multiPv[chosenIndex];
+          best.multiPv = [chosen, ...best.multiPv.filter((_, idx) => idx !== chosenIndex)];
+        }
       }
     }
 
@@ -344,7 +353,14 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       } else if (typeof whiteScore.cp === 'number') {
         numEval = whiteScore.cp / 100;
       }
-      BotState.evalHistory = [...(BotState.evalHistory ?? []), numEval].slice(-40);
+      const plyKey = snapshot.history ? `${snapshot.history.moves.length}` : fen;
+      const currentHistory = BotState.evalHistory ?? [];
+      if (lastEvalRecord?.identity === identity && lastEvalRecord.plyKey === plyKey && currentHistory.length > 0) {
+        BotState.evalHistory = [...currentHistory.slice(0, -1), numEval];
+      } else {
+        BotState.evalHistory = [...currentHistory, numEval].slice(-40);
+        lastEvalRecord = { identity, plyKey };
+      }
     }
     BotState.statusInfo = bookMove
       ? `Ready · Book · ${Math.round(performance.now() - started)} ms`
@@ -430,9 +446,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     } else if (positionIsCurrent()) {
       anticipatedPonder = null;
       clearArrows();
-      BotState.bestMove = '-';
-      BotState.currentEvaluation = '-';
-      BotState.principalVariation = '-';
+      clearRecommendation();
       if (inputRevision !== getMoveRevision()) {
         BotState.recoveryAction = 'resume';
         BotState.statusInfo = 'Paused after board interaction';
@@ -448,9 +462,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
   } catch (error) {
     if (!current() || ctrl.signal.aborted) return;
     clearArrows();
-    BotState.bestMove = '-';
-    BotState.currentEvaluation = '-';
-    BotState.principalVariation = '-';
+    clearRecommendation();
     BotState.recoveryAction = 'retry';
     BotState.statusInfo = error instanceof Error ? error.message : 'Engine failed';
     if (!moveDispatched && BotState.autoRetry && BotState.hackEnabled) {

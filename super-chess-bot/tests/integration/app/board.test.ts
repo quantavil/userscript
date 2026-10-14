@@ -203,7 +203,7 @@ function makeSiteRequest(
   return { identity, fromFen, uci: 'e2e4', expectedFen, expectedPly, signal, isCurrent: () => true };
 }
 
-function setupMockBoard(flipped = false, playerColor = 'w') {
+function setupMockBoard(flipped = false, _playerColor = 'w') {
   const ctxCalls: string[] = [];
   const mockCtx = {
     beginPath: () => ctxCalls.push('beginPath'),
@@ -253,7 +253,6 @@ function setupMockBoard(flipped = false, playerColor = 'w') {
     },
   );
   vi.spyOn(state, 'isBoardFlipped').mockReturnValue(flipped);
-  vi.spyOn(state, 'getPlayerColor').mockReturnValue(playerColor);
 
   board.attachToBoard(mockBoard as unknown as HTMLElement);
   return { mockCanvas, ctxCalls };

@@ -160,4 +160,16 @@ describe('elo throttling & blunder shield move selection', () => {
     expect(outcome.uci).toBe('e2e4');
     expect(outcome.shieldApplied).toBe(true);
   });
+
+  it('returns pv and evaluation matching the chosen candidate line', () => {
+    const outcome = selectThrottledMove(dummyLines, {
+      targetElo: 1000,
+      blunderShield: true,
+      randomFn: () => 0.99,
+    });
+    const chosen = dummyLines.find((l) => l.uci === outcome.uci);
+    expect(chosen).toBeDefined();
+    expect(outcome.pv).toBe(chosen?.pv);
+    expect(outcome.evaluation).toEqual(chosen?.evaluation);
+  });
 });

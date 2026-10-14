@@ -45,7 +45,7 @@ export function EvalTrendGraph({ history }: { history?: number[] }) {
       <div class="panel-trend-head">
         <div class="panel-trend-label-wrap">
           <span class="panel-trend-title">Eval Trend</span>
-          <span class="panel-trend-subtitle">{history.length} plies</span>
+          <span class="panel-trend-subtitle">{history.length} turns</span>
         </div>
         <span class="panel-trend-val" data-tone={valTone}>
           {latestFormatted}

@@ -72,7 +72,14 @@ vi.mock('../../../src/engine/tablebase.js', () => ({
   lookupTablebase: dependencies.tablebase,
   isTablebaseEligible: dependencies.tablebaseEligible,
 }));
-vi.mock('../../../src/app/state.js', () => ({ BotState: dependencies.state }));
+vi.mock('../../../src/app/state.js', () => ({
+  BotState: dependencies.state,
+  clearRecommendation: () => {
+    dependencies.state.bestMove = '-';
+    dependencies.state.currentEvaluation = '-';
+    dependencies.state.principalVariation = '-';
+  },
+}));
 vi.mock('../../../src/sites/registry.js', () => ({
   getSite: () => dependencies.site,
   readSite: () => dependencies.site.read(),
@@ -199,10 +206,18 @@ describe('site-backed search and execution', () => {
 
     await scheduleAnalysis('main', dependencies.snapshot.fen);
 
-    expect(dependencies.analyze).toHaveBeenCalledWith(dependencies.snapshot.fen, 20, 100, expect.any(AbortSignal), {
-      startFen: 'root',
-      moves: ['d2d4', 'd7d5'],
-    });
+    expect(dependencies.analyze).toHaveBeenCalledWith(
+      dependencies.snapshot.fen,
+      20,
+      100,
+      expect.any(AbortSignal),
+      {
+        startFen: 'root',
+        moves: ['d2d4', 'd7d5'],
+      },
+      undefined,
+      undefined,
+    );
     expect(dependencies.confirmMove.mock.invocationCallOrder[0]).toBeLessThan(
       dependencies.site.submitMove.mock.invocationCallOrder[0],
     );

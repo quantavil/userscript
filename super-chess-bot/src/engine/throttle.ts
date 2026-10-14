@@ -4,6 +4,7 @@
  * catastrophic tactical blunders.
  */
 
+import type { Evaluation } from '../chess/types.js';
 import { evaluationToCentipawns } from '../shared/chess.js';
 import type { MultiPvLine } from './uci-client.js';
 
@@ -22,6 +23,8 @@ export interface SelectedMoveOutcome {
   rank: number;
   cpLoss: number;
   shieldApplied: boolean;
+  pv: string;
+  evaluation: Evaluation;
 }
 
 /**
@@ -30,7 +33,7 @@ export interface SelectedMoveOutcome {
  */
 export function selectThrottledMove(lines: MultiPvLine[], options: ThrottleOptions): SelectedMoveOutcome {
   if (!lines || lines.length === 0) {
-    return { uci: '', rank: 1, cpLoss: 0, shieldApplied: false };
+    return { uci: '', rank: 1, cpLoss: 0, shieldApplied: false, pv: '', evaluation: {} };
   }
 
   const bestLine = lines[0];
@@ -38,7 +41,14 @@ export function selectThrottledMove(lines: MultiPvLine[], options: ThrottleOptio
 
   // If unthrottled (0 or >= MAX_THROTTLED_ELO) or only 1 line available, play best move
   if (!options.targetElo || options.targetElo <= 0 || options.targetElo >= MAX_THROTTLED_ELO || lines.length === 1) {
-    return { uci: bestUci, rank: 1, cpLoss: 0, shieldApplied: false };
+    return {
+      uci: bestUci,
+      rank: 1,
+      cpLoss: 0,
+      shieldApplied: false,
+      pv: bestLine.pv,
+      evaluation: bestLine.evaluation,
+    };
   }
 
   const { targetElo, blunderShield, randomFn = Math.random } = options;
@@ -86,7 +96,14 @@ export function selectThrottledMove(lines: MultiPvLine[], options: ThrottleOptio
   }
 
   if (eligibleCandidates.length === 0) {
-    return { uci: bestUci, rank: 1, cpLoss: 0, shieldApplied: shieldTriggered };
+    return {
+      uci: bestUci,
+      rank: 1,
+      cpLoss: 0,
+      shieldApplied: shieldTriggered,
+      pv: bestLine.pv,
+      evaluation: bestLine.evaluation,
+    };
   }
 
   // Sample using cumulative weights
@@ -103,9 +120,18 @@ export function selectThrottledMove(lines: MultiPvLine[], options: ThrottleOptio
         rank: candidate.rank,
         cpLoss: candidate.cpLoss,
         shieldApplied: shieldTriggered,
+        pv: candidate.line.pv,
+        evaluation: candidate.line.evaluation,
       };
     }
   }
 
-  return { uci: bestUci, rank: 1, cpLoss: 0, shieldApplied: shieldTriggered };
+  return {
+    uci: bestUci,
+    rank: 1,
+    cpLoss: 0,
+    shieldApplied: shieldTriggered,
+    pv: bestLine.pv,
+    evaluation: bestLine.evaluation,
+  };
 }

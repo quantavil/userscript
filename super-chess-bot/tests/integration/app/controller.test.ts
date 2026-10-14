@@ -65,6 +65,8 @@ const deps = vi.hoisted(() => {
       principalVariation: '-',
       statusInfo: 'Ready',
       recoveryAction: null as 'resume' | 'retry' | null,
+      multiPvLines: [] as unknown[],
+      evalHistory: [] as number[],
     },
   };
 });
@@ -84,6 +86,12 @@ vi.mock('../../../src/sites/registry.js', () => ({ getSite: () => deps.site, rea
 vi.mock('../../../src/settings/storage.js', () => ({ Settings: { save: vi.fn() } }));
 vi.mock('../../../src/app/state.js', () => ({
   BotState: deps.state,
+  clearRecommendation: () => {
+    deps.state.bestMove = '-';
+    deps.state.currentEvaluation = '-';
+    deps.state.principalVariation = '-';
+    deps.state.multiPvLines = [];
+  },
 }));
 vi.mock('../../../src/board/input.js', () => ({
   onBoardInput: (listener: () => void) => {

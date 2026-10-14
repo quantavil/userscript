@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getFen, getPlayerColor, isBoardFlipped, isPlayersTurn } from '../../../src/app/state.js';
+import { BotState, clearRecommendation, isBoardFlipped } from '../../../src/app/state.js';
 import { setActiveSite } from '../../../src/sites/active.js';
 import { getBoard, getGame, invalidateGameCache } from '../../../src/sites/chesscom/snapshot.js';
 
@@ -52,73 +52,69 @@ describe('active Chess.com board selection', () => {
   });
 });
 
-describe('snapshot-derived compatibility helpers', () => {
-  it('uses the active site snapshot for color, turn, FEN, and orientation', () => {
-    const snapshot = {
+describe('isBoardFlipped helper', () => {
+  it('returns true when orientation is black and false when white', () => {
+    const makeSnapshot = (orientation: 'black' | 'white') => ({
       identity: {},
       gameId: 'lichess-one',
       board: {} as HTMLElement,
       fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
       playerColor: 'b' as const,
       sideToMove: 'b' as const,
-      orientation: 'black' as const,
+      orientation,
       phase: 'live' as const,
       inputReady: true,
       remainingMs: 60_000,
-    };
+    });
+
     setActiveSite({
       id: 'lichess',
-      read: () => ({ kind: 'game', snapshot }),
+      read: () => ({ kind: 'game', snapshot: makeSnapshot('black') }),
       subscribe: () => () => {},
       submitMove: async () => false,
       cancelInput() {},
     });
-
-    expect(getFen()).toBe(snapshot.fen);
-    expect(getPlayerColor()).toBe('b');
-    expect(isPlayersTurn()).toBe(true);
     expect(isBoardFlipped()).toBe(true);
-  });
 
-  it('reads the adapter once per synchronous turn, not once per getter', async () => {
-    const read = vi.fn(() => ({
-      kind: 'game' as const,
-      snapshot: {
-        identity: {},
-        gameId: 'g',
-        board: {} as HTMLElement,
-        fen: 'fen-1',
-        playerColor: 'w' as const,
-        sideToMove: 'w' as const,
-        orientation: 'white' as const,
-        phase: 'live' as const,
-        inputReady: true,
-        remainingMs: 60_000,
-      },
-    }));
-    setActiveSite({ id: 'lichess', read, subscribe: () => () => {}, submitMove: async () => false, cancelInput() {} });
-
-    // Five synchronous getters in one turn must not each pay for a site read.
-    expect(getFen()).toBe('fen-1');
-    expect(getPlayerColor()).toBe('w');
-    expect(isPlayersTurn()).toBe(true);
-    expect(isBoardFlipped()).toBe(false);
-    expect(read).toHaveBeenCalledTimes(1);
-
-    // The cache must not survive into the next turn, or it would serve a stale board.
-    await Promise.resolve();
-    read.mockReturnValueOnce({
-      kind: 'game',
-      snapshot: { ...read().snapshot, fen: 'fen-2' },
+    setActiveSite({
+      id: 'lichess',
+      read: () => ({ kind: 'game', snapshot: makeSnapshot('white') }),
+      subscribe: () => () => {},
+      submitMove: async () => false,
+      cancelInput() {},
     });
-    expect(getFen()).toBe('fen-2');
+    expect(isBoardFlipped()).toBe(false);
   });
 
-  it('returns null and does not fall back to Chess.com when no active site exists', () => {
+  it('returns false when no active site exists or read throws', () => {
     setActiveSite(null);
-    expect(getFen()).toBeNull();
-    expect(getPlayerColor()).toBeNull();
-    expect(isPlayersTurn()).toBe(false);
     expect(isBoardFlipped()).toBe(false);
+
+    setActiveSite({
+      id: 'lichess',
+      read: () => {
+        throw new Error('read failed');
+      },
+      subscribe: () => () => {},
+      submitMove: async () => false,
+      cancelInput() {},
+    });
+    expect(isBoardFlipped()).toBe(false);
+  });
+});
+
+describe('clearRecommendation helper', () => {
+  it('clears bestMove, currentEvaluation, principalVariation, and multiPvLines', () => {
+    BotState.bestMove = 'e2e4';
+    BotState.currentEvaluation = '+0.50';
+    BotState.principalVariation = 'e2e4 e7e5';
+    BotState.multiPvLines = [{ multipv: 1, depth: 20, evaluation: { cp: 50 }, pv: 'e2e4', uci: 'e2e4' }];
+
+    clearRecommendation();
+
+    expect(BotState.bestMove).toBe('-');
+    expect(BotState.currentEvaluation).toBe('-');
+    expect(BotState.principalVariation).toBe('-');
+    expect(BotState.multiPvLines).toEqual([]);
   });
 });

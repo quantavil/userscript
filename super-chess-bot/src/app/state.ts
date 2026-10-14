@@ -1,52 +1,20 @@
 import type { BotState as BotStateInterface } from '../chess/types.js';
 import { type PersistedSettingKey, settingsModel } from '../settings/model.js';
 import { getActiveSite } from '../sites/active.js';
-import type { GameSnapshot } from '../sites/types.js';
-
-// The board can only change between tasks, so one cache per turn collapses repeated `read()`
-// calls without ever serving a stale snapshot to the next turn.
-let cached: GameSnapshot | null = null;
-let cachedThisTurn = false;
-
-function readSiteSnapshot(): GameSnapshot | null {
-  if (cachedThisTurn) return cached;
+export function isBoardFlipped(): boolean {
   try {
     const read = getActiveSite()?.read();
-    cached = read?.kind === 'game' ? read.snapshot : null;
+    return read?.kind === 'game' ? read.snapshot.orientation === 'black' : false;
   } catch {
-    cached = null;
+    return false;
   }
-  cachedThisTurn = true;
-  queueMicrotask(() => {
-    cachedThisTurn = false;
-    cached = null;
-  });
-  return cached;
 }
 
-function snapshot(): GameSnapshot | null {
-  return readSiteSnapshot();
-}
-
-export function getFen(): string | null {
-  return snapshot()?.fen ?? null;
-}
-
-export function getPlayerColor(): string | null {
-  return snapshot()?.playerColor ?? null;
-}
-
-export function getSideToMove(): string | null {
-  return snapshot()?.sideToMove ?? null;
-}
-
-export function isPlayersTurn(): boolean {
-  const current = snapshot();
-  return current ? current.playerColor === current.sideToMove : false;
-}
-
-export function isBoardFlipped(): boolean {
-  return snapshot()?.orientation === 'black';
+export function clearRecommendation(): void {
+  BotState.bestMove = '-';
+  BotState.currentEvaluation = '-';
+  BotState.principalVariation = '-';
+  BotState.multiPvLines = [];
 }
 
 // Runtime values and persisted settings have separate owners. The existing typed

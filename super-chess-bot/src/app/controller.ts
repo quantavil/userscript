@@ -14,7 +14,7 @@ import {
   resetRecovery,
   scheduleAnalysis,
 } from './scheduler.js';
-import { BotState } from './state.js';
+import { BotState, clearRecommendation } from './state.js';
 
 function formatPhaseKey(snapshot: GameSnapshot, currentIdentity: object | null): string {
   const scope = snapshot.identity === currentIdentity ? snapshot.phase : `${snapshot.gameId}:${snapshot.phase}`;
@@ -146,10 +146,7 @@ class BotController {
   }
 
   private clearRecommendation(): void {
-    BotState.bestMove = '-';
-    BotState.currentEvaluation = '-';
-    BotState.principalVariation = '-';
-    BotState.multiPvLines = [];
+    clearRecommendation();
   }
 
   refreshSettings(): void {

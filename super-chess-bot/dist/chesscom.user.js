@@ -498,28 +498,19 @@
 	function getActiveSite() {
 		return activeSite$1;
 	}
-	var cached = null;
-	var cachedThisTurn = false;
-	function readSiteSnapshot() {
-		if (cachedThisTurn) return cached;
+	function isBoardFlipped() {
 		try {
 			const read = getActiveSite()?.read();
-			cached = read?.kind === "game" ? read.snapshot : null;
+			return read?.kind === "game" ? read.snapshot.orientation === "black" : false;
 		} catch {
-			cached = null;
+			return false;
 		}
-		cachedThisTurn = true;
-		queueMicrotask(() => {
-			cachedThisTurn = false;
-			cached = null;
-		});
-		return cached;
 	}
-	function snapshot() {
-		return readSiteSnapshot();
-	}
-	function isBoardFlipped() {
-		return snapshot()?.orientation === "black";
+	function clearRecommendation() {
+		BotState.bestMove = "-";
+		BotState.currentEvaluation = "-";
+		BotState.principalVariation = "-";
+		BotState.multiPvLines = [];
 	}
 	var runtimeState = {
 		hackEnabled: false,
@@ -5691,7 +5682,7 @@
 						children: "Eval Trend"
 					}), u("span", {
 						class: "panel-trend-subtitle",
-						children: [history.length, " plies"]
+						children: [history.length, " turns"]
 					})]
 				}), u("span", {
 					class: "panel-trend-val",
@@ -8629,7 +8620,9 @@
 			uci: "",
 			rank: 1,
 			cpLoss: 0,
-			shieldApplied: false
+			shieldApplied: false,
+			pv: "",
+			evaluation: {}
 		};
 		const bestLine = lines[0];
 		const bestUci = bestLine.uci;
@@ -8637,7 +8630,9 @@
 			uci: bestUci,
 			rank: 1,
 			cpLoss: 0,
-			shieldApplied: false
+			shieldApplied: false,
+			pv: bestLine.pv,
+			evaluation: bestLine.evaluation
 		};
 		const { targetElo, blunderShield, randomFn = Math.random } = options;
 		const bestScore = evaluationToCentipawns(bestLine.evaluation);
@@ -8673,7 +8668,9 @@
 			uci: bestUci,
 			rank: 1,
 			cpLoss: 0,
-			shieldApplied: shieldTriggered
+			shieldApplied: shieldTriggered,
+			pv: bestLine.pv,
+			evaluation: bestLine.evaluation
 		};
 		const totalWeight = eligibleCandidates.reduce((acc, c) => acc + c.weight, 0);
 		const r = randomFn() * totalWeight;
@@ -8684,14 +8681,18 @@
 				uci: candidate.line.uci,
 				rank: candidate.rank,
 				cpLoss: candidate.cpLoss,
-				shieldApplied: shieldTriggered
+				shieldApplied: shieldTriggered,
+				pv: candidate.line.pv,
+				evaluation: candidate.line.evaluation
 			};
 		}
 		return {
 			uci: bestUci,
 			rank: 1,
 			cpLoss: 0,
-			shieldApplied: shieldTriggered
+			shieldApplied: shieldTriggered,
+			pv: bestLine.pv,
+			evaluation: bestLine.evaluation
 		};
 	}
 	function sampleExGaussian(mu, sigma, tau, randomFn = Math.random) {
@@ -8818,6 +8819,7 @@
 	var pendingConfirmation = null;
 	var retryTimer = null;
 	var retryIdentity = null;
+	var lastEvalRecord = null;
 	var retryCounts = new Map();
 	var MAX_AUTOMATIC_RETRIES = 2;
 	function resetRecovery() {
@@ -8894,6 +8896,7 @@
 		if (retryIdentity !== snapshot.identity) {
 			resetRecovery();
 			retryIdentity = snapshot.identity;
+			lastEvalRecord = null;
 		}
 		if (snapshot.phase !== "live" || snapshot.fen !== fen) return;
 		if (kind === "main" && snapshot.sideToMove !== snapshot.playerColor) return;
@@ -8972,7 +8975,7 @@
 					ctrl.signal.addEventListener("abort", abortBranches, { once: true });
 					if (ctrl.signal.aborted) abortBranches();
 					const tbPromise = lookupTablebase(fen, lookupController.signal, tbTimeout).catch(() => null);
-					const analysisPromise = snapshot.variant ? getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history, slackMs, snapshot.variant) : slackMs !== void 0 ? getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history, slackMs) : getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history);
+					const analysisPromise = getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history, slackMs, snapshot.variant);
 					try {
 						const winner = await Promise.any([tbPromise.then((tb) => {
 							if (!tb?.success) throw new Error("Tablebase unavailable");
@@ -9009,7 +9012,7 @@
 						abortBranches();
 						ctrl.signal.removeEventListener("abort", abortBranches);
 					}
-				} else result = snapshot.variant ? await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs, snapshot.variant) : slackMs !== void 0 ? await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs) : await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history);
+				} else result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs, snapshot.variant);
 				if (!current()) return;
 				if (tbResult?.success) {
 					isTablebase = true;
@@ -9048,7 +9051,16 @@
 					blunderShield: !!BotState.blunderShield,
 					sideToMove: snapshot.sideToMove
 				});
-				if (throttled.uci && throttled.uci !== best.uci) best.uci = throttled.uci;
+				if (throttled.uci && throttled.uci !== best.uci) {
+					best.uci = throttled.uci;
+					best.pv = throttled.pv;
+					best.score = throttled.evaluation;
+					const chosenIndex = best.multiPv.findIndex((line) => line.uci === throttled.uci);
+					if (chosenIndex > 0) {
+						const chosen = best.multiPv[chosenIndex];
+						best.multiPv = [chosen, ...best.multiPv.filter((_, idx) => idx !== chosenIndex)];
+					}
+				}
 			}
 			const currentPosition = matchingSnapshot(site, identity, fen);
 			const nextFen = predictFen(fen, best.uci, snapshot.variant);
@@ -9080,7 +9092,16 @@
 				let numEval = 0;
 				if (typeof whiteScore.mate === "number") numEval = whiteScore.mate > 0 ? 10 : -10;
 				else if (typeof whiteScore.cp === "number") numEval = whiteScore.cp / 100;
-				BotState.evalHistory = [...BotState.evalHistory ?? [], numEval].slice(-40);
+				const plyKey = snapshot.history ? `${snapshot.history.moves.length}` : fen;
+				const currentHistory = BotState.evalHistory ?? [];
+				if (lastEvalRecord?.identity === identity && lastEvalRecord.plyKey === plyKey && currentHistory.length > 0) BotState.evalHistory = [...currentHistory.slice(0, -1), numEval];
+				else {
+					BotState.evalHistory = [...currentHistory, numEval].slice(-40);
+					lastEvalRecord = {
+						identity,
+						plyKey
+					};
+				}
 			}
 			BotState.statusInfo = bookMove ? `Ready · Book · ${Math.round(performance.now() - started)} ms` : isTablebase ? `Ready · Tablebase · ${Math.round(performance.now() - started)} ms` : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
 			if (best.multiPv && best.multiPv.length > 0) drawMultiPvArrows(best.multiPv);
@@ -9156,9 +9177,7 @@
 			} else if (positionIsCurrent()) {
 				anticipatedPonder = null;
 				clearArrows();
-				BotState.bestMove = "-";
-				BotState.currentEvaluation = "-";
-				BotState.principalVariation = "-";
+				clearRecommendation();
 				if (inputRevision !== getMoveRevision()) {
 					BotState.recoveryAction = "resume";
 					BotState.statusInfo = "Paused after board interaction";
@@ -9172,9 +9191,7 @@
 		} catch (error) {
 			if (!current() || ctrl.signal.aborted) return;
 			clearArrows();
-			BotState.bestMove = "-";
-			BotState.currentEvaluation = "-";
-			BotState.principalVariation = "-";
+			clearRecommendation();
 			BotState.recoveryAction = "retry";
 			BotState.statusInfo = error instanceof Error ? error.message : "Engine failed";
 			if (!moveDispatched && BotState.autoRetry && BotState.hackEnabled) triggerAutoRetry(fen, identity, retryKey, id);
@@ -9322,10 +9339,7 @@
 			ui.updateDisplay();
 		}
 		clearRecommendation() {
-			BotState.bestMove = "-";
-			BotState.currentEvaluation = "-";
-			BotState.principalVariation = "-";
-			BotState.multiPvLines = [];
+			clearRecommendation();
 		}
 		refreshSettings() {
 			this.invalidateReport();
