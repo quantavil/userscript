@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { replaySanLine } from '../../../src/chess/position.js';
+import { UciClient } from '../../../src/engine/uci-client.js';
 import { setActiveSite } from '../../../src/sites/active.js';
 import type { GameSnapshot, SiteAdapter } from '../../../src/sites/types.js';
 
@@ -334,4 +336,55 @@ it('refuses report searches in an ongoing round replay view', async () => {
     isEligible: () => true,
   });
   expect(analyze).not.toHaveBeenCalled();
+});
+
+it('finishes the supplied 52-ply game when the final engine response has no PV', async () => {
+  const sans =
+    'e4 d5 e5 c5 c3 f6 d4 cxd4 cxd4 Qa5+ Nc3 fxe5 dxe5 d4 Qxd4 Nc6 Bb5 Qxb5 Nxb5 Nxd4 Nxd4 b6 Be3 Ba6 Ngf3 Rc8 Kd2 e6 Nxe6 Bb4+ Kd1 Ke7 Nxg7 Nh6 Bxh6 Rhd8+ Nd2 Kf7 Nf5 Kg6 g4 Bb7 Rg1 Bf3+ Ke1 Rc2 Rd1 Bxd2+ Rxd2 Rc1+ Rd1 Rcxd1#'.split(
+      ' ',
+    );
+  const replay = replaySanLine(START_FEN, sans);
+  if (!replay) throw new Error('Invalid supplied game fixture');
+  const terminal = '3r4/p6p/1p4kB/4PN2/6P1/5b2/PP3P1P/3rK1R1 w - - 0 27';
+  expect(replay.fens.at(-1)).toBe(terminal);
+  const worker = {
+    onmessage: null as ((event: { data: string }) => void) | null,
+    onerror: null,
+    terminate() {},
+    postMessage(command: string) {
+      queueMicrotask(() => {
+        const emit = (data: string) => this.onmessage?.({ data });
+        if (command === 'uci') emit('uciok');
+        if (command === 'isready') emit('readyok');
+        if (command.startsWith('go ')) {
+          emit('info depth 0 score mate 0');
+          emit('bestmove (none)');
+        }
+      });
+    },
+  };
+  const client = new UciClient(() => worker);
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    analyze.mockImplementation((fen: string, depth: number, time: number, signal: AbortSignal) =>
+      fen === terminal
+        ? client.analyze(fen, depth, time, signal)
+        : Promise.resolve({ success: true, evaluation: { cp: 0 } }),
+    );
+    const moves = replay.history.moves.map((uci, i) =>
+      move(i + 1, i % 2 === 0 ? 'w' : 'b', uci, sans[i], replay.fens[i + 1]),
+    );
+    await runGameReport(moves, START_FEN, 'supplied-checkmate');
+    expect(gameReportSignal.value.error).toBeNull();
+    expect(gameReportSignal.value.done).toBe(true);
+    expect(gameReportSignal.value.report).toMatchObject({
+      analyzed: 52,
+      total: 52,
+      white: { moveCount: 26 },
+      black: { moveCount: 26 },
+    });
+  } finally {
+    client.dispose();
+    warn.mockRestore();
+  }
 });

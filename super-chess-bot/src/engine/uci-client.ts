@@ -857,7 +857,8 @@ export class UciClient {
       const common = {
         depth: job.info.depth,
         pv: job.info.pv.split(/\s+/)[0] === bestmove ? job.info.pv : isValidUciMove(bestmove) ? bestmove : '',
-        evaluation: job.info.pv.split(/\s+/)[0] === bestmove ? job.info.evaluation : {},
+        // Terminal roots have no PV move to match, but their exact mate/draw score is still valid.
+        evaluation: terminal || job.info.pv.split(/\s+/)[0] === bestmove ? job.info.evaluation : {},
         ...(job.info.nodes === undefined ? {} : { nodes: job.info.nodes }),
         ...(job.info.time === undefined ? {} : { time: job.info.time }),
         ...(multiPv ? { multiPv } : {}),

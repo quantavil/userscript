@@ -1,6 +1,6 @@
 # Super Chess Bot
 
-Version **12.1.0** — Madman attack premoves.
+Version **12.1.1** — fixes post-game reports ending in checkmate or stalemate.
 
 A GPL-3.0-or-later browser userscript for local chess analysis and move automation in standard player games on Chess.com and Lichess.
 

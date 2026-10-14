@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ♟Super-chess-Bot
 // @namespace    https://github.com/quantavil/userscript
-// @version      12.1.0
+// @version      12.1.1
 // @author       quantavil
 // @description  Local Stockfish analysis and move automation for Chess.com and Lichess games
 // @license      GPL-3.0-or-later
@@ -3329,7 +3329,7 @@
 				const common = {
 					depth: job.info.depth,
 					pv: job.info.pv.split(/\s+/)[0] === bestmove ? job.info.pv : isValidUciMove(bestmove) ? bestmove : "",
-					evaluation: job.info.pv.split(/\s+/)[0] === bestmove ? job.info.evaluation : {},
+					evaluation: terminal || job.info.pv.split(/\s+/)[0] === bestmove ? job.info.evaluation : {},
 					...job.info.nodes === void 0 ? {} : { nodes: job.info.nodes },
 					...job.info.time === void 0 ? {} : { time: job.info.time },
 					...multiPv ? { multiPv } : {}

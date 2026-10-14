@@ -2,8 +2,8 @@
 
 ## Current release
 
-- Version 12.1.0 adds early Madman attacking replies and offered-piece capture punishments, including en passant. Keep package.json and both generated userscript headers aligned.
-- Release verification: 486 tests across 37 suites, Biome, strict TypeScript, Knip and both production builds. Research timings are native observations, not calibrated live premove coverage.
+- Version 12.1.1 preserves terminal UCI evaluations even without a PV, fixing checkmate/stalemate report failures. Version 12.1.0 adds early Madman attacking replies and offered-piece capture punishments, including en passant. Keep package.json and both generated userscript headers aligned.
+- Release verification: 489 tests across 37 suites, Biome, strict TypeScript, Knip and both production builds. Research timings are native observations, not calibrated live premove coverage.
 
 ## Stack, builds, and license
 
@@ -32,6 +32,7 @@ Use one owned engine worker at a time. Validate current session and position bef
 - Persist settings on `pagehide`/`beforeunload` through `debounce`'s `flush`; a trailing write that is still pending when the page goes away would otherwise be lost.
 - Tablebase lookup is standard-chess only, limited to eligible positions with at most seven pieces. Keep the in-memory cache bounded at 256 entries and keyed by the first four FEN fields, because Syzygy is indexed on the position and not on the move counters. Keep DTZ separate from DTM, never format DTZ as mate, and never compare one move's DTM against another's DTZ. A decided position with no exact DTM reports a capped centipawn score so an empty evaluation is never read as no score. Hold a failed lookup out of the network for a cooldown instead of retrying once per ply. Race tablebase with local search without delaying a usable local result. Failed or unusable local results must leave a viable lookup running.
 - Preserve a per-turn clock baseline across ticking snapshots. Use clock delta plus a known increment when available; otherwise estimate elapsed time from wall time.
+- Preserve exact terminal UCI evaluations when `bestmove (none)` has no PV: mate zero is a loss for the side to move, cp zero is a terminal draw. Do not fabricate equality when the engine supplies no score. Regression coverage includes the supplied 52-ply checkmate game.
 - Reports are local estimates, permitted only when the adapter reports a finished game, and never without an adapter at all. Default depth is 18 and the allowed depth is 10–26. The report searches to depth: it passes a zero time budget so the engine runs `go depth N` with no `movetime`, and it requests a single Multi-PV line because it reads only each position's evaluation. Surface a failed pass as a retryable error instead of returning silently to idle. Cancel report work when its session becomes ineligible. Ongoing-game replay is ineligible; explicit cancellation suppresses automatic regeneration until manual generation or a new game.
 - Automatic recovery is limited to two retries per session-position. Do not automatically repeat a move after a transport dispatch attempt with an uncertain outcome.
 - Normal-mode premove engine (introduced in v12.0.0) combines own-turn recapture-chain steering, opening book replies, and an opponent-turn Multi-Branch Ponder Table (up to 6 candidate branches). Entries are keyed by 3-field FEN (`fenKey`), and all candidate replies are validated for legality via `chessops`. When `premove` is enabled, hits dispatch with 0 ms delay. Opponent-turn search runs depth-only (`budget = 0`) up to depth 8 to progressively arm candidate branches. On unexpected moves or toggling premove off, the table clears immediately and falls back to standard search.

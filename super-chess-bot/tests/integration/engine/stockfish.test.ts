@@ -458,6 +458,27 @@ describe('UCI Stockfish client', () => {
     await expect(pondering).resolves.toMatchObject({ bestmove: 'd2d4', depth: 8 });
   });
 
+  it.each([
+    {
+      fen: '3r4/p6p/1p4kB/4PN2/6P1/5b2/PP3P1P/3rK1R1 w - - 0 27',
+      info: 'info depth 0 score mate 0',
+      evaluation: { mate: 0 },
+    },
+    { fen: '7k/5K2/6Q1/8/8/8/8/8 b - - 0 1', info: 'info depth 0 score cp 0', evaluation: { cp: 0 } },
+  ])('preserves terminal evaluation without a PV: $info', async ({ fen, info, evaluation }) => {
+    const worker = new FakeUciWorker();
+    const client = new UciClient(() => worker);
+    try {
+      const result = client.analyze(fen, 18, 0);
+      await waitUntil(() => worker.commands.some((command) => command.startsWith('go ')));
+      worker.emit(info);
+      worker.emit('bestmove (none)');
+      await expect(result).resolves.toMatchObject({ success: false, bestmove: '(none)', evaluation, pv: '' });
+    } finally {
+      client.dispose();
+    }
+  });
+
   it('preserves UCI bestmove none as a terminal marker', async () => {
     const worker = new FakeUciWorker();
     const client = new UciClient(() => worker);
