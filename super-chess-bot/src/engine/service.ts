@@ -33,8 +33,21 @@ export function getAnalysis(
   slackMs?: number,
   variant?: string,
   multiPv?: number,
+  legalMoves?: number,
+  onDepthComplete?: (depth: number, lines: MultiPvLine[]) => void,
 ): Promise<AnalysisResult> {
-  return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv);
+  return engineWorker.analyze(
+    fen,
+    depth,
+    timeLimit,
+    signal,
+    history,
+    slackMs,
+    variant,
+    multiPv,
+    legalMoves,
+    onDepthComplete,
+  );
 }
 
 /** Search the most likely reply while the opponent is thinking. */

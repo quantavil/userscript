@@ -90,6 +90,33 @@ describe('UCI Stockfish client', () => {
     expect(result.multiPv?.[2]).toMatchObject({ multipv: 3, uci: 'c2c4', evaluation: { cp: -10 } });
   });
 
+  it('bounds MultiPV depth snapshots to legal move count and triggers onDepthComplete', async () => {
+    const worker = new FakeUciWorker();
+    const client = new UciClient(() => worker);
+
+    const completedDepths: number[] = [];
+    const resultPromise = client.analyze(START_FEN, 12, 250, undefined, undefined, undefined, 4, 2, (depth) => {
+      completedDepths.push(depth);
+    });
+    await waitUntil(() => worker.commands.some((command) => command.startsWith('go ')));
+    expect(worker.commands).toContain('setoption name MultiPV value 4');
+
+    // Emit 2 lines for depth 5
+    worker.emit('info depth 5 multipv 1 score cp 50 pv e2e4 e7e5');
+    worker.emit('info depth 5 multipv 2 score cp 30 pv d2d4 d7d5');
+    expect(completedDepths).toContain(5);
+
+    // Emit partial depth 6 (only line 1 before bestmove)
+    worker.emit('info depth 6 multipv 1 score cp 55 pv e2e4 e7e5');
+    worker.emit('bestmove e2e4');
+
+    const result = await resultPromise;
+    expect(result.success).toBe(true);
+    expect(result.multiPv).toHaveLength(2);
+    expect(result.multiPv?.[0]?.depth).toBe(5);
+    expect(result.multiPv?.[1]?.depth).toBe(5);
+  });
+
   it('ignores lowerbound and upperbound score lines so bound leaks do not overwrite exact evaluation', async () => {
     const worker = new FakeUciWorker();
     const client = new UciClient(() => worker);

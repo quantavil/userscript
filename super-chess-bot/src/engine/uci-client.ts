@@ -69,7 +69,10 @@ interface SearchJob {
   stopSent: boolean;
   info: SearchInfo;
   multiPvLines: Map<number, MultiPvLine>;
+  multiPvSnapshots: Map<number, Map<number, MultiPvLine>>;
   hasMultiPv: boolean;
+  legalMoves?: number;
+  onDepthComplete?: (depth: number, lines: MultiPvLine[]) => void;
   resultValue?: AnalysisResult;
   result?: Deferred<AnalysisResult>;
   searchTimer?: ReturnType<typeof setTimeout>;
@@ -187,7 +190,7 @@ function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchI
     // A `currmove`-only line repeats the depth of the line it is exploring. It must not
     // overwrite the recorded depth, which belongs to the last line that carried a real PV.
     if (pvIndex >= 0 || existingLine === undefined) {
-      job.multiPvLines.set(multipv, {
+      const lineEntry: MultiPvLine = {
         multipv,
         depth,
         uci: pv ? (pv.split(/\s+/)[0] ?? '') : '',
@@ -195,7 +198,21 @@ function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchI
         evaluation,
         ...(nodes !== undefined ? { nodes } : {}),
         ...(time !== undefined ? { time } : {}),
-      });
+      };
+      job.multiPvLines.set(multipv, lineEntry);
+      if (depth > 0 && pvIndex >= 0) {
+        let snapshot = job.multiPvSnapshots.get(depth);
+        if (!snapshot) {
+          snapshot = new Map();
+          job.multiPvSnapshots.set(depth, snapshot);
+        }
+        snapshot.set(multipv, lineEntry);
+        const expectedCount = job.legalMoves ? Math.min(job.multiPv, job.legalMoves) : job.multiPv;
+        if (job.onDepthComplete && snapshot.size >= expectedCount) {
+          const lines = Array.from(snapshot.values()).sort((a, b) => a.multipv - b.multipv);
+          job.onDepthComplete(depth, lines);
+        }
+      }
     }
   }
 
@@ -282,8 +299,10 @@ export class UciClient {
     history?: PositionHistory,
     slackMs?: number,
     multiPv: number = LIVE_MULTI_PV,
+    legalMoves?: number,
+    onDepthComplete?: (depth: number, lines: MultiPvLine[]) => void,
   ): Promise<AnalysisResult> {
-    return this.analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv);
+    return this.analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv, legalMoves, onDepthComplete);
   }
 
   private analyzeReady(
@@ -294,6 +313,8 @@ export class UciClient {
     history?: PositionHistory,
     slackMs?: number,
     multiPv: number = LIVE_MULTI_PV,
+    legalMoves?: number,
+    onDepthComplete?: (depth: number, lines: MultiPvLine[]) => void,
   ): Promise<AnalysisResult> {
     if (this.disposed) return Promise.reject(new Error('Engine client is disposed'));
     if (signal?.aborted) return Promise.reject(abortError());
@@ -310,7 +331,7 @@ export class UciClient {
       this.cancelPonder();
     }
 
-    return this.enqueue(fen, depth, timeLimit, signal, history, false, slackMs, multiPv);
+    return this.enqueue(fen, depth, timeLimit, signal, history, false, slackMs, multiPv, legalMoves, onDepthComplete);
   }
 
   /** Start an un-timed UCI ponder search that can be promoted on a matching position. */
@@ -342,6 +363,8 @@ export class UciClient {
     pondering: boolean,
     slackMs?: number,
     multiPv: number = LIVE_MULTI_PV,
+    legalMoves?: number,
+    onDepthComplete?: (depth: number, lines: MultiPvLine[]) => void,
   ): Promise<AnalysisResult> {
     let resolve!: (result: AnalysisResult) => void;
     let reject!: (reason: unknown) => void;
@@ -367,7 +390,10 @@ export class UciClient {
       stopSent: false,
       info: { depth: 0, pv: '', evaluation: {} },
       multiPvLines: new Map(),
+      multiPvSnapshots: new Map(),
       hasMultiPv: false,
+      legalMoves,
+      onDepthComplete,
     };
     if (signal) this.attachAbort(job, signal);
     this.queue.push(job);
@@ -741,10 +767,21 @@ export class UciClient {
       if (job.stopTimer) clearTimeout(job.stopTimer);
       const bestmove = message.split(/\s+/)[1] ?? '';
       const terminal = bestmove === '(none)';
-      const multiPv =
-        job.hasMultiPv && job.multiPvLines.size > 0
-          ? Array.from(job.multiPvLines.values()).sort((a, b) => a.multipv - b.multipv)
-          : undefined;
+      let multiPv: MultiPvLine[] | undefined;
+      if (job.hasMultiPv) {
+        const expectedCount = job.legalMoves ? Math.min(job.multiPv, job.legalMoves) : job.multiPv;
+        const depths = Array.from(job.multiPvSnapshots.keys()).sort((a, b) => b - a);
+        for (const d of depths) {
+          const snapshot = job.multiPvSnapshots.get(d);
+          if (snapshot && snapshot.size >= expectedCount) {
+            multiPv = Array.from(snapshot.values()).sort((a, b) => a.multipv - b.multipv);
+            break;
+          }
+        }
+        if (!multiPv && job.multiPvLines.size > 0) {
+          multiPv = Array.from(job.multiPvLines.values()).sort((a, b) => a.multipv - b.multipv);
+        }
+      }
       const common = {
         depth: job.info.depth,
         pv: job.info.pv,
