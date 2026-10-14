@@ -79,7 +79,10 @@ class BotController {
     if (enabled) {
       this.init();
       void this.start();
-    } else this.stop();
+    } else {
+      this.stop();
+      this.init();
+    }
   }
 
   async start(): Promise<void> {
@@ -275,7 +278,6 @@ class BotController {
   }
 
   tick(): void {
-    if (!this.isActive || !this.ready || !BotState.hackEnabled) return;
     const read = readSite();
     this.syncBoard(read);
     if (read.kind !== 'game') {
@@ -303,6 +305,12 @@ class BotController {
     }
     gameHistoryTracker.updateFromSnapshot(snapshot);
     if (this.handlePhase(snapshot)) return;
+
+    if (!this.isActive || !this.ready || !BotState.hackEnabled) {
+      ui.updateDisplay();
+      return;
+    }
+
     this.invalidateReport();
     if (
       snapshot.identity === this.identity &&

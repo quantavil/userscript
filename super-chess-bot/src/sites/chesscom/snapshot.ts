@@ -121,16 +121,19 @@ const WHITE_CLOCK_SELECTOR =
 const BLACK_CLOCK_SELECTOR =
   '.clock-black .clock-time-monospace, .clock-black .clock-time, .clock-black .move-time-content, .clock-black.move-time-content';
 
-function parseClockText(text: string | null | undefined): number | null {
+export function parseClockText(text: string | null | undefined): number | null {
   if (!text) return null;
   const trimmed = text.trim();
   let seconds: number;
-  const minutesAndSeconds = /^(\d+):(\d{2}(?:\.\d+)?)$/.exec(trimmed);
-  if (minutesAndSeconds) {
-    const minutes = Number(minutesAndSeconds[1]);
-    const remainder = Number(minutesAndSeconds[2]);
-    if (!Number.isFinite(minutes) || !Number.isFinite(remainder) || remainder >= 60) return null;
-    seconds = minutes * 60 + remainder;
+  const hms = /^(?:(\d+):)?(\d+):(\d{2}(?:\.\d+)?)$/.exec(trimmed);
+  if (hms) {
+    const hours = hms[1] ? Number(hms[1]) : 0;
+    const minutes = Number(hms[2]);
+    const remainder = Number(hms[3]);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(remainder)) return null;
+    if (hms[1] && minutes >= 60) return null;
+    if (remainder >= 60) return null;
+    seconds = hours * 3600 + minutes * 60 + remainder;
   } else if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
     seconds = Number(trimmed);
   } else {

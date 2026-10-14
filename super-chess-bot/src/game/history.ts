@@ -32,6 +32,7 @@ export class GameHistoryTracker {
   private lastWhiteClock: number | null = null;
   private lastBlackClock: number | null = null;
   private turnStartTime: number = performance.now();
+  private result: string | null = null;
   /** Set once a position could not be built, so a silent stall is visible instead of a short PGN. */
   private positionFailure: string | null = null;
 
@@ -45,6 +46,7 @@ export class GameHistoryTracker {
     this.lastWhiteClock = null;
     this.lastBlackClock = null;
     this.turnStartTime = initialTime;
+    this.result = null;
     gameMovesSignal.value = [];
   }
 
@@ -57,6 +59,9 @@ export class GameHistoryTracker {
     // Reset on new game or altered root position
     if (gameId !== this.activeGameId || historyStartFen !== this.startFen || variant !== this.variant) {
       this.reset(gameId, historyStartFen, now, variant);
+    }
+    if (snapshot.result) {
+      this.result = snapshot.result;
     }
 
     const currWhiteClock = snapshot.whiteRemainingMs ?? (snapshot.playerColor === 'w' ? snapshot.remainingMs : null);
@@ -100,15 +105,15 @@ export class GameHistoryTracker {
           const prevClock = turn === 'w' ? this.lastWhiteClock : this.lastBlackClock;
           const currClock = turn === 'w' ? currWhiteClock : currBlackClock;
 
-          const increment = snapshot.incrementMs;
+          const increment =
+            typeof snapshot.incrementMs === 'number' &&
+            Number.isFinite(snapshot.incrementMs) &&
+            snapshot.incrementMs >= 0
+              ? snapshot.incrementMs
+              : 0;
+          const hasClock = prevClock != null && currClock != null;
           const delta =
-            prevClock != null &&
-            currClock != null &&
-            typeof increment === 'number' &&
-            Number.isFinite(increment) &&
-            increment >= 0
-              ? prevClock - currClock + increment
-              : null;
+            hasClock && (prevClock >= currClock || increment > 0) ? prevClock - currClock + increment : null;
           elapsedMs =
             delta != null && delta >= 0 && delta < 3600000 ? delta : Math.max(0, Math.round(now - this.turnStartTime));
         }
@@ -152,6 +157,10 @@ export class GameHistoryTracker {
     return this.activeGameId;
   }
 
+  getResult(): string | null {
+    return this.result;
+  }
+
   getMovePairs(): readonly MovePairView[] {
     const pairs: MovePairView[] = [];
     const { fullmove: rootFullmove, offset: rootOffset } = rootMoveNumbering(this.startFen);
@@ -180,7 +189,7 @@ export class GameHistoryTracker {
     return buildPgn(pgnMoves, {
       site: siteName,
       startFen: this.startFen,
-      result: result ?? '*',
+      result: result ?? this.result ?? '*',
       ...(this.variant && this.variant !== 'standard' ? { variant: this.variant } : {}),
     });
   }

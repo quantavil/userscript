@@ -4573,6 +4573,7 @@
 		lastWhiteClock = null;
 		lastBlackClock = null;
 		turnStartTime = performance.now();
+		result = null;
 		positionFailure = null;
 		reset(gameId, startFen, initialTime = performance.now(), variant) {
 			this.activeGameId = gameId ?? null;
@@ -4584,6 +4585,7 @@
 			this.lastWhiteClock = null;
 			this.lastBlackClock = null;
 			this.turnStartTime = initialTime;
+			this.result = null;
 			gameMovesSignal.value = [];
 		}
 		updateFromSnapshot(snapshot, now = performance.now()) {
@@ -4592,6 +4594,7 @@
 			const variant = snapshot.variant ?? (sameGame ? this.variant : void 0);
 			const historyStartFen = snapshot.history?.startFen?.trim() || (sameGame ? this.startFen : "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 			if (gameId !== this.activeGameId || historyStartFen !== this.startFen || variant !== this.variant) this.reset(gameId, historyStartFen, now, variant);
+			if (snapshot.result) this.result = snapshot.result;
 			const currWhiteClock = snapshot.whiteRemainingMs ?? (snapshot.playerColor === "w" ? snapshot.remainingMs : null);
 			const currBlackClock = snapshot.blackRemainingMs ?? (snapshot.playerColor === "b" ? snapshot.remainingMs : null);
 			const historyMoves = snapshot.history?.moves ?? this.moves.map((move) => move.uci);
@@ -4622,8 +4625,8 @@
 					if (isSingleStep && i === currentPlyCount) {
 						const prevClock = turn === "w" ? this.lastWhiteClock : this.lastBlackClock;
 						const currClock = turn === "w" ? currWhiteClock : currBlackClock;
-						const increment = snapshot.incrementMs;
-						const delta = prevClock != null && currClock != null && typeof increment === "number" && Number.isFinite(increment) && increment >= 0 ? prevClock - currClock + increment : null;
+						const increment = typeof snapshot.incrementMs === "number" && Number.isFinite(snapshot.incrementMs) && snapshot.incrementMs >= 0 ? snapshot.incrementMs : 0;
+						const delta = prevClock != null && currClock != null && (prevClock >= currClock || increment > 0) ? prevClock - currClock + increment : null;
 						elapsedMs = delta != null && delta >= 0 && delta < 36e5 ? delta : Math.max(0, Math.round(now - this.turnStartTime));
 					}
 					const record = {
@@ -4657,6 +4660,9 @@
 		getGameId() {
 			return this.activeGameId;
 		}
+		getResult() {
+			return this.result;
+		}
 		getMovePairs() {
 			const pairs = [];
 			const { fullmove: rootFullmove, offset: rootOffset } = rootMoveNumbering(this.startFen);
@@ -4680,7 +4686,7 @@
 			})), {
 				site: siteName,
 				startFen: this.startFen,
-				result: result ?? "*",
+				result: result ?? this.result ?? "*",
 				...this.variant && this.variant !== "standard" ? { variant: this.variant } : {}
 			});
 		}
@@ -5138,12 +5144,15 @@
 		if (!text) return null;
 		const trimmed = text.trim();
 		let seconds;
-		const minutesAndSeconds = /^(\d+):(\d{2}(?:\.\d+)?)$/.exec(trimmed);
-		if (minutesAndSeconds) {
-			const minutes = Number(minutesAndSeconds[1]);
-			const remainder = Number(minutesAndSeconds[2]);
-			if (!Number.isFinite(minutes) || !Number.isFinite(remainder) || remainder >= 60) return null;
-			seconds = minutes * 60 + remainder;
+		const hms = /^(?:(\d+):)?(\d+):(\d{2}(?:\.\d+)?)$/.exec(trimmed);
+		if (hms) {
+			const hours = hms[1] ? Number(hms[1]) : 0;
+			const minutes = Number(hms[2]);
+			const remainder = Number(hms[3]);
+			if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(remainder)) return null;
+			if (hms[1] && minutes >= 60) return null;
+			if (remainder >= 60) return null;
+			seconds = hours * 3600 + minutes * 60 + remainder;
 		} else if (/^\d+(?:\.\d+)?$/.test(trimmed)) seconds = Number(trimmed);
 		else return null;
 		return Number.isFinite(seconds) ? Math.round(seconds * 1e3) : null;
@@ -5249,6 +5258,7 @@
 				snapshot.phase,
 				snapshot.inputReady,
 				snapshot.remainingMs,
+				snapshot.result,
 				snapshot.history?.startFen,
 				snapshot.history?.moves,
 				snapshot.confirmedFens,
@@ -5291,6 +5301,33 @@
 			history: replay.history,
 			confirmedFens: replay.fens
 		};
+	}
+	function extractChesscomIncrement(game) {
+		try {
+			const options = game?.getOptions?.();
+			if (!options) return null;
+			if (typeof options.increment === "number" && Number.isFinite(options.increment)) return Math.round(options.increment >= 100 ? options.increment : options.increment * 1e3);
+			const tc = options.timeControl ?? options.timeController;
+			if (typeof tc === "object" && tc !== null) {
+				const inc = tc.increment ?? tc.inc;
+				if (typeof inc === "number" && Number.isFinite(inc)) return Math.round(inc >= 100 ? inc : inc * 1e3);
+			}
+			if (typeof tc === "string") {
+				const match = /\+(\d+)$/.exec(tc);
+				if (match) return parseInt(match[1], 10) * 1e3;
+			}
+		} catch {}
+		return null;
+	}
+	function extractChesscomResult(game, isFinished) {
+		if (!isFinished || !game) return null;
+		try {
+			if (typeof game.getResult === "function") {
+				const res = String(game.getResult()).trim();
+				if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(res)) return res;
+			}
+		} catch {}
+		return null;
 	}
 	function createChesscomAdapter(page = pageWindow) {
 		let currentBoard = null;
@@ -5365,6 +5402,8 @@
 			const remainingMs = getRemainingMs(doc);
 			const whiteRemainingMs = getColorRemainingMs(doc, "w");
 			const blackRemainingMs = getColorRemainingMs(doc, "b");
+			const incrementMs = remainingMs != null || whiteRemainingMs != null || blackRemainingMs != null ? extractChesscomIncrement(game) ?? 0 : null;
+			const result = extractChesscomResult(game, isFinished);
 			return {
 				kind: "game",
 				snapshot: {
@@ -5379,6 +5418,8 @@
 					inputReady: phase === "live" && sideToMove === playerColor && settled,
 					remainingMs,
 					confirmationSource: "controller-local",
+					...incrementMs != null ? { incrementMs } : {},
+					...result ? { result } : {},
 					...whiteRemainingMs != null ? { whiteRemainingMs } : {},
 					...blackRemainingMs != null ? { blackRemainingMs } : {},
 					...history ? { history: history.history } : {},
@@ -6699,7 +6740,8 @@
 			let text = "";
 			if (gameMoves.length > 0) {
 				const siteName = typeof window !== "undefined" && window.location?.hostname?.includes("lichess") ? "Lichess" : "Chess.com";
-				text = gameHistoryTracker.exportPgn(siteName);
+				const result = gameHistoryTracker.getResult() ?? void 0;
+				text = gameHistoryTracker.exportPgn(siteName, result);
 			} else text = logs.map((entry) => `[${entry.time}] ${entry.text}`).join("\n");
 			if (!text || !navigator.clipboard?.writeText) return;
 			try {
@@ -6978,8 +7020,8 @@
 								children: [u("button", {
 									type: "button",
 									class: `panel-icon-btn ${copied ? "is-success" : ""}`,
-									"aria-label": copied ? "PGN copied to clipboard" : "Copy PGN",
-									title: copied ? "Copied PGN!" : "Copy PGN",
+									"aria-label": copied ? movePairs.length > 0 ? "PGN copied to clipboard" : "Logs copied to clipboard" : movePairs.length > 0 ? "Copy PGN" : "Copy logs",
+									title: copied ? movePairs.length > 0 ? "Copied PGN!" : "Copied logs!" : movePairs.length > 0 ? "Copy PGN" : "Copy logs",
 									onClick: copyLogs,
 									children: copied ? u(CheckIcon, {}) : u(CopyIcon, {})
 								}), u("button", {
@@ -9216,7 +9258,10 @@
 			if (enabled) {
 				this.init();
 				this.start();
-			} else this.stop();
+			} else {
+				this.stop();
+				this.init();
+			}
 		}
 		async start() {
 			this.init();
@@ -9388,7 +9433,6 @@
 			return true;
 		}
 		tick() {
-			if (!this.isActive || !this.ready || !BotState.hackEnabled) return;
 			const read = readSite();
 			this.syncBoard(read);
 			if (read.kind !== "game") {
@@ -9416,6 +9460,10 @@
 			}
 			gameHistoryTracker.updateFromSnapshot(snapshot);
 			if (this.handlePhase(snapshot)) return;
+			if (!this.isActive || !this.ready || !BotState.hackEnabled) {
+				ui.updateDisplay();
+				return;
+			}
 			this.invalidateReport();
 			if (snapshot.identity === this.identity && snapshot.fen !== this.lastFenSeen && isMoveConfirmationPending(snapshot.identity)) return;
 			this.waitingKey = null;

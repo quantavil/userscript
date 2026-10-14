@@ -52,6 +52,7 @@ function fingerprint(result: SiteRead): { identity: object | null; value: string
       snapshot.phase,
       snapshot.inputReady,
       snapshot.remainingMs,
+      snapshot.result,
       snapshot.history?.startFen,
       snapshot.history?.moves,
       snapshot.confirmedFens,
@@ -104,6 +105,47 @@ function readChesscomHistory(
   const replay = replaySanLine(startingFen, line);
   if (!replay) return undefined;
   return { history: replay.history, confirmedFens: replay.fens };
+}
+
+function extractChesscomIncrement(game: ChessGame | null | undefined): number | null {
+  try {
+    const options = game?.getOptions?.() as Record<string, unknown> | undefined;
+    if (!options) return null;
+    if (typeof options.increment === 'number' && Number.isFinite(options.increment)) {
+      return Math.round(options.increment >= 100 ? options.increment : options.increment * 1000);
+    }
+    const tc = options.timeControl ?? options.timeController;
+    if (typeof tc === 'object' && tc !== null) {
+      const inc = (tc as Record<string, unknown>).increment ?? (tc as Record<string, unknown>).inc;
+      if (typeof inc === 'number' && Number.isFinite(inc)) {
+        return Math.round(inc >= 100 ? inc : inc * 1000);
+      }
+    }
+    if (typeof tc === 'string') {
+      const match = /\+(\d+)$/.exec(tc);
+      if (match) {
+        return parseInt(match[1], 10) * 1000;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function extractChesscomResult(game: ChessGame | null | undefined, isFinished: boolean): string | null {
+  if (!isFinished || !game) return null;
+  try {
+    if (typeof game.getResult === 'function') {
+      const res = String(game.getResult()).trim();
+      if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(res)) {
+        return res;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 /** Read Chess.com through its captured board controller and submit moves through it. */
@@ -176,6 +218,9 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
     const remainingMs = getRemainingMs(doc);
     const whiteRemainingMs = getColorRemainingMs(doc, 'w');
     const blackRemainingMs = getColorRemainingMs(doc, 'b');
+    const hasActiveClock = remainingMs != null || whiteRemainingMs != null || blackRemainingMs != null;
+    const incrementMs = hasActiveClock ? (extractChesscomIncrement(game) ?? 0) : null;
+    const result = extractChesscomResult(game, isFinished);
     const snapshot: GameSnapshot = {
       identity: currentIdentity ?? {},
       gameId: currentGameId,
@@ -190,6 +235,8 @@ export function createChesscomAdapter(page: () => Window = pageWindow): SiteAdap
       // The controller mutates FEN, turn, and SAN synchronously inside move().
       // Replaying those SANs supplies indexed local observations, never a server receipt.
       confirmationSource: 'controller-local',
+      ...(incrementMs != null ? { incrementMs } : {}),
+      ...(result ? { result } : {}),
       ...(whiteRemainingMs != null ? { whiteRemainingMs } : {}),
       ...(blackRemainingMs != null ? { blackRemainingMs } : {}),
       ...(history ? { history: history.history } : {}),

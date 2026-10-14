@@ -22,6 +22,7 @@ export interface GameSnapshot {
   confirmationSource?: 'controller-local' | 'site-accepted';
   confirmedFens?: readonly string[];
   variant?: string;
+  result?: string | null;
   boardDimensions?: { width: number; height: number };
 }
 

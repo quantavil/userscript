@@ -215,6 +215,29 @@ function wrapMethod(target: Record<string, unknown>, key: string, after: () => v
   }
 }
 
+function extractLichessIncrement(round: RoundController, data: RoundData | undefined): number | null {
+  try {
+    const clockObj =
+      (round.clock as Record<string, unknown> | undefined) ??
+      ((data as Record<string, unknown> | undefined)?.clock as Record<string, unknown> | undefined);
+    const inc = clockObj?.increment ?? clockObj?.inc;
+    if (typeof inc === 'number' && Number.isFinite(inc) && inc >= 0) {
+      return Math.round(inc >= 100 ? inc : inc * 1000);
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function extractLichessResult(data: RoundData | undefined, statusId: number): string | null {
+  if (statusId < 25) return null;
+  const winner = (data?.game as { winner?: string } | undefined)?.winner;
+  if (winner === 'white') return '1-0';
+  if (winner === 'black') return '0-1';
+  return '1/2-1/2';
+}
+
 /** Read any standard Lichess player round and submit through its round controller. */
 export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapter {
   const currentPage = page();
@@ -297,6 +320,9 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
       } catch {
         // A missing or changing site clock falls back to the configured search budget.
       }
+      const hasActiveClock = remainingMs != null || whiteRemainingMs != null || blackRemainingMs != null;
+      const incrementMs = hasActiveClock ? (extractLichessIncrement(round, data) ?? 0) : null;
+      const result = extractLichessResult(data, statusId);
       const snapshot: GameSnapshot = {
         identity,
         gameId,
@@ -311,6 +337,8 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
         // These positions come from validated site-owned round steps, not Chessground's
         // optimistic presentation. This describes the observed source, not socket telemetry.
         confirmationSource: 'site-accepted',
+        ...(incrementMs != null ? { incrementMs } : {}),
+        ...(result ? { result } : {}),
         ...(whiteRemainingMs != null ? { whiteRemainingMs } : {}),
         ...(blackRemainingMs != null ? { blackRemainingMs } : {}),
         ...(history ? { history: history.history, confirmedFens: history.confirmedFens } : {}),
@@ -330,6 +358,7 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
           read.snapshot.playerColor,
           read.snapshot.orientation,
           read.snapshot.phase,
+          read.snapshot.result,
           read.snapshot.inputReady,
           read.snapshot.history?.moves,
         ])

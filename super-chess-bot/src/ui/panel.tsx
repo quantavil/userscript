@@ -597,7 +597,8 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
     if (gameMoves.length > 0) {
       const siteName =
         typeof window !== 'undefined' && window.location?.hostname?.includes('lichess') ? 'Lichess' : 'Chess.com';
-      text = gameHistoryTracker.exportPgn(siteName);
+      const result = gameHistoryTracker.getResult() ?? undefined;
+      text = gameHistoryTracker.exportPgn(siteName, result);
     } else {
       text = logs.map((entry) => `[${entry.time}] ${entry.text}`).join('\n');
     }
@@ -855,8 +856,24 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
                     <button
                       type="button"
                       class={`panel-icon-btn ${copied ? 'is-success' : ''}`}
-                      aria-label={copied ? 'PGN copied to clipboard' : 'Copy PGN'}
-                      title={copied ? 'Copied PGN!' : 'Copy PGN'}
+                      aria-label={
+                        copied
+                          ? movePairs.length > 0
+                            ? 'PGN copied to clipboard'
+                            : 'Logs copied to clipboard'
+                          : movePairs.length > 0
+                            ? 'Copy PGN'
+                            : 'Copy logs'
+                      }
+                      title={
+                        copied
+                          ? movePairs.length > 0
+                            ? 'Copied PGN!'
+                            : 'Copied logs!'
+                          : movePairs.length > 0
+                            ? 'Copy PGN'
+                            : 'Copy logs'
+                      }
                       onClick={copyLogs}
                     >
                       {copied ? <CheckIcon /> : <CopyIcon />}

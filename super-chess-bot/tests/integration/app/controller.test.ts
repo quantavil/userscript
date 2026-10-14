@@ -106,6 +106,7 @@ vi.mock('../../../src/ui/mount.js', () => ({ ui: { updateDisplay: deps.update, c
 
 import { controller } from '../../../src/app/controller.js';
 import { BotState } from '../../../src/app/state.js';
+import { gameHistoryTracker } from '../../../src/game/history.js';
 
 async function startReadyController(): Promise<void> {
   deps.warm.mockResolvedValue(undefined);
@@ -439,4 +440,22 @@ it('keeps a manually canceled automatic report stopped until explicit generation
   expect(deps.report).toHaveBeenCalledOnce();
   await controller.generateReport();
   expect(deps.report).toHaveBeenCalledTimes(2);
+});
+
+it('records moves and offers a game report when bot automation is disabled', () => {
+  controller.init();
+  BotState.hackEnabled = false;
+  setRead({
+    phase: 'live',
+    history: { startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', moves: ['e2e4'] },
+  });
+  controller.tick();
+
+  expect(gameHistoryTracker.getMoves().map((m) => m.uci)).toEqual(['e2e4']);
+  expect(deps.schedule).not.toHaveBeenCalled();
+
+  setRead({ phase: 'finished' });
+  controller.tick();
+
+  expect(deps.report).toHaveBeenCalled();
 });

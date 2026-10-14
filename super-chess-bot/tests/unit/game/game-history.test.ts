@@ -40,7 +40,9 @@ describe('GameHistoryTracker', () => {
 
     // Turn 1: White plays e4 after 1200ms
     const snap1 = createMockSnapshot({
-      incrementMs: undefined,
+      remainingMs: null,
+      whiteRemainingMs: null,
+      blackRemainingMs: null,
       history: {
         startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
         moves: ['e2e4'],
@@ -58,7 +60,9 @@ describe('GameHistoryTracker', () => {
 
     // Turn 2: Black plays e5 after 800ms
     const snap2 = createMockSnapshot({
-      incrementMs: undefined,
+      remainingMs: null,
+      whiteRemainingMs: null,
+      blackRemainingMs: null,
       history: {
         startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
         moves: ['e2e4', 'e7e5'],
@@ -163,10 +167,11 @@ describe('game history reliability', () => {
     );
     expect(tracker.getMoves()[0]?.elapsedMs).toBe(3000);
   });
-  it('adds known increment and falls back to wall time when increment is unknown', () => {
+  it('adds known increment and calculates clock delta without increment when prevClock >= currClock', () => {
     for (const [incrementMs, expected] of [
       [2000, 3000],
-      [undefined, 3200],
+      [0, 1000],
+      [undefined, 1000],
     ] as const) {
       const tracker = new GameHistoryTracker();
       tracker.reset('game-1', root, 0);
@@ -177,6 +182,36 @@ describe('game history reliability', () => {
       );
       expect(tracker.getMoves()[0]?.elapsedMs).toBe(expected);
     }
+  });
+  it('falls back to wall time when clock increased without increment', () => {
+    const tracker = new GameHistoryTracker();
+    tracker.reset('game-1', root, 0);
+    tracker.updateFromSnapshot(createMockSnapshot({ incrementMs: 0, whiteRemainingMs: 178000 }), 0);
+    tracker.updateFromSnapshot(
+      createMockSnapshot({
+        incrementMs: 0,
+        whiteRemainingMs: 180000,
+        history: { startFen: root, moves: ['e2e4'] },
+      }),
+      3200,
+    );
+    expect(tracker.getMoves()[0]?.elapsedMs).toBe(3200);
+  });
+  it('includes observed game result in exported PGN', () => {
+    const tracker = new GameHistoryTracker();
+    tracker.reset('game-1', root, 0);
+    tracker.updateFromSnapshot(
+      createMockSnapshot({
+        result: '1-0',
+        phase: 'finished',
+        history: { startFen: root, moves: ['e2e4'] },
+      }),
+      1000,
+    );
+    expect(tracker.getResult()).toBe('1-0');
+    const pgn = tracker.exportPgn('Chess.com', tracker.getResult() ?? undefined);
+    expect(pgn).toContain('[Result "1-0"]');
+    expect(pgn.trim()).toMatch(/1-0$/);
   });
   it('starts a black-root scoresheet at its true fullmove number', () => {
     const root = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 17';
