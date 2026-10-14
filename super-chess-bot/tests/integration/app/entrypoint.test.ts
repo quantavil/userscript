@@ -27,7 +27,6 @@ vi.mock('../../../src/ui/mount.js', () => ({
 describe('userscript startup', () => {
   beforeEach(() => {
     vi.resetModules();
-    vi.stubGlobal('window', { __SCB_ACTIVE__: false });
     dependencies.warm.mockReset().mockResolvedValue(undefined);
     dependencies.buildUI.mockReset().mockResolvedValue(undefined);
     dependencies.updateDisplay.mockReset();

@@ -6,10 +6,15 @@ import { getSite } from './sites/registry.js';
 import { buildUI, ui } from './ui/mount.js';
 import { registerMenuCommands } from './userscript/menu.js';
 
+let scbActive = false;
+
+export function resetActiveStateForTesting(): void {
+  scbActive = false;
+}
+
 async function init(): Promise<void> {
-  const page = window as Window & { __SCB_ACTIVE__?: boolean };
-  if (page.__SCB_ACTIVE__) return;
-  page.__SCB_ACTIVE__ = true;
+  if (scbActive) return;
+  scbActive = true;
   try {
     BotState.onUpdateDisplay = () => ui.updateDisplay();
     const site = getSite();
@@ -53,7 +58,7 @@ async function init(): Promise<void> {
       },
     );
   } catch (error) {
-    page.__SCB_ACTIVE__ = false;
+    scbActive = false;
     BotState.statusInfo = error instanceof Error ? error.message : 'Initialization failed';
     BotState.recoveryAction = 'retry';
     ui.updateDisplay();

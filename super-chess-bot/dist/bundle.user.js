@@ -6773,16 +6773,25 @@
 	var ERROR_STATUS = /error|failed|unavailable|not confirmed|crashed/i;
 	var WORKING_STATUS = /loading|analyz|ponder|submitting|resuming/i;
 	function isRoutineStatus(status) {
+		if (!status) return true;
 		return ROUTINE_STATUS.test(status);
 	}
 	function isErrorStatus(status) {
+		if (!status) return false;
 		return ERROR_STATUS.test(status);
 	}
 	function isWorkingStatus(status) {
+		if (!status) return false;
 		return WORKING_STATUS.test(status);
 	}
 	function setupProblem(status) {
+		if (!status) return false;
 		return /controller not captured|Enable synchronous/i.test(status);
+	}
+	function getStatusTone(status, enabled) {
+		if (isErrorStatus(status)) return "error";
+		if (isWorkingStatus(status)) return "working";
+		return enabled ? "ready" : "idle";
 	}
 	var EDGE_MARGIN = 8;
 	var DOCK_QUERY = "(max-width: 560px)";
@@ -6925,9 +6934,7 @@
 	function statusTone(analysis, enabled) {
 		if (analysis.recoveryAction === "retry") return "error";
 		if (analysis.recoveryAction === "resume") return "paused";
-		if (isErrorStatus(analysis.status)) return "error";
-		if (isWorkingStatus(analysis.status)) return "working";
-		return enabled ? "ready" : "idle";
+		return getStatusTone(analysis.status, enabled);
 	}
 	function SwitchKnob() {
 		return u(M, { children: [u("span", {
@@ -10009,7 +10016,7 @@
 	};
 	var controller = new BotController();
 	function registerMenuCommands(actions) {
-		const register = typeof GM_registerMenuCommand === "function" ? GM_registerMenuCommand : typeof window.GM_registerMenuCommand === "function" ? window.GM_registerMenuCommand : null;
+		const register = typeof GM_registerMenuCommand === "function" ? GM_registerMenuCommand : typeof window !== "undefined" && typeof window.GM_registerMenuCommand === "function" ? window.GM_registerMenuCommand : null;
 		if (register) {
 			register("♟ Toggle Ghost Mode", () => {
 				toggleGhostMode(actions);
@@ -10018,13 +10025,11 @@
 				actions.setEnabled(!BotState.hackEnabled);
 			});
 		}
-		const page = window;
-		page.__SCB_TOGGLE_GHOST__ = () => toggleGhostMode(actions);
 	}
+	var scbActive = false;
 	async function init() {
-		const page = window;
-		if (page.__SCB_ACTIVE__) return;
-		page.__SCB_ACTIVE__ = true;
+		if (scbActive) return;
+		scbActive = true;
 		try {
 			BotState.onUpdateDisplay = () => ui.updateDisplay();
 			const site = getSite();
@@ -10061,7 +10066,7 @@
 				ui.updateDisplay();
 			});
 		} catch (error) {
-			page.__SCB_ACTIVE__ = false;
+			scbActive = false;
 			BotState.statusInfo = error instanceof Error ? error.message : "Initialization failed";
 			BotState.recoveryAction = "retry";
 			ui.updateDisplay();

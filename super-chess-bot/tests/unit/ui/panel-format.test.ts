@@ -6,6 +6,13 @@ import { REPORT_DEPTH_MAX, REPORT_DEPTH_MIN } from '../../../src/settings/schema
 import { EvalTrendGraph, formatTrendValue } from '../../../src/ui/components/eval-trend-graph.js';
 import { atDepthLimit, stepReportDepth } from '../../../src/ui/components/game-report-panel.js';
 import { updatePanelSetting } from '../../../src/ui/panel.js';
+import {
+  getStatusTone,
+  isErrorStatus,
+  isRoutineStatus,
+  isWorkingStatus,
+  setupProblem,
+} from '../../../src/ui/status.js';
 
 describe('eval trend headline', () => {
   it('never renders a signed zero', () => {
@@ -101,5 +108,23 @@ describe('settings actions', () => {
 
     updatePanelSetting('gameReport', true);
     expect(BotState.gameReport).toBe(true);
+  });
+});
+
+describe('status classification and tone mapping', () => {
+  it('identifies routine, error, and working statuses correctly', () => {
+    expect(isRoutineStatus('Ready · D10 · 42 ms')).toBe(true);
+    expect(isRoutineStatus('Stockfish worker crashed')).toBe(false);
+    expect(isErrorStatus('Stockfish worker crashed')).toBe(true);
+    expect(isWorkingStatus('Analyzing position...')).toBe(true);
+    expect(setupProblem('Chess.com controller not captured')).toBe(true);
+    expect(setupProblem('Ready')).toBe(false);
+  });
+
+  it('determines structured status tones accurately', () => {
+    expect(getStatusTone('Stockfish worker crashed', true)).toBe('error');
+    expect(getStatusTone('Analyzing move', true)).toBe('working');
+    expect(getStatusTone('Ready', true)).toBe('ready');
+    expect(getStatusTone('Ready', false)).toBe('idle');
   });
 });

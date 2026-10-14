@@ -34,7 +34,7 @@ import {
   OpeningStyleIcon,
   PowerIcon,
 } from './icons.js';
-import { isErrorStatus, isWorkingStatus, setupProblem } from './status.js';
+import { getStatusTone, setupProblem } from './status.js';
 
 export type PanelLogType = 'info' | 'status' | 'error' | 'warn' | 'move';
 
@@ -241,9 +241,7 @@ function hasLine(value: string): boolean {
 function statusTone(analysis: PanelAnalysis, enabled: boolean): Tone {
   if (analysis.recoveryAction === 'retry') return 'error';
   if (analysis.recoveryAction === 'resume') return 'paused';
-  if (isErrorStatus(analysis.status)) return 'error';
-  if (isWorkingStatus(analysis.status)) return 'working';
-  return enabled ? 'ready' : 'idle';
+  return getStatusTone(analysis.status, enabled);
 }
 
 function SwitchKnob() {
