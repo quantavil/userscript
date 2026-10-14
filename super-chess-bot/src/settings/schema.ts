@@ -53,6 +53,7 @@ export const SETTING_SPECS = [
   { key: 'blunderShield', kind: 'flag', default: true, persisted: true },
   { key: 'ghostMode', kind: 'flag', default: false, persisted: true },
   { key: 'autoRetry', kind: 'flag', default: true, persisted: true },
+  { key: 'premove', kind: 'flag', default: true, persisted: true },
   { key: 'gameReport', kind: 'flag', default: true, persisted: true },
   { key: 'reportDepth', kind: 'number', default: 18, persisted: true, min: REPORT_DEPTH_MIN, max: REPORT_DEPTH_MAX },
 ] as const satisfies readonly SpecEntry[];

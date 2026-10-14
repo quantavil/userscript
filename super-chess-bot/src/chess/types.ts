@@ -43,6 +43,7 @@ export interface BotState {
   blunderShield: boolean;
   ghostMode: boolean;
   autoRetry: boolean;
+  premove: boolean;
   gameReport: boolean;
   reportDepth: number;
   multiPvLines?: CandidateLine[];
@@ -64,6 +65,7 @@ export type PreferenceKey =
   | 'blunderShield'
   | 'ghostMode'
   | 'autoRetry'
+  | 'premove'
   | 'gameReport'
   | 'reportDepth';
 

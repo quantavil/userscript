@@ -109,6 +109,14 @@ describe('settings actions', () => {
     updatePanelSetting('gameReport', true);
     expect(BotState.gameReport).toBe(true);
   });
+
+  it('updates premove setting in BotState and storage', () => {
+    updatePanelSetting('premove', false);
+    expect(BotState.premove).toBe(false);
+
+    updatePanelSetting('premove', true);
+    expect(BotState.premove).toBe(true);
+  });
 });
 
 describe('status classification and tone mapping', () => {

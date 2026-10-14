@@ -734,6 +734,11 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
                   onChange={(next) => updateSetting('autoRetry', next)}
                 />
                 <Toggle
+                  label="Premove"
+                  checked={settings.premove}
+                  onChange={(next) => updateSetting('premove', next)}
+                />
+                <Toggle
                   label="Background ponder"
                   checked={settings.ponderEnabled}
                   onChange={(next) => updateSetting('ponderEnabled', next)}
