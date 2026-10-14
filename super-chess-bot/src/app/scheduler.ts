@@ -18,6 +18,7 @@ import { cancelPonder, getAnalysis, parseBestLine, ponderPosition } from '../eng
 import { isTablebaseEligible, lookupTablebase, type TablebaseResponse } from '../engine/tablebase.js';
 import { selectThrottledMove } from '../engine/throttle.js';
 import { calculateMoveDelay } from '../engine/timing.js';
+import { LIVE_MULTI_PV } from '../engine/uci-client.js';
 import { confirmSiteMove, type MoveConfirmation } from '../game/confirmation.js';
 import { MAX_TARGET_ELO } from '../settings/schema.js';
 import { scoreToDisplay } from '../shared/utils.js';
@@ -244,13 +245,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
           : undefined;
 
       const requestedMultiPv =
-        kind === 'main'
-          ? BotState.premove
-            ? Math.max(2, BotState.multiPvLines?.length ?? 1)
-            : undefined
-          : BotState.premove
-            ? 4
-            : undefined;
+        kind === 'main' ? (BotState.premove ? LIVE_MULTI_PV : undefined) : BotState.premove ? 4 : undefined;
       const requestedDepth = kind !== 'main' && BotState.premove ? 8 : BotState.botPower;
       const legalMoves = requestedMultiPv ? (countLegalMoves(fen, snapshot.variant) ?? undefined) : undefined;
       const onDepth =
@@ -423,23 +418,31 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       }
     }
 
+    if (BotState.premove && !premoveHit && !isTablebase && best.multiPv && best.multiPv.length > 0) {
+      const chainResult = selectOwnTurnChainPremove(fen, best.multiPv, snapshot.variant);
+      if (chainResult.bestMoveUci && chainResult.bestMoveUci !== best.uci) {
+        best.uci = chainResult.bestMoveUci;
+        const matchingPv = best.multiPv.find((line) => line.uci === chainResult.bestMoveUci);
+        if (matchingPv) {
+          best.pv = matchingPv.pv;
+          best.score = matchingPv.evaluation;
+        }
+      }
+      if (chainResult.armed) {
+        armedPremove = chainResult.armed;
+      }
+    }
+
     const currentPosition = matchingSnapshot(site, identity, fen);
     const nextFen = predictFen(fen, best.uci, snapshot.variant);
     const isSupportedRules = !snapshot.variant || Boolean(parseRules(snapshot.variant));
     if ((isSupportedRules && !nextFen) || fen.split(' ')[1] !== snapshot.playerColor)
       throw new Error('Engine move failed position validation');
 
-    if (BotState.premove && !premoveHit && !isTablebase) {
-      if (best.multiPv && best.multiPv.length > 0) {
-        const chainResult = selectOwnTurnChainPremove(fen, best.multiPv, snapshot.variant);
-        if (chainResult.armed) {
-          armedPremove = chainResult.armed;
-        }
-      } else if (bookMove && isStandard && nextFen) {
-        const bookArmed = selectBookPremoveReplies(nextFen, BotState.openingStyle);
-        if (bookArmed) {
-          armedPremove = bookArmed;
-        }
+    if (BotState.premove && !premoveHit && !isTablebase && !armedPremove && bookMove && isStandard && nextFen) {
+      const bookArmed = selectBookPremoveReplies(nextFen, BotState.openingStyle);
+      if (bookArmed) {
+        armedPremove = bookArmed;
       }
     }
 
@@ -456,17 +459,19 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
 
     BotState.bestMove = best.uci;
     BotState.principalVariation = best.pv;
-    BotState.multiPvLines = best.multiPv?.map((line) => ({
-      ...line,
-      evaluation: scoreForWhite(line.evaluation, snapshot.sideToMove),
-    }));
-    BotState.currentEvaluation = premoveHit
-      ? '-'
-      : bookMove
+    if (best.multiPv && best.multiPv.length > 0) {
+      BotState.multiPvLines = best.multiPv.map((line) => ({
+        ...line,
+        evaluation: scoreForWhite(line.evaluation, snapshot.sideToMove),
+      }));
+    }
+    if (!premoveHit) {
+      BotState.currentEvaluation = bookMove
         ? 'Book'
         : isTablebase
           ? tbDisplay
           : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
+    }
     if (!bookMove && !premoveHit && (typeof best.score.cp === 'number' || typeof best.score.mate === 'number')) {
       const whiteScore = scoreForWhite(best.score, snapshot.sideToMove);
       let numEval = 0;

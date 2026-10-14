@@ -334,7 +334,6 @@ class BotController {
     if (!positionChanged && !readinessRestored) return;
     if (positionChanged) cancelAnalysis(snapshot.fen);
     clearArrows();
-    this.clearRecommendation();
     this.lastFenSeen = snapshot.fen;
     BotState.recoveryAction = null;
 

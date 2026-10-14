@@ -185,7 +185,11 @@ export function selectOwnTurnChainPremove(
  * Given the board position after our move, scans immediate legal opponent replies and
  * pre-arms book responses so our follow-ups dispatch with 0ms delay.
  */
-export function selectBookPremoveReplies(nextFen: string, style: OpeningStyle = 'balanced'): ArmedPremoveMap | null {
+export function selectBookPremoveReplies(
+  nextFen: string,
+  style: OpeningStyle = 'balanced',
+  rng: () => number = () => 0,
+): ArmedPremoveMap | null {
   const pos = loadPosition(nextFen, 'standard', 'standard');
   if (!pos) return null;
   const byExpectedFen = new Map<string, string>();
@@ -195,7 +199,7 @@ export function selectBookPremoveReplies(nextFen: string, style: OpeningStyle = 
       const p = pos.clone();
       p.play(oppMove);
       const oppFen = makeFen(p.toSetup());
-      const reply = lookupBookMove(oppFen, style);
+      const reply = lookupBookMove(oppFen, style, rng);
       if (reply) {
         byExpectedFen.set(fenKey(oppFen), reply);
       }

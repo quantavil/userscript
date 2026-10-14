@@ -355,7 +355,7 @@ function makeFixture(
     document: {
       body: {},
       getElementById: () => null,
-      querySelector: (selector: string) => (selector === '.round__app .cg-wrap' ? board : null),
+      querySelector: (selector: string) => (selector.includes('.cg-wrap') ? board : null),
     },
   } as unknown as Window & { site?: Record<string, unknown> };
   const adapter = createLichessAdapter(() => page);

@@ -267,7 +267,9 @@ export function createLichessAdapter(page: () => Window = pageWindow): SiteAdapt
         return { kind: 'waiting', reason: 'Waiting for Lichess game status' };
       if (statusId < 20) return { kind: 'waiting', reason: 'Lichess game has not started' };
 
-      const board = currentPage.document.querySelector<HTMLElement>('.round__app .cg-wrap');
+      const board = currentPage.document.querySelector<HTMLElement>(
+        '.round__app .cg-wrap, .round__board .cg-wrap, .round .cg-wrap, .cg-wrap',
+      );
       if (!board || !isVisibleBoard(board)) return { kind: 'waiting', reason: 'Waiting for Lichess chessboard' };
       const playerColor = engineColor(player.color);
       const orientation = round.chessground?.state?.orientation;

@@ -8671,7 +8671,7 @@
 			...byExpectedFen.size > 0 ? { armed: { byExpectedFen } } : {}
 		};
 	}
-	function selectBookPremoveReplies(nextFen, style = "balanced") {
+	function selectBookPremoveReplies(nextFen, style = "balanced", rng = () => 0) {
 		const pos = loadPosition(nextFen, "standard", "standard");
 		if (!pos) return null;
 		const byExpectedFen = new Map();
@@ -8683,7 +8683,7 @@
 			const p = pos.clone();
 			p.play(oppMove);
 			const oppFen = makeFen(p.toSetup());
-			const reply = lookupBookMove(oppFen, style);
+			const reply = lookupBookMove(oppFen, style, rng);
 			if (reply) byExpectedFen.set(fenKey(oppFen), reply);
 		}
 		return byExpectedFen.size > 0 ? { byExpectedFen } : null;
@@ -9231,7 +9231,7 @@
 				let tbResult = null;
 				const remainingMs = snapshot.remainingMs;
 				const slackMs = remainingMs !== void 0 && remainingMs !== null ? Math.min(3e3, Math.max(200, Math.floor(remainingMs / 20))) : void 0;
-				const requestedMultiPv = kind === "main" ? BotState.premove ? Math.max(2, BotState.multiPvLines?.length ?? 1) : void 0 : BotState.premove ? 4 : void 0;
+				const requestedMultiPv = kind === "main" ? BotState.premove ? 3 : void 0 : BotState.premove ? 4 : void 0;
 				const requestedDepth = kind !== "main" && BotState.premove ? 8 : BotState.botPower;
 				const legalMoves = requestedMultiPv ? countLegalMoves(fen, snapshot.variant) ?? void 0 : void 0;
 				const onDepth = kind !== "main" && BotState.premove ? (depth, lines) => {
@@ -9348,17 +9348,24 @@
 					}
 				}
 			}
+			if (BotState.premove && !premoveHit && !isTablebase && best.multiPv && best.multiPv.length > 0) {
+				const chainResult = selectOwnTurnChainPremove(fen, best.multiPv, snapshot.variant);
+				if (chainResult.bestMoveUci && chainResult.bestMoveUci !== best.uci) {
+					best.uci = chainResult.bestMoveUci;
+					const matchingPv = best.multiPv.find((line) => line.uci === chainResult.bestMoveUci);
+					if (matchingPv) {
+						best.pv = matchingPv.pv;
+						best.score = matchingPv.evaluation;
+					}
+				}
+				if (chainResult.armed) armedPremove = chainResult.armed;
+			}
 			const currentPosition = matchingSnapshot(site, identity, fen);
 			const nextFen = predictFen(fen, best.uci, snapshot.variant);
 			if ((!snapshot.variant || Boolean(parseRules(snapshot.variant))) && !nextFen || fen.split(" ")[1] !== snapshot.playerColor) throw new Error("Engine move failed position validation");
-			if (BotState.premove && !premoveHit && !isTablebase) {
-				if (best.multiPv && best.multiPv.length > 0) {
-					const chainResult = selectOwnTurnChainPremove(fen, best.multiPv, snapshot.variant);
-					if (chainResult.armed) armedPremove = chainResult.armed;
-				} else if (bookMove && isStandard && nextFen) {
-					const bookArmed = selectBookPremoveReplies(nextFen, BotState.openingStyle);
-					if (bookArmed) armedPremove = bookArmed;
-				}
+			if (BotState.premove && !premoveHit && !isTablebase && !armedPremove && bookMove && isStandard && nextFen) {
+				const bookArmed = selectBookPremoveReplies(nextFen, BotState.openingStyle);
+				if (bookArmed) armedPremove = bookArmed;
 			}
 			const pvMoves = best.pv.split(/\s+/);
 			const predictedReply = pvMoves[0] === best.uci ? pvMoves[1] : void 0;
@@ -9377,11 +9384,11 @@
 			};
 			BotState.bestMove = best.uci;
 			BotState.principalVariation = best.pv;
-			BotState.multiPvLines = best.multiPv?.map((line) => ({
+			if (best.multiPv && best.multiPv.length > 0) BotState.multiPvLines = best.multiPv.map((line) => ({
 				...line,
 				evaluation: scoreForWhite(line.evaluation, snapshot.sideToMove)
 			}));
-			BotState.currentEvaluation = premoveHit ? "-" : bookMove ? "Book" : isTablebase ? tbDisplay : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
+			if (!premoveHit) BotState.currentEvaluation = bookMove ? "Book" : isTablebase ? tbDisplay : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
 			if (!bookMove && !premoveHit && (typeof best.score.cp === "number" || typeof best.score.mate === "number")) {
 				const whiteScore = scoreForWhite(best.score, snapshot.sideToMove);
 				let numEval = 0;
@@ -9792,7 +9799,6 @@
 			if (!positionChanged && !readinessRestored) return;
 			if (positionChanged) cancelAnalysis(snapshot.fen);
 			clearArrows();
-			this.clearRecommendation();
 			this.lastFenSeen = snapshot.fen;
 			BotState.recoveryAction = null;
 			if (ourTurn && !snapshot.inputReady) {
