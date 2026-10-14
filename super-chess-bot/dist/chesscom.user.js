@@ -441,6 +441,12 @@
 			persisted: true
 		},
 		{
+			key: "premove",
+			kind: "flag",
+			default: true,
+			persisted: true
+		},
+		{
 			key: "gameReport",
 			kind: "flag",
 			default: true,
@@ -2810,15 +2816,31 @@
 		const time = finiteInteger(tokenValue(tokens, "time")) ?? previous.time;
 		if (job && (hasMultipvToken || pvIndex >= 0)) {
 			if (hasMultipvToken) job.hasMultiPv = true;
-			if (pvIndex >= 0 || existingLine === void 0) job.multiPvLines.set(multipv, {
-				multipv,
-				depth,
-				uci: pv ? pv.split(/\s+/)[0] ?? "" : "",
-				pv,
-				evaluation,
-				...nodes !== void 0 ? { nodes } : {},
-				...time !== void 0 ? { time } : {}
-			});
+			if (pvIndex >= 0 || existingLine === void 0) {
+				const lineEntry = {
+					multipv,
+					depth,
+					uci: pv ? pv.split(/\s+/)[0] ?? "" : "",
+					pv,
+					evaluation,
+					...nodes !== void 0 ? { nodes } : {},
+					...time !== void 0 ? { time } : {}
+				};
+				job.multiPvLines.set(multipv, lineEntry);
+				if (depth > 0 && pvIndex >= 0) {
+					let snapshot = job.multiPvSnapshots.get(depth);
+					if (!snapshot) {
+						snapshot = new Map();
+						job.multiPvSnapshots.set(depth, snapshot);
+					}
+					snapshot.set(multipv, lineEntry);
+					const expectedCount = job.legalMoves ? Math.min(job.multiPv, job.legalMoves) : job.multiPv;
+					if (job.onDepthComplete && snapshot.size >= expectedCount) {
+						const lines = Array.from(snapshot.values()).sort((a, b) => a.multipv - b.multipv);
+						job.onDepthComplete(depth, lines);
+					}
+				}
+			}
 		}
 		if (multipv === 1) return {
 			depth,
@@ -2872,10 +2894,10 @@
 		async warm() {
 			await this.ensureReady();
 		}
-		analyze(fen, depth, timeLimit, signal, history, slackMs, multiPv = 3) {
-			return this.analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv);
+		analyze(fen, depth, timeLimit, signal, history, slackMs, multiPv = 3, legalMoves, onDepthComplete) {
+			return this.analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv, legalMoves, onDepthComplete);
 		}
-		analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv = 3) {
+		analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv = 3, legalMoves, onDepthComplete) {
 			if (this.disposed) return Promise.reject(new Error("Engine client is disposed"));
 			if (signal?.aborted) return Promise.reject(abortError());
 			if (!fen || /[\r\n]/.test(fen)) return Promise.reject(new Error("A valid position FEN is required"));
@@ -2889,7 +2911,7 @@
 				}
 				this.cancelPonder();
 			}
-			return this.enqueue(fen, depth, timeLimit, signal, history, false, slackMs, multiPv);
+			return this.enqueue(fen, depth, timeLimit, signal, history, false, slackMs, multiPv, legalMoves, onDepthComplete);
 		}
 		ponder(fen, depth, signal, history) {
 			if (this.disposed || signal?.aborted || !fen || /[\r\n]/.test(fen) || this.busy || this.ponderJob) return null;
@@ -2905,7 +2927,7 @@
 			this.ponderJob = null;
 			this.abortJob(job);
 		}
-		enqueue(fen, depth, timeLimit, signal, history, pondering, slackMs, multiPv = 3) {
+		enqueue(fen, depth, timeLimit, signal, history, pondering, slackMs, multiPv = 3, legalMoves, onDepthComplete) {
 			let resolve;
 			let reject;
 			const promise = new Promise((res, rej) => {
@@ -2934,7 +2956,10 @@
 					evaluation: {}
 				},
 				multiPvLines: new Map(),
-				hasMultiPv: false
+				multiPvSnapshots: new Map(),
+				hasMultiPv: false,
+				legalMoves,
+				onDepthComplete
 			};
 			if (signal) this.attachAbort(job, signal);
 			this.queue.push(job);
@@ -3267,7 +3292,19 @@
 				if (job.stopTimer) clearTimeout(job.stopTimer);
 				const bestmove = message.split(/\s+/)[1] ?? "";
 				const terminal = bestmove === "(none)";
-				const multiPv = job.hasMultiPv && job.multiPvLines.size > 0 ? Array.from(job.multiPvLines.values()).sort((a, b) => a.multipv - b.multipv) : void 0;
+				let multiPv;
+				if (job.hasMultiPv) {
+					const expectedCount = job.legalMoves ? Math.min(job.multiPv, job.legalMoves) : job.multiPv;
+					const depths = Array.from(job.multiPvSnapshots.keys()).sort((a, b) => b - a);
+					for (const d of depths) {
+						const snapshot = job.multiPvSnapshots.get(d);
+						if (snapshot && snapshot.size >= expectedCount) {
+							multiPv = Array.from(snapshot.values()).sort((a, b) => a.multipv - b.multipv);
+							break;
+						}
+					}
+					if (!multiPv && job.multiPvLines.size > 0) multiPv = Array.from(job.multiPvLines.values()).sort((a, b) => a.multipv - b.multipv);
+				}
 				const common = {
 					depth: job.info.depth,
 					pv: job.info.pv,
@@ -3382,11 +3419,11 @@
 		warm() {
 			return this.client.warm();
 		}
-		async analyze(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv) {
+		async analyze(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv, legalMoves, onDepthComplete) {
 			if (signal?.aborted) throw new DOMException("Search aborted", "AbortError");
 			const definition = getVariantDefinition(variant);
 			if (!definition) throw new Error(`Unknown variant: ${variant}`);
-			return (await this.ensureEngine(definition.chess960)).analyze(fen, depth, timeLimit, signal, history, slackMs, multiPv);
+			return (await this.ensureEngine(definition.chess960)).analyze(fen, depth, timeLimit, signal, history, slackMs, multiPv, legalMoves, onDepthComplete);
 		}
 		ponder(fen, depth, history) {
 			if (!fen || this.client.busy) return false;
@@ -3410,8 +3447,8 @@
 	function resetEngine() {
 		engineWorker.reset();
 	}
-	function getAnalysis(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv) {
-		return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv);
+	function getAnalysis(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv, legalMoves, onDepthComplete) {
+		return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv, legalMoves, onDepthComplete);
 	}
 	function ponderPosition(fen, depth, history) {
 		return engineWorker.ponder(fen, depth, history);
@@ -6953,6 +6990,11 @@
 										onChange: (next) => updateSetting("autoRetry", next)
 									}),
 									u(Toggle, {
+										label: "Premove",
+										checked: settings.premove,
+										onChange: (next) => updateSetting("premove", next)
+									}),
+									u(Toggle, {
 										label: "Background ponder",
 										checked: settings.ponderEnabled,
 										onChange: (next) => updateSetting("ponderEnabled", next)
@@ -8507,6 +8549,139 @@
 		}
 		return candidates[0][0];
 	}
+	function evaluationToCentipawns(evaluation, mateCap = 1e4) {
+		if (typeof evaluation?.mate === "number") {
+			const penalty = Math.min(1e3, Math.abs(evaluation.mate) * 10);
+			return evaluation.mate > 0 ? mateCap - penalty : -mateCap + penalty;
+		}
+		return evaluation?.cp ?? 0;
+	}
+	function fenKey(fen) {
+		return fen.trim().split(/\s+/).slice(0, 3).join(" ");
+	}
+	function dest(uci) {
+		return uci.slice(2, 4);
+	}
+	function isRecaptureChain(pv) {
+		return pv.length >= 3 && dest(pv[0]) === dest(pv[1]) && dest(pv[2]) === dest(pv[1]);
+	}
+	function isLegalMove(fen, uci, variant) {
+		const position = loadPosition(fen, variant, "standard");
+		if (!position) return false;
+		return parseEngineUci(position, uci) !== null;
+	}
+	function resolveArmedTriggerFen(startFen, movesBeforeTrigger, triggerUci, replyUci, variant) {
+		const position = loadPosition(startFen, variant, "standard");
+		if (!position) return null;
+		for (const uci of movesBeforeTrigger) {
+			const move = parseEngineUci(position, uci);
+			if (!move) return null;
+			position.play(move);
+		}
+		const triggerMove = parseEngineUci(position, triggerUci);
+		if (!triggerMove) return null;
+		position.play(triggerMove);
+		if (!parseEngineUci(position, replyUci)) return null;
+		return fenKey(makeFen(position.toSetup()));
+	}
+	var ROLE_VALUES = {
+		pawn: 1,
+		knight: 3,
+		bishop: 3,
+		rook: 5,
+		queen: 9,
+		king: 100
+	};
+	function populateRecaptureFallbacks(posAfterOurMove, byExpectedFen) {
+		for (const [from, dests] of posAfterOurMove.allDests()) for (const to of dests) {
+			if (!(posAfterOurMove.board.get(to) !== void 0 || to === posAfterOurMove.epSquare && posAfterOurMove.board.get(from)?.role === "pawn")) continue;
+			const oppMove = posAfterOurMove.board.get(from)?.role === "pawn" && (squareRank(to) === 0 || squareRank(to) === 7) ? {
+				from,
+				to,
+				promotion: "queen"
+			} : {
+				from,
+				to
+			};
+			const nextPos = posAfterOurMove.clone();
+			nextPos.play(oppMove);
+			let bestRecaptureUci = null;
+			let lowestVal = Infinity;
+			for (const [rFrom, rDests] of nextPos.allDests()) if (rDests.has(to)) {
+				const role = nextPos.board.get(rFrom)?.role ?? "king";
+				const val = ROLE_VALUES[role] ?? 99;
+				if (val < lowestVal) {
+					lowestVal = val;
+					bestRecaptureUci = role === "pawn" && (squareRank(to) === 0 || squareRank(to) === 7) ? makeUci({
+						from: rFrom,
+						to,
+						promotion: "queen"
+					}) : makeUci({
+						from: rFrom,
+						to
+					});
+				}
+			}
+			if (bestRecaptureUci) {
+				const key = fenKey(makeFen(nextPos.toSetup()));
+				byExpectedFen.set(key, bestRecaptureUci);
+			}
+		}
+	}
+	function selectOwnTurnChainPremove(startFen, lines, variant) {
+		if (!lines || lines.length === 0) return { bestMoveUci: "" };
+		const pv1 = lines[0];
+		const pv1Moves = pv1.pv ? pv1.pv.trim().split(/\s+/) : [];
+		let chosen = pv1;
+		let chosenMoves = pv1Moves;
+		if (lines.length > 1) {
+			const pv2 = lines[1];
+			const pv2Moves = pv2.pv ? pv2.pv.trim().split(/\s+/) : [];
+			const pv1IsChain = isRecaptureChain(pv1Moves);
+			const pv2IsChain = isRecaptureChain(pv2Moves);
+			if (!pv1IsChain && pv2IsChain) {
+				if (evaluationToCentipawns(pv1.evaluation) - evaluationToCentipawns(pv2.evaluation) <= 50) {
+					chosen = pv2;
+					chosenMoves = pv2Moves;
+				}
+			}
+		}
+		const bestMoveUci = chosen.uci || chosenMoves[0] || "";
+		if (!bestMoveUci) return { bestMoveUci: "" };
+		const byExpectedFen = new Map();
+		const pos = loadPosition(startFen, variant, "standard");
+		if (pos) {
+			const parsedOurMove = parseEngineUci(pos, bestMoveUci);
+			if (parsedOurMove) {
+				pos.play(parsedOurMove);
+				populateRecaptureFallbacks(pos, byExpectedFen);
+				if (chosenMoves.length >= 3) {
+					const triggerUci = chosenMoves[1];
+					const replyUci = chosenMoves[2];
+					const triggerFen = resolveArmedTriggerFen(startFen, [bestMoveUci], triggerUci, replyUci, variant);
+					if (triggerFen) byExpectedFen.set(triggerFen, replyUci);
+				}
+			}
+		}
+		return {
+			bestMoveUci,
+			...byExpectedFen.size > 0 ? { armed: { byExpectedFen } } : {}
+		};
+	}
+	function selectOpponentTurnPremove(opponentTurnFen, lines, variant) {
+		if (!lines || lines.length === 0) return null;
+		const byExpectedFen = new Map();
+		const topLines = lines.slice(0, 6);
+		for (const line of topLines) {
+			const pvMoves = line.pv ? line.pv.trim().split(/\s+/) : [];
+			if (pvMoves.length < 2) continue;
+			const triggerOpponentUci = pvMoves[0];
+			const replyOurUci = pvMoves[1];
+			const expectedFen = resolveArmedTriggerFen(opponentTurnFen, [], triggerOpponentUci, replyOurUci, variant);
+			if (expectedFen) byExpectedFen.set(expectedFen, replyOurUci);
+		}
+		return byExpectedFen.size > 0 ? { byExpectedFen } : null;
+	}
 	var TABLEBASE_API = "https://tablebase.lichess.ovh/standard";
 	var DEFAULT_TIMEOUT_MS = 2e3;
 	var CACHE_CAPACITY = 256;
@@ -8658,13 +8833,6 @@
 			const [distA, distB] = distancePair(a, b, 0);
 			return distB - distA;
 		})[0] ?? null;
-	}
-	function evaluationToCentipawns(evaluation, mateCap = 1e4) {
-		if (typeof evaluation?.mate === "number") {
-			const penalty = Math.min(1e3, Math.abs(evaluation.mate) * 10);
-			return evaluation.mate > 0 ? mateCap - penalty : -mateCap + penalty;
-		}
-		return evaluation?.cp ?? 0;
 	}
 	var MIN_THROTTLED_ELO = 800;
 	function selectThrottledMove(lines, options) {
@@ -8868,6 +9036,7 @@
 	var active = null;
 	var processed = null;
 	var anticipatedPonder = null;
+	var armedPremove = null;
 	var pendingConfirmation = null;
 	var retryTimer = null;
 	var retryIdentity = null;
@@ -8879,6 +9048,7 @@
 		retryTimer = null;
 		retryIdentity = null;
 		retryCounts.clear();
+		armedPremove = null;
 	}
 	var confirmationSettledListeners = new Set();
 	function delayMs(ms, signal) {
@@ -8917,6 +9087,7 @@
 		active?.abort();
 		active = null;
 		processed = null;
+		if (!preservePonderFen) armedPremove = null;
 		if (pendingConfirmation) pendingConfirmation.requestController.abort();
 		pendingConfirmation = null;
 		if (!anticipatedPonder || anticipatedPonder.fromFen !== preservePonderFen) anticipatedPonder = null;
@@ -8994,11 +9165,35 @@
 			} else anticipatedPonder = null;
 			const isStandard = getVariantDefinition(snapshot.variant)?.id === "standard";
 			const bookMove = isStandard && kind === "main" && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
+			let premoveHit = false;
+			let premoveMove = null;
+			if (kind === "main" && BotState.premove && armedPremove) {
+				const key = fenKey(fen);
+				const replyUci = armedPremove.byExpectedFen.get(key);
+				armedPremove = null;
+				if (replyUci && isLegalMove(fen, replyUci, snapshot.variant)) {
+					premoveHit = true;
+					premoveMove = replyUci;
+				}
+			} else if (kind === "main") armedPremove = null;
 			let result;
 			let best = null;
 			let isTablebase = false;
 			let tbDisplay = "";
-			if (bookMove) {
+			if (premoveHit && premoveMove) {
+				result = {
+					success: true,
+					bestmove: premoveMove,
+					depth: 99,
+					pv: premoveMove,
+					evaluation: {}
+				};
+				best = {
+					uci: premoveMove,
+					pv: premoveMove,
+					score: {}
+				};
+			} else if (bookMove) {
 				result = {
 					success: true,
 					bestmove: bookMove,
@@ -9016,6 +9211,18 @@
 				let tbResult = null;
 				const remainingMs = snapshot.remainingMs;
 				const slackMs = remainingMs !== void 0 && remainingMs !== null ? Math.min(3e3, Math.max(200, Math.floor(remainingMs / 20))) : void 0;
+				const requestedMultiPv = kind === "main" ? BotState.premove ? Math.max(2, BotState.multiPvLines?.length ?? 1) : void 0 : BotState.premove ? 6 : void 0;
+				const requestedDepth = kind !== "main" && BotState.premove ? 8 : BotState.botPower;
+				const legalMoves = requestedMultiPv ? countLegalMoves(fen, snapshot.variant) ?? void 0 : void 0;
+				const onDepth = kind !== "main" && BotState.premove ? (depth, lines) => {
+					if (depth >= 3) {
+						const armed = selectOpponentTurnPremove(fen, lines, snapshot.variant);
+						if (armed) {
+							if (!armedPremove) armedPremove = armed;
+							else for (const [k, v] of armed.byExpectedFen) armedPremove.byExpectedFen.set(k, v);
+						}
+					}
+				} : void 0;
 				if (isTbEligible) {
 					const tbTimeout = Math.min(1500, Math.max(100, Math.floor((snapshot.remainingMs ?? 6e4) / 4)));
 					const lookupController = new AbortController();
@@ -9027,7 +9234,7 @@
 					ctrl.signal.addEventListener("abort", abortBranches, { once: true });
 					if (ctrl.signal.aborted) abortBranches();
 					const tbPromise = lookupTablebase(fen, lookupController.signal, tbTimeout).catch(() => null);
-					const analysisPromise = getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history, slackMs, snapshot.variant);
+					const analysisPromise = requestedMultiPv !== void 0 || legalMoves !== void 0 || onDepth !== void 0 ? getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history, slackMs, snapshot.variant, requestedMultiPv, legalMoves, onDepth) : getAnalysis(fen, BotState.botPower, budget, analysisController.signal, history, slackMs, snapshot.variant);
 					try {
 						const winner = await Promise.any([tbPromise.then((tb) => {
 							if (!tb?.success) throw new Error("Tablebase unavailable");
@@ -9064,7 +9271,7 @@
 						abortBranches();
 						ctrl.signal.removeEventListener("abort", abortBranches);
 					}
-				} else result = await getAnalysis(fen, BotState.botPower, budget, ctrl.signal, history, slackMs, snapshot.variant);
+				} else result = requestedMultiPv !== void 0 || legalMoves !== void 0 || onDepth !== void 0 ? await getAnalysis(fen, requestedDepth, budget, ctrl.signal, history, slackMs, snapshot.variant, requestedMultiPv, legalMoves, onDepth) : await getAnalysis(fen, requestedDepth, budget, ctrl.signal, history, slackMs, snapshot.variant);
 				if (!current()) return;
 				if (tbResult?.success) {
 					isTablebase = true;
@@ -9087,6 +9294,13 @@
 				}
 			}
 			if (kind !== "main") {
+				if (BotState.premove && result.multiPv && result.multiPv.length > 0) {
+					const armed = selectOpponentTurnPremove(fen, result.multiPv, snapshot.variant);
+					if (armed) {
+						if (!armedPremove) armedPremove = armed;
+						else for (const [k, v] of armed.byExpectedFen) armedPremove.byExpectedFen.set(k, v);
+					}
+				}
 				const predicted = predictFen(fen, best.uci, snapshot.variant);
 				if (predicted) {
 					const predictedHistory = history ? {
@@ -9114,6 +9328,10 @@
 					}
 				}
 			}
+			if (BotState.premove && !premoveHit && !bookMove && !isTablebase && best.multiPv && best.multiPv.length > 0) {
+				const chainResult = selectOwnTurnChainPremove(fen, best.multiPv, snapshot.variant);
+				if (chainResult.armed) armedPremove = chainResult.armed;
+			}
 			const currentPosition = matchingSnapshot(site, identity, fen);
 			const nextFen = predictFen(fen, best.uci, snapshot.variant);
 			if ((!snapshot.variant || Boolean(parseRules(snapshot.variant))) && !nextFen || fen.split(" ")[1] !== snapshot.playerColor) throw new Error("Engine move failed position validation");
@@ -9138,8 +9356,8 @@
 				...line,
 				evaluation: scoreForWhite(line.evaluation, snapshot.sideToMove)
 			}));
-			BotState.currentEvaluation = bookMove ? "Book" : isTablebase ? tbDisplay : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
-			if (!bookMove && (typeof best.score.cp === "number" || typeof best.score.mate === "number")) {
+			BotState.currentEvaluation = premoveHit ? "-" : bookMove ? "Book" : isTablebase ? tbDisplay : scoreToDisplay(scoreForWhite(best.score, snapshot.sideToMove));
+			if (!bookMove && !premoveHit && (typeof best.score.cp === "number" || typeof best.score.mate === "number")) {
 				const whiteScore = scoreForWhite(best.score, snapshot.sideToMove);
 				let numEval = 0;
 				if (typeof whiteScore.mate === "number") numEval = whiteScore.mate > 0 ? 10 : -10;
@@ -9155,7 +9373,7 @@
 					};
 				}
 			}
-			BotState.statusInfo = bookMove ? `Ready · Book · ${Math.round(performance.now() - started)} ms` : isTablebase ? `Ready · Tablebase · ${Math.round(performance.now() - started)} ms` : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
+			BotState.statusInfo = premoveHit ? `Ready · Premove · ${Math.round(performance.now() - started)} ms` : bookMove ? `Ready · Book · ${Math.round(performance.now() - started)} ms` : isTablebase ? `Ready · Tablebase · ${Math.round(performance.now() - started)} ms` : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
 			if (best.multiPv && best.multiPv.length > 0) drawMultiPvArrows(best.multiPv);
 			else {
 				clearArrows();
@@ -9163,7 +9381,7 @@
 			}
 			ui.updateDisplay();
 			if (!BotState.autoMove || !current() || !currentPosition?.inputReady) return;
-			if (BotState.timingMode === "dynamic") {
+			if (!premoveHit && BotState.timingMode === "dynamic") {
 				const candidateScores = best.multiPv?.map((line) => {
 					if (typeof line.evaluation.mate === "number") return line.evaluation.mate > 0 ? 1e3 : -1e3;
 					return line.evaluation.cp ?? 0;
@@ -9225,7 +9443,8 @@
 			if (observed.status !== "failed") {
 				BotState.recoveryAction = null;
 				const provenance = observed.status === "locally-applied" ? " · applied locally; server acceptance unverified" : "";
-				ui.log(formatMove(fen, best.uci, snapshot.variant) + provenance, "move");
+				const premoveTag = premoveHit ? " · premove" : "";
+				ui.log(formatMove(fen, best.uci, snapshot.variant) + premoveTag + provenance, "move");
 			} else if (positionIsCurrent()) {
 				anticipatedPonder = null;
 				clearArrows();
