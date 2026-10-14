@@ -25,3 +25,10 @@ Guidance for work in this repository (`~/Documents/userscript`).
 - PyChess runtime support is removed. Standard player games on Chess.com and Lichess form the supported matrix; full variant transports on both sites remain deferred.
 - Chess.com move observations prove local application only. Reports require a finished game, and automatic retries stop before repeating an uncertain dispatched move.
 - Refactor verification: 340 tests across 29 suites, lint, TypeScript, Knip, and both production builds passed. See [execution ledger](super-chess-bot/docs/superpowers/plans/2026-10-13-execution-ledger.md) and project [AGENTS.md](super-chess-bot/AGENTS.md).
+
+## Super Chess Bot v12.0.0 — Premove Engine (2026-10-14)
+
+- **Instant 0 ms Premoves**: Hybrid FEN-keyed premove engine combining own-turn recapture-chain steering, opening book follow-ups, and an opponent-turn Multi-Branch Ponder Table (up to 4 branches). Dispatches with 0 ms delay on exact FEN match.
+- **Board & Display Fixes**: Broadened Lichess board selector support across dynamic layouts; stabilized Multi-PV line display to eliminate per-ply flickering; cleaned up verbose disclaimers from the user activity log.
+- **Verification**: 428 tests across 34 suites, Biome, strict TypeScript, Knip, and dual production builds passed. See [`super-chess-bot/docs/superpowers/plans/2026-10-14-hybrid-premove-engine.md`](super-chess-bot/docs/superpowers/plans/2026-10-14-hybrid-premove-engine.md).
+

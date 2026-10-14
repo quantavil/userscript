@@ -16,6 +16,7 @@ The standalone build includes Stockfish resources for standard chess. It does no
 ## Features
 
 - Local Stockfish search in a web worker, with up to three candidate lines.
+- Instant 0 ms FEN-keyed premove engine with own-turn recapture chains, opening book replies, and opponent-turn multi-branch ponder table.
 - Standard opening-book choices, configurable move timing, and a scoresheet with PGN export.
 - Optional post-game report using a local engine estimate. The default is depth 18, adjustable from 10 to 26; analysis requires a finished game.
 - Asynchronous standard-chess Syzygy lookups for eligible positions with up to seven pieces. Results use a 256-entry cache keyed by full FEN. DTZ and DTM remain distinct, and a usable local search result does not wait for a tablebase grace period.

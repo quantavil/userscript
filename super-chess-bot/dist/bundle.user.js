@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ♟Super-chess-Bot
 // @namespace    https://github.com/quantavil/userscript
-// @version      11.0.0
+// @version      12.0.0
 // @author       quantavil
 // @description  Local Stockfish analysis and move automation for Chess.com and Lichess games
 // @license      GPL-3.0-or-later

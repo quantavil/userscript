@@ -10,12 +10,13 @@ A GPL-3.0-or-later browser userscript for local chess analysis and move automati
 
 - Runs Stockfish locally in a worker for standard chess and Chess960 games.
 - Reads and submits standard moves through each site's controller integration. Automation starts disabled.
-- Shows up to three engine lines, optional opening-book choices, and a local scoresheet with PGN export.
+- Instant 0 ms FEN-keyed premove engine combining own-turn recapture-chain steering, opening book replies, and an opponent-turn Multi-Branch Ponder Table (up to 4 branches).
+- Shows up to three Multi-PV engine lines with colored arrows, persistent across plies, optional opening-book choices, and a local scoresheet with PGN export.
 - Offers an on-demand post-game report. Its search runs to depth — depth 18 by default, settable from 10 to 26 — and only starts once the adapter reports a finished game.
 - Queries the Lichess Syzygy service for eligible standard positions with up to seven pieces. Lookups race local search, use a 256-entry in-memory cache keyed by full FEN, and keep DTZ (distance to zeroing) separate from DTM (distance to mate). The first usable result wins; a valid local search result returns without tablebase grace time.
 - Provides Ghost Mode for streaming. It hides the panel and board overlays; the closed Shadow DOM only encapsulates panel UI and does not promise undetectability.
 
-The completed [refactor plan](docs/superpowers/plans/2026-10-13-reliability-and-architecture.md) and [execution ledger](docs/superpowers/plans/2026-10-13-execution-ledger.md) record the changes and verification.
+The completed [premove plan](docs/superpowers/plans/2026-10-14-hybrid-premove-engine.md), [refactor plan](docs/superpowers/plans/2026-10-13-reliability-and-architecture.md), and [execution ledger](docs/superpowers/plans/2026-10-13-execution-ledger.md) record the changes and verification.
 
 See the [support matrix](docs/support-matrix.md) for site scope and move-observation limits, and the [architecture notes](docs/architecture.md) for module responsibilities.
 
