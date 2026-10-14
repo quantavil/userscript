@@ -9475,9 +9475,8 @@
 			}
 			if (observed.status !== "failed") {
 				BotState.recoveryAction = null;
-				const provenance = observed.status === "locally-applied" ? " · applied locally; server acceptance unverified" : "";
 				const premoveTag = isInstant ? " · premove" : "";
-				ui.log(formatMove(fen, best.uci, snapshot.variant) + premoveTag + provenance, "move");
+				ui.log(formatMove(fen, best.uci, snapshot.variant) + premoveTag, "move");
 			} else if (positionIsCurrent()) {
 				anticipatedPonder = null;
 				clearArrows();
