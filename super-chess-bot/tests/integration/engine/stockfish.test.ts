@@ -215,6 +215,40 @@ describe('UCI Stockfish client', () => {
     await expect(pondering).resolves.toMatchObject({ bestmove: 'e2e4', depth: 14 });
   });
 
+  it('promotes a completed ponder search without launching a redundant search', async () => {
+    const worker = new FakeUciWorker();
+    const client = new UciClient(() => worker);
+    const background = new AbortController();
+    const history = { startFen: START_FEN, moves: ['e2e4', 'e7e5'] };
+
+    const pondering = client.ponder(START_FEN, 30, background.signal, history);
+    await waitUntil(() => worker.commands.includes('go ponder depth 30'));
+    worker.emit('info depth 30 score cp 25 nodes 1200 time 80 pv g1f3 b8c6');
+    worker.emit('bestmove g1f3');
+    await expect(pondering).resolves.toMatchObject({ bestmove: 'g1f3', depth: 30 });
+
+    const foreground = client.analyze(START_FEN, 30, 100, undefined, history);
+    await expect(foreground).resolves.toMatchObject({ bestmove: 'g1f3', depth: 30 });
+    expect(worker.commands.filter((command) => command.startsWith('go '))).toHaveLength(1);
+  });
+
+  it('normalizes en-passant square differences with canonicalFen when canceling ponder', async () => {
+    const worker = new FakeUciWorker();
+    const client = new UciClient(() => worker);
+    const epFen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+    const noEpFen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+
+    const pondering = client.ponder(epFen, 30);
+    await waitUntil(() => worker.commands.includes('go ponder depth 30'));
+
+    client.cancelPonder(noEpFen);
+    expect(worker.commands).not.toContain('stop');
+
+    client.cancelPonder(START_FEN);
+    expect(worker.commands).toContain('stop');
+    await expect(pondering).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
   it('rejects UCI moves that are not a legal square-to-square pair', () => {
     expect(isValidUciMove('e2e4')).toBe(true);
     expect(isValidUciMove('e7e8q')).toBe(true);

@@ -720,1794 +720,6 @@
 			clearArrows();
 		} else boardCtx.drawingBoard.style.display = "";
 	}
-	var PONDER_REUSE_DEPTH = 12;
-	var UCI_MOVE_PATTERN = /^[a-h][1-8][a-h][1-8][nbrq]?$/;
-	function isValidUciMove(move) {
-		return UCI_MOVE_PATTERN.test(move);
-	}
-	function deferred() {
-		let resolve;
-		let reject;
-		return {
-			promise: new Promise((res, rej) => {
-				resolve = res;
-				reject = rej;
-			}),
-			resolve,
-			reject
-		};
-	}
-	function abortError() {
-		return new DOMException("Analysis aborted", "AbortError");
-	}
-	function asError(reason) {
-		if (reason instanceof Error) return reason;
-		return new Error(typeof reason === "string" ? reason : "Stockfish worker failed");
-	}
-	function withTimeout(promise, timeoutMs, label) {
-		return new Promise((resolve, reject) => {
-			const timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs} ms`)), timeoutMs);
-			promise.then((value) => {
-				clearTimeout(timer);
-				resolve(value);
-			}, (error) => {
-				clearTimeout(timer);
-				reject(error);
-			});
-		});
-	}
-	function tokenValue(tokens, name) {
-		const index = tokens.indexOf(name);
-		return index >= 0 ? tokens[index + 1] : void 0;
-	}
-	function finiteInteger(raw) {
-		if (raw === void 0 || !/^-?\d+$/.test(raw)) return void 0;
-		const value = Number(raw);
-		return Number.isSafeInteger(value) ? value : void 0;
-	}
-	function clampSearchDepth(depth) {
-		return Math.max(1, Math.min(100, Math.floor(depth) || 1));
-	}
-	function clampTimeLimit(timeLimit) {
-		const value = Math.floor(timeLimit);
-		if (!Number.isFinite(value) || value <= 0) return 0;
-		return Math.min(12e4, value);
-	}
-	function parseInfo(line, previous, job) {
-		const tokens = line.trim().split(/\s+/);
-		if (tokens[0] !== "info" || tokens[1] === "string") return previous;
-		const multipvIndex = tokens.indexOf("multipv");
-		const hasMultipvToken = multipvIndex >= 0;
-		const multipv = hasMultipvToken ? finiteInteger(tokens[multipvIndex + 1]) ?? 1 : 1;
-		const existingLine = job?.multiPvLines.get(multipv);
-		const pvIndex = tokens.indexOf("pv");
-		const depth = finiteInteger(tokenValue(tokens, "depth")) ?? (multipv === 1 ? previous.depth : existingLine?.depth ?? 0);
-		const cpIndex = tokens.indexOf("cp");
-		const mateIndex = tokens.indexOf("mate");
-		let evaluation = multipv === 1 ? previous.evaluation : existingLine?.evaluation ?? {};
-		if (!(tokens.includes("lowerbound") || tokens.includes("upperbound"))) {
-			if (cpIndex >= 0) {
-				const cp = finiteInteger(tokens[cpIndex + 1]);
-				if (cp !== void 0) evaluation = { cp };
-			} else if (mateIndex >= 0) {
-				const mate = finiteInteger(tokens[mateIndex + 1]);
-				if (mate !== void 0) evaluation = { mate };
-			}
-		}
-		const pv = pvIndex >= 0 ? tokens.slice(pvIndex + 1).join(" ") : multipv === 1 ? previous.pv : existingLine?.pv ?? "";
-		const nodes = finiteInteger(tokenValue(tokens, "nodes")) ?? previous.nodes;
-		const time = finiteInteger(tokenValue(tokens, "time")) ?? previous.time;
-		if (job && (hasMultipvToken || pvIndex >= 0)) {
-			if (hasMultipvToken) job.hasMultiPv = true;
-			if (pvIndex >= 0 || existingLine === void 0) job.multiPvLines.set(multipv, {
-				multipv,
-				depth,
-				uci: pv ? pv.split(/\s+/)[0] ?? "" : "",
-				pv,
-				evaluation,
-				...nodes !== void 0 ? { nodes } : {},
-				...time !== void 0 ? { time } : {}
-			});
-		}
-		if (multipv === 1) return {
-			depth,
-			pv,
-			evaluation,
-			nodes,
-			time
-		};
-		return previous;
-	}
-	function positionCommand(fen, history) {
-		if (history && typeof history.startFen === "string" && history.startFen.length > 0 && !/[\r\n]/.test(history.startFen) && Array.isArray(history.moves) && history.moves.every(isValidUciMove)) {
-			const moves = history.moves.join(" ");
-			return `position fen ${history.startFen}${moves ? ` moves ${moves}` : ""}`;
-		}
-		return `position fen ${fen}`;
-	}
-	var UciClient = class {
-		workerFactory;
-		worker = null;
-		disposed = false;
-		setupController = null;
-		setupWaiter = null;
-		drainWaiter = null;
-		ready = false;
-		readyPromise = null;
-		uciWaiter = null;
-		readyWaiter = null;
-		active = null;
-		appliedMultiPv = 3;
-		ponderJob = null;
-		queue = [];
-		pumping = false;
-		resetRequested = false;
-		chess960;
-		initTimeoutMs;
-		searchTimeoutSlackMs;
-		stopTimeoutMs;
-		depthOnlyTimeoutMs;
-		constructor(workerFactory, options = {}) {
-			this.workerFactory = workerFactory;
-			this.initTimeoutMs = options.initTimeoutMs ?? 25e3;
-			this.searchTimeoutSlackMs = options.searchTimeoutSlackMs ?? 3e3;
-			this.stopTimeoutMs = options.stopTimeoutMs ?? 2e3;
-			this.depthOnlyTimeoutMs = options.depthOnlyTimeoutMs ?? 12e4;
-			this.chess960 = options.chess960 ?? false;
-		}
-		get busy() {
-			return this.pumping || this.queue.length > 0 || this.active !== null;
-		}
-		async warm() {
-			await this.ensureReady();
-		}
-		analyze(fen, depth, timeLimit, signal, history, slackMs, multiPv = 3) {
-			return this.analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv);
-		}
-		analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv = 3) {
-			if (this.disposed) return Promise.reject(new Error("Engine client is disposed"));
-			if (signal?.aborted) return Promise.reject(abortError());
-			if (!fen || /[\r\n]/.test(fen)) return Promise.reject(new Error("A valid position FEN is required"));
-			const positionKey = positionCommand(fen, history);
-			const requestedDepth = clampSearchDepth(depth);
-			const ponderJob = this.ponderJob;
-			if (ponderJob) {
-				if (ponderJob.positionKey === positionKey && ponderJob.depth === requestedDepth) {
-					this.promotePonder(ponderJob, timeLimit, signal);
-					return ponderJob.promise;
-				}
-				this.cancelPonder();
-			}
-			return this.enqueue(fen, depth, timeLimit, signal, history, false, slackMs, multiPv);
-		}
-		ponder(fen, depth, signal, history) {
-			if (this.disposed || signal?.aborted || !fen || /[\r\n]/.test(fen) || this.busy || this.ponderJob) return null;
-			return this.enqueue(fen, depth, 1, signal, history, true, void 0, 3);
-		}
-		cancelPonder(preserveFen) {
-			const job = this.ponderJob;
-			if (!job) return;
-			if (preserveFen !== void 0 && job.fen === preserveFen) return;
-			this.ponderJob = null;
-			this.abortJob(job);
-		}
-		enqueue(fen, depth, timeLimit, signal, history, pondering, slackMs, multiPv = 3) {
-			let resolve;
-			let reject;
-			const promise = new Promise((res, rej) => {
-				resolve = res;
-				reject = rej;
-			});
-			const job = {
-				fen,
-				positionKey: positionCommand(fen, history),
-				depth: clampSearchDepth(depth),
-				timeLimit: clampTimeLimit(timeLimit),
-				history,
-				pondering,
-				slackMs,
-				multiPv,
-				promise,
-				signal,
-				resolve,
-				reject,
-				settled: false,
-				searchStarted: false,
-				stopSent: false,
-				info: {
-					depth: 0,
-					pv: "",
-					evaluation: {}
-				},
-				multiPvLines: new Map(),
-				hasMultiPv: false
-			};
-			if (signal) this.attachAbort(job, signal);
-			this.queue.push(job);
-			if (pondering) this.ponderJob = job;
-			this.drain();
-			return promise;
-		}
-		attachAbort(job, signal) {
-			job.signal = signal;
-			job.onAbort = () => this.abortJob(job);
-			signal.addEventListener("abort", job.onAbort, { once: true });
-		}
-		promotePonder(job, timeLimit, signal) {
-			if (job.onAbort) job.signal?.removeEventListener("abort", job.onAbort);
-			job.onAbort = void 0;
-			job.signal = void 0;
-			job.pondering = false;
-			this.ponderJob = null;
-			const limit = clampTimeLimit(timeLimit);
-			job.timeLimit = limit > 0 ? limit : this.depthOnlyTimeoutMs;
-			if (signal) this.attachAbort(job, signal);
-			if (signal?.aborted) {
-				this.abortJob(job);
-				return;
-			}
-			if (this.active !== job || !job.searchStarted || job.resultValue) return;
-			if (job.info.depth >= PONDER_REUSE_DEPTH) {
-				this.stopActiveSearch(job);
-				return;
-			}
-			try {
-				this.send("ponderhit");
-				job.searchTimer = setTimeout(() => {
-					this.stopActiveSearch(job);
-				}, job.timeLimit);
-			} catch (error) {
-				job.result?.reject(error);
-				this.destroyWorker();
-			}
-		}
-		cancelAll(reason = abortError()) {
-			this.cancelSearches(reason);
-		}
-		cancelSearches(reason) {
-			const queued = this.queue.splice(0);
-			for (const job of queued) {
-				job.abortReason = reason;
-				this.rejectJob(job, reason);
-				this.cleanupJob(job);
-			}
-			if (this.active) {
-				this.active.abortReason = reason;
-				this.rejectJob(this.active, reason);
-				if (this.active.searchStarted && !this.active.resultValue) this.stopActiveSearch(this.active);
-			}
-			this.ponderJob = null;
-		}
-		reset() {
-			this.cancelAll(new Error("Engine reset"));
-			if (!this.worker) return;
-			this.resetRequested = true;
-			this.drain();
-		}
-		dispose() {
-			if (this.disposed) return;
-			this.disposed = true;
-			const reason = new Error("Engine client is disposed");
-			this.resetRequested = false;
-			this.ponderJob = null;
-			for (const job of this.queue.splice(0)) {
-				this.rejectJob(job, reason);
-				this.cleanupJob(job);
-			}
-			if (this.active) {
-				this.active.abortReason = reason;
-				this.rejectJob(this.active, reason);
-				this.active.result?.reject(reason);
-				this.cleanupJob(this.active);
-			}
-			this.setupController?.abort();
-			this.setupWaiter?.reject(reason);
-			this.uciWaiter?.reject(reason);
-			this.readyWaiter?.reject(reason);
-			this.destroyWorker();
-		}
-		abortJob(job) {
-			const reason = abortError();
-			job.abortReason = reason;
-			this.rejectJob(job, reason);
-			if (this.active === job) {
-				if (job.searchStarted && !job.resultValue) this.stopActiveSearch(job);
-				return;
-			}
-			const index = this.queue.indexOf(job);
-			if (index >= 0) {
-				this.queue.splice(index, 1);
-				this.cleanupJob(job);
-			}
-		}
-		rejectJob(job, reason) {
-			if (job.settled) return;
-			job.settled = true;
-			job.reject(reason);
-		}
-		resolveJob(job, result) {
-			if (job.settled) return;
-			job.settled = true;
-			job.resolve(result);
-		}
-		cleanupJob(job) {
-			if (job.onAbort) job.signal?.removeEventListener("abort", job.onAbort);
-			if (job.searchTimer) clearTimeout(job.searchTimer);
-			if (job.stopTimer) clearTimeout(job.stopTimer);
-		}
-		async drain() {
-			if (this.pumping) return;
-			this.pumping = true;
-			const drained = deferred();
-			this.drainWaiter = drained;
-			try {
-				while (this.resetRequested || this.queue.length > 0) {
-					if (this.resetRequested) {
-						await this.performReset();
-						continue;
-					}
-					const job = this.queue.shift();
-					if (!job) continue;
-					if (job.abortReason || job.signal?.aborted) {
-						this.rejectJob(job, job.abortReason ?? abortError());
-						this.cleanupJob(job);
-						continue;
-					}
-					this.active = job;
-					try {
-						await this.ensureReady();
-						if (job.abortReason || job.signal?.aborted) throw job.abortReason ?? abortError();
-						const result = await this.runSearch(job);
-						if (job.timeoutReason) throw job.timeoutReason;
-						if (job.abortReason || job.signal?.aborted) throw job.abortReason ?? abortError();
-						this.resolveJob(job, result);
-					} catch (error) {
-						this.rejectJob(job, error);
-					} finally {
-						this.cleanupJob(job);
-						if (this.ponderJob === job) this.ponderJob = null;
-						if (this.active === job) this.active = null;
-					}
-				}
-			} catch (error) {
-				const reason = asError(error);
-				for (const job of this.queue.splice(0)) {
-					this.rejectJob(job, reason);
-					this.cleanupJob(job);
-				}
-				this.resetRequested = false;
-			} finally {
-				this.pumping = false;
-				drained.resolve();
-				if (this.drainWaiter === drained) this.drainWaiter = null;
-				if (this.resetRequested || this.queue.length > 0) this.drain();
-			}
-		}
-		async performReset() {
-			if (!this.worker) {
-				this.resetRequested = false;
-				return;
-			}
-			await this.ensureReady();
-			const waiter = deferred();
-			this.readyWaiter = waiter;
-			try {
-				this.send("ucinewgame");
-				this.send("isready");
-				await withTimeout(waiter.promise, this.initTimeoutMs, "Stockfish reset");
-				this.resetRequested = false;
-			} catch (error) {
-				this.destroyWorker();
-				throw error;
-			} finally {
-				if (this.readyWaiter === waiter) this.readyWaiter = null;
-			}
-		}
-		async ensureReady() {
-			if (this.disposed) throw new Error("Engine client is disposed");
-			if (this.ready) return;
-			if (this.readyPromise) return this.readyPromise;
-			const readyPromise = this.initialize();
-			this.readyPromise = readyPromise;
-			try {
-				await readyPromise;
-			} finally {
-				if (this.readyPromise === readyPromise) this.readyPromise = null;
-			}
-		}
-		async initialize() {
-			if (!this.worker) {
-				const setupController = new AbortController();
-				const setup = deferred();
-				this.setupController = setupController;
-				this.setupWaiter = setup;
-				Promise.resolve().then(() => {
-					if (setupController.signal.aborted) throw new Error("Engine client is disposed");
-					return this.workerFactory(setupController.signal);
-				}).then((worker) => {
-					if (setupController.signal.aborted || this.disposed) {
-						worker.terminate();
-						return;
-					}
-					setup.resolve(worker);
-				}).catch((error) => setup.reject(error));
-				let worker;
-				try {
-					worker = await withTimeout(setup.promise, this.initTimeoutMs, "Stockfish worker setup");
-					if (this.disposed || setupController.signal.aborted) {
-						worker.terminate();
-						throw new Error("Engine client is disposed");
-					}
-				} catch (error) {
-					setupController.abort();
-					throw error;
-				} finally {
-					if (this.setupController === setupController) this.setupController = null;
-					if (this.setupWaiter === setup) this.setupWaiter = null;
-				}
-				worker.onmessage = (event) => this.handleMessage(String(event.data));
-				worker.onerror = (event) => this.handleError(event.error ?? new Error(event.message || "Stockfish worker error"));
-				this.worker = worker;
-			}
-			const uci = deferred();
-			this.uciWaiter = uci;
-			this.send("uci");
-			try {
-				await withTimeout(uci.promise, this.initTimeoutMs, "Stockfish UCI initialization");
-				if (this.disposed) throw new Error("Engine client is disposed");
-			} catch (error) {
-				this.destroyWorker();
-				throw error;
-			} finally {
-				if (this.uciWaiter === uci) this.uciWaiter = null;
-			}
-			const ready = deferred();
-			this.readyWaiter = ready;
-			this.send(`setoption name UCI_Chess960 value ${this.chess960}`);
-			this.appliedMultiPv = 3;
-			this.send(`setoption name MultiPV value ${this.appliedMultiPv}`);
-			this.send("isready");
-			try {
-				await withTimeout(ready.promise, this.initTimeoutMs, "Stockfish readiness");
-				if (this.disposed) throw new Error("Engine client is disposed");
-				this.ready = true;
-			} catch (error) {
-				this.destroyWorker();
-				throw error;
-			} finally {
-				if (this.readyWaiter === ready) this.readyWaiter = null;
-			}
-		}
-		async runSearch(job) {
-			const result = deferred();
-			job.result = result;
-			const depthOnly = job.timeLimit <= 0;
-			const budget = depthOnly ? this.depthOnlyTimeoutMs : job.timeLimit;
-			if (job.multiPv !== this.appliedMultiPv) {
-				this.send(`setoption name MultiPV value ${job.multiPv}`);
-				this.appliedMultiPv = job.multiPv;
-			}
-			this.send(job.positionKey);
-			job.searchStarted = true;
-			if (job.pondering) {
-				this.send(`go ponder depth ${job.depth}`);
-				try {
-					return await result.promise;
-				} catch (error) {
-					if (job.stopSent) this.destroyWorker();
-					throw error;
-				}
-			}
-			const slack = job.slackMs ?? this.searchTimeoutSlackMs;
-			job.searchTimer = setTimeout(() => {
-				job.timeoutReason = new Error(`Stockfish search exceeded ${budget + slack} ms`);
-				this.stopActiveSearch(job);
-			}, budget + slack);
-			this.send(depthOnly ? `go depth ${job.depth}` : `go depth ${job.depth} movetime ${job.timeLimit}`);
-			try {
-				return await result.promise;
-			} catch (error) {
-				if (job.stopSent) this.destroyWorker();
-				throw error;
-			}
-		}
-		stopActiveSearch(job) {
-			if (job.stopSent || this.active !== job) return;
-			job.stopSent = true;
-			if (job.searchTimer) clearTimeout(job.searchTimer);
-			try {
-				this.send("stop");
-			} catch (error) {
-				job.result?.reject(error);
-				this.destroyWorker();
-				return;
-			}
-			job.stopTimer = setTimeout(() => {
-				if (this.active !== job) return;
-				const reason = job.abortReason ?? job.timeoutReason ?? new Error("Stockfish did not return bestmove after stop");
-				job.result?.reject(reason);
-				this.destroyWorker();
-			}, this.stopTimeoutMs);
-		}
-		handleMessage(line) {
-			const message = line.trim();
-			if (!message) return;
-			if (message === "uciok") {
-				this.uciWaiter?.resolve();
-				return;
-			}
-			if (message === "readyok") {
-				this.readyWaiter?.resolve();
-				return;
-			}
-			const job = this.active;
-			if (!job?.searchStarted) return;
-			if (message.startsWith("info ")) {
-				job.info = parseInfo(message, job.info, job);
-				return;
-			}
-			if (message.startsWith("bestmove ")) {
-				if (job.searchTimer) clearTimeout(job.searchTimer);
-				if (job.stopTimer) clearTimeout(job.stopTimer);
-				const bestmove = message.split(/\s+/)[1] ?? "";
-				const terminal = bestmove === "(none)";
-				const multiPv = job.hasMultiPv && job.multiPvLines.size > 0 ? Array.from(job.multiPvLines.values()).sort((a, b) => a.multipv - b.multipv) : void 0;
-				const common = {
-					depth: job.info.depth,
-					pv: job.info.pv,
-					evaluation: job.info.evaluation,
-					...job.info.nodes === void 0 ? {} : { nodes: job.info.nodes },
-					...job.info.time === void 0 ? {} : { time: job.info.time },
-					...multiPv ? { multiPv } : {}
-				};
-				job.resultValue = isValidUciMove(bestmove) ? {
-					...common,
-					success: true,
-					bestmove
-				} : {
-					...common,
-					success: false,
-					bestmove: terminal ? "(none)" : ""
-				};
-				job.result?.resolve(job.resultValue);
-			}
-		}
-		handleError(reason) {
-			const error = asError(reason);
-			this.uciWaiter?.reject(error);
-			this.readyWaiter?.reject(error);
-			this.active?.result?.reject(error);
-			this.destroyWorker();
-		}
-		send(command) {
-			if (!this.worker) throw new Error("Stockfish worker is unavailable");
-			this.worker.postMessage(command);
-		}
-		destroyWorker() {
-			const worker = this.worker;
-			this.worker = null;
-			this.ready = false;
-			this.readyPromise = null;
-			if (!worker) return;
-			worker.onmessage = null;
-			worker.onerror = null;
-			try {
-				worker.terminate();
-			} catch {}
-		}
-	};
-	var standard = {
-		id: "standard",
-		rules: "chess",
-		chess960: false
-	};
-	var chess960 = {
-		...standard,
-		id: "chess960",
-		chess960: true
-	};
-	function getVariantDefinition(variant) {
-		const key = (variant || "standard").toLowerCase().replace(/[\s_-]/g, "");
-		if (key === "chess" || key === "fromposition" || key === "standard") return standard;
-		if (key === "chess960" || key === "fischerandom") return chess960;
-		return null;
-	}
-	var ResourceWorker = class {
-		worker;
-		objectUrls;
-		constructor(worker, objectUrls) {
-			this.worker = worker;
-			this.objectUrls = objectUrls;
-		}
-		get onmessage() {
-			return this.worker.onmessage;
-		}
-		set onmessage(handler) {
-			this.worker.onmessage = handler;
-		}
-		get onerror() {
-			return this.worker.onerror;
-		}
-		set onerror(handler) {
-			this.worker.onerror = handler;
-		}
-		postMessage(command) {
-			this.worker.postMessage(command);
-		}
-		terminate() {
-			this.worker.terminate();
-			for (const objectUrl of this.objectUrls) URL.revokeObjectURL(objectUrl);
-		}
-	};
-	async function createStockfishWorker(signal) {
-		if (typeof Worker === "undefined") throw new Error("Stockfish requires browser Web Worker support");
-		if (typeof Blob === "undefined" || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") throw new Error("Stockfish worker resources are unavailable in this browser");
-		if (typeof GM_getResourceText !== "function" || typeof GM_getResourceURL !== "function") throw new Error("Stockfish resources are missing; check userscript @resource permissions");
-		const source = GM_getResourceText("stockfish.js");
-		const wasmUrl = GM_getResourceURL("stockfish.wasm");
-		if (typeof source !== "string" || source.length === 0 || typeof wasmUrl !== "string" || wasmUrl.length === 0) throw new Error("Stockfish JavaScript or WASM resource could not be loaded");
-		let wasmObjectUrl;
-		let workerObjectUrl;
-		try {
-			const response = await fetch(wasmUrl, { signal });
-			if (!response.ok) throw new Error(`WASM resource request failed with status ${response.status}`);
-			const wasm = await response.arrayBuffer();
-			if (signal.aborted) throw new DOMException("Worker setup aborted", "AbortError");
-			wasmObjectUrl = URL.createObjectURL(new Blob([wasm], { type: "application/wasm" }));
-			workerObjectUrl = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
-			const workerUrl = `${workerObjectUrl}#${encodeURIComponent(wasmObjectUrl)}`;
-			return new ResourceWorker(new Worker(workerUrl), [workerObjectUrl, wasmObjectUrl]);
-		} catch (error) {
-			if (workerObjectUrl) URL.revokeObjectURL(workerObjectUrl);
-			if (wasmObjectUrl) URL.revokeObjectURL(wasmObjectUrl);
-			const detail = error instanceof Error ? `: ${error.message}` : "";
-			throw new Error(`Stockfish worker could not start${detail}`);
-		}
-	}
-	var EngineWorkerClient = class {
-		currentChess960 = false;
-		client = new UciClient(createStockfishWorker);
-		ponderFen = null;
-		async ensureEngine(chess960 = false) {
-			if (this.currentChess960 !== chess960) {
-				this.cancelPonder();
-				this.client.dispose();
-				this.currentChess960 = chess960;
-				this.client = new UciClient(createStockfishWorker, { chess960 });
-			}
-			const client = this.client;
-			await client.warm();
-			if (client !== this.client) throw new Error("Engine request was replaced");
-			return client;
-		}
-		warm() {
-			return this.client.warm();
-		}
-		async analyze(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv) {
-			if (signal?.aborted) throw new DOMException("Search aborted", "AbortError");
-			const definition = getVariantDefinition(variant);
-			if (!definition) throw new Error(`Unknown variant: ${variant}`);
-			this.ponderFen = null;
-			return (await this.ensureEngine(definition.chess960)).analyze(fen, depth, timeLimit, signal, history, slackMs, multiPv);
-		}
-		ponder(fen, depth, history) {
-			if (!fen || this.client.busy || this.ponderFen) return false;
-			const promise = this.client.ponder(fen, depth, void 0, history);
-			if (!promise) return false;
-			this.ponderFen = fen;
-			promise.catch(() => {}).finally(() => {
-				if (this.ponderFen === fen) this.ponderFen = null;
-			});
-			return true;
-		}
-		cancelPonder(preserveFen) {
-			if (this.ponderFen && preserveFen !== void 0 && this.ponderFen === preserveFen) return;
-			this.ponderFen = null;
-			this.client.cancelPonder(preserveFen);
-		}
-		reset() {
-			this.cancelPonder();
-			this.client.reset();
-		}
-	};
-	var engineWorker = new EngineWorkerClient();
-	function warmEngine() {
-		return engineWorker.warm();
-	}
-	function resetEngine() {
-		engineWorker.reset();
-	}
-	function getAnalysis(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv) {
-		return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv);
-	}
-	function ponderPosition(fen, depth, history) {
-		return engineWorker.ponder(fen, depth, history);
-	}
-	function cancelPonder(preserveFen) {
-		engineWorker.cancelPonder(preserveFen);
-	}
-	function parseBestLine(data) {
-		if (!data || typeof data !== "object") return null;
-		const result = data;
-		const uci = typeof result.bestmove === "string" ? result.bestmove.trim() : "";
-		if (!result.success || !isValidUciMove(uci)) return null;
-		const score = {};
-		if (typeof result.evaluation?.cp === "number" && Number.isFinite(result.evaluation.cp)) score.cp = result.evaluation.cp;
-		else if (typeof result.evaluation?.mate === "number" && Number.isFinite(result.evaluation.mate)) score.mate = result.evaluation.mate;
-		return {
-			uci,
-			pv: typeof result.pv === "string" && result.pv.trim() ? result.pv.trim() : uci,
-			score,
-			...result.multiPv && result.multiPv.length > 0 ? { multiPv: result.multiPv } : {}
-		};
-	}
-	var n$1;
-	var t$2;
-	var i$2;
-	var r$2;
-	var u$3;
-	var f$3;
-	var o$3;
-	var e$2;
-	var l$3;
-	var c$2;
-	var a$2;
-	var h$3 = {};
-	var p$3 = [];
-	var v$2 = /^m(i|n|o|s|text|space)$/;
-	var y$3 = Array.isArray;
-	var d$3 = p$3.slice;
-	var w$2 = Object.assign;
-	function _$3(n) {
-		n && n.parentNode && n.remove();
-	}
-	function b$3(i, r, u, f, o) {
-		var e = {
-			type: i,
-			props: r,
-			key: u,
-			ref: f,
-			__k: null,
-			__: null,
-			__b: 0,
-			__e: null,
-			__c: null,
-			constructor: void 0,
-			__v: o || ++t$2,
-			__i: -1,
-			__u: 0
-		};
-		return !o && n$1.vnode && n$1.vnode(e), e;
-	}
-	function M(n) {
-		return n.children;
-	}
-	function $(n, t) {
-		this.props = n, this.context = t, this.__g = 0;
-	}
-	function x$2(n, t) {
-		if (null == t) return n.__ ? x$2(n.__, n.__i + 1) : null;
-		for (var i; t < n.__k.length; t++) if ((i = n.__k[t]) && i.__e) return i.__e;
-		return "function" != typeof n.type || n.props.__P ? null : x$2(n);
-	}
-	function S$1(n) {
-		if ((n = n.__) && n.__c && !n.props.__P) return n.__e = null, n.__k.some(function(t) {
-			return t && (n.__e = t.__e);
-		}), S$1(n);
-	}
-	function C$1(t) {
-		(8 & t.__g || !(t.__g |= 8) || !r$2.push(t) || f$3++) && u$3 == n$1.debounceRendering || ((u$3 = n$1.debounceRendering) || queueMicrotask)(j$1);
-	}
-	function j$1() {
-		var t, i, u, e, l, c, a, s, h;
-		try {
-			for (i = 1; r$2.length;) r$2.length > i && r$2.sort(o$3), t = r$2.shift(), i = r$2.length, 8 & t.__g && (e = void 0, l = void 0, c = (l = (u = t).__v).__e, a = [], s = [], (h = u.__P) && ((e = w$2({ constructor: void 0 }, l)).__v = l.__v + 1, n$1.vnode && n$1.vnode(e), N(h, e, l, u.__n, h.namespaceURI, 32 & l.__u ? [c] : null, a, c || x$2(l), 32 & l.__u, s), e.__v = l.__v, e.__.__k[e.__i] = e, z$1(a, e, s), l.__ = l.__e = null, e.__e != c && S$1(e)));
-		} finally {
-			r$2.length = f$3 = 0;
-		}
-	}
-	function L(n, t, i, r, u, f, o, e, l, c, a) {
-		var s, v, y, d, w, _, g = r.__k || p$3, k = t.length;
-		for (l = H(i, t, g, l, k), s = 0; s < k; s++) null != (y = i.__k[s]) && (v = ~y.__i && g[y.__i] || h$3, y.__i = s, _ = N(n, y, v, u, f, o, e, l, c, a), d = y.__e, (v.ref != y.ref || 8 & v.__u) && (v.ref && D$1(v.ref, null, y, v), y.ref && a.push(y.ref, y.__c || d, y)), w = w || d, 4 & y.__u ? (l = I(y, l, n, !v.__v), v.__e && (v.__e = null)) : "function" == typeof y.type && void 0 !== _ ? l = _ : d && (l = d.nextSibling), y.__u &= -7);
-		return i.__e = w, l;
-	}
-	function H(n, t, i, r, u) {
-		var f, o, e, l, c, a, s, h, p, v, d = i.length, w = d, _ = 0, g = !1, k = n.__k = Array(u);
-		for (f = 0; f < u; f++) null != (o = t[f]) && "boolean" != typeof o && "function" != typeof o ? ("object" != typeof o || o.constructor == String ? o = k[f] = b$3(null, o) : y$3(o) ? o = k[f] = b$3(M, { children: o }) : void 0 === o.constructor && o.__b ? o = k[f] = b$3(o.type, o.props, o.key, o.ref, o.__v) : k[f] = o, l = f + _, o.__ = n, o.__b = n.__b + 1, e = null, ~(c = o.__i = O(o, i, l, w)) && (w--, (e = i[c]) && (e.__u |= 2)), e && e.__v ? (o.__u |= 2, c == l - 1 ? _-- : c == l + 1 ? _++ : c != l && (c > l ? _-- : _++, g = !0)) : (~c || (u > d ? _-- : u < d && _++), "function" != typeof o.type && (o.__u |= 4))) : k[f] = null;
-		if (g) {
-			for (a = [], s = [], f = 0; f < u; f++) if ((o = k[f]) && 2 & o.__u) {
-				for (h = 0, p = a.length; h < p;) a[v = h + p >> 1] < o.__i ? h = v + 1 : p = v;
-				a[h] = o.__i, s[f] = h + 1;
-			}
-			for (_ = a.length; f--;) s[f] && (s[f] == _ ? _-- : k[f].__u |= 4);
-		}
-		if (w) for (f = 0; f < d; f++) !(e = i[f]) || 2 & e.__u || (e.__e == r && (r = x$2(e)), E$2(e, e));
-		return r;
-	}
-	function I(n, t, i, r) {
-		var u, f, o;
-		if ("function" == typeof n.type) {
-			if (n.props.__P) return t;
-			if (u = n.__k) for (f = 0; f < u.length; f++) u[f] && (u[f].__ = n, t = I(u[f], t, i, !1));
-			return t;
-		}
-		for (t && !t.parentNode && (t = x$2(n)) && !t.parentNode && (t = null), o = t; o && 8 == o.nodeType;) o = o.nextSibling;
-		for (n.__e != o && (!r && i.moveBefore && n.__e.parentNode ? i.moveBefore(n.__e, t) : i.insertBefore(n.__e, t || null)), t = n.__e; (t = t && t.nextSibling) && 8 == t.nodeType;);
-		return t;
-	}
-	function O(n, t, i, r) {
-		var u, f, o, e = n.key, l = n.type, c = t[i], a = c && !(2 & c.__u);
-		if (null === c && null == e || a && e == c.key && l == c.type) return i;
-		if (r > (a ? 1 : 0)) {
-			for (u = i - 1, f = i + 1; u >= 0 || f < t.length;) if ((c = t[o = u >= 0 ? u-- : f++]) && !(2 & c.__u) && e == c.key && l == c.type) return o;
-		}
-		return -1;
-	}
-	function P(n, t, i) {
-		i ??= "", "-" == t[0] ? n.setProperty(t, i) : n[t] = i;
-	}
-	function T$1(n, t, i, r, u) {
-		var f, o;
-		n: if ("style" == t) if ("string" == typeof i) n.style.cssText = i;
-		else {
-			if ("string" == typeof r && (n.style.cssText = r = ""), r) for (t in r) i && t in i || P(n.style, t, "");
-			if (i) for (t in i) r && i[t] == r[t] || P(n.style, t, i[t]);
-		}
-		else if ("o" == t[0] && "n" == t[1]) (n.__e || (n.__e = {}))[t] = i, i && r || (o = a$2[t] || (a$2[t] = q$1(t)), (n.__a || (n.__a = {}))[t] = c$2, f = t != (t = t.replace(l$3, "$1")), (t = t.slice(2))[0] < "a" && (t = t.toLowerCase()), i ? n.addEventListener(t, o, f) : n.removeEventListener(t, o, f));
-		else {
-			if ("http://www.w3.org/2000/svg" == u) t = t.replace(/xlink(H|:h)/, "h").replace(/sName$/, "s");
-			else if ("width" != t && "height" != t && "href" != t && "list" != t && "form" != t && "tabIndex" != t && "download" != t && "rowSpan" != t && "colSpan" != t && "role" != t && "popover" != t && t in n) try {
-				n[t] = null == i ? "" : i;
-				break n;
-			} catch (n) {}
-			"function" == typeof i || (null == i || !1 === i && "-" != t[4] ? n.removeAttribute(t) : n.setAttribute(t, "popover" == t && 1 == i ? "" : i));
-		}
-	}
-	function q$1(t) {
-		return function(i) {
-			if (this.__e) {
-				var r = this.__e[t];
-				if (null == i[e$2]) i[e$2] = c$2++;
-				else if (i[e$2] < this.__a[t]) return;
-				return r(n$1.event ? n$1.event(i) : i);
-			}
-		};
-	}
-	function N(t, i, r, u, f, o, e, l, c, a) {
-		var s, h, v, d, g, k, b, m, S, C, j, H, I, A, O, P, T, q, N, z, D = i.type;
-		if (void 0 !== i.constructor) return null;
-		if (128 & r.__u && (c = 32 & r.__u, s = r.__c.__z)) {
-			if (i.__u |= c, h = o = [], 8 == s.nodeType) for (v = 1, d = s.nextSibling; d; d = d.nextSibling) {
-				if (8 == d.nodeType) {
-					if (d.data.startsWith("$s")) v++;
-					else if (d.data.startsWith("/$s") && !--v) break;
-				}
-				o.push(d);
-			}
-			else o.push(s);
-			l = o[0];
-		}
-		(s = n$1.__b) && s(i);
-		n: if ("function" == typeof D) {
-			g = e.length;
-			try {
-				if (C = i.props, j = (s = D.prototype) && s.render, H = (s = D.contextType) && u[s.__c], I = s ? H ? H.props.value : s.__ : u, r.__c ? 2 & (k = i.__c = r.__c).__g && (k.__g |= 1) : (j ? i.__c = k = new D(C, I) : (i.__c = k = new $(C, I), k.constructor = D, k.render = F$1), H && H.sub(k), k.state || (k.state = {}), k.__n = u, k.__g |= 8, k.__h = [], k.__k = []), j && (k.__s || (k.__s = k.state), D.getDerivedStateFromProps && (k.__s == k.state && (k.__s = w$2({}, k.__s)), w$2(k.__s, D.getDerivedStateFromProps(C, k.__s)))), b = k.props, m = k.state, k.__v = i, r.__c) {
-					if (j && !D.getDerivedStateFromProps && C !== b && k.componentWillReceiveProps && k.componentWillReceiveProps(C, I), i.__v == r.__v && !(8 & k.__g) || !(4 & k.__g) && k.shouldComponentUpdate && !1 === k.shouldComponentUpdate(C, k.__s, I)) {
-						i.__v != r.__v && (k.props = C, k.state = k.__s, k.__g &= -9), i.__e = r.__e, i.__k = r.__k, i.__k.some(function(n) {
-							n && (n.__ = i);
-						}), p$3.push.apply(k.__h, k.__k), k.__k = [], k.__h.length && e.push(k), l = x$2(r);
-						break n;
-					}
-					k.componentWillUpdate && k.componentWillUpdate(C, k.__s, I), j && k.componentDidUpdate && k.__h.push(function() {
-						k.componentDidUpdate(b, m, S);
-					});
-				} else j && !D.getDerivedStateFromProps && k.componentWillMount && k.componentWillMount(), j && k.componentDidMount && k.__h.push(k.componentDidMount);
-				if (k.context = I, k.props = C, k.__P = t, k.__g &= -5, A = n$1.__r, O = 0, j) k.state = k.__s, k.__g &= -9, A && A(i), s = k.render(k.props, k.state, k.context), p$3.push.apply(k.__h, k.__k), k.__k = [];
-				else do
-					k.__g &= -9, A && A(i), s = k.render(k.props, k.state, k.context), k.state = k.__s;
-				while (8 & k.__g && ++O < 25);
-				k.state = k.__s, k.getChildContext && (u = w$2({}, u, k.getChildContext())), j && r.__c && k.getSnapshotBeforeUpdate && (S = k.getSnapshotBeforeUpdate(b, m)), P = s && s.type === M && null == s.key ? s.props.children : s, C.__P && (s = l, f = (t = C.__P).namespaceURI, c = o = null, r.props && r.props.__P != t && (r.__k.some(function(n) {
-					n && E$2(n, n);
-				}), r.__k = null), l = r.__k ? x$2(r, 0) : null), l = L(t, y$3(P) ? P : [P], i, r, u, f, o, e, l, c, a), C.__P && (i.__e = null, l = s), i.__u &= -161, 128 & r.__u && (k.__z = null), h && h.some(_$3), k.__h.length && e.push(k), 1 & k.__g && (k.__g &= -4);
-			} catch (t) {
-				if (e.length = g, i.__v = null, c || o) if (t.then) {
-					if (T = 0, i.__u |= c ? 160 : 128, o) {
-						for (~(N = o.indexOf(l || void 0)) || (N = o.length); (z = o[N - 1]) && 8 == z.nodeType;) N--;
-						for (; N < o.length; N++) if (z = o[N]) {
-							if (o[N] = null, 8 == z.nodeType) {
-								if (z.data.startsWith("$s")) T++ || (q = z);
-								else if (T && z.data.startsWith("/$s") && !--T) {
-									l = z;
-									break;
-								}
-							} else if (!T) break;
-						}
-					}
-					if (!q) {
-						for (; l && 8 == l.nodeType && l.nextSibling;) l = l.nextSibling;
-						q = l;
-					}
-					i.__c.__z || (i.__c.__z = q), i.__e = l;
-				} else o && o.some(_$3);
-				else i.__e = r.__e;
-				i.__k || (i.__k = r.__k || []), t.then || V(i), n$1.__e(t, i, r);
-			}
-		} else l = i.__e = B$1(r.__e, i, r, u, f, o, e, c, a, t);
-		return (s = n$1.diffed) && s(i), 128 & i.__u ? void 0 : l;
-	}
-	function V(n) {
-		n && (n.__c && (n.__c.__g |= 4), n.__k && n.__k.some(V));
-	}
-	function z$1(t, i, r) {
-		for (var u = 0; u < r.length;) D$1(r[u++], r[u++], r[u++]);
-		n$1.__c && n$1.__c(i, t), t.some(function(i) {
-			try {
-				t = i.__h, i.__h = [], t.some(function(n) {
-					n.call(i);
-				});
-			} catch (t) {
-				n$1.__e(t, i.__v);
-			}
-		});
-	}
-	function B$1(t, i, r, u, f, o, e, l, c, a) {
-		var s, p, w, g, k, b, m, M, $, S = r.props || h$3, C = i.props, j = i.type;
-		if ("svg" == j ? f = "http://www.w3.org/2000/svg" : "math" == j ? f = "http://www.w3.org/1998/Math/MathML" : f || (f = "http://www.w3.org/1999/xhtml"), o) {
-			for (s = 0; s < o.length; s++) if ((k = o[s]) && (j ? k.localName == j : 3 == k.nodeType)) {
-				t = k, o[s] = null;
-				break;
-			}
-		}
-		if (!t) {
-			if (M = a.ownerDocument || document, !j) return M.createTextNode(C);
-			t = M.createElementNS(f, j, C.is && C), l && (n$1.__m && n$1.__m(i, o), l = !1), o = null;
-		}
-		if (j) {
-			if (a = "template" == j ? t.content : t, o = "textarea" == j && null != C.defaultValue ? null : o && d$3.call(a.childNodes), !l && o) for (S = {}, s = 0; s < t.attributes.length; s++) S[(k = t.attributes[s]).name] = k.value;
-			for (s in S) k = S[s], "dangerouslySetInnerHTML" == s ? w = k : "children" == s || s in C || "value" == s && "defaultValue" in C || "checked" == s && "defaultChecked" in C || T$1(t, s, null, k, f);
-			for (s in $ = 1 & r.__u, C) k = C[s], "children" == s ? g = k : "dangerouslySetInnerHTML" == s ? p = k : "value" == s ? b = k : "checked" == s ? m = k : l && "function" != typeof k || !(S[s] !== k || $ && null != k) || T$1(t, s, k, S[s], f);
-			p ? (l || w && (p.__html == w.__html || p.__html == t.innerHTML) || (t.innerHTML = p.__html), i.__k = []) : (w && (t.textContent = ""), ("foreignObject" == j || "http://www.w3.org/1998/Math/MathML" == f && v$2.test(j)) && (f = "http://www.w3.org/1999/xhtml"), L(a, y$3(g) ? g : [g], i, r, u, f, o, e, o ? o[0] : r.__k && x$2(r, 0), l, c), o && o.some(_$3)), l && "textarea" != j || (s = "value", "progress" == j && null == b ? t.removeAttribute(s) : null == b || b === t[s] && ("progress" != j || b) || T$1(t, s, b, S[s], f), s = "checked", null != m && m != t[s] && T$1(t, s, m, S[s], f));
-		} else S === C || l && t.data == C || (t.data = C);
-		return t;
-	}
-	function D$1(t, i, r, u) {
-		try {
-			"function" == typeof t ? i ? i.__x = t(i) || 1 : u && (u = u.__c || u.__e) && (i = u.__x) && (u.__x = null, "function" == typeof i ? i() : t(null)) : t.current = i;
-		} catch (t) {
-			n$1.__e(t, r);
-		}
-	}
-	function E$2(t, i, r) {
-		var u, f;
-		if (n$1.unmount && n$1.unmount(t), !(u = t.ref) || u.current && u.current != t.__e || D$1(u, null, i, t), u = t.__c) {
-			if (u.componentWillUnmount) try {
-				u.componentWillUnmount();
-			} catch (t) {
-				n$1.__e(t, i);
-			}
-			u.__P = u.__n = null;
-		}
-		if (u = t.__k) for (f = 0; f < u.length; f++) u[f] && E$2(u[f], i, "function" != typeof t.type || r && !t.props.__P);
-		(u = t.__e) && (r || _$3(u), u.__e && (u.__e = null)), t.__e = t.__c = t.__ = null;
-	}
-	function F$1(n, t, i) {
-		return this.constructor(n, i);
-	}
-	function G$1(t, i) {
-		var r, u, f, o;
-		n$1.__ && n$1.__(t, i), 9 == i.nodeType && (i = i.documentElement), u = (r = t && 32 & t.__u) ? null : i.__k, i.__k = b$3(M, { children: [t] }), f = [], o = [], N(i, i.__k, u || h$3, h$3, i.namespaceURI, u ? null : i.firstChild ? d$3.call(i.childNodes) : null, f, u ? u.__e : i.firstChild, r, o), z$1(f, i.__k, o), i.__k.props.children = null;
-	}
-	n$1 = { __e: function(n, t, i, r) {
-		for (var u, o, e; t = t.__;) if ((u = t.__c) && !(1 & u.__g)) {
-			u.__g |= 4;
-			try {
-				if ((o = u.constructor) && o.getDerivedStateFromError && (u.setState(o.getDerivedStateFromError(n)), e = 8 & u.__g), u.componentDidCatch && (u.componentDidCatch(n, r || {}), e = 8 & u.__g), e) return void (u.__g |= 2);
-			} catch (t) {
-				n = t, e = 0;
-			}
-		}
-		throw f$3 = 0, n;
-	} }, t$2 = 0, i$2 = function(n) {
-		return null != n && void 0 === n.constructor;
-	}, $.prototype.setState = function(n, t) {
-		var i = this.__s;
-		i && i != this.state || (i = this.__s = w$2({}, this.state)), "function" == typeof n && (n = n(w$2({}, i), this.props)), n && (w$2(i, n), this.__v && (t && this.__k.push(t), C$1(this)));
-	}, $.prototype.forceUpdate = function(n) {
-		this.__v && (this.__g |= 4, n && this.__h.push(n), C$1(this));
-	}, $.prototype.render = M, r$2 = [], f$3 = 0, o$3 = function(n, t) {
-		return n.__v.__b - t.__v.__b;
-	}, e$2 = Symbol(), l$3 = /(PointerCapture)$|Capture$/i, c$2 = 0, a$2 = {};
-	var t$1;
-	var r$1;
-	var u$2;
-	var i$1;
-	var o$2 = Object.is;
-	var f$2 = 0;
-	var c$1 = [];
-	var e$1 = [];
-	var a$1 = n$1;
-	var v$1 = a$1.__b;
-	var l$2 = a$1.__r;
-	var m$1 = a$1.diffed;
-	var s$1 = a$1.__c;
-	var h$2 = a$1.unmount;
-	var p$2 = a$1.__;
-	function y$2(n, t) {
-		a$1.__h && a$1.__h(r$1, n, f$2 || t), f$2 = 0;
-		var u = r$1.__H || (r$1.__H = {
-			__: [],
-			__h: []
-		});
-		return n >= u.__.length && u.__.push({}), u.__[n];
-	}
-	function d$2(n) {
-		return f$2 = 1, _$2(G, n);
-	}
-	function _$2(n, u, i) {
-		var f = y$2(t$1++, 2);
-		if (f.t = n, !f.__c && (f.__ = [i ? i(u) : G(void 0, u), function(n) {
-			var t = f.__N ? f.__N[0] : f.__[0], r = f.t(t, n);
-			o$2(t, r) || (f.__N = [r, f.__[1]], f.__c.setState({}));
-		}], f.__c = r$1, !r$1.__f)) {
-			r$1.__f = !0;
-			var c = r$1.shouldComponentUpdate;
-			r$1.shouldComponentUpdate = function(n, t, r) {
-				var u = this.__H;
-				if (!u) return !0;
-				var i = !1, f = this.props != n;
-				if (u.__.some(function(n) {
-					n.__N && (i = !0, o$2(n.__[0], n.__N[0]) || (f = !0));
-				}), c) {
-					var e = c.call(this, n, t, r);
-					return i ? e || f : e;
-				}
-				return !i || f;
-			};
-		}
-		return f.__;
-	}
-	function A(n, u) {
-		var i = y$2(t$1++, 3);
-		!a$1.__s && E$1(i.__H, u) && (i.__P = !0, i.__ = n, i.u = u, r$1.__H.__h.push(i));
-	}
-	function T(n) {
-		return f$2 = 5, b$2(function() {
-			return { current: n };
-		}, []);
-	}
-	function b$2(n, r) {
-		var u = y$2(t$1++, 7);
-		return E$1(u.__H, r) && (u.__ = n(), u.__H = r), u.__;
-	}
-	function g$2() {
-		var n;
-		do {
-			for (; n = e$1.shift();) try {
-				C(n);
-			} catch (t) {
-				a$1.__e(t, { __: (n = n.__P) && n.__v });
-			}
-			for (; n = c$1.shift();) {
-				var t = n.__H;
-				if (n.__P && t) try {
-					t.__h.some(C), t.__h.some(D), t.__h = [];
-				} catch (r) {
-					t.__h = [], a$1.__e(r, n.__v);
-				}
-			}
-		} while (e$1.length);
-	}
-	a$1.__b = function(n) {
-		r$1 = null, v$1 && v$1(n);
-	}, a$1.__ = function(n, t) {
-		n && t.__k && t.__k.__m && (n.__m = t.__k.__m), p$2 && p$2(n, t);
-	}, a$1.__r = function(n) {
-		l$2 && l$2(n), t$1 = 0;
-		var i = (r$1 = n.__c).__H;
-		i && (u$2 == r$1 ? r$1.__h = [] : (i.__h.some(C), i.__h.some(D), t$1 = 0), i.__h = [], i.__.some(function(n) {
-			n.__N && (n.__ = n.__N), n.u = n.__N = void 0;
-		})), u$2 = r$1;
-	}, a$1.diffed = function(n) {
-		m$1 && m$1(n);
-		var t = n.__c;
-		t && t.__H && (t.__H.__h.length && B(c$1.push(t)), t.__H.__.some(function(n) {
-			n.u && (n.__H = n.u);
-		})), u$2 = r$1 = null;
-	}, a$1.__c = function(n, t) {
-		t.some(function(n) {
-			try {
-				n.__h.some(C), n.__h = n.__h.filter(function(n) {
-					return !n.__ || D(n);
-				});
-			} catch (r) {
-				t.some(function(n) {
-					n.__h && (n.__h = []);
-				}), t = [], a$1.__e(r, n.__v);
-			}
-		}), s$1 && s$1(n, t);
-	}, a$1.unmount = function(n) {
-		h$2 && h$2(n);
-		var t, r, u = n.__c;
-		u && u.__H && (u.__H.__.some(function(u) {
-			try {
-				if (u.__P && u.__c) {
-					if (void 0 === r) {
-						for (r = n.__; r && (!r.__c || !r.__c.__P);) r = r.__;
-						r = r && r.__c;
-					}
-					u.__P = r, B(e$1.push(u));
-				} else C(u);
-			} catch (n) {
-				t = n;
-			}
-		}), u.__H = void 0, t && a$1.__e(t, u.__v));
-	};
-	var k = "function" == typeof requestAnimationFrame;
-	function z(n) {
-		var t, r = function() {
-			clearTimeout(u), k && cancelAnimationFrame(t), setTimeout(n);
-		}, u = setTimeout(r, 35);
-		k && (t = requestAnimationFrame(r));
-	}
-	function B(n) {
-		1 != n && i$1 == a$1.requestAnimationFrame || ((i$1 = a$1.requestAnimationFrame) || z)(g$2);
-	}
-	function C(n) {
-		var t = r$1, u = n.__c;
-		"function" == typeof u && (n.__c = void 0, u()), r$1 = t;
-	}
-	function D(n) {
-		var t = r$1;
-		n.__c = n.__(), r$1 = t;
-	}
-	function E$1(n, t) {
-		return !n || n.length != t.length || t.some(function(t, r) {
-			return !o$2(t, n[r]);
-		});
-	}
-	function G(n, t) {
-		return "function" == typeof t ? t(n) : t;
-	}
-	var i = Symbol.for("preact-signals");
-	function t() {
-		if (!(v > 1)) {
-			var i, t = !1;
-			(function() {
-				var i = c;
-				c = void 0;
-				while (void 0 !== i) {
-					var t = i.S;
-					if (t.v === i.v) {
-						for (var n = t.t; void 0 !== n; n = n.x) if (n.i === i.i) n.i = t.i;
-					}
-					i = i.o;
-				}
-			})();
-			while (void 0 !== h$1) {
-				var n = h$1;
-				h$1 = void 0;
-				s++;
-				while (void 0 !== n) {
-					var r = n.u;
-					n.u = void 0;
-					n.f &= -3;
-					if (!(8 & n.f) && w$1(n)) try {
-						n.c();
-					} catch (n) {
-						if (!t) {
-							i = n;
-							t = !0;
-						}
-					}
-					n = r;
-				}
-			}
-			s = 0;
-			v--;
-			if (t) throw i;
-		} else v--;
-	}
-	function n(i) {
-		if (v > 0) return i();
-		e = ++u$1;
-		v++;
-		try {
-			return i();
-		} finally {
-			t();
-		}
-	}
-	var r;
-	var o$1 = void 0;
-	function f$1(i) {
-		var t = o$1, n = r;
-		o$1 = void 0;
-		r = void 0;
-		try {
-			return i();
-		} finally {
-			o$1 = t;
-			r = n;
-		}
-	}
-	var h$1 = void 0;
-	var v = 0;
-	var s = 0;
-	var u$1 = 0;
-	var e = 0;
-	var c = void 0;
-	var d$1 = 0;
-	function a(i) {
-		if (void 0 !== o$1) {
-			var t = i.n;
-			if (void 0 === t || t.t !== o$1) {
-				t = {
-					i: 0,
-					S: i,
-					p: o$1.s,
-					n: void 0,
-					t: o$1,
-					e: void 0,
-					x: void 0,
-					r: t
-				};
-				if (void 0 !== o$1.s) o$1.s.n = t;
-				o$1.s = t;
-				i.n = t;
-				if (32 & o$1.f) i.S(t);
-				return t;
-			} else if (-1 === t.i) {
-				t.i = 0;
-				if (void 0 !== t.n) {
-					t.n.p = t.p;
-					if (void 0 !== t.p) t.p.n = t.n;
-					t.p = o$1.s;
-					t.n = void 0;
-					o$1.s.n = t;
-					o$1.s = t;
-				}
-				return t;
-			}
-		}
-	}
-	function l$1(i, t) {
-		this.v = i;
-		this.i = 0;
-		this.n = void 0;
-		this.t = void 0;
-		this.l = 0;
-		this.W = null == t ? void 0 : t.watched;
-		this.Z = null == t ? void 0 : t.unwatched;
-		this.name = null == t ? void 0 : t.name;
-	}
-	l$1.prototype.brand = i;
-	l$1.prototype.h = function() {
-		return !0;
-	};
-	l$1.prototype.S = function(i) {
-		var t = this, n = this.t;
-		if (n !== i && void 0 === i.e) {
-			i.x = n;
-			this.t = i;
-			if (void 0 !== n) n.e = i;
-			else f$1(function() {
-				var i;
-				null == (i = t.W) || i.call(t);
-			});
-		}
-	};
-	l$1.prototype.U = function(i) {
-		var t = this;
-		if (void 0 !== this.t) {
-			var n = i.e, r = i.x;
-			if (void 0 !== n) {
-				n.x = r;
-				i.e = void 0;
-			}
-			if (void 0 !== r) {
-				r.e = n;
-				i.x = void 0;
-			}
-			if (i === this.t) {
-				this.t = r;
-				if (void 0 === r) f$1(function() {
-					var i;
-					null == (i = t.Z) || i.call(t);
-				});
-			}
-		}
-	};
-	l$1.prototype.subscribe = function(i) {
-		var t = this;
-		return j(function() {
-			var n = t.value;
-			f$1(function() {
-				return i(n);
-			});
-		}, { name: "sub" });
-	};
-	l$1.prototype.valueOf = function() {
-		return this.value;
-	};
-	l$1.prototype.toString = function() {
-		return this.value + "";
-	};
-	l$1.prototype.toJSON = function() {
-		return this.value;
-	};
-	l$1.prototype.peek = function() {
-		var i = this;
-		return f$1(function() {
-			return i.value;
-		});
-	};
-	Object.defineProperty(l$1.prototype, "value", {
-		get: function() {
-			var i = a(this);
-			if (void 0 !== i) i.i = this.i;
-			return this.v;
-		},
-		set: function(i) {
-			if (i !== this.v) {
-				if (s > 100) throw new Error("Cycle detected");
-				(function(i) {
-					if (0 !== v && 0 === s) {
-						if (i.l !== e) {
-							i.l = e;
-							c = {
-								S: i,
-								v: i.v,
-								i: i.i,
-								o: c
-							};
-						}
-					}
-				})(this);
-				this.v = i;
-				this.i++;
-				d$1++;
-				v++;
-				try {
-					for (var n = this.t; void 0 !== n; n = n.x) n.t.N();
-				} finally {
-					t();
-				}
-			}
-		}
-	});
-	function y$1(i, t) {
-		return new l$1(i, t);
-	}
-	function w$1(i) {
-		for (var t = i.s; void 0 !== t; t = t.n) if (t.S.i !== t.i || !t.S.h() || t.S.i !== t.i) return !0;
-		return !1;
-	}
-	function _$1(i) {
-		for (var t = i.s; void 0 !== t; t = t.n) {
-			var n = t.S.n;
-			if (void 0 !== n) t.r = n;
-			t.S.n = t;
-			t.i = -1;
-			if (void 0 === t.n) {
-				i.s = t;
-				break;
-			}
-		}
-	}
-	function b$1(i) {
-		var t = i.s, n = void 0;
-		while (void 0 !== t) {
-			var r = t.p;
-			if (-1 === t.i) {
-				t.S.U(t);
-				if (void 0 !== r) r.n = t.n;
-				if (void 0 !== t.n) t.n.p = r;
-			} else n = t;
-			t.S.n = t.r;
-			if (void 0 !== t.r) t.r = void 0;
-			t = r;
-		}
-		i.s = n;
-	}
-	function p$1(i, t) {
-		l$1.call(this, void 0, t);
-		this.x = i;
-		this.s = void 0;
-		this.g = d$1 - 1;
-		this.f = 4;
-	}
-	p$1.prototype = new l$1();
-	p$1.prototype.h = function() {
-		this.f &= -3;
-		if (1 & this.f) return !1;
-		if (32 == (36 & this.f)) return !0;
-		this.f &= -5;
-		if (this.g === d$1) return !0;
-		this.g = d$1;
-		this.f |= 1;
-		if (this.i > 0 && !w$1(this)) {
-			this.f &= -2;
-			return !0;
-		}
-		var i = o$1;
-		try {
-			_$1(this);
-			o$1 = this;
-			var t = this.x();
-			if (16 & this.f || this.v !== t || 0 === this.i) {
-				this.v = t;
-				this.f &= -17;
-				this.i++;
-			}
-		} catch (i) {
-			this.v = i;
-			this.f |= 16;
-			this.i++;
-		}
-		o$1 = i;
-		b$1(this);
-		this.f &= -2;
-		return !0;
-	};
-	p$1.prototype.S = function(i) {
-		if (void 0 === this.t) {
-			this.f |= 36;
-			for (var t = this.s; void 0 !== t; t = t.n) t.S.S(t);
-		}
-		l$1.prototype.S.call(this, i);
-	};
-	p$1.prototype.U = function(i) {
-		if (void 0 !== this.t) {
-			l$1.prototype.U.call(this, i);
-			if (void 0 === this.t) {
-				this.f &= -33;
-				for (var t = this.s; void 0 !== t; t = t.n) t.S.U(t);
-			}
-		}
-	};
-	p$1.prototype.N = function() {
-		if (!(2 & this.f)) {
-			this.f |= 6;
-			for (var i = this.t; void 0 !== i; i = i.x) i.t.N();
-		}
-	};
-	Object.defineProperty(p$1.prototype, "value", { get: function() {
-		if (1 & this.f) throw new Error("Cycle detected");
-		var i = a(this);
-		this.h();
-		if (void 0 !== i) i.i = this.i;
-		if (16 & this.f) throw this.v;
-		return this.v;
-	} });
-	function g$1(i, t) {
-		return new p$1(i, t);
-	}
-	function S(i) {
-		var n = i.m;
-		i.m = void 0;
-		if ("function" == typeof n) {
-			v++;
-			var r = o$1;
-			o$1 = void 0;
-			try {
-				n();
-			} catch (t) {
-				i.f &= -2;
-				i.f |= 8;
-				m(i);
-				throw t;
-			} finally {
-				o$1 = r;
-				t();
-			}
-		}
-	}
-	function m(i) {
-		for (var t = i.s; void 0 !== t; t = t.n) t.S.U(t);
-		i.x = void 0;
-		i.s = void 0;
-		S(i);
-	}
-	function x$1(i) {
-		if (o$1 !== this) throw new Error("Out-of-order effect");
-		b$1(this);
-		o$1 = i;
-		this.f &= -2;
-		if (8 & this.f) m(this);
-		t();
-	}
-	function E(i, t) {
-		this.x = i;
-		this.m = void 0;
-		this.s = void 0;
-		this.u = void 0;
-		this.f = 32;
-		this.name = null == t ? void 0 : t.name;
-		if (r) r.push(this);
-	}
-	E.prototype.c = function() {
-		var i = this.S();
-		try {
-			if (8 & this.f) return;
-			if (void 0 === this.x) return;
-			var t = this.x();
-			if ("function" == typeof t) this.m = t;
-		} finally {
-			i();
-		}
-	};
-	E.prototype.S = function() {
-		if (1 & this.f) throw new Error("Cycle detected");
-		this.f |= 1;
-		this.f &= -9;
-		S(this);
-		_$1(this);
-		v++;
-		var i = o$1;
-		o$1 = this;
-		return x$1.bind(this, i);
-	};
-	E.prototype.N = function() {
-		if (!(2 & this.f)) {
-			this.f |= 2;
-			this.u = h$1;
-			h$1 = this;
-		}
-	};
-	E.prototype.d = function() {
-		this.f |= 8;
-		if (!(1 & this.f)) m(this);
-	};
-	E.prototype.dispose = function() {
-		this.d();
-	};
-	function j(i, t) {
-		var n = new E(i, t);
-		try {
-			n.c();
-		} catch (i) {
-			n.d();
-			throw i;
-		}
-		var r = n.d.bind(n);
-		r[Symbol.dispose] = r;
-		return r;
-	}
-	var l;
-	var d;
-	var p = "undefined" != typeof window && !!window.__PREACT_SIGNALS_DEVTOOLS__;
-	var _ = [];
-	j(function() {
-		l = this.N;
-	})();
-	function g(i, r) {
-		n$1[i] = r.bind(null, n$1[i] || function() {});
-	}
-	function b(i) {
-		if (d) {
-			var n = d;
-			d = void 0;
-			n();
-		}
-		d = i && i.S();
-	}
-	function y(i) {
-		var n = this, t = i.data, f = useSignal(t);
-		f.name = "ReactiveDom";
-		f.value = t;
-		var e = b$2(function() {
-			var i = n, t = n.__v;
-			while (t = t.__) if (t.__c) {
-				t.__c.__$f |= 4;
-				break;
-			}
-			var o = g$1(function() {
-				var i = f.value.value;
-				return 0 === i ? 0 : !0 === i ? "" : i || "";
-			}), e = g$1(function() {
-				return !Array.isArray(o.value) && !i$2(o.value);
-			}), a = j(function() {
-				this.N = F;
-				if (e.value) {
-					var n = o.value;
-					if (i.__v && i.__v.__e && 3 === i.__v.__e.nodeType) i.__v.__e.data = n;
-				}
-			}), v = n.__$u.d;
-			n.__$u.d = function() {
-				a();
-				v.call(this);
-			};
-			return [e, o];
-		}, []), a = e[0], v = e[1];
-		return a.value ? v.peek() : v.value;
-	}
-	y.displayName = "ReactiveTextNode";
-	Object.defineProperties(l$1.prototype, {
-		constructor: {
-			configurable: !0,
-			value: void 0
-		},
-		type: {
-			configurable: !0,
-			value: y
-		},
-		props: {
-			configurable: !0,
-			get: function() {
-				var i = this;
-				return { data: { get value() {
-					return i.value;
-				} } };
-			}
-		},
-		__b: {
-			configurable: !0,
-			value: 1
-		}
-	});
-	g("__b", function(i, n) {
-		b();
-		if ("string" == typeof n.type) {
-			var r, t = n.props;
-			for (var o in t) if ("children" !== o) {
-				var f = t[o];
-				if (f instanceof l$1) {
-					if (!r) n.__np = r = {};
-					r[o] = f;
-					t[o] = f.peek();
-				}
-			}
-		}
-		i(n);
-	});
-	g("__r", function(i, n) {
-		i(n);
-		if (n.type !== M) {
-			b();
-			var r, o = n.__c;
-			if (o) {
-				o.__$f &= -2;
-				if (void 0 === (r = o.__$u)) o.__$u = r = function(i, n) {
-					var r;
-					j(function() {
-						r = this;
-					}, { name: n });
-					r.c = i;
-					return r;
-				}(function(i) {
-					return function() {
-						var n;
-						if (p) null == (n = this.y) || n.call(this);
-						i.__$f |= 1;
-						i.setState({});
-					};
-				}(o), "function" == typeof n.type ? n.type.displayName || n.type.name : "");
-			}
-			b(r);
-		}
-	});
-	g("__e", function(i, n, r, t) {
-		b();
-		i(n, r, t);
-	});
-	g("diffed", function(i, n) {
-		b();
-		var r;
-		if ("string" == typeof n.type && (r = n.__e)) {
-			var t = n.__np, o = n.props, f = r.U;
-			if (f) for (var e in f) {
-				var u = f[e];
-				if (!(void 0 === u || t && e in t)) {
-					u.d();
-					f[e] = void 0;
-				}
-			}
-			if (t) {
-				if (!f) {
-					f = {};
-					r.U = f;
-				}
-				for (var a in t) {
-					var c = f[a], v = t[a];
-					if (void 0 === c) {
-						c = w(r, a, v, o);
-						f[a] = c;
-					} else c.o(v, o);
-				}
-			}
-		}
-		i(n);
-	});
-	function w(i, n, r, t) {
-		var o = n in i && void 0 === i.ownerSVGElement, f = y$1(r);
-		return {
-			o: function(i, n) {
-				f.value = i;
-				t = n;
-			},
-			d: j(function() {
-				this.N = F;
-				var r = f.value.value;
-				if (t[n] !== r) {
-					t[n] = r;
-					if (o) i[n] = r;
-					else if (null != r && (!1 !== r || "-" === n[4])) i.setAttribute(n, r);
-					else i.removeAttribute(n);
-				}
-			})
-		};
-	}
-	g("unmount", function(i, n) {
-		if ("string" == typeof n.type) {
-			var r = n.__e;
-			if (r) {
-				var t = r.U;
-				if (t) {
-					r.U = void 0;
-					for (var o in t) {
-						var f = t[o];
-						if (f) f.d();
-					}
-				}
-			}
-			var e = n.__np;
-			if (e) {
-				var u = n.props;
-				for (var a in e) u[a] = e[a];
-			}
-			n.__np = void 0;
-		} else {
-			var c = n.__c;
-			if (c) {
-				c.__$f |= 8;
-				var v = c.__$u;
-				if (v) {
-					c.__$u = void 0;
-					v.d();
-				}
-			}
-		}
-		i(n);
-	});
-	g("__h", function(i, n, r, t) {
-		if (t < 3) n.__$f |= 2;
-		i(n, r, t);
-	});
-	$.prototype.shouldComponentUpdate = function(i, n) {
-		if (this.__R) return !0;
-		var r = this.__$u, t = r && void 0 !== r.s;
-		for (var o in n) return !0;
-		if (this.__f || "boolean" == typeof this.u && !0 === this.u) {
-			var f = 2 & this.__$f;
-			if (!(t || f || 4 & this.__$f)) return !0;
-			if (1 & this.__$f) return !0;
-		} else {
-			if (!(t || 4 & this.__$f)) return !0;
-			if (3 & this.__$f) return !0;
-		}
-		for (var e in i) if ("__source" !== e && i[e] !== this.props[e]) return !0;
-		for (var u in this.props) if (!(u in i)) return !0;
-		return !1;
-	};
-	function useSignal(i, n) {
-		return b$2(function() {
-			return y$1(i, n);
-		}, []);
-	}
-	var q = function(i) {
-		queueMicrotask(function() {
-			queueMicrotask(i);
-		});
-	};
-	function x() {
-		n(function() {
-			var i;
-			while (i = _.shift()) l.call(i);
-		});
-	}
-	function F() {
-		if (1 === _.push(this)) (n$1.requestAnimationFrame || q)(x);
-	}
 	var _Result = class {
 		unwrap(ok, err) {
 			const r = this._chain((value) => Result.ok(ok ? ok(value) : value), (error) => err ? Result.ok(err(error)) : Result.err(error));
@@ -4386,6 +2598,22 @@
 			case "crazyhouse": return Crazyhouse.fromSetup(setup);
 		}
 	};
+	var standard = {
+		id: "standard",
+		rules: "chess",
+		chess960: false
+	};
+	var chess960 = {
+		...standard,
+		id: "chess960",
+		chess960: true
+	};
+	function getVariantDefinition(variant) {
+		const key = (variant || "standard").toLowerCase().replace(/[\s_-]/g, "");
+		if (key === "chess" || key === "fromposition" || key === "standard") return standard;
+		if (key === "chess960" || key === "fischerandom") return chess960;
+		return null;
+	}
 	var STANDARD_INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 	function parseRules(variant) {
 		return getVariantDefinition(variant)?.rules ?? null;
@@ -4495,6 +2723,1776 @@
 		const nextSetup = position.toSetup();
 		nextSetup.epSquare = position.epSquare;
 		return makeFen(nextSetup);
+	}
+	var PONDER_REUSE_DEPTH = 12;
+	var UCI_MOVE_PATTERN = /^[a-h][1-8][a-h][1-8][nbrq]?$/;
+	function isValidUciMove(move) {
+		return UCI_MOVE_PATTERN.test(move);
+	}
+	function deferred() {
+		let resolve;
+		let reject;
+		return {
+			promise: new Promise((res, rej) => {
+				resolve = res;
+				reject = rej;
+			}),
+			resolve,
+			reject
+		};
+	}
+	function abortError() {
+		return new DOMException("Analysis aborted", "AbortError");
+	}
+	function asError(reason) {
+		if (reason instanceof Error) return reason;
+		return new Error(typeof reason === "string" ? reason : "Stockfish worker failed");
+	}
+	function withTimeout(promise, timeoutMs, label) {
+		return new Promise((resolve, reject) => {
+			const timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs} ms`)), timeoutMs);
+			promise.then((value) => {
+				clearTimeout(timer);
+				resolve(value);
+			}, (error) => {
+				clearTimeout(timer);
+				reject(error);
+			});
+		});
+	}
+	function tokenValue(tokens, name) {
+		const index = tokens.indexOf(name);
+		return index >= 0 ? tokens[index + 1] : void 0;
+	}
+	function finiteInteger(raw) {
+		if (raw === void 0 || !/^-?\d+$/.test(raw)) return void 0;
+		const value = Number(raw);
+		return Number.isSafeInteger(value) ? value : void 0;
+	}
+	function clampSearchDepth(depth) {
+		return Math.max(1, Math.min(100, Math.floor(depth) || 1));
+	}
+	function clampTimeLimit(timeLimit) {
+		const value = Math.floor(timeLimit);
+		if (!Number.isFinite(value) || value <= 0) return 0;
+		return Math.min(12e4, value);
+	}
+	function parseInfo(line, previous, job) {
+		const tokens = line.trim().split(/\s+/);
+		if (tokens[0] !== "info" || tokens[1] === "string") return previous;
+		const multipvIndex = tokens.indexOf("multipv");
+		const hasMultipvToken = multipvIndex >= 0;
+		const multipv = hasMultipvToken ? finiteInteger(tokens[multipvIndex + 1]) ?? 1 : 1;
+		const existingLine = job?.multiPvLines.get(multipv);
+		const pvIndex = tokens.indexOf("pv");
+		const depth = finiteInteger(tokenValue(tokens, "depth")) ?? (multipv === 1 ? previous.depth : existingLine?.depth ?? 0);
+		const cpIndex = tokens.indexOf("cp");
+		const mateIndex = tokens.indexOf("mate");
+		let evaluation = multipv === 1 ? previous.evaluation : existingLine?.evaluation ?? {};
+		if (!(tokens.includes("lowerbound") || tokens.includes("upperbound"))) {
+			if (cpIndex >= 0) {
+				const cp = finiteInteger(tokens[cpIndex + 1]);
+				if (cp !== void 0) evaluation = { cp };
+			} else if (mateIndex >= 0) {
+				const mate = finiteInteger(tokens[mateIndex + 1]);
+				if (mate !== void 0) evaluation = { mate };
+			}
+		}
+		const pv = pvIndex >= 0 ? tokens.slice(pvIndex + 1).join(" ") : multipv === 1 ? previous.pv : existingLine?.pv ?? "";
+		const nodes = finiteInteger(tokenValue(tokens, "nodes")) ?? previous.nodes;
+		const time = finiteInteger(tokenValue(tokens, "time")) ?? previous.time;
+		if (job && (hasMultipvToken || pvIndex >= 0)) {
+			if (hasMultipvToken) job.hasMultiPv = true;
+			if (pvIndex >= 0 || existingLine === void 0) job.multiPvLines.set(multipv, {
+				multipv,
+				depth,
+				uci: pv ? pv.split(/\s+/)[0] ?? "" : "",
+				pv,
+				evaluation,
+				...nodes !== void 0 ? { nodes } : {},
+				...time !== void 0 ? { time } : {}
+			});
+		}
+		if (multipv === 1) return {
+			depth,
+			pv,
+			evaluation,
+			nodes,
+			time
+		};
+		return previous;
+	}
+	function positionCommand(fen, history) {
+		if (history && typeof history.startFen === "string" && history.startFen.length > 0 && !/[\r\n]/.test(history.startFen) && Array.isArray(history.moves) && history.moves.every(isValidUciMove)) {
+			const moves = history.moves.join(" ");
+			return `position fen ${history.startFen}${moves ? ` moves ${moves}` : ""}`;
+		}
+		return `position fen ${fen}`;
+	}
+	var UciClient = class {
+		workerFactory;
+		worker = null;
+		disposed = false;
+		setupController = null;
+		setupWaiter = null;
+		drainWaiter = null;
+		ready = false;
+		readyPromise = null;
+		uciWaiter = null;
+		readyWaiter = null;
+		active = null;
+		appliedMultiPv = 3;
+		ponderJob = null;
+		queue = [];
+		pumping = false;
+		resetRequested = false;
+		chess960;
+		initTimeoutMs;
+		searchTimeoutSlackMs;
+		stopTimeoutMs;
+		depthOnlyTimeoutMs;
+		constructor(workerFactory, options = {}) {
+			this.workerFactory = workerFactory;
+			this.initTimeoutMs = options.initTimeoutMs ?? 25e3;
+			this.searchTimeoutSlackMs = options.searchTimeoutSlackMs ?? 3e3;
+			this.stopTimeoutMs = options.stopTimeoutMs ?? 2e3;
+			this.depthOnlyTimeoutMs = options.depthOnlyTimeoutMs ?? 12e4;
+			this.chess960 = options.chess960 ?? false;
+		}
+		get busy() {
+			return this.pumping || this.queue.length > 0 || this.active !== null;
+		}
+		async warm() {
+			await this.ensureReady();
+		}
+		analyze(fen, depth, timeLimit, signal, history, slackMs, multiPv = 3) {
+			return this.analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv);
+		}
+		analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv = 3) {
+			if (this.disposed) return Promise.reject(new Error("Engine client is disposed"));
+			if (signal?.aborted) return Promise.reject(abortError());
+			if (!fen || /[\r\n]/.test(fen)) return Promise.reject(new Error("A valid position FEN is required"));
+			const positionKey = positionCommand(fen, history);
+			const requestedDepth = clampSearchDepth(depth);
+			const ponderJob = this.ponderJob;
+			if (ponderJob) {
+				if (ponderJob.positionKey === positionKey && ponderJob.depth === requestedDepth) {
+					this.promotePonder(ponderJob, timeLimit, signal);
+					return ponderJob.promise;
+				}
+				this.cancelPonder();
+			}
+			return this.enqueue(fen, depth, timeLimit, signal, history, false, slackMs, multiPv);
+		}
+		ponder(fen, depth, signal, history) {
+			if (this.disposed || signal?.aborted || !fen || /[\r\n]/.test(fen) || this.busy || this.ponderJob) return null;
+			return this.enqueue(fen, depth, 1, signal, history, true, void 0, 3);
+		}
+		cancelPonder(preserveFen) {
+			const job = this.ponderJob;
+			if (!job) return;
+			if (preserveFen !== void 0) {
+				const variant = this.chess960 ? "chess960" : void 0;
+				if ((canonicalFen(job.fen, variant) ?? job.fen) === (canonicalFen(preserveFen, variant) ?? preserveFen)) return;
+			}
+			this.ponderJob = null;
+			this.abortJob(job);
+		}
+		enqueue(fen, depth, timeLimit, signal, history, pondering, slackMs, multiPv = 3) {
+			let resolve;
+			let reject;
+			const promise = new Promise((res, rej) => {
+				resolve = res;
+				reject = rej;
+			});
+			const job = {
+				fen,
+				positionKey: positionCommand(fen, history),
+				depth: clampSearchDepth(depth),
+				timeLimit: clampTimeLimit(timeLimit),
+				history,
+				pondering,
+				slackMs,
+				multiPv,
+				promise,
+				signal,
+				resolve,
+				reject,
+				settled: false,
+				searchStarted: false,
+				stopSent: false,
+				info: {
+					depth: 0,
+					pv: "",
+					evaluation: {}
+				},
+				multiPvLines: new Map(),
+				hasMultiPv: false
+			};
+			if (signal) this.attachAbort(job, signal);
+			this.queue.push(job);
+			if (pondering) this.ponderJob = job;
+			this.drain();
+			return promise;
+		}
+		attachAbort(job, signal) {
+			job.signal = signal;
+			job.onAbort = () => this.abortJob(job);
+			signal.addEventListener("abort", job.onAbort, { once: true });
+		}
+		promotePonder(job, timeLimit, signal) {
+			if (job.onAbort) job.signal?.removeEventListener("abort", job.onAbort);
+			job.onAbort = void 0;
+			job.signal = void 0;
+			job.pondering = false;
+			this.ponderJob = null;
+			const limit = clampTimeLimit(timeLimit);
+			job.timeLimit = limit > 0 ? limit : this.depthOnlyTimeoutMs;
+			if (signal) this.attachAbort(job, signal);
+			if (signal?.aborted) {
+				this.abortJob(job);
+				return;
+			}
+			if (this.active !== job || !job.searchStarted || job.resultValue) return;
+			if (job.info.depth >= PONDER_REUSE_DEPTH) {
+				this.stopActiveSearch(job);
+				return;
+			}
+			try {
+				this.send("ponderhit");
+				job.searchTimer = setTimeout(() => {
+					this.stopActiveSearch(job);
+				}, job.timeLimit);
+			} catch (error) {
+				job.result?.reject(error);
+				this.destroyWorker();
+			}
+		}
+		cancelAll(reason = abortError()) {
+			this.cancelSearches(reason);
+		}
+		cancelSearches(reason) {
+			const queued = this.queue.splice(0);
+			for (const job of queued) {
+				job.abortReason = reason;
+				this.rejectJob(job, reason);
+				this.cleanupJob(job);
+			}
+			if (this.active) {
+				this.active.abortReason = reason;
+				this.rejectJob(this.active, reason);
+				if (this.active.searchStarted && !this.active.resultValue) this.stopActiveSearch(this.active);
+			}
+			this.ponderJob = null;
+		}
+		reset() {
+			this.cancelAll(new Error("Engine reset"));
+			if (!this.worker) return;
+			this.resetRequested = true;
+			this.drain();
+		}
+		dispose() {
+			if (this.disposed) return;
+			this.disposed = true;
+			const reason = new Error("Engine client is disposed");
+			this.resetRequested = false;
+			this.ponderJob = null;
+			for (const job of this.queue.splice(0)) {
+				this.rejectJob(job, reason);
+				this.cleanupJob(job);
+			}
+			if (this.active) {
+				this.active.abortReason = reason;
+				this.rejectJob(this.active, reason);
+				this.active.result?.reject(reason);
+				this.cleanupJob(this.active);
+			}
+			this.setupController?.abort();
+			this.setupWaiter?.reject(reason);
+			this.uciWaiter?.reject(reason);
+			this.readyWaiter?.reject(reason);
+			this.destroyWorker();
+		}
+		abortJob(job) {
+			const reason = abortError();
+			job.abortReason = reason;
+			this.rejectJob(job, reason);
+			if (this.active === job) {
+				if (job.searchStarted && !job.resultValue) this.stopActiveSearch(job);
+				return;
+			}
+			const index = this.queue.indexOf(job);
+			if (index >= 0) {
+				this.queue.splice(index, 1);
+				this.cleanupJob(job);
+			}
+		}
+		rejectJob(job, reason) {
+			if (job.settled) return;
+			job.settled = true;
+			job.reject(reason);
+		}
+		resolveJob(job, result) {
+			if (job.settled) return;
+			job.settled = true;
+			job.resolve(result);
+		}
+		cleanupJob(job) {
+			if (job.onAbort) job.signal?.removeEventListener("abort", job.onAbort);
+			if (job.searchTimer) clearTimeout(job.searchTimer);
+			if (job.stopTimer) clearTimeout(job.stopTimer);
+		}
+		async drain() {
+			if (this.pumping) return;
+			this.pumping = true;
+			const drained = deferred();
+			this.drainWaiter = drained;
+			try {
+				while (this.resetRequested || this.queue.length > 0) {
+					if (this.resetRequested) {
+						await this.performReset();
+						continue;
+					}
+					const job = this.queue.shift();
+					if (!job) continue;
+					if (job.abortReason || job.signal?.aborted) {
+						this.rejectJob(job, job.abortReason ?? abortError());
+						this.cleanupJob(job);
+						continue;
+					}
+					let completed = false;
+					this.active = job;
+					try {
+						await this.ensureReady();
+						if (job.abortReason || job.signal?.aborted) throw job.abortReason ?? abortError();
+						const result = await this.runSearch(job);
+						if (job.timeoutReason) throw job.timeoutReason;
+						if (job.abortReason || job.signal?.aborted) throw job.abortReason ?? abortError();
+						this.resolveJob(job, result);
+						completed = true;
+					} catch (error) {
+						this.rejectJob(job, error);
+					} finally {
+						this.cleanupJob(job);
+						if (this.ponderJob === job && !completed) this.ponderJob = null;
+						if (this.active === job) this.active = null;
+					}
+				}
+			} catch (error) {
+				const reason = asError(error);
+				for (const job of this.queue.splice(0)) {
+					this.rejectJob(job, reason);
+					this.cleanupJob(job);
+				}
+				this.resetRequested = false;
+			} finally {
+				this.pumping = false;
+				drained.resolve();
+				if (this.drainWaiter === drained) this.drainWaiter = null;
+				if (this.resetRequested || this.queue.length > 0) this.drain();
+			}
+		}
+		async performReset() {
+			if (!this.worker) {
+				this.resetRequested = false;
+				return;
+			}
+			await this.ensureReady();
+			const waiter = deferred();
+			this.readyWaiter = waiter;
+			try {
+				this.send("ucinewgame");
+				this.send("isready");
+				await withTimeout(waiter.promise, this.initTimeoutMs, "Stockfish reset");
+				this.resetRequested = false;
+			} catch (error) {
+				this.destroyWorker();
+				throw error;
+			} finally {
+				if (this.readyWaiter === waiter) this.readyWaiter = null;
+			}
+		}
+		async ensureReady() {
+			if (this.disposed) throw new Error("Engine client is disposed");
+			if (this.ready) return;
+			if (this.readyPromise) return this.readyPromise;
+			const readyPromise = this.initialize();
+			this.readyPromise = readyPromise;
+			try {
+				await readyPromise;
+			} finally {
+				if (this.readyPromise === readyPromise) this.readyPromise = null;
+			}
+		}
+		async initialize() {
+			if (!this.worker) {
+				const setupController = new AbortController();
+				const setup = deferred();
+				this.setupController = setupController;
+				this.setupWaiter = setup;
+				Promise.resolve().then(() => {
+					if (setupController.signal.aborted) throw new Error("Engine client is disposed");
+					return this.workerFactory(setupController.signal);
+				}).then((worker) => {
+					if (setupController.signal.aborted || this.disposed) {
+						worker.terminate();
+						return;
+					}
+					setup.resolve(worker);
+				}).catch((error) => setup.reject(error));
+				let worker;
+				try {
+					worker = await withTimeout(setup.promise, this.initTimeoutMs, "Stockfish worker setup");
+					if (this.disposed || setupController.signal.aborted) {
+						worker.terminate();
+						throw new Error("Engine client is disposed");
+					}
+				} catch (error) {
+					setupController.abort();
+					throw error;
+				} finally {
+					if (this.setupController === setupController) this.setupController = null;
+					if (this.setupWaiter === setup) this.setupWaiter = null;
+				}
+				worker.onmessage = (event) => this.handleMessage(String(event.data));
+				worker.onerror = (event) => this.handleError(event.error ?? new Error(event.message || "Stockfish worker error"));
+				this.worker = worker;
+			}
+			const uci = deferred();
+			this.uciWaiter = uci;
+			this.send("uci");
+			try {
+				await withTimeout(uci.promise, this.initTimeoutMs, "Stockfish UCI initialization");
+				if (this.disposed) throw new Error("Engine client is disposed");
+			} catch (error) {
+				this.destroyWorker();
+				throw error;
+			} finally {
+				if (this.uciWaiter === uci) this.uciWaiter = null;
+			}
+			const ready = deferred();
+			this.readyWaiter = ready;
+			this.send(`setoption name UCI_Chess960 value ${this.chess960}`);
+			this.appliedMultiPv = 3;
+			this.send(`setoption name MultiPV value ${this.appliedMultiPv}`);
+			this.send("isready");
+			try {
+				await withTimeout(ready.promise, this.initTimeoutMs, "Stockfish readiness");
+				if (this.disposed) throw new Error("Engine client is disposed");
+				this.ready = true;
+			} catch (error) {
+				this.destroyWorker();
+				throw error;
+			} finally {
+				if (this.readyWaiter === ready) this.readyWaiter = null;
+			}
+		}
+		async runSearch(job) {
+			const result = deferred();
+			job.result = result;
+			const depthOnly = job.timeLimit <= 0;
+			const budget = depthOnly ? this.depthOnlyTimeoutMs : job.timeLimit;
+			if (job.multiPv !== this.appliedMultiPv) {
+				this.send(`setoption name MultiPV value ${job.multiPv}`);
+				this.appliedMultiPv = job.multiPv;
+			}
+			this.send(job.positionKey);
+			job.searchStarted = true;
+			if (job.pondering) {
+				this.send(`go ponder depth ${job.depth}`);
+				try {
+					return await result.promise;
+				} catch (error) {
+					if (job.stopSent) this.destroyWorker();
+					throw error;
+				}
+			}
+			const slack = job.slackMs ?? this.searchTimeoutSlackMs;
+			job.searchTimer = setTimeout(() => {
+				job.timeoutReason = new Error(`Stockfish search exceeded ${budget + slack} ms`);
+				this.stopActiveSearch(job);
+			}, budget + slack);
+			this.send(depthOnly ? `go depth ${job.depth}` : `go depth ${job.depth} movetime ${job.timeLimit}`);
+			try {
+				return await result.promise;
+			} catch (error) {
+				if (job.stopSent) this.destroyWorker();
+				throw error;
+			}
+		}
+		stopActiveSearch(job) {
+			if (job.stopSent || this.active !== job) return;
+			job.stopSent = true;
+			if (job.searchTimer) clearTimeout(job.searchTimer);
+			try {
+				this.send("stop");
+			} catch (error) {
+				job.result?.reject(error);
+				this.destroyWorker();
+				return;
+			}
+			job.stopTimer = setTimeout(() => {
+				if (this.active !== job) return;
+				const reason = job.abortReason ?? job.timeoutReason ?? new Error("Stockfish did not return bestmove after stop");
+				job.result?.reject(reason);
+				this.destroyWorker();
+			}, this.stopTimeoutMs);
+		}
+		handleMessage(line) {
+			const message = line.trim();
+			if (!message) return;
+			if (message === "uciok") {
+				this.uciWaiter?.resolve();
+				return;
+			}
+			if (message === "readyok") {
+				this.readyWaiter?.resolve();
+				return;
+			}
+			const job = this.active;
+			if (!job?.searchStarted) return;
+			if (message.startsWith("info ")) {
+				job.info = parseInfo(message, job.info, job);
+				return;
+			}
+			if (message.startsWith("bestmove ")) {
+				if (job.searchTimer) clearTimeout(job.searchTimer);
+				if (job.stopTimer) clearTimeout(job.stopTimer);
+				const bestmove = message.split(/\s+/)[1] ?? "";
+				const terminal = bestmove === "(none)";
+				const multiPv = job.hasMultiPv && job.multiPvLines.size > 0 ? Array.from(job.multiPvLines.values()).sort((a, b) => a.multipv - b.multipv) : void 0;
+				const common = {
+					depth: job.info.depth,
+					pv: job.info.pv,
+					evaluation: job.info.evaluation,
+					...job.info.nodes === void 0 ? {} : { nodes: job.info.nodes },
+					...job.info.time === void 0 ? {} : { time: job.info.time },
+					...multiPv ? { multiPv } : {}
+				};
+				job.resultValue = isValidUciMove(bestmove) ? {
+					...common,
+					success: true,
+					bestmove
+				} : {
+					...common,
+					success: false,
+					bestmove: terminal ? "(none)" : ""
+				};
+				job.result?.resolve(job.resultValue);
+			}
+		}
+		handleError(reason) {
+			const error = asError(reason);
+			this.uciWaiter?.reject(error);
+			this.readyWaiter?.reject(error);
+			this.active?.result?.reject(error);
+			this.destroyWorker();
+		}
+		send(command) {
+			if (!this.worker) throw new Error("Stockfish worker is unavailable");
+			this.worker.postMessage(command);
+		}
+		destroyWorker() {
+			const worker = this.worker;
+			this.worker = null;
+			this.ready = false;
+			this.readyPromise = null;
+			if (!worker) return;
+			worker.onmessage = null;
+			worker.onerror = null;
+			try {
+				worker.terminate();
+			} catch {}
+		}
+	};
+	var ResourceWorker = class {
+		worker;
+		objectUrls;
+		constructor(worker, objectUrls) {
+			this.worker = worker;
+			this.objectUrls = objectUrls;
+		}
+		get onmessage() {
+			return this.worker.onmessage;
+		}
+		set onmessage(handler) {
+			this.worker.onmessage = handler;
+		}
+		get onerror() {
+			return this.worker.onerror;
+		}
+		set onerror(handler) {
+			this.worker.onerror = handler;
+		}
+		postMessage(command) {
+			this.worker.postMessage(command);
+		}
+		terminate() {
+			this.worker.terminate();
+			for (const objectUrl of this.objectUrls) URL.revokeObjectURL(objectUrl);
+		}
+	};
+	async function createStockfishWorker(signal) {
+		if (typeof Worker === "undefined") throw new Error("Stockfish requires browser Web Worker support");
+		if (typeof Blob === "undefined" || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") throw new Error("Stockfish worker resources are unavailable in this browser");
+		if (typeof GM_getResourceText !== "function" || typeof GM_getResourceURL !== "function") throw new Error("Stockfish resources are missing; check userscript @resource permissions");
+		const source = GM_getResourceText("stockfish.js");
+		const wasmUrl = GM_getResourceURL("stockfish.wasm");
+		if (typeof source !== "string" || source.length === 0 || typeof wasmUrl !== "string" || wasmUrl.length === 0) throw new Error("Stockfish JavaScript or WASM resource could not be loaded");
+		let wasmObjectUrl;
+		let workerObjectUrl;
+		try {
+			const response = await fetch(wasmUrl, { signal });
+			if (!response.ok) throw new Error(`WASM resource request failed with status ${response.status}`);
+			const wasm = await response.arrayBuffer();
+			if (signal.aborted) throw new DOMException("Worker setup aborted", "AbortError");
+			wasmObjectUrl = URL.createObjectURL(new Blob([wasm], { type: "application/wasm" }));
+			workerObjectUrl = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+			const workerUrl = `${workerObjectUrl}#${encodeURIComponent(wasmObjectUrl)}`;
+			return new ResourceWorker(new Worker(workerUrl), [workerObjectUrl, wasmObjectUrl]);
+		} catch (error) {
+			if (workerObjectUrl) URL.revokeObjectURL(workerObjectUrl);
+			if (wasmObjectUrl) URL.revokeObjectURL(wasmObjectUrl);
+			const detail = error instanceof Error ? `: ${error.message}` : "";
+			throw new Error(`Stockfish worker could not start${detail}`);
+		}
+	}
+	var EngineWorkerClient = class {
+		currentChess960 = false;
+		client = new UciClient(createStockfishWorker);
+		async ensureEngine(chess960 = false) {
+			if (this.currentChess960 !== chess960) {
+				this.cancelPonder();
+				this.client.dispose();
+				this.currentChess960 = chess960;
+				this.client = new UciClient(createStockfishWorker, { chess960 });
+			}
+			const client = this.client;
+			await client.warm();
+			if (client !== this.client) throw new Error("Engine request was replaced");
+			return client;
+		}
+		warm() {
+			return this.client.warm();
+		}
+		async analyze(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv) {
+			if (signal?.aborted) throw new DOMException("Search aborted", "AbortError");
+			const definition = getVariantDefinition(variant);
+			if (!definition) throw new Error(`Unknown variant: ${variant}`);
+			return (await this.ensureEngine(definition.chess960)).analyze(fen, depth, timeLimit, signal, history, slackMs, multiPv);
+		}
+		ponder(fen, depth, history) {
+			if (!fen || this.client.busy) return false;
+			const promise = this.client.ponder(fen, depth, void 0, history);
+			if (!promise) return false;
+			promise.catch(() => {});
+			return true;
+		}
+		cancelPonder(preserveFen) {
+			this.client.cancelPonder(preserveFen);
+		}
+		reset() {
+			this.cancelPonder();
+			this.client.reset();
+		}
+	};
+	var engineWorker = new EngineWorkerClient();
+	function warmEngine() {
+		return engineWorker.warm();
+	}
+	function resetEngine() {
+		engineWorker.reset();
+	}
+	function getAnalysis(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv) {
+		return engineWorker.analyze(fen, depth, timeLimit, signal, history, slackMs, variant, multiPv);
+	}
+	function ponderPosition(fen, depth, history) {
+		return engineWorker.ponder(fen, depth, history);
+	}
+	function cancelPonder(preserveFen) {
+		engineWorker.cancelPonder(preserveFen);
+	}
+	function parseBestLine(data) {
+		if (!data || typeof data !== "object") return null;
+		const result = data;
+		const uci = typeof result.bestmove === "string" ? result.bestmove.trim() : "";
+		if (!result.success || !isValidUciMove(uci)) return null;
+		const score = {};
+		if (typeof result.evaluation?.cp === "number" && Number.isFinite(result.evaluation.cp)) score.cp = result.evaluation.cp;
+		else if (typeof result.evaluation?.mate === "number" && Number.isFinite(result.evaluation.mate)) score.mate = result.evaluation.mate;
+		return {
+			uci,
+			pv: typeof result.pv === "string" && result.pv.trim() ? result.pv.trim() : uci,
+			score,
+			...result.multiPv && result.multiPv.length > 0 ? { multiPv: result.multiPv } : {}
+		};
+	}
+	var n$1;
+	var t$2;
+	var i$2;
+	var r$2;
+	var u$3;
+	var f$3;
+	var o$3;
+	var e$2;
+	var l$3;
+	var c$2;
+	var a$2;
+	var h$3 = {};
+	var p$3 = [];
+	var v$2 = /^m(i|n|o|s|text|space)$/;
+	var y$3 = Array.isArray;
+	var d$3 = p$3.slice;
+	var w$2 = Object.assign;
+	function _$3(n) {
+		n && n.parentNode && n.remove();
+	}
+	function b$3(i, r, u, f, o) {
+		var e = {
+			type: i,
+			props: r,
+			key: u,
+			ref: f,
+			__k: null,
+			__: null,
+			__b: 0,
+			__e: null,
+			__c: null,
+			constructor: void 0,
+			__v: o || ++t$2,
+			__i: -1,
+			__u: 0
+		};
+		return !o && n$1.vnode && n$1.vnode(e), e;
+	}
+	function M(n) {
+		return n.children;
+	}
+	function $(n, t) {
+		this.props = n, this.context = t, this.__g = 0;
+	}
+	function x$2(n, t) {
+		if (null == t) return n.__ ? x$2(n.__, n.__i + 1) : null;
+		for (var i; t < n.__k.length; t++) if ((i = n.__k[t]) && i.__e) return i.__e;
+		return "function" != typeof n.type || n.props.__P ? null : x$2(n);
+	}
+	function S$1(n) {
+		if ((n = n.__) && n.__c && !n.props.__P) return n.__e = null, n.__k.some(function(t) {
+			return t && (n.__e = t.__e);
+		}), S$1(n);
+	}
+	function C$1(t) {
+		(8 & t.__g || !(t.__g |= 8) || !r$2.push(t) || f$3++) && u$3 == n$1.debounceRendering || ((u$3 = n$1.debounceRendering) || queueMicrotask)(j$1);
+	}
+	function j$1() {
+		var t, i, u, e, l, c, a, s, h;
+		try {
+			for (i = 1; r$2.length;) r$2.length > i && r$2.sort(o$3), t = r$2.shift(), i = r$2.length, 8 & t.__g && (e = void 0, l = void 0, c = (l = (u = t).__v).__e, a = [], s = [], (h = u.__P) && ((e = w$2({ constructor: void 0 }, l)).__v = l.__v + 1, n$1.vnode && n$1.vnode(e), N(h, e, l, u.__n, h.namespaceURI, 32 & l.__u ? [c] : null, a, c || x$2(l), 32 & l.__u, s), e.__v = l.__v, e.__.__k[e.__i] = e, z$1(a, e, s), l.__ = l.__e = null, e.__e != c && S$1(e)));
+		} finally {
+			r$2.length = f$3 = 0;
+		}
+	}
+	function L(n, t, i, r, u, f, o, e, l, c, a) {
+		var s, v, y, d, w, _, g = r.__k || p$3, k = t.length;
+		for (l = H(i, t, g, l, k), s = 0; s < k; s++) null != (y = i.__k[s]) && (v = ~y.__i && g[y.__i] || h$3, y.__i = s, _ = N(n, y, v, u, f, o, e, l, c, a), d = y.__e, (v.ref != y.ref || 8 & v.__u) && (v.ref && D$1(v.ref, null, y, v), y.ref && a.push(y.ref, y.__c || d, y)), w = w || d, 4 & y.__u ? (l = I(y, l, n, !v.__v), v.__e && (v.__e = null)) : "function" == typeof y.type && void 0 !== _ ? l = _ : d && (l = d.nextSibling), y.__u &= -7);
+		return i.__e = w, l;
+	}
+	function H(n, t, i, r, u) {
+		var f, o, e, l, c, a, s, h, p, v, d = i.length, w = d, _ = 0, g = !1, k = n.__k = Array(u);
+		for (f = 0; f < u; f++) null != (o = t[f]) && "boolean" != typeof o && "function" != typeof o ? ("object" != typeof o || o.constructor == String ? o = k[f] = b$3(null, o) : y$3(o) ? o = k[f] = b$3(M, { children: o }) : void 0 === o.constructor && o.__b ? o = k[f] = b$3(o.type, o.props, o.key, o.ref, o.__v) : k[f] = o, l = f + _, o.__ = n, o.__b = n.__b + 1, e = null, ~(c = o.__i = O(o, i, l, w)) && (w--, (e = i[c]) && (e.__u |= 2)), e && e.__v ? (o.__u |= 2, c == l - 1 ? _-- : c == l + 1 ? _++ : c != l && (c > l ? _-- : _++, g = !0)) : (~c || (u > d ? _-- : u < d && _++), "function" != typeof o.type && (o.__u |= 4))) : k[f] = null;
+		if (g) {
+			for (a = [], s = [], f = 0; f < u; f++) if ((o = k[f]) && 2 & o.__u) {
+				for (h = 0, p = a.length; h < p;) a[v = h + p >> 1] < o.__i ? h = v + 1 : p = v;
+				a[h] = o.__i, s[f] = h + 1;
+			}
+			for (_ = a.length; f--;) s[f] && (s[f] == _ ? _-- : k[f].__u |= 4);
+		}
+		if (w) for (f = 0; f < d; f++) !(e = i[f]) || 2 & e.__u || (e.__e == r && (r = x$2(e)), E$2(e, e));
+		return r;
+	}
+	function I(n, t, i, r) {
+		var u, f, o;
+		if ("function" == typeof n.type) {
+			if (n.props.__P) return t;
+			if (u = n.__k) for (f = 0; f < u.length; f++) u[f] && (u[f].__ = n, t = I(u[f], t, i, !1));
+			return t;
+		}
+		for (t && !t.parentNode && (t = x$2(n)) && !t.parentNode && (t = null), o = t; o && 8 == o.nodeType;) o = o.nextSibling;
+		for (n.__e != o && (!r && i.moveBefore && n.__e.parentNode ? i.moveBefore(n.__e, t) : i.insertBefore(n.__e, t || null)), t = n.__e; (t = t && t.nextSibling) && 8 == t.nodeType;);
+		return t;
+	}
+	function O(n, t, i, r) {
+		var u, f, o, e = n.key, l = n.type, c = t[i], a = c && !(2 & c.__u);
+		if (null === c && null == e || a && e == c.key && l == c.type) return i;
+		if (r > (a ? 1 : 0)) {
+			for (u = i - 1, f = i + 1; u >= 0 || f < t.length;) if ((c = t[o = u >= 0 ? u-- : f++]) && !(2 & c.__u) && e == c.key && l == c.type) return o;
+		}
+		return -1;
+	}
+	function P(n, t, i) {
+		i ??= "", "-" == t[0] ? n.setProperty(t, i) : n[t] = i;
+	}
+	function T$1(n, t, i, r, u) {
+		var f, o;
+		n: if ("style" == t) if ("string" == typeof i) n.style.cssText = i;
+		else {
+			if ("string" == typeof r && (n.style.cssText = r = ""), r) for (t in r) i && t in i || P(n.style, t, "");
+			if (i) for (t in i) r && i[t] == r[t] || P(n.style, t, i[t]);
+		}
+		else if ("o" == t[0] && "n" == t[1]) (n.__e || (n.__e = {}))[t] = i, i && r || (o = a$2[t] || (a$2[t] = q$1(t)), (n.__a || (n.__a = {}))[t] = c$2, f = t != (t = t.replace(l$3, "$1")), (t = t.slice(2))[0] < "a" && (t = t.toLowerCase()), i ? n.addEventListener(t, o, f) : n.removeEventListener(t, o, f));
+		else {
+			if ("http://www.w3.org/2000/svg" == u) t = t.replace(/xlink(H|:h)/, "h").replace(/sName$/, "s");
+			else if ("width" != t && "height" != t && "href" != t && "list" != t && "form" != t && "tabIndex" != t && "download" != t && "rowSpan" != t && "colSpan" != t && "role" != t && "popover" != t && t in n) try {
+				n[t] = null == i ? "" : i;
+				break n;
+			} catch (n) {}
+			"function" == typeof i || (null == i || !1 === i && "-" != t[4] ? n.removeAttribute(t) : n.setAttribute(t, "popover" == t && 1 == i ? "" : i));
+		}
+	}
+	function q$1(t) {
+		return function(i) {
+			if (this.__e) {
+				var r = this.__e[t];
+				if (null == i[e$2]) i[e$2] = c$2++;
+				else if (i[e$2] < this.__a[t]) return;
+				return r(n$1.event ? n$1.event(i) : i);
+			}
+		};
+	}
+	function N(t, i, r, u, f, o, e, l, c, a) {
+		var s, h, v, d, g, k, b, m, S, C, j, H, I, A, O, P, T, q, N, z, D = i.type;
+		if (void 0 !== i.constructor) return null;
+		if (128 & r.__u && (c = 32 & r.__u, s = r.__c.__z)) {
+			if (i.__u |= c, h = o = [], 8 == s.nodeType) for (v = 1, d = s.nextSibling; d; d = d.nextSibling) {
+				if (8 == d.nodeType) {
+					if (d.data.startsWith("$s")) v++;
+					else if (d.data.startsWith("/$s") && !--v) break;
+				}
+				o.push(d);
+			}
+			else o.push(s);
+			l = o[0];
+		}
+		(s = n$1.__b) && s(i);
+		n: if ("function" == typeof D) {
+			g = e.length;
+			try {
+				if (C = i.props, j = (s = D.prototype) && s.render, H = (s = D.contextType) && u[s.__c], I = s ? H ? H.props.value : s.__ : u, r.__c ? 2 & (k = i.__c = r.__c).__g && (k.__g |= 1) : (j ? i.__c = k = new D(C, I) : (i.__c = k = new $(C, I), k.constructor = D, k.render = F$1), H && H.sub(k), k.state || (k.state = {}), k.__n = u, k.__g |= 8, k.__h = [], k.__k = []), j && (k.__s || (k.__s = k.state), D.getDerivedStateFromProps && (k.__s == k.state && (k.__s = w$2({}, k.__s)), w$2(k.__s, D.getDerivedStateFromProps(C, k.__s)))), b = k.props, m = k.state, k.__v = i, r.__c) {
+					if (j && !D.getDerivedStateFromProps && C !== b && k.componentWillReceiveProps && k.componentWillReceiveProps(C, I), i.__v == r.__v && !(8 & k.__g) || !(4 & k.__g) && k.shouldComponentUpdate && !1 === k.shouldComponentUpdate(C, k.__s, I)) {
+						i.__v != r.__v && (k.props = C, k.state = k.__s, k.__g &= -9), i.__e = r.__e, i.__k = r.__k, i.__k.some(function(n) {
+							n && (n.__ = i);
+						}), p$3.push.apply(k.__h, k.__k), k.__k = [], k.__h.length && e.push(k), l = x$2(r);
+						break n;
+					}
+					k.componentWillUpdate && k.componentWillUpdate(C, k.__s, I), j && k.componentDidUpdate && k.__h.push(function() {
+						k.componentDidUpdate(b, m, S);
+					});
+				} else j && !D.getDerivedStateFromProps && k.componentWillMount && k.componentWillMount(), j && k.componentDidMount && k.__h.push(k.componentDidMount);
+				if (k.context = I, k.props = C, k.__P = t, k.__g &= -5, A = n$1.__r, O = 0, j) k.state = k.__s, k.__g &= -9, A && A(i), s = k.render(k.props, k.state, k.context), p$3.push.apply(k.__h, k.__k), k.__k = [];
+				else do
+					k.__g &= -9, A && A(i), s = k.render(k.props, k.state, k.context), k.state = k.__s;
+				while (8 & k.__g && ++O < 25);
+				k.state = k.__s, k.getChildContext && (u = w$2({}, u, k.getChildContext())), j && r.__c && k.getSnapshotBeforeUpdate && (S = k.getSnapshotBeforeUpdate(b, m)), P = s && s.type === M && null == s.key ? s.props.children : s, C.__P && (s = l, f = (t = C.__P).namespaceURI, c = o = null, r.props && r.props.__P != t && (r.__k.some(function(n) {
+					n && E$2(n, n);
+				}), r.__k = null), l = r.__k ? x$2(r, 0) : null), l = L(t, y$3(P) ? P : [P], i, r, u, f, o, e, l, c, a), C.__P && (i.__e = null, l = s), i.__u &= -161, 128 & r.__u && (k.__z = null), h && h.some(_$3), k.__h.length && e.push(k), 1 & k.__g && (k.__g &= -4);
+			} catch (t) {
+				if (e.length = g, i.__v = null, c || o) if (t.then) {
+					if (T = 0, i.__u |= c ? 160 : 128, o) {
+						for (~(N = o.indexOf(l || void 0)) || (N = o.length); (z = o[N - 1]) && 8 == z.nodeType;) N--;
+						for (; N < o.length; N++) if (z = o[N]) {
+							if (o[N] = null, 8 == z.nodeType) {
+								if (z.data.startsWith("$s")) T++ || (q = z);
+								else if (T && z.data.startsWith("/$s") && !--T) {
+									l = z;
+									break;
+								}
+							} else if (!T) break;
+						}
+					}
+					if (!q) {
+						for (; l && 8 == l.nodeType && l.nextSibling;) l = l.nextSibling;
+						q = l;
+					}
+					i.__c.__z || (i.__c.__z = q), i.__e = l;
+				} else o && o.some(_$3);
+				else i.__e = r.__e;
+				i.__k || (i.__k = r.__k || []), t.then || V(i), n$1.__e(t, i, r);
+			}
+		} else l = i.__e = B$1(r.__e, i, r, u, f, o, e, c, a, t);
+		return (s = n$1.diffed) && s(i), 128 & i.__u ? void 0 : l;
+	}
+	function V(n) {
+		n && (n.__c && (n.__c.__g |= 4), n.__k && n.__k.some(V));
+	}
+	function z$1(t, i, r) {
+		for (var u = 0; u < r.length;) D$1(r[u++], r[u++], r[u++]);
+		n$1.__c && n$1.__c(i, t), t.some(function(i) {
+			try {
+				t = i.__h, i.__h = [], t.some(function(n) {
+					n.call(i);
+				});
+			} catch (t) {
+				n$1.__e(t, i.__v);
+			}
+		});
+	}
+	function B$1(t, i, r, u, f, o, e, l, c, a) {
+		var s, p, w, g, k, b, m, M, $, S = r.props || h$3, C = i.props, j = i.type;
+		if ("svg" == j ? f = "http://www.w3.org/2000/svg" : "math" == j ? f = "http://www.w3.org/1998/Math/MathML" : f || (f = "http://www.w3.org/1999/xhtml"), o) {
+			for (s = 0; s < o.length; s++) if ((k = o[s]) && (j ? k.localName == j : 3 == k.nodeType)) {
+				t = k, o[s] = null;
+				break;
+			}
+		}
+		if (!t) {
+			if (M = a.ownerDocument || document, !j) return M.createTextNode(C);
+			t = M.createElementNS(f, j, C.is && C), l && (n$1.__m && n$1.__m(i, o), l = !1), o = null;
+		}
+		if (j) {
+			if (a = "template" == j ? t.content : t, o = "textarea" == j && null != C.defaultValue ? null : o && d$3.call(a.childNodes), !l && o) for (S = {}, s = 0; s < t.attributes.length; s++) S[(k = t.attributes[s]).name] = k.value;
+			for (s in S) k = S[s], "dangerouslySetInnerHTML" == s ? w = k : "children" == s || s in C || "value" == s && "defaultValue" in C || "checked" == s && "defaultChecked" in C || T$1(t, s, null, k, f);
+			for (s in $ = 1 & r.__u, C) k = C[s], "children" == s ? g = k : "dangerouslySetInnerHTML" == s ? p = k : "value" == s ? b = k : "checked" == s ? m = k : l && "function" != typeof k || !(S[s] !== k || $ && null != k) || T$1(t, s, k, S[s], f);
+			p ? (l || w && (p.__html == w.__html || p.__html == t.innerHTML) || (t.innerHTML = p.__html), i.__k = []) : (w && (t.textContent = ""), ("foreignObject" == j || "http://www.w3.org/1998/Math/MathML" == f && v$2.test(j)) && (f = "http://www.w3.org/1999/xhtml"), L(a, y$3(g) ? g : [g], i, r, u, f, o, e, o ? o[0] : r.__k && x$2(r, 0), l, c), o && o.some(_$3)), l && "textarea" != j || (s = "value", "progress" == j && null == b ? t.removeAttribute(s) : null == b || b === t[s] && ("progress" != j || b) || T$1(t, s, b, S[s], f), s = "checked", null != m && m != t[s] && T$1(t, s, m, S[s], f));
+		} else S === C || l && t.data == C || (t.data = C);
+		return t;
+	}
+	function D$1(t, i, r, u) {
+		try {
+			"function" == typeof t ? i ? i.__x = t(i) || 1 : u && (u = u.__c || u.__e) && (i = u.__x) && (u.__x = null, "function" == typeof i ? i() : t(null)) : t.current = i;
+		} catch (t) {
+			n$1.__e(t, r);
+		}
+	}
+	function E$2(t, i, r) {
+		var u, f;
+		if (n$1.unmount && n$1.unmount(t), !(u = t.ref) || u.current && u.current != t.__e || D$1(u, null, i, t), u = t.__c) {
+			if (u.componentWillUnmount) try {
+				u.componentWillUnmount();
+			} catch (t) {
+				n$1.__e(t, i);
+			}
+			u.__P = u.__n = null;
+		}
+		if (u = t.__k) for (f = 0; f < u.length; f++) u[f] && E$2(u[f], i, "function" != typeof t.type || r && !t.props.__P);
+		(u = t.__e) && (r || _$3(u), u.__e && (u.__e = null)), t.__e = t.__c = t.__ = null;
+	}
+	function F$1(n, t, i) {
+		return this.constructor(n, i);
+	}
+	function G$1(t, i) {
+		var r, u, f, o;
+		n$1.__ && n$1.__(t, i), 9 == i.nodeType && (i = i.documentElement), u = (r = t && 32 & t.__u) ? null : i.__k, i.__k = b$3(M, { children: [t] }), f = [], o = [], N(i, i.__k, u || h$3, h$3, i.namespaceURI, u ? null : i.firstChild ? d$3.call(i.childNodes) : null, f, u ? u.__e : i.firstChild, r, o), z$1(f, i.__k, o), i.__k.props.children = null;
+	}
+	n$1 = { __e: function(n, t, i, r) {
+		for (var u, o, e; t = t.__;) if ((u = t.__c) && !(1 & u.__g)) {
+			u.__g |= 4;
+			try {
+				if ((o = u.constructor) && o.getDerivedStateFromError && (u.setState(o.getDerivedStateFromError(n)), e = 8 & u.__g), u.componentDidCatch && (u.componentDidCatch(n, r || {}), e = 8 & u.__g), e) return void (u.__g |= 2);
+			} catch (t) {
+				n = t, e = 0;
+			}
+		}
+		throw f$3 = 0, n;
+	} }, t$2 = 0, i$2 = function(n) {
+		return null != n && void 0 === n.constructor;
+	}, $.prototype.setState = function(n, t) {
+		var i = this.__s;
+		i && i != this.state || (i = this.__s = w$2({}, this.state)), "function" == typeof n && (n = n(w$2({}, i), this.props)), n && (w$2(i, n), this.__v && (t && this.__k.push(t), C$1(this)));
+	}, $.prototype.forceUpdate = function(n) {
+		this.__v && (this.__g |= 4, n && this.__h.push(n), C$1(this));
+	}, $.prototype.render = M, r$2 = [], f$3 = 0, o$3 = function(n, t) {
+		return n.__v.__b - t.__v.__b;
+	}, e$2 = Symbol(), l$3 = /(PointerCapture)$|Capture$/i, c$2 = 0, a$2 = {};
+	var t$1;
+	var r$1;
+	var u$2;
+	var i$1;
+	var o$2 = Object.is;
+	var f$2 = 0;
+	var c$1 = [];
+	var e$1 = [];
+	var a$1 = n$1;
+	var v$1 = a$1.__b;
+	var l$2 = a$1.__r;
+	var m$1 = a$1.diffed;
+	var s$1 = a$1.__c;
+	var h$2 = a$1.unmount;
+	var p$2 = a$1.__;
+	function y$2(n, t) {
+		a$1.__h && a$1.__h(r$1, n, f$2 || t), f$2 = 0;
+		var u = r$1.__H || (r$1.__H = {
+			__: [],
+			__h: []
+		});
+		return n >= u.__.length && u.__.push({}), u.__[n];
+	}
+	function d$2(n) {
+		return f$2 = 1, _$2(G, n);
+	}
+	function _$2(n, u, i) {
+		var f = y$2(t$1++, 2);
+		if (f.t = n, !f.__c && (f.__ = [i ? i(u) : G(void 0, u), function(n) {
+			var t = f.__N ? f.__N[0] : f.__[0], r = f.t(t, n);
+			o$2(t, r) || (f.__N = [r, f.__[1]], f.__c.setState({}));
+		}], f.__c = r$1, !r$1.__f)) {
+			r$1.__f = !0;
+			var c = r$1.shouldComponentUpdate;
+			r$1.shouldComponentUpdate = function(n, t, r) {
+				var u = this.__H;
+				if (!u) return !0;
+				var i = !1, f = this.props != n;
+				if (u.__.some(function(n) {
+					n.__N && (i = !0, o$2(n.__[0], n.__N[0]) || (f = !0));
+				}), c) {
+					var e = c.call(this, n, t, r);
+					return i ? e || f : e;
+				}
+				return !i || f;
+			};
+		}
+		return f.__;
+	}
+	function A(n, u) {
+		var i = y$2(t$1++, 3);
+		!a$1.__s && E$1(i.__H, u) && (i.__P = !0, i.__ = n, i.u = u, r$1.__H.__h.push(i));
+	}
+	function T(n) {
+		return f$2 = 5, b$2(function() {
+			return { current: n };
+		}, []);
+	}
+	function b$2(n, r) {
+		var u = y$2(t$1++, 7);
+		return E$1(u.__H, r) && (u.__ = n(), u.__H = r), u.__;
+	}
+	function g$2() {
+		var n;
+		do {
+			for (; n = e$1.shift();) try {
+				C(n);
+			} catch (t) {
+				a$1.__e(t, { __: (n = n.__P) && n.__v });
+			}
+			for (; n = c$1.shift();) {
+				var t = n.__H;
+				if (n.__P && t) try {
+					t.__h.some(C), t.__h.some(D), t.__h = [];
+				} catch (r) {
+					t.__h = [], a$1.__e(r, n.__v);
+				}
+			}
+		} while (e$1.length);
+	}
+	a$1.__b = function(n) {
+		r$1 = null, v$1 && v$1(n);
+	}, a$1.__ = function(n, t) {
+		n && t.__k && t.__k.__m && (n.__m = t.__k.__m), p$2 && p$2(n, t);
+	}, a$1.__r = function(n) {
+		l$2 && l$2(n), t$1 = 0;
+		var i = (r$1 = n.__c).__H;
+		i && (u$2 == r$1 ? r$1.__h = [] : (i.__h.some(C), i.__h.some(D), t$1 = 0), i.__h = [], i.__.some(function(n) {
+			n.__N && (n.__ = n.__N), n.u = n.__N = void 0;
+		})), u$2 = r$1;
+	}, a$1.diffed = function(n) {
+		m$1 && m$1(n);
+		var t = n.__c;
+		t && t.__H && (t.__H.__h.length && B(c$1.push(t)), t.__H.__.some(function(n) {
+			n.u && (n.__H = n.u);
+		})), u$2 = r$1 = null;
+	}, a$1.__c = function(n, t) {
+		t.some(function(n) {
+			try {
+				n.__h.some(C), n.__h = n.__h.filter(function(n) {
+					return !n.__ || D(n);
+				});
+			} catch (r) {
+				t.some(function(n) {
+					n.__h && (n.__h = []);
+				}), t = [], a$1.__e(r, n.__v);
+			}
+		}), s$1 && s$1(n, t);
+	}, a$1.unmount = function(n) {
+		h$2 && h$2(n);
+		var t, r, u = n.__c;
+		u && u.__H && (u.__H.__.some(function(u) {
+			try {
+				if (u.__P && u.__c) {
+					if (void 0 === r) {
+						for (r = n.__; r && (!r.__c || !r.__c.__P);) r = r.__;
+						r = r && r.__c;
+					}
+					u.__P = r, B(e$1.push(u));
+				} else C(u);
+			} catch (n) {
+				t = n;
+			}
+		}), u.__H = void 0, t && a$1.__e(t, u.__v));
+	};
+	var k = "function" == typeof requestAnimationFrame;
+	function z(n) {
+		var t, r = function() {
+			clearTimeout(u), k && cancelAnimationFrame(t), setTimeout(n);
+		}, u = setTimeout(r, 35);
+		k && (t = requestAnimationFrame(r));
+	}
+	function B(n) {
+		1 != n && i$1 == a$1.requestAnimationFrame || ((i$1 = a$1.requestAnimationFrame) || z)(g$2);
+	}
+	function C(n) {
+		var t = r$1, u = n.__c;
+		"function" == typeof u && (n.__c = void 0, u()), r$1 = t;
+	}
+	function D(n) {
+		var t = r$1;
+		n.__c = n.__(), r$1 = t;
+	}
+	function E$1(n, t) {
+		return !n || n.length != t.length || t.some(function(t, r) {
+			return !o$2(t, n[r]);
+		});
+	}
+	function G(n, t) {
+		return "function" == typeof t ? t(n) : t;
+	}
+	var i = Symbol.for("preact-signals");
+	function t() {
+		if (!(v > 1)) {
+			var i, t = !1;
+			(function() {
+				var i = c;
+				c = void 0;
+				while (void 0 !== i) {
+					var t = i.S;
+					if (t.v === i.v) {
+						for (var n = t.t; void 0 !== n; n = n.x) if (n.i === i.i) n.i = t.i;
+					}
+					i = i.o;
+				}
+			})();
+			while (void 0 !== h$1) {
+				var n = h$1;
+				h$1 = void 0;
+				s++;
+				while (void 0 !== n) {
+					var r = n.u;
+					n.u = void 0;
+					n.f &= -3;
+					if (!(8 & n.f) && w$1(n)) try {
+						n.c();
+					} catch (n) {
+						if (!t) {
+							i = n;
+							t = !0;
+						}
+					}
+					n = r;
+				}
+			}
+			s = 0;
+			v--;
+			if (t) throw i;
+		} else v--;
+	}
+	function n(i) {
+		if (v > 0) return i();
+		e = ++u$1;
+		v++;
+		try {
+			return i();
+		} finally {
+			t();
+		}
+	}
+	var r;
+	var o$1 = void 0;
+	function f$1(i) {
+		var t = o$1, n = r;
+		o$1 = void 0;
+		r = void 0;
+		try {
+			return i();
+		} finally {
+			o$1 = t;
+			r = n;
+		}
+	}
+	var h$1 = void 0;
+	var v = 0;
+	var s = 0;
+	var u$1 = 0;
+	var e = 0;
+	var c = void 0;
+	var d$1 = 0;
+	function a(i) {
+		if (void 0 !== o$1) {
+			var t = i.n;
+			if (void 0 === t || t.t !== o$1) {
+				t = {
+					i: 0,
+					S: i,
+					p: o$1.s,
+					n: void 0,
+					t: o$1,
+					e: void 0,
+					x: void 0,
+					r: t
+				};
+				if (void 0 !== o$1.s) o$1.s.n = t;
+				o$1.s = t;
+				i.n = t;
+				if (32 & o$1.f) i.S(t);
+				return t;
+			} else if (-1 === t.i) {
+				t.i = 0;
+				if (void 0 !== t.n) {
+					t.n.p = t.p;
+					if (void 0 !== t.p) t.p.n = t.n;
+					t.p = o$1.s;
+					t.n = void 0;
+					o$1.s.n = t;
+					o$1.s = t;
+				}
+				return t;
+			}
+		}
+	}
+	function l$1(i, t) {
+		this.v = i;
+		this.i = 0;
+		this.n = void 0;
+		this.t = void 0;
+		this.l = 0;
+		this.W = null == t ? void 0 : t.watched;
+		this.Z = null == t ? void 0 : t.unwatched;
+		this.name = null == t ? void 0 : t.name;
+	}
+	l$1.prototype.brand = i;
+	l$1.prototype.h = function() {
+		return !0;
+	};
+	l$1.prototype.S = function(i) {
+		var t = this, n = this.t;
+		if (n !== i && void 0 === i.e) {
+			i.x = n;
+			this.t = i;
+			if (void 0 !== n) n.e = i;
+			else f$1(function() {
+				var i;
+				null == (i = t.W) || i.call(t);
+			});
+		}
+	};
+	l$1.prototype.U = function(i) {
+		var t = this;
+		if (void 0 !== this.t) {
+			var n = i.e, r = i.x;
+			if (void 0 !== n) {
+				n.x = r;
+				i.e = void 0;
+			}
+			if (void 0 !== r) {
+				r.e = n;
+				i.x = void 0;
+			}
+			if (i === this.t) {
+				this.t = r;
+				if (void 0 === r) f$1(function() {
+					var i;
+					null == (i = t.Z) || i.call(t);
+				});
+			}
+		}
+	};
+	l$1.prototype.subscribe = function(i) {
+		var t = this;
+		return j(function() {
+			var n = t.value;
+			f$1(function() {
+				return i(n);
+			});
+		}, { name: "sub" });
+	};
+	l$1.prototype.valueOf = function() {
+		return this.value;
+	};
+	l$1.prototype.toString = function() {
+		return this.value + "";
+	};
+	l$1.prototype.toJSON = function() {
+		return this.value;
+	};
+	l$1.prototype.peek = function() {
+		var i = this;
+		return f$1(function() {
+			return i.value;
+		});
+	};
+	Object.defineProperty(l$1.prototype, "value", {
+		get: function() {
+			var i = a(this);
+			if (void 0 !== i) i.i = this.i;
+			return this.v;
+		},
+		set: function(i) {
+			if (i !== this.v) {
+				if (s > 100) throw new Error("Cycle detected");
+				(function(i) {
+					if (0 !== v && 0 === s) {
+						if (i.l !== e) {
+							i.l = e;
+							c = {
+								S: i,
+								v: i.v,
+								i: i.i,
+								o: c
+							};
+						}
+					}
+				})(this);
+				this.v = i;
+				this.i++;
+				d$1++;
+				v++;
+				try {
+					for (var n = this.t; void 0 !== n; n = n.x) n.t.N();
+				} finally {
+					t();
+				}
+			}
+		}
+	});
+	function y$1(i, t) {
+		return new l$1(i, t);
+	}
+	function w$1(i) {
+		for (var t = i.s; void 0 !== t; t = t.n) if (t.S.i !== t.i || !t.S.h() || t.S.i !== t.i) return !0;
+		return !1;
+	}
+	function _$1(i) {
+		for (var t = i.s; void 0 !== t; t = t.n) {
+			var n = t.S.n;
+			if (void 0 !== n) t.r = n;
+			t.S.n = t;
+			t.i = -1;
+			if (void 0 === t.n) {
+				i.s = t;
+				break;
+			}
+		}
+	}
+	function b$1(i) {
+		var t = i.s, n = void 0;
+		while (void 0 !== t) {
+			var r = t.p;
+			if (-1 === t.i) {
+				t.S.U(t);
+				if (void 0 !== r) r.n = t.n;
+				if (void 0 !== t.n) t.n.p = r;
+			} else n = t;
+			t.S.n = t.r;
+			if (void 0 !== t.r) t.r = void 0;
+			t = r;
+		}
+		i.s = n;
+	}
+	function p$1(i, t) {
+		l$1.call(this, void 0, t);
+		this.x = i;
+		this.s = void 0;
+		this.g = d$1 - 1;
+		this.f = 4;
+	}
+	p$1.prototype = new l$1();
+	p$1.prototype.h = function() {
+		this.f &= -3;
+		if (1 & this.f) return !1;
+		if (32 == (36 & this.f)) return !0;
+		this.f &= -5;
+		if (this.g === d$1) return !0;
+		this.g = d$1;
+		this.f |= 1;
+		if (this.i > 0 && !w$1(this)) {
+			this.f &= -2;
+			return !0;
+		}
+		var i = o$1;
+		try {
+			_$1(this);
+			o$1 = this;
+			var t = this.x();
+			if (16 & this.f || this.v !== t || 0 === this.i) {
+				this.v = t;
+				this.f &= -17;
+				this.i++;
+			}
+		} catch (i) {
+			this.v = i;
+			this.f |= 16;
+			this.i++;
+		}
+		o$1 = i;
+		b$1(this);
+		this.f &= -2;
+		return !0;
+	};
+	p$1.prototype.S = function(i) {
+		if (void 0 === this.t) {
+			this.f |= 36;
+			for (var t = this.s; void 0 !== t; t = t.n) t.S.S(t);
+		}
+		l$1.prototype.S.call(this, i);
+	};
+	p$1.prototype.U = function(i) {
+		if (void 0 !== this.t) {
+			l$1.prototype.U.call(this, i);
+			if (void 0 === this.t) {
+				this.f &= -33;
+				for (var t = this.s; void 0 !== t; t = t.n) t.S.U(t);
+			}
+		}
+	};
+	p$1.prototype.N = function() {
+		if (!(2 & this.f)) {
+			this.f |= 6;
+			for (var i = this.t; void 0 !== i; i = i.x) i.t.N();
+		}
+	};
+	Object.defineProperty(p$1.prototype, "value", { get: function() {
+		if (1 & this.f) throw new Error("Cycle detected");
+		var i = a(this);
+		this.h();
+		if (void 0 !== i) i.i = this.i;
+		if (16 & this.f) throw this.v;
+		return this.v;
+	} });
+	function g$1(i, t) {
+		return new p$1(i, t);
+	}
+	function S(i) {
+		var n = i.m;
+		i.m = void 0;
+		if ("function" == typeof n) {
+			v++;
+			var r = o$1;
+			o$1 = void 0;
+			try {
+				n();
+			} catch (t) {
+				i.f &= -2;
+				i.f |= 8;
+				m(i);
+				throw t;
+			} finally {
+				o$1 = r;
+				t();
+			}
+		}
+	}
+	function m(i) {
+		for (var t = i.s; void 0 !== t; t = t.n) t.S.U(t);
+		i.x = void 0;
+		i.s = void 0;
+		S(i);
+	}
+	function x$1(i) {
+		if (o$1 !== this) throw new Error("Out-of-order effect");
+		b$1(this);
+		o$1 = i;
+		this.f &= -2;
+		if (8 & this.f) m(this);
+		t();
+	}
+	function E(i, t) {
+		this.x = i;
+		this.m = void 0;
+		this.s = void 0;
+		this.u = void 0;
+		this.f = 32;
+		this.name = null == t ? void 0 : t.name;
+		if (r) r.push(this);
+	}
+	E.prototype.c = function() {
+		var i = this.S();
+		try {
+			if (8 & this.f) return;
+			if (void 0 === this.x) return;
+			var t = this.x();
+			if ("function" == typeof t) this.m = t;
+		} finally {
+			i();
+		}
+	};
+	E.prototype.S = function() {
+		if (1 & this.f) throw new Error("Cycle detected");
+		this.f |= 1;
+		this.f &= -9;
+		S(this);
+		_$1(this);
+		v++;
+		var i = o$1;
+		o$1 = this;
+		return x$1.bind(this, i);
+	};
+	E.prototype.N = function() {
+		if (!(2 & this.f)) {
+			this.f |= 2;
+			this.u = h$1;
+			h$1 = this;
+		}
+	};
+	E.prototype.d = function() {
+		this.f |= 8;
+		if (!(1 & this.f)) m(this);
+	};
+	E.prototype.dispose = function() {
+		this.d();
+	};
+	function j(i, t) {
+		var n = new E(i, t);
+		try {
+			n.c();
+		} catch (i) {
+			n.d();
+			throw i;
+		}
+		var r = n.d.bind(n);
+		r[Symbol.dispose] = r;
+		return r;
+	}
+	var l;
+	var d;
+	var p = "undefined" != typeof window && !!window.__PREACT_SIGNALS_DEVTOOLS__;
+	var _ = [];
+	j(function() {
+		l = this.N;
+	})();
+	function g(i, r) {
+		n$1[i] = r.bind(null, n$1[i] || function() {});
+	}
+	function b(i) {
+		if (d) {
+			var n = d;
+			d = void 0;
+			n();
+		}
+		d = i && i.S();
+	}
+	function y(i) {
+		var n = this, t = i.data, f = useSignal(t);
+		f.name = "ReactiveDom";
+		f.value = t;
+		var e = b$2(function() {
+			var i = n, t = n.__v;
+			while (t = t.__) if (t.__c) {
+				t.__c.__$f |= 4;
+				break;
+			}
+			var o = g$1(function() {
+				var i = f.value.value;
+				return 0 === i ? 0 : !0 === i ? "" : i || "";
+			}), e = g$1(function() {
+				return !Array.isArray(o.value) && !i$2(o.value);
+			}), a = j(function() {
+				this.N = F;
+				if (e.value) {
+					var n = o.value;
+					if (i.__v && i.__v.__e && 3 === i.__v.__e.nodeType) i.__v.__e.data = n;
+				}
+			}), v = n.__$u.d;
+			n.__$u.d = function() {
+				a();
+				v.call(this);
+			};
+			return [e, o];
+		}, []), a = e[0], v = e[1];
+		return a.value ? v.peek() : v.value;
+	}
+	y.displayName = "ReactiveTextNode";
+	Object.defineProperties(l$1.prototype, {
+		constructor: {
+			configurable: !0,
+			value: void 0
+		},
+		type: {
+			configurable: !0,
+			value: y
+		},
+		props: {
+			configurable: !0,
+			get: function() {
+				var i = this;
+				return { data: { get value() {
+					return i.value;
+				} } };
+			}
+		},
+		__b: {
+			configurable: !0,
+			value: 1
+		}
+	});
+	g("__b", function(i, n) {
+		b();
+		if ("string" == typeof n.type) {
+			var r, t = n.props;
+			for (var o in t) if ("children" !== o) {
+				var f = t[o];
+				if (f instanceof l$1) {
+					if (!r) n.__np = r = {};
+					r[o] = f;
+					t[o] = f.peek();
+				}
+			}
+		}
+		i(n);
+	});
+	g("__r", function(i, n) {
+		i(n);
+		if (n.type !== M) {
+			b();
+			var r, o = n.__c;
+			if (o) {
+				o.__$f &= -2;
+				if (void 0 === (r = o.__$u)) o.__$u = r = function(i, n) {
+					var r;
+					j(function() {
+						r = this;
+					}, { name: n });
+					r.c = i;
+					return r;
+				}(function(i) {
+					return function() {
+						var n;
+						if (p) null == (n = this.y) || n.call(this);
+						i.__$f |= 1;
+						i.setState({});
+					};
+				}(o), "function" == typeof n.type ? n.type.displayName || n.type.name : "");
+			}
+			b(r);
+		}
+	});
+	g("__e", function(i, n, r, t) {
+		b();
+		i(n, r, t);
+	});
+	g("diffed", function(i, n) {
+		b();
+		var r;
+		if ("string" == typeof n.type && (r = n.__e)) {
+			var t = n.__np, o = n.props, f = r.U;
+			if (f) for (var e in f) {
+				var u = f[e];
+				if (!(void 0 === u || t && e in t)) {
+					u.d();
+					f[e] = void 0;
+				}
+			}
+			if (t) {
+				if (!f) {
+					f = {};
+					r.U = f;
+				}
+				for (var a in t) {
+					var c = f[a], v = t[a];
+					if (void 0 === c) {
+						c = w(r, a, v, o);
+						f[a] = c;
+					} else c.o(v, o);
+				}
+			}
+		}
+		i(n);
+	});
+	function w(i, n, r, t) {
+		var o = n in i && void 0 === i.ownerSVGElement, f = y$1(r);
+		return {
+			o: function(i, n) {
+				f.value = i;
+				t = n;
+			},
+			d: j(function() {
+				this.N = F;
+				var r = f.value.value;
+				if (t[n] !== r) {
+					t[n] = r;
+					if (o) i[n] = r;
+					else if (null != r && (!1 !== r || "-" === n[4])) i.setAttribute(n, r);
+					else i.removeAttribute(n);
+				}
+			})
+		};
+	}
+	g("unmount", function(i, n) {
+		if ("string" == typeof n.type) {
+			var r = n.__e;
+			if (r) {
+				var t = r.U;
+				if (t) {
+					r.U = void 0;
+					for (var o in t) {
+						var f = t[o];
+						if (f) f.d();
+					}
+				}
+			}
+			var e = n.__np;
+			if (e) {
+				var u = n.props;
+				for (var a in e) u[a] = e[a];
+			}
+			n.__np = void 0;
+		} else {
+			var c = n.__c;
+			if (c) {
+				c.__$f |= 8;
+				var v = c.__$u;
+				if (v) {
+					c.__$u = void 0;
+					v.d();
+				}
+			}
+		}
+		i(n);
+	});
+	g("__h", function(i, n, r, t) {
+		if (t < 3) n.__$f |= 2;
+		i(n, r, t);
+	});
+	$.prototype.shouldComponentUpdate = function(i, n) {
+		if (this.__R) return !0;
+		var r = this.__$u, t = r && void 0 !== r.s;
+		for (var o in n) return !0;
+		if (this.__f || "boolean" == typeof this.u && !0 === this.u) {
+			var f = 2 & this.__$f;
+			if (!(t || f || 4 & this.__$f)) return !0;
+			if (1 & this.__$f) return !0;
+		} else {
+			if (!(t || 4 & this.__$f)) return !0;
+			if (3 & this.__$f) return !0;
+		}
+		for (var e in i) if ("__source" !== e && i[e] !== this.props[e]) return !0;
+		for (var u in this.props) if (!(u in i)) return !0;
+		return !1;
+	};
+	function useSignal(i, n) {
+		return b$2(function() {
+			return y$1(i, n);
+		}, []);
+	}
+	var q = function(i) {
+		queueMicrotask(function() {
+			queueMicrotask(i);
+		});
+	};
+	function x() {
+		n(function() {
+			var i;
+			while (i = _.shift()) l.call(i);
+		});
+	}
+	function F() {
+		if (1 === _.push(this)) (n$1.requestAnimationFrame || q)(x);
 	}
 	var DEFAULT_WARNING = "Warning: Move timings and evaluations are client-side browser telemetry estimates.";
 	function formatEmt(ms) {

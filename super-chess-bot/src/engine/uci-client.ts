@@ -1,4 +1,4 @@
-import type { PositionHistory } from '../chess/position.js';
+import { canonicalFen, type PositionHistory } from '../chess/position.js';
 import type { Evaluation, MultiPvLine } from '../chess/types';
 
 export type { MultiPvLine, PositionHistory };
@@ -323,7 +323,12 @@ export class UciClient {
   cancelPonder(preserveFen?: string): void {
     const job = this.ponderJob;
     if (!job) return;
-    if (preserveFen !== undefined && job.fen === preserveFen) return;
+    if (preserveFen !== undefined) {
+      const variant = this.chess960 ? 'chess960' : undefined;
+      const jobFen = canonicalFen(job.fen, variant) ?? job.fen;
+      const targetFen = canonicalFen(preserveFen, variant) ?? preserveFen;
+      if (jobFen === targetFen) return;
+    }
     this.ponderJob = null;
     this.abortJob(job);
   }
@@ -515,6 +520,7 @@ export class UciClient {
           continue;
         }
 
+        let completed = false;
         this.active = job;
         try {
           await this.ensureReady();
@@ -523,11 +529,12 @@ export class UciClient {
           if (job.timeoutReason) throw job.timeoutReason;
           if (job.abortReason || job.signal?.aborted) throw job.abortReason ?? abortError();
           this.resolveJob(job, result);
+          completed = true;
         } catch (error) {
           this.rejectJob(job, error);
         } finally {
           this.cleanupJob(job);
-          if (this.ponderJob === job) this.ponderJob = null;
+          if (this.ponderJob === job && !completed) this.ponderJob = null;
           if (this.active === job) this.active = null;
         }
       }

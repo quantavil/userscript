@@ -74,8 +74,6 @@ async function createStockfishWorker(signal: AbortSignal): Promise<UciWorkerLike
 class EngineWorkerClient {
   private currentChess960 = false;
   private client = new UciClient(createStockfishWorker);
-  /** FEN of the speculative search this client currently owns, if any. */
-  private ponderFen: string | null = null;
 
   async ensureEngine(chess960 = false): Promise<UciClient> {
     if (this.currentChess960 !== chess960) {
@@ -110,29 +108,21 @@ class EngineWorkerClient {
     const definition = getVariantDefinition(variant);
     if (!definition) throw new Error(`Unknown variant: ${variant}`);
     // UciClient promotes an exact match or cancels a miss before queuing search.
-    this.ponderFen = null;
     const client = await this.ensureEngine(definition.chess960);
     return client.analyze(fen, depth, timeLimit, signal, history, slackMs, multiPv);
   }
 
   ponder(fen: string, depth: number, history?: PositionHistory): boolean {
-    if (!fen || this.client.busy || this.ponderFen) return false;
+    if (!fen || this.client.busy) return false;
     const promise = this.client.ponder(fen, depth, undefined, history);
     if (!promise) return false;
-    this.ponderFen = fen;
-    void promise
-      .catch(() => {
-        // A canceled or failed speculative search is handled by the next turn.
-      })
-      .finally(() => {
-        if (this.ponderFen === fen) this.ponderFen = null;
-      });
+    void promise.catch(() => {
+      // A canceled or failed speculative search is handled by the next turn.
+    });
     return true;
   }
 
   cancelPonder(preserveFen?: string): void {
-    if (this.ponderFen && preserveFen !== undefined && this.ponderFen === preserveFen) return;
-    this.ponderFen = null;
     this.client.cancelPonder(preserveFen);
   }
 
