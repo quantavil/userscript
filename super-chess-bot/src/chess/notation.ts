@@ -62,3 +62,43 @@ export function formatMove(fen: string, uci: string, variant?: string): string {
   const san = position ? (sanOf(position.clone(), uci) ?? uci) : uciToSan(fen, uci, variant);
   return whiteToMove ? `${moveNumber}. ${san}` : `${moveNumber}... ${san}`;
 }
+
+/**
+ * Convert a space-separated UCI sequence (PV line) into formatted SAN with move numbers.
+ * Example: 'e2e4 e7e5 g1f3 b8c6' -> '1. e4 e5 2. Nf3 Nc6' (if White to move)
+ * Example: 'e7e5 g1f3 b8c6' -> '1... e5 2. Nf3 Nc6' (if Black to move)
+ */
+export function uciSequenceToSan(fen: string, uciSequence: string, variant?: string): string {
+  if (!uciSequence || uciSequence === '-') return uciSequence;
+  const moves = uciSequence.trim().split(/\s+/).filter(Boolean);
+  if (moves.length === 0) return uciSequence;
+  const position = loadPosition(fen, variant, 'standard');
+  if (!position) return uciSequence;
+
+  const pos = position.clone();
+  let moveNum = pos.fullmoves;
+  let isWhite = pos.turn === 'white';
+  const parts: string[] = [];
+
+  for (let i = 0; i < moves.length; i++) {
+    const uci = moves[i];
+    const san = sanOf(pos, uci);
+    if (!san) {
+      parts.push(uci);
+      break;
+    }
+    if (i === 0) {
+      parts.push(isWhite ? `${moveNum}. ${san}` : `${moveNum}... ${san}`);
+    } else if (isWhite) {
+      parts.push(`${moveNum}. ${san}`);
+    } else {
+      parts.push(san);
+    }
+    if (!isWhite) {
+      moveNum++;
+    }
+    isWhite = !isWhite;
+  }
+
+  return parts.join(' ');
+}

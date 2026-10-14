@@ -1,6 +1,6 @@
 import { BotState } from '../app/state.js';
 import { markBotNode } from '../board/ownership.js';
-import { uciListToSan, uciToSan } from '../chess/notation.js';
+import { uciListToSan, uciSequenceToSan, uciToSan } from '../chess/notation.js';
 import type { CandidateLine } from '../chess/types.js';
 import { Settings, setMenuPositionGetter } from '../settings/storage.js';
 import { readSite } from '../sites/registry.js';
@@ -30,14 +30,23 @@ interface UI {
 let lastMultiPvSource: readonly CandidateLine[] | null = null;
 let lastMultiPvLines: CandidateLine[] = [];
 
-function multiPvWithSans(lines: readonly CandidateLine[], sans: readonly string[]): CandidateLine[] {
+function multiPvWithSans(
+  lines: readonly CandidateLine[],
+  sans: readonly string[],
+  fen?: string | null,
+  variant?: string,
+): CandidateLine[] {
   if (lines === lastMultiPvSource) {
     const unchanged =
       lastMultiPvLines.length === sans.length && sans.every((san, index) => lastMultiPvLines[index]?.san === san);
     if (unchanged) return lastMultiPvLines;
   }
   lastMultiPvSource = lines;
-  lastMultiPvLines = lines.map((line, index) => ({ ...line, san: sans[index] }));
+  lastMultiPvLines = lines.map((line, index) => ({
+    ...line,
+    san: sans[index],
+    pv: fen ? uciSequenceToSan(fen, line.pv, variant) : line.pv,
+  }));
   return lastMultiPvLines;
 }
 
@@ -62,6 +71,10 @@ export const ui: UI = {
     const san =
       fen && BotState.bestMove !== '-' ? uciToSan(fen, BotState.bestMove, snapshot?.variant) : BotState.bestMove;
     const suggestedMove = fen ? san : BotState.bestMove;
+    const formattedPv =
+      fen && BotState.principalVariation !== '-'
+        ? uciSequenceToSan(fen, BotState.principalVariation, snapshot?.variant)
+        : BotState.principalVariation;
     if (BotState.statusInfo !== this.lastStatus) {
       if (!isRoutineStatus(BotState.statusInfo)) {
         const type = BotState.recoveryAction === 'retry' || isErrorStatus(BotState.statusInfo) ? 'error' : 'status';
@@ -84,10 +97,10 @@ export const ui: UI = {
       status: BotState.statusInfo,
       evaluation: BotState.currentEvaluation,
       bestMove: suggestedMove,
-      principalVariation: BotState.principalVariation,
+      principalVariation: formattedPv,
       recoveryAction: BotState.recoveryAction,
       reportAvailable: !!snapshot && snapshot.phase === 'finished',
-      multiPvLines: multiPvWithSans(lines, sans),
+      multiPvLines: multiPvWithSans(lines, sans, fen, snapshot?.variant),
       evalHistory: BotState.evalHistory ?? [],
     });
   },

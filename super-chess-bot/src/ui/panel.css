@@ -1073,7 +1073,7 @@
   min-height: var(--target);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
-  background: var(--surface);
+  background: var(--wood);
   overflow: hidden;
 }
 

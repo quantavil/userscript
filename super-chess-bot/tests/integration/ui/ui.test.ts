@@ -80,7 +80,7 @@ describe('panel view state', () => {
       status: 'Ready · D10 · 42 ms',
       evaluation: '0.32',
       bestMove: 'e4',
-      principalVariation: 'e2e4 e7e5',
+      principalVariation: '1. e4 e5',
       recoveryAction: null,
       reportAvailable: false,
       multiPvLines: [],

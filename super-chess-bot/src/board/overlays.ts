@@ -7,6 +7,13 @@ interface Coordinates {
   y: number;
 }
 
+interface ActiveArrow {
+  uciFrom: string;
+  uciTo: string;
+  color: string;
+  thickness: number;
+}
+
 interface BoardContext {
   boardEl: HTMLElement;
   orientation: 'white' | 'black';
@@ -17,6 +24,7 @@ interface BoardContext {
 
 let boardCtx: BoardContext | null = null;
 let observedOrientation: 'white' | 'black' | null = null;
+let activeArrows: ActiveArrow[] = [];
 
 export function attachToBoard(boardEl: HTMLElement | null): void {
   detachFromBoard();
@@ -40,8 +48,13 @@ export function attachToBoard(boardEl: HTMLElement | null): void {
 
   const resizeCanvas = () => {
     const rect = boardEl.getBoundingClientRect();
-    drawingBoard.width = rect.width;
-    drawingBoard.height = rect.height;
+    const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
+    drawingBoard.width = rect.width * dpr;
+    drawingBoard.height = rect.height * dpr;
+    drawingBoard.style.width = `${rect.width}px`;
+    drawingBoard.style.height = `${rect.height}px`;
+    ctx.setTransform?.(dpr, 0, 0, dpr, 0, 0);
+    redrawActiveArrows();
   };
   resizeCanvas();
   const ro = new ResizeObserver(resizeCanvas);
@@ -85,15 +98,17 @@ function detachFromBoard(): void {
     boardCtx.detachListeners();
   } catch {}
   boardCtx = null;
+  activeArrows = [];
 }
 
 export function clearArrows(): void {
+  activeArrows = [];
   if (!boardCtx) return;
   const { drawingBoard, ctx } = boardCtx;
   ctx.clearRect(0, 0, drawingBoard.width, drawingBoard.height);
 }
 
-function getSquareCenterClientXY(square: string): Coordinates | null {
+function getSquareCenterCanvasXY(square: string): Coordinates | null {
   if (!boardCtx || !square || square.length < 2) return null;
   const file = 'abcdefgh'.indexOf(square[0]);
   const rank = parseInt(square[1], 10);
@@ -102,10 +117,10 @@ function getSquareCenterClientXY(square: string): Coordinates | null {
   const rect = el.getBoundingClientRect();
   const size = Math.min(rect.width, rect.height);
   const tile = size / 8;
-  const offsetX = rect.left + (rect.width - size) / 2;
-  const offsetY = rect.top + (rect.height - size) / 2;
-  let x = file,
-    y = 8 - rank;
+  const offsetX = (rect.width - size) / 2;
+  const offsetY = (rect.height - size) / 2;
+  let x = file;
+  let y = 8 - rank;
   if (isAttachedBoardFlipped()) {
     x = 7 - x;
     y = 7 - y;
@@ -119,24 +134,17 @@ function getSquareCenterClientXY(square: string): Coordinates | null {
   return result;
 }
 
-function getSquareCenterCanvasXY(square: string): Coordinates | null {
-  if (!boardCtx || !square || square.length < 2) return null;
-  const p = getSquareCenterClientXY(square);
-  if (!p) return null;
-  const rect = boardCtx.boardEl.getBoundingClientRect();
-  return { x: p.x - rect.left, y: p.y - rect.top };
-}
-
-export function drawArrow(uciFrom: string, uciTo: string, color: string, thickness: number): void {
+function renderArrow(uciFrom: string, uciTo: string, color: string, thickness: number): void {
   if (BotState.ghostMode) return;
   if (!boardCtx || !uciFrom || !uciTo || uciFrom.length < 2 || uciTo.length < 2) return;
-  const { drawingBoard, ctx } = boardCtx;
+  const { ctx, boardEl } = boardCtx;
 
   const a = getSquareCenterCanvasXY(uciFrom);
   const b = getSquareCenterCanvasXY(uciTo);
   if (!a || !b) return;
 
-  const size = Math.min(drawingBoard.width, drawingBoard.height);
+  const rect = boardEl.getBoundingClientRect();
+  const size = Math.min(rect.width, rect.height);
   const tile = size / 8;
   const angle = Math.atan2(b.y - a.y, b.x - a.x);
   const headLength = Math.max(14, tile * 0.35);
@@ -169,6 +177,18 @@ export function drawArrow(uciFrom: string, uciTo: string, color: string, thickne
   ctx.closePath();
   ctx.fillStyle = color;
   ctx.fill();
+}
+
+export function drawArrow(uciFrom: string, uciTo: string, color: string, thickness: number): void {
+  activeArrows.push({ uciFrom, uciTo, color, thickness });
+  renderArrow(uciFrom, uciTo, color, thickness);
+}
+
+function redrawActiveArrows(): void {
+  if (BotState.ghostMode || !boardCtx || activeArrows.length === 0) return;
+  for (const arrow of activeArrows) {
+    renderArrow(arrow.uciFrom, arrow.uciTo, arrow.color, arrow.thickness);
+  }
 }
 
 /** Draws alternative arrows for Multi-PV lines (#1 green, #2 cyan, #3 amber). */

@@ -246,6 +246,15 @@ function statusTone(analysis: PanelAnalysis, enabled: boolean): Tone {
   return enabled ? 'ready' : 'idle';
 }
 
+function SwitchKnob() {
+  return (
+    <>
+      <span class="panel-switch-track" aria-hidden="true" />
+      <span class="panel-switch-knob" aria-hidden="true" />
+    </>
+  );
+}
+
 function QuickEnableButton({ enabled, onToggle }: { enabled: boolean; onToggle: (enabled: boolean) => void }) {
   return (
     <button
@@ -259,29 +268,9 @@ function QuickEnableButton({ enabled, onToggle }: { enabled: boolean; onToggle: 
       <PowerIcon />
       <span class="panel-quick-state">{enabled ? 'On' : 'Off'}</span>
       <span class="panel-switch" aria-hidden="true">
-        <span class="panel-switch-track" />
-        <span class="panel-switch-knob" />
+        <SwitchKnob />
       </span>
     </button>
-  );
-}
-
-function EnableToggle({ enabled, onToggle }: { enabled: boolean; onToggle: (enabled: boolean) => void }) {
-  return (
-    <label class="panel-toggle panel-toggle-enable">
-      <span class="panel-toggle-enable-label">Enable Bot</span>
-      <span class="panel-switch">
-        <input
-          class="panel-switch-input"
-          type="checkbox"
-          checked={enabled}
-          aria-label="Enable Bot"
-          onChange={(event) => onToggle(event.currentTarget.checked)}
-        />
-        <span class="panel-switch-track" aria-hidden="true" />
-        <span class="panel-switch-knob" aria-hidden="true" />
-      </span>
-    </label>
   );
 }
 
@@ -305,8 +294,7 @@ function Toggle({
           aria-label={label}
           onChange={(event) => onChange(event.currentTarget.checked)}
         />
-        <span class="panel-switch-track" aria-hidden="true" />
-        <span class="panel-switch-knob" aria-hidden="true" />
+        <SwitchKnob />
       </span>
     </label>
   );
@@ -419,14 +407,19 @@ function SetupNotice({ status }: { status?: string }) {
   );
 }
 
-function PanelGuide() {
+function PanelGuide({ onClose }: { onClose?: () => void }) {
   return (
-    <section class="panel-guide" aria-label="Super Chess Bot Guide">
+    <section class="panel-guide" id="panel-guide" aria-label="Super Chess Bot Guide">
       <div class="panel-guide-head">
         <span class="panel-guide-title">
           <HelpIcon />
           <span>Quick Guide & Controls</span>
         </span>
+        {onClose && (
+          <button type="button" class="panel-button" onClick={onClose}>
+            Back to controls
+          </button>
+        )}
       </div>
 
       <div class="panel-guide-section">
@@ -657,6 +650,7 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
             type="button"
             class={`panel-icon panel-help-toggle ${helpOpen ? 'is-active' : ''}`}
             aria-expanded={helpOpen}
+            aria-controls="panel-guide"
             aria-label="Bot guide"
             title="Bot guide"
             onClick={() => setHelpOpen((v) => !v)}
@@ -664,14 +658,12 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
             <HelpIcon />
           </button>
         )}
-        {collapsed && (
-          <QuickEnableButton enabled={settings.hackEnabled} onToggle={(next) => updateSetting('hackEnabled', next)} />
-        )}
+        <QuickEnableButton enabled={settings.hackEnabled} onToggle={(next) => updateSetting('hackEnabled', next)} />
         <button
           type="button"
           class="panel-icon"
           aria-expanded={!collapsed}
-          aria-controls="panel-body"
+          aria-controls={helpOpen ? 'panel-guide' : 'panel-body'}
           aria-label={collapsed ? 'Show panel' : 'Hide panel'}
           title={collapsed ? 'Show panel' : 'Hide panel'}
           onClick={toggleCollapsed}
@@ -681,7 +673,7 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
       </header>
 
       {helpOpen ? (
-        <PanelGuide />
+        <PanelGuide onClose={() => setHelpOpen(false)} />
       ) : (
         !collapsed && (
           <div class="panel-body" id="panel-body">
@@ -733,7 +725,6 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
 
             <section class="panel-settings" aria-label="Bot settings">
               <div class="panel-toggles">
-                <EnableToggle enabled={settings.hackEnabled} onToggle={(next) => updateSetting('hackEnabled', next)} />
                 <Toggle
                   label="Auto move"
                   checked={settings.autoMove}
@@ -753,6 +744,11 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
                   label="Blunder shield"
                   checked={settings.blunderShield}
                   onChange={(next) => updateSetting('blunderShield', next)}
+                />
+                <Toggle
+                  label="Auto game report"
+                  checked={settings.gameReport}
+                  onChange={(next) => updateSetting('gameReport', next)}
                 />
                 <Toggle
                   label="Opening book"
@@ -910,7 +906,13 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
                     <>
                       {movePairs.length > 0 && <MoveScoresheet pairs={movePairs} />}
                       {logs
-                        .filter((entry) => entry.type === 'error' || entry.type === 'warn' || movePairs.length === 0)
+                        .filter(
+                          (entry) =>
+                            entry.type === 'error' ||
+                            entry.type === 'warn' ||
+                            entry.type === 'move' ||
+                            movePairs.length === 0,
+                        )
                         .map((entry) => (
                           <p key={entry.id} class={`panel-log-entry ${logTextClass[entry.type]}`}>
                             <time>{entry.time}</time>

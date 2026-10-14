@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { BotState } from '../../../src/app/state.js';
+import { uciSequenceToSan } from '../../../src/chess/notation.js';
 import { gameReportSignal, resetGameReport } from '../../../src/game/report/analyzer.js';
 import { REPORT_DEPTH_MAX, REPORT_DEPTH_MIN } from '../../../src/settings/schema.js';
 import { EvalTrendGraph, formatTrendValue } from '../../../src/ui/components/eval-trend-graph.js';
 import { atDepthLimit, stepReportDepth } from '../../../src/ui/components/game-report-panel.js';
+import { updatePanelSetting } from '../../../src/ui/panel.js';
 
 describe('eval trend headline', () => {
   it('never renders a signed zero', () => {
@@ -69,5 +72,34 @@ describe('eval trend graph label', () => {
     const vnode = EvalTrendGraph({ history: [0.2, 0.4] });
     expect(JSON.stringify(vnode)).toContain('" turns"');
     expect(JSON.stringify(vnode)).not.toContain('plies');
+  });
+});
+
+describe('PV UCI sequence to SAN formatting', () => {
+  const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  const AFTER_E4_FEN = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+
+  it('formats full PV UCI sequences into SAN with move numbers when White starts', () => {
+    expect(uciSequenceToSan(START_FEN, 'e2e4 e7e5 g1f3 b8c6')).toBe('1. e4 e5 2. Nf3 Nc6');
+  });
+
+  it('formats full PV UCI sequences into SAN with move numbers when Black starts', () => {
+    expect(uciSequenceToSan(AFTER_E4_FEN, 'e7e5 g1f3 b8c6')).toBe('1... e5 2. Nf3 Nc6');
+  });
+
+  it('handles invalid or empty or hyphen sequences gracefully', () => {
+    expect(uciSequenceToSan(START_FEN, '-')).toBe('-');
+    expect(uciSequenceToSan(START_FEN, '')).toBe('');
+    expect(uciSequenceToSan('not a fen', 'e2e4 e7e5')).toBe('e2e4 e7e5');
+  });
+});
+
+describe('settings actions', () => {
+  it('updates gameReport setting in BotState and storage', () => {
+    updatePanelSetting('gameReport', false);
+    expect(BotState.gameReport).toBe(false);
+
+    updatePanelSetting('gameReport', true);
+    expect(BotState.gameReport).toBe(true);
   });
 });

@@ -233,29 +233,31 @@ describe('Lichess player-round adapter', () => {
 
   it('memoizes history reader results when data, steps, ply, and fen are unchanged', () => {
     const reader = createHistoryReader();
+    const steps = [
+      { ply: 0, fen: START_FEN, san: '', uci: '' },
+      { ply: 1, fen: AFTER_E4, san: 'e4', uci: 'e2e4' },
+    ];
     const roundData = {
       game: { variant: { key: 'standard' } },
-      steps: [
-        { ply: 0, fen: START_FEN, san: '' },
-        { ply: 1, fen: AFTER_E4, san: 'e4' },
-      ],
+      steps,
     } as unknown as Parameters<typeof reader>[0];
-    const selected = roundData.steps![1]!;
+    const selected = steps[1];
 
     const first = reader(roundData, selected);
     const second = reader(roundData, selected);
     expect(first).toBeDefined();
     expect(second).toBe(first);
 
+    const nextSteps = [
+      { ply: 0, fen: START_FEN, san: '', uci: '' },
+      { ply: 1, fen: AFTER_E4, san: 'e4', uci: 'e2e4' },
+      { ply: 2, fen: AFTER_E4_C5, san: 'c5', uci: 'c7c5' },
+    ];
     const nextRoundData = {
       game: { variant: { key: 'standard' } },
-      steps: [
-        { ply: 0, fen: START_FEN, san: '' },
-        { ply: 1, fen: AFTER_E4, san: 'e4' },
-        { ply: 2, fen: AFTER_E4_C5, san: 'c5' },
-      ],
+      steps: nextSteps,
     } as unknown as Parameters<typeof reader>[0];
-    const nextSelected = nextRoundData.steps![2]!;
+    const nextSelected = nextSteps[2];
 
     const third = reader(nextRoundData, nextSelected);
     expect(third).toBeDefined();
