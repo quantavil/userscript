@@ -1,6 +1,6 @@
 import type { PositionHistory } from '../chess/position';
 import type { Evaluation, MultiPvLine } from '../chess/types';
-import { type AnalysisResult, isValidUciMove } from './uci-client';
+import { type AnalysisResult, isValidUciMove, type SearchOptions } from './uci-client';
 import { engineWorker } from './worker-client';
 
 export type { AnalysisResult, PositionHistory };
@@ -35,6 +35,7 @@ export function getAnalysis(
   multiPv?: number,
   legalMoves?: number,
   onDepthComplete?: (depth: number, lines: MultiPvLine[]) => void,
+  options?: SearchOptions,
 ): Promise<AnalysisResult> {
   return engineWorker.analyze(
     fen,
@@ -47,6 +48,7 @@ export function getAnalysis(
     multiPv,
     legalMoves,
     onDepthComplete,
+    options,
   );
 }
 

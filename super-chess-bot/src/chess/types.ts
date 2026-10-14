@@ -41,6 +41,7 @@ export interface BotState {
   ponderEnabled: boolean;
   targetElo: number;
   blunderShield: boolean;
+  madmanMode: boolean;
   ghostMode: boolean;
   autoRetry: boolean;
   premove: boolean;
@@ -63,6 +64,7 @@ export type PreferenceKey =
   | 'ponderEnabled'
   | 'targetElo'
   | 'blunderShield'
+  | 'madmanMode'
   | 'ghostMode'
   | 'autoRetry'
   | 'premove'

@@ -50,7 +50,7 @@ export function loadPosition(
  * chessops stores castling moves as king-to-rook. A `UCI_Chess960` engine expects that same
  * king-to-rook form; only an orthodox engine needs the king-destination square.
  */
-function makeEngineUci(position: Position, move: Parameters<typeof makeUci>[0], chess960: boolean): string {
+export function makeEngineUci(position: Position, move: Parameters<typeof makeUci>[0], chess960: boolean): string {
   if (!chess960 && 'from' in move && move.from === position.board.kingOf(position.turn)) {
     const rooks = position.castles.rook[position.turn];
     const side = move.to === rooks.a ? 'a' : move.to === rooks.h ? 'h' : undefined;

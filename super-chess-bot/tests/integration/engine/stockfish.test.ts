@@ -35,6 +35,66 @@ async function waitUntil(predicate: () => boolean): Promise<void> {
 }
 
 describe('UCI Stockfish client', () => {
+  it('does not start a search whose deadline expires during worker initialization', async () => {
+    const worker = new FakeUciWorker();
+    const client = new UciClient(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return worker;
+    });
+    await expect(
+      client.analyze(START_FEN, 12, 100, undefined, undefined, undefined, 1, undefined, undefined, {
+        deadline: performance.now() + 10,
+      }),
+    ).rejects.toThrow('deadline');
+    expect(worker.commands.some((command) => command.startsWith('go '))).toBe(false);
+    client.dispose();
+  });
+  it('never assigns an old exact score to a new bounded or unscored PV', async () => {
+    const worker = new FakeUciWorker();
+    const client = new UciClient(() => worker);
+    const resultPromise = client.analyze(START_FEN, 12, 500, undefined, undefined, undefined, 2, 2);
+    await waitUntil(() => worker.commands.some((command) => command.startsWith('go ')));
+    worker.emit('info depth 7 multipv 1 score cp 200 pv e2e4');
+    worker.emit('info depth 7 multipv 2 score cp 0 pv d2d4');
+    worker.emit('info depth 8 multipv 1 score cp 300 lowerbound pv g1f3');
+    worker.emit('info depth 8 multipv 2 pv b1c3');
+    worker.emit('bestmove g1f3');
+    const result = await resultPromise;
+    expect(result.evaluation).toEqual({});
+    expect(result.multiPv?.every((line) => line.depth === 7)).toBe(true);
+    expect(result.multiPv?.map((line) => line.uci)).toEqual(['e2e4', 'd2d4']);
+    client.dispose();
+  });
+
+  it('restricts candidate searches and stops gracefully at the shared deadline', async () => {
+    const worker = new FakeUciWorker();
+    const client = new UciClient(() => worker);
+    const resultPromise = client.analyze(START_FEN, 12, 500, undefined, undefined, 0, 2, 2, undefined, {
+      searchMoves: ['e2e4', 'd2d4'],
+      deadline: performance.now() + 80,
+    });
+    await waitUntil(() => worker.commands.some((command) => command.startsWith('go ')));
+    expect(worker.commands).toContain('go depth 12 movetime 500 searchmoves e2e4 d2d4');
+    worker.emit('info depth 8 multipv 1 score cp 20 pv e2e4 e7e5');
+    worker.emit('info depth 8 multipv 2 score cp 10 pv d2d4 d7d5');
+    await waitUntil(() => worker.commands.includes('stop'));
+    worker.emit('bestmove e2e4');
+    expect((await resultPromise).multiPv).toHaveLength(2);
+    client.dispose();
+  });
+
+  it('rejects malformed search restrictions before issuing any engine commands', async () => {
+    const worker = new FakeUciWorker();
+    const client = new UciClient(() => worker);
+    await expect(
+      client.analyze(START_FEN, 12, 20, undefined, undefined, undefined, 2, 2, undefined, {
+        searchMoves: ['e2e4\ngo infinite'],
+      }),
+    ).rejects.toThrow('search moves');
+    expect(worker.commands).toEqual([]);
+    client.dispose();
+  });
+
   it('initializes once and parses the final info line and best move', async () => {
     const worker = new FakeUciWorker();
     let constructions = 0;

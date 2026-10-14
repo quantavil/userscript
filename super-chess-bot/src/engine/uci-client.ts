@@ -48,7 +48,14 @@ interface SearchInfo {
   time?: number;
 }
 
+export interface SearchOptions {
+  searchMoves?: readonly string[];
+  /** Absolute performance.now() deadline; stop gracefully and retain completed lines. */
+  deadline?: number;
+}
+
 interface SearchJob {
+  options?: SearchOptions;
   fen: string;
   positionKey: string;
   depth: number;
@@ -173,7 +180,8 @@ function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchI
 
   const cpIndex = tokens.indexOf('cp');
   const mateIndex = tokens.indexOf('mate');
-  let evaluation: Evaluation = multipv === 1 ? previous.evaluation : (existingLine?.evaluation ?? {});
+  let evaluation: Evaluation =
+    pvIndex >= 0 ? {} : multipv === 1 ? previous.evaluation : (existingLine?.evaluation ?? {});
   const isBound = tokens.includes('lowerbound') || tokens.includes('upperbound');
   if (!isBound) {
     if (cpIndex >= 0) {
@@ -184,6 +192,10 @@ function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchI
       if (mate !== undefined) evaluation = { mate };
     }
   }
+
+  // Bounds and unscored PVs are not exact evaluations of this move at this depth.
+  if (pvIndex >= 0 && (isBound || (!Number.isFinite(evaluation.cp) && !Number.isFinite(evaluation.mate))))
+    return previous;
 
   const pv =
     pvIndex >= 0 ? tokens.slice(pvIndex + 1).join(' ') : multipv === 1 ? previous.pv : (existingLine?.pv ?? '');
@@ -206,7 +218,7 @@ function parseInfo(line: string, previous: SearchInfo, job?: SearchJob): SearchI
         ...(time !== undefined ? { time } : {}),
       };
       job.multiPvLines.set(multipv, lineEntry);
-      if (depth > 0 && pvIndex >= 0) {
+      if (depth > 0 && pvIndex >= 0 && (Number.isFinite(evaluation.cp) || Number.isFinite(evaluation.mate))) {
         let snapshot = job.multiPvSnapshots.get(depth);
         if (!snapshot) {
           snapshot = new Map();
@@ -307,8 +319,20 @@ export class UciClient {
     multiPv: number = LIVE_MULTI_PV,
     legalMoves?: number,
     onDepthComplete?: (depth: number, lines: MultiPvLine[]) => void,
+    options?: SearchOptions,
   ): Promise<AnalysisResult> {
-    return this.analyzeReady(fen, depth, timeLimit, signal, history, slackMs, multiPv, legalMoves, onDepthComplete);
+    return this.analyzeReady(
+      fen,
+      depth,
+      timeLimit,
+      signal,
+      history,
+      slackMs,
+      multiPv,
+      legalMoves,
+      onDepthComplete,
+      options,
+    );
   }
 
   private analyzeReady(
@@ -321,23 +345,53 @@ export class UciClient {
     multiPv: number = LIVE_MULTI_PV,
     legalMoves?: number,
     onDepthComplete?: (depth: number, lines: MultiPvLine[]) => void,
+    options?: SearchOptions,
   ): Promise<AnalysisResult> {
     if (this.disposed) return Promise.reject(new Error('Engine client is disposed'));
     if (signal?.aborted) return Promise.reject(abortError());
     if (!fen || /[\r\n]/.test(fen)) return Promise.reject(new Error('A valid position FEN is required'));
 
+    if (
+      options?.searchMoves &&
+      (options.searchMoves.length === 0 || options.searchMoves.some((move) => !isValidUciMove(move)))
+    ) {
+      return Promise.reject(new Error('Valid search moves are required'));
+    }
+    if (
+      options?.deadline !== undefined &&
+      (!Number.isFinite(options.deadline) || options.deadline <= performance.now())
+    ) {
+      return Promise.reject(new Error('Search deadline expired'));
+    }
     const positionKey = positionCommand(fen, history);
     const requestedDepth = clampSearchDepth(depth);
     const ponderJob = this.ponderJob;
     if (ponderJob) {
-      if (ponderJob.positionKey === positionKey && ponderJob.depth === requestedDepth) {
+      if (
+        ponderJob.positionKey === positionKey &&
+        ponderJob.depth === requestedDepth &&
+        ponderJob.multiPv === multiPv &&
+        !options
+      ) {
         this.promotePonder(ponderJob, timeLimit, signal);
         return ponderJob.promise;
       }
       this.cancelPonder();
     }
 
-    return this.enqueue(fen, depth, timeLimit, signal, history, false, slackMs, multiPv, legalMoves, onDepthComplete);
+    return this.enqueue(
+      fen,
+      depth,
+      timeLimit,
+      signal,
+      history,
+      false,
+      slackMs,
+      multiPv,
+      legalMoves,
+      onDepthComplete,
+      options,
+    );
   }
 
   /** Start an un-timed UCI ponder search that can be promoted on a matching position. */
@@ -371,6 +425,7 @@ export class UciClient {
     multiPv: number = LIVE_MULTI_PV,
     legalMoves?: number,
     onDepthComplete?: (depth: number, lines: MultiPvLine[]) => void,
+    options?: SearchOptions,
   ): Promise<AnalysisResult> {
     let resolve!: (result: AnalysisResult) => void;
     let reject!: (reason: unknown) => void;
@@ -400,6 +455,7 @@ export class UciClient {
       hasMultiPv: false,
       legalMoves,
       onDepthComplete,
+      options,
     };
     if (signal) this.attachAbort(job, signal);
     this.queue.push(job);
@@ -692,6 +748,9 @@ export class UciClient {
   }
 
   private async runSearch(job: SearchJob): Promise<AnalysisResult> {
+    if (job.options?.deadline !== undefined && job.options.deadline <= performance.now()) {
+      throw new Error('Search deadline expired');
+    }
     const result = deferred<AnalysisResult>();
     job.result = result;
     // A zero budget means "search to `depth`": the report pass wants a stable depth rather than a
@@ -717,11 +776,18 @@ export class UciClient {
       }
     }
     const slack = job.slackMs ?? this.searchTimeoutSlackMs;
-    job.searchTimer = setTimeout(() => {
-      job.timeoutReason = new Error(`Stockfish search exceeded ${budget + slack} ms`);
-      this.stopActiveSearch(job);
-    }, budget + slack);
-    this.send(depthOnly ? `go depth ${job.depth}` : `go depth ${job.depth} movetime ${job.timeLimit}`);
+    const untilDeadline =
+      job.options?.deadline === undefined ? Infinity : Math.max(0, job.options.deadline - performance.now());
+    const gracefulDeadline = untilDeadline <= budget + slack;
+    job.searchTimer = setTimeout(
+      () => {
+        if (!gracefulDeadline) job.timeoutReason = new Error(`Stockfish search exceeded ${budget + slack} ms`);
+        this.stopActiveSearch(job);
+      },
+      Math.min(budget + slack, untilDeadline),
+    );
+    const restriction = job.options?.searchMoves ? ` searchmoves ${job.options.searchMoves.join(' ')}` : '';
+    this.send((depthOnly ? `go depth ${job.depth}` : `go depth ${job.depth} movetime ${job.timeLimit}`) + restriction);
 
     try {
       return await result.promise;
@@ -790,8 +856,8 @@ export class UciClient {
       }
       const common = {
         depth: job.info.depth,
-        pv: job.info.pv,
-        evaluation: job.info.evaluation,
+        pv: job.info.pv.split(/\s+/)[0] === bestmove ? job.info.pv : isValidUciMove(bestmove) ? bestmove : '',
+        evaluation: job.info.pv.split(/\s+/)[0] === bestmove ? job.info.evaluation : {},
         ...(job.info.nodes === undefined ? {} : { nodes: job.info.nodes }),
         ...(job.info.time === undefined ? {} : { time: job.info.time }),
         ...(multiPv ? { multiPv } : {}),

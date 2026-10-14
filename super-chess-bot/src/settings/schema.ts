@@ -51,6 +51,7 @@ export const SETTING_SPECS = [
   { key: 'ponderEnabled', kind: 'flag', default: true, persisted: true },
   { key: 'targetElo', kind: 'number', default: 0, persisted: true, min: 0, max: MAX_TARGET_ELO },
   { key: 'blunderShield', kind: 'flag', default: true, persisted: true },
+  { key: 'madmanMode', kind: 'flag', default: false, persisted: true },
   { key: 'ghostMode', kind: 'flag', default: false, persisted: true },
   { key: 'autoRetry', kind: 'flag', default: true, persisted: true },
   { key: 'premove', kind: 'flag', default: true, persisted: true },

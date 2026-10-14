@@ -1,6 +1,12 @@
 import type { MultiPvLine } from '../chess/types.js';
 import { getVariantDefinition } from '../chess/variants.js';
-import { type AnalysisResult, type PositionHistory, UciClient, type UciWorkerLike } from './uci-client.js';
+import {
+  type AnalysisResult,
+  type PositionHistory,
+  type SearchOptions,
+  UciClient,
+  type UciWorkerLike,
+} from './uci-client.js';
 
 class ResourceWorker implements UciWorkerLike {
   constructor(
@@ -106,13 +112,25 @@ class EngineWorkerClient {
     multiPv?: number,
     legalMoves?: number,
     onDepthComplete?: (depth: number, lines: MultiPvLine[]) => void,
+    options?: SearchOptions,
   ): Promise<AnalysisResult> {
     if (signal?.aborted) throw new DOMException('Search aborted', 'AbortError');
     const definition = getVariantDefinition(variant);
     if (!definition) throw new Error(`Unknown variant: ${variant}`);
     // UciClient promotes an exact match or cancels a miss before queuing search.
     const client = await this.ensureEngine(definition.chess960);
-    return client.analyze(fen, depth, timeLimit, signal, history, slackMs, multiPv, legalMoves, onDepthComplete);
+    return client.analyze(
+      fen,
+      depth,
+      timeLimit,
+      signal,
+      history,
+      slackMs,
+      multiPv,
+      legalMoves,
+      onDepthComplete,
+      options,
+    );
   }
 
   ponder(fen: string, depth: number, history?: PositionHistory): boolean {

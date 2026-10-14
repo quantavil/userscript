@@ -7,10 +7,14 @@ import { getVariantDefinition } from '../chess/variants.js';
 import { lookupBookMove } from '../engine/book/lookup.js';
 import {
   LIVE_MULTI_PV,
+  MADMAN_DISCOVERY_MIN_BUDGET_MS,
+  MADMAN_MULTI_PV,
   MAX_AUTOMATIC_RETRIES,
   PREMOVE_PONDER_BRANCHES,
   PREMOVE_PONDER_DEPTH,
 } from '../engine/config.js';
+import { MadmanRiskTracker } from '../engine/madman.js';
+import { analyzeMadman } from '../engine/madman-search.js';
 import {
   type ArmedPremoveMap,
   fenKey,
@@ -42,12 +46,14 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryIdentity: object | null = null;
 let lastEvalRecord: { identity: object; plyKey: string } | null = null;
 const retryCounts = new Map<string, number>();
+const madmanRisk = new MadmanRiskTracker();
 
 export function resetRecovery(): void {
   if (retryTimer !== null) clearTimeout(retryTimer);
   retryTimer = null;
   retryIdentity = null;
   retryCounts.clear();
+  madmanRisk.clear();
   armedPremove = null;
 }
 
@@ -181,11 +187,21 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     BotState.statusInfo = kind === 'main' ? 'Analyzing...' : 'Pondering...';
     ui.updateDisplay();
     const history = requestHistory(snapshot);
+    const madman = Boolean(BotState.madmanMode);
+    if (!madman) madmanRisk.clear();
+    let madmanLoss = 0;
+    let madmanVerified = false;
+    // Reserve discovery time only when there is room for a positive-time search.
+    const primaryBudget =
+      madman && kind === 'main' && budget >= MADMAN_DISCOVERY_MIN_BUDGET_MS
+        ? Math.max(1, Math.floor(budget * 0.65))
+        : budget;
 
     const anticipated = anticipatedPonder;
     if (kind !== 'main') {
       anticipatedPonder = null;
       if (
+        !madman &&
         !BotState.premove &&
         anticipated?.fromFen === fen &&
         ponderPosition(anticipated.targetFen, BotState.botPower, anticipated.history)
@@ -196,11 +212,14 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     }
 
     const isStandard = getVariantDefinition(snapshot.variant)?.id === 'standard';
-    const bookMove =
-      isStandard && kind === 'main' && BotState.openingBook ? lookupBookMove(fen, BotState.openingStyle) : null;
+    const suggestedBookMove =
+      isStandard && kind === 'main' && BotState.openingBook
+        ? lookupBookMove(fen, madman ? 'hyper-aggressive' : BotState.openingStyle)
+        : null;
+    const bookMove = madman ? null : suggestedBookMove;
     let premoveHit = false;
     let premoveMove: string | null = null;
-    if (kind === 'main' && BotState.premove && armedPremove) {
+    if (kind === 'main' && !madman && BotState.premove && armedPremove) {
       const key = fenKey(fen);
       const replyUci = armedPremove.byExpectedFen.get(key);
       armedPremove = null;
@@ -253,8 +272,9 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
           ? Math.min(3000, Math.max(200, Math.floor(remainingMs / 20)))
           : undefined;
 
-      const requestedMultiPv =
-        kind === 'main'
+      const requestedMultiPv = madman
+        ? MADMAN_MULTI_PV
+        : kind === 'main'
           ? BotState.premove
             ? LIVE_MULTI_PV
             : undefined
@@ -264,7 +284,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       const requestedDepth = kind !== 'main' && BotState.premove ? PREMOVE_PONDER_DEPTH : BotState.botPower;
       const legalMoves = requestedMultiPv ? (countLegalMoves(fen, snapshot.variant) ?? undefined) : undefined;
       const onDepth =
-        kind !== 'main' && BotState.premove
+        kind !== 'main' && !madman && BotState.premove
           ? (depth: number, lines: MultiPvLine[]) => {
               if (depth >= 1) {
                 const armed = selectOpponentTurnPremove(fen, lines, snapshot.variant);
@@ -297,7 +317,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
             ? getAnalysis(
                 fen,
                 BotState.botPower,
-                budget,
+                primaryBudget,
                 analysisController.signal,
                 history,
                 slackMs,
@@ -309,7 +329,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
             : getAnalysis(
                 fen,
                 BotState.botPower,
-                budget,
+                primaryBudget,
                 analysisController.signal,
                 history,
                 slackMs,
@@ -353,7 +373,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
             ? await getAnalysis(
                 fen,
                 requestedDepth,
-                budget,
+                primaryBudget,
                 ctrl.signal,
                 history,
                 slackMs,
@@ -362,7 +382,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
                 legalMoves,
                 onDepth,
               )
-            : await getAnalysis(fen, requestedDepth, budget, ctrl.signal, history, slackMs, snapshot.variant);
+            : await getAnalysis(fen, requestedDepth, primaryBudget, ctrl.signal, history, slackMs, snapshot.variant);
       }
 
       if (!current()) return;
@@ -388,7 +408,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       }
     }
     if (kind !== 'main') {
-      if (BotState.premove && result.multiPv && result.multiPv.length > 0) {
+      if (!madman && BotState.premove && result.multiPv && result.multiPv.length > 0) {
         const armed = selectOpponentTurnPremove(fen, result.multiPv, snapshot.variant);
         if (armed) {
           if (!armedPremove) {
@@ -408,7 +428,31 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       return;
     }
 
+    if (madman && !isTablebase) {
+      const selection = await analyzeMadman(fen, best, {
+        depth: BotState.botPower,
+        budget,
+        deadline: started + budget,
+        signal: ctrl.signal,
+        history,
+        variant: snapshot.variant,
+        cooldown: madmanRisk.isCoolingDown(fen),
+        bookMove: suggestedBookMove,
+        expectedCount: Math.min(MADMAN_MULTI_PV, countLegalMoves(fen, snapshot.variant) ?? MADMAN_MULTI_PV),
+      });
+      if (!current()) return;
+      if (selection) {
+        best.uci = selection.chosenLine.uci;
+        best.pv = selection.chosenLine.pv;
+        best.score = selection.chosenLine.evaluation;
+        best.multiPv = selection.lines;
+        madmanLoss = selection.cpLoss;
+        madmanVerified = selection.verifiedOffer;
+      }
+    }
+
     if (
+      !madman &&
       !bookMove &&
       !isTablebase &&
       best.multiPv &&
@@ -433,7 +477,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       }
     }
 
-    if (BotState.premove && !premoveHit && !isTablebase && best.multiPv && best.multiPv.length > 0) {
+    if (!madman && BotState.premove && !premoveHit && !isTablebase && best.multiPv && best.multiPv.length > 0) {
       const chainResult = selectOwnTurnChainPremove(fen, best.multiPv, snapshot.variant);
       if (chainResult.bestMoveUci && chainResult.bestMoveUci !== best.uci) {
         best.uci = chainResult.bestMoveUci;
@@ -454,7 +498,16 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     if ((isSupportedRules && !nextFen) || fen.split(' ')[1] !== snapshot.playerColor)
       throw new Error('Engine move failed position validation');
 
-    if (BotState.premove && !premoveHit && !isTablebase && !armedPremove && bookMove && isStandard && nextFen) {
+    if (
+      !madman &&
+      BotState.premove &&
+      !premoveHit &&
+      !isTablebase &&
+      !armedPremove &&
+      bookMove &&
+      isStandard &&
+      nextFen
+    ) {
       const bookArmed = selectBookPremoveReplies(nextFen, BotState.openingStyle);
       if (bookArmed) {
         armedPremove = bookArmed;
@@ -464,7 +517,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
     const pvMoves = best.pv.split(/\s+/);
     const predictedReply = pvMoves[0] === best.uci ? pvMoves[1] : undefined;
     const targetFen = predictedReply && nextFen ? predictFen(nextFen, predictedReply, snapshot.variant) : null;
-    if (!BotState.premove && isStandard && BotState.ponderEnabled && targetFen && nextFen) {
+    if (!madman && !BotState.premove && isStandard && BotState.ponderEnabled && targetFen && nextFen) {
       anticipatedPonder = {
         fromFen: nextFen,
         targetFen,
@@ -512,6 +565,9 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
           ? `Ready · Tablebase · ${Math.round(performance.now() - started)} ms`
           : `Ready · D${result.depth} · ${Math.round(performance.now() - started)} ms`;
 
+    if (madman && !isTablebase) {
+      BotState.statusInfo += ` · Madman${madmanLoss > 0 ? ` · -${Math.round(madmanLoss)} cp` : ''}${madmanVerified ? ' · bait checked' : ''}`;
+    }
     if (best.multiPv && best.multiPv.length > 0) {
       drawMultiPvArrows(best.multiPv);
     } else {
@@ -584,6 +640,7 @@ export async function scheduleAnalysis(kind: string, fen: string): Promise<void>
       }
     }
     if (observed.status !== 'failed') {
+      if (madman && retryIdentity === identity) madmanRisk.record(fen, madmanLoss);
       BotState.recoveryAction = null;
       const premoveTag = isInstant ? ' · premove' : '';
       ui.log(formatMove(fen, best.uci, snapshot.variant) + premoveTag, 'move');

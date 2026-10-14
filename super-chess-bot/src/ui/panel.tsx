@@ -155,6 +155,7 @@ const SEARCH_ALTERING_SETTINGS = new Set<keyof PanelSettings>([
   'timingMode',
   'targetElo',
   'blunderShield',
+  'madmanMode',
   'openingBook',
   'openingStyle',
   'ponderEnabled',
@@ -747,6 +748,11 @@ function Panel({ host, actions }: { host: HTMLDivElement; actions: PanelActions 
                   label="Blunder shield"
                   checked={settings.blunderShield}
                   onChange={(next) => updateSetting('blunderShield', next)}
+                />
+                <Toggle
+                  label="Madman · max aggression"
+                  checked={settings.madmanMode}
+                  onChange={(next) => updateSetting('madmanMode', next)}
                 />
                 <Toggle
                   label="Auto game report"

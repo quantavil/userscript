@@ -54,3 +54,8 @@ Automatic recovery is scoped to a session and position, with at most two retries
 ## UI encapsulation
 
 The panel is mounted in a closed Shadow DOM to isolate its markup and styles from page selectors. Ghost Mode hides the panel and board overlays for streaming. Neither mechanism guarantees invisibility or protection from site detection.
+
+
+## Madman selection
+
+`engine/madman.ts` owns legal attacking proposals, geometric/PV pressure preferences and the estimated centipawn risk envelope. `engine/madman-search.ts` owns bounded restricted discovery and optional legal capture probes through the existing engine service. The scheduler owns session cancellation and records cooldown only after a submitted move is observed. Madman supersedes Elo sampling and unchecked book/premove dispatch while enabled; exact tablebase outcomes remain authoritative. Search scores keep their original meaning and are separate from style points.

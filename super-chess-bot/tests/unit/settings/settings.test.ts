@@ -65,6 +65,13 @@ describe('the settings field table', () => {
 });
 
 describe('Settings.load', () => {
+  it('persists Madman mode as a real flag while keeping automation disabled', () => {
+    expect(loadStoredSettings('{"madmanMode":true,"hackEnabled":true}')).toMatchObject({
+      madmanMode: true,
+      hackEnabled: false,
+    });
+    expect(loadStoredSettings('{"madmanMode":"true"}')).toMatchObject({ madmanMode: false });
+  });
   it('disables automation when no saved settings exist', () => {
     BotState.hackEnabled = true;
     expect(loadStoredSettings(null)).toBeNull();

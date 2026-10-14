@@ -38,3 +38,35 @@ Use one owned engine worker at a time. Validate current session and position bef
 `bun run check` runs Biome, strict TypeScript, Knip, Vitest, and both production builds. Keep tests at observable adapter, app, engine, history, settings, UCI, and pure-display boundaries; the project has no DOM test environment, so render helpers expose their formatting and bounds as pure functions. Browser verification is manual and is not part of the move loop.
 
 The completed [premove plan](docs/superpowers/plans/2026-10-14-hybrid-premove-engine.md), [implementation plan](docs/superpowers/plans/2026-10-13-reliability-and-architecture.md), and [execution ledger](docs/superpowers/plans/2026-10-13-execution-ledger.md) record the refactor, review corrections, and verification limits (428 tests across 34 suites passed).
+
+## Madman · max aggression
+
+### Ownership and settings
+
+- `madmanMode` is a persisted boolean declared once in SETTING_SPECS, default false. The panel label is exactly `Madman · max aggression`; keep documentation and both built userscripts aligned.
+- `engine/madman.ts` owns legal proposals, geometric/PV pressure ranking, the estimated cp envelope and cooldown tracking. `engine/madman-search.ts` owns bounded restricted discovery and optional capture probes. The scheduler owns lifecycle, current-position checks, submission and recording observed risk.
+- Madman owns final selection while enabled. It bypasses target-Elo error sampling and therefore its Blunder shield; do not silently add either selector after Madman. A tablebase result that wins the existing race remains authoritative.
+
+### Search and selection contracts
+
+- Baseline MultiPV is six, bounded by legal-move availability. At budgets >=80 ms, allocate 65% to baseline search. Extra proposals are limited to four, including an optional hyper-aggressive book suggestion; all require engine evaluation before dispatch.
+- Extra candidates are searched together with the original engine move. Require a complete distinct same-depth batch at depth >=6, exact finite scores, anchor stability within 50 cp and compliance with the original/batch reference envelope. Incomplete, mixed, shallow or unknown comparisons retain the authoritative engine move. A newer positive mate takes priority over older completed snapshots.
+- Maximum estimated concession is 120 cp; after an observed submitted concession >50 cp, use 50 cp for the next three own-turn move numbers. Recommendations/repeated analyses do not spend cooldown. Reset risk on a new session; normal mode clears it. Thresholds are experimental, not strength guarantees.
+- Pressure includes attacks into the enemy king zone, cheaper-piece attacks on valuable targets, pawn contact, checks and the next two legal own-move positions of a searched PV. Geometry is style preference, not proof of threats. Do not revive a retreat veto, queen-count trade penalty, pseudo-cliff or sigmoid safety guarantee.
+- Optional capture probes require a turn allocation >=400 ms and remaining time, search only legal captures of the selected offer and use depth <=10. “Bait checked” requires depth >=6 and at least 100 cp improvement for the original mover. Convert the opponent-root score; keep the selected root score unchanged. This annotation is not a calibrated human-error prediction.
+- Optional searches use positive movetime, validated searchMoves, the session AbortSignal and one absolute performance.now deadline. Check expiration again after queue/setup delay, stop gracefully, and retain a usable result on optional failure. One worker only. Stop/drain overhead may exceed the allocation.
+- UCI bound/unscored PVs must not inherit an older exact evaluation at a new move/depth. Final bestmove evaluation must belong to that move. Preserve current positive mate evidence even if MultiPV comes from an older complete iteration.
+
+### Premove boundary and future support
+
+- While Madman is active, bypass existing own-turn chain steering, recapture fallbacks, opponent-PV arming, instant book replies and premove dispatch. Keep the saved preferences for normal mode. Background analysis may run without arming an instant reply.
+- This suspension prevents cached ordinary-engine replies from bypassing the current aggression/cooldown policy and prevents automatic recaptures from undoing sacrifice ideas. It costs clock time and premove coverage, especially in bullet. The visible Premove toggle is a saved preference, not evidence that Madman armed replies.
+- Future support must evaluate each candidate opponent branch as a new own-turn position under Madman. Do not assume an opponent PV's second move already passed that selection. Start with forced single-legal-move branches, then bounded branch-specific evaluated replies if measured latency/coverage justify them.
+- Future entries need game/session identity, canonical position including en passant and draw-relevant state/history, settings revision, current risk/cooldown context and score/search provenance. Validate all of those and legality before dispatch. Clear on unexpected positions, mode/settings/session changes or incompatible cooldown; on a miss, perform ordinary Madman search. No blind recapture fallback.
+- Keep any future branch work serialized, cancellable and on the opponent's clock where possible. In-memory validation and dispatch still have scheduling cost; “0 ms delay” must not be called zero wall-clock latency. These future mechanisms are design notes, not implemented support.
+
+### Verification and references
+
+- Run `bun run check` locally before committing; preserve both dist outputs. Cover mate/score provenance, incomplete batches, both colors, castling/promotion, deadline/setup expiration, optional failures, cancellation and setting interactions.
+- Design: docs/superpowers/specs/2026-10-15-madman-design.md. Implementation/review ledger: docs/superpowers/plans/2026-10-15-madman-mode-pipeline.md. Observations: docs/madman-verification.md. Future premove discussion: docs/madman-premove-options.md.
+- Do not claim calibrated strength, human-trap probability, aggression frequency or live browser latency from the native smoke test.

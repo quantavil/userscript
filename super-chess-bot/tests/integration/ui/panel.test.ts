@@ -24,7 +24,14 @@ describe('panel settings and state management', () => {
   });
 
   afterEach(() => {
+    BotState.madmanMode = false;
     vi.restoreAllMocks();
+  });
+
+  it('restarts analysis when Madman changes so old premoves cannot survive the toggle', () => {
+    updatePanelSetting('madmanMode', true, { refreshSettings: refreshSettingsMock });
+    expect(BotState.madmanMode).toBe(true);
+    expect(refreshSettingsMock).toHaveBeenCalledOnce();
   });
 
   it('updates panel settings directly and persists them', () => {

@@ -100,6 +100,7 @@ describe('scheduler state consistency and multi-pv / elo throttling', () => {
     BotState.openingBook = false;
     BotState.ponderEnabled = false;
     BotState.targetElo = 0;
+    BotState.madmanMode = false;
     BotState.blunderShield = false;
     BotState.multiPvLines = [];
     BotState.evalHistory = [];
@@ -109,8 +110,62 @@ describe('scheduler state consistency and multi-pv / elo throttling', () => {
   });
 
   afterEach(() => {
+    BotState.madmanMode = false;
     cancelAnalysis();
     vi.restoreAllMocks();
+  });
+
+  it('lets Madman choose attacking pressure instead of Elo sampling or premove chain steering', async () => {
+    const fen = 'rnbq1rk1/pppp1ppp/5n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 w - - 4 5';
+    mocks.snapshot.fen = fen;
+    mocks.snapshot.history = { startFen: fen, moves: [] };
+    BotState.madmanMode = true;
+    BotState.targetElo = 800;
+    BotState.premove = true;
+    BotState.moveTime = 25;
+    BotState.timingMode = 'fixed';
+    const quiet = { multipv: 1, depth: 12, evaluation: { cp: 20 }, pv: 'h2h3', uci: 'h2h3' };
+    const attack = { multipv: 2, depth: 12, evaluation: { cp: -100 }, pv: 'f3g5', uci: 'f3g5' };
+    mocks.analyze.mockResolvedValue({
+      success: true,
+      bestmove: quiet.uci,
+      pv: quiet.pv,
+      evaluation: quiet.evaluation,
+      depth: 12,
+      multiPv: [
+        quiet,
+        attack,
+        { ...quiet, uci: 'a2a3', pv: 'a2a3', evaluation: { cp: -500 } },
+        { ...quiet, uci: 'b2b3', pv: 'b2b3', evaluation: { cp: -500 } },
+        { ...quiet, uci: 'd2d3', pv: 'd2d3', evaluation: { cp: -500 } },
+        { ...quiet, uci: 'g2g3', pv: 'g2g3', evaluation: { cp: -500 } },
+      ],
+    });
+    await scheduleAnalysis('main', fen);
+    expect(BotState.bestMove).toBe('f3g5');
+    expect(BotState.currentEvaluation).toBe('-1.00');
+    expect(BotState.statusInfo).toContain('Madman');
+    expect(mocks.analyze.mock.calls[0][7]).toBe(6);
+  });
+
+  it('evaluates opening positions rather than blindly dispatching a book move in Madman mode', async () => {
+    BotState.madmanMode = true;
+    BotState.openingBook = true;
+    BotState.premove = true;
+    BotState.moveTime = 25;
+    BotState.timingMode = 'fixed';
+    mocks.analyze.mockResolvedValue({
+      success: true,
+      bestmove: 'e2e4',
+      pv: 'e2e4',
+      evaluation: { cp: 20 },
+      depth: 8,
+      multiPv: [{ uci: 'e2e4', pv: 'e2e4', evaluation: { cp: 20 }, depth: 8, multipv: 1 }],
+    });
+    await scheduleAnalysis('main', START_FEN);
+    expect(mocks.analyze).toHaveBeenCalled();
+    expect(BotState.currentEvaluation).toBe('+0.20');
+    expect(BotState.statusInfo).not.toContain('Book');
   });
 
   it('aligns best.pv, score, multiPv ordering, and anticipated ponder when Elo throttling picks a secondary candidate', async () => {
