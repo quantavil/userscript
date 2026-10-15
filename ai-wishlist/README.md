@@ -1,83 +1,44 @@
 # Amazon & Flipkart AI Wishlist
 
-[![GitHub](https://img.shields.io/badge/GitHub-quantavil%2Fuserscript-181717?logo=github&logoColor=white)](https://github.com/quantavil/userscript)
+A userscript with a shared local wishlist for Amazon India, Amazon US and Flipkart. Save products from cards or product pages, search/filter/sort them, remove with Undo, export JSON, and compare saved specifications in chat.
 
-A powerful, cross-origin shopping assistant that syncs your shopping wishlist across **Amazon** and **Flipkart** with zero external dependencies, ready for export and ingestion by external AI tools.
+## Features
 
-Collect and track the best deals across platforms in one unified, floating dashboard, and copy all items as a structured JSON object including rich details and specifications scraped in the background.
+- Preact dashboard, settings, chat and toast notifications; eight accent colors.
+- Separate INR/USD price sorting and offline totals, averages and cheapest/most expensive answers. No currency conversion. Currency is inferred from the saved marketplace URL; use the marketplace’s native currency when saving. Prices displayed in another currency are not converted.
+- Optional background specifications scraping: at most two requests, deduplicated per product, with HTTP checks and a 20-second timeout. Blocked or empty pages leave specifications missing. Removing products or clearing the cache invalidates pending work.
+- Keyboard controls, Escape/back focus restoration, reset confirmation, narrow-screen layouts and reduced motion.
+- Cross-site thumbnail loading through the userscript manager with a platform-initial fallback. Image fallback data stays in memory.
 
----
+## AI and price history
 
-## 🌟 Core Features
+Fresh/reset settings use `gemini-3.5-flash-lite`. Existing saved model selections remain unchanged. Configure a Gemini or OpenAI-compatible API base URL, model and key in Settings. Gemini keys use the `x-goog-api-key` header. Provider verification lists models; it does **not** prove the selected model can generate successfully.
 
-### 1. Unified Cross-Platform Wishlist
-- **Unified Local Storage**: Uses extension storage (`GM_getValue` / `GM_setValue`) to store items. Your wishlist is shared and accessible whether you are currently browsing on Amazon or Flipkart.
-- **Card-Level Quick Save**: Injects a sleek circular heart button directly onto product cards. Click to save or remove items instantly.
-- **Event Isolation**: Heart buttons prevent default page navigation and event bubbling, allowing quick toggling with zero disruption to browsing.
-- **Clean URL Extraction**: Strips referral tracking garbage (`ref=`, `otracker=`, `qid=`) and extracts clean canonical links (`https://www.amazon.in/dp/ASIN` or `https://www.flipkart.com/...`) for permanent sharing.
+Chat allows one active request and includes Stop. Requests time out after 60 seconds; verification after 15 seconds. Requests are not automatically retried. Clearing chat or changing provider settings invalidates late responses. Outgoing context includes at most 20 completed exchanges and 100,000 product characters; the UI reports truncation. History stays as raw text in memory; marked renders Markdown and DOMPurify sanitizes displayed answers. Errors remain errors. Without a key, offline answers use saved prices and specifications and acknowledge missing information.
 
-### 2. Background Details & Specifications Crawling
-When you click to add an item to your wishlist, the script automatically crawls details in the background:
-- **Asynchronous Fetching**: Executes a cross-origin background fetch (`GM_xmlhttpRequest`) to get the product details page.
-- **CSR State Extraction**: Bypasses client-side rendering limitations on Flipkart by parsing `window.__INITIAL_STATE__` inside script tags to recursively crawl specifications.
-- **Data Sanitization**: Normalizes whitespace, strips script/style tags, and collects bullet points and technical specifications into a structured JSON string.
-- **Crawling Visual Feedback**: Triggers a walking crab animation on the floating action button (FAB) during background crawling, avoiding DOM mutations on cards that can cause React unmounting/remounting conflicts.
+The chart icon beside saved prices and the product-page heart opens **Price history** on [PriceHistory.app](https://pricehistory.app/). It passes a canonical product URL (preserving Amazon marketplace/ASIN or Flipkart PID) through the provider’s URL search. The provider resolves untracked products or multiple matches. AI Wishlist does not fetch, store or display historical prices; no history credentials, background requests or additional network permissions are used.
 
-### 3. Interactive Floating Dashboard FAB & Panel
-Access your unified wishlist from a sleek, floating panel in the bottom-right corner of the page:
-- **Real-time Item Counter**: FAB badge displays the current wishlist count.
-- **Debounced Search Bar**: Instantly filter items by title using a debounced (150ms) search.
-- **Flexible Sorting**: Sort items by *Date Added*, *Price: Low → High*, *Price: High → Low*, or *Name: A → Z*.
-- **Platform Filters**: Filter visible items by platform using **All**, **Amazon**, or **Flipkart** pill tags.
-- **JSON Copy Exporter**: Exports saved wishlist items and their crawled details as a formatted JSON structure to your clipboard.
-- **CSP Bypass Image Loading**: Loads Flipkart thumbnails on Amazon (and vice-versa) by intercepting image errors and fetching binary image streams via `GM_xmlhttpRequest` blobs, converting them to inline base64 data URLs. Falls back to platform initials (**A** / **F**) on complete failure.
-- **Non-Intrusive UI**: Native `confirm()` alerts are replaced by inline confirmation states with safety timers, and operations trigger animated toast messages.
+## Storage and network behavior
 
-### 4. Interactive AI Chat Assistant & Custom Config
-Interact with your wishlist data using a dedicated side-drawer AI assistant:
-- **Natural Conversations**: Conversational shopping assistant that handles queries, compares products, suggests recommendations, and renders answers beautifully with styled headers, lists, and comparison matrices.
-- **OpenAI-Compatible & Custom API Base URL**: Configure any API Base URL (e.g., local Ollama, OpenRouter, Perplexity, or OpenAI) and custom Model name directly from the settings panel.
-- **Local Fallback Queries**: When offline or without an API key, the chatbot answers basic statistics and queries (e.g., "cheapest item", "most expensive", "how many items") locally using cached client-side wishlist data.
-- **Theme and Accent Selector**: Flat settings drawer featuring 8 premium accent palettes (Red, Wine, Orange, Amber, Emerald, Teal, Blue, Purple) that adapt instantly across buttons, gradients, icons, and UI highlights.
+Wishlist items, scraped specifications and settings (including the API key) are saved in the userscript manager’s **local GM storage**, shared across the matched sites. Remote GM value notifications update other open tabs. This is not a cloud sync service. There is no schema/model migration and reads do not rewrite saved data. Invalid stored records are ignored when read; failed writes produce visible feedback. Export valid saved items before clearing/resetting data.
 
----
+Saving a product may fetch its canonical details page when automatic scraping is enabled. Configured AI chat sends product context and recent exchanges to the chosen provider. Thumbnail fallback fetches the image URL. Broad `@connect *` remains necessary for custom AI endpoints and cross-site resources; it does not itself send data anywhere. History links send the product URL to PriceHistory.app when opened.
 
-## 🛠️ Technical Stack & Architecture
+## Development
 
-This project uses a modular **Adapter Pattern** built with `Bun`, `Vite`, and `TypeScript`.
-
-- **`src/adapters/`**: Platform-specific DOM logic (`Amazon.ts`, `Flipkart.ts`) extending `BaseAdapter.ts` which manages SPA navigation detection and debounced observers.
-- **`src/core/`**: Specifications parser and wishlist storage/UI layer.
-- **`src/utils/`**: Formatting helpers and tracking link sanitizers.
-- **`tests/`**: Test suite with mock DOM fixtures validating cleaning utilities and specifications extraction.
-
-### Building Locally
-
-Ensure you have [Bun](https://bun.sh/) installed:
+Stack: Preact **11.0.1**, Vite+ **1.2.0** (Vitest **5.0.4**, Oxlint/Oxfmt), `@preact/preset-vite` **2.10.6**, `vite-plugin-monkey` **8.1.1**, strict TypeScript **7.0.2**, marked **18.1.1**, DOMPurify **3.4.17**. Bun remains the package manager/script entry point; Vite+ tools run on supported Node.js (verified with Bun 1.4.3 / Node 26.11.1). All runtime dependencies are bundled into one userscript; no runtime CDN or React compatibility aliases.
 
 ```bash
-# 1. Install dependencies
-bun install
-
-# 2. Run the test suite
-bun test
-
-# 3. Build the userscript
-bun run build
+bun install --frozen-lockfile
+bun run test       # Vite+ bundled Vitest; jsdom and committed fixtures
+bun run lint       # Includes type-aware linting and type checking
+bun run fmt        # Format source; exact HTML parser fixtures are excluded
+bun run check      # Format/lint/type checks, strict tsc, tests, production build
+bun audit
 ```
 
-The compiled script is generated at [dist/ai-wishlist.user.js](file:///home/quantavil/Documents/Project/userscript/ai-wishlist/dist/ai-wishlist.user.js).
+Build output: `dist/ai-wishlist.user.js`. Install it in Violentmonkey or Tampermonkey, then refresh a supported site. Supported matches: `https://www.amazon.in/*`, `https://www.amazon.com/*`, `https://www.flipkart.com/*`.
 
----
+Architecture and constraints: [AGENTS.md](AGENTS.md). Findings and verification limits: [modernization audit](docs/modernization-audit.md).
 
-## 🚀 Installation & Supported Sites
-
-1. Install a userscript manager like [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/).
-2. Copy the contents of the built userscript file into a new script in your manager.
-3. Save the script and refresh Amazon or Flipkart to start tracking.
-
-| Site        | URL Match Pattern            |
-|-------------|------------------------------|
-| Flipkart    | `https://www.flipkart.com/*` |
-| Amazon IN   | `https://www.amazon.in/*`    |
-| Amazon US   | `https://www.amazon.com/*`   |
+GPL-3.0-or-later; see [LICENSE](LICENSE).

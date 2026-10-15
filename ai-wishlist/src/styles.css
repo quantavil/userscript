@@ -3,11 +3,21 @@
 /* ── Global keyframe animations ──────────────────────────────────────── */
 
 @keyframes aiwCrabDance {
-  0% { transform: scale(1) translateY(0) rotate(-8deg); }
-  25% { transform: scale(1.1, 0.9) translateY(2px) rotate(0deg); }
-  50% { transform: scale(1) translateY(-6px) rotate(8deg); }
-  75% { transform: scale(0.9, 1.1) translateY(-2px) rotate(0deg); }
-  100% { transform: scale(1) translateY(0) rotate(-8deg); }
+  0% {
+    transform: scale(1) translateY(0) rotate(-8deg);
+  }
+  25% {
+    transform: scale(1.1, 0.9) translateY(2px) rotate(0deg);
+  }
+  50% {
+    transform: scale(1) translateY(-6px) rotate(8deg);
+  }
+  75% {
+    transform: scale(0.9, 1.1) translateY(-2px) rotate(0deg);
+  }
+  100% {
+    transform: scale(1) translateY(0) rotate(-8deg);
+  }
 }
 
 @keyframes aiwFabEntrance {
@@ -22,16 +32,30 @@
 }
 
 @keyframes aiwBadgePulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.3); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 @keyframes aiwHeartPop {
-  0% { transform: scale(1); }
-  30% { transform: scale(1.25); }
-  60% { transform: scale(0.94); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.25);
+  }
+  60% {
+    transform: scale(0.94);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 @keyframes aiwItemFadeIn {
@@ -57,7 +81,11 @@
   border: 1px solid #fecaca !important;
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.08) !important;
   cursor: pointer !important;
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease !important;
+  transition:
+    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease !important;
 }
 
 .aiw-heart-container:hover {
@@ -84,15 +112,16 @@
 .aiw-heart-container svg path {
   fill: rgba(254, 226, 226, 0.35);
   stroke: #dc2626;
-  stroke-width: 2.0px !important;
-  transition: fill 0.25s ease, stroke 0.25s ease;
+  stroke-width: 2px !important;
+  transition:
+    fill 0.25s ease,
+    stroke 0.25s ease;
 }
 
 .aiw-heart-container.active svg path {
   fill: #ef4444;
   stroke: #ef4444;
 }
-
 
 /* ── FAB styling ─────────────────────────────────────────────────────── */
 .aiw-fab {
@@ -101,7 +130,11 @@
   right: 24px !important;
   width: 56px !important;
   height: 56px !important;
-  background: linear-gradient(135deg, var(--aiw-fab-bg-from, #fbf0e8), var(--aiw-fab-bg-to, #f4e3d7)) !important;
+  background: linear-gradient(
+    135deg,
+    var(--aiw-fab-bg-from, #fbf0e8),
+    var(--aiw-fab-bg-to, #f4e3d7)
+  ) !important;
   border: 1px solid var(--aiw-fab-border, #eadecf) !important;
   border-radius: 28px !important;
   display: flex !important;
@@ -109,14 +142,20 @@
   justify-content: center !important;
   cursor: pointer !important;
   z-index: 2147483647 !important;
-  box-shadow: 0 4px 16px rgba(var(--aiw-primary-rgb, 234, 88, 12), 0.12), 0 2px 4px rgba(0, 0, 0, 0.05) !important;
-  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease !important;
+  box-shadow:
+    0 4px 16px rgba(var(--aiw-primary-rgb, 234, 88, 12), 0.12),
+    0 2px 4px rgba(0, 0, 0, 0.05) !important;
+  transition:
+    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.25s ease !important;
   animation: aiwFabEntrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) both !important;
 }
 
 .aiw-fab:hover {
   transform: scale(1.08) translateY(-2px) !important;
-  box-shadow: 0 6px 24px rgba(var(--aiw-primary-rgb, 234, 88, 12), 0.18), 0 2px 4px rgba(0, 0, 0, 0.08) !important;
+  box-shadow:
+    0 6px 24px rgba(var(--aiw-primary-rgb, 234, 88, 12), 0.18),
+    0 2px 4px rgba(0, 0, 0, 0.08) !important;
 }
 
 .aiw-fab:active {
@@ -132,7 +171,9 @@
   top: auto !important;
   display: none;
   z-index: 2147483647 !important;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.12), 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+  box-shadow:
+    0 4px 12px rgba(239, 68, 68, 0.12),
+    0 2px 4px rgba(0, 0, 0, 0.05) !important;
   animation: aiwFabEntrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) both !important;
 }
 
@@ -186,16 +227,21 @@
   max-height: calc(100vh - 120px) !important;
   background: #ffffff !important;
   border-radius: 16px !important;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.12),
+    0 4px 12px rgba(0, 0, 0, 0.08) !important;
   z-index: 2147483646 !important;
   display: none;
   flex-direction: column !important;
   overflow: hidden !important;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-family:
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   border: 1px solid #e5e7eb !important;
   opacity: 0 !important;
   transform: translateY(12px) scale(0.98) !important;
-  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition:
+    opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .aiw-panel.visible {
@@ -246,9 +292,10 @@
   align-items: center !important;
   padding: 6px !important;
   border-radius: 6px !important;
-  transition: background 0.15s, color 0.15s !important;
+  transition:
+    background 0.15s,
+    color 0.15s !important;
 }
-
 
 .aiw-header-btn.aiw-clear {
   color: #ef4444 !important;
@@ -313,7 +360,9 @@
   background: #f9fafb !important;
   outline: none !important;
   font-family: inherit !important;
-  transition: border-color 0.15s, box-shadow 0.15s !important;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s !important;
 }
 
 .aiw-search-input:focus {
@@ -357,7 +406,9 @@
   color: #6b7280 !important;
   font-family: inherit !important;
   font-weight: 500 !important;
-  transition: border-color 0.15s, background-color 0.15s !important;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s !important;
 }
 
 .aiw-sort-btn:hover {
@@ -373,7 +424,7 @@
   background: white !important;
   border: 1px solid #e5e7eb !important;
   border-radius: 8px !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
   z-index: 10 !important;
   display: none;
   overflow: hidden !important;
@@ -422,8 +473,6 @@
   background: #e5e7eb !important;
   color: #374151 !important;
 }
-
-
 
 /* ── Item list styling ───────────────────────────────────────────────── */
 .aiw-list-container {
@@ -479,15 +528,15 @@
 }
 
 .aiw-thumb-fallback.amazon {
-  background: rgba(245, 158, 11, 0.20) !important;
+  background: rgba(245, 158, 11, 0.2) !important;
   color: #f59e0b !important;
-  border: 1px solid rgba(245, 158, 11, 0.30) !important;
+  border: 1px solid rgba(245, 158, 11, 0.3) !important;
 }
 
 .aiw-thumb-fallback.flipkart {
-  background: rgba(59, 130, 246, 0.20) !important;
+  background: rgba(59, 130, 246, 0.2) !important;
   color: #3b82f6 !important;
-  border: 1px solid rgba(59, 130, 246, 0.30) !important;
+  border: 1px solid rgba(59, 130, 246, 0.3) !important;
 }
 
 .aiw-thumb-img {
@@ -621,7 +670,9 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
   font-family: system-ui, -apple-system, sans-serif !important;
   opacity: 0 !important;
-  transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
   pointer-events: auto !important;
   display: flex !important;
   align-items: center !important;
@@ -665,7 +716,6 @@
   color: #475569 !important;
 }
 
-
 .aiw-pill-btn.clear {
   color: #64748b !important;
 }
@@ -688,9 +738,15 @@
 }
 
 @keyframes aiwPulseDanger {
-  0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
-  70% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+  }
 }
 
 /* ── Dynamic Accent Highlight Overrides ── */
@@ -937,7 +993,10 @@
 .aiw-switch-slider {
   position: absolute !important;
   cursor: pointer !important;
-  top: 0 !important; left: 0; right: 0; bottom: 0 !important;
+  top: 0 !important;
+  left: 0;
+  right: 0;
+  bottom: 0 !important;
   background-color: #cbd5e1 !important;
   border-radius: 18px !important;
   transition: 0.25s !important;
@@ -975,7 +1034,9 @@
   border-radius: 50% !important;
   cursor: pointer !important;
   border: 2.5px solid #ffffff !important;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.06) !important;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.15),
+    0 2px 4px rgba(0, 0, 0, 0.06) !important;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
@@ -985,9 +1046,10 @@
 
 .aiw-accent-dot.active {
   transform: scale(1.1) !important;
-  box-shadow: 0 0 0 2.5px var(--aiw-primary), 0 4px 10px rgba(0, 0, 0, 0.15) !important;
+  box-shadow:
+    0 0 0 2.5px var(--aiw-primary),
+    0 4px 10px rgba(0, 0, 0, 0.15) !important;
 }
-
 
 .aiw-settings-actions {
   display: grid !important;
@@ -1083,7 +1145,9 @@
   justify-content: center;
   color: #9ca3af;
   opacity: 1; /* always visible */
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
@@ -1166,7 +1230,9 @@
   justify-content: center !important;
   cursor: pointer !important;
   flex-shrink: 0 !important;
-  transition: transform 0.15s, background-color 0.15s !important;
+  transition:
+    transform 0.15s,
+    background-color 0.15s !important;
 }
 
 .aiw-chat-send-btn:hover {
@@ -1191,16 +1257,22 @@
 }
 
 .aiw-chat-thinking span:nth-child(2) {
-  animation-delay: .2s !important;
+  animation-delay: 0.2s !important;
 }
 
 .aiw-chat-thinking span:nth-child(3) {
-  animation-delay: .4s !important;
+  animation-delay: 0.4s !important;
 }
 
 @keyframes aiwThinkingDot {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1); }
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
 }
 
 .aiw-chat-table {
@@ -1210,7 +1282,8 @@
   font-size: 13px !important;
 }
 
-.aiw-chat-table th, .aiw-chat-table td {
+.aiw-chat-table th,
+.aiw-chat-table td {
   border: 1px solid #e5e7eb !important;
   padding: 6px 8px !important;
   text-align: left !important;
@@ -1235,9 +1308,15 @@
   font-weight: 700 !important;
   color: #111827 !important;
 }
-.aiw-chat-bubble.ai .aiw-chat-h3 { font-size: 16px !important; }
-.aiw-chat-bubble.ai .aiw-chat-h4 { font-size: 15px !important; }
-.aiw-chat-bubble.ai .aiw-chat-h5 { font-size: 14px !important; }
+.aiw-chat-bubble.ai .aiw-chat-h3 {
+  font-size: 16px !important;
+}
+.aiw-chat-bubble.ai .aiw-chat-h4 {
+  font-size: 15px !important;
+}
+.aiw-chat-bubble.ai .aiw-chat-h5 {
+  font-size: 14px !important;
+}
 
 /* Styling for parsed markdown lists inside AI bubbles */
 .aiw-chat-bubble.ai ul,
@@ -1285,5 +1364,209 @@
   line-height: 1.4 !important;
 }
 
-
-
+/* Preact-owned view states and accessible controls. */
+.aiw-app button {
+  font-family: inherit;
+  cursor: pointer;
+}
+.aiw-app button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.aiw-app .aiw-open {
+  display: flex;
+}
+.aiw-app .aiw-sort-dropdown.aiw-open {
+  display: flex;
+  flex-direction: column;
+}
+.aiw-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.aiw-dashboard {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.aiw-dashboard[inert] {
+  visibility: hidden;
+}
+.aiw-app .aiw-header-btn,
+.aiw-app .aiw-drawer-close,
+.aiw-app .aiw-sort-item {
+  border: 0;
+  background: transparent;
+}
+.aiw-app .aiw-sort-item {
+  text-align: left;
+}
+.aiw-app .aiw-fab {
+  border: 1px solid var(--aiw-fab-border, #eee);
+}
+.aiw-app h1,
+.aiw-app h2,
+.aiw-app h3 {
+  margin: 0;
+}
+.aiw-history-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  color: #2563eb;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.aiw-history-link:hover {
+  background: #eff6ff;
+}
+.aiw-history-link:focus-visible,
+[data-aiw-owned] button:focus-visible,
+[data-aiw-owned] a:focus-visible,
+.aiw-heart-container:focus-visible {
+  outline: 3px solid #2563eb !important;
+  outline-offset: 2px !important;
+}
+.aiw-app .aiw-chat-bubble-content {
+  overflow-x: auto;
+  max-width: 100%;
+  padding-bottom: 20px;
+}
+.aiw-app .aiw-chat-bubble-content table {
+  border-collapse: collapse;
+  min-width: 100%;
+}
+.aiw-app .aiw-chat-bubble-content th,
+.aiw-app .aiw-chat-bubble-content td {
+  border: 1px solid #e5e7eb;
+  padding: 8px;
+  min-width: 90px;
+  vertical-align: top;
+}
+.aiw-app .aiw-chat-bubble {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.aiw-app .aiw-user-text {
+  white-space: pre-wrap;
+}
+.aiw-app .aiw-chat-actions {
+  padding: 8px 14px;
+}
+.aiw-app .aiw-chat-send-btn {
+  width: auto !important;
+  padding: 0 10px !important;
+  flex-shrink: 0;
+}
+.aiw-app .aiw-drawer-body,
+.aiw-app .aiw-chat-messages,
+.aiw-app .aiw-list-container {
+  min-height: 0;
+}
+.aiw-app .aiw-panel {
+  max-height: calc(100dvh - 120px) !important;
+}
+.aiw-app .aiw-storage-note {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+.aiw-app .aiw-reset-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2000;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  padding: 24px;
+  gap: 16px;
+}
+.aiw-pdp-controls {
+  position: fixed;
+  right: 24px;
+  bottom: 92px;
+  z-index: 2147483645;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.aiw-pdp-controls .aiw-pdp-heart-floating {
+  position: static !important;
+}
+.aiw-pdp-controls .aiw-history-link {
+  background: white;
+  border: 1px solid #e5e7eb;
+}
+.aiw-app .aiw-accent-dot {
+  padding: 0;
+}
+@media (max-width: 480px) {
+  .aiw-app .aiw-panel {
+    right: 8px !important;
+    width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 110px) !important;
+    bottom: 84px !important;
+  }
+  .aiw-app .aiw-controls-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .aiw-app .aiw-item-platform {
+    display: none !important;
+  }
+  .aiw-app .aiw-chat-bubble {
+    max-width: 95% !important;
+  }
+  .aiw-app .aiw-chat-input {
+    min-width: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-aiw-owned],
+  [data-aiw-owned] *,
+  .aiw-heart-container {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+.aiw-pdp-controls[hidden] {
+  display: none !important;
+}
+/* Visibility is declarative: rows never depend on an animation completing. */
+.aiw-app .aiw-item-row {
+  opacity: 1;
+  transform: none;
+}
+.aiw-app .aiw-floating-pills {
+  display: flex;
+  box-sizing: border-box;
+}
+.aiw-app .aiw-toast {
+  position: fixed !important;
+  right: 24px;
+  bottom: 24px;
+  z-index: 2147483647;
+  max-width: calc(100vw - 48px);
+  white-space: normal !important;
+  box-sizing: border-box;
+}
+.aiw-app .aiw-fab.crawling .aiw-fab-icon-wrap {
+  visibility: hidden;
+}
+.aiw-app .aiw-fab.crawling .aiw-fab-crab svg {
+  display: inline-block !important;
+}
+.aiw-pdp-controls .aiw-pdp-heart-floating,
+.aiw-app .aiw-fab-badge,
+.aiw-app .aiw-clear-search {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

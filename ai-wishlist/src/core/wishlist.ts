@@ -1,61 +1,65 @@
-import type { WishlistItem } from './types';
-
-const WISHLIST_KEY = 'priceStdz_wishlist';
-
+import type { WishlistItem } from "./types";
+import { WISHLIST_KEY, writeStored } from "./storage";
+import { getPriceHistoryUrl } from "../utils/urlCleaner";
+export function isWishlistItem(value: unknown): value is WishlistItem {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item.id === "string" &&
+    !!item.id &&
+    typeof item.title === "string" &&
+    !!item.title.trim() &&
+    typeof item.price === "number" &&
+    Number.isFinite(item.price) &&
+    item.price >= 0 &&
+    typeof item.url === "string" &&
+    getPriceHistoryUrl(item.url) !== null &&
+    (item.platform === "Amazon" || item.platform === "Flipkart") &&
+    typeof item.imageUrl === "string" &&
+    (item.dateAdded === undefined ||
+      (typeof item.dateAdded === "number" && Number.isFinite(item.dateAdded))) &&
+    (item.details === undefined || typeof item.details === "string")
+  );
+}
 export function getWishlist(): WishlistItem[] {
   try {
-    return (GM_getValue(WISHLIST_KEY, []) as WishlistItem[]) || [];
-  } catch (e) {
-    console.error('AI Wishlist: Failed to read wishlist from GM storage:', e);
+    const stored = GM_getValue(WISHLIST_KEY, []);
+    if (!Array.isArray(stored)) return [];
+    const seen = new Set<string>();
+    return stored
+      .filter(isWishlistItem)
+      .filter((item) => !seen.has(item.id) && !!seen.add(item.id))
+      .map((item) => ({ ...item }));
+  } catch {
     return [];
   }
 }
-
-export function saveWishlist(items: WishlistItem[], silent = false): void {
-  try {
-    GM_setValue(WISHLIST_KEY, items);
-    if (!silent) {
-      window.dispatchEvent(new CustomEvent('wishlist-updated'));
-    }
-  } catch (e) {
-    console.error('AI Wishlist: Failed to save wishlist to GM storage:', e);
-  }
+export function saveWishlist(items: WishlistItem[], _silent = false): boolean {
+  return writeStored(WISHLIST_KEY, items, "wishlist-updated");
 }
-
-export function addItem(meta: WishlistItem): void {
+export function addItem(meta: WishlistItem): boolean {
   const items = getWishlist();
-  if (!items.some(i => i.id === meta.id)) {
-    items.push({ ...meta, dateAdded: meta.dateAdded || Date.now() });
-    saveWishlist(items);
-  }
+  if (items.some((item) => item.id === meta.id)) return true;
+  return saveWishlist([...items, { ...meta, dateAdded: meta.dateAdded ?? Date.now() }]);
 }
-
-export function removeItem(id: string): void {
-  const items = getWishlist().filter(i => i.id !== id);
-  saveWishlist(items);
+export function removeItem(id: string): boolean {
+  return saveWishlist(getWishlist().filter((item) => item.id !== id));
 }
-
-export function clearWishlist(): void {
-  saveWishlist([]);
+export function clearWishlist(): boolean {
+  return saveWishlist([]);
 }
-
-export function clearScrapedCache(): void {
-  const items = getWishlist();
-  items.forEach(item => {
-    delete item.details;
-  });
-  saveWishlist(items);
+export function clearScrapedCache(): boolean {
+  // Invalidate even a queued crawl that has not written specifications yet.
+  window.dispatchEvent(new CustomEvent("scraped-cache-cleared"));
+  return saveWishlist(getWishlist().map(({ details: _details, ...item }) => item));
 }
-
 export function isInWishlist(id: string): boolean {
-  return getWishlist().some(i => i.id === id);
+  return getWishlist().some((item) => item.id === id);
 }
-
-export function updateItemDetails(id: string, details: string): void {
+export function updateItemDetails(id: string, details: string): boolean {
   const items = getWishlist();
-  const idx = items.findIndex(i => i.id === id);
-  if (idx !== -1) {
-    items[idx]!.details = details;
-    saveWishlist(items);
-  }
+  const item = items.find((item) => item.id === id);
+  if (!item) return false;
+  item.details = details;
+  return saveWishlist(items);
 }

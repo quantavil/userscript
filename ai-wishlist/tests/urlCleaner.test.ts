@@ -1,9 +1,10 @@
-import { expect, test, describe } from "bun:test";
+import { expect, test, describe } from "vite-plus/test";
 import { cleanProductUrl } from "../src/utils/urlCleaner";
 
 describe("cleanProductUrl — Amazon", () => {
   test("extracts ASIN and builds canonical URL", () => {
-    const raw = "https://www.amazon.in/Some-Product/dp/B08N5WRWNW/ref=sr_1_1?keywords=test&qid=1234";
+    const raw =
+      "https://www.amazon.in/Some-Product/dp/B08N5WRWNW/ref=sr_1_1?keywords=test&qid=1234";
     expect(cleanProductUrl(raw, "Amazon")).toBe("https://www.amazon.in/dp/B08N5WRWNW");
   });
 
@@ -20,12 +21,16 @@ describe("cleanProductUrl — Amazon", () => {
 describe("cleanProductUrl — Flipkart", () => {
   test("extracts PID and builds canonical URL", () => {
     const raw = "https://www.flipkart.com/some-product/p/itmXYZ123?pid=MOBXYZ123&lid=something";
-    expect(cleanProductUrl(raw, "Flipkart")).toBe("https://www.flipkart.com/some-product/p/itmXYZ123?pid=MOBXYZ123");
+    expect(cleanProductUrl(raw, "Flipkart")).toBe(
+      "https://www.flipkart.com/some-product/p/itmXYZ123?pid=MOBXYZ123",
+    );
   });
 
   test("returns path-only URL when no PID", () => {
     const raw = "https://www.flipkart.com/some-product/p/itmXYZ123";
-    expect(cleanProductUrl(raw, "Flipkart")).toBe("https://www.flipkart.com/some-product/p/itmXYZ123");
+    expect(cleanProductUrl(raw, "Flipkart")).toBe(
+      "https://www.flipkart.com/some-product/p/itmXYZ123",
+    );
   });
 });
 
@@ -34,9 +39,9 @@ describe("cleanProductUrl — edge cases", () => {
     expect(cleanProductUrl("", "Amazon")).toBe("");
   });
 
-  test("resolves relative path against fallback base", () => {
-    // URL("not-a-url", "https://dummy.base") resolves without throwing
-    expect(cleanProductUrl("not-a-url", "Amazon")).toBe("https://dummy.base/not-a-url");
+  test("resolves relative paths against the selected marketplace", () => {
+    // Relative Amazon URLs use the Indian marketplace as the legacy default.
+    expect(cleanProductUrl("not-a-url", "Amazon")).toBe("https://www.amazon.in/not-a-url");
   });
 
   test("returns origin+pathname for unknown platform", () => {

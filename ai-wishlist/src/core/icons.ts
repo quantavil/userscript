@@ -6,36 +6,35 @@
 
 /** Shared heart path data used by both the FAB and card hearts */
 export const HEART_PATH_D =
-  'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z';
+  "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z";
 
 export const ICON = {
-  heart: (size = 24, fill = 'white', stroke = 'white') =>
+  heart: (size = 24, fill = "white", stroke = "white") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="${fill}" stroke="${stroke}" stroke-width="1.8"><path d="${HEART_PATH_D}"></path></svg>`,
 
-
-  clipboard: (size = 20, stroke = 'currentColor') =>
+  clipboard: (size = 20, stroke = "currentColor") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${stroke}" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>`,
 
-  trash: (size = 20, stroke = 'currentColor') =>
+  trash: (size = 20, stroke = "currentColor") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${stroke}" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
 
-  check: (size = 20, stroke = '#22c55e') =>
+  check: (size = 20, stroke = "#22c55e") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${stroke}" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
 
-  search: (size = 16, stroke = '#9ca3af') =>
+  search: (size = 16, stroke = "#9ca3af") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${stroke}" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`,
 
-  close: (size = 16, stroke = 'currentColor') =>
+  close: (size = 16, stroke = "currentColor") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${stroke}" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
 
-  sort: (size = 16, stroke = 'currentColor') =>
+  sort: (size = 16, stroke = "currentColor") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${stroke}" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>`,
 
-  emptyHeart: (size = 48, stroke = '#d1d5db') =>
+  emptyHeart: (size = 48, stroke = "#d1d5db") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${stroke}" stroke-width="1.5"><path d="${HEART_PATH_D}"></path></svg>`,
 
   flipkart: (width = 16, height = 16) => {
-    const id = 'fk_svg_' + Math.random().toString(36).substring(2, 9);
+    const id = "fk_svg_" + Math.random().toString(36).substring(2, 9);
     return `<svg width="${width}" height="${height}" viewBox="0 0 713.39 707.4" style="display: inline-block; vertical-align: middle;">
       <defs>
         <linearGradient id="${id}_1" gradientUnits="userSpaceOnUse" x1="356.4805" y1="493.1343" x2="356.4805" y2="1080.8978" gradientTransform="matrix(1 0 0 1 0.14 -373.5461)">
@@ -80,21 +79,21 @@ export const ICON = {
       </g>
     </svg>`,
 
-  crab: (size = 28, fill = '#D97757') =>
+  crab: (size = 28, fill = "#D97757") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" class="aiw-fab-crab-svg" style="display: inline-block; vertical-align: middle; flex: none; line-height: 1;" xmlns="http://www.w3.org/2000/svg">
       <title>Claude Code</title>
       <path clip-rule="evenodd" d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z" fill="${fill}" fill-rule="evenodd"></path>
     </svg>`,
 
-  settings: (size = 16, stroke = 'currentColor') =>
+  settings: (size = 16, stroke = "currentColor") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`,
 
-  sparkle: (size = 16, stroke = 'currentColor', fill = 'none') =>
+  sparkle: (size = 16, stroke = "currentColor", fill = "none") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>`,
 
-  arrowLeft: (size = 16, stroke = 'currentColor') =>
+  arrowLeft: (size = 16, stroke = "currentColor") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>`,
 
-  send: (size = 16, stroke = 'currentColor') =>
+  send: (size = 16, stroke = "currentColor") =>
     `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`,
 } as const;

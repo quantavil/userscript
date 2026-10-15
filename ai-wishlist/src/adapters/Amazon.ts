@@ -1,30 +1,32 @@
-import { BaseAdapter } from './BaseAdapter';
-import { cleanNumber } from '../utils/formatters';
-import { injectHeartUI } from '../core/ui';
-import type { WishlistItem } from '../core/types';
+import { currencyFor } from "../core/pricing";
+import { amazonId } from "../utils/urlCleaner";
+import { BaseAdapter } from "./BaseAdapter";
+import { parsePriceForCurrency } from "../utils/formatters";
+import { injectHeartUI } from "../core/ui";
+import type { WishlistItem } from "../core/types";
 
 export class AmazonAdapter extends BaseAdapter {
   processCards() {
     const selectors = [
       'div[data-component-type="s-search-result"]',
-      '.p13n-sc-uncoverable-faceout',
-      '.puis-card-container',
-      '.s-card-container'
+      ".p13n-sc-uncoverable-faceout",
+      ".puis-card-container",
+      ".s-card-container",
     ];
 
     for (const sel of selectors) {
-      document.querySelectorAll(sel).forEach(el => {
+      document.querySelectorAll(sel).forEach((el) => {
         try {
           const card = el as HTMLElement;
-          if (this.isAdOrSponsored(card)) return;
+          if (card.closest("[data-aiw-owned]") || this.isAdOrSponsored(card)) return;
 
           const asin = this.getAsin(card);
           if (!asin) return;
 
-          const id = `amz_${asin}`;
-          const existingHeart = card.querySelector<HTMLDivElement>('.aiw-heart-container');
+          const id = amazonId(asin, location.hostname);
+          const existingHeart = card.querySelector<HTMLDivElement>(".aiw-heart-container");
           if (existingHeart) {
-            if (existingHeart.dataset.wishlistId === id && card.dataset.wishlistDone === '1') {
+            if (existingHeart.dataset.wishlistId === id && card.dataset.wishlistDone === "1") {
               return;
             }
             existingHeart.remove();
@@ -35,7 +37,7 @@ export class AmazonAdapter extends BaseAdapter {
           if (card.querySelector('[data-wishlist-done="1"]')) return;
 
           const price = this.getPrice(card);
-          if (price === null) return; 
+          if (price === null) return;
 
           const title = this.getTitle(card);
           if (!title) return;
@@ -43,33 +45,33 @@ export class AmazonAdapter extends BaseAdapter {
           const meta = this.getMetaWithAsin(card, title, price, asin);
           if (meta) {
             this.injectUI(card, meta);
-            card.dataset.wishlistDone = '1';
+            card.dataset.wishlistDone = "1";
           }
         } catch (e) {
-          console.error('AI Wishlist: Error processing Amazon card', e);
+          console.error("AI Wishlist: Error processing Amazon card", e);
         }
       });
     }
   }
 
   private getAsin(card: HTMLElement): string {
-    let asin = card.dataset.asin || '';
+    let asin = card.dataset.asin || "";
     if (!asin) {
-      const nestedAsinEl = card.querySelector('[data-asin]');
+      const nestedAsinEl = card.querySelector("[data-asin]");
       if (nestedAsinEl) {
-        asin = (nestedAsinEl as HTMLElement).dataset.asin || '';
+        asin = (nestedAsinEl as HTMLElement).dataset.asin || "";
       }
     }
     if (!asin) {
-      const csaAsinEl = card.querySelector('[data-csa-c-asin]');
+      const csaAsinEl = card.querySelector("[data-csa-c-asin]");
       if (csaAsinEl) {
-        asin = csaAsinEl.getAttribute('data-csa-c-asin') || '';
+        asin = csaAsinEl.getAttribute("data-csa-c-asin") || "";
       }
     }
     if (!asin) {
       const link = card.querySelector('a[href*="/dp/"]');
       if (link) {
-        const href = link.getAttribute('href') || '';
+        const href = link.getAttribute("href") || "";
         const match = href.match(/\/dp\/([A-Z0-9]{10})/i);
         if (match) {
           asin = match[1]!;
@@ -82,39 +84,59 @@ export class AmazonAdapter extends BaseAdapter {
   private getPrice(card: HTMLElement): number | null {
     const inclLink = card.querySelector('a.s-no-hover:not([href*="#customerReviews"])');
     if (inclLink) {
-      const offscreen = inclLink.querySelector('.a-price .a-offscreen');
-      if (offscreen) return cleanNumber(offscreen.textContent || '');
+      const offscreen = inclLink.querySelector(".a-price .a-offscreen");
+      if (offscreen)
+        return parsePriceForCurrency(offscreen.textContent || "", currencyFor(location.href));
     }
-    const bestPrice = card.querySelector('.p13n-sc-price');
-    if (bestPrice) return cleanNumber(bestPrice.textContent || '');
+    const bestPrice = card.querySelector(".p13n-sc-price");
+    if (bestPrice)
+      return parsePriceForCurrency(bestPrice.textContent || "", currencyFor(location.href));
     const currentPrice = card.querySelector('.a-price:not([data-a-strike="true"]) .a-offscreen');
-    if (currentPrice) return cleanNumber(currentPrice.textContent || '');
+    if (currentPrice)
+      return parsePriceForCurrency(currentPrice.textContent || "", currencyFor(location.href));
     return null;
   }
 
   private getTitle(card: HTMLElement): string {
-    const h2 = card.querySelector('h2');
-    if (h2) return h2.getAttribute('aria-label') || h2.querySelector('span')?.textContent?.trim() || h2.textContent?.trim() || '';
-    const bestTitle = card.querySelector('div._cDEzb_p13n-sc-css-line-clamp-3_g3dy1, .p13n-sc-truncate');
-    if (bestTitle) return bestTitle.textContent?.trim() || '';
-    return '';
+    const h2 = card.querySelector("h2");
+    if (h2)
+      return (
+        h2.getAttribute("aria-label") ||
+        h2.querySelector("span")?.textContent?.trim() ||
+        h2.textContent?.trim() ||
+        ""
+      );
+    const bestTitle = card.querySelector(
+      "div._cDEzb_p13n-sc-css-line-clamp-3_g3dy1, .p13n-sc-truncate",
+    );
+    if (bestTitle) return bestTitle.textContent?.trim() || "";
+    return "";
   }
 
-  private getMetaWithAsin(card: HTMLElement, title: string, price: number, asin: string): WishlistItem | null {
-    let imgEl = card.querySelector('.s-product-image-container img, [data-component-type="s-product-image"] img') as HTMLElement | null;
+  private getMetaWithAsin(
+    card: HTMLElement,
+    title: string,
+    price: number,
+    asin: string,
+  ): WishlistItem | null {
+    let imgEl = card.querySelector(
+      '.s-product-image-container img, [data-component-type="s-product-image"] img',
+    ) as HTMLElement | null;
     if (!imgEl) {
-      imgEl = Array.from(card.querySelectorAll('img.s-image, img')).find(img => {
-        return img.getAttribute('alt') !== 'More like this' && !img.closest('.more-like-this-container');
+      imgEl = Array.from(card.querySelectorAll("img.s-image, img")).find((img) => {
+        return (
+          img.getAttribute("alt") !== "More like this" && !img.closest(".more-like-this-container")
+        );
       }) as HTMLElement | null;
     }
 
     return {
-      id: `amz_${asin}`,
+      id: amazonId(asin, location.hostname),
       title,
       price,
       imageUrl: this.getBestImageUrl(imgEl),
-      url: `https://www.amazon.in/dp/${asin}`,
-      platform: 'Amazon'
+      url: `https://${location.hostname}/dp/${asin}`,
+      platform: "Amazon",
     };
   }
 
