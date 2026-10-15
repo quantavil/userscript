@@ -1,19 +1,19 @@
 {
   "name": "glidevideo",
-  "private": true,
   "version": "8.9.0",
+  "private": true,
+  "description": "Makes mobile web video actually usable — control playback, volume, and zoom without fumbling for tiny buttons, all through natural touch gestures. Works on any browser that support extension like Edge, Firefox, Cromite etc.",
+  "homepage": "https://github.com/quantavil/userscript",
   "license": "GPL-3.0-or-later",
   "author": "quantavil (https://github.com/quantavil)",
-  "homepage": "https://github.com/quantavil/userscript",
-  "description": "Makes mobile web video actually usable — control playback, volume, and zoom without fumbling for tiny buttons, all through natural touch gestures. Works on any browser that support extension like Edge, Firefox, Cromite etc.",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vp dev",
     "build": "bun run build:userscript && bun run build:extension",
-    "build:userscript": "vite build",
-    "build:extension": "vite build --config vite.extension.config.ts",
+    "build:userscript": "vp build",
+    "build:extension": "vp build --config vite.extension.config.ts",
     "tsc": "tsc",
-    "test": "vitest run",
+    "test": "vp test run",
     "test:e2e": "bun run build:userscript && playwright test",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
@@ -28,9 +28,12 @@
     "happy-dom": "^21.0.1",
     "knip": "^6.41.0",
     "typescript": "~7.0.2",
-    "vite": "^8.3.4",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
     "vite-plugin-monkey": "^8.1.1",
-    "vitest": "^5.0.4",
+    "vite-plus": "1.2.0",
     "web-ext": "^10.7.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
   }
 }

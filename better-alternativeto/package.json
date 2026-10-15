@@ -2,19 +2,23 @@
   "name": "better-alternativeto",
   "version": "1.1.0",
   "description": "Card links, a pinned compact filter bar and a real dark-mode button for AlternativeTo.",
-  "type": "module",
-  "author": "quantavil",
   "license": "GPL-3.0-or-later",
+  "author": "quantavil",
+  "type": "module",
   "scripts": {
-    "build": "bunx vite build",
-    "dev": "bunx vite",
+    "build": "bunx vp build",
+    "dev": "bunx vp dev",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4",
-    "vite-plugin-monkey": "^8.1.1"
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
+    "vite-plugin-monkey": "^8.1.1",
+    "vite-plus": "1.2.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
   }
 }

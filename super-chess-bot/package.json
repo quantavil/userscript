@@ -1,30 +1,20 @@
 {
   "name": "super-chess-bot",
   "version": "12.1.1",
-  "type": "module",
   "description": "Local Stockfish analysis and move automation for Chess.com and Lichess games",
+  "license": "GPL-3.0-or-later",
+  "author": "quantavil",
+  "type": "module",
   "scripts": {
-    "build:all": "BUILD_TARGET=all vite build",
-    "build:chesscom": "BUILD_TARGET=chesscom vite build",
+    "build:all": "BUILD_TARGET=all vp build",
+    "build:chesscom": "BUILD_TARGET=chesscom vp build",
     "build": "bun run build:all && bun run build:chesscom",
-    "dev": "vite",
-    "test": "vitest run",
+    "dev": "vp dev",
+    "test": "vp test run",
     "lint": "biome check",
     "typecheck": "tsc --noEmit",
     "knip": "knip",
     "check": "bun run lint && bun run typecheck && bun run knip && bun run test && bun run build"
-  },
-  "author": "quantavil",
-  "license": "GPL-3.0-or-later",
-  "devDependencies": {
-    "@biomejs/biome": "^2.5.15",
-    "@types/greasemonkey": "^4.0.7",
-    "@types/node": "^26.6.5",
-    "knip": "^6.41.0",
-    "typescript": "~7.0.2",
-    "vite": "^8.3.4",
-    "vite-plugin-monkey": "^8.1.1",
-    "vitest": "^5.0.4"
   },
   "dependencies": {
     "@preact/signals": "^2.11.3",
@@ -32,5 +22,18 @@
     "preact": "^11.0.1",
     "stockfish": "19.0.1",
     "valibot": "^1.5.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@types/greasemonkey": "^4.0.7",
+    "@types/node": "^26.6.5",
+    "knip": "^6.41.0",
+    "typescript": "~7.0.2",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
+    "vite-plugin-monkey": "^8.1.1",
+    "vite-plus": "1.2.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
   }
 }

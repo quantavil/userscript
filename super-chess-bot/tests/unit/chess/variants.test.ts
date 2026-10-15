@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { getVariantDefinition } from '../../../src/chess/variants.js';
 
 describe('shared variant registry', () => {
@@ -8,10 +8,26 @@ describe('shared variant registry', () => {
       rules: 'chess',
       chess960: false,
     });
-    expect(getVariantDefinition('standard')).toMatchObject({ id: 'standard', rules: 'chess', chess960: false });
-    expect(getVariantDefinition('chess')).toMatchObject({ id: 'standard', rules: 'chess', chess960: false });
-    expect(getVariantDefinition('chess960')).toMatchObject({ id: 'chess960', rules: 'chess', chess960: true });
-    expect(getVariantDefinition('fischerandom')).toMatchObject({ id: 'chess960', rules: 'chess', chess960: true });
+    expect(getVariantDefinition('standard')).toMatchObject({
+      id: 'standard',
+      rules: 'chess',
+      chess960: false,
+    });
+    expect(getVariantDefinition('chess')).toMatchObject({
+      id: 'standard',
+      rules: 'chess',
+      chess960: false,
+    });
+    expect(getVariantDefinition('chess960')).toMatchObject({
+      id: 'chess960',
+      rules: 'chess',
+      chess960: true,
+    });
+    expect(getVariantDefinition('fischerandom')).toMatchObject({
+      id: 'chess960',
+      rules: 'chess',
+      chess960: true,
+    });
     expect(getVariantDefinition()).toMatchObject({ id: 'standard' });
   });
 

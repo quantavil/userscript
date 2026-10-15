@@ -1,5 +1,5 @@
 import { parseComment, parsePgn } from 'chessops/pgn';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { buildPgn, formatEmt, type PgnMove } from '../../../src/game/pgn.js';
 
 describe('formatEmt', () => {
@@ -155,7 +155,10 @@ describe('PGN header safety', () => {
   });
 
   it('keeps a newline in a header from splitting the tag into two', () => {
-    const pgn = buildPgn([{ ply: 1, san: 'e4' }], { white: 'Player\n"Two"', site: 'Lichess\nisland' });
+    const pgn = buildPgn([{ ply: 1, san: 'e4' }], {
+      white: 'Player\n"Two"',
+      site: 'Lichess\nisland',
+    });
 
     // Exactly one White line and one Site line survive, each on a single line.
     expect(pgn.match(/^\[White /gm)).toHaveLength(1);

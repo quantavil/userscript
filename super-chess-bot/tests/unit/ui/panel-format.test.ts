@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { BotState } from '../../../src/app/state.js';
 import { uciSequenceToSan } from '../../../src/chess/notation.js';
 import { gameReportSignal, resetGameReport } from '../../../src/game/report/analyzer.js';

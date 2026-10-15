@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { formatMove, uciListToSan, uciToSan } from '../../../src/chess/notation.js';
 import { hasLegalMoves, predictFen } from '../../../src/chess/position.js';
 

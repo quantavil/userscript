@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { BotState, clearRecommendation, isBoardFlipped } from '../../../src/app/state.js';
 import { setActiveSite } from '../../../src/sites/active.js';
 import { getBoard, getGame, invalidateGameCache } from '../../../src/sites/chesscom/snapshot.js';

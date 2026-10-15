@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
-import { defineConfig, type Plugin } from 'vite';
 import monkey from 'vite-plugin-monkey';
+import { defineConfig, lazyPlugins, type Plugin } from 'vite-plus';
 import { type BuildTarget, getUserscriptMetadata } from './src/userscript/metadata.js';
 
 const target: BuildTarget = process.env.BUILD_TARGET === 'chesscom' ? 'chesscom' : 'all';
@@ -19,10 +19,16 @@ function chesscomOnlyResolver(): Plugin {
 }
 
 export default defineConfig({
+  fmt: {},
+  lint: {
+    jsPlugins: [{ name: 'vite-plus', specifier: 'vite-plus/oxlint-plugin' }],
+    rules: { 'vite-plus/prefer-vite-plus-imports': 'error' },
+    options: { typeAware: true, typeCheck: true },
+  },
   build: {
     emptyOutDir: false,
   },
-  plugins: [
+  plugins: lazyPlugins(() => [
     ...(target === 'chesscom' ? [chesscomOnlyResolver()] : []),
     monkey({
       entry: 'src/main.ts',
@@ -31,5 +37,5 @@ export default defineConfig({
         fileName: target === 'chesscom' ? 'chesscom.user.js' : 'bundle.user.js',
       },
     }),
-  ],
+  ]),
 });

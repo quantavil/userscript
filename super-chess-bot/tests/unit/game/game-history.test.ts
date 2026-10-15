@@ -1,5 +1,5 @@
 import { parsePgn } from 'chessops/pgn';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { GameHistoryTracker } from '../../../src/game/history.js';
 import type { GameSnapshot } from '../../../src/sites/types.js';
 
@@ -162,7 +162,10 @@ describe('game history reliability', () => {
     tracker.updateFromSnapshot(createMockSnapshot(), 0);
     tracker.updateFromSnapshot(createMockSnapshot({ whiteRemainingMs: 179000 }), 1000);
     tracker.updateFromSnapshot(
-      createMockSnapshot({ whiteRemainingMs: 177000, history: { startFen: root, moves: ['e2e4'] } }),
+      createMockSnapshot({
+        whiteRemainingMs: 177000,
+        history: { startFen: root, moves: ['e2e4'] },
+      }),
       3200,
     );
     expect(tracker.getMoves()[0]?.elapsedMs).toBe(3000);
@@ -177,7 +180,11 @@ describe('game history reliability', () => {
       tracker.reset('game-1', root, 0);
       tracker.updateFromSnapshot(createMockSnapshot({ incrementMs }), 0);
       tracker.updateFromSnapshot(
-        createMockSnapshot({ incrementMs, whiteRemainingMs: 179000, history: { startFen: root, moves: ['e2e4'] } }),
+        createMockSnapshot({
+          incrementMs,
+          whiteRemainingMs: 179000,
+          history: { startFen: root, moves: ['e2e4'] },
+        }),
         3200,
       );
       expect(tracker.getMoves()[0]?.elapsedMs).toBe(expected);
@@ -269,7 +276,10 @@ it('replays castling under the configured rules and rebuilds when the variant ch
 
   // Under Chess960 the same move is the king's own rook square, and the stale prefix must go.
   tracker.updateFromSnapshot(
-    createMockSnapshot({ variant: 'chess960', history: { startFen: CASTLE_ROOT, moves: CHESS960_CASTLE } }),
+    createMockSnapshot({
+      variant: 'chess960',
+      history: { startFen: CASTLE_ROOT, moves: CHESS960_CASTLE },
+    }),
   );
   expect(tracker.getMoves().map((move) => move.uci)).toEqual(CHESS960_CASTLE);
   expect(tracker.getMoves().at(-1)?.fen).toBe(CASTLE_END);

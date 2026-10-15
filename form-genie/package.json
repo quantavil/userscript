@@ -1,15 +1,15 @@
 {
   "name": "form-genie",
-  "private": true,
   "version": "1.6.0",
+  "private": true,
+  "description": "Privacy-first, AI-powered auto form filler for desktop & mobile. Instantly fills complex application forms, job portals, and exam sites (IBPS, NTA, SSC, UPSC) using smart teach rules, heuristics, and optional Gemini AI.",
+  "homepage": "https://github.com/quantavil/userscript",
   "license": "GPL-3.0-or-later",
   "author": "quantavil (https://github.com/quantavil)",
-  "homepage": "https://github.com/quantavil/userscript",
-  "description": "Privacy-first, AI-powered auto form filler for desktop & mobile. Instantly fills complex application forms, job portals, and exam sites (IBPS, NTA, SSC, UPSC) using smart teach rules, heuristics, and optional Gemini AI.",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "vp dev",
+    "build": "vp build",
     "tsc": "tsc",
     "test": "bun test"
   },
@@ -19,7 +19,11 @@
     "@types/node": "^26.6.5",
     "happy-dom": "^20.14.6",
     "typescript": "~7.0.2",
-    "vite": "^8.3.4",
-    "vite-plugin-monkey": "^8.1.1"
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
+    "vite-plugin-monkey": "^8.1.1",
+    "vite-plus": "1.2.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
   }
 }

@@ -1,7 +1,24 @@
 {
   "name": "reddit-reels",
   "version": "3.2.0",
+  "private": true,
+  "description": "Mobile-first full-screen reels for Reddit feeds: swipe, one stream with sound, Reddit video and RedGifs, native voting.",
+  "license": "GPL-3.0-or-later",
   "author": "quantavil",
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test:unit": "bun test tests/unit",
+    "test:e2e": "playwright test",
+    "test": "bun run test:unit && bun run test:e2e"
+  },
+  "dependencies": {
+    "hls.js": "^1.7.3"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
     "@playwright/test": "^1.64.0",
@@ -9,24 +26,11 @@
     "@types/tampermonkey": "^5.5.0",
     "happy-dom": "^20.14.6",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4",
-    "vite-plugin-monkey": "^8.1.1"
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
+    "vite-plugin-monkey": "^8.1.1",
+    "vite-plus": "1.2.0"
   },
-  "description": "Mobile-first full-screen reels for Reddit feeds: swipe, one stream with sound, Reddit video and RedGifs, native voting.",
-  "license": "GPL-3.0-or-later",
-  "private": true,
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "lint": "biome check .",
-    "format": "biome format --write .",
-    "test:unit": "bun test tests/unit",
-    "test:e2e": "playwright test",
-    "test": "bun run test:unit && bun run test:e2e"
-  },
-  "type": "module",
-  "dependencies": {
-    "hls.js": "^1.7.3"
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
   }
 }

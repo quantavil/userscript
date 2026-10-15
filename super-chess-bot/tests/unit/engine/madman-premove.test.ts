@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 import type { MultiPvLine } from '../../../src/chess/types.js';
 import { MadmanPremoveCache, prepareMadmanPremoves } from '../../../src/engine/madman-premove.js';
 import type { getAnalysis } from '../../../src/engine/service.js';
@@ -6,9 +6,19 @@ import type { getAnalysis } from '../../../src/engine/service.js';
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
 const AFTER_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
-const context = () => ({ identity: {}, settings: 'madman-on', history: { startFen: START, moves: [] as string[] } });
+const context = () => ({
+  identity: {},
+  settings: 'madman-on',
+  history: { startFen: START, moves: [] as string[] },
+});
 const planned = { uci: 'g1f3', pv: 'g1f3 b8c6 f1c4', score: {} };
-const line = (uci: string, cp = 0, depth = 4): MultiPvLine => ({ uci, pv: uci, evaluation: { cp }, depth, multipv: 1 });
+const line = (uci: string, cp = 0, depth = 4): MultiPvLine => ({
+  uci,
+  pv: uci,
+  evaluation: { cp },
+  depth,
+  multipv: 1,
+});
 const result = (lines: MultiPvLine[]) => ({
   success: true as const,
   bestmove: lines[0].uci,
@@ -57,7 +67,10 @@ describe('Madman premove evidence and context', () => {
     expect(cache.take(AFTER_E5, { ...ctx, history: { startFen: START, moves: ['e2e4', 'e7e5'] } })).toBeNull();
     cache.seed(START, { ...planned, uci: 'e2e4', pv: 'e2e4 e7e5 g1f3' }, ctx);
     expect(
-      cache.take(AFTER_E5.replace('0 2', '1 2'), { ...ctx, history: { startFen: START, moves: ['e2e4', 'e7e5'] } }),
+      cache.take(AFTER_E5.replace('0 2', '1 2'), {
+        ...ctx,
+        history: { startFen: START, moves: ['e2e4', 'e7e5'] },
+      }),
     ).toBeNull();
   });
 
@@ -74,16 +87,34 @@ describe('Madman premove evidence and context', () => {
       cpLoss: 120,
     });
     cache.seed(START, { ...planned, uci: 'e2e4', pv: 'e2e4 e7e5 g1f3' }, ctx);
-    expect(cache.take(AFTER_E5, target)).toMatchObject({ uci: 'f1c4', source: 'fast', cpLoss: 120 });
+    expect(cache.take(AFTER_E5, target)).toMatchObject({
+      uci: 'f1c4',
+      source: 'fast',
+      cpLoss: 120,
+    });
   });
 
   it('retains en passant rights in matching and rejects illegal replies', () => {
     const cache = new MadmanPremoveCache();
     const ctx = { identity: {}, settings: 'on' };
     const fen = '4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2';
-    cache.put(fen, fen, ctx, { uci: 'e5d6', pv: 'e5d6', evaluation: {}, depth: 0, source: 'planned', cpLoss: null });
+    cache.put(fen, fen, ctx, {
+      uci: 'e5d6',
+      pv: 'e5d6',
+      evaluation: {},
+      depth: 0,
+      source: 'planned',
+      cpLoss: null,
+    });
     expect(cache.take(fen.replace(' d6 ', ' - '), ctx)).toBeNull();
-    cache.put(fen, fen, ctx, { uci: 'e5e7', pv: 'e5e7', evaluation: {}, depth: 0, source: 'planned', cpLoss: null });
+    cache.put(fen, fen, ctx, {
+      uci: 'e5e7',
+      pv: 'e5e7',
+      evaluation: {},
+      depth: 0,
+      source: 'planned',
+      cpLoss: null,
+    });
     expect(cache.take(fen, ctx)).toBeNull();
   });
 });
@@ -120,7 +151,12 @@ describe('opponent-clock Madman branch work', () => {
         search,
       ),
     ).rejects.toThrow();
-    expect(cache.take(published, ctx)).toMatchObject({ uci: 'f3g5', source: 'fast', depth: 4, cpLoss: 120 });
+    expect(cache.take(published, ctx)).toMatchObject({
+      uci: 'f3g5',
+      source: 'fast',
+      depth: 4,
+      cpLoss: 120,
+    });
   });
 
   it.each(['fast', 'full'] as const)('preserves a newer winning mate over older %s comparison lines', async (stage) => {
@@ -210,7 +246,13 @@ describe('opponent-clock Madman branch work', () => {
     await prepareMadmanPremoves(
       AFTER_E4,
       context(),
-      { depth: 20, budget: 100, signal: new AbortController().signal, current: () => true, publish },
+      {
+        depth: 20,
+        budget: 100,
+        signal: new AbortController().signal,
+        current: () => true,
+        publish,
+      },
       search,
     );
     expect(publish).not.toHaveBeenCalled();

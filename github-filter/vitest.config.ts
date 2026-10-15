@@ -1,7 +1,7 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from "vite-plus";
 
 // Deliberately separate from vite.config.ts so vite-plugin-monkey does not run
 // during tests. happy-dom is only here to give the atom parser a real DOMParser.
 export default defineConfig({
-  test: { include: ['src/**/*.test.ts'], environment: 'happy-dom' }
+  test: { include: ["src/**/*.test.ts"], environment: "happy-dom" },
 });

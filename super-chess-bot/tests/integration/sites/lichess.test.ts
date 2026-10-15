@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 import { createHistoryReader, createLichessAdapter } from '../../../src/sites/lichess/adapter.js';
 import type { GameSnapshot, MoveRequest } from '../../../src/sites/types.js';
 
@@ -76,7 +76,10 @@ describe('Lichess player-round adapter', () => {
     clock.millisOf = () => {
       throw new Error('clock is unavailable');
     };
-    expect(unavailable.adapter.read()).toMatchObject({ kind: 'game', snapshot: { remainingMs: null } });
+    expect(unavailable.adapter.read()).toMatchObject({
+      kind: 'game',
+      snapshot: { remainingMs: null },
+    });
   });
 
   it('submits a legal move through the captured round controller and confirms explicit promotions', async () => {
@@ -163,7 +166,10 @@ describe('Lichess player-round adapter', () => {
     const reconnecting = makeFixture();
     await reconnecting.captureRound();
     reconnecting.round.loading = true;
-    expect(reconnecting.adapter.read()).toMatchObject({ kind: 'game', snapshot: { inputReady: false } });
+    expect(reconnecting.adapter.read()).toMatchObject({
+      kind: 'game',
+      snapshot: { inputReady: false },
+    });
   });
 
   it('notifies from the accepted round event and reads the server FEN instead of optimistic board state', async () => {
@@ -176,7 +182,12 @@ describe('Lichess player-round adapter', () => {
     await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce());
     expect(fixture.adapter.read()).toMatchObject({
       kind: 'game',
-      snapshot: { fen: AFTER_E4, sideToMove: 'b', inputReady: false, confirmedFens: [START_FEN, AFTER_E4] },
+      snapshot: {
+        fen: AFTER_E4,
+        sideToMove: 'b',
+        inputReady: false,
+        confirmedFens: [START_FEN, AFTER_E4],
+      },
     });
   });
 
@@ -225,10 +236,16 @@ describe('Lichess player-round adapter', () => {
     const pending = makeFixture();
     await pending.captureRound();
     pending.round.data.game.status.id = 10;
-    expect(pending.adapter.read()).toMatchObject({ kind: 'waiting', reason: expect.stringContaining('not started') });
+    expect(pending.adapter.read()).toMatchObject({
+      kind: 'waiting',
+      reason: expect.stringContaining('not started'),
+    });
 
     pending.round.data.game.status.id = 30;
-    expect(pending.adapter.read()).toMatchObject({ kind: 'game', snapshot: { phase: 'finished', inputReady: false } });
+    expect(pending.adapter.read()).toMatchObject({
+      kind: 'game',
+      snapshot: { phase: 'finished', inputReady: false },
+    });
   });
 
   it('memoizes history reader results when data, steps, ply, and fen are unchanged', () => {
@@ -295,7 +312,9 @@ function makeFixture(
     isConnected: true,
     getClientRects: () => [{}],
     getBoundingClientRect: () => ({ width: 512, height: 512 }),
-    ownerDocument: { defaultView: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) } },
+    ownerDocument: {
+      defaultView: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) },
+    },
   } as unknown as HTMLElement;
   const steps = [{ ply: 0, fen, san: '', uci: '' }];
   let sideToMove = fen.split(' ')[1] === 'w' ? 'white' : 'black';

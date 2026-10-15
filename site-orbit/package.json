@@ -2,13 +2,13 @@
   "name": "site-orbit",
   "version": "1.1.0",
   "description": "Private Domain & Tech Observatory caching verified Tranco global ranks, tech stack, DNS infrastructure, and live performance metrics.",
-  "type": "module",
-  "author": "quantavil",
   "license": "GPL-3.0-or-later",
+  "author": "quantavil",
+  "type": "module",
   "scripts": {
     "prebuild": "bun scripts/generate-suffixes.ts",
-    "build:userscript": "vite build",
-    "build:extension": "vite build -c vite.extension.config.ts",
+    "build:userscript": "vp build",
+    "build:extension": "vp build -c vite.extension.config.ts",
     "build": "bun run build:userscript && bun run build:extension",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
@@ -28,7 +28,11 @@
     "@types/bun": "^1.4.2",
     "happy-dom": "^20.14.6",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4",
-    "vite-plugin-monkey": "^8.1.1"
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
+    "vite-plugin-monkey": "^8.1.1",
+    "vite-plus": "1.2.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
   }
 }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import type { MoveConfirmation } from '../../../src/game/confirmation.js';
 import type { MoveRequest } from '../../../src/sites/types.js';
 
@@ -17,7 +17,11 @@ const dependencies = vi.hoisted(() => {
     history: { startFen: 'start w - - 0 1', moves: [] as string[] },
     confirmedFens: ['start w - - 0 1'],
   };
-  const siteRead: { kind: 'game' | 'waiting' | 'ineligible'; snapshot: typeof snapshot; reason?: string } = {
+  const siteRead: {
+    kind: 'game' | 'waiting' | 'ineligible';
+    snapshot: typeof snapshot;
+    reason?: string;
+  } = {
     kind: 'game',
     snapshot,
   };
@@ -33,7 +37,12 @@ const dependencies = vi.hoisted(() => {
     tablebase: vi.fn(),
     tablebaseEligible: vi.fn(() => false),
     hasLegalMoves: vi.fn(() => true),
-    confirmMove: vi.fn(async (): Promise<MoveConfirmation> => ({ status: 'confirmed', source: 'site-accepted' })),
+    confirmMove: vi.fn(
+      async (): Promise<MoveConfirmation> => ({
+        status: 'confirmed',
+        source: 'site-accepted',
+      }),
+    ),
     ponderPosition: vi.fn(),
     cancelPonder: vi.fn(),
     cancelPending: vi.fn(),
@@ -97,7 +106,9 @@ vi.mock('../../../src/board/overlays.js', () => ({
   cancelPendingMove: dependencies.cancelPending,
   getMoveRevision: () => 0,
 }));
-vi.mock('../../../src/ui/mount.js', () => ({ ui: { log: dependencies.log, updateDisplay: dependencies.update } }));
+vi.mock('../../../src/ui/mount.js', () => ({
+  ui: { log: dependencies.log, updateDisplay: dependencies.update },
+}));
 vi.mock('../../../src/chess/position.js', async (original) => ({
   ...(await original<typeof import('../../../src/chess/position.js')>()),
   hasLegalMoves: dependencies.hasLegalMoves,
@@ -152,7 +163,11 @@ function setPosition(changes: Partial<typeof dependencies.snapshot>): void {
 function validBestMove() {
   dependencies.analyze.mockResolvedValue({ success: true, bestmove: 'e2e4', depth: 10 });
   dependencies.hasLegalMoves.mockReturnValue(true);
-  dependencies.parseBestLine.mockReturnValue({ uci: 'e2e4', pv: dependencies.pv, score: dependencies.score });
+  dependencies.parseBestLine.mockReturnValue({
+    uci: 'e2e4',
+    pv: dependencies.pv,
+    score: dependencies.score,
+  });
 }
 
 beforeEach(() => {
@@ -576,7 +591,14 @@ it.each(['failed', 'rejected'])('uses tablebase when local analysis is %s before
     () =>
       new Promise((resolve) =>
         setTimeout(
-          () => resolve({ success: true, bestMove: 'e2e4', pv: 'e2e4', evaluation: {}, displayEval: 'Tablebase win' }),
+          () =>
+            resolve({
+              success: true,
+              bestMove: 'e2e4',
+              pv: 'e2e4',
+              evaluation: {},
+              displayEval: 'Tablebase win',
+            }),
           10,
         ),
       ),

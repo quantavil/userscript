@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { confirmSiteMove } from '../../../src/game/confirmation.js';
 import type { GameSnapshot, MoveRequest, SiteAdapter } from '../../../src/sites/types.js';
 
@@ -24,7 +24,9 @@ describe('move observation provenance', () => {
   it('fails unknown provenance rather than treating it as accepted', async () => {
     const fixture = makeFixture();
     fixture.update({ fen: E4, confirmedFens: [ROOT, E4] });
-    await expect(confirmSiteMove(fixture.request, fixture.adapter)).resolves.toEqual({ status: 'failed' });
+    await expect(confirmSiteMove(fixture.request, fixture.adapter)).resolves.toEqual({
+      status: 'failed',
+    });
   });
 
   it('does not confirm a changed current FEN without the expected indexed history', async () => {
@@ -41,7 +43,10 @@ describe('move observation provenance', () => {
     const fixture = makeFixture('controller-local');
     const pending = confirmSiteMove(fixture.request, fixture.adapter);
     fixture.update({ fen: E4_E5, confirmedFens: [ROOT, E4, E4_E5] });
-    await expect(pending).resolves.toEqual({ status: 'locally-applied', source: 'controller-local' });
+    await expect(pending).resolves.toEqual({
+      status: 'locally-applied',
+      source: 'controller-local',
+    });
   });
 
   it('finds an accepted bot ply after an immediate opponent response', async () => {
@@ -70,7 +75,9 @@ describe('move observation provenance', () => {
     fixture.controller.abort();
     const read = vi.spyOn(fixture.adapter, 'read');
     const subscribe = vi.spyOn(fixture.adapter, 'subscribe');
-    await expect(confirmSiteMove(fixture.request, fixture.adapter)).resolves.toEqual({ status: 'failed' });
+    await expect(confirmSiteMove(fixture.request, fixture.adapter)).resolves.toEqual({
+      status: 'failed',
+    });
     expect(read).not.toHaveBeenCalled();
     expect(subscribe).not.toHaveBeenCalled();
   });
@@ -115,7 +122,9 @@ describe('move observation provenance', () => {
     fixture.adapter.read = () => {
       throw new Error('Controller unavailable');
     };
-    await expect(confirmSiteMove(fixture.request, fixture.adapter)).resolves.toEqual({ status: 'failed' });
+    await expect(confirmSiteMove(fixture.request, fixture.adapter)).resolves.toEqual({
+      status: 'failed',
+    });
     expect(fixture.listeners.size).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
   });

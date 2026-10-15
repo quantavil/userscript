@@ -2,7 +2,7 @@ import { Chess, normalizeMove } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { makeSanAndPlay, parseSan } from 'chessops/san';
 import { parseUci } from 'chessops/util';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import type { OpeningStyle } from '../../../src/chess/types.js';
 import { lookupBookMove, normalizeEpd } from '../../../src/engine/book/lookup.js';
 import { type BookEntry, type CandidateMove, EPD_BOOK } from '../../../src/engine/book/positions.js';

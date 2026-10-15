@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { calculateMoveDelay, computeShannonEntropy, sampleExGaussian } from '../../../src/engine/timing.js';
 
 describe('engine timing math & ex-gaussian distribution', () => {

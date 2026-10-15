@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { MAX_THROTTLED_ELO, selectThrottledMove, type ThrottleOptions } from '../../../src/engine/throttle.js';
 import type { MultiPvLine } from '../../../src/engine/uci-client.js';
 import { evaluationToCentipawns } from '../../../src/shared/chess.js';
@@ -24,7 +24,10 @@ describe('elo throttling & blunder shield move selection', () => {
   });
 
   it('plays rank 1 move when targetElo is >= MAX_THROTTLED_ELO (3200)', () => {
-    const outcome = selectThrottledMove(dummyLines, { targetElo: MAX_THROTTLED_ELO, blunderShield: true });
+    const outcome = selectThrottledMove(dummyLines, {
+      targetElo: MAX_THROTTLED_ELO,
+      blunderShield: true,
+    });
     expect(outcome.uci).toBe('e2e4');
     expect(outcome.rank).toBe(1);
     expect(outcome.shieldApplied).toBe(false);

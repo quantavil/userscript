@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import type { runGameReport } from '../../../src/game/report/analyzer.js';
 
 const deps = vi.hoisted(() => {
@@ -17,7 +17,11 @@ const deps = vi.hoisted(() => {
     history: { startFen: 'start w - - 0 1', moves: [] as string[] },
     confirmedFens: ['start w - - 0 1'],
   };
-  const siteRead: { kind: 'game' | 'waiting' | 'ineligible'; snapshot: typeof snapshot; reason?: string } = {
+  const siteRead: {
+    kind: 'game' | 'waiting' | 'ineligible';
+    snapshot: typeof snapshot;
+    reason?: string;
+  } = {
     kind: 'game',
     snapshot,
   };
@@ -71,7 +75,10 @@ const deps = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../../src/engine/service.js', () => ({ warmEngine: deps.warm, resetEngine: deps.resetEngine }));
+vi.mock('../../../src/engine/service.js', () => ({
+  warmEngine: deps.warm,
+  resetEngine: deps.resetEngine,
+}));
 vi.mock('../../../src/app/scheduler.js', () => ({
   scheduleAnalysis: deps.schedule,
   cancelAnalysis: deps.cancel,
@@ -82,7 +89,10 @@ vi.mock('../../../src/app/scheduler.js', () => ({
     return () => deps.confirmationListeners.delete(listener);
   },
 }));
-vi.mock('../../../src/sites/registry.js', () => ({ getSite: () => deps.site, readSite: () => deps.site.read() }));
+vi.mock('../../../src/sites/registry.js', () => ({
+  getSite: () => deps.site,
+  readSite: () => deps.site.read(),
+}));
 vi.mock('../../../src/settings/storage.js', () => ({ Settings: { save: vi.fn() } }));
 vi.mock('../../../src/app/state.js', () => ({
   BotState: deps.state,
@@ -110,7 +120,9 @@ vi.mock('../../../src/game/report/analyzer.js', () => ({
   cancelGameReport: deps.cancelReport,
   resetGameReport: deps.resetReport,
 }));
-vi.mock('../../../src/ui/mount.js', () => ({ ui: { updateDisplay: deps.update, clearConsole: deps.clearConsole } }));
+vi.mock('../../../src/ui/mount.js', () => ({
+  ui: { updateDisplay: deps.update, clearConsole: deps.clearConsole },
+}));
 
 import { controller } from '../../../src/app/controller.js';
 import { BotState } from '../../../src/app/state.js';
@@ -283,7 +295,12 @@ describe('controller lifecycle', () => {
     await startReadyController();
     const identity = {};
     const nextBoard = { boardId: 'board-two' } as unknown as HTMLElement;
-    deps.siteRead.snapshot = { ...deps.siteRead.snapshot, identity, board: nextBoard, gameId: 'game-two' };
+    deps.siteRead.snapshot = {
+      ...deps.siteRead.snapshot,
+      identity,
+      board: nextBoard,
+      gameId: 'game-two',
+    };
 
     controller.tick();
 
@@ -455,7 +472,10 @@ it('records moves and offers a game report when bot automation is disabled', () 
   BotState.hackEnabled = false;
   setRead({
     phase: 'live',
-    history: { startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', moves: ['e2e4'] },
+    history: {
+      startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      moves: ['e2e4'],
+    },
   });
   controller.tick();
 

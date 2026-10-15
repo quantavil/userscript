@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { parseClockText } from '../../../src/sites/chesscom/snapshot.js';
 
 describe('parseClockText', () => {

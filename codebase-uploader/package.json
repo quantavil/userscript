@@ -1,17 +1,17 @@
 {
   "name": "codebase-uploader",
-  "private": true,
   "version": "1.4.0",
+  "private": true,
+  "description": "Fully customizable codebase uploader for AI chats. Editable limits, ignore lists, binary file support. Power-user tool.",
+  "homepage": "https://github.com/quantavil/userscript",
   "license": "GPL-3.0-or-later",
   "author": "quantavil (https://github.com/quantavil)",
-  "homepage": "https://github.com/quantavil/userscript",
-  "description": "Fully customizable codebase uploader for AI chats. Editable limits, ignore lists, binary file support. Power-user tool.",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "vp dev",
+    "build": "vp build",
     "tsc": "tsc",
-    "test": "vitest run"
+    "test": "vp test run"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",
@@ -19,8 +19,11 @@
     "@types/node": "^26.6.5",
     "happy-dom": "^20.14.6",
     "typescript": "~7.0.2",
-    "vite": "^8.3.4",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
     "vite-plugin-monkey": "^8.1.1",
-    "vitest": "^5.0.3"
+    "vite-plus": "1.2.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
   }
 }

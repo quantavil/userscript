@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 
 const dependencies = vi.hoisted(() => ({
   warm: vi.fn(),
@@ -13,7 +13,9 @@ const dependencies = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../../src/app/controller.js', () => ({ controller: { init: dependencies.controllerInit } }));
+vi.mock('../../../src/app/controller.js', () => ({
+  controller: { init: dependencies.controllerInit },
+}));
 vi.mock('../../../src/engine/service.js', () => ({ warmEngine: dependencies.warm }));
 vi.mock('../../../src/app/state.js', () => ({ BotState: dependencies.state }));
 vi.mock('../../../src/sites/registry.js', () => ({
@@ -31,7 +33,11 @@ describe('userscript startup', () => {
     dependencies.buildUI.mockReset().mockResolvedValue(undefined);
     dependencies.updateDisplay.mockReset();
     dependencies.controllerInit.mockReset();
-    Object.assign(dependencies.state, { hackEnabled: 0, statusInfo: 'Bot disabled', onUpdateDisplay: undefined });
+    Object.assign(dependencies.state, {
+      hackEnabled: 0,
+      statusInfo: 'Bot disabled',
+      onUpdateDisplay: undefined,
+    });
   });
 
   it('mounts on the Lichess lobby, prewarms the engine, and never waits for a Chess.com board selector', async () => {

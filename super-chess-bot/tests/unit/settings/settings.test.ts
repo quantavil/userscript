@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { BotState } from '../../../src/app/state.js';
 import type { SettingsData } from '../../../src/chess/types.js';
 import { resetSettingsModel } from '../../../src/settings/model.js';
@@ -151,11 +151,17 @@ describe('Settings.load', () => {
   });
 
   it('reads and restores a persisted panel position, and rejects an oversized one', () => {
-    const stored = JSON.stringify({ ...DEFAULT_SETTINGS, menuPosition: { top: '42px', left: '43px' } });
+    const stored = JSON.stringify({
+      ...DEFAULT_SETTINGS,
+      menuPosition: { top: '42px', left: '43px' },
+    });
     expect(loadStoredSettings(stored)?.menuPosition).toEqual({ top: '42px', left: '43px' });
 
     // Longer than the schema's 32-character limit, so it falls back to no saved position.
-    const tooLong = JSON.stringify({ ...DEFAULT_SETTINGS, menuPosition: { top: 'x'.repeat(64), left: '' } });
+    const tooLong = JSON.stringify({
+      ...DEFAULT_SETTINGS,
+      menuPosition: { top: 'x'.repeat(64), left: '' },
+    });
     expect(loadStoredSettings(tooLong)?.menuPosition).toBeNull();
     expect(loadStoredSettings(JSON.stringify({ ...DEFAULT_SETTINGS, menuPosition: 7 }))?.menuPosition).toBeNull();
   });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import type { MultiPvLine } from '../../../src/chess/types.js';
 import { discoverMadmanMoves, selectMadmanMove } from '../../../src/engine/madman.js';
 

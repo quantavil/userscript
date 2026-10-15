@@ -1,7 +1,7 @@
 import { Chess } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { parseUci } from 'chessops/util';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import type { MultiPvLine } from '../../../src/chess/types.js';
 import { MAX_CHAIN_STEERING_LOSS_CP, PREMOVE_PONDER_BRANCHES } from '../../../src/engine/config.js';
 import {

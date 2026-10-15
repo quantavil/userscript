@@ -1,5 +1,5 @@
 import stockfishPackage from 'stockfish/package.json' with { type: 'json' };
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import pkg from '../../../package.json' with { type: 'json' };
 import { createChesscomAdapter } from '../../../src/sites/chesscom/adapter.js';
 import { resetCapturedChesscomController } from '../../../src/sites/chesscom/bridge.js';
@@ -57,7 +57,10 @@ describe('site adapter selection', () => {
     const initial = adapter.read();
     expect(initial.kind).toBe('game');
     if (initial.kind !== 'game') return;
-    expect(adapter.read()).toMatchObject({ kind: 'game', snapshot: { identity: initial.snapshot.identity } });
+    expect(adapter.read()).toMatchObject({
+      kind: 'game',
+      snapshot: { identity: initial.snapshot.identity },
+    });
 
     first.game = makeGame();
     const replacedGame = adapter.read();
@@ -211,7 +214,12 @@ describe('Chess.com controller move submission', () => {
 
     expect(submitted).toBe(true);
     expect(game.isLegalMove).toHaveBeenCalledWith({ from: 'a7', to: 'a8', promotion: 'q' });
-    expect(game.move).toHaveBeenCalledWith({ from: 'a7', to: 'a8', promotion: 'q', userGenerated: true });
+    expect(game.move).toHaveBeenCalledWith({
+      from: 'a7',
+      to: 'a8',
+      promotion: 'q',
+      userGenerated: true,
+    });
   });
 
   it('reports failure for IllegalMove results without DOM promotion handling', async () => {
@@ -347,7 +355,9 @@ function makeBoard({ visible = true, game = makeGame() }: { visible?: boolean; g
     game,
     isConnected: true,
     ownerDocument: {
-      defaultView: { getComputedStyle: () => ({ display: visible ? 'block' : 'none', visibility: 'visible' }) },
+      defaultView: {
+        getComputedStyle: () => ({ display: visible ? 'block' : 'none', visibility: 'visible' }),
+      },
     },
     getClientRects: () => (visible ? [{ width: 400, height: 400 }] : []),
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 400 }),
@@ -434,7 +444,10 @@ it('marks dispatch before invoking the Chess.com move API', async () => {
   const read = adapter.read();
   if (read.kind !== 'game') throw new Error('missing fixture');
   const onDispatch = vi.fn();
-  await adapter.submitMove({ ...makeMoveRequest(read.snapshot.identity, START_FEN, 'e2e4', AFTER_E4), onDispatch });
+  await adapter.submitMove({
+    ...makeMoveRequest(read.snapshot.identity, START_FEN, 'e2e4', AFTER_E4),
+    onDispatch,
+  });
   expect(onDispatch).toHaveBeenCalledOnce();
   expect(onDispatch.mock.invocationCallOrder[0]).toBeLessThan(game.move.mock.invocationCallOrder[0]);
 });

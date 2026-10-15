@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import {
   getCapturedChesscomController,
   installChesscomControllerBridge,
@@ -48,7 +48,9 @@ describe('Chess.com board controller bridge', () => {
     const captured = vi.fn();
 
     expect(installChesscomControllerBridge(page, captured)).toBe(true);
-    const result = (proto as { init: (this: { game?: unknown }) => unknown }).init.call({ game: controller });
+    const result = (proto as { init: (this: { game?: unknown }) => unknown }).init.call({
+      game: controller,
+    });
 
     expect(result).toBe(controller);
     expect(captured).toHaveBeenCalledWith(controller);
@@ -90,8 +92,12 @@ describe('Chess.com board controller bridge', () => {
 
     installChesscomControllerBridge(page, captured);
     const otherProto = boardPrototype();
-    page.customElements.define('other-element', { prototype: otherProto } as unknown as CustomElementConstructor);
-    (otherProto as { init: (this: { game?: unknown }) => unknown }).init.call({ game: { marker: 'other' } });
+    page.customElements.define('other-element', {
+      prototype: otherProto,
+    } as unknown as CustomElementConstructor);
+    (otherProto as { init: (this: { game?: unknown }) => unknown }).init.call({
+      game: { marker: 'other' },
+    });
 
     expect(captured).not.toHaveBeenCalled();
   });

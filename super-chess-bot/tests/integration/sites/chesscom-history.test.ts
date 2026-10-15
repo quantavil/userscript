@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { canonicalFen } from '../../../src/chess/position.js';
 import {
   clearChesscomHistoryCache,
@@ -38,7 +38,10 @@ describe('Chess.com position history', () => {
     const fixture = makeFixture({ sans: ['e4', 'e5'], fen: AFTER_E5 });
     const snapshot = readGame(fixture);
 
-    expect(snapshot.history).toEqual({ startFen: canonicalFen(START_FEN), moves: ['e2e4', 'e7e5'] });
+    expect(snapshot.history).toEqual({
+      startFen: canonicalFen(START_FEN),
+      moves: ['e2e4', 'e7e5'],
+    });
     expect(snapshot.confirmedFens?.[2]).toBe(canonicalFen(AFTER_E5));
   });
 
@@ -90,7 +93,10 @@ describe('Chess.com position history', () => {
     options.fen = START_FEN;
     expect(adapter.read()).toMatchObject({
       kind: 'game',
-      snapshot: { confirmationSource: 'controller-local', confirmedFens: [canonicalFen(START_FEN)] },
+      snapshot: {
+        confirmationSource: 'controller-local',
+        confirmedFens: [canonicalFen(START_FEN)],
+      },
     });
   });
 
@@ -234,7 +240,9 @@ function makeFixture(options: { sans: string[]; fen: string; withStartingFen?: b
   };
   const board = Object.assign(element(), {
     game,
-    ownerDocument: { defaultView: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) } },
+    ownerDocument: {
+      defaultView: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) },
+    },
     getClientRects: () => [{ width: 400, height: 400 }],
     getBoundingClientRect: () => ({ width: 400, height: 400 }),
     getAttribute: () => null,

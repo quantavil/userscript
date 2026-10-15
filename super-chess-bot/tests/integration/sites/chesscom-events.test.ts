@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createChesscomAdapter } from '../../../src/sites/chesscom/adapter.js';
 import { resetCapturedChesscomController } from '../../../src/sites/chesscom/bridge.js';
 
@@ -58,7 +58,11 @@ describe('Chess.com adapter events', () => {
     expect(listener).toHaveBeenCalledTimes(1);
 
     fixture.replaceGame(makeGame());
-    fixture.notify([mutation('attributes', replacementBoard as unknown as Element, { attributeName: 'data-game-id' })]);
+    fixture.notify([
+      mutation('attributes', replacementBoard as unknown as Element, {
+        attributeName: 'data-game-id',
+      }),
+    ]);
     await flush();
     expect(listener).toHaveBeenCalledTimes(2);
 
@@ -76,7 +80,10 @@ describe('Chess.com adapter events', () => {
 
     fixture.setClock('0:59');
     fixture.notify([
-      mutation('characterData', { nodeType: 3, parentElement: fixture.clockTextElement } as unknown as Element),
+      mutation('characterData', {
+        nodeType: 3,
+        parentElement: fixture.clockTextElement,
+      } as unknown as Element),
     ]);
     await flush();
 

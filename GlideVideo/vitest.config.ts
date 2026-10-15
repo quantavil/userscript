@@ -1,7 +1,7 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vite-plus";
 
 export default defineConfig({
-	test: {
-		include: ["tests/**/*.test.ts"],
-	},
+  test: {
+    include: ["tests/**/*.test.ts"],
+  },
 });

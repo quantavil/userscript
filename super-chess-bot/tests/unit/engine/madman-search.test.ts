@@ -1,11 +1,22 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import type { MultiPvLine } from '../../../src/chess/types.js';
 import { analyzeMadman } from '../../../src/engine/madman-search.js';
 import type { BestLine, getAnalysis } from '../../../src/engine/service.js';
 
 const FEN = 'rnbq1rk1/pppp1ppp/5n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 w - - 4 5';
-const line = (uci: string, cp: number): MultiPvLine => ({ uci, pv: uci, evaluation: { cp }, depth: 8, multipv: 1 });
-const baseline: BestLine = { uci: 'h2h3', pv: 'h2h3', score: { cp: 20 }, multiPv: [line('h2h3', 20)] };
+const line = (uci: string, cp: number): MultiPvLine => ({
+  uci,
+  pv: uci,
+  evaluation: { cp },
+  depth: 8,
+  multipv: 1,
+});
+const baseline: BestLine = {
+  uci: 'h2h3',
+  pv: 'h2h3',
+  score: { cp: 20 },
+  multiPv: [line('h2h3', 20)],
+};
 const request = () => ({
   depth: 20,
   budget: 100,
@@ -29,7 +40,10 @@ describe('bounded Madman discovery', () => {
         { ...line('f3g5', 30), depth: 4 },
       ],
     };
-    const result = await analyzeMadman(FEN, shallow, { ...request(), deadline: performance.now() - 1 });
+    const result = await analyzeMadman(FEN, shallow, {
+      ...request(),
+      deadline: performance.now() - 1,
+    });
     expect(result?.chosenLine.uci).toBe('h2h3');
   });
 
@@ -45,8 +59,15 @@ describe('bounded Madman discovery', () => {
   });
 
   it('preserves a new positive mate even when the completed snapshot is older', async () => {
-    const mate = { ...baseline, score: { mate: 3 }, multiPv: [line('h2h3', 20), line('f3g5', -100)] };
-    const result = await analyzeMadman(FEN, mate, { ...request(), deadline: performance.now() - 1 });
+    const mate = {
+      ...baseline,
+      score: { mate: 3 },
+      multiPv: [line('h2h3', 20), line('f3g5', -100)],
+    };
+    const result = await analyzeMadman(FEN, mate, {
+      ...request(),
+      deadline: performance.now() - 1,
+    });
     expect(result?.chosenLine.uci).toBe('h2h3');
     expect(result?.chosenLine.evaluation).toEqual({ mate: 3 });
   });
@@ -58,7 +79,14 @@ describe('bounded Madman discovery', () => {
         expect(options?.searchMoves).toContain('h2h3');
         expect(options?.searchMoves).toContain('f3g5');
         const lines = (options?.searchMoves ?? []).map((uci: string) => line(uci, uci === 'h2h3' ? 20 : -100));
-        return { success: true, bestmove: 'h2h3', pv: 'h2h3', depth: 8, evaluation: { cp: 20 }, multiPv: lines };
+        return {
+          success: true,
+          bestmove: 'h2h3',
+          pv: 'h2h3',
+          depth: 8,
+          evaluation: { cp: 20 },
+          multiPv: lines,
+        };
       },
     );
     const result = await analyzeMadman(FEN, baseline, request(), search);
@@ -107,7 +135,12 @@ describe('bounded Madman discovery', () => {
 
   it('verifies a legal capture from the opponent perspective without inflating the root score', async () => {
     const fen = '6k1/5ppp/8/8/8/8/3Q1PPP/6K1 w - - 0 1';
-    const offered: BestLine = { uci: 'd2h6', pv: 'd2h6', score: { cp: 0 }, multiPv: [line('d2h6', 0)] };
+    const offered: BestLine = {
+      uci: 'd2h6',
+      pv: 'd2h6',
+      score: { cp: 0 },
+      multiPv: [line('d2h6', 0)],
+    };
     const search = vi
       .fn()
       .mockResolvedValueOnce({ success: false, bestmove: '', pv: '', depth: 0, evaluation: {} })

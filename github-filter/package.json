@@ -1,17 +1,17 @@
 {
   "name": "github-filter",
-  "private": true,
   "version": "8.2.2",
+  "private": true,
+  "description": "Build GitHub search queries without memorising qualifier syntax, save them as presets, and hide results you never want to see.",
+  "homepage": "https://github.com/quantavil/userscript",
   "license": "GPL-3.0-or-later",
   "author": "quantavil (https://github.com/quantavil)",
-  "homepage": "https://github.com/quantavil/userscript",
-  "description": "Build GitHub search queries without memorising qualifier syntax, save them as presets, and hide results you never want to see.",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "vp dev",
+    "build": "vp build",
     "tsc": "tsc",
-    "test": "vitest run",
+    "test": "vp test run",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/"
   },
@@ -20,8 +20,11 @@
     "@types/node": "^26.6.5",
     "happy-dom": "^20.14.6",
     "typescript": "~7.0.2",
-    "vite": "^8.3.4",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
     "vite-plugin-monkey": "^8.1.1",
-    "vitest": "^5.0.3"
+    "vite-plus": "1.2.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
   }
 }

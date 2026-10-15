@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { invalidateGameCache, isBoardFlipped } from '../../../src/sites/chesscom/snapshot.js';
 import { observeBoard } from '../../../src/sites/chesscom/watcher.js';
 
@@ -95,7 +95,9 @@ function makeBoardObserver() {
       disconnect();
     }
   }
-  const board = { ownerDocument: { defaultView: { MutationObserver: Observer } } } as unknown as HTMLElement;
+  const board = {
+    ownerDocument: { defaultView: { MutationObserver: Observer } },
+  } as unknown as HTMLElement;
   return {
     board,
     observed,

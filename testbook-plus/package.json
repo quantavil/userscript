@@ -2,23 +2,27 @@
   "name": "testbook-plus",
   "version": "2.2.0",
   "description": "",
+  "keywords": [],
+  "license": "GPL-3.0-or-later",
+  "author": "quantavil",
+  "type": "module",
   "main": "index.js",
   "scripts": {
-    "build": "bunx vite build",
-    "dev": "bunx vite"
-  },
-  "keywords": [],
-  "author": "quantavil",
-  "license": "GPL-3.0-or-later",
-  "type": "module",
-  "devDependencies": {
-    "@types/turndown": "^5.0.6",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.4",
-    "vite-plugin-monkey": "^8.1.1"
+    "build": "bunx vp build",
+    "dev": "bunx vp dev"
   },
   "dependencies": {
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2"
+  },
+  "devDependencies": {
+    "@types/turndown": "^5.0.6",
+    "typescript": "^7.0.2",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
+    "vite-plugin-monkey": "^8.1.1",
+    "vite-plus": "1.2.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
   }
 }

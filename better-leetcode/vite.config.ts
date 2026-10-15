@@ -1,9 +1,15 @@
-import { defineConfig } from 'vite';
 import monkey from 'vite-plugin-monkey';
+import { defineConfig, lazyPlugins } from 'vite-plus';
 import pkg from './package.json' with { type: 'json' };
 
 export default defineConfig({
-  plugins: [
+  fmt: {},
+  lint: {
+    jsPlugins: [{ name: 'vite-plus', specifier: 'vite-plus/oxlint-plugin' }],
+    rules: { 'vite-plus/prefer-vite-plus-imports': 'error' },
+    options: { typeAware: true, typeCheck: true },
+  },
+  plugins: lazyPlugins(() => [
     monkey({
       entry: 'src/main.ts',
       userscript: {
@@ -22,5 +28,5 @@ export default defineConfig({
       },
       build: { fileName: 'better-leetcode.user.js' },
     }),
-  ],
+  ]),
 });

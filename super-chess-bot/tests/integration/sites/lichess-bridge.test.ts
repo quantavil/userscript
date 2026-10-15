@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 import { installLichessControllerBridge } from '../../../src/sites/lichess/bridge.js';
 
 describe('Lichess round controller bridge', () => {
@@ -22,7 +22,10 @@ describe('Lichess round controller bridge', () => {
     page.site = {};
     page.site.asset = Object.freeze({ loadEsm, loadEsmPage, marker: 'preserved' });
 
-    const asset = page.site.asset as { loadEsmPage: (name: string) => Promise<unknown>; marker: string };
+    const asset = page.site.asset as {
+      loadEsmPage: (name: string) => Promise<unknown>;
+      marker: string;
+    };
     expect(asset.marker).toBe('preserved');
     await asset.loadEsmPage('round');
 

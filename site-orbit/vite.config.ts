@@ -1,12 +1,18 @@
 import { readFileSync } from 'node:fs';
-import { defineConfig } from 'vite';
 import monkey from 'vite-plugin-monkey';
+import { defineConfig, lazyPlugins } from 'vite-plus';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
 export default defineConfig({
+  fmt: {},
+  lint: {
+    jsPlugins: [{ name: 'vite-plus', specifier: 'vite-plus/oxlint-plugin' }],
+    rules: { 'vite-plus/prefer-vite-plus-imports': 'error' },
+    options: { typeAware: true, typeCheck: true },
+  },
   build: { outDir: 'dist' },
-  plugins: [
+  plugins: lazyPlugins(() => [
     monkey({
       entry: 'src/main.ts',
       build: { fileName: 'site-orbit.user.js' },
@@ -31,5 +37,5 @@ export default defineConfig({
         license: 'GPL-3.0-or-later',
       },
     }),
-  ],
+  ]),
 });

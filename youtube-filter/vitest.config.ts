@@ -1,9 +1,9 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   test: {
-    environment: 'happy-dom',
+    environment: "happy-dom",
     globals: true,
-    include: ['test/**/*.test.ts']
-  }
+    include: ["test/**/*.test.ts"],
+  },
 });

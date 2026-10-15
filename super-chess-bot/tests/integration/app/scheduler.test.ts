@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { cancelAnalysis, scheduleAnalysis } from '../../../src/app/scheduler.js';
 import { BotState } from '../../../src/app/state.js';
 import { predictFen } from '../../../src/chess/position.js';
@@ -18,7 +18,10 @@ const mocks = vi.hoisted(() => {
     phase: 'live' as const,
     inputReady: true,
     remainingMs: null as number | null,
-    history: { startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', moves: [] as string[] },
+    history: {
+      startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      moves: [] as string[],
+    },
     confirmedFens: ['rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'],
   };
   const siteRead = {
@@ -37,7 +40,12 @@ const mocks = vi.hoisted(() => {
     siteRead,
     site,
     analyze: vi.fn(),
-    confirmMove: vi.fn(async (): Promise<MoveConfirmation> => ({ status: 'confirmed', source: 'site-accepted' })),
+    confirmMove: vi.fn(
+      async (): Promise<MoveConfirmation> => ({
+        status: 'confirmed',
+        source: 'site-accepted',
+      }),
+    ),
     drawArrow: vi.fn(),
     drawMultiPvArrows: vi.fn(),
     clearArrows: vi.fn(),
@@ -177,7 +185,13 @@ describe('scheduler state consistency and multi-pv / elo throttling', () => {
     mocks.snapshot.fen = target;
     mocks.snapshot.history = { startFen: target, moves: [] };
     cancelAnalysis(target);
-    mocks.analyze.mockResolvedValue({ success: true, bestmove: 'f1c4', pv: 'f1c4', evaluation: { cp: 20 }, depth: 12 });
+    mocks.analyze.mockResolvedValue({
+      success: true,
+      bestmove: 'f1c4',
+      pv: 'f1c4',
+      evaluation: { cp: 20 },
+      depth: 12,
+    });
     await scheduleAnalysis('main', target);
     expect(mocks.site.submitMove.mock.calls.at(-1)?.[0].uci).toBe('f1c4');
     expect(BotState.statusInfo).not.toContain('Premove');
@@ -185,7 +199,11 @@ describe('scheduler state consistency and multi-pv / elo throttling', () => {
 
   it('dispatches an evaluated attacking branch without repeating foreground search', async () => {
     const root = 'rnbq1rk1/pppp1ppp/5n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b - - 4 5';
-    Object.assign(mocks.snapshot, { fen: root, sideToMove: 'b', history: { startFen: root, moves: [] } });
+    Object.assign(mocks.snapshot, {
+      fen: root,
+      sideToMove: 'b',
+      history: { startFen: root, moves: [] },
+    });
     BotState.madmanMode = true;
     BotState.premove = true;
     BotState.autoMove = true;
@@ -214,7 +232,11 @@ describe('scheduler state consistency and multi-pv / elo throttling', () => {
     );
     await scheduleAnalysis('ponder', root);
     const target = predictFen(root, 'd7d6') ?? '';
-    Object.assign(mocks.snapshot, { fen: target, sideToMove: 'w', history: { startFen: root, moves: ['d7d6'] } });
+    Object.assign(mocks.snapshot, {
+      fen: target,
+      sideToMove: 'w',
+      history: { startFen: root, moves: ['d7d6'] },
+    });
     cancelAnalysis(target);
     const count = mocks.analyze.mock.calls.length;
     await scheduleAnalysis('main', target);
@@ -241,7 +263,11 @@ describe('scheduler state consistency and multi-pv / elo throttling', () => {
       depth: 12,
     });
     await scheduleAnalysis('main', start);
-    Object.assign(mocks.snapshot, { fen: offer, sideToMove: 'b', history: { startFen: start, moves: ['d2h6'] } });
+    Object.assign(mocks.snapshot, {
+      fen: offer,
+      sideToMove: 'b',
+      history: { startFen: start, moves: ['d2h6'] },
+    });
     cancelAnalysis(offer);
     mocks.analyze.mockImplementation(
       async (fen, _depth, _time, _signal, _history, _slack, _variant, _multi, _legal, _onDepth, options) => {
@@ -360,8 +386,20 @@ describe('scheduler state consistency and multi-pv / elo throttling', () => {
     BotState.ponderEnabled = true;
     BotState.premove = false;
 
-    const line1 = { multipv: 1, depth: 20, evaluation: { cp: 50 }, pv: 'e2e4 e7e5 g1f3', uci: 'e2e4' };
-    const line2 = { multipv: 2, depth: 20, evaluation: { cp: 20 }, pv: 'd2d4 d7d5 c2c4', uci: 'd2d4' };
+    const line1 = {
+      multipv: 1,
+      depth: 20,
+      evaluation: { cp: 50 },
+      pv: 'e2e4 e7e5 g1f3',
+      uci: 'e2e4',
+    };
+    const line2 = {
+      multipv: 2,
+      depth: 20,
+      evaluation: { cp: 20 },
+      pv: 'd2d4 d7d5 c2c4',
+      uci: 'd2d4',
+    };
 
     mocks.analyze.mockResolvedValue({
       success: true,

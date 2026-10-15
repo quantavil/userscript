@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import {
   countPiecesOnBoard,
   isTablebaseEligible,
@@ -226,7 +226,12 @@ describe('tablebase reliability', () => {
   afterEach(() => vi.restoreAllMocks());
   function respond(category = 'win', dtm: number | null = null) {
     return new Response(
-      JSON.stringify({ category, dtz: 18, dtm, moves: [{ uci: 'e1e2', category: 'loss', dtz: -17 }] }),
+      JSON.stringify({
+        category,
+        dtz: 18,
+        dtm,
+        moves: [{ uci: 'e1e2', category: 'loss', dtz: -17 }],
+      }),
     );
   }
   it.each(['win', 'loss', 'maybe-win', 'maybe-loss', 'cursed-win', 'blessed-loss', 'unknown'])(
@@ -320,7 +325,13 @@ describe('tablebase late cancellation', () => {
     const request = lookupTablebase(fen, controller.signal);
     controller.abort();
     release(
-      new Response(JSON.stringify({ category: 'win', dtz: 3, moves: [{ uci: 'e1e2', dtz: -2, category: 'loss' }] })),
+      new Response(
+        JSON.stringify({
+          category: 'win',
+          dtz: 3,
+          moves: [{ uci: 'e1e2', dtz: -2, category: 'loss' }],
+        }),
+      ),
     );
     expect(await request).toBeNull();
     fetch.mockResolvedValueOnce(new Response('fail', { status: 503 }));

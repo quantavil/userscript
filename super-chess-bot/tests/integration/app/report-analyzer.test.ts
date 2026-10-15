@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { replaySanLine } from '../../../src/chess/position.js';
 import { UciClient } from '../../../src/engine/uci-client.js';
 import { setActiveSite } from '../../../src/sites/active.js';
@@ -229,7 +229,9 @@ describe('game report analysis pass', () => {
 it('refuses live reports even with an explicit eligible callback', async () => {
   setActiveSite(siteWithPhase('live'));
   analyze.mockResolvedValue({ evaluation: { cp: 0 } });
-  await runGameReport([move(1, 'w', 'e2e4', 'e4', AFTER_E4)], START_FEN, 'live', 18, false, { isEligible: () => true });
+  await runGameReport([move(1, 'w', 'e2e4', 'e4', AFTER_E4)], START_FEN, 'live', 18, false, {
+    isEligible: () => true,
+  });
   expect(analyze).not.toHaveBeenCalled();
   expect(gameReportSignal.value.running).toBe(false);
 });

@@ -1,18 +1,22 @@
 {
-    "name": "texpander-ai",
-    "private": true,
-    "version": "0.0.0",
+  "name": "texpander-ai",
+  "version": "0.0.0",
+  "private": true,
   "license": "GPL-3.0-or-later",
-    "type": "module",
-    "scripts": {
-        "dev": "vite",
-        "check": "tsc --noEmit",
-        "build": "tsc && vite build",
-        "preview": "vite preview"
-    },
-    "devDependencies": {
-        "typescript": "^7.0.2",
-        "vite": "^8.3.4",
-        "vite-plugin-monkey": "^8.1.1"
-    }
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "check": "tsc --noEmit",
+    "build": "tsc && vp build",
+    "preview": "vp preview"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
+    "vite-plugin-monkey": "^8.1.1",
+    "vite-plus": "1.2.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
+  }
 }

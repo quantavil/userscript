@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { replaySanLine } from '../../../src/chess/position.js';
 import { getAnalysis, parseBestLine, resetEngine, warmEngine } from '../../../src/engine/service.js';
 import { isValidUciMove, UciClient, type UciWorkerLike } from '../../../src/engine/uci-client.js';
@@ -417,7 +417,12 @@ describe('UCI Stockfish client', () => {
 
     const result = await resultPromise;
     expect(result.multiPv).toHaveLength(1);
-    expect(result.multiPv?.[0]).toMatchObject({ multipv: 2, depth: 10, uci: 'd2d4', evaluation: { cp: 30 } });
+    expect(result.multiPv?.[0]).toMatchObject({
+      multipv: 2,
+      depth: 10,
+      uci: 'd2d4',
+      evaluation: { cp: 30 },
+    });
   });
 
   it('continues a shallow matching ponder within the foreground budget', async () => {
@@ -464,7 +469,11 @@ describe('UCI Stockfish client', () => {
       info: 'info depth 0 score mate 0',
       evaluation: { mate: 0 },
     },
-    { fen: '7k/5K2/6Q1/8/8/8/8/8 b - - 0 1', info: 'info depth 0 score cp 0', evaluation: { cp: 0 } },
+    {
+      fen: '7k/5K2/6Q1/8/8/8/8/8 b - - 0 1',
+      info: 'info depth 0 score cp 0',
+      evaluation: { cp: 0 },
+    },
   ])('preserves terminal evaluation without a PV: $info', async ({ fen, info, evaluation }) => {
     const worker = new FakeUciWorker();
     const client = new UciClient(() => worker);
@@ -473,7 +482,12 @@ describe('UCI Stockfish client', () => {
       await waitUntil(() => worker.commands.some((command) => command.startsWith('go ')));
       worker.emit(info);
       worker.emit('bestmove (none)');
-      await expect(result).resolves.toMatchObject({ success: false, bestmove: '(none)', evaluation, pv: '' });
+      await expect(result).resolves.toMatchObject({
+        success: false,
+        bestmove: '(none)',
+        evaluation,
+        pv: '',
+      });
     } finally {
       client.dispose();
     }
@@ -603,7 +617,11 @@ describe('Stockfish analysis API', () => {
     );
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ ok: true, status: 200, arrayBuffer: async () => new Uint8Array([0, 97, 115, 109]).buffer })),
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new Uint8Array([0, 97, 115, 109]).buffer,
+      })),
     );
 
     await warmEngine();

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import * as state from '../../../src/app/state.js';
 import * as board from '../../../src/board/overlays.js';
 import { confirmSiteMove } from '../../../src/game/confirmation.js';
@@ -46,7 +46,10 @@ describe('site move confirmation', () => {
     const fixture = makeSiteFixture();
     const pending = confirmSiteMove(makeSiteRequest(fixture.identity, LICHESS_E4, 1), fixture.adapter);
 
-    fixture.setSnapshot({ fen: LICHESS_E4_C5, confirmedFens: [LICHESS_START, LICHESS_E4, LICHESS_E4_C5] });
+    fixture.setSnapshot({
+      fen: LICHESS_E4_C5,
+      confirmedFens: [LICHESS_START, LICHESS_E4, LICHESS_E4_C5],
+    });
     fixture.notify();
 
     await expect(pending).resolves.toEqual({ status: 'confirmed', source: 'site-accepted' });
@@ -84,13 +87,19 @@ describe('site move confirmation', () => {
     const fixture = makeSiteFixture();
     const request = makeSiteRequest(fixture.identity, LICHESS_E4, 2);
     const pending = confirmSiteMove(request, fixture.adapter);
-    fixture.setSnapshot({ fen: LICHESS_E4_C5, confirmedFens: [LICHESS_START, LICHESS_E4, LICHESS_E4_C5] });
+    fixture.setSnapshot({
+      fen: LICHESS_E4_C5,
+      confirmedFens: [LICHESS_START, LICHESS_E4, LICHESS_E4_C5],
+    });
     fixture.notify();
     await expect(pending).resolves.toEqual({ status: 'failed' });
 
     const repetition = makeSiteFixture();
     const repeated = confirmSiteMove(makeSiteRequest(repetition.identity, LICHESS_START, 1), repetition.adapter);
-    repetition.setSnapshot({ fen: LICHESS_START, confirmedFens: [LICHESS_START, LICHESS_E4, LICHESS_START] });
+    repetition.setSnapshot({
+      fen: LICHESS_START,
+      confirmedFens: [LICHESS_START, LICHESS_E4, LICHESS_START],
+    });
     repetition.notify();
     await expect(repeated).resolves.toEqual({ status: 'failed' });
   });
@@ -200,7 +209,15 @@ function makeSiteRequest(
   fromFen = LICHESS_START,
   signal = new AbortController().signal,
 ): MoveRequest {
-  return { identity, fromFen, uci: 'e2e4', expectedFen, expectedPly, signal, isCurrent: () => true };
+  return {
+    identity,
+    fromFen,
+    uci: 'e2e4',
+    expectedFen,
+    expectedPly,
+    signal,
+    isCurrent: () => true,
+  };
 }
 
 function setupMockBoard(flipped = false, _playerColor = 'w') {
