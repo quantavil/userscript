@@ -29,7 +29,6 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 | **[GlideVideo](./GlideVideo)** | Touch gesture controller for mobile web video (playback speed, volume, brightness, pinch-to-zoom, 3 themes). Available as both a userscript and a Firefox MV3 extension. |
 | **[StreamGrabber](./StreamGrabber)** | High-performance HLS (`.m3u8`) and fMP4 stream downloader with AES-128 decryption, adaptive quality selection, and direct blob extraction. |
 | **[youtube-filter](./youtube-filter)** | Advanced YouTube filtering by view count, upload date, video duration, keywords, and channels, with watched video dimming and customizable preset profiles. |
-| **[telegram-bot](./telegram-bot)** | Media downloader for Telegram Web (`/k/`, `/a/`, `webz`) that enables downloads from private/restricted channels with chunked progress tracking. |
 | **[better-wallhaven](./better-wallhaven)** | Wallhaven browsing suite featuring a resizable metadata sidebar, instant lightbox overlay, grid keyboard navigation, and full-resolution downloads. |
 | **[imdb-torrent](./imdb-torrent)** | Injects IMDb ratings, metascores, cast, and plot metadata directly into torrent index listings with direct magnet integration. |
 
@@ -56,7 +55,7 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 | **[search-switcher](./search-switcher)** | Minimal dark floating switcher with SVG icons to jump queries instantly across Brave, Yandex, Bing, DDG, YouTube, and Google. |
 | **[github-filter](./github-filter)** | GitHub search query builder with saved presets, whole-word result filter, and native GitHub Primer design tokens. |
 | **[greasey-fork-filter](./greasey-fork-filter)** | Persistent Greasy Fork script listing filter to hide low-quality scripts by install threshold, author, or keyword. |
-| **[reddit-manager](./reddit-manager)** | Bulk-management suite for Reddit to export/import subreddits, mass leave subscriptions, and batch overwrite/delete posts and comments. |
+| **[reddit-manager](./reddit-manager)** | Export/import Reddit subscriptions and clean up visible posts and comments from a responsive, keyboard-accessible panel with light/dark themes. |
 | **[better-alternativeto](./better-alternativeto)** | AlternativeTo enhancer adding direct website/GitHub/app-store chips to cards, pinned compact filter bar with likes range, and accessible dark mode. |
 | **[better-rule34](./better-rule34)** | Rule34Video enhancements: in-sheet minimum rating and view count filters, seamless infinite scroll, viewport preview autoplay, watch history tracking, and ad cleanup. |
 | **[omarchy-plugins-enhancer](./omarchy-plugins-enhancer)** | Omarchy Plugins catalog enhancer adding auto pager next (infinite scroll), direct GitHub repository links on cards, and seen plugin greying out. |

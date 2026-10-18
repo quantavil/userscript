@@ -2,19 +2,20 @@
 // pixel and this file owns none.
 
 import {
-	type Sub,
-	type UserItem,
 	deleteUserItem,
 	loadSubs,
 	loadUserItems,
 	normalizeName,
+	type RetryCallback,
+	type Sub,
 	setSubscribed,
 	sleep,
+	type UserItem,
 } from "./api";
 
-const SUB_PAUSE_MS = 650; // 1 req/item -> ~92 req/min, safely under Reddit's 100 limit
-const DELETE_PAUSE_MS = 1300; // 2 reqs/item (edit+del) -> ~92 req/min, safely under Reddit's 100 limit
-const GIVE_UP_AFTER = 3; // consecutive failures = broken session, not bad subreddits/items
+const SUB_PAUSE_MS = 650; // Pace subscription requests.
+const DELETE_PAUSE_MS = 1300; // Allow for both overwrite and delete requests.
+const GIVE_UP_AFTER = 3; // Stop repeated failures before processing the remaining queue.
 
 export interface ConfirmSpec {
 	title: string;
@@ -31,6 +32,13 @@ export interface Stats {
 }
 
 export type ProgressMetric = "subs" | "posts" | "comments";
+
+export interface BatchResult {
+	failed: string[];
+	error: string;
+	stoppedAt: number;
+	stopReason?: "cancelled" | "consecutiveFailures";
+}
 
 export interface Report {
 	/** The headline figures: subreddits, posts, comments. */
@@ -52,55 +60,64 @@ export interface Report {
 	isPaused?(): boolean;
 }
 
-/**
- * Joins or leaves every identifier, one request at a time, reporting after each.
- */
-export async function applyAll(
-	identifiers: string[],
-	subscribe: boolean,
-	onProgress: (done: number, total: number, failed: number) => void,
+type ProgressCallback = (done: number, total: number, failed: number) => void;
+
+function retryReporter(r?: Report): RetryCallback {
+	return (attempt, maxRetries, waitMs, status) => r?.status(
+		`${status ? `Reddit returned ${status}` : "Network request failed"}. Retrying in ${(waitMs / 1000).toFixed(1)}s (${attempt}/${maxRetries})…`,
+		"bad",
+	);
+}
+
+async function runBatch<T>(
+	items: T[],
+	task: {
+		id(item: T): string;
+		run(item: T, onRetry: RetryCallback): Promise<void>;
+		delay(item: T): number;
+	},
+	onProgress: ProgressCallback,
 	r?: Report,
-): Promise<{ failed: string[]; error: string; stoppedAt: number }> {
+): Promise<BatchResult> {
 	const failed: string[] = [];
 	let lastError = "";
+	let consecutiveFailures = 0;
+	const onRetry = retryReporter(r);
 
-	const onRetry = (
-		attempt: number,
-		maxRetries: number,
-		waitMs: number,
-		status: number,
-	) => {
-		const msg = `Reddit returned ${status}. Retrying in ${(waitMs / 1000).toFixed(1)}s (${attempt}/${maxRetries})…`;
-		r?.status(msg, "bad");
-		console.warn(`[Reddit Manager] ${msg}`);
-	};
-
-	for (let i = 0; i < identifiers.length; i++) {
-		while (r?.isPaused?.() && !r?.stopped?.()) {
-			await sleep(200);
-		}
-		if (r?.stopped?.())
-			return { failed, error: lastError, stoppedAt: i };
-
+	for (let i = 0; i < items.length; i++) {
+		while (r?.isPaused?.() && !r?.stopped?.()) await sleep(200);
+		if (r?.stopped?.()) return { failed, error: lastError, stoppedAt: i, stopReason: "cancelled" };
+		const item = items[i];
 		try {
-			await setSubscribed(identifiers[i], subscribe, onRetry);
-			r?.status(""); // clear rate-limit notice
-		} catch (err) {
-			lastError = (err as Error).message;
-			failed.push(identifiers[i]);
-			console.warn(
-				`[Reddit Manager] ${subscribe ? "join" : "leave"} ${identifiers[i]} failed: ${lastError}`,
-			);
-
-			if (failed.length === i + 1 && failed.length >= GIVE_UP_AFTER)
-				throw new Error(
-					`${lastError} (first ${failed.length} all failed the same way — stopped, nothing was changed)`,
-				);
+			await task.run(item, onRetry);
+			consecutiveFailures = 0;
+			r?.status("");
+		} catch (error) {
+			lastError = error instanceof Error ? error.message : String(error);
+			failed.push(task.id(item));
+			consecutiveFailures++;
+			console.warn(`[Reddit Manager] ${task.id(item)} failed: ${lastError}`);
 		}
-		onProgress(i + 1, identifiers.length, failed.length);
-		if (i + 1 < identifiers.length) await sleep(SUB_PAUSE_MS);
+		onProgress(i + 1, items.length, failed.length);
+		if (consecutiveFailures >= GIVE_UP_AFTER) {
+			return { failed, error: lastError, stoppedAt: i + 1, stopReason: "consecutiveFailures" };
+		}
+		if (i + 1 < items.length && !r?.stopped?.()) await sleep(task.delay(item));
 	}
-	return { failed, error: lastError, stoppedAt: identifiers.length };
+	return { failed, error: lastError, stoppedAt: items.length };
+}
+
+export function applyAll(
+	identifiers: string[],
+	subscribe: boolean,
+	onProgress: ProgressCallback,
+	r?: Report,
+): Promise<BatchResult> {
+	return runBatch(identifiers, {
+		id: (name) => name,
+		run: (name, onRetry) => setSubscribed(name, subscribe, onRetry),
+		delay: () => SUB_PAUSE_MS,
+	}, onProgress, r);
 }
 
 const HEADERS = new Set([
@@ -119,7 +136,9 @@ export function parseImport(text: string): string[] {
 		const json = JSON.parse(trimmed);
 		const list = Array.isArray(json)
 			? json
-			: (json.subreddits ?? json.subs ?? json.data);
+			: json && typeof json === "object"
+				? [json.subreddits, json.subs, json.data].find(Array.isArray)
+				: null;
 		if (!Array.isArray(list)) throw new Error("no subreddit list in that JSON");
 		raw = list;
 	} else {
@@ -128,14 +147,19 @@ export function parseImport(text: string): string[] {
 	}
 
 	const seen = new Map<string, string>();
-	for (const item of raw) {
-		const name = normalizeName(
-			typeof item === "string"
-				? item
-				: ((item as Sub)?.name ??
-						(item as { display_name?: string })?.display_name),
-		);
-		if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name);
+	for (const [index, item] of raw.entries()) {
+		let value: unknown = item;
+		if (item && typeof item === "object" && !Array.isArray(item)) {
+			const entry = item as { display_name?: unknown; name?: unknown };
+			value = typeof entry.display_name === "string" ? entry.display_name : entry.name;
+		}
+		if (typeof value !== "string") {
+			throw new Error(`invalid subreddit entry ${index + 1}`);
+		}
+
+		const name = normalizeName(value);
+		if (!name) throw new Error(`invalid subreddit entry ${index + 1}`);
+		if (!seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name);
 	}
 	return [...seen.values()];
 }
@@ -171,21 +195,12 @@ export async function refresh(
 	full = false,
 ): Promise<number> {
 	r.status(force ? "Reading from Reddit…" : "");
-	const onRetry = (
-		attempt: number,
-		maxRetries: number,
-		waitMs: number,
-		status: number,
-	) =>
-		r.status(
-			`Rate limited (${status}). Retrying in ${(waitMs / 1000).toFixed(1)}s (${attempt}/${maxRetries})…`,
-			"bad",
-		);
+	const onRetry = retryReporter(r);
 
 	try {
 		const subsPromise = loadSubs(force, onRetry);
-		const postsPromise = full ? loadUserItems("posts", onRetry) : Promise.reject("skipped");
-		const commentsPromise = full ? loadUserItems("comments", onRetry) : Promise.reject("skipped");
+		const postsPromise = full ? loadUserItems("posts", onRetry) : Promise.resolve(null);
+		const commentsPromise = full ? loadUserItems("comments", onRetry) : Promise.resolve(null);
 
 		const results = await Promise.allSettled([
 			subsPromise,
@@ -197,10 +212,14 @@ export async function refresh(
 		const posts = results[1].status === "fulfilled" ? results[1].value : null;
 		const comments = results[2].status === "fulfilled" ? results[2].value : null;
 
-		r.count(subs?.length ?? null, {
-			posts: posts?.length ?? null,
-			comments: comments?.length ?? null,
-		});
+		if (full) {
+			r.count(subs?.length ?? null, {
+				posts: posts?.length ?? null,
+				comments: comments?.length ?? null,
+			});
+		} else if (subs) {
+			r.count(subs.length);
+		}
 
 		if (results[0].status === "rejected") {
 			const err = (results[0].reason as Error)?.message ?? "Failed to read subscriptions";
@@ -210,8 +229,8 @@ export async function refresh(
 
 		if (force) {
 			const countsMsg = `${subs ? `${subs.length} subreddits` : "subscriptions unavailable"}${
-				posts ? `, ${posts.length} posts` : ""
-			}${comments ? `, ${comments.length} comments` : ""}`;
+				full ? `, ${posts ? `${posts.length} posts` : "posts unavailable"}` : ""
+			}${full ? `, ${comments ? `${comments.length} comments` : "comments unavailable"}` : ""}`;
 			r.status(`Read ${countsMsg}.`, "ok");
 		}
 		return subs?.length ?? 0;
@@ -314,7 +333,7 @@ async function apply(
 		subscribe ? startCount + succeeded : startCount - succeeded;
 
 	r.progress(verb, 0, names.length, startCount, "subs");
-	const { failed, error: lastError, stoppedAt } = await applyAll(
+	const { failed, error: lastError, stoppedAt, stopReason } = await applyAll(
 		names,
 		subscribe,
 		(done, total, bad) =>
@@ -323,11 +342,13 @@ async function apply(
 	);
 	const succeeded = stoppedAt - failed.length;
 	const untouched = names.length - stoppedAt;
-	const halted = untouched ? ` Stopped — ${untouched} left untouched.` : "";
+	const halted = untouched
+		? `${stopReason === "consecutiveFailures" ? ` Stopped after ${GIVE_UP_AFTER} consecutive failures —` : " Stopped —"} ${untouched} left untouched.`
+		: "";
 
 	r.status("Confirming with Reddit…");
 	await sleep(1000);
-	await refresh(r, true).catch(() => r.count(null));
+	await refresh(r, true).catch(() => undefined);
 
 	if (failed.length === 0) {
 		r.status(`${past} ${succeeded} subreddits.${halted}`, halted ? "bad" : "ok");
@@ -340,49 +361,21 @@ async function apply(
 	console.warn("[Reddit Manager] failed:", failed, lastError);
 }
 
-export async function applyItemDeletions(
+function shouldOverwrite(item: UserItem): boolean {
+	const text = item.selftext ?? item.body;
+	return !(item.fullname.startsWith("t3_") && typeof text === "string" && text.trim() === "");
+}
+
+export function applyItemDeletions(
 	items: UserItem[],
-	onProgress: (done: number, total: number, failed: number) => void,
+	onProgress: ProgressCallback,
 	r?: Report,
-): Promise<{ failed: string[]; error: string; stoppedAt: number }> {
-	const failed: string[] = [];
-	let lastError = "";
-	let consecutiveFailures = 0;
-
-	const onRetry = (
-		attempt: number,
-		maxRetries: number,
-		waitMs: number,
-		status: number,
-	) => {
-		const msg = `Reddit returned ${status}. Retrying in ${(waitMs / 1000).toFixed(1)}s (${attempt}/${maxRetries})…`;
-		r?.status(msg, "bad");
-	};
-
-	for (let i = 0; i < items.length; i++) {
-		while (r?.isPaused?.() && !r?.stopped?.()) {
-			await sleep(200);
-		}
-		if (r?.stopped?.())
-			return { failed, error: lastError, stoppedAt: i };
-
-		try {
-			await deleteUserItem(items[i].fullname, true, onRetry);
-			consecutiveFailures = 0;
-			r?.status("");
-		} catch (err) {
-			lastError = (err as Error).message;
-			failed.push(items[i].fullname);
-			consecutiveFailures++;
-
-			if (consecutiveFailures >= GIVE_UP_AFTER) {
-				return { failed, error: lastError, stoppedAt: i + 1 };
-			}
-		}
-		onProgress(i + 1, items.length, failed.length);
-		if (i + 1 < items.length) await sleep(DELETE_PAUSE_MS);
-	}
-	return { failed, error: lastError, stoppedAt: items.length };
+): Promise<BatchResult> {
+	return runBatch(items, {
+		id: (item) => item.fullname,
+		run: (item, onRetry) => deleteUserItem(item.fullname, shouldOverwrite(item), onRetry),
+		delay: (item) => shouldOverwrite(item) ? DELETE_PAUSE_MS : SUB_PAUSE_MS,
+	}, onProgress, r);
 }
 
 /** Unified batch deletion helper for visible posts or comments. */
@@ -407,7 +400,7 @@ async function deleteAllUserItems(
 
 	const ok = await r.confirm({
 		title: `Delete ${items.length} visible ${label}`,
-		body: `Deletes up to Reddit's 1,000 visible history limit. Each item will be overwritten with '.' prior to deletion.`,
+		body: `Deletes up to Reddit's 1,000 visible history limit. Editable text will be overwritten with '.' first; link posts without selftext are deleted directly.`,
 		action: `Delete ${label}`,
 		danger: true,
 		typed: String(items.length),
@@ -416,7 +409,7 @@ async function deleteAllUserItems(
 
 	const verb = `Deleting ${label}`;
 	r.progress(verb, 0, items.length, items.length, kind);
-	const { failed, error: lastError, stoppedAt } = await applyItemDeletions(
+	const { failed, error: lastError, stoppedAt, stopReason } = await applyItemDeletions(
 		items,
 		(done, total, bad) =>
 			r.progress(
@@ -430,11 +423,13 @@ async function deleteAllUserItems(
 	);
 	const succeeded = stoppedAt - failed.length;
 	const untouched = items.length - stoppedAt;
-	const halted = untouched ? ` Stopped — ${untouched} left untouched.` : "";
+	const halted = untouched
+		? `${stopReason === "consecutiveFailures" ? ` Stopped after ${GIVE_UP_AFTER} consecutive failures —` : " Stopped —"} ${untouched} left untouched.`
+		: "";
 
 	r.status("Confirming with Reddit…");
 	await sleep(500);
-	await refresh(r, true, true).catch(() => r.count(null));
+	await refresh(r, true, true).catch(() => undefined);
 
 	r.status(
 		`Deleted ${succeeded} ${label}.${failed.length ? ` (${failed.length} failed: ${lastError})` : ""}${halted}`,

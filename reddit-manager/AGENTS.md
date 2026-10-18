@@ -1,27 +1,29 @@
-# AGENT — reddit-subscription-manager
+# Reddit Manager
 
-## Overview
-Browser userscript for export, import, and bulk management of Reddit subscriptions, posts, comments, and account deletion redirect. Features a 3-cell live dashboard (Subreddits, Posts, Comments) and Pause / Cancel controls.
+Self-contained TypeScript userscript built with Bun, Vite+, and vite-plugin-monkey. No runtime dependencies. GPL-3.0-or-later metadata and LICENSE must remain consistent.
 
 ## Structure
-- `src/api.ts` — Handles Reddit REST API calls (subs, user items, deletions, modhash authentication).
-- `src/portability.ts` — Core logic for batch operations, progress reporting, user confirmation, post/comment deletion, pause/resume state handling, and export/import parsing.
-- `src/panel.ts` — Shadow Root UI component with 3-cell readout grid, action sheet (`ACTIONS`), and Pause/Cancel controls.
-- `src/index.ts` — Userscript entry point.
-- `tests/` — Vitest unit tests for api, panel, and portability functions.
 
-## Conventions
-- UI operates inside a Shadow DOM to isolate styles from Reddit's stylesheet.
-- Destruction operations (`leave`, `deletePosts`, `deleteComments`, `deleteAccount`) require explicit typed count confirmation or confirmation dialog.
+- `src/api.ts`: same-origin Reddit requests, authentication, retry backoff, paginated listings, subscription mutations, and text overwrite/deletion.
+- `src/portability.ts`: import/export, confirmations, sequential batches, pause/cancel checks, progress and result reporting.
+- `src/panel.ts`: Shadow DOM interface and confirmation lifecycle. Background refresh reports must be guarded against stale writes.
+- `src/panel.css`: responsive viewport bounds, light/dark theme, touch targets, focus states, reduced motion.
+- `tests/`: API and operation regressions plus panel lifecycle tests.
 
-## Dependencies & Setup
-- Built with Vite + `vite-plugin-monkey` target userscript output.
-- Testing executed via `bun run vitest run` or `npx vitest run`.
+## Constraints
 
-## Critical Information
-- Reddit limits user item listings to 1,000 items per request endpoint (`/user/{username}/submitted.json`, `comments.json`).
-- Pre-deletion overwrite (`POST /api/editusertext`) before `POST /api/del` ensures text privacy on Reddit/archives.
-- Account deletion requires plain text password verification on Reddit's backend; userscript redirects to `https://old.reddit.com/prefs/delete/`.
+- Leave-all and post/comment deletion require typed count confirmation. Leave-all downloads a backup first.
+- Validate Reddit JSON errors as well as HTTP status. Editable text overwrite must succeed before deletion. Skip overwrite for link posts without a text body.
+- Overwrite cannot guarantee privacy from archives or copies. Do not claim it can.
+- Profile listings expose at most 1,000 visible items per endpoint. Counts describe returned history, not the complete account.
+- Stop after three consecutive item failures and report successful, failed, and untouched work accurately.
+- Pause/cancel is checked between items. An active item and request retries may finish before stopping.
+- Confirmation cancellation must remove the sheet and restore content/focus. Closing during a read must not leave a late confirmation waiting in a hidden panel.
+- Use Reddit orange and neutral gray surfaces in both light and dark themes, with accessible text contrast.
+- Keep destructive actions in the cleanup disclosure. Keep confirmation controls reachable on short screens and support keyboard focus wrapping.
 
-## Blunders
-- `bun test` fails due to global `location` undefined in Node context; use `bun run vitest run` which initializes happy-dom environment correctly.
+## Verification
+
+Run `bun run test`, `bun run tsc`, `bun run lint`, and `bun run build`. `bun test` bypasses the configured happy-dom runner. Rebuild tracked `dist/reddit-manager.user.js` after source changes.
+
+For UI checks use local mocked API fixtures at phone, tablet, and desktop widths; do not mutate a live Reddit account to test the interface. See `docs/audit.md` for the latest audit and verification record.

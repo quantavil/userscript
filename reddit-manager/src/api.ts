@@ -9,7 +9,8 @@ export interface Sub {
 }
 
 const ORIGIN = location.origin;
-const MAX_PAGES = 60; // 6000 subs; reddit's own ceiling is 5000
+const MAX_SUB_PAGES = 50; // Reddit's own ceiling is 5000 subscriptions.
+const MAX_USER_ITEM_PAGES = 10; // Reddit exposes at most 1000 items per listing.
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 
@@ -32,6 +33,7 @@ async function fetchWithRetry(
 	let resp: Response | null = null;
 
 	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		resp = null;
 		try {
 			resp = await fetch(url, options);
 			if (!RETRYABLE.has(resp.status)) return resp;
@@ -47,21 +49,20 @@ async function fetchWithRetry(
 			const header =
 				resp.headers.get("Retry-After") || resp.headers.get("x-ratelimit-reset");
 			if (header) {
-				const seconds = Number.parseFloat(header);
-				if (Number.isFinite(seconds)) {
-					wait = Math.max(seconds * 1000, 2000);
+				const value = header.trim();
+				if (/^\d+(?:\.\d+)?$/.test(value)) {
+					wait = Math.max(wait, Number(value) * 1000, 2000);
 				} else {
-					const parsedDate = Date.parse(header);
+					const parsedDate = Date.parse(value);
 					if (Number.isFinite(parsedDate)) {
-						wait = Math.max(parsedDate - Date.now(), 2000);
+						wait = Math.max(wait, parsedDate - Date.now(), 2000);
 					}
 				}
 			}
 		}
 
-		// Add subtle jitter (±20%) to avoid synchronized retry bursts
-		wait += Math.random() * 400 - 200;
-		wait = Math.max(wait, 1000);
+		// Positive jitter avoids synchronized retries without violating Retry-After.
+		wait += Math.random() * 400;
 
 		const status = resp?.status ?? 0;
 		console.warn(
@@ -86,36 +87,81 @@ async function fetchWithRetry(
 	return resp;
 }
 
-/** `https://reddit.com/r/Foo/`, `/r/Foo`, `r/Foo`, `Foo` -> `Foo`. Empty string if unusable. */
+async function checkMutationResponse(
+	response: Response,
+	action: string,
+	requireErrors = false,
+): Promise<void> {
+	const body = await response.json().catch(() => null);
+	const invalid = () => new Error(`Reddit returned an invalid ${action} response`);
+	if (!body || typeof body !== "object" || Array.isArray(body)) throw invalid();
+	if (body.error || body.status === "error" || body.success === false) {
+		throw new Error(`Reddit rejected ${action}: ${body.error ?? body.message ?? body.status}`);
+	}
+	const errors = body.json?.errors;
+	if (errors === undefined && !requireErrors && Object.keys(body).length === 0) return;
+	if (!Array.isArray(errors)) throw invalid();
+	if (errors.length) {
+		throw new Error(`Reddit rejected ${action}: ${errors.map((error: unknown) =>
+			Array.isArray(error) ? String(error[1] ?? error[0]) : String(error),
+		).join("; ")}`);
+	}
+}
+
+/** Accepts a subreddit name or Reddit subreddit URL; empty string if invalid. */
 export function normalizeName(input: string | null | undefined): string {
 	if (!input) return "";
-	return input
-		.trim()
-		.replace(/^https?:\/\/[^/]+/i, "")
-		.replace(/^\/?(?:r\/)?/i, "")
-		.replace(/\/.*$/, "")
-		.replace(/[^\w-]/g, "");
+	const value = input.trim();
+	if (!value) return "";
+	let name: string | undefined;
+
+	if (/^https?:\/\//i.test(value)) {
+		try {
+			const url = new URL(value);
+			const host = url.hostname.toLowerCase();
+			if (host !== "reddit.com" && !host.endsWith(".reddit.com")) return "";
+			name = /^\/r\/([^/]+)(?:\/.*)?$/i.exec(url.pathname)?.[1];
+		} catch {
+			return "";
+		}
+	} else {
+		name = /^\/?r\/([^/]+)(?:\/.*)?$/i.exec(value)?.[1];
+		if (!name && /^[A-Za-z0-9_-]+$/.test(value)) name = value;
+	}
+
+	if (!name || name.length > 21 || !/^[A-Za-z0-9_-]+$/.test(name)) return "";
+	return name;
 }
 
 let cached: Sub[] | null = null;
 let inflight: Promise<Sub[]> | null = null;
+let subsGeneration = 0;
+
+function invalidateSubs(): void {
+	cached = null;
+	inflight = null;
+	subsGeneration++;
+}
 
 export function loadSubs(
 	force = false,
 	onRetry?: RetryCallback,
 ): Promise<Sub[]> {
-	if (force) {
-		cached = null;
-		inflight = null;
-	}
+	if (force) invalidateSubs();
 	if (cached) return Promise.resolve(cached);
 	if (inflight) return inflight;
+	const generation = subsGeneration;
 
 	inflight = (async () => {
 		const subs: Sub[] = [];
 		let after: string | null = null;
 
-		for (let page = 0; page < MAX_PAGES; page++) {
+		const seenNames = new Set<string>();
+		const seenCursors = new Set<string>();
+
+		for (let page = 0; page < MAX_SUB_PAGES; page++) {
+			if (after) seenCursors.add(after);
+
 			const url = new URL(`${ORIGIN}/subreddits/mine/subscriber.json`);
 			url.searchParams.set("limit", "100");
 			url.searchParams.set("raw_json", "1");
@@ -133,9 +179,13 @@ export function loadSubs(
 			if (!resp.ok) throw new Error(`subreddits/mine returned ${resp.status}`);
 
 			const json = await resp.json();
-			for (const child of json?.data?.children ?? []) {
+			if (!Array.isArray(json?.data?.children)) throw new Error("Reddit returned an invalid subscription listing");
+			for (const child of json.data.children) {
 				const d = child?.data;
 				if (!d?.display_name) continue;
+				const key = String(d.display_name).toLowerCase();
+				if (seenNames.has(key)) continue;
+				seenNames.add(key);
 				subs.push({
 					name: d.display_name,
 					id: d.name,
@@ -145,19 +195,21 @@ export function loadSubs(
 				});
 			}
 
-			after = json?.data?.after ?? null;
-			if (!after) break;
-			if (page === MAX_PAGES - 1 && after) {
-				console.warn(
-					`[Reddit Manager] Subscriptions capped at ${MAX_PAGES * 100} items limit.`,
-				);
+			const nextAfter = json?.data?.after ?? null;
+			if (!nextAfter) break;
+			if (seenCursors.has(nextAfter)) {
+				throw new Error("Reddit repeated a subscription pagination cursor; results may be incomplete");
+			}
+			after = nextAfter;
+			if (page === MAX_SUB_PAGES - 1 && after) {
+				throw new Error(`Subscription listing exceeded ${MAX_SUB_PAGES} pages; results may be incomplete`);
 			}
 		}
 
-		cached = subs;
+		if (generation === subsGeneration) cached = subs;
 		return subs;
 	})().finally(() => {
-		inflight = null;
+		if (generation === subsGeneration) inflight = null;
 	});
 
 	return inflight;
@@ -170,14 +222,20 @@ export interface MeInfo {
 
 let meCached: MeInfo | null = null;
 let meInflight: Promise<MeInfo> | null = null;
+let meGeneration = 0;
 
 export async function meInfo(
 	onRetry?: RetryCallback,
 	force = false,
 ): Promise<MeInfo> {
-	if (force) meCached = null;
+	if (force) {
+		meCached = null;
+		meInflight = null;
+		meGeneration++;
+	}
 	if (meCached) return meCached;
 	if (meInflight) return meInflight;
+	const generation = meGeneration;
 
 	meInflight = (async () => {
 		const resp = await fetchWithRetry(
@@ -202,10 +260,10 @@ export async function meInfo(
 
 		if (!data.name) throw new Error("Reddit did not return a username");
 
-		meCached = data;
+		if (generation === meGeneration) meCached = data;
 		return data;
 	})().finally(() => {
-		meInflight = null;
+		if (generation === meGeneration) meInflight = null;
 	});
 
 	return meInflight;
@@ -221,7 +279,7 @@ export async function setSubscribed(
 	subscribe: boolean,
 	onRetry?: RetryCallback,
 ): Promise<void> {
-	cached = null;
+	invalidateSubs();
 
 	let currentModhash = await getModhash(onRetry);
 
@@ -268,9 +326,8 @@ export async function setSubscribed(
 			throw new Error(`HTTP ${resp.status}${detail ? ` — ${detail}` : ""}`);
 		}
 
-		const errors = (await resp.json().catch(() => null))?.json?.errors;
-		if (Array.isArray(errors) && errors.length > 0)
-			throw new Error(errors.map((e: string[]) => e[1] ?? e[0]).join("; "));
+		await checkMutationResponse(resp, "subscription");
+		invalidateSubs();
 		return;
 	}
 }
@@ -279,6 +336,7 @@ export interface UserItem {
 	fullname: string; // e.g. t3_xxx or t1_xxx
 	title?: string;
 	body?: string;
+	selftext?: string;
 	subreddit?: string;
 }
 
@@ -294,7 +352,15 @@ export async function loadUserItems(
 	const endpoint = kind === "posts" ? "submitted" : "comments";
 	const encodedName = encodeURIComponent(info.name);
 
-	for (let page = 0; page < MAX_PAGES; page++) {
+	const seenFullnames = new Set<string>();
+	const seenCursors = new Set<string>();
+
+	for (let page = 0; page < MAX_USER_ITEM_PAGES; page++) {
+		if (after && seenCursors.has(after)) {
+			throw new Error(`Reddit repeated a ${endpoint} pagination cursor; results may be incomplete`);
+		}
+		if (after) seenCursors.add(after);
+
 		const url = new URL(`${ORIGIN}/user/${encodedName}/${endpoint}.json`);
 		url.searchParams.set("limit", "100");
 		url.searchParams.set("raw_json", "1");
@@ -312,22 +378,31 @@ export async function loadUserItems(
 		if (!resp.ok) throw new Error(`user/${endpoint} returned ${resp.status}`);
 
 		const json = await resp.json();
-		const children = json?.data?.children ?? [];
+		if (!Array.isArray(json?.data?.children)) throw new Error("Reddit returned an invalid history listing");
+		const children = json.data.children;
 		if (children.length === 0) break;
 
 		for (const child of children) {
 			const d = child?.data;
 			if (!d?.name) continue;
+			const fullname = String(d.name);
+			if (seenFullnames.has(fullname)) continue;
+			seenFullnames.add(fullname);
 			items.push({
-				fullname: d.name,
+				fullname,
 				title: d.title,
 				body: d.body,
+				selftext: d.selftext,
 				subreddit: d.subreddit,
 			});
 		}
 
-		after = json?.data?.after ?? null;
-		if (!after) break;
+		const nextAfter = json?.data?.after ?? null;
+		if (!nextAfter) break;
+		if (seenCursors.has(nextAfter)) {
+			throw new Error(`Reddit repeated a ${endpoint} pagination cursor; results may be incomplete`);
+		}
+		after = nextAfter;
 	}
 
 	return items;
@@ -370,18 +445,10 @@ export async function deleteUserItem(
 			}
 
 			if (!editResp.ok) {
-				console.warn(
-					`[Reddit Manager] Overwrite failed with HTTP ${editResp.status} for ${fullname}; proceeding to deletion.`,
-				);
-			} else {
-				const editJson = await editResp.json().catch(() => null);
-				const editErrors = editJson?.json?.errors;
-				if (Array.isArray(editErrors) && editErrors.length > 0) {
-					console.warn(
-						`[Reddit Manager] Overwrite failed for ${fullname}: ${editErrors.map((e: string[]) => e[1] ?? e[0]).join("; ")}; proceeding to deletion.`,
-					);
-				}
+				throw new Error(`HTTP ${editResp.status} overwriting ${fullname}`);
 			}
+
+			await checkMutationResponse(editResp, `overwrite for ${fullname}`, true);
 		}
 
 		const delParams = new URLSearchParams({
@@ -407,6 +474,7 @@ export async function deleteUserItem(
 		if (!resp.ok) {
 			throw new Error(`HTTP ${resp.status} deleting ${fullname}`);
 		}
+		await checkMutationResponse(resp, `deletion of ${fullname}`);
 		return;
 	}
 }

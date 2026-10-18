@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { normalizeName } from "../src/api";
 import {
   applyAll,
+  applyItemDeletions,
   deleteAccount,
   deleteAllComments,
   deleteAllPosts,
   parseImport,
+	refresh,
 } from "../src/portability";
 
 vi.mock("../src/api", async (importOriginal) => ({
@@ -16,8 +18,9 @@ vi.mock("../src/api", async (importOriginal) => ({
   deleteUserItem: vi.fn(async () => {}),
 }));
 
-const { setSubscribed, loadUserItems, deleteUserItem } = await import("../src/api");
+const { setSubscribed, loadSubs, loadUserItems, deleteUserItem } = await import("../src/api");
 const mockSub = vi.mocked(setSubscribed);
+const mockLoadSubs = vi.mocked(loadSubs);
 const mockLoadItems = vi.mocked(loadUserItems);
 const mockDeleteItem = vi.mocked(deleteUserItem);
 
@@ -28,6 +31,8 @@ describe("normalizeName", () => {
     expect(normalizeName("https://www.reddit.com/r/AskReddit/")).toBe("AskReddit");
     expect(normalizeName("https://reddit.com/r/pics/comments/abc/x/")).toBe("pics");
     expect(normalizeName("  learnpython  ")).toBe("learnpython");
+    expect(normalizeName("https://evil.example/r/pics")).toBe("");
+    expect(normalizeName("pics!")).toBe("");
     expect(normalizeName("")).toBe("");
     expect(normalizeName(null)).toBe("");
   });
@@ -65,6 +70,15 @@ describe("parseImport", () => {
 
   it("throws on JSON with no list in it", () => {
     expect(() => parseImport('{"hello":"world"}')).toThrow();
+  });
+
+  it("rejects external Reddit-shaped URLs and names that normalization would sanitize", () => {
+    expect(() => parseImport("https://evil.example/r/pics")).toThrow(/invalid/i);
+    expect(() => parseImport("pics!\nfunny")).toThrow(/invalid/i);
+  });
+
+  it("rejects malformed JSON entries instead of silently dropping them", () => {
+    expect(() => parseImport('[{"name":42}]')).toThrow(/entry 1/i);
   });
 });
 
@@ -110,23 +124,30 @@ describe("applyAll", () => {
 
   // The reported bug: "Left 0. Skipped 144" after 50 seconds of doomed requests.
   // A broken session fails every subreddit identically — stop at 3 and say why.
-  it("gives up early when nothing has ever succeeded, and names the error", async () => {
+  it("gives up after three consecutive failures and returns accurate progress", async () => {
     vi.useFakeTimers();
     mockSub.mockRejectedValue(new Error("HTTP 403 — modhash rejected"));
 
     const seen: Array<[number, number, number]> = [];
     const names = Array.from({ length: 144 }, (_, i) => `sub${i}`);
-    await expect(
-      drain(
-        applyAll(names, false, (d, t, f) => {
-          seen.push([d, t, f]);
-        }),
-      ),
-    ).rejects.toThrow(/modhash rejected.*first 3 all failed/s);
+    const result = await drain(
+      applyAll(names, false, (d, t, f) => {
+        seen.push([d, t, f]);
+      }),
+    );
 
     expect(mockSub).toHaveBeenCalledTimes(3); // not 144
-    // The two progress ticks before bailing never claimed real work.
-    expect(seen.every(([d, , f]) => d - f === 0)).toBe(true);
+    expect(result).toEqual({
+      failed: ["sub0", "sub1", "sub2"],
+      error: "HTTP 403 — modhash rejected",
+      stoppedAt: 3,
+      stopReason: "consecutiveFailures",
+    });
+    expect(seen).toEqual([
+      [1, 144, 1],
+      [2, 144, 2],
+      [3, 144, 3],
+    ]);
     vi.useRealTimers();
   });
 
@@ -161,11 +182,127 @@ describe("applyAll", () => {
       if (id !== "a") throw new Error("SUBREDDIT_NOEXIST");
     });
 
-    const { failed } = await drain(applyAll(["a", "b", "c", "d"], false, () => {}));
-    expect(failed).toEqual(["b", "c", "d"]);
+    const result = await drain(applyAll(["a", "b", "c", "d", "e"], false, () => {}));
+    expect(result.failed).toEqual(["b", "c", "d"]);
+    expect(result.stoppedAt).toBe(4);
+    expect(result.stopReason).toBe("consecutiveFailures");
     expect(mockSub).toHaveBeenCalledTimes(4);
     vi.useRealTimers();
   });
+
+  it("resets the consecutive failure count after a success", async () => {
+    vi.useFakeTimers();
+    mockSub.mockImplementation(async (id: string) => {
+      if (["a", "c", "d", "e"].includes(id)) throw new Error("temporary failure");
+    });
+
+    const result = await drain(
+      applyAll(["a", "b", "c", "d", "e", "f"], false, () => {}),
+    );
+
+    expect(result.failed).toEqual(["a", "c", "d", "e"]);
+    expect(result.stopReason).toBe("consecutiveFailures");
+    expect(result.stoppedAt).toBe(5);
+    expect(mockSub).toHaveBeenCalledTimes(5);
+    vi.useRealTimers();
+  });
+});
+
+describe("applyItemDeletions", () => {
+  beforeEach(() => {
+    mockDeleteItem.mockReset();
+  });
+
+  it("stops after three consecutive failures and includes the third in progress", async () => {
+    vi.useFakeTimers();
+    mockDeleteItem.mockRejectedValue(new Error("modhash rejected"));
+    const seen: Array<[number, number, number]> = [];
+
+    const promise = applyItemDeletions(
+      [
+        { fullname: "t1_a" },
+        { fullname: "t1_b" },
+        { fullname: "t1_c" },
+        { fullname: "t1_d" },
+      ],
+      (done, total, failed) => seen.push([done, total, failed]),
+    );
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    expect(mockDeleteItem).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({
+      failed: ["t1_a", "t1_b", "t1_c"],
+      error: "modhash rejected",
+      stoppedAt: 3,
+      stopReason: "consecutiveFailures",
+    });
+    expect(seen).toEqual([
+      [1, 4, 1],
+      [2, 4, 2],
+      [3, 4, 3],
+    ]);
+    vi.useRealTimers();
+  });
+});
+
+describe("refresh", () => {
+	beforeEach(() => {
+		mockLoadSubs.mockReset().mockResolvedValue([]);
+		mockLoadItems.mockReset().mockResolvedValue([]);
+	});
+
+	it("does not clear post and comment counts during a subscriptions-only refresh", async () => {
+		const report = {
+			status: vi.fn(),
+			count: vi.fn(),
+			progress: vi.fn(),
+			confirm: vi.fn(async () => false),
+			pickFile: vi.fn(),
+		};
+
+		await refresh(report);
+
+		expect(report.count).toHaveBeenCalledWith(0);
+		expect(report.count).not.toHaveBeenCalledWith(0, expect.anything());
+	});
+
+	it("marks subscriptions unavailable when a full refresh cannot read them", async () => {
+		mockLoadSubs.mockRejectedValue(new Error("not logged in to Reddit"));
+		const report = {
+			status: vi.fn(),
+			count: vi.fn(),
+			progress: vi.fn(),
+			confirm: vi.fn(async () => false),
+			pickFile: vi.fn(),
+		};
+
+		await expect(refresh(report, true, true)).rejects.toThrow("not logged in");
+		expect(report.count).toHaveBeenCalledWith(null, { posts: 0, comments: 0 });
+	});
+
+	it("reports a failed profile count as unavailable while retaining successful counts", async () => {
+		mockLoadSubs.mockResolvedValue([{ name: "math" }]);
+		mockLoadItems.mockImplementation(async (kind) => {
+			if (kind === "posts") throw new Error("posts unavailable");
+			return [{ fullname: "t1_comment1" }];
+		});
+		const report = {
+			status: vi.fn(),
+			count: vi.fn(),
+			progress: vi.fn(),
+			confirm: vi.fn(async () => false),
+			pickFile: vi.fn(),
+		};
+
+		await refresh(report, true, true);
+
+		expect(report.count).toHaveBeenCalledWith(1, { posts: null, comments: 1 });
+		expect(report.status).toHaveBeenCalledWith(
+			"Read 1 subreddits, posts unavailable, 1 comments.",
+			"ok",
+		);
+	});
 });
 
 describe("deleteAllPosts and deleteAllComments", () => {
@@ -195,6 +332,29 @@ describe("deleteAllPosts and deleteAllComments", () => {
     expect(mockDeleteItem).toHaveBeenCalledTimes(2);
     expect(mockDeleteItem).toHaveBeenCalledWith("t3_post1", true, expect.any(Function));
     expect(mockDeleteItem).toHaveBeenCalledWith("t3_post2", true, expect.any(Function));
+  });
+
+  it("skips overwriting a known link post before deletion", async () => {
+    mockLoadItems.mockResolvedValue([
+      { fullname: "t3_linkpost", title: "Link", selftext: "" },
+    ]);
+    mockDeleteItem.mockResolvedValue(undefined);
+
+    const mockReport = {
+      status: vi.fn(),
+      progress: vi.fn(),
+      confirm: vi.fn(async () => true),
+      count: vi.fn(),
+      pickFile: vi.fn(),
+    };
+
+    await deleteAllPosts(mockReport);
+
+    expect(mockDeleteItem).toHaveBeenCalledWith(
+      "t3_linkpost",
+      false,
+      expect.any(Function),
+    );
   });
 
   it("deletes all fetched comments when confirmed", async () => {

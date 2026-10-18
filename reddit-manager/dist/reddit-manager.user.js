@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Reddit Manager
 // @namespace    https://github.com/quantavil/userscript/reddit-manager
-// @version      3.2.0
+// @version      3.3.1
 // @author       quantavil (https://github.com/quantavil)
-// @description  Export, import, and bulk-manage your Reddit subreddit subscriptions from a floating panel.
+// @description  Export subscriptions and manage Reddit account cleanup from a responsive panel.
 // @license      GPL-3.0-or-later
 // @homepage     https://github.com/quantavil/userscript
 // @homepageURL  https://github.com/quantavil/userscript
@@ -15,8 +15,10 @@
 
 (function() {
 	"use strict";
+	var panel_default = ":host{all:initial;right:max(1.25rem, env(safe-area-inset-right));bottom:calc(1.25rem + env(safe-area-inset-bottom,0px));z-index:2147483647;--lightningcss-light:initial;--lightningcss-dark: ;color-scheme:light dark;--paper:#fff;--surface:#f2f4f5;--ink:#0f1a1c;--muted:#526268;--line:#d6dadd;--accent:#b93200;--brand:#ff4500;--danger:brown;--danger-bg:#fff0ee;color:var(--ink);font:400 14px/1.5 Segoe UI,system-ui,sans-serif;position:fixed}@media (prefers-color-scheme:dark){:host{--lightningcss-light: ;--lightningcss-dark:initial}}*,:before,:after{box-sizing:border-box}[hidden]{display:none}button,input{font:inherit;color:inherit}button{cursor:pointer;touch-action:manipulation}button:disabled{cursor:default;opacity:.45}button,summary{-webkit-tap-highlight-color:transparent}button:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}button{transition:background .16s,color .16s,transform .16s}button:active:not(:disabled){transform:translateY(1px)}h1,h2,p{margin:0}.wrap{flex-direction:column;align-items:flex-end;gap:.75rem;display:flex}.panel{width:min(26rem,100vw - 2.5rem);max-height:calc(100dvh - 6.75rem - env(safe-area-inset-bottom,0px));overscroll-behavior:contain;background:var(--paper);border:1px solid var(--line);visibility:hidden;border-radius:1.125rem;display:none;overflow-y:auto;box-shadow:0 16px 64px #0f1a1c26}.panel.is-open{visibility:visible;display:block}.head{justify-content:space-between;align-items:flex-start;padding:1.4rem 1.4rem .8rem;display:flex}.eyebrow{color:var(--accent);letter-spacing:.08em;font-size:.75rem;font-weight:650}h1{letter-spacing:-.035em;margin-top:.25rem;font-size:1.5rem;font-weight:650;line-height:1.25}.close{width:44px;height:44px;color:var(--muted);background:0 0;border:0;border-radius:.5rem;place-items:center;margin:-.5rem -.65rem 0 0;display:grid}.close:hover{background:var(--surface);color:var(--ink)}.readout{padding:.5rem 1.4rem 1.2rem}.stats-grid{grid-template-columns:1.25fr 1fr 1fr;gap:.8rem;display:grid}.stat-cell+.stat-cell{border-left:1px solid var(--line);padding-left:1rem}.figure{letter-spacing:-.04em;font-variant-numeric:tabular-nums;font-size:1.65rem;font-weight:600;line-height:1.25}.unit{color:var(--muted);margin-top:.2rem;font-size:.75rem}.progress-label{font-variant-numeric:tabular-nums;margin-top:1rem;font-size:.8rem}.progress-label:empty{display:none}.rule{background:var(--line);border-radius:2px;height:4px;margin-top:.6rem;overflow:hidden}.rule>i{background:var(--accent);width:0;height:100%;transition:width .2s;display:block}.rule:not([aria-valuenow]){display:none}.actions{padding:0 1.4rem 1.2rem}.section-label{color:var(--muted);margin:.2rem 0 .65rem;font-size:.8rem;font-weight:600}.tools{grid-template-columns:1fr 1fr;gap:.6rem;display:grid}.act{text-align:left;background:0 0;border:0;border-radius:.5rem;align-items:center;gap:.8rem;width:100%;min-height:48px;padding:.8rem 0;display:flex}.act .ico{color:var(--accent);flex:none;display:flex}.act .name{font-size:.9rem;font-weight:600;display:block}.act .hint{color:var(--muted);margin-top:.15rem;font-size:.76rem;line-height:1.4;display:block}.act:hover:not(:disabled){background:var(--surface)}.tools .act{background:var(--surface);flex-direction:column;align-items:flex-start;gap:.5rem;padding:.9rem}.tools .act:hover:not(:disabled){background:var(--line)}.act[data-key=refresh]{background:0 0;flex-direction:row;grid-column:1/-1;align-items:center;min-height:44px;padding:.5rem}.act[data-key=refresh] .name{font-size:.8rem}.act[data-key=refresh] .hint{display:none}.cleanup{border-top:1px solid var(--line);margin-top:.65rem;padding-top:.4rem}.cleanup summary{cursor:pointer;min-height:48px;padding:.8rem .25rem;font-size:.85rem;font-weight:600}.cleanup-note{color:var(--muted);margin:0 .25rem .4rem;font-size:.76rem}.cleanup .act{padding:.75rem .5rem}.act.is-danger .ico{color:var(--danger)}.act.is-danger:hover:not(:disabled){background:var(--danger-bg)}.controls-running{border-top:1px solid var(--line);gap:.6rem;padding:.8rem 1.4rem;display:none}.panel.is-running .controls-running{display:flex}.btn-ctrl,.btn{border:1px solid var(--line);background:var(--surface);border-radius:.6rem;min-height:44px;padding:.65rem 1rem;font-size:.85rem;font-weight:600}.btn-ctrl{flex:1}.btn-ctrl:hover:not(:disabled),.btn--cancel:hover{background:var(--line)}.cancel-btn{color:var(--danger)}.status{border-top:1px solid var(--line);color:var(--muted);overflow-wrap:anywhere;padding:.9rem 1.4rem;font-size:.8rem}.status:empty{display:none}.status.is-bad{color:var(--danger)}.status.is-ok{color:var(--accent)}.fab{border:1px solid var(--line);background:var(--paper);width:52px;height:52px;color:var(--brand);border-radius:1rem;place-items:center;display:grid;position:relative;box-shadow:0 4px 20px #0f1a1c20}.fab:hover{background:var(--surface)}.fab-icon{display:flex}.fab-progress{justify-content:center;align-items:center;display:none;position:absolute;inset:0}.fab.is-busy .fab-progress{display:flex}.fab.is-busy .fab-icon{display:none}.progress-ring{width:100%;height:100%;position:absolute;inset:0}.ring-fill{transition:stroke-dashoffset .2s}.fab-badge{font-variant-numeric:tabular-nums;font-size:.7rem;font-weight:650}.sheet{padding:1.5rem}.sheet__card{flex-direction:column;gap:1rem;display:flex}.sheet__badge{color:var(--accent)}.sheet.is-danger .sheet__badge{color:var(--danger)}.sheet__badge svg{width:24px;height:24px}.sheet__title{letter-spacing:-.025em;font-size:1.4rem;font-weight:650;line-height:1.25}.sheet__body{color:var(--muted);text-wrap:pretty;font-size:.9rem}.sheet__input{border:1px solid var(--line);background:var(--surface);border-radius:.5rem;width:100%;min-height:48px;padding:.75rem;font-size:16px}.sheet__row{flex-wrap:wrap;gap:.6rem;margin-top:.5rem;display:flex}.btn{flex:1}.btn--go{background:var(--accent);color:#fff;border-color:#0000}.btn--go:hover:not(:disabled){filter:brightness(1.12)}.sheet.is-danger .btn--go{background:var(--danger)}@media (prefers-color-scheme:dark){:host{--paper:#181c1f;--surface:#252a2e;--ink:#eef1f3;--muted:#acb5b9;--line:#3d4549;--accent:#ff8a65;--danger:#ffb4a9;--danger-bg:#342322}.btn--go{color:#181c1f}}@media (max-width:600px){:host{right:max(.75rem, env(safe-area-inset-right));bottom:calc(.75rem + env(safe-area-inset-bottom,0px))}.panel{width:min(26rem,100vw - 1.5rem);max-height:calc(100dvh - 5.75rem - env(safe-area-inset-bottom,0px))}.head{padding:1.2rem 1.1rem .75rem}.readout{padding:.5rem 1.1rem 1rem}.actions{padding:0 1.1rem 1rem}.sheet{padding:1.2rem}}@media (prefers-reduced-motion:reduce){button,.rule>i,.ring-fill{transition:none}}";
 	var ORIGIN = location.origin;
-	var MAX_PAGES = 60;
+	var MAX_SUB_PAGES = 50;
+	var MAX_USER_ITEM_PAGES = 10;
 	var RETRYABLE = new Set([
 		429,
 		500,
@@ -29,6 +31,7 @@
 		let delay = 2e3;
 		let resp = null;
 		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			resp = null;
 			try {
 				resp = await fetch(url, options);
 				if (!RETRYABLE.has(resp.status)) return resp;
@@ -40,16 +43,15 @@
 			if (resp) {
 				const header = resp.headers.get("Retry-After") || resp.headers.get("x-ratelimit-reset");
 				if (header) {
-					const seconds = Number.parseFloat(header);
-					if (Number.isFinite(seconds)) wait = Math.max(seconds * 1e3, 2e3);
+					const value = header.trim();
+					if (/^\d+(?:\.\d+)?$/.test(value)) wait = Math.max(wait, Number(value) * 1e3, 2e3);
 					else {
-						const parsedDate = Date.parse(header);
-						if (Number.isFinite(parsedDate)) wait = Math.max(parsedDate - Date.now(), 2e3);
+						const parsedDate = Date.parse(value);
+						if (Number.isFinite(parsedDate)) wait = Math.max(wait, parsedDate - Date.now(), 2e3);
 					}
 				}
 			}
-			wait += Math.random() * 400 - 200;
-			wait = Math.max(wait, 1e3);
+			wait += Math.random() * 400;
 			const status = resp?.status ?? 0;
 			console.warn(`[Reddit Manager] Request on ${new URL(url, ORIGIN).pathname} failed/retryable (status ${status}). Retrying in ${(wait / 1e3).toFixed(1)}s (attempt ${attempt + 1}/${maxRetries})…`);
 			onRetry?.(attempt + 1, maxRetries, wait, status);
@@ -66,23 +68,56 @@
 		if (!resp) throw new Error("Network request failed after retries");
 		return resp;
 	}
+	async function checkMutationResponse(response, action, requireErrors = false) {
+		const body = await response.json().catch(() => null);
+		const invalid = () => new Error(`Reddit returned an invalid ${action} response`);
+		if (!body || typeof body !== "object" || Array.isArray(body)) throw invalid();
+		if (body.error || body.status === "error" || body.success === false) throw new Error(`Reddit rejected ${action}: ${body.error ?? body.message ?? body.status}`);
+		const errors = body.json?.errors;
+		if (errors === void 0 && !requireErrors && Object.keys(body).length === 0) return;
+		if (!Array.isArray(errors)) throw invalid();
+		if (errors.length) throw new Error(`Reddit rejected ${action}: ${errors.map((error) => Array.isArray(error) ? String(error[1] ?? error[0]) : String(error)).join("; ")}`);
+	}
 	function normalizeName(input) {
 		if (!input) return "";
-		return input.trim().replace(/^https?:\/\/[^/]+/i, "").replace(/^\/?(?:r\/)?/i, "").replace(/\/.*$/, "").replace(/[^\w-]/g, "");
+		const value = input.trim();
+		if (!value) return "";
+		let name;
+		if (/^https?:\/\//i.test(value)) try {
+			const url = new URL(value);
+			const host = url.hostname.toLowerCase();
+			if (host !== "reddit.com" && !host.endsWith(".reddit.com")) return "";
+			name = /^\/r\/([^/]+)(?:\/.*)?$/i.exec(url.pathname)?.[1];
+		} catch {
+			return "";
+		}
+		else {
+			name = /^\/?r\/([^/]+)(?:\/.*)?$/i.exec(value)?.[1];
+			if (!name && /^[A-Za-z0-9_-]+$/.test(value)) name = value;
+		}
+		if (!name || name.length > 21 || !/^[A-Za-z0-9_-]+$/.test(name)) return "";
+		return name;
 	}
 	var cached = null;
 	var inflight = null;
+	var subsGeneration = 0;
+	function invalidateSubs() {
+		cached = null;
+		inflight = null;
+		subsGeneration++;
+	}
 	function loadSubs(force = false, onRetry) {
-		if (force) {
-			cached = null;
-			inflight = null;
-		}
+		if (force) invalidateSubs();
 		if (cached) return Promise.resolve(cached);
 		if (inflight) return inflight;
+		const generation = subsGeneration;
 		inflight = (async () => {
 			const subs = [];
 			let after = null;
-			for (let page = 0; page < MAX_PAGES; page++) {
+			const seenNames = new Set();
+			const seenCursors = new Set();
+			for (let page = 0; page < MAX_SUB_PAGES; page++) {
+				if (after) seenCursors.add(after);
 				const url = new URL(`${ORIGIN}/subreddits/mine/subscriber.json`);
 				url.searchParams.set("limit", "100");
 				url.searchParams.set("raw_json", "1");
@@ -95,9 +130,13 @@
 				if (resp.status === 401 || resp.status === 403) throw new Error("not logged in to Reddit");
 				if (!resp.ok) throw new Error(`subreddits/mine returned ${resp.status}`);
 				const json = await resp.json();
-				for (const child of json?.data?.children ?? []) {
+				if (!Array.isArray(json?.data?.children)) throw new Error("Reddit returned an invalid subscription listing");
+				for (const child of json.data.children) {
 					const d = child?.data;
 					if (!d?.display_name) continue;
+					const key = String(d.display_name).toLowerCase();
+					if (seenNames.has(key)) continue;
+					seenNames.add(key);
 					subs.push({
 						name: d.display_name,
 						id: d.name,
@@ -106,23 +145,31 @@
 						over18: d.over18
 					});
 				}
-				after = json?.data?.after ?? null;
-				if (!after) break;
-				if (page === 59 && after) console.warn(`[Reddit Manager] Subscriptions capped at 6000 items limit.`);
+				const nextAfter = json?.data?.after ?? null;
+				if (!nextAfter) break;
+				if (seenCursors.has(nextAfter)) throw new Error("Reddit repeated a subscription pagination cursor; results may be incomplete");
+				after = nextAfter;
+				if (page === 49 && after) throw new Error(`Subscription listing exceeded ${MAX_SUB_PAGES} pages; results may be incomplete`);
 			}
-			cached = subs;
+			if (generation === subsGeneration) cached = subs;
 			return subs;
 		})().finally(() => {
-			inflight = null;
+			if (generation === subsGeneration) inflight = null;
 		});
 		return inflight;
 	}
 	var meCached = null;
 	var meInflight = null;
+	var meGeneration = 0;
 	async function meInfo(onRetry, force = false) {
-		if (force) meCached = null;
+		if (force) {
+			meCached = null;
+			meInflight = null;
+			meGeneration++;
+		}
 		if (meCached) return meCached;
 		if (meInflight) return meInflight;
+		const generation = meGeneration;
 		meInflight = (async () => {
 			const resp = await fetchWithRetry(`${ORIGIN}/api/me.json`, {
 				credentials: "include",
@@ -136,10 +183,10 @@
 				name: json?.data?.name ?? ""
 			};
 			if (!data.name) throw new Error("Reddit did not return a username");
-			meCached = data;
+			if (generation === meGeneration) meCached = data;
 			return data;
 		})().finally(() => {
-			meInflight = null;
+			if (generation === meGeneration) meInflight = null;
 		});
 		return meInflight;
 	}
@@ -147,7 +194,7 @@
 		return (await meInfo(onRetry)).modhash;
 	}
 	async function setSubscribed(name, subscribe, onRetry) {
-		cached = null;
+		invalidateSubs();
 		let currentModhash = await getModhash(onRetry);
 		const params = new URLSearchParams({
 			action: subscribe ? "sub" : "unsub",
@@ -178,8 +225,8 @@
 				const detail = body.startsWith("<") ? body.match(/<title>([^<]*)<\/title>/i)?.[1] ?? "HTML error page" : body.slice(0, 200);
 				throw new Error(`HTTP ${resp.status}${detail ? ` — ${detail}` : ""}`);
 			}
-			const errors = (await resp.json().catch(() => null))?.json?.errors;
-			if (Array.isArray(errors) && errors.length > 0) throw new Error(errors.map((e) => e[1] ?? e[0]).join("; "));
+			await checkMutationResponse(resp, "subscription");
+			invalidateSubs();
 			return;
 		}
 	}
@@ -190,7 +237,11 @@
 		let after = null;
 		const endpoint = kind === "posts" ? "submitted" : "comments";
 		const encodedName = encodeURIComponent(info.name);
-		for (let page = 0; page < MAX_PAGES; page++) {
+		const seenFullnames = new Set();
+		const seenCursors = new Set();
+		for (let page = 0; page < MAX_USER_ITEM_PAGES; page++) {
+			if (after && seenCursors.has(after)) throw new Error(`Reddit repeated a ${endpoint} pagination cursor; results may be incomplete`);
+			if (after) seenCursors.add(after);
 			const url = new URL(`${ORIGIN}/user/${encodedName}/${endpoint}.json`);
 			url.searchParams.set("limit", "100");
 			url.searchParams.set("raw_json", "1");
@@ -203,20 +254,27 @@
 			if (resp.status === 401 || resp.status === 403) throw new Error("not logged in to Reddit");
 			if (!resp.ok) throw new Error(`user/${endpoint} returned ${resp.status}`);
 			const json = await resp.json();
-			const children = json?.data?.children ?? [];
+			if (!Array.isArray(json?.data?.children)) throw new Error("Reddit returned an invalid history listing");
+			const children = json.data.children;
 			if (children.length === 0) break;
 			for (const child of children) {
 				const d = child?.data;
 				if (!d?.name) continue;
+				const fullname = String(d.name);
+				if (seenFullnames.has(fullname)) continue;
+				seenFullnames.add(fullname);
 				items.push({
-					fullname: d.name,
+					fullname,
 					title: d.title,
 					body: d.body,
+					selftext: d.selftext,
 					subreddit: d.subreddit
 				});
 			}
-			after = json?.data?.after ?? null;
-			if (!after) break;
+			const nextAfter = json?.data?.after ?? null;
+			if (!nextAfter) break;
+			if (seenCursors.has(nextAfter)) throw new Error(`Reddit repeated a ${endpoint} pagination cursor; results may be incomplete`);
+			after = nextAfter;
 		}
 		return items;
 	}
@@ -244,11 +302,8 @@
 						continue;
 					}
 				}
-				if (!editResp.ok) console.warn(`[Reddit Manager] Overwrite failed with HTTP ${editResp.status} for ${fullname}; proceeding to deletion.`);
-				else {
-					const editErrors = (await editResp.json().catch(() => null))?.json?.errors;
-					if (Array.isArray(editErrors) && editErrors.length > 0) console.warn(`[Reddit Manager] Overwrite failed for ${fullname}: ${editErrors.map((e) => e[1] ?? e[0]).join("; ")}; proceeding to deletion.`);
-				}
+				if (!editResp.ok) throw new Error(`HTTP ${editResp.status} overwriting ${fullname}`);
+				await checkMutationResponse(editResp, `overwrite for ${fullname}`, true);
 			}
 			const delParams = new URLSearchParams({
 				id: fullname,
@@ -268,44 +323,61 @@
 				}
 			}
 			if (!resp.ok) throw new Error(`HTTP ${resp.status} deleting ${fullname}`);
+			await checkMutationResponse(resp, `deletion of ${fullname}`);
 			return;
 		}
 	}
 	var SUB_PAUSE_MS = 650;
 	var DELETE_PAUSE_MS = 1300;
 	var GIVE_UP_AFTER = 3;
-	async function applyAll(identifiers, subscribe, onProgress, r) {
+	function retryReporter(r) {
+		return (attempt, maxRetries, waitMs, status) => r?.status(`${status ? `Reddit returned ${status}` : "Network request failed"}. Retrying in ${(waitMs / 1e3).toFixed(1)}s (${attempt}/${maxRetries})…`, "bad");
+	}
+	async function runBatch(items, task, onProgress, r) {
 		const failed = [];
 		let lastError = "";
-		const onRetry = (attempt, maxRetries, waitMs, status) => {
-			const msg = `Reddit returned ${status}. Retrying in ${(waitMs / 1e3).toFixed(1)}s (${attempt}/${maxRetries})…`;
-			r?.status(msg, "bad");
-			console.warn(`[Reddit Manager] ${msg}`);
-		};
-		for (let i = 0; i < identifiers.length; i++) {
+		let consecutiveFailures = 0;
+		const onRetry = retryReporter(r);
+		for (let i = 0; i < items.length; i++) {
 			while (r?.isPaused?.() && !r?.stopped?.()) await sleep(200);
 			if (r?.stopped?.()) return {
 				failed,
 				error: lastError,
-				stoppedAt: i
+				stoppedAt: i,
+				stopReason: "cancelled"
 			};
+			const item = items[i];
 			try {
-				await setSubscribed(identifiers[i], subscribe, onRetry);
+				await task.run(item, onRetry);
+				consecutiveFailures = 0;
 				r?.status("");
-			} catch (err) {
-				lastError = err.message;
-				failed.push(identifiers[i]);
-				console.warn(`[Reddit Manager] ${subscribe ? "join" : "leave"} ${identifiers[i]} failed: ${lastError}`);
-				if (failed.length === i + 1 && failed.length >= GIVE_UP_AFTER) throw new Error(`${lastError} (first ${failed.length} all failed the same way — stopped, nothing was changed)`);
+			} catch (error) {
+				lastError = error instanceof Error ? error.message : String(error);
+				failed.push(task.id(item));
+				consecutiveFailures++;
+				console.warn(`[Reddit Manager] ${task.id(item)} failed: ${lastError}`);
 			}
-			onProgress(i + 1, identifiers.length, failed.length);
-			if (i + 1 < identifiers.length) await sleep(SUB_PAUSE_MS);
+			onProgress(i + 1, items.length, failed.length);
+			if (consecutiveFailures >= GIVE_UP_AFTER) return {
+				failed,
+				error: lastError,
+				stoppedAt: i + 1,
+				stopReason: "consecutiveFailures"
+			};
+			if (i + 1 < items.length && !r?.stopped?.()) await sleep(task.delay(item));
 		}
 		return {
 			failed,
 			error: lastError,
-			stoppedAt: identifiers.length
+			stoppedAt: items.length
 		};
+	}
+	function applyAll(identifiers, subscribe, onProgress, r) {
+		return runBatch(identifiers, {
+			id: (name) => name,
+			run: (name, onRetry) => setSubscribed(name, subscribe, onRetry),
+			delay: () => SUB_PAUSE_MS
+		}, onProgress, r);
 	}
 	var HEADERS = new Set([
 		"subreddit",
@@ -319,7 +391,11 @@
 		let raw;
 		if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
 			const json = JSON.parse(trimmed);
-			const list = Array.isArray(json) ? json : json.subreddits ?? json.subs ?? json.data;
+			const list = Array.isArray(json) ? json : json && typeof json === "object" ? [
+				json.subreddits,
+				json.subs,
+				json.data
+			].find(Array.isArray) : null;
 			if (!Array.isArray(list)) throw new Error("no subreddit list in that JSON");
 			raw = list;
 		} else {
@@ -327,9 +403,16 @@
 			if (HEADERS.has(String(raw[0]).toLowerCase())) raw.shift();
 		}
 		const seen = new Map();
-		for (const item of raw) {
-			const name = normalizeName(typeof item === "string" ? item : item?.name ?? item?.display_name);
-			if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name);
+		for (const [index, item] of raw.entries()) {
+			let value = item;
+			if (item && typeof item === "object" && !Array.isArray(item)) {
+				const entry = item;
+				value = typeof entry.display_name === "string" ? entry.display_name : entry.name;
+			}
+			if (typeof value !== "string") throw new Error(`invalid subreddit entry ${index + 1}`);
+			const name = normalizeName(value);
+			if (!name) throw new Error(`invalid subreddit entry ${index + 1}`);
+			if (!seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name);
 		}
 		return [...seen.values()];
 	}
@@ -348,11 +431,11 @@
 	}
 	async function refresh(r, force = false, full = false) {
 		r.status(force ? "Reading from Reddit…" : "");
-		const onRetry = (attempt, maxRetries, waitMs, status) => r.status(`Rate limited (${status}). Retrying in ${(waitMs / 1e3).toFixed(1)}s (${attempt}/${maxRetries})…`, "bad");
+		const onRetry = retryReporter(r);
 		try {
 			const subsPromise = loadSubs(force, onRetry);
-			const postsPromise = full ? loadUserItems("posts", onRetry) : Promise.reject("skipped");
-			const commentsPromise = full ? loadUserItems("comments", onRetry) : Promise.reject("skipped");
+			const postsPromise = full ? loadUserItems("posts", onRetry) : Promise.resolve(null);
+			const commentsPromise = full ? loadUserItems("comments", onRetry) : Promise.resolve(null);
 			const results = await Promise.allSettled([
 				subsPromise,
 				postsPromise,
@@ -361,17 +444,18 @@
 			const subs = results[0].status === "fulfilled" ? results[0].value : null;
 			const posts = results[1].status === "fulfilled" ? results[1].value : null;
 			const comments = results[2].status === "fulfilled" ? results[2].value : null;
-			r.count(subs?.length ?? null, {
+			if (full) r.count(subs?.length ?? null, {
 				posts: posts?.length ?? null,
 				comments: comments?.length ?? null
 			});
+			else if (subs) r.count(subs.length);
 			if (results[0].status === "rejected") {
 				const err = results[0].reason?.message ?? "Failed to read subscriptions";
 				r.status(err, "bad");
 				throw new Error(err);
 			}
 			if (force) {
-				const countsMsg = `${subs ? `${subs.length} subreddits` : "subscriptions unavailable"}${posts ? `, ${posts.length} posts` : ""}${comments ? `, ${comments.length} comments` : ""}`;
+				const countsMsg = `${subs ? `${subs.length} subreddits` : "subscriptions unavailable"}${full ? `, ${posts ? `${posts.length} posts` : "posts unavailable"}` : ""}${full ? `, ${comments ? `${comments.length} comments` : "comments unavailable"}` : ""}`;
 				r.status(`Read ${countsMsg}.`, "ok");
 			}
 			return subs?.length ?? 0;
@@ -445,13 +529,13 @@
 		const [verb, past] = subscribe ? ["Joining", "Joined"] : ["Leaving", "Left"];
 		const headline = (succeeded) => subscribe ? startCount + succeeded : startCount - succeeded;
 		r.progress(verb, 0, names.length, startCount, "subs");
-		const { failed, error: lastError, stoppedAt } = await applyAll(names, subscribe, (done, total, bad) => r.progress(verb, done, total, headline(done - bad), "subs"), r);
+		const { failed, error: lastError, stoppedAt, stopReason } = await applyAll(names, subscribe, (done, total, bad) => r.progress(verb, done, total, headline(done - bad), "subs"), r);
 		const succeeded = stoppedAt - failed.length;
 		const untouched = names.length - stoppedAt;
-		const halted = untouched ? ` Stopped — ${untouched} left untouched.` : "";
+		const halted = untouched ? `${stopReason === "consecutiveFailures" ? ` Stopped after ${GIVE_UP_AFTER} consecutive failures —` : " Stopped —"} ${untouched} left untouched.` : "";
 		r.status("Confirming with Reddit…");
 		await sleep(1e3);
-		await refresh(r, true).catch(() => r.count(null));
+		await refresh(r, true).catch(() => void 0);
 		if (failed.length === 0) {
 			r.status(`${past} ${succeeded} subreddits.${halted}`, halted ? "bad" : "ok");
 			return;
@@ -459,43 +543,16 @@
 		r.status(`${past} ${succeeded}. Skipped ${failed.length} (${lastError}): ${failed.slice(0, 6).join(", ")}${failed.length > 6 ? "…" : ""}${halted}`, "bad");
 		console.warn("[Reddit Manager] failed:", failed, lastError);
 	}
-	async function applyItemDeletions(items, onProgress, r) {
-		const failed = [];
-		let lastError = "";
-		let consecutiveFailures = 0;
-		const onRetry = (attempt, maxRetries, waitMs, status) => {
-			const msg = `Reddit returned ${status}. Retrying in ${(waitMs / 1e3).toFixed(1)}s (${attempt}/${maxRetries})…`;
-			r?.status(msg, "bad");
-		};
-		for (let i = 0; i < items.length; i++) {
-			while (r?.isPaused?.() && !r?.stopped?.()) await sleep(200);
-			if (r?.stopped?.()) return {
-				failed,
-				error: lastError,
-				stoppedAt: i
-			};
-			try {
-				await deleteUserItem(items[i].fullname, true, onRetry);
-				consecutiveFailures = 0;
-				r?.status("");
-			} catch (err) {
-				lastError = err.message;
-				failed.push(items[i].fullname);
-				consecutiveFailures++;
-				if (consecutiveFailures >= GIVE_UP_AFTER) return {
-					failed,
-					error: lastError,
-					stoppedAt: i + 1
-				};
-			}
-			onProgress(i + 1, items.length, failed.length);
-			if (i + 1 < items.length) await sleep(DELETE_PAUSE_MS);
-		}
-		return {
-			failed,
-			error: lastError,
-			stoppedAt: items.length
-		};
+	function shouldOverwrite(item) {
+		const text = item.selftext ?? item.body;
+		return !(item.fullname.startsWith("t3_") && typeof text === "string" && text.trim() === "");
+	}
+	function applyItemDeletions(items, onProgress, r) {
+		return runBatch(items, {
+			id: (item) => item.fullname,
+			run: (item, onRetry) => deleteUserItem(item.fullname, shouldOverwrite(item), onRetry),
+			delay: (item) => shouldOverwrite(item) ? DELETE_PAUSE_MS : SUB_PAUSE_MS
+		}, onProgress, r);
 	}
 	async function deleteAllUserItems(r, kind, label) {
 		r.status(`Reading your visible ${label} from Reddit…`);
@@ -512,20 +569,20 @@
 		}
 		if (!await r.confirm({
 			title: `Delete ${items.length} visible ${label}`,
-			body: `Deletes up to Reddit's 1,000 visible history limit. Each item will be overwritten with '.' prior to deletion.`,
+			body: `Deletes up to Reddit's 1,000 visible history limit. Editable text will be overwritten with '.' first; link posts without selftext are deleted directly.`,
 			action: `Delete ${label}`,
 			danger: true,
 			typed: String(items.length)
 		})) return;
 		const verb = `Deleting ${label}`;
 		r.progress(verb, 0, items.length, items.length, kind);
-		const { failed, error: lastError, stoppedAt } = await applyItemDeletions(items, (done, total, bad) => r.progress(verb, done, total, items.length - (done - bad), kind), r);
+		const { failed, error: lastError, stoppedAt, stopReason } = await applyItemDeletions(items, (done, total, bad) => r.progress(verb, done, total, items.length - (done - bad), kind), r);
 		const succeeded = stoppedAt - failed.length;
 		const untouched = items.length - stoppedAt;
-		const halted = untouched ? ` Stopped — ${untouched} left untouched.` : "";
+		const halted = untouched ? `${stopReason === "consecutiveFailures" ? ` Stopped after ${GIVE_UP_AFTER} consecutive failures —` : " Stopped —"} ${untouched} left untouched.` : "";
 		r.status("Confirming with Reddit…");
 		await sleep(500);
-		await refresh(r, true, true).catch(() => r.count(null));
+		await refresh(r, true, true).catch(() => void 0);
 		r.status(`Deleted ${succeeded} ${label}.${failed.length ? ` (${failed.length} failed: ${lastError})` : ""}${halted}`, failed.length || halted ? "bad" : "ok");
 	}
 	async function deleteAllPosts(r) {
@@ -562,8 +619,8 @@
 		},
 		{
 			key: "refresh",
-			name: "Refresh",
-			hint: "Re-read your list from Reddit",
+			name: "Refresh counts",
+			hint: "Read subscriptions and visible history counts",
 			icon: svg("<path d=\"M13.2 8a5.2 5.2 0 1 1-1.7-3.85M13.5 1.8v3.4h-3.4\"/>"),
 			run: (r) => refresh(r, true, true).then(() => void 0)
 		},
@@ -600,224 +657,12 @@
 			danger: true
 		}
 	];
-	var CSS = `
-:host {
-  position: fixed;
-  right: 24px;
-  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-  z-index: 2147483647;
-  --ink: #0f1217;
-  --plate: #1a1e24;
-  --chalk: #eceef2;
-  --muted: #8b929e;
-  --amber: #f59e0b;
-  --line: rgba(236, 238, 242, 0.12);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  color: var(--chalk);
-}
-* { box-sizing: border-box; }
-button { font: inherit; color: inherit; touch-action: manipulation; }
-:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
-
-.wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
-
-.fab {
-  position: relative;
-  width: 48px; height: 48px;
-  display: grid; place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--ink);
-  color: var(--amber);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
-  cursor: pointer;
-  transition: transform .18s cubic-bezier(.2,.85,.3,1), border-color .18s ease, box-shadow .18s ease;
-}
-.fab:hover { transform: translateY(-2px); border-color: rgba(245, 158, 11, .6); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65); }
-.fab.is-busy { border-color: var(--amber); }
-
-.fab-icon { display: flex; align-items: center; justify-content: center; }
-.fab.is-busy .fab-icon { display: none; }
-
-.fab-progress {
-  position: absolute; inset: 0;
-  display: none; align-items: center; justify-content: center;
-}
-.fab.is-busy .fab-progress { display: flex; }
-
-.progress-ring { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.ring-fill { transition: stroke-dashoffset .25s ease; }
-
-.fab-badge {
-  font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--amber);
-  z-index: 1;
-}
-
-.panel {
-  position: relative;
-  width: 292px;
-  max-height: calc(100vh - 120px - env(safe-area-inset-bottom, 0px));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  background: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, .55);
-  transform-origin: bottom right;
-  opacity: 0;
-  transform: translateY(10px) scale(.96);
-  pointer-events: none;
-  visibility: hidden;
-  transition: opacity .16s ease, transform .22s cubic-bezier(.2,.9,.3,1), visibility .16s ease;
-}
-.panel.is-open { opacity: 1; transform: none; pointer-events: auto; visibility: visible; }
-
-.head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 0; }
-.eyebrow { font-size: 10px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
-.close { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 8px; margin: -8px -8px -8px 0; line-height: 0; border-radius: 4px; }
-.close:hover { color: var(--chalk); }
-
-.readout { padding: 12px 14px 14px; }
-.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; }
-.stat-cell { display: flex; flex-direction: column; align-items: center; }
-.figure {
-  font: 700 20px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -.02em;
-  color: var(--amber);
-}
-.unit { margin-top: 4px; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.progress-label { margin-top: 6px; font-size: 11px; font-weight: 600; color: var(--muted); min-height: 14px; text-align: center; }
-.progress-label:empty { display: none; }
-.rule { margin-top: 8px; height: 2px; background: var(--line); }
-.rule > i { display: block; height: 100%; width: 0; background: var(--amber); transition: width .25s ease; }
-
-.actions { border-top: 1px solid var(--line); }
-.act {
-  display: flex; gap: 11px; align-items: flex-start;
-  width: 100%; padding: 11px 14px;
-  border: 0; border-bottom: 1px solid var(--line);
-  background: transparent;
-  text-align: left; cursor: pointer;
-}
-.act:last-child { border-bottom: 0; }
-.act:hover:not(:disabled) { background: var(--plate); }
-.act:disabled { opacity: .35; cursor: default; }
-.act > .ico { color: var(--amber); line-height: 0; padding-top: 1px; }
-.act .name { display: block; font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
-.act .hint { display: block; margin-top: 2px; font-size: 11px; line-height: 1.35; color: var(--muted); }
-.act.is-danger {
-  background-image: repeating-linear-gradient(45deg, rgba(255,184,77,.22) 0 2px, transparent 2px 6px);
-  background-size: 4px 100%;
-  background-repeat: no-repeat;
-}
-
-.status { padding: 9px 14px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.35; color: var(--muted); }
-.status:empty { display: none; }
-.status.is-ok { color: var(--chalk); }
-.status.is-bad { color: var(--amber); }
-
-.sheet {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  padding: 14px;
-  background: rgba(15, 18, 23, 0.88);
-  backdrop-filter: blur(6px);
-  z-index: 20;
-  animation: fadeIn .16s ease;
-}
-.sheet__card {
-  position: relative;
-  width: 100%;
-  max-width: 264px;
-  background: #1c2026;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px 14px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  animation: popIn .2s cubic-bezier(.2,.9,.3,1) both;
-}
-.sheet.is-danger .sheet__card {
-  border-color: rgba(245, 158, 11, 0.35);
-  background-image: repeating-linear-gradient(45deg, rgba(245, 158, 11, .06) 0 2px, transparent 2px 6px);
-}
-.sheet__badge {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; border-radius: 8px;
-  background: rgba(245, 158, 11, 0.14); color: var(--amber);
-  margin-bottom: 2px;
-}
-.sheet.is-danger .sheet__badge {
-  background: rgba(245, 158, 11, 0.18); color: var(--amber);
-}
-.sheet__title { font-size: 14px; font-weight: 700; letter-spacing: -.01em; color: var(--chalk); }
-.sheet__body { font-size: 11.5px; line-height: 1.45; color: var(--muted); }
-.sheet__input {
-  width: 100%; padding: 9px 10px;
-  font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--chalk); background: var(--plate);
-  border: 1px solid var(--line); border-radius: 8px;
-  transition: border-color .15s ease, box-shadow .15s ease;
-}
-.sheet__input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2); }
-.sheet__row { display: flex; gap: 8px; margin-top: 4px; }
-.btn { flex: 1; padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: transparent; font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s ease; }
-.btn:hover { background: var(--plate); }
-.btn--go { background: var(--amber); border-color: var(--amber); color: #17130a; }
-.btn--go:hover:not(:disabled) { background: #ffc76e; }
-.btn--go:disabled { background: transparent; border-color: var(--line); color: var(--muted); opacity: .5; cursor: default; }
-
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes popIn { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: scale(1); } }
-
-.panel.is-open .act { animation: rise .26s cubic-bezier(.2,.9,.3,1) both; }
-.panel.is-open .act:nth-child(1) { animation-delay: .04s; }
-.panel.is-open .act:nth-child(2) { animation-delay: .07s; }
-.panel.is-open .act:nth-child(3) { animation-delay: .10s; }
-.panel.is-open .act:nth-child(4) { animation-delay: .13s; }
-@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
-
-.controls-running {
-  display: none;
-  gap: 8px;
-  padding: 8px 14px;
-  border-top: 1px solid var(--line);
-}
-.panel.is-running .controls-running { display: flex; }
-.btn-ctrl {
-  flex: 1;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--plate);
-  color: var(--chalk);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-.btn-ctrl:hover:not(:disabled) { background: rgba(236, 238, 242, 0.12); }
-.btn-ctrl.cancel-btn { color: #f87171; border-color: rgba(248, 113, 113, 0.3); }
-.btn-ctrl.cancel-btn:hover:not(:disabled) { background: rgba(248, 113, 113, 0.15); }
-.btn-ctrl:disabled { opacity: .4; cursor: default; }
-
-@media (prefers-reduced-motion: reduce) {
-  .fab, .panel, .rule > i, .act { transition: none; animation: none; }
-}
-
-@media (max-width: 480px) {
-  :host { right: 12px; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
-  .panel { width: min(320px, calc(100vw - 24px)); }
-  .fab { width: 52px; height: 52px; }
-  .act { padding: 13px 14px; }
-  .btn { padding: 12px; }
-  .sheet__input { padding: 10px; font-size: 16px; }
-}
-`;
+	function actionButton(action) {
+		return `<button class="act${"danger" in action ? " is-danger" : ""}" data-key="${action.key}">
+		<span class="ico" aria-hidden="true">${action.icon}</span>
+		<span><span class="name">${action.name}</span><span class="hint">${action.hint}</span></span>
+	</button>`;
+	}
 	var RING = 2 * Math.PI * 20;
 	var Panel = class {
 		root;
@@ -839,18 +684,20 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 		paused = false;
 		stopping = false;
 		refreshGen = 0;
+		content;
 		activeResolve = null;
 		constructor() {
 			const host = document.createElement("div");
 			this.root = host.attachShadow({ mode: "open" });
 			this.root.innerHTML = `
-      <style>${CSS}</style>
+      <style>${panel_default}</style>
       <div class="wrap">
         <div class="panel" role="dialog" aria-label="Reddit Manager" aria-hidden="true">
-          <div class="head">
-            <span class="eyebrow">Dashboard</span>
+          <div class="content">
+          <header class="head">
+            <div><p class="eyebrow">REDDIT</p><h1>Account manager</h1></div>
             <button class="close" aria-label="Close">${svg("<path d=\"M4 4l8 8M12 4l-8 8\"/>")}</button>
-          </div>
+          </header>
           <div class="readout">
             <div class="stats-grid">
               <div class="stat-cell">
@@ -867,25 +714,30 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
               </div>
             </div>
             <div class="progress-label"></div>
-            <div class="rule"><i></i></div>
+            <div class="rule" role="progressbar" aria-label="Operation progress" aria-valuemin="0" aria-valuemax="100"><i></i></div>
           </div>
-          <div class="actions">${ACTIONS.map((a) => `
-            <button class="act${"danger" in a ? " is-danger" : ""}" data-key="${a.key}">
-              <span class="ico">${a.icon}</span>
-              <span><span class="name">${a.name}</span><span class="hint">${a.hint}</span></span>
-            </button>`).join("")}</div>
+          <div class="actions">
+            <h2 class="section-label">Your subscriptions</h2>
+            <div class="tools">${ACTIONS.filter((a) => !("danger" in a)).map(actionButton).join("")}</div>
+            <details class="cleanup">
+              <summary>Account cleanup</summary>
+              <p class="cleanup-note">Review each action before making changes.</p>
+              ${ACTIONS.filter((a) => "danger" in a).map(actionButton).join("")}
+            </details>
+          </div>
           <div class="controls-running">
             <button class="btn-ctrl pause-btn">Pause</button>
             <button class="btn-ctrl cancel-btn">Cancel</button>
           </div>
-          <div class="status"></div>
+          <div class="status" role="status" aria-live="polite" aria-atomic="true"></div>
+          </div>
         </div>
-        <button class="fab" aria-label="Subreddit Subscriptions" title="Subreddit Subscription Manager" aria-expanded="false">
+        <button class="fab" aria-label="Reddit Manager" title="Reddit Manager" aria-expanded="false">
           <span class="fab-icon">${svg("<path d=\"M2.5 4.5h11M2.5 8h8M2.5 11.5h5\"/>")}</span>
           <div class="fab-progress" aria-hidden="true">
             <svg class="progress-ring" width="48" height="48" viewBox="0 0 48 48">
-              <circle class="ring-bg" cx="24" cy="24" r="20" fill="none" stroke="rgba(236, 238, 242, 0.14)" stroke-width="3"/>
-              <circle class="ring-fill" cx="24" cy="24" r="20" fill="none" stroke="var(--amber)" stroke-width="3" stroke-dasharray="${RING}" stroke-dashoffset="${RING}" stroke-linecap="round" transform="rotate(-90 24 24)"/>
+              <circle class="ring-bg" cx="24" cy="24" r="20" fill="none" stroke="var(--line)" stroke-width="3"/>
+              <circle class="ring-fill" cx="24" cy="24" r="20" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="${RING}" stroke-dashoffset="${RING}" stroke-linecap="round" transform="rotate(-90 24 24)"/>
             </svg>
             <span class="fab-badge">0%</span>
           </div>
@@ -893,6 +745,8 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
       </div>`;
 			const $ = (sel) => this.root.querySelector(sel);
 			this.panel = $(".panel");
+			this.content = $(".content");
+			this.panel.inert = true;
 			this.fab = $(".fab");
 			this.ringFill = $(".ring-fill");
 			this.badge = $(".fab-badge");
@@ -922,7 +776,23 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 			});
 			for (const btn of this.buttons) btn.addEventListener("click", () => this.run(btn.dataset.key));
 			document.addEventListener("keydown", (e) => {
-				if (e.key === "Escape") this.toggle(false);
+				if (!this.open) return;
+				if (e.key === "Escape") {
+					if (this.activeResolve) this.activeResolve(false);
+					else this.toggle(false);
+				}
+				if (e.key === "Tab" && this.activeResolve) {
+					const controls = [...this.root.querySelectorAll(".sheet input, .sheet button:not(:disabled)")];
+					const first = controls[0];
+					const last = controls.at(-1);
+					if (e.shiftKey && this.root.activeElement === first) {
+						e.preventDefault();
+						last?.focus();
+					} else if (!e.shiftKey && this.root.activeElement === last) {
+						e.preventDefault();
+						first?.focus();
+					}
+				}
 			});
 			document.addEventListener("click", (e) => {
 				if (this.open && !e.composedPath().includes(host)) this.toggle(false);
@@ -933,23 +803,28 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 			this.open = next;
 			this.panel.classList.toggle("is-open", next);
 			this.panel.setAttribute("aria-hidden", String(!next));
-			this.panel.style.visibility = next ? "visible" : "hidden";
+			this.panel.inert = !next;
 			this.fab.setAttribute("aria-expanded", String(next));
+			const gen = ++this.refreshGen;
 			if (!next) {
+				this.activeResolve?.(false);
 				this.fab.focus();
-				if (this.activeResolve) {
-					const resolve = this.activeResolve;
-					this.activeResolve = null;
-					resolve(false);
+			} else {
+				this.root.querySelector(".close")?.focus();
+				if (!this.busy) {
+					const current = () => gen === this.refreshGen && this.open && !this.busy;
+					refresh({
+						count: (n, stats) => {
+							if (current()) this.count(n, stats);
+						},
+						status: (text, tone) => {
+							if (current()) this.status(text, tone);
+						},
+						progress: () => {},
+						confirm: async () => false,
+						pickFile: async () => null
+					}).catch(() => {});
 				}
-			}
-			if (next && !this.busy) {
-				const gen = ++this.refreshGen;
-				refresh(this, false, false).then(() => {
-					if (gen !== this.refreshGen) return;
-				}).catch((e) => {
-					if (gen === this.refreshGen) this.status(e.message, "bad");
-				});
 			}
 		}
 		async run(key) {
@@ -980,8 +855,9 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 		}
 		setBusy(busy) {
 			this.busy = busy;
-			this.fab.classList.toggle("is-busy", busy);
-			this.panel.classList.toggle("is-running", busy);
+			if (!busy) this.fab.classList.remove("is-busy");
+			this.refreshGen++;
+			if (!busy) this.panel.classList.remove("is-running");
 			for (const b of this.buttons) b.disabled = busy;
 			if (busy) {
 				this.stopping = false;
@@ -990,10 +866,9 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 				this.pauseBtn.textContent = "Pause";
 				this.cancelBtn.disabled = false;
 				this.cancelBtn.textContent = "Cancel";
-				window.addEventListener("beforeunload", this.onBeforeUnload);
 			} else {
 				window.removeEventListener("beforeunload", this.onBeforeUnload);
-				this.fab.title = "Subreddit Subscription Manager";
+				this.fab.title = "Reddit Manager";
 				this.ringFill.style.strokeDashoffset = String(RING);
 				this.badge.textContent = "0%";
 				this.progressLabel.textContent = "";
@@ -1001,10 +876,13 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 		}
 		count(n, stats) {
 			this.bar.style.width = "0%";
+			this.bar.parentElement?.removeAttribute("aria-valuenow");
 			this.progressLabel.textContent = "";
 			this.figSubs.textContent = n === null ? "—" : String(n);
-			this.figPosts.textContent = stats?.posts == null ? "—" : String(stats.posts);
-			this.figComments.textContent = stats?.comments == null ? "—" : String(stats.comments);
+			if (stats) {
+				if ("posts" in stats) this.figPosts.textContent = stats.posts == null ? "—" : String(stats.posts);
+				if ("comments" in stats) this.figComments.textContent = stats.comments == null ? "—" : String(stats.comments);
+			}
 		}
 		progress(verb, done, total, headline, metric = "subs") {
 			this.progressLabel.textContent = `${verb} — ${done} of ${total}`;
@@ -1013,7 +891,11 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 				else if (metric === "comments") this.figComments.textContent = String(headline);
 				else this.figSubs.textContent = String(headline);
 			}
-			const pct = total > 0 ? done / total : 0;
+			this.panel.classList.add("is-running");
+			this.fab.classList.add("is-busy");
+			window.addEventListener("beforeunload", this.onBeforeUnload);
+			const pct = total > 0 ? Math.min(1, Math.max(0, done / total)) : 0;
+			this.bar.parentElement?.setAttribute("aria-valuenow", String(Math.round(pct * 100)));
 			this.bar.style.width = `${pct * 100}%`;
 			this.ringFill.style.strokeDashoffset = String(RING * (1 - pct));
 			this.badge.textContent = `${Math.round(pct * 100)}%`;
@@ -1024,20 +906,28 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 			this.statusEl.className = `status${tone ? ` is-${tone}` : ""}`;
 		}
 		confirm(spec) {
+			if (!this.open) return Promise.resolve(false);
+			this.activeResolve?.(false);
 			return new Promise((resolve) => {
-				this.activeResolve = resolve;
+				const previousFocus = this.root.activeElement;
+				this.content.hidden = true;
 				const sheet = document.createElement("div");
 				sheet.className = `sheet${spec.danger ? " is-danger" : ""}`;
 				const card = document.createElement("div");
 				card.className = "sheet__card";
+				card.setAttribute("role", "group");
+				card.setAttribute("aria-labelledby", "confirmation-title");
+				card.setAttribute("aria-describedby", "confirmation-body");
 				const badge = document.createElement("div");
 				badge.className = "sheet__badge";
 				badge.innerHTML = spec.danger ? svg("<path d=\"M8 2l6 11H2L8 2zM8 6v3M8 11h.01\"/>") : svg("<path d=\"M8 2.5v11M2.5 8h11\"/>");
 				const titleEl = document.createElement("div");
 				titleEl.className = "sheet__title";
+				titleEl.id = "confirmation-title";
 				titleEl.textContent = spec.title;
 				const bodyEl = document.createElement("div");
 				bodyEl.className = "sheet__body";
+				bodyEl.id = "confirmation-body";
 				bodyEl.textContent = spec.body;
 				card.append(badge, titleEl, bodyEl);
 				let input = null;
@@ -1063,8 +953,11 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 				const finish = (ok) => {
 					this.activeResolve = null;
 					sheet.remove();
+					this.content.hidden = false;
+					previousFocus?.focus();
 					resolve(ok);
 				};
+				this.activeResolve = finish;
 				if (input) {
 					input.addEventListener("input", () => {
 						goBtn.disabled = input.value.trim() !== spec.typed;
@@ -1076,7 +969,7 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 				goBtn.addEventListener("click", () => finish(true));
 				cancelBtn.addEventListener("click", () => finish(false));
 				this.panel.append(sheet);
-				(input ?? goBtn).focus();
+				(input ?? cancelBtn).focus();
 			});
 		}
 		pickFile() {
@@ -1084,16 +977,18 @@ button { font: inherit; color: inherit; touch-action: manipulation; }
 				const input = document.createElement("input");
 				input.type = "file";
 				input.accept = ".json,.txt,.csv,application/json,text/plain";
-				const done = (v) => {
-					window.removeEventListener("focus", onFocus);
-					resolve(v);
+				const done = (file) => {
+					input.remove();
+					if (!file) resolve(null);
+					else file.text().then(resolve, (error) => {
+						this.status(`Couldn't read file: ${error.message}`, "bad");
+						resolve(null);
+					});
 				};
-				const onFocus = () => setTimeout(() => {
-					if (!input.files?.length) done(null);
-				}, 400);
-				input.onchange = () => done(input.files?.[0]?.text() ?? null);
+				input.onchange = () => done(input.files?.[0] ?? null);
 				input.oncancel = () => done(null);
-				window.addEventListener("focus", onFocus);
+				input.hidden = true;
+				this.root.append(input);
 				input.click();
 			});
 		}
