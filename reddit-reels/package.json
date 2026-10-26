@@ -1,6 +1,6 @@
 {
   "name": "reddit-reels",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "private": true,
   "description": "Mobile-first full-screen reels for Reddit feeds: swipe, one stream with sound, Reddit video and RedGifs, native voting.",
   "license": "GPL-3.0-or-later",
@@ -20,17 +20,17 @@
     "hls.js": "^1.7.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.15",
-    "@playwright/test": "^1.64.0",
+    "@biomejs/biome": "^2.6.3",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^26.6.5",
     "@types/tampermonkey": "^5.5.0",
-    "happy-dom": "^20.14.6",
+    "happy-dom": "^21.0.4",
     "typescript": "^7.0.2",
-    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0",
     "vite-plugin-monkey": "^8.1.1",
-    "vite-plus": "1.2.0"
+    "vite-plus": "1.4.0"
   },
   "overrides": {
-    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0"
   }
 }

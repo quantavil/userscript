@@ -250,16 +250,19 @@ export class Player {
 
   play(): void {
     const v = this.video;
+    const gen = this.generation;
     v.muted = this._muted;
     const p = v.play();
     p?.catch?.((err: Error) => {
-      if (err?.name !== 'NotAllowedError') return;
+      if (gen !== this.generation || err?.name !== 'NotAllowedError') return;
       if (!v.muted) {
         // Audible autoplay blocked (no gesture yet): play muted, next tap unmutes.
         this.autoplayMuted = true;
         v.muted = true;
         this.emit('autoplay-muted');
-        v.play().catch(() => this.emit('blocked'));
+        v.play().catch(() => {
+          if (gen === this.generation) this.emit('blocked');
+        });
       } else {
         // All autoplay blocked (e.g. iOS Low Power Mode, strict browser setting): wait for a tap.
         this.emit('blocked');
@@ -312,9 +315,10 @@ export class Player {
         const res = await fetch(this.captionsUrl, { credentials: 'omit' });
         if (!res.ok) return;
         const blob = new Blob([await res.text()], { type: 'text/vtt' });
-        if (gen !== this.generation) return;
+        if (gen !== this.generation || !this._captions) return;
         this.captionsBlob = URL.createObjectURL(blob);
       }
+      if (gen !== this.generation || !this._captions || this.video.querySelector('track')) return;
       const track = document.createElement('track');
       track.kind = 'subtitles';
       track.srclang = 'en';

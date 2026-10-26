@@ -48,7 +48,7 @@ The reel is its **own full-screen view** (shadow DOM, own CSS), not a restyle of
 | `F` / rail button | Fit ↔ fill screen |
 | Back, ✕, `Esc` | Close |
 
-Mute is remembered. Vertical videos fill the screen by default; others are letterboxed over a blurred backdrop.
+Mute is remembered. Vertical videos fill the screen by default; others are letterboxed against black.
 
 ---
 
@@ -99,6 +99,8 @@ tests/
 ```bash
 bun install
 bun test tests/unit
+bunx tsc --noEmit        # strict TypeScript check
+bun run lint
 bun run build            # dist/reddit-reels.user.js (unminified, @license GPL-3.0-or-later)
 bun run test:e2e         # needs the build; PW_CHROMIUM=/path/to/chromium to override the browser
 ```

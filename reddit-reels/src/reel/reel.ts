@@ -53,6 +53,7 @@ export class Reel {
   private slides: SlideRefs[] = [];
   private slideIds = new Set<string>();
   private active = -1;
+  private navigationTarget: number | null = null;
   private player = new Player();
   private cleanup: Array<() => void> = [];
   private tapTimer: ReturnType<typeof setTimeout> | null = null;
@@ -195,6 +196,7 @@ export class Reel {
   private settle(): void {
     if (this.settleTimer) clearTimeout(this.settleTimer);
     this.settleTimer = null;
+    this.navigationTarget = null;
     const i = this.currentIndex();
     if (i >= this.slides.length) {
       this.loadMore();
@@ -262,7 +264,8 @@ export class Reel {
   }
 
   private go(delta: number): void {
-    const next = Math.max(0, Math.min(this.slides.length - 1, this.currentIndex() + delta));
+    const next = Math.max(0, Math.min(this.slides.length - 1, (this.navigationTarget ?? this.active) + delta));
+    this.navigationTarget = next;
     this.track.scrollTo({
       top: next * this.track.clientHeight,
       behavior: 'smooth',
@@ -289,6 +292,20 @@ export class Reel {
       passive: true,
     });
     this.track.addEventListener('scrollend', () => this.settle());
+    this.track.addEventListener(
+      'pointerdown',
+      () => {
+        this.navigationTarget = null;
+      },
+      { passive: true },
+    );
+    this.track.addEventListener(
+      'wheel',
+      () => {
+        this.navigationTarget = null;
+      },
+      { passive: true },
+    );
 
     // Phone Back closes the reader sheet first.
     const onPop = () => {
@@ -331,7 +348,9 @@ export class Reel {
     const onResize = () => {
       cancelAnimationFrame(resizeFrame);
       resizeFrame = requestAnimationFrame(() => {
-        if (this.active >= 0) this.track.scrollTop = this.active * this.track.clientHeight;
+        if (this.navigationTarget !== null) {
+          this.track.scrollTo({ top: this.navigationTarget * this.track.clientHeight, behavior: 'smooth' });
+        } else if (this.active >= 0) this.track.scrollTop = this.active * this.track.clientHeight;
       });
     };
     window.addEventListener('resize', onResize);

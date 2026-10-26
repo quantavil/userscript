@@ -81,4 +81,20 @@ describe('FeedSource', () => {
     await Promise.all([s.loadMore(), s.loadMore(), s.loadMore()]);
     expect(n).toBe(1);
   });
+
+  it('does not insert a pending page after the source is reset', async () => {
+    let finish!: (response: Response) => void;
+    globalThis.fetch = (() =>
+      new Promise<Response>((resolve) => {
+        finish = resolve;
+      })) as typeof fetch;
+    const source = new FeedSource();
+    source.scan();
+    const pending = source.loadMore();
+    source.reset();
+    finish(new Response(page(['t3_stale'], null), { status: 200 }));
+    expect(await pending).toBe(0);
+    expect(document.getElementById('t3_stale')).toBeNull();
+    expect(source.posts.length).toBe(0);
+  });
 });

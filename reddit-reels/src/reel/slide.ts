@@ -12,7 +12,6 @@ export interface SlideRefs {
   root: HTMLElement;
   inner: HTMLElement;
   media: HTMLElement;
-  backdrop: HTMLImageElement | null;
   mounted: boolean;
 }
 
@@ -26,12 +25,6 @@ export function postUrl(post: Post): string {
 
 export function isVideoKind(post: Post): boolean {
   return post.kind === 'video' || post.kind === 'redgifs';
-}
-
-function posterOf(post: Post): string {
-  if (post.kind === 'video') return post.video?.poster || '';
-  if (post.kind === 'gallery' || post.kind === 'image') return post.images?.[0] || '';
-  return '';
 }
 
 export function buildSlide(post: Post, index: number): SlideRefs {
@@ -85,7 +78,6 @@ export function buildSlide(post: Post, index: number): SlideRefs {
     root,
     inner: root.querySelector('.slide-inner') as HTMLElement,
     media: root.querySelector('.media') as HTMLElement,
-    backdrop: null,
     mounted: false,
   };
 }
@@ -109,12 +101,6 @@ export function mountSlide(refs: SlideRefs, post: Post, active: boolean): void {
     return;
   }
   refs.mounted = true;
-
-  const poster = posterOf(post);
-  if (poster && post.kind !== 'gallery') {
-    refs.backdrop = img(poster, 'backdrop');
-    refs.root.insertBefore(refs.backdrop, refs.inner);
-  }
 
   if (post.kind === 'image' && post.images?.[0]) {
     refs.media.appendChild(img(post.images[0]));
@@ -241,8 +227,6 @@ function markOverflow(card: HTMLElement): void {
 export function unmountSlide(refs: SlideRefs): void {
   if (!refs.mounted) return;
   refs.mounted = false;
-  refs.backdrop?.remove();
-  refs.backdrop = null;
   // The shared video is detached by the player itself; everything else goes.
   Array.from(refs.media.children).forEach((c) => {
     if (!(c instanceof HTMLVideoElement)) c.remove();

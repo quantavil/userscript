@@ -47,6 +47,15 @@ test('first slide is a Reddit video playing through the one shared <video>', asy
   await expect(active.locator('.title')).toHaveText('Different balls with water drops');
 });
 
+test('media slides do not create a blurred duplicate behind the content', async ({ page }) => {
+  await openReel(page);
+  await expect(inReel(page, '.slide.active .backdrop')).toHaveCount(0);
+  await swipe(page, 3);
+  await expect(inReel(page, '.slide[data-index="3"]')).toHaveClass(/active/);
+  await expect(inReel(page, '.slide.active .media img.main')).toBeVisible();
+  await expect(inReel(page, '.slide.active .backdrop')).toHaveCount(0);
+});
+
 test('swiping moves the single video along; non-video slides have none', async ({ page }) => {
   await openReel(page);
   await swipe(page, 1);
@@ -260,4 +269,32 @@ test('landscape: controls fade out again on their own while playing', async ({ p
   await page.mouse.click(300, 200);
   await expect(r).toHaveClass(/chrome-on/);
   await expect(r).not.toHaveClass(/chrome-on/, { timeout: 5000 });
+});
+
+test('rapid navigation keys advance once per press', async ({ page }) => {
+  await openReel(page);
+  await page.evaluate(() => {
+    for (let i = 0; i < 3; i++) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }));
+  });
+  await expect(inReel(page, '.slide[data-index="3"]')).toHaveClass(/active/);
+});
+
+test('vote score returns to its original value when a vote is removed', async ({ page }) => {
+  await page.goto(FEED);
+  await page.evaluate(() => {
+    const post = document.querySelector('shreddit-post')!;
+    post.setAttribute('score', '100');
+    const button = document.createElement('button');
+    button.setAttribute('aria-label', 'Upvote');
+    button.setAttribute('aria-pressed', 'false');
+    button.onclick = () => button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
+    post.appendChild(button);
+  });
+  await page.locator('#rr-fab-host button').click();
+  const active = inReel(page, '.slide.active');
+  await expect(active.locator('.score')).toHaveText('100');
+  await active.locator('[data-action="up"]').click();
+  await expect(active.locator('.score')).toHaveText('101');
+  await active.locator('[data-action="up"]').click();
+  await expect(active.locator('.score')).toHaveText('100');
 });

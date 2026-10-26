@@ -25,6 +25,7 @@ export class FeedSource {
   readonly posts: Post[] = [];
   private byId = new Map<string, Post>();
   private loading: Promise<number> | null = null;
+  private generation = 0;
   private exhausted = false;
   private observer: MutationObserver | null = null;
   private scanTimer: ReturnType<typeof setTimeout> | null = null;
@@ -70,6 +71,7 @@ export class FeedSource {
   }
 
   private async fetchNext(): Promise<number> {
+    const generation = this.generation;
     const partial = findLoadAfter(document);
     const src = partial?.getAttribute('src');
     if (!partial || !src || this.exhausted) return 0;
@@ -82,6 +84,7 @@ export class FeedSource {
     } catch {
       return 0;
     }
+    if (generation !== this.generation) return 0;
     if (!partial.isConnected) return this.scan().length; // Reddit loaded it meanwhile
 
     const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -129,6 +132,7 @@ export class FeedSource {
 
   /** Forget everything (route changed to a different feed). */
   reset(): void {
+    this.generation++;
     this.disconnect();
     this.posts.length = 0;
     this.byId.clear();

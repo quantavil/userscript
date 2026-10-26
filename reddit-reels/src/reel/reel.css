@@ -79,17 +79,6 @@ a:focus-visible {
 }
 
 /* ---------- Media ---------- */
-.backdrop {
-  position: absolute;
-  inset: -40px;
-  width: calc(100% + 80px);
-  height: calc(100% + 80px);
-  object-fit: cover;
-  filter: blur(28px) brightness(0.45);
-  transform: translateZ(0);
-  pointer-events: none;
-}
-
 .media {
   position: absolute;
   inset: 0;

@@ -59,3 +59,58 @@ describe('RedGifs API through GM_xmlhttpRequest (outside Reddit CSP)', () => {
     delete (globalThis as any).sessionStorage;
   });
 });
+
+describe('captions', () => {
+  it('stays off when disabled while the captions request is pending', async () => {
+    const { installDom, uninstallDom } = await import('./setup-dom');
+    const { Player } = await import('../../src/media/player');
+    installDom();
+    const originalFetch = globalThis.fetch;
+    let resolveFetch!: (response: Response) => void;
+    globalThis.fetch = (() =>
+      new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      })) as typeof fetch;
+    try {
+      const player = new Player();
+      (player as any).captionsUrl = 'https://v.redd.it/captions.vtt';
+      player.toggleCaptions();
+      player.toggleCaptions();
+      resolveFetch(new Response('WEBVTT\n', { status: 200 }));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(player.video.querySelector('track')).toBeNull();
+      player.dispose();
+    } finally {
+      globalThis.fetch = originalFetch;
+      uninstallDom();
+    }
+  });
+});
+
+describe('playback lifecycle', () => {
+  it('ignores an autoplay rejection after playback has stopped', async () => {
+    const { installDom, uninstallDom } = await import('./setup-dom');
+    const { Player } = await import('../../src/media/player');
+    installDom();
+    try {
+      const player = new Player();
+      let rejectPlay!: (error: Error) => void;
+      player.video.play = () =>
+        new Promise<void>((_, reject) => {
+          rejectPlay = reject;
+        });
+      const events: string[] = [];
+      player.on((event) => events.push(event));
+      player.play();
+      player.stop();
+      const error = new Error('blocked');
+      error.name = 'NotAllowedError';
+      rejectPlay(error);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(events).not.toContain('autoplay-muted');
+      expect(events).not.toContain('blocked');
+    } finally {
+      uninstallDom();
+    }
+  });
+});

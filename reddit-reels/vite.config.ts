@@ -19,7 +19,7 @@ export default defineConfig({
         description:
           "Mobile-first full-screen reels for Reddit feeds: swipe, one stream with sound, Reddit video and RedGifs, native voting.",
         author: "quantavil",
-        version: "3.2.0",
+        version: "3.2.1",
         license: "GPL-3.0-or-later",
         "run-at": "document-end",
         homepage: "https://github.com/quantavil/userscript/tree/main/reddit-reels",
