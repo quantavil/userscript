@@ -70,6 +70,19 @@ describe("setSubscribed", () => {
 });
 
 describe("deleteUserItem", () => {
+  it("overwrites an editable comment before sending its deletion", async () => {
+    const requests: { path: string; body: Record<string, string> }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const path = new URL(String(url)).pathname;
+      if (path === "/api/me.json") return ok({ data: { modhash: "abc123", name: "testuser" } });
+      requests.push({ path, body: Object.fromEntries(init?.body as URLSearchParams) });
+      return path === "/api/editusertext" ? ok({ json: { errors: [] } }) : ok({});
+    }));
+    await deleteUserItem("t1_comment1");
+    expect(requests.map((r) => r.path)).toEqual(["/api/editusertext", "/api/del"]);
+    expect(requests[0].body).toMatchObject({ thing_id: "t1_comment1", text: ".", api_type: "json" });
+    expect(requests[1].body).toMatchObject({ id: "t1_comment1", api_type: "json" });
+  });
   it("does not delete an editable item when overwrite fails", async () => {
     const calledUrls: string[] = [];
 
@@ -158,6 +171,20 @@ describe("deleteUserItem", () => {
 });
 
 describe("paginated listings", () => {
+	it("reads the current identity before listing history after an account switch", async () => {
+		const { meInfo } = await import("../src/api");
+		let name = "old_account";
+		const paths: string[] = [];
+		vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+			const path = new URL(String(url)).pathname;
+			paths.push(path);
+			return path === "/api/me.json" ? ok({ data: { name, modhash: "hash" } }) : ok({ data: { children: [], after: null } });
+		}));
+		await meInfo(undefined, true);
+		name = "new_account";
+		await loadUserItems("comments");
+		expect(paths).toContain("/user/new_account/comments.json");
+	});
 	it("deduplicates subscriptions across pages", async () => {
     let page = 0;
     const fetchMock = vi.fn(async () => {

@@ -16,6 +16,7 @@ Self-contained TypeScript userscript built with Bun, Vite+, and vite-plugin-monk
 - Validate Reddit JSON errors as well as HTTP status. Editable text overwrite must succeed before deletion. Skip overwrite for link posts without a text body.
 - Overwrite cannot guarantee privacy from archives or copies. Do not claim it can.
 - Profile listings expose at most 1,000 visible items per endpoint. Counts describe returned history, not the complete account.
+- Refresh identity before reading history and subscriptions before export or import. A failed deletion may have already overwritten or deleted the item; report its outcome as unconfirmed.
 - Stop after three consecutive item failures and report successful, failed, and untouched work accurately.
 - Pause/cancel is checked between items. An active item and request retries may finish before stopping.
 - Confirmation cancellation must remove the sheet and restore content/focus. Closing during a read must not leave a late confirmation waiting in a hidden panel.
@@ -26,4 +27,4 @@ Self-contained TypeScript userscript built with Bun, Vite+, and vite-plugin-monk
 
 Run `bun run test`, `bun run tsc`, `bun run lint`, and `bun run build`. `bun test` bypasses the configured happy-dom runner. Rebuild tracked `dist/reddit-manager.user.js` after source changes.
 
-For UI checks use local mocked API fixtures at phone, tablet, and desktop widths; do not mutate a live Reddit account to test the interface. See `docs/audit.md` for the latest audit and verification record.
+For UI checks use local mocked API fixtures at phone, tablet, and desktop widths; do not mutate a live Reddit account to test the interface unless explicitly requested by the user.

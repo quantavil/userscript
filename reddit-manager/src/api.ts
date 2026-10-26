@@ -344,7 +344,7 @@ export async function loadUserItems(
 	kind: "posts" | "comments",
 	onRetry?: RetryCallback,
 ): Promise<UserItem[]> {
-	const info = await meInfo(onRetry);
+	const info = await meInfo(onRetry, true);
 	if (!info.name) throw new Error("not logged in to Reddit");
 
 	const items: UserItem[] = [];

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Manager
 // @namespace    https://github.com/quantavil/userscript/reddit-manager
-// @version      3.3.1
+// @version      3.3.2
 // @author       quantavil (https://github.com/quantavil)
 // @description  Export subscriptions and manage Reddit account cleanup from a responsive panel.
 // @license      GPL-3.0-or-later
@@ -231,7 +231,7 @@
 		}
 	}
 	async function loadUserItems(kind, onRetry) {
-		const info = await meInfo(onRetry);
+		const info = await meInfo(onRetry, true);
 		if (!info.name) throw new Error("not logged in to Reddit");
 		const items = [];
 		let after = null;
@@ -388,6 +388,7 @@
 	]);
 	function parseImport(text) {
 		const trimmed = text.trim();
+		if (!trimmed) return [];
 		let raw;
 		if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
 			const json = JSON.parse(trimmed);
@@ -466,7 +467,7 @@
 	}
 	async function exportSubs(r) {
 		r.status("Reading your subscriptions…");
-		const subs = await loadSubs();
+		const subs = await loadSubs(true);
 		r.count(subs.length);
 		if (subs.length === 0) {
 			r.status("Nothing to export — you aren't subscribed to anything.", "bad");
@@ -490,7 +491,7 @@
 			return;
 		}
 		r.status("Reading your subscriptions…");
-		const subs = await loadSubs();
+		const subs = await loadSubs(true);
 		r.count(subs.length);
 		const have = new Set(subs.map((s) => s.name.toLowerCase()));
 		const names = parsed.filter((n) => !have.has(n.toLowerCase()));
@@ -583,7 +584,7 @@
 		r.status("Confirming with Reddit…");
 		await sleep(500);
 		await refresh(r, true, true).catch(() => void 0);
-		r.status(`Deleted ${succeeded} ${label}.${failed.length ? ` (${failed.length} failed: ${lastError})` : ""}${halted}`, failed.length || halted ? "bad" : "ok");
+		r.status(`Deleted ${succeeded} ${label}.${failed.length ? ` ${failed.length} could not be confirmed: ${failed.slice(0, 6).join(", ")}${failed.length > 6 ? "…" : ""} (${lastError}). These items may have been overwritten or deleted; check them on Reddit.` : ""}${halted}`, failed.length || halted ? "bad" : "ok");
 	}
 	async function deleteAllPosts(r) {
 		return deleteAllUserItems(r, "posts", "posts");

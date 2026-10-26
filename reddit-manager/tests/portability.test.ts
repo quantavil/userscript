@@ -6,6 +6,8 @@ import {
   deleteAccount,
   deleteAllComments,
   deleteAllPosts,
+  exportSubs,
+  importSubs,
   parseImport,
 	refresh,
 } from "../src/portability";
@@ -39,6 +41,9 @@ describe("normalizeName", () => {
 });
 
 describe("parseImport", () => {
+  it("treats a blank file as an empty list", () => {
+    expect(parseImport(" \n ")).toEqual([]);
+  });
   it("reads our own export format", () => {
     const text = JSON.stringify({
       count: 2,
@@ -80,6 +85,16 @@ describe("parseImport", () => {
   it("rejects malformed JSON entries instead of silently dropping them", () => {
     expect(() => parseImport('[{"name":42}]')).toThrow(/entry 1/i);
   });
+});
+
+it("refreshes subscriptions before export and import reconciliation", async () => {
+  mockLoadSubs.mockClear();
+  mockLoadSubs.mockResolvedValue([]);
+  const report = { status: vi.fn(), progress: vi.fn(), confirm: vi.fn(async () => false), count: vi.fn(), pickFile: vi.fn(async () => "pics") };
+  await exportSubs(report);
+  await importSubs(report);
+  expect(mockLoadSubs).toHaveBeenCalledTimes(2);
+  expect(mockLoadSubs.mock.calls.every(([force]) => force === true)).toBe(true);
 });
 
 describe("applyAll", () => {
@@ -309,6 +324,21 @@ describe("deleteAllPosts and deleteAllComments", () => {
   beforeEach(() => {
     mockLoadItems.mockReset();
     mockDeleteItem.mockReset();
+  });
+
+  it("warns that failed items may have been changed and need checking", async () => {
+    mockLoadItems.mockResolvedValue([{ fullname: "t1_a", body: "old" }]);
+    mockDeleteItem.mockRejectedValue(new Error("delete response lost"));
+    const report = { status: vi.fn(), progress: vi.fn(), confirm: vi.fn(async () => true), count: vi.fn(), pickFile: vi.fn() };
+    await deleteAllComments(report);
+    expect(report.status.mock.lastCall?.[0]).toMatch(/may have been overwritten or deleted/i);
+  });
+
+  it("does not delete any items when confirmation is cancelled", async () => {
+    mockLoadItems.mockResolvedValue([{ fullname: "t1_a", body: "old" }]);
+    const report = { status: vi.fn(), progress: vi.fn(), confirm: vi.fn(async () => false), count: vi.fn(), pickFile: vi.fn() };
+    await deleteAllComments(report);
+    expect(mockDeleteItem).not.toHaveBeenCalled();
   });
 
   it("deletes all fetched posts when confirmed", async () => {

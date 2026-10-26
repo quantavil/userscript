@@ -130,6 +130,7 @@ const HEADERS = new Set([
 
 export function parseImport(text: string): string[] {
 	const trimmed = text.trim();
+	if (!trimmed) return [];
 	let raw: unknown[];
 
 	if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
@@ -242,7 +243,7 @@ export async function refresh(
 
 export async function exportSubs(r: Report): Promise<void> {
 	r.status("Reading your subscriptions…");
-	const subs = await loadSubs();
+	const subs = await loadSubs(true);
 	r.count(subs.length);
 
 	if (subs.length === 0) {
@@ -271,7 +272,7 @@ export async function importSubs(r: Report): Promise<void> {
 	}
 
 	r.status("Reading your subscriptions…");
-	const subs = await loadSubs();
+	const subs = await loadSubs(true);
 	r.count(subs.length);
 	const have = new Set(subs.map((s) => s.name.toLowerCase()));
 	const names = parsed.filter((n) => !have.has(n.toLowerCase()));
@@ -432,7 +433,7 @@ async function deleteAllUserItems(
 	await refresh(r, true, true).catch(() => undefined);
 
 	r.status(
-		`Deleted ${succeeded} ${label}.${failed.length ? ` (${failed.length} failed: ${lastError})` : ""}${halted}`,
+		`Deleted ${succeeded} ${label}.${failed.length ? ` ${failed.length} could not be confirmed: ${failed.slice(0, 6).join(", ")}${failed.length > 6 ? "…" : ""} (${lastError}). These items may have been overwritten or deleted; check them on Reddit.` : ""}${halted}`,
 		failed.length || halted ? "bad" : "ok",
 	);
 }
