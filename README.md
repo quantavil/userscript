@@ -67,6 +67,7 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 
 | Project | Description |
 | :--- | :--- |
+| **[better-icegate](./better-icegate)** | ICEGATE shortcuts, Shipping Bill date and pagination controls, and a best-effort client-side idle timer extension. |
 | **[site-orbit](./site-orbit)** | Private Domain & Tech Observatory caching verified Tranco global ranks, live in-DOM tech stacks, Cloudflare DNS/Infra, and browser telemetry. |
 | **[better-leetcode](./better-leetcode)** | LeetCode exporter formatting problems, examples, constraints, hints, code templates, failed test submissions, and comments into structured Markdown with customizable LLM prompts. |
 | **[better-investograin](./better-investograin)** | InvestorGain IPO table optimizer that blocks broker ads/sidebars and auto-sorts open, upcoming, and closed IPOs by true urgency with clean dividers. |
@@ -90,6 +91,7 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 2. **Install a Script**:
    - Navigate to any project folder linked above.
    - Click the link to its distribution script (e.g. `dist/<project-name>.user.js`) and confirm the installation in your userscript manager.
+   - If a project does not commit its `dist/` directory, follow its README to build the script locally first.
 
 3. **Browser Extensions**:
    - Projects like **[GlideVideo](./GlideVideo)** and **[SiteOrbit](./site-orbit)** also ship as standalone Firefox Manifest V3 WebExtensions (`.xpi` / `.zip`) inside their respective project directories.

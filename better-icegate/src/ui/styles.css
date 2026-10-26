@@ -1,0 +1,25 @@
+:host { all: initial; font: 14px/1.4 system-ui, sans-serif; color: #182c42; }
+* { box-sizing: border-box; }
+.panel { position: fixed; z-index: 2147483000; right: 12px; bottom: 12px; width: min(280px, calc(100vw - 24px)); max-height: calc(100vh - 24px); display: flex; flex-direction: column; background: #fff; border: 1px solid #d7e2eb; border-radius: 12px; box-shadow: 0 8px 30px #142c4440; overflow: hidden; }
+button { font: inherit; cursor: pointer; }
+.bar { background: #123b5a; color: #fff; display: flex; align-items: center; padding: 4px 6px 4px 12px; }
+.brand { flex: 1; font-weight: 700; }
+.header-button { border: 0; background: transparent; color: #fff; padding: 5px 7px; font-size: 18px; line-height: 1; }
+.header-button:hover, .header-button:focus-visible { background: #ffffff24; border-radius: 5px; }
+.chevron { font-size: 20px; }
+.settings { padding: 7px 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; }
+.switch { width: 36px; height: 20px; border: 0; border-radius: 12px; background: #a8b7c2; padding: 2px; flex: none; }
+.switch span { display: block; width: 16px; height: 16px; border-radius: 50%; background: white; transition: transform .15s; }
+.switch[aria-checked="true"] { background: #21658d; }
+.switch[aria-checked="true"] span { transform: translateX(16px); }
+.switch:focus-visible { outline: 2px solid #e5a32d; outline-offset: 2px; }
+.body { padding: 5px 8px 8px; overflow-y: auto; }
+.hint { color: #657789; font-size: 12px; margin: 0 3px 9px; }
+.row { display: flex; align-items: stretch; }
+.shortcut { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; text-align: left; border: 0; border-radius: 7px; background: transparent; color: #183c59; padding: 6px 5px; font-weight: 600; }
+.shortcut:hover, .shortcut:focus-visible { background: #edf5fa; }
+.star { color: #e5a32d; } .arrow { color: #698399; } .arrow:last-child { margin-left: auto; }
+.remove { border: 0; background: none; color: #9b3a35; font-size: 20px; }
+.actions { border-top: 1px solid #e4ebf0; display: flex; justify-content: space-between; margin-top: 4px; padding-top: 5px; }
+.actions button, .restore { border: 0; background: transparent; color: #21658d; padding: 4px; font-weight: 600; font-size: 12px; }
+.restore { color: #875735; margin-top: 4px; }.message { color: #476477; font-size: 12px; margin: 6px 4px 0; }
