@@ -1,7 +1,124 @@
 import { isPaginationStorageEvent, paginationChanged, paginationEnabled } from '../settings/pagination';
+import { dateRange, presets, toCsv, type DatePreset } from './tools';
+import shippingStyles from './styles.css?inline';
 
 const initializedForms = new WeakSet<Element>();
-const appliedResults = new WeakMap<HTMLSelectElement, boolean>();
+const presetKey = 'better-icegate.sb-date-preset.v1';
+
+function setDate(input: HTMLInputElement, value: string) {
+  input.value = value;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function applyPreset(from: HTMLInputElement, to: HTMLInputElement, preset: DatePreset) {
+  const [start, end] = dateRange(preset);
+  // Set an early valid start first so the portal permits changing the end date.
+  setDate(from, '01-01-1900');
+  setDate(to, end);
+  setDate(from, start);
+}
+
+function addDatePresets(from: HTMLInputElement, to: HTMLInputElement) {
+  const form = from.closest('form');
+  if (!form) return;
+  const existing = form.querySelector<HTMLElement>('.better-icegate-presets');
+  if (existing) { updateSelected(existing, from, to); return; }
+  const bar = document.createElement('div');
+  bar.className = 'better-icegate-presets';
+  bar.setAttribute('aria-label', 'Quick date ranges');
+  const label = document.createElement('span');
+  label.className = 'better-icegate-presets-label';
+  label.textContent = 'Quick dates';
+  bar.append(label);
+  const refresh = () => updateSelected(bar, from, to);
+  for (const preset of presets) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = preset.label;
+    button.dataset.preset = preset.id;
+    button.addEventListener('click', () => { localStorage.setItem(presetKey, preset.id); applyPreset(from, to, preset.id); });
+    bar.append(button);
+  }
+  for (const input of [from, to]) {
+    input.addEventListener('input', refresh);
+    input.addEventListener('change', refresh);
+  }
+  const actions = form.querySelector('.row.col-12');
+  if (actions) actions.before(bar); else form.append(bar);
+  refresh();
+}
+
+function updateSelected(bar: HTMLElement, from: HTMLInputElement, to: HTMLInputElement) {
+  for (const button of bar.querySelectorAll<HTMLButtonElement>('button[data-preset]')) {
+    const [start, end] = dateRange(button.dataset.preset as DatePreset);
+    button.setAttribute('aria-pressed', String(from.value === start && to.value === end));
+  }
+}
+
+function addResultsTools(details: Element) {
+  const table = details.querySelector<HTMLTableElement>('table.resultTable');
+  if (!table) return;
+  let toolbar = details.querySelector<HTMLElement>('.better-icegate-results');
+  if (!toolbar) {
+    toolbar = document.createElement('div');
+    toolbar.className = 'better-icegate-results';
+    const filter = document.createElement('input');
+    filter.type = 'search';
+    filter.placeholder = 'Filter job, SB or location';
+    filter.setAttribute('aria-label', 'Filter visible Shipping Bill results');
+    filter.className = 'better-icegate-filter';
+    const exportButton = document.createElement('button');
+    exportButton.type = 'button'; exportButton.textContent = 'Export CSV';
+    exportButton.className = 'better-icegate-export';
+    exportButton.title = 'Export the visible results';
+    filter.addEventListener('input', () => {
+      const current = details.querySelector<HTMLTableElement>('table.resultTable');
+      if (current) filterRows(current, filter.value);
+    });
+    exportButton.addEventListener('click', () => {
+      const table = details.querySelector<HTMLTableElement>('table.resultTable');
+      if (!table) return;
+      const headers = [...table.querySelectorAll('thead td')].slice(0, 5).map(cell => cell.textContent?.trim() ?? '');
+      const rows = [...table.querySelectorAll<HTMLTableRowElement>('tbody tr')].filter(row => !row.hidden).map(row => [...row.cells].slice(0, 5).map(cellText));
+      const blob = new Blob(['\ufeff', toCsv([headers, ...rows])], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = url; link.download = 'shipping-bills.csv'; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+    toolbar.append(filter, exportButton);
+    table.parentElement?.before(toolbar);
+  }
+  const filter = toolbar.querySelector<HTMLInputElement>('input')!;
+  for (const row of table.querySelectorAll<HTMLTableRowElement>('tbody tr')) {
+    for (const index of [0, 2]) {
+      const cell = row.cells[index];
+      if (!cell || cell.querySelector('.better-icegate-copy')) continue;
+      const value = cellText(cell);
+      if (!value) continue;
+      const copy = document.createElement('button');
+      copy.type = 'button'; copy.className = 'better-icegate-copy'; copy.innerHTML = copyIcon;
+      copy.setAttribute('aria-label', `Copy ${index === 0 ? 'job' : 'SB'} number`);
+      copy.title = copy.getAttribute('aria-label') ?? '';
+      copy.addEventListener('click', () => { void navigator.clipboard.writeText(cellText(cell)).then(() => { copy.textContent = '✓'; setTimeout(() => { copy.innerHTML = copyIcon; }, 1500); }).catch(() => { copy.textContent = '!'; }); });
+      cell.append(copy);
+    }
+  }
+  filterRows(table, filter.value);
+}
+
+const copyIcon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="1.5"></rect><path d="M16 8V5a1.5 1.5 0 0 0-1.5-1.5h-9A1.5 1.5 0 0 0 4 5v10A1.5 1.5 0 0 0 5.5 16H8"></path></svg>';
+
+function cellText(cell: HTMLTableCellElement): string {
+  return [...cell.childNodes].filter(node => !(node instanceof Element && node.classList.contains('better-icegate-copy'))).map(node => node.textContent ?? '').join('').trim();
+}
+
+function filterRows(table: HTMLTableElement, query: string) {
+  const needle = query.trim().toLocaleLowerCase();
+  for (const row of table.querySelectorAll<HTMLTableRowElement>('tbody tr')) {
+    row.hidden = ![...row.cells].slice(0, 5).some(cell => cellText(cell).toLocaleLowerCase().includes(needle));
+  }
+}
 
 function isShippingBill(): boolean {
   const [path, query = ''] = location.hash.slice(1).split('?');
@@ -16,17 +133,17 @@ function enhanceShippingBill() {
   const to = layout?.querySelector<HTMLInputElement>('input[formcontrolname="toDate"]');
   if (layout && from && to?.value && !initializedForms.has(layout)) {
     initializedForms.add(layout);
-    // Use the portal's own date input so its Angular form and validation update too.
-    from.value = to.value;
-    from.dispatchEvent(new Event('input', { bubbles: true }));
-    from.dispatchEvent(new Event('change', { bubbles: true }));
+    const saved = localStorage.getItem(presetKey);
+    const preset = presets.find(item => item.id === saved)?.id;
+    if (preset) applyPreset(from, to, preset);
+    else setDate(from, to.value);
   }
+
+  if (from && to) addDatePresets(from, to);
 
   const select = layout?.querySelector<HTMLSelectElement>('app-dec-details select[name="perPage"]');
   if (select) {
     const enabled = paginationEnabled();
-    if (appliedResults.get(select) === enabled) return;
-    appliedResults.set(select, enabled);
     const paginator = select.closest<HTMLElement>('.paginator-container');
     const allValue = String(Number.MAX_SAFE_INTEGER);
     if (enabled) {
@@ -43,16 +160,26 @@ function enhanceShippingBill() {
         all.value = allValue;
         select.add(all);
       }
-      select.value = allValue;
-      select.dispatchEvent(new Event('change', { bubbles: true }));
+      if (select.value !== allValue) {
+        select.value = allValue;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       const info = paginator?.querySelector('.info-page')?.textContent;
       const counts = info?.match(/Showing\s+\d+\s*-\s*(\d+)\s+of\s+(\d+)/i);
-      if (paginator && counts && counts[1] === counts[2]) paginator.hidden = true;
+      if (paginator) paginator.hidden = Boolean(counts && counts[1] === counts[2]);
     }
   }
+  const details = layout?.querySelector('app-dec-details');
+  if (details) addResultsTools(details);
 }
 
 export function startShippingBillEnhancements() {
+  if (!document.getElementById('better-icegate-shipping-styles')) {
+    const style = document.createElement('style');
+    style.id = 'better-icegate-shipping-styles';
+    style.textContent = shippingStyles;
+    document.head.append(style);
+  }
   const observer = new MutationObserver(enhanceShippingBill);
   observer.observe(document.body, { childList: true, subtree: true });
   let timer: number | undefined;

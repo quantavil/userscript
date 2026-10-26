@@ -6,7 +6,7 @@ export const defaults: Favorite[] = [
   { id: 'file-upload', label: 'Electronic Filing / File Upload', url: 'https://foservices.icegate.gov.in/#/role-dashboard/services/file-upload' },
 ];
 
-export function isFavorite(value: unknown): value is Favorite {
+function isFavorite(value: unknown): value is Favorite {
   if (!value || typeof value !== 'object') return false;
   const { id, label, url } = value as Record<string, unknown>;
   if (typeof id !== 'string' || !id || typeof label !== 'string' || !label.trim() || typeof url !== 'string') return false;

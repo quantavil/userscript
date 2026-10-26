@@ -1,19 +1,21 @@
 {
   "name": "better-icegate",
-  "version": "0.1.4",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-or-later",
   "scripts": {
     "test": "bun test",
     "build": "vp build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "knip": "knip"
   },
   "dependencies": {
     "preact": "^10.27.2"
   },
   "devDependencies": {
     "happy-dom": "^21.0.4",
+    "knip": "^6.43.0",
     "typescript": "^5.9.3",
     "vite-plugin-monkey": "^8.1.1",
     "vite-plus": "^1.3.0"
