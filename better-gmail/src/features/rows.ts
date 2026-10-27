@@ -98,8 +98,10 @@ export function enhanceRows(root: ParentNode, copy: Copy): void {
     const parent = subject.parentElement;
     if (!parent) continue;
     parent.classList.add('bgm-subject-cell');
-    const snippet = parent.parentElement?.querySelector<HTMLElement>(selectors.snippet);
-    snippet?.classList.add('bgm-snippet');
+    parent.parentElement?.classList.add('bgm-subject-line');
+    parent.parentElement
+      ?.querySelector<HTMLElement>(selectors.snippet)
+      ?.classList.add('bgm-snippet');
     let subjectAction = parent.querySelector<HTMLButtonElement>(':scope > .bgm-row-action');
     if (!subjectAction) {
       const currentSubject = () => row.querySelector(selectors.subject)?.textContent?.trim() ?? '';
