@@ -17,16 +17,23 @@ const managerStorage = () => typeof GM_getValue === 'function' && typeof GM_setV
  */
 export function templateStore(storageKey: string, fallback: string) {
   const local = (): string | null => { try { return localStorage.getItem(storageKey); } catch { return null; } };
+  const dropLocal = () => { try { localStorage.removeItem(storageKey); } catch { /* storage unavailable */ } };
   return {
     read(): string {
-      const saved = (managerStorage() ? GM_getValue!(storageKey, '') : '') || local();
+      let saved: string | null | undefined;
+      if (managerStorage()) {
+        saved = GM_getValue!(storageKey, '');
+        const legacy = local();
+        // Move a template saved before the manager storage existed, once.
+        if (!saved?.trim() && legacy?.trim()) { GM_setValue!(storageKey, legacy); dropLocal(); saved = legacy; }
+      } else saved = local();
       return saved?.trim() ? saved : fallback;
     },
     save(template: string): void {
       const custom = template.trim() && template !== fallback;
       if (managerStorage()) {
         if (custom) GM_setValue!(storageKey, template); else GM_deleteValue!(storageKey);
-        try { localStorage.removeItem(storageKey); } catch { /* storage unavailable */ }
+        dropLocal();
         return;
       }
       try {
@@ -35,10 +42,15 @@ export function templateStore(storageKey: string, fallback: string) {
     },
     /** Calls `listener` when another tab or site changes the template; returns an unsubscribe. */
     subscribe(listener: () => void): () => void {
-      const onStorage = (event: StorageEvent) => { if (event.key === storageKey || event.key === null) listener(); };
+      let active = true;
+      const notify = () => { if (active) listener(); };
+      if (typeof GM_addValueChangeListener === 'function') {
+        GM_addValueChangeListener(storageKey, notify);
+        return () => { active = false; };
+      }
+      const onStorage = (event: StorageEvent) => { if (event.key === storageKey || event.key === null) notify(); };
       window.addEventListener('storage', onStorage);
-      if (typeof GM_addValueChangeListener === 'function') GM_addValueChangeListener(storageKey, listener);
-      return () => window.removeEventListener('storage', onStorage);
+      return () => { active = false; window.removeEventListener('storage', onStorage); };
     },
   };
 }

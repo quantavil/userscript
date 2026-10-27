@@ -36,11 +36,12 @@ test('shares the template through the userscript manager and migrates the local 
   try {
     const store = templateStore('k', 'default');
     expect(store.read()).toBe('old local');
+    expect(values.get('k')).toBe('old local');
+    expect(local.has('k')).toBe(false);
     let changes = 0;
     store.subscribe(() => changes++);
     store.save('custom');
     expect(values.get('k')).toBe('custom');
-    expect(local.has('k')).toBe(false);
     expect(store.read()).toBe('custom');
     store.save('default');
     expect(values.has('k')).toBe(false);

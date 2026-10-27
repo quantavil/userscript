@@ -29,7 +29,7 @@ function rowValues(row: Element): Record<string, string> {
 
 function flash(button: HTMLButtonElement, restore: string, ok: boolean) {
   button.textContent = ok ? '✓' : '!';
-  if (ok) setTimeout(() => { button.innerHTML = restore; }, 1500);
+  setTimeout(() => { button.innerHTML = restore; }, 1500);
 }
 
 function enhanceRow(row: HTMLTableRowElement) {
@@ -68,7 +68,7 @@ function addCopyTable(table: HTMLTableElement) {
   button.type = 'button'; button.className = 'btn btn-outline-primary btn-sm better-icegate-copy-table'; button.textContent = 'Copy table';
   button.title = 'Copy every row of the upload table';
   button.addEventListener('click', () => {
-    void copyRich(tableText(table.isConnected ? table : document.querySelector('table') ?? table))
+    void copyRich(tableText(table))
       .then(() => { button.textContent = 'Copied ✓'; }).catch(() => { button.textContent = 'Copy failed'; })
       .finally(() => setTimeout(() => { button.textContent = 'Copy table'; }, 1500));
   });
