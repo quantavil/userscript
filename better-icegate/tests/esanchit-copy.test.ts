@@ -33,14 +33,14 @@ test('adds an email envelope per row and a copy-table button email template to e
     browser.document.body.innerHTML = page;
     startEsanchitCopy();
     const rows = browser.document.querySelectorAll('tbody tr');
-    expect(browser.document.querySelectorAll('.better-icegate-esanchit-tools')).toHaveLength(2);
+    expect(browser.document.querySelectorAll('.better-icegate-template')).toHaveLength(2);
 
-    expect(rows[0].querySelectorAll('.better-icegate-esanchit-tools button')).toHaveLength(1);
-    const mail = rows[0].querySelector<HTMLButtonElement>('.better-icegate-esanchit-tools button')!;
+    expect(rows[0].querySelectorAll('.better-icegate-template')).toHaveLength(1);
+    const mail = rows[0].querySelector<HTMLButtonElement>('.better-icegate-template')!;
     mail.click(); await new Promise(resolve => setTimeout(resolve, 5));
     expect(copied).toBe('Dear Sir,\n\nFind below the IRN and DRN details:\n\nFile Name\tDRN\tIRN\tDocument Type\nKPS AGRO FODD[signed].pdf\t2026102700019579\t2026102700062887\t331000-Commercial invoice which includes a packing list');
 
-    const second = rows[1].querySelector<HTMLButtonElement>('.better-icegate-esanchit-tools button')!;
+    const second = rows[1].querySelector<HTMLButtonElement>('.better-icegate-template')!;
     second.click(); await new Promise(resolve => setTimeout(resolve, 5));
     expect(copied).toEndWith('b.pdf\tD2\tI2\t380000-Commercial Invoice');
 
@@ -60,7 +60,7 @@ test('adds an email envelope per row and a copy-table button email template to e
     extra.innerHTML = '<td><textarea id="fileName_2">c.pdf</textarea></td><td><input id="drn_2" value="D3"></td><td></td><td></td><td></td><td></td><td></td>';
     browser.document.querySelector('tbody')!.append(extra);
     await new Promise(resolve => setTimeout(resolve, 20));
-    expect(browser.document.querySelectorAll('.better-icegate-esanchit-tools')).toHaveLength(3);
+    expect(browser.document.querySelectorAll('.better-icegate-template')).toHaveLength(3);
     expect(browser.document.querySelectorAll('.better-icegate-copy-table')).toHaveLength(1);
   } finally {
     await browser.happyDOM.abort();

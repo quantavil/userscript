@@ -3,7 +3,6 @@ import { renderRows } from '../settings/template';
 import { copyRich, ensureCopyStyles, templateIcon } from '../shared/copy';
 
 const rowSelector = 'input[id^="drn_"]';
-const toolsClass = 'better-icegate-esanchit-tools';
 
 const field = (row: Element, selector: string) => row.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)?.value.trim() ?? '';
 
@@ -35,9 +34,7 @@ function flash(button: HTMLButtonElement, restore: string, ok: boolean) {
 
 function enhanceRow(row: HTMLTableRowElement) {
   const anchor = row.cells[row.cells.length - 1];
-  if (!anchor || anchor.querySelector(`.${toolsClass}`)) return;
-  const tools = document.createElement('div');
-  tools.className = toolsClass;
+  if (!anchor || anchor.querySelector('.better-icegate-template')) return;
   const template = document.createElement('button');
   template.type = 'button'; template.className = 'better-icegate-template'; template.innerHTML = templateIcon;
   template.setAttribute('aria-label', 'Copy eSANCHIT email template');
@@ -46,8 +43,7 @@ function enhanceRow(row: HTMLTableRowElement) {
     void copyRich(renderRows(readEsanchitTemplate(), [rowValues(row)]))
       .then(() => flash(template, templateIcon, true)).catch(() => flash(template, templateIcon, false));
   });
-  tools.append(template);
-  anchor.append(tools);
+  anchor.append(template);
 }
 
 /** The template with its row line repeated for every upload row. */

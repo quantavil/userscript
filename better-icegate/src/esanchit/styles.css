@@ -10,12 +10,4 @@
 .better-icegate-doclist-heading { padding: 6px 10px 3px; color: #567; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; background: #f4f7fa; }
 .better-icegate-doclist-empty { padding: 10px; color: #567; }
 
-.better-icegate-esanchit-tools {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  margin-top: 4px;
-}
-.better-icegate-esanchit-tools .better-icegate-template { margin-left: 0; }
 .better-icegate-copy-table { margin-left: 8px; }
