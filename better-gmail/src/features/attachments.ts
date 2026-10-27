@@ -109,17 +109,14 @@ export function enhanceAttachments(root: ParentNode, save: Save): void {
   const live = new Set<Element>();
   for (const [group, firstCard] of groups) {
     const count = attachmentsIn(group).length;
-    if (count < 2) continue;
-    // Flat lists get the bar above the list; nested ones above the child holding the first card.
-    let anchor: Element = firstCard;
-    while (anchor.parentElement && anchor.parentElement !== group) anchor = anchor.parentElement;
-    if (anchor === firstCard) anchor = group;
-    let bar = anchor.previousElementSibling?.matches('.bgm-attachments-bar')
-      ? (anchor.previousElementSibling as HTMLElement)
+    if (count < 1) continue;
+    // Inline: the bar sits right before the first card so it shares the cards' row.
+    let bar = firstCard.previousElementSibling?.matches('.bgm-attachments-bar')
+      ? (firstCard.previousElementSibling as HTMLElement)
       : undefined;
     if (!bar) {
       bar = createBar(() => group, save);
-      anchor.before(bar);
+      firstCard.before(bar);
     }
     live.add(bar);
     const button = bar.querySelector<HTMLButtonElement>('button');

@@ -153,9 +153,13 @@ tr.bgm-enhanced-row > .bgm-sender-cell {
 }
 
 .bgm-attachments-bar {
-  margin: 4px 0 8px;
+  display: inline-flex;
+  vertical-align: middle;
+  margin: 0 8px 0 0;
 }
 
+/* Colors come from the surrounding Gmail text, so the button follows Gmail's own theme
+   (which can differ from the OS preference) instead of prefers-color-scheme. */
 .bgm-attachments-download {
   display: inline-flex;
   align-items: center;
@@ -166,8 +170,8 @@ tr.bgm-enhanced-row > .bgm-sender-cell {
   box-sizing: border-box;
   border: 0;
   border-radius: 14px;
-  color: #174ea6;
-  background: #e8f0fe;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 10%, transparent);
   font:
     600 12px/1 Arial,
     sans-serif;
@@ -184,7 +188,7 @@ tr.bgm-enhanced-row > .bgm-sender-cell {
 }
 
 .bgm-attachments-download:hover:not(:disabled) {
-  background: #d2e3fc;
+  background: color-mix(in srgb, currentColor 20%, transparent);
 }
 
 .bgm-attachments-download:focus-visible {
@@ -195,16 +199,6 @@ tr.bgm-enhanced-row > .bgm-sender-cell {
 .bgm-attachments-download:disabled {
   cursor: progress;
   opacity: 0.75;
-}
-
-@media (prefers-color-scheme: dark) {
-  .bgm-attachments-download {
-    color: #8ab4f8;
-    background: #283344;
-  }
-  .bgm-attachments-download:hover:not(:disabled) {
-    background: #39475c;
-  }
 }
 
 .bgm-sr-only {
