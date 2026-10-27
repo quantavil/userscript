@@ -6,23 +6,6 @@
   box-sizing: border-box;
 }
 
-.bgm-subject-cell {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  min-width: 0;
-  vertical-align: middle;
-}
-
-.bgm-enhanced-row .bgm-subject {
-  letter-spacing: 0.01em;
-  overflow: visible;
-  overflow-wrap: anywhere;
-  text-overflow: clip;
-  white-space: normal;
-}
-
 .bgm-enhanced-row .bgm-snippet {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -66,25 +49,6 @@ tr.bgm-enhanced-row > .bgm-sender-cell {
   height: auto;
 }
 
-.bgm-subject-line {
-  position: relative;
-}
-.bgm-otp {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  z-index: 5;
-  transform: translateY(-50%);
-  padding: 3px 10px;
-  border: 1px solid #a8c7fa;
-  border-radius: 6px;
-  background: #e8f0fe;
-  color: #0b3a8a;
-  cursor: pointer;
-  font:
-    600 16px/1.2 ui-monospace,
-    monospace;
-}
 .bgm-attachments-bar {
   display: flex;
   clear: both;
@@ -129,7 +93,6 @@ tr.bgm-enhanced-row > .bgm-sender-cell {
   cursor: progress;
   opacity: 0.75;
 }
-.bgm-otp:focus-visible,
 .bgm-attachments-download:focus-visible {
   outline: 2px solid #1a73e8;
   outline-offset: 1px;
@@ -142,38 +105,10 @@ tr.bgm-enhanced-row > .bgm-sender-cell {
   clip-path: inset(50%);
   white-space: nowrap;
 }
-@media (prefers-color-scheme: dark) {
-  .bgm-otp {
-    background: #283344;
-    color: #d3e3fd;
-  }
-  .bgm-otp {
-    border-color: #4a6286;
-  }
-}
-
-/* Gmail constrains the entire subject hierarchy to one line by default. */
-tr.bgm-enhanced-row .xS,
-tr.bgm-enhanced-row .bgm-subject-line,
-tr.bgm-enhanced-row .bgm-subject-cell {
-  height: auto;
-  min-width: 0;
-  overflow: visible;
-  white-space: normal;
-}
-
 /* Match Gmail's light theme even when the operating system uses dark mode. */
 tr.bgm-light-row.yO:not(.x7):not(:hover) {
   background-color: #f8faff;
 }
-tr.bgm-light-row .bgm-otp {
-  color: #174ea6;
-  background: #e8f0fe;
-}
-tr.bgm-light-row .bgm-otp {
-  border-color: #a8c7fa;
-}
-
 .bgm-copy-target {
   cursor: pointer;
 }

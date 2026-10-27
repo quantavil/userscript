@@ -52,30 +52,17 @@ describe('inbox enhancements', () => {
     expect(copy).toHaveBeenCalledWith('new@example.com');
   });
 
-  test('keeps subject and snippet layout structure without displacing snippet or wrapping', () => {
+  test('leaves Gmail subject formatting intact and keeps the snippet in place', () => {
     document.body.innerHTML =
       '<table><tbody><tr class="zA"><td><div class="xS"><div class="xT"><div class="y6"><span class="bog">Invoice 123</span></div><span class="y2"> - Payment received</span></div></div></td></tr></tbody></table>';
     const copy = vi.fn().mockResolvedValue(undefined);
     enhanceRows(document, copy);
-    const subjectCell = document.querySelector('.bgm-subject-cell');
-    expect(subjectCell).not.toBeNull();
-    expect(subjectCell?.querySelector('.bog')?.getAttribute('role')).toBeNull();
+    const subject = document.querySelector<HTMLElement>('.bog')!;
+    expect(subject.classList.contains('bgm-subject')).toBe(false);
+    expect(subject.hasAttribute('title')).toBe(false);
+    expect(document.querySelector('.bgm-subject-cell')).toBeNull();
     const snippet = document.querySelector('.bgm-snippet');
     expect(snippet).not.toBeNull();
     expect(snippet?.textContent).toBe(' - Payment received');
   });
-});
-
-test('shows and copies a verification code and removes it when the row changes', () => {
-  document.body.innerHTML =
-    '<table><tbody><tr class="zA"><td><div><span><span class="bog">Your verification code</span></span><span class="y2"> 123456</span></div></td></tr></tbody></table>';
-  const copy = vi.fn().mockResolvedValue(undefined);
-  enhanceRows(document, copy);
-  const chip = document.querySelector<HTMLButtonElement>('.bgm-otp');
-  expect(chip?.textContent).toContain('123456');
-  chip?.click();
-  expect(copy).toHaveBeenCalledWith('123456');
-  document.querySelector('.y2')!.textContent = ' no code';
-  enhanceRows(document, copy);
-  expect(document.querySelector('.bgm-otp')).toBeNull();
 });

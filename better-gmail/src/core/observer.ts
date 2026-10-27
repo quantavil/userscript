@@ -1,6 +1,6 @@
 import { selectors } from '../selectors';
 
-const own = '.bgm-copy-notice, .bgm-attachments-bar, .bgm-otp, .bgm-address-line, .bgm-reveal';
+const own = '.bgm-copy-notice, .bgm-attachments-bar, .bgm-address-line, .bgm-reveal';
 const attachmentStructure = '[download_url], [role="listitem"], .amn, .bgm-attachments-bar';
 
 export function observeUpdates(

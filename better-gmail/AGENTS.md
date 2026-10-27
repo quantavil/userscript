@@ -10,4 +10,4 @@ Resolve the visible sender from the row when copying; Gmail can replace nodes or
 
 The userscript and project are licensed GPL-3.0-or-later.
 
-OTP detection is heuristic; avoid promising that all unrelated numbers are excluded. Attachment downloads must remain scoped to the current message and report browser fallback as initiated, not confirmed.
+Attachment downloads must remain scoped to the current message and report browser fallback as initiated, not confirmed.

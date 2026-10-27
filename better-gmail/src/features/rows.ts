@@ -1,6 +1,5 @@
 import { element } from '../core/dom';
 import { selectors } from '../selectors';
-import { syncOtp } from './otp';
 
 type Copy = (value: string) => Promise<void>;
 const enhancedTargets = new WeakSet<HTMLElement>();
@@ -61,9 +60,6 @@ export function enhanceRows(root: ParentNode, copy: Copy): void {
     }
     const subject = row.querySelector<HTMLElement>(selectors.subject);
     if (!subject) continue;
-    const text = subject.textContent?.trim() ?? '';
-    if (subject.title !== text) subject.title = text;
-    subject.classList.add('bgm-subject');
     const sender = row.querySelector<HTMLElement>(selectors.visibleSender);
     sender?.classList.add('bgm-sender');
     const senderContainer = row.querySelector<HTMLElement>(selectors.senderContainer);
@@ -94,12 +90,9 @@ export function enhanceRows(root: ParentNode, copy: Copy): void {
     }
     const parent = subject.parentElement;
     if (!parent) continue;
-    parent.classList.add('bgm-subject-cell');
-    parent.parentElement?.classList.add('bgm-subject-line');
     const line = parent.parentElement;
     const snippet = line?.querySelector<HTMLElement>(selectors.snippet);
     snippet?.classList.add('bgm-snippet');
-    if (line) syncOtp(line, `${text} ${snippet?.textContent ?? ''}`, copy);
     row.classList.add('bgm-enhanced-row');
   }
 }
