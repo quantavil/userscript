@@ -1,7 +1,5 @@
 # Reddit Manager
 
-Version **3.3.2**.
-
 A userscript for exporting, importing, and cleaning up your Reddit account. Works on `www.reddit.com`, `old.reddit.com`, and `sh.reddit.com` using your existing login.
 
 Install [dist/reddit-manager.user.js](dist/reddit-manager.user.js) in Tampermonkey or Violentmonkey, then open **Reddit Manager** from the bottom-right button.
@@ -43,8 +41,5 @@ Use `bun run test` for the Vite+ test runner and its happy-dom environment. `bun
 
 Source: `api.ts` handles requests and listings; `portability.ts` owns parsing and bulk operations; `panel.ts` renders the Shadow DOM UI with `panel.css`. No runtime dependencies, remote fonts, or GM permissions are required.
 
-## 3.3.2
-
-Export and import refresh subscriptions before use. Blank imports receive a clear message, and uncertain deletion results now identify affected items and explain that they may already have changed.
 
 License: GPL-3.0-or-later.
