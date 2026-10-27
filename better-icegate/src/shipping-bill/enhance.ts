@@ -56,6 +56,29 @@ function updateSelected(bar: HTMLElement, from: HTMLInputElement, to: HTMLInputE
   }
 }
 
+interface CopyTarget {
+  index: number;
+  label: string;
+}
+
+const copyColumnConfigs = [
+  { match: (h: string) => /job\s*(?:no|number)/i.test(h), fallbackIndex: 0, label: 'job number' },
+  { match: (h: string) => /sb\s*(?:no|number)/i.test(h), fallbackIndex: 2, label: 'SB number' },
+  { match: (h: string) => /sb\s*date/i.test(h), fallbackIndex: 3, label: 'SB date' },
+  { match: (h: string) => /(?:customs?\s*)?loc(?:ation)?/i.test(h), fallbackIndex: 4, label: 'custom location' },
+];
+
+function resolveCopyTargets(table: HTMLTableElement): CopyTarget[] {
+  const headers = [...table.querySelectorAll<HTMLTableCellElement>('thead th, thead td')].map(cell => cell.textContent?.trim().toLowerCase() ?? '');
+  return copyColumnConfigs.map(config => {
+    const matchedIndex = headers.findIndex(config.match);
+    return {
+      index: matchedIndex !== -1 ? matchedIndex : config.fallbackIndex,
+      label: config.label,
+    };
+  });
+}
+
 function addResultsTools(details: Element) {
   const table = details.querySelector<HTMLTableElement>('table.resultTable');
   if (!table) return;
@@ -79,7 +102,7 @@ function addResultsTools(details: Element) {
     exportButton.addEventListener('click', () => {
       const table = details.querySelector<HTMLTableElement>('table.resultTable');
       if (!table) return;
-      const headers = [...table.querySelectorAll('thead td')].slice(0, 5).map(cell => cell.textContent?.trim() ?? '');
+      const headers = [...table.querySelectorAll('thead th, thead td')].slice(0, 5).map(cell => cell.textContent?.trim() ?? '');
       const rows = [...table.querySelectorAll<HTMLTableRowElement>('tbody tr')].filter(row => !row.hidden).map(row => [...row.cells].slice(0, 5).map(cellText));
       const blob = new Blob(['\ufeff', toCsv([headers, ...rows])], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -90,15 +113,16 @@ function addResultsTools(details: Element) {
     table.parentElement?.before(toolbar);
   }
   const filter = toolbar.querySelector<HTMLInputElement>('input')!;
+  const targets = resolveCopyTargets(table);
   for (const row of table.querySelectorAll<HTMLTableRowElement>('tbody tr')) {
-    for (const index of [0, 2]) {
+    for (const { index, label } of targets) {
       const cell = row.cells[index];
       if (!cell || cell.querySelector('.better-icegate-copy')) continue;
       const value = cellText(cell);
       if (!value) continue;
       const copy = document.createElement('button');
       copy.type = 'button'; copy.className = 'better-icegate-copy'; copy.innerHTML = copyIcon;
-      copy.setAttribute('aria-label', `Copy ${index === 0 ? 'job' : 'SB'} number`);
+      copy.setAttribute('aria-label', `Copy ${label}`);
       copy.title = copy.getAttribute('aria-label') ?? '';
       copy.addEventListener('click', () => { void navigator.clipboard.writeText(cellText(cell)).then(() => { copy.textContent = '✓'; setTimeout(() => { copy.innerHTML = copyIcon; }, 1500); }).catch(() => { copy.textContent = '!'; }); });
       cell.append(copy);

@@ -33,7 +33,12 @@ test('initializes delayed dates after navigating to Shipping Bill and switches p
     expect(from.value).toBe('27-10-2026');
     expect(formChanges).toBe(1);
     const search = browser.document.querySelector<HTMLInputElement>('.better-icegate-results input')!;
-    expect(browser.document.querySelectorAll('.better-icegate-copy')).toHaveLength(4);
+    const copyButtons = browser.document.querySelectorAll<HTMLButtonElement>('.better-icegate-copy');
+    expect(copyButtons).toHaveLength(8);
+    expect(copyButtons[0].getAttribute('aria-label')).toBe('Copy job number');
+    expect(copyButtons[1].getAttribute('aria-label')).toBe('Copy SB number');
+    expect(copyButtons[2].getAttribute('aria-label')).toBe('Copy SB date');
+    expect(copyButtons[3].getAttribute('aria-label')).toBe('Copy custom location');
     search.value = 'INMBD6';
     search.dispatchEvent(new browser.Event('input'));
     const rows = browser.document.querySelectorAll<HTMLTableRowElement>('table.resultTable tbody tr');
@@ -105,6 +110,49 @@ test('result tools follow replaced tables and updated cells', async () => {
     rows[0].cells[0].querySelector<HTMLButtonElement>('button')!.click();
     await Promise.resolve();
     expect(copied).toBe('changed');
+  } finally {
+    await browser.happyDOM.abort();
+    Object.assign(globalThis, previous);
+  }
+});
+
+test('copies job number, SB number, SB date, and custom location to clipboard', async () => {
+  const browser = new Window({ url: 'https://foservices.icegate.gov.in/#/e-copy?docType=SB' });
+  const previous = Object.fromEntries(['window', 'document', 'location', 'localStorage', 'MutationObserver', 'Event', 'Element', 'navigator'].map(key => [key, (globalThis as any)[key]]));
+  Object.assign(globalThis, { window: browser, document: browser.document, location: browser.location, localStorage: browser.localStorage, MutationObserver: browser.MutationObserver, Event: browser.Event, Element: browser.Element, navigator: browser.navigator });
+  let copied = '';
+  Object.defineProperty(browser.navigator, 'clipboard', { value: { writeText: async (value: string) => { copied = value; } }, configurable: true });
+  try {
+    browser.document.body.innerHTML = `<app-dec-layout><app-dec-details><div>
+      <table class="resultTable">
+        <thead><tr><th>Job Number</th><th>Job Date</th><th>SB Number</th><th>SB Date</th><th>Location</th></tr></thead>
+        <tbody><tr><td>JOB101</td><td>20-10-2026</td><td>SB202</td><td>21-10-2026</td><td>INNSA1</td></tr></tbody>
+      </table>
+    </div></app-dec-details></app-dec-layout>`;
+    startShippingBillEnhancements();
+    const row = browser.document.querySelector<HTMLTableRowElement>('tbody tr')!;
+    const buttons = row.querySelectorAll<HTMLButtonElement>('.better-icegate-copy');
+    expect(buttons).toHaveLength(4);
+
+    buttons[0].click();
+    await Promise.resolve();
+    expect(copied).toBe('JOB101');
+    expect(buttons[0].getAttribute('aria-label')).toBe('Copy job number');
+
+    buttons[1].click();
+    await Promise.resolve();
+    expect(copied).toBe('SB202');
+    expect(buttons[1].getAttribute('aria-label')).toBe('Copy SB number');
+
+    buttons[2].click();
+    await Promise.resolve();
+    expect(copied).toBe('21-10-2026');
+    expect(buttons[2].getAttribute('aria-label')).toBe('Copy SB date');
+
+    buttons[3].click();
+    await Promise.resolve();
+    expect(copied).toBe('INNSA1');
+    expect(buttons[3].getAttribute('aria-label')).toBe('Copy custom location');
   } finally {
     await browser.happyDOM.abort();
     Object.assign(globalThis, previous);

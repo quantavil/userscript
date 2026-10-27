@@ -15,11 +15,15 @@ button { font: inherit; cursor: pointer; }
 .switch:focus-visible { outline: 2px solid #e5a32d; outline-offset: 2px; }
 .body { padding: 5px 8px 8px; overflow-y: auto; }
 .hint { color: #657789; font-size: 12px; margin: 0 3px 9px; }
-.row { display: flex; align-items: stretch; }
-.shortcut { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; text-align: left; border: 0; border-radius: 7px; background: transparent; color: #183c59; padding: 6px 5px; font-weight: 600; }
+.row { display: flex; align-items: center; gap: 2px; }
+.shortcut { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; text-align: left; border: 0; border-radius: 6px; background: transparent; color: #183c59; padding: 6px; font-weight: 600; }
 .shortcut:hover, .shortcut:focus-visible { background: #edf5fa; }
-.star { color: #e5a32d; } .arrow { color: #698399; } .arrow:last-child { margin-left: auto; }
-.remove { border: 0; background: none; color: #9b3a35; font-size: 20px; }
+.shortcut-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arrow-btn { border: 0; border-radius: 6px; background: transparent; color: #698399; padding: 6px 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; cursor: pointer; flex: none; }
+.arrow-btn:hover, .arrow-btn:focus-visible { background: #edf5fa; color: #183c59; }
+.star { color: #e5a32d; flex: none; }
+.arrow { color: inherit; }
+.remove { border: 0; background: none; color: #9b3a35; font-size: 20px; padding: 0 4px; }
 .actions { border-top: 1px solid #e4ebf0; display: flex; justify-content: space-between; margin-top: 4px; padding-top: 5px; }
 .actions button, .restore { border: 0; background: transparent; color: #21658d; padding: 4px; font-weight: 600; font-size: 12px; }
 .restore { color: #875735; margin-top: 4px; }.message { color: #476477; font-size: 12px; margin: 6px 4px 0; }

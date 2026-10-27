@@ -13,20 +13,33 @@ function openNativeService(): boolean {
   return true;
 }
 
-export function openEsanchit() {
+export function openEsanchit(target: '_blank' | '_self' = '_blank') {
   if (openNativeService()) return;
+  if (target === '_self') {
+    window.name = `${handoffPrefix}${Date.now()}`;
+    if (location.href === dashboard) {
+      window.dispatchEvent(new Event('hashchange'));
+    } else {
+      location.href = dashboard;
+    }
+    return;
+  }
   // A same-origin dashboard tab inherits ICEGATE's session and runs its SSO action.
   window.open(dashboard, `${handoffPrefix}${Date.now()}`);
 }
 
 export function startEsanchitHandoff() {
-  if (!window.name.startsWith(handoffPrefix)) return;
-  window.name = '';
-  const observer = new MutationObserver(tryOpen);
-  const timer = window.setInterval(tryOpen, 500);
-  const timeout = window.setTimeout(stop, 30000);
-  function stop() { observer.disconnect(); clearInterval(timer); clearTimeout(timeout); }
-  function tryOpen() { if (openNativeService()) stop(); }
-  observer.observe(document.body, { childList: true, subtree: true });
-  tryOpen();
+  const tryHandoff = () => {
+    if (!window.name.startsWith(handoffPrefix)) return;
+    window.name = '';
+    const observer = new MutationObserver(tryOpen);
+    const timer = window.setInterval(tryOpen, 500);
+    const timeout = window.setTimeout(stop, 30000);
+    function stop() { observer.disconnect(); clearInterval(timer); clearTimeout(timeout); }
+    function tryOpen() { if (openNativeService()) stop(); }
+    observer.observe(document.body, { childList: true, subtree: true });
+    tryOpen();
+  };
+  tryHandoff();
+  window.addEventListener('hashchange', tryHandoff);
 }

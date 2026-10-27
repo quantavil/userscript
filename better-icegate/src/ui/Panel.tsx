@@ -4,13 +4,17 @@ import { isFavoritesStorageEvent, loadFavorites, saveFavorites } from '../favori
 import { paginationEnabled, setPaginationEnabled, isPaginationStorageEvent } from '../settings/pagination';
 import { openEsanchit } from '../services/esanchit';
 
-function openFavorite(item: Favorite) {
+function openFavorite(item: Favorite, target: '_blank' | '_self' = '_self') {
   // The native eSANCHIT action may establish its own SSO session first.
   if (item.id === 'esanchit') {
-    openEsanchit(); return;
+    openEsanchit(target); return;
   }
-  // An opener is necessary for ICEGATE's per-tab sessionStorage to be copied.
-  window.open(item.url, '_blank');
+  if (target === '_blank') {
+    // An opener is necessary for ICEGATE's per-tab sessionStorage to be copied.
+    window.open(item.url, '_blank');
+  } else {
+    location.href = item.url;
+  }
 }
 
 export function Panel() {
@@ -44,7 +48,8 @@ export function Panel() {
     {expanded && <div class="body">
       {settingsOpen ? <div class="settings"><span>Shipping Bill pagination</span><button class="switch" role="switch" aria-label="Shipping Bill pagination" aria-checked={pagination} onClick={() => { const enabled = !pagination; setPagination(enabled); setPaginationEnabled(enabled); }}><span /></button></div> : <>
       <div class="list">{items.map((item) => <div class="row" key={item.id}>
-        <button class="shortcut" onClick={() => openFavorite(item)} title={`Open ${item.label} in a new tab`}><span class="star">★</span><span>{item.label}</span><span class="arrow">↗</span></button>
+        <button class="shortcut" onClick={() => openFavorite(item, '_self')} title={`Open ${item.label}`}><span class="star">★</span><span class="shortcut-text">{item.label}</span></button>
+        <button class="arrow-btn" onClick={() => openFavorite(item, '_blank')} title={`Open ${item.label} in a new tab`} aria-label={`Open ${item.label} in a new tab`}><span class="arrow">↗</span></button>
         {editing && <button class="remove" aria-label={`Remove ${item.label}`} onClick={() => update(removeFavorite(loadFavorites(), item.id))}>×</button>}
       </div>)}</div>
       {!items.length && <p class="hint">No shortcuts yet. Add this page or restore the defaults.</p>}

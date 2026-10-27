@@ -45,6 +45,7 @@
 }
 .better-icegate-results .better-icegate-filter::placeholder { color: #748595; }
 .better-icegate-export { margin-left: auto; }
+table.resultTable td { white-space: nowrap; }
 .better-icegate-copy {
   display: inline-flex;
   align-items: center;
@@ -59,6 +60,7 @@
   color: #346a9e;
   vertical-align: middle;
   cursor: pointer;
+  flex-shrink: 0;
 }
 .better-icegate-copy:hover { background: #e9f2fc; color: #1454a3; }
 @media (max-width: 480px) {
