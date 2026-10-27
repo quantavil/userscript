@@ -1,0 +1,11 @@
+.better-icegate-doctype { box-sizing: border-box; width: 100%; min-width: 220px; padding: 5px 26px 5px 8px; font: inherit; color: inherit; border: 1px solid #8aa0b3; border-radius: 4px; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23567' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 8px center / 10px; text-overflow: ellipsis; }
+.better-icegate-doctype:focus { outline: 2px solid #1f6fb2; outline-offset: -1px; }
+.better-icegate-doctype:disabled { background-color: #eef1f4; }
+.better-icegate-doclist { position: fixed; z-index: 2147483000; overflow-y: auto; background: #fff; color: #182c42; font: 13px/1.35 system-ui, sans-serif; border: 1px solid #8aa0b3; border-radius: 6px; box-shadow: 0 8px 24px #142c4440; }
+.better-icegate-doclist[hidden] { display: none; }
+.better-icegate-doclist [role="option"] { display: flex; gap: 10px; padding: 6px 10px; cursor: pointer; text-align: left; }
+.better-icegate-doclist [role="option"][aria-selected="true"] { background: #dcebf8; }
+.better-icegate-doclist [data-current="true"] { font-weight: 600; }
+.better-icegate-doc-code { flex: none; width: 54px; color: #4a6a85; font: 12px/1.6 ui-monospace, monospace; }
+.better-icegate-doclist-heading { padding: 6px 10px 3px; color: #567; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; background: #f4f7fa; }
+.better-icegate-doclist-empty { padding: 10px; color: #567; }

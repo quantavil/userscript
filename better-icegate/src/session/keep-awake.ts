@@ -13,5 +13,9 @@ export function startKeepAwake(): void {
       document.documentElement.dispatchEvent(new Event('scroll'));
     }
   };
-  window.setInterval(interrupt, 60_000);
+  window.setInterval(interrupt, 30_000);
+  // Background tabs are throttled or frozen; reset the timer as soon as the tab runs again.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) interrupt(); });
+  window.addEventListener('pageshow', interrupt);
+  window.addEventListener('focus', interrupt);
 }
