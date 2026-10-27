@@ -3,6 +3,7 @@ export interface Favorite { id: string; label: string; url: string }
 export const defaults: Favorite[] = [
   { id: 'esanchit', label: 'eSANCHIT', url: 'https://www.icegate.gov.in/esanchit/home' },
   { id: 'shipping-bill', label: 'Shipping Bill / SB', url: 'https://foservices.icegate.gov.in/#/e-copy?docType=SB' },
+  { id: 'bill-of-entry', label: 'Bill of Entry / BoE', url: 'https://foservices.icegate.gov.in/#/e-copy?docType=BE' },
   { id: 'file-upload', label: 'Electronic Filing / File Upload', url: 'https://foservices.icegate.gov.in/#/role-dashboard/services/file-upload' },
 ];
 

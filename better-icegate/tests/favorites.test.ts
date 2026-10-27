@@ -3,7 +3,7 @@ import { defaults, readFavorites, addFavorite, removeFavorite } from '../src/fav
 
 describe('favorites', () => {
   test('starts with the requested services and preserves an intentionally empty list', () => {
-    expect(readFavorites(null).map(item => item.id)).toEqual(['esanchit', 'shipping-bill', 'file-upload']);
+    expect(readFavorites(null).map(item => item.id)).toEqual(['esanchit', 'shipping-bill', 'bill-of-entry', 'file-upload']);
     expect(readFavorites('[]')).toEqual([]);
   });
   test('rejects unsafe and malformed saved entries', () => {
