@@ -3,24 +3,33 @@ const key = 'better-icegate.sb-template.v1';
 export const defaultTemplate = 'Dear Sir,\n\nFind below Shipping Bill Number:\n\nJob No{tab}SB Number{tab}SB Date\n{job}{tab}{sb}{tab}{date}';
 export const templatePlaceholders = ['{job}', '{sb}', '{date}', '{location}', '{tab}'];
 
-export interface SbValues { job: string; sb: string; date: string; location: string }
-
-export function readTemplate(): string {
-  try {
-    const saved = localStorage.getItem(key);
-    return saved?.trim() ? saved : defaultTemplate;
-  } catch { return defaultTemplate; }
+/** Per-browser template storage; only a customised template is stored, so default changes reach everyone else. */
+export function templateStore(storageKey: string, fallback: string) {
+  return {
+    read(): string {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        return saved?.trim() ? saved : fallback;
+      } catch { return fallback; }
+    },
+    save(template: string): void {
+      try {
+        if (template.trim() && template !== fallback) localStorage.setItem(storageKey, template);
+        else localStorage.removeItem(storageKey);
+      } catch { /* storage unavailable */ }
+    },
+    isEvent: (event: StorageEvent) => event.key === storageKey || event.key === null,
+  };
 }
 
-export function saveTemplate(template: string): void {
-  try {
-    if (template.trim() && template !== defaultTemplate) localStorage.setItem(key, template);
-    else localStorage.removeItem(key);
-  } catch { /* storage unavailable */ }
-}
+const sbStore = templateStore(key, defaultTemplate);
+export const readTemplate = sbStore.read;
+export const saveTemplate = sbStore.save;
+export const isTemplateStorageEvent = sbStore.isEvent;
 
-export function renderTemplate(template: string, values: SbValues): string {
-  return template.replace(/\{(job|sb|date|location|tab)\}/g, (_, name: keyof SbValues | 'tab') => name === 'tab' ? '\t' : values[name]);
+/** Replaces `{name}` with its value and `{tab}` with a tab; unknown names stay as typed. */
+export function renderTemplate(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => name === 'tab' ? '\t' : Object.hasOwn(values, name) ? values[name] : match);
 }
 
 const escapeHtml = (text: string) => text.replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]!);
@@ -43,8 +52,4 @@ export function templateToHtml(text: string): string {
   }
   flush();
   return out.join('');
-}
-
-export function isTemplateStorageEvent(event: StorageEvent): boolean {
-  return event.key === key || event.key === null;
 }

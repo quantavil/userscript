@@ -28,7 +28,6 @@
 .better-icegate-presets button[aria-pressed="true"] { background: #e9f2fc; border-color: #1454a3; color: #124b8d; }
 .better-icegate-presets button:focus-visible,
 .better-icegate-export:focus-visible,
-.better-icegate-copy:focus-visible,
 .better-icegate-filter:focus-visible { outline: 2px solid #1454a3; outline-offset: 2px; }
 .better-icegate-results { padding: 10px 12px; background: #f5f8fb; border-bottom: 1px solid #dbe4ec; }
 .better-icegate-results .better-icegate-filter {
@@ -46,41 +45,6 @@
 .better-icegate-results .better-icegate-filter::placeholder { color: #748595; }
 .better-icegate-export { margin-left: auto; }
 table.resultTable td { white-space: nowrap; }
-.better-icegate-copy {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  margin-left: 4px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #346a9e;
-  vertical-align: middle;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.better-icegate-copy:hover { background: #e9f2fc; color: #1454a3; }
-.better-icegate-template {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  margin-left: 4px;
-  padding: 0;
-  border: 1px solid #b9dcc6;
-  border-radius: 13px;
-  background: #eaf7ef;
-  color: #1d7a45;
-  vertical-align: middle;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.better-icegate-template:hover { background: #d6efdf; border-color: #7fc197; color: #135c32; }
-.better-icegate-template:focus-visible { outline: 2px solid #1d7a45; outline-offset: 2px; }
 @media (max-width: 480px) {
   .better-icegate-presets { padding-left: 15px; padding-right: 15px; }
   .better-icegate-presets-label { width: 100%; }

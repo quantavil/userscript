@@ -5,6 +5,7 @@ import { startKeepAwake } from './session/keep-awake';
 import { startShippingBillEnhancements } from './shipping-bill/enhance';
 import { startEsanchitHandoff } from './services/esanchit';
 import { startDocumentTypeDropdown } from './esanchit/dropdown';
+import { startEsanchitCopy } from './esanchit/copy';
 
 const id = 'better-icegate-root';
 if (!document.getElementById(id)) {
@@ -29,4 +30,5 @@ if (!document.getElementById(id)) {
     document.body.append(marker);
   }
   startDocumentTypeDropdown();
+  startEsanchitCopy();
 }
