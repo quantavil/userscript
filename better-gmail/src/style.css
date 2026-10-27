@@ -209,3 +209,22 @@ tr.bgm-enhanced-row > .bgm-sender-cell {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* One-time code inside the subject or snippet text: same text, italic, click to copy. */
+.bgm-otp {
+  font-style: italic;
+  cursor: pointer;
+}
+
+.bgm-otp:hover {
+  text-decoration: underline dotted;
+}
+
+.bgm-otp[data-copied] {
+  text-decoration: underline;
+}
+
+.bgm-otp:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
+}
