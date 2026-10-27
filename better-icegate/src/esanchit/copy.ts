@@ -1,6 +1,6 @@
 import { defaultEsanchitTemplate, esanchitPlaceholders, readEsanchitTemplate, saveEsanchitTemplate } from '../settings/esanchit-template';
 import { renderTemplate } from '../settings/template';
-import { copyIcon, copyRich, ensureCopyStyles, templateIcon } from '../shared/copy';
+import { copyRich, ensureCopyStyles, templateIcon } from '../shared/copy';
 
 const rowSelector = 'input[id^="drn_"]';
 const toolsClass = 'better-icegate-esanchit-tools';
@@ -32,16 +32,6 @@ function flash(button: HTMLButtonElement, restore: string, ok: boolean) {
   if (ok) setTimeout(() => { button.innerHTML = restore; }, 1500);
 }
 
-function copyButton(label: string, read: () => string): HTMLButtonElement {
-  const button = document.createElement('button');
-  const html = `${copyIcon}<span>${label}</span>`;
-  button.type = 'button'; button.className = 'better-icegate-copy better-icegate-copy-text'; button.innerHTML = html;
-  button.setAttribute('aria-label', `Copy ${label}`);
-  button.title = button.getAttribute('aria-label') ?? '';
-  button.addEventListener('click', () => { void navigator.clipboard.writeText(read()).then(() => flash(button, html, true)).catch(() => flash(button, html, false)); });
-  return button;
-}
-
 function enhanceRow(row: HTMLTableRowElement) {
   const anchor = row.cells[row.cells.length - 1];
   if (!anchor || anchor.querySelector(`.${toolsClass}`)) return;
@@ -55,8 +45,34 @@ function enhanceRow(row: HTMLTableRowElement) {
     void copyRich(renderTemplate(readEsanchitTemplate(), rowValues(row)))
       .then(() => flash(template, templateIcon, true)).catch(() => flash(template, templateIcon, false));
   });
-  tools.append(copyButton('DRN', () => field(row, 'input[id^="drn_"]')), copyButton('IRN', () => field(row, 'input[id^="irn_"]')), template);
+  tools.append(template);
   anchor.append(tools);
+}
+
+const tableColumns = [['File Name', 'file'], ['DRN', 'drn'], ['IRN', 'irn'], ['Start Date', 'date'], ['Digital Sign Validated', 'status'], ['Document Type', 'type']] as const;
+
+/** Every upload row as tab-separated text (pasted into Gmail it becomes a bordered table). */
+function tableText(table: HTMLTableElement): string {
+  const clean = (value: string) => value.replace(/\s+/g, ' ').trim();
+  const rows = [...table.querySelectorAll<HTMLTableRowElement>('tbody tr')].filter(row => row.querySelector(rowSelector))
+    .map(row => { const values = rowValues(row); return tableColumns.map(([, key]) => clean(values[key])); });
+  return [tableColumns.map(([label]) => label), ...rows].map(cells => cells.join('\t')).join('\n');
+}
+
+/** Sits beside the portal's "Upload Documents" button (the bar above the table if that button is missing). */
+function addCopyTable(table: HTMLTableElement) {
+  const upload = document.getElementById('modal');
+  const host = upload?.parentElement ?? table.closest('.divUpload')?.previousElementSibling;
+  if (!host || host.querySelector('.better-icegate-copy-table')) return;
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'btn btn-outline-primary btn-sm better-icegate-copy-table'; button.textContent = 'Copy table';
+  button.title = 'Copy every row of the upload table';
+  button.addEventListener('click', () => {
+    void copyRich(tableText(table.isConnected ? table : document.querySelector('table') ?? table))
+      .then(() => { button.textContent = 'Copied ✓'; }).catch(() => { button.textContent = 'Copy failed'; })
+      .finally(() => setTimeout(() => { button.textContent = 'Copy table'; }, 1500));
+  });
+  if (upload) upload.after(button); else host.append(button);
 }
 
 function addEditor(table: HTMLTableElement) {
@@ -96,6 +112,7 @@ function scan() {
     if (!row || !table) continue;
     ensureCopyStyles();
     addEditor(table);
+    addCopyTable(table);
     enhanceRow(row);
   }
 }

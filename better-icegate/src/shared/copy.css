@@ -34,11 +34,3 @@
 .better-icegate-template:hover { background: #d6efdf; border-color: #7fc197; color: #135c32; }
 .better-icegate-template:focus-visible { outline: 2px solid #1d7a45; outline-offset: 2px; }
 .better-icegate-copy:focus-visible { outline: 2px solid #1454a3; outline-offset: 2px; }
-.better-icegate-copy.better-icegate-copy-text {
-  width: auto;
-  gap: 3px;
-  padding: 0 6px;
-  border: 1px solid #c3d2df;
-  background: #fff;
-  font: 600 11px/1 Arial, sans-serif;
-}

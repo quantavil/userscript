@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { startEsanchitCopy } from '../src/esanchit/copy';
 
-const page = `<form><div class="divUpload"><table><tbody><tr>
+const page = `<form><button id="modal" class="btn">Upload Documents</button><div class="divUpload"><table><tbody><tr>
   <input id="fileName_0" type="hidden" value="KPS AGRO FODD[signed].pdf">
   <td><a href="x"><textarea id="fileName_0" readonly>KPS AGRO FODD[signed].pdf</textarea></a></td>
   <td><input id="drn_0" readonly value="2026102700019579"></td>
@@ -18,7 +18,7 @@ const page = `<form><div class="divUpload"><table><tbody><tr>
   <td><input id="deleteRecord_1" type="submit" value="Delete"></td>
 </tr></tbody></table></div></form>`;
 
-test('adds DRN/IRN copy buttons and an editable email template to each upload row', async () => {
+test('adds an email envelope per row, a copy-table button and an editable email template to each upload row', async () => {
   const browser = new Window({ url: 'https://www.icegate.gov.in/esanchit/home' });
   const keys = ['window', 'document', 'localStorage', 'MutationObserver', 'Event', 'navigator', 'requestAnimationFrame'];
   const previous = Object.fromEntries(keys.map(key => [key, (globalThis as any)[key]]));
@@ -36,19 +36,23 @@ test('adds DRN/IRN copy buttons and an editable email template to each upload ro
     expect(browser.document.querySelectorAll('.better-icegate-esanchit-tools')).toHaveLength(2);
     expect(browser.document.querySelectorAll('.better-icegate-esanchit-bar')).toHaveLength(1);
 
-    const [drn, irn, mail] = rows[0].querySelectorAll<HTMLButtonElement>('.better-icegate-esanchit-tools button');
-    drn.click(); await Promise.resolve();
-    expect(copied).toBe('2026102700019579');
-    irn.click(); await Promise.resolve();
-    expect(copied).toBe('2026102700062887');
+    expect(rows[0].querySelectorAll('.better-icegate-esanchit-tools button')).toHaveLength(1);
+    const mail = rows[0].querySelector<HTMLButtonElement>('.better-icegate-esanchit-tools button')!;
     mail.click(); await new Promise(resolve => setTimeout(resolve, 5));
     expect(copied).toBe('Dear Sir,\n\nFind below eSANCHIT upload details:\n\nDRN\tIRN\tFile Name\tDocument Type\n2026102700019579\t2026102700062887\tKPS AGRO FODD[signed].pdf\t331000-Commercial invoice which includes a packing list');
 
-    const second = rows[1].querySelectorAll<HTMLButtonElement>('.better-icegate-esanchit-tools button')[2];
+    const second = rows[1].querySelector<HTMLButtonElement>('.better-icegate-esanchit-tools button')!;
     second.click(); await new Promise(resolve => setTimeout(resolve, 5));
     expect(copied).toEndWith('D2\tI2\tb.pdf\t380000-Commercial Invoice');
 
+    const copyTable = browser.document.querySelector<HTMLButtonElement>('#modal + .better-icegate-copy-table')!;
     const toggle = browser.document.querySelector<HTMLButtonElement>('.better-icegate-esanchit-bar > button')!;
+    expect(copyTable.textContent).toBe('Copy table');
+    copyTable.click(); await new Promise(resolve => setTimeout(resolve, 5));
+    expect(copied).toBe('File Name\tDRN\tIRN\tStart Date\tDigital Sign Validated\tDocument Type\n'
+      + 'KPS AGRO FODD[signed].pdf\t2026102700019579\t2026102700062887\t2026-10-27 13:16:05\tSuccessfully Verified\t331000-Commercial invoice which includes a packing list\n'
+      + 'b.pdf\tD2\tI2\t\t\t380000-Commercial Invoice');
+
     const text = browser.document.querySelector<HTMLTextAreaElement>('.better-icegate-esanchit-editor textarea')!;
     toggle.click();
     text.value = 'DRN {drn} / {status} / {date}';
