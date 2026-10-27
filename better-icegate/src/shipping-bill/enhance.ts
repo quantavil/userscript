@@ -1,4 +1,5 @@
 import { isPaginationStorageEvent, paginationChanged, paginationEnabled } from '../settings/pagination';
+import { readBeTemplate } from '../settings/be-template';
 import { readTemplate, renderTemplate } from '../settings/template';
 import { copyIcon, copyRich, ensureCopyStyles, templateIcon } from '../shared/copy';
 import { dateRange, presets, toCsv, type DatePreset } from './tools';
@@ -61,19 +62,39 @@ function updateSelected(bar: HTMLElement, from: HTMLInputElement, to: HTMLInputE
 interface CopyTarget {
   index: number;
   label: string;
-  key: 'job' | 'sb' | 'date' | 'location';
+  key: string;
 }
 
-const copyColumnConfigs = [
-  { match: (h: string) => /job\s*(?:no|number)/i.test(h), fallbackIndex: 0, label: 'job number', key: 'job' as const },
-  { match: (h: string) => /sb\s*(?:no|number)/i.test(h), fallbackIndex: 2, label: 'SB number', key: 'sb' as const },
-  { match: (h: string) => /sb\s*date/i.test(h), fallbackIndex: 3, label: 'SB date', key: 'date' as const },
-  { match: (h: string) => /(?:customs?\s*)?loc(?:ation)?/i.test(h), fallbackIndex: 4, label: 'custom location', key: 'location' as const },
-];
+/** An e-copy document type that shares the date form, result table and copy tools. */
+interface DocumentKind {
+  name: string;
+  short: string;
+  /** Template placeholder (and table column) for the document number. */
+  numberKey: string;
+  numberColumn: RegExp;
+  dateColumn: RegExp;
+  csvName: string;
+  readTemplate: () => string;
+}
 
-function resolveCopyTargets(table: HTMLTableElement): CopyTarget[] {
+const documentKinds: Record<string, DocumentKind> = {
+  SB: { name: 'Shipping Bill', short: 'SB', numberKey: 'sb', numberColumn: /sb\s*(?:no|number)/i, dateColumn: /sb\s*date/i, csvName: 'shipping-bills.csv', readTemplate },
+  BE: { name: 'Bill of Entry', short: 'BE', numberKey: 'be', numberColumn: /be\s*(?:no|number)/i, dateColumn: /be\s*date/i, csvName: 'bills-of-entry.csv', readTemplate: readBeTemplate },
+};
+
+// Both documents list: Job Number, Job Date, number, date, custom location.
+function copyColumnConfigs(kind: DocumentKind) {
+  return [
+    { match: (h: string) => /job\s*(?:no|number)/i.test(h), fallbackIndex: 0, label: 'job number', key: 'job' },
+    { match: (h: string) => kind.numberColumn.test(h), fallbackIndex: 2, label: `${kind.short} number`, key: kind.numberKey },
+    { match: (h: string) => kind.dateColumn.test(h), fallbackIndex: 3, label: `${kind.short} date`, key: 'date' },
+    { match: (h: string) => /(?:customs?\s*)?loc(?:ation)?/i.test(h), fallbackIndex: 4, label: 'custom location', key: 'location' },
+  ];
+}
+
+function resolveCopyTargets(table: HTMLTableElement, kind: DocumentKind): CopyTarget[] {
   const headers = [...table.querySelectorAll<HTMLTableCellElement>('thead th, thead td')].map(cell => cell.textContent?.trim().toLowerCase() ?? '');
-  return copyColumnConfigs.map(config => {
+  return copyColumnConfigs(kind).map(config => {
     const matchedIndex = headers.findIndex(config.match);
     return {
       index: matchedIndex !== -1 ? matchedIndex : config.fallbackIndex,
@@ -83,7 +104,7 @@ function resolveCopyTargets(table: HTMLTableElement): CopyTarget[] {
   });
 }
 
-function addResultsTools(details: Element) {
+function addResultsTools(details: Element, kind: DocumentKind) {
   const table = details.querySelector<HTMLTableElement>('table.resultTable');
   if (!table) return;
   let toolbar = details.querySelector<HTMLElement>('.better-icegate-results');
@@ -92,8 +113,6 @@ function addResultsTools(details: Element) {
     toolbar.className = 'better-icegate-results';
     const filter = document.createElement('input');
     filter.type = 'search';
-    filter.placeholder = 'Filter job, SB or location';
-    filter.setAttribute('aria-label', 'Filter visible Shipping Bill results');
     filter.className = 'better-icegate-filter';
     const exportButton = document.createElement('button');
     exportButton.type = 'button'; exportButton.textContent = 'Export CSV';
@@ -110,14 +129,20 @@ function addResultsTools(details: Element) {
       const rows = [...table.querySelectorAll<HTMLTableRowElement>('tbody tr')].filter(row => !row.hidden).map(row => [...row.cells].slice(0, 5).map(cellText));
       const blob = new Blob(['\ufeff', toCsv([headers, ...rows])], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a'); link.href = url; link.download = 'shipping-bills.csv'; link.click();
+      const link = document.createElement('a'); link.href = url; link.download = (currentKind() ?? kind).csvName; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
     toolbar.append(filter, exportButton);
     table.parentElement?.before(toolbar);
   }
   const filter = toolbar.querySelector<HTMLInputElement>('input')!;
-  const targets = resolveCopyTargets(table);
+  // The same toolbar can outlive a route change between document types.
+  const placeholder = `Filter job, ${kind.short} or location`;
+  if (filter.placeholder !== placeholder) {
+    filter.placeholder = placeholder;
+    filter.setAttribute('aria-label', `Filter visible ${kind.name} results`);
+  }
+  const targets = resolveCopyTargets(table, kind);
   for (const row of table.querySelectorAll<HTMLTableRowElement>('tbody tr')) {
     for (const { index, label } of targets) {
       const cell = row.cells[index];
@@ -131,22 +156,22 @@ function addResultsTools(details: Element) {
       copy.addEventListener('click', () => { void navigator.clipboard.writeText(cellText(cell)).then(() => { copy.textContent = '✓'; setTimeout(() => { copy.innerHTML = copyIcon; }, 1500); }).catch(() => { copy.textContent = '!'; }); });
       cell.append(copy);
     }
-    addTemplateCopy(row, targets);
+    addTemplateCopy(row, targets, kind);
   }
   filterRows(table, filter.value);
 }
 
-function addTemplateCopy(row: HTMLTableRowElement, targets: CopyTarget[]) {
+function addTemplateCopy(row: HTMLTableRowElement, targets: CopyTarget[], kind: DocumentKind) {
   const anchor = row.cells[targets[0].index];
   if (!anchor || anchor.querySelector('.better-icegate-template')) return;
   if (!cellText(anchor)) return;
   const button = document.createElement('button');
   button.type = 'button'; button.className = 'better-icegate-template'; button.innerHTML = templateIcon;
-  button.setAttribute('aria-label', 'Copy Shipping Bill email template');
+  button.setAttribute('aria-label', `Copy ${kind.name} email template`);
   button.title = 'Copy email template (edit it in Better ICEGATE settings)';
   button.addEventListener('click', () => {
     const values = Object.fromEntries(targets.map(({ index, key }) => [key, row.cells[index] ? cellText(row.cells[index]) : ''])) as Record<string, string>;
-    void copyRich(renderTemplate(readTemplate(), values))
+    void copyRich(renderTemplate(kind.readTemplate(), values))
       .then(() => { button.textContent = '✓'; setTimeout(() => { button.innerHTML = templateIcon; }, 1500); })
       .catch(() => { button.textContent = '!'; });
   });
@@ -164,13 +189,16 @@ function filterRows(table: HTMLTableElement, query: string) {
   }
 }
 
-function isShippingBill(): boolean {
+function currentKind(): DocumentKind | undefined {
   const [path, query = ''] = location.hash.slice(1).split('?');
-  return path === '/e-copy' && new URLSearchParams(query).get('docType') === 'SB';
+  if (path !== '/e-copy') return undefined;
+  const docType = new URLSearchParams(query).get('docType') ?? '';
+  return Object.hasOwn(documentKinds, docType) ? documentKinds[docType] : undefined;
 }
 
 function enhanceShippingBill() {
-  if (!isShippingBill()) return;
+  const kind = currentKind();
+  if (!kind) return;
 
   const layout = document.querySelector('app-dec-layout');
   const from = layout?.querySelector<HTMLInputElement>('input[formcontrolname="fromDate"]');
@@ -214,7 +242,7 @@ function enhanceShippingBill() {
     }
   }
   const details = layout?.querySelector('app-dec-details');
-  if (details) addResultsTools(details);
+  if (details) addResultsTools(details, kind);
 }
 
 export function startShippingBillEnhancements() {
@@ -237,7 +265,7 @@ export function startShippingBillEnhancements() {
   };
   const onRoute = () => {
     stopRetry();
-    if (!isShippingBill()) return;
+    if (!currentKind()) return;
     enhanceShippingBill();
     const layout = document.querySelector('app-dec-layout');
     if (layout && initializedForms.has(layout)) return;
@@ -245,7 +273,7 @@ export function startShippingBillEnhancements() {
     timer = window.setInterval(() => {
       enhanceShippingBill();
       const current = document.querySelector('app-dec-layout');
-      if (!isShippingBill() || (current && initializedForms.has(current))) stopRetry();
+      if (!currentKind() || (current && initializedForms.has(current))) stopRetry();
     }, 250);
     timeout = window.setTimeout(stopRetry, 15000);
   };

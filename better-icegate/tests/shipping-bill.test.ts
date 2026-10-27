@@ -176,3 +176,29 @@ test('copies job number, SB number, SB date, and custom location to clipboard', 
     Object.assign(globalThis, previous);
   }
 });
+
+test('Bill of Entry gets copy buttons, a four-column email template and its own CSV name', async () => {
+  const browser = new Window({ url: 'https://foservices.icegate.gov.in/#/e-copy?docType=BE' });
+  const previous = Object.fromEntries(['window', 'document', 'location', 'localStorage', 'MutationObserver', 'Event', 'Element', 'navigator'].map(key => [key, (globalThis as any)[key]]));
+  Object.assign(globalThis, { window: browser, document: browser.document, location: browser.location, localStorage: browser.localStorage, MutationObserver: browser.MutationObserver, Event: browser.Event, Element: browser.Element, navigator: browser.navigator });
+  let copied = '';
+  Object.defineProperty(browser.navigator, 'clipboard', { value: { writeText: async (value: string) => { copied = value; } }, configurable: true });
+  try {
+    browser.document.body.innerHTML = `<app-dec-layout><app-dec-details><div><table class="resultTable"><thead><tr><td>Job Number</td><td>Job Date</td><td>BE Number</td><td>BE Date</td><td>Custom Location</td><td>Download Acknowledgement</td><td>Download Signed Copy</td></tr></thead><tbody><tr><td>112</td><td>27-10-2026</td><td>4685033</td><td>26-10-2026</td><td>INMBD6</td><td><a class="disableClick">Download Link</a></td><td><a class="disableClick">Download Link</a></td></tr></tbody></table></div></app-dec-details></app-dec-layout>`;
+    startShippingBillEnhancements();
+    const labels = [...browser.document.querySelectorAll('.better-icegate-copy')].map(button => button.getAttribute('aria-label'));
+    expect(labels).toEqual(['Copy job number', 'Copy BE number', 'Copy BE date', 'Copy custom location']);
+    expect(browser.document.querySelector<HTMLInputElement>('.better-icegate-filter')!.placeholder).toBe('Filter job, BE or location');
+    const template = browser.document.querySelector<HTMLButtonElement>('.better-icegate-template')!;
+    expect(template.getAttribute('aria-label')).toBe('Copy Bill of Entry email template');
+    template.click();
+    await new Promise(resolve => setTimeout(resolve, 5));
+    expect(copied).toBe('Dear Sir,\n\nFind below Bill of Entry details:\n\nJob No\tBE Number\tBE Date\tCustom Location\n112\t4685033\t26-10-2026\tINMBD6');
+    // Download links in the last columns stay untouched.
+    expect(browser.document.querySelectorAll('.disableClick')).toHaveLength(2);
+    expect(browser.document.querySelector('.disableClick')!.parentElement!.querySelector('.better-icegate-copy')).toBeNull();
+  } finally {
+    await browser.happyDOM.abort();
+    Object.assign(globalThis, previous);
+  }
+});

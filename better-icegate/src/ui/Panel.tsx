@@ -4,6 +4,7 @@ import { isFavoritesStorageEvent, loadFavorites, saveFavorites } from '../favori
 import { paginationEnabled, setPaginationEnabled, isPaginationStorageEvent } from '../settings/pagination';
 import { defaultTemplate, readTemplate, saveTemplate, subscribeTemplate, templatePlaceholders } from '../settings/template';
 import { defaultEsanchitTemplate, esanchitPlaceholders, readEsanchitTemplate, saveEsanchitTemplate, subscribeEsanchitTemplate } from '../settings/esanchit-template';
+import { bePlaceholders, defaultBeTemplate, readBeTemplate, saveBeTemplate, subscribeBeTemplate } from '../settings/be-template';
 import { openEsanchit } from '../services/esanchit';
 
 function openFavorite(item: Favorite, target: '_blank' | '_self' = '_self') {
@@ -26,6 +27,7 @@ export function Panel() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pagination, setPagination] = useState(paginationEnabled);
   const [template, setTemplate] = useState(readTemplate);
+  const [beTemplate, setBeTemplate] = useState(readBeTemplate);
   const [esanchitTemplate, setEsanchitTemplate] = useState(readEsanchitTemplate);
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -33,7 +35,7 @@ export function Panel() {
       if (isFavoritesStorageEvent(event)) setItems(loadFavorites());
     };
     window.addEventListener('storage', onStorage);
-    const stopTemplates = [subscribeTemplate(() => setTemplate(readTemplate())), subscribeEsanchitTemplate(() => setEsanchitTemplate(readEsanchitTemplate()))];
+    const stopTemplates = [subscribeTemplate(() => setTemplate(readTemplate())), subscribeBeTemplate(() => setBeTemplate(readBeTemplate())), subscribeEsanchitTemplate(() => setEsanchitTemplate(readEsanchitTemplate()))];
     return () => { window.removeEventListener('storage', onStorage); stopTemplates.forEach(stop => stop()); };
   }, []);
   const [message, setMessage] = useState('');
@@ -51,11 +53,15 @@ export function Panel() {
   return <aside class="panel" aria-label="Better ICEGATE shortcuts">
     <div class="bar"><span class="brand"><span class="star">★</span> Better ICEGATE</span><button class="header-button" aria-label="Settings" aria-expanded={settingsOpen} onClick={() => { setSettingsOpen(!settingsOpen); setExpanded(true); }}>⚙</button><button class="header-button chevron" aria-label={expanded ? 'Collapse' : 'Expand'} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? '−' : '+'}</button></div>
     {expanded && <div class="body">
-      {settingsOpen ? <div class="settings-page"><div class="settings"><span>Shipping Bill pagination</span><button class="switch" role="switch" aria-label="Shipping Bill pagination" aria-checked={pagination} onClick={() => { const enabled = !pagination; setPagination(enabled); setPaginationEnabled(enabled); }}><span /></button></div>
+      {settingsOpen ? <div class="settings-page"><div class="settings"><span>Shipping Bill / Bill of Entry pagination</span><button class="switch" role="switch" aria-label="Shipping Bill and Bill of Entry pagination" aria-checked={pagination} onClick={() => { const enabled = !pagination; setPagination(enabled); setPaginationEnabled(enabled); }}><span /></button></div>
         <label class="template-label" for="sb-template">Shipping Bill email template</label>
         <textarea id="sb-template" class="template-input" rows={9} spellcheck={false} value={template} onInput={event => { const value = event.currentTarget.value; setTemplate(value); saveTemplate(value); }} />
         <p class="hint">Copied by the green envelope on each Shipping Bill row. Placeholders: {templatePlaceholders.join(' ')}</p>
         <button class="restore" onClick={() => { setTemplate(defaultTemplate); saveTemplate(defaultTemplate); }}>Reset template</button>
+        <label class="template-label" for="be-template">Bill of Entry email template</label>
+        <textarea id="be-template" class="template-input" rows={9} spellcheck={false} value={beTemplate} onInput={event => { const value = event.currentTarget.value; setBeTemplate(value); saveBeTemplate(value); }} />
+        <p class="hint">Copied by the green envelope on each Bill of Entry row. Placeholders: {bePlaceholders.join(' ')}</p>
+        <button class="restore" onClick={() => { setBeTemplate(defaultBeTemplate); saveBeTemplate(defaultBeTemplate); }}>Reset template</button>
         <label class="template-label" for="esanchit-template">eSANCHIT email template</label>
         <textarea id="esanchit-template" class="template-input" rows={9} spellcheck={false} value={esanchitTemplate} onInput={event => { const value = event.currentTarget.value; setEsanchitTemplate(value); saveEsanchitTemplate(value); }} />
         <p class="hint">Copied by the green envelope on each eSANCHIT upload row. Placeholders: {esanchitPlaceholders.join(' ')}</p>
