@@ -1,31 +1,27 @@
+import { GM_registerMenuCommand, GM_unregisterMenuCommand } from '$';
+import { saveFile } from './core/download';
+import { observeUpdates } from './core/observer';
+import { enhanceConversation, setConversationEnabled } from './features/conversation';
+import { registerConversationMenu } from './features/conversation-menu';
+import { enhanceAttachments } from './features/attachments';
 import { enhanceRows } from './features/rows';
 import './style.css';
 
-function refresh(): void {
-  enhanceRows(document, async (value) => navigator.clipboard.writeText(value));
-}
+const copy = async (value: string): Promise<void> => navigator.clipboard.writeText(value);
+const updateAttachments = (): void => enhanceAttachments(document, saveFile);
+observeUpdates((row) => enhanceRows(row, copy), updateAttachments, enhanceConversation);
+enhanceRows(document, copy);
+updateAttachments();
 
-let queued = false;
-const observer = new MutationObserver((mutations) => {
-  if (
-    mutations.every(
-      (mutation) =>
-        mutation.target instanceof Element && mutation.target.closest('.bgm-row-action'),
-    )
-  )
-    return;
-  if (queued) return;
-  queued = true;
-  requestAnimationFrame(() => {
-    queued = false;
-    refresh();
-  });
-});
-observer.observe(document.body, {
-  childList: true,
-  subtree: true,
-  characterData: true,
-  attributes: true,
-  attributeFilter: ['email'],
-});
-refresh();
+enhanceConversation(document);
+
+if (
+  typeof GM_registerMenuCommand === 'function' &&
+  typeof GM_unregisterMenuCommand === 'function'
+) {
+  registerConversationMenu(
+    GM_registerMenuCommand,
+    GM_unregisterMenuCommand,
+    setConversationEnabled,
+  );
+}

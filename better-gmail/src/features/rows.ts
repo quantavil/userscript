@@ -1,69 +1,64 @@
 import { element } from '../core/dom';
 import { selectors } from '../selectors';
+import { syncOtp } from './otp';
 
 type Copy = (value: string) => Promise<void>;
-const svgNamespace = 'http://www.w3.org/2000/svg';
-const copyPath =
-  'M8 4h9a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm-4 11H3a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1';
-const checkPath = 'M4 10l4 4 8-8';
+const enhancedTargets = new WeakSet<HTMLElement>();
+let noticeTimer: number | undefined;
 
-function addAction(
-  parent: HTMLElement,
-  label: string,
-  value: () => string,
-  copy: Copy,
-): HTMLButtonElement {
-  const button = element('button', 'bgm-row-action');
-  button.type = 'button';
-  const defaultLabel = `Copy ${label.toLowerCase()}`;
-  button.title = defaultLabel;
-  button.setAttribute('aria-label', defaultLabel);
-  const svg = document.createElementNS(svgNamespace, 'svg');
-  svg.setAttribute('viewBox', '0 0 20 20');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '1.5');
-  svg.setAttribute('stroke-linecap', 'round');
-  svg.setAttribute('stroke-linejoin', 'round');
-  const path = document.createElementNS(svgNamespace, 'path');
-  path.setAttribute('d', copyPath);
-  svg.append(path);
-  button.append(svg);
-  button.addEventListener('mousedown', (event) => event.stopPropagation());
-  button.addEventListener('click', (event) => {
+function copyTarget(target: HTMLElement, label: string, value: () => string, copy: Copy): void {
+  target.classList.add('bgm-copy-target');
+  target.tabIndex = 0;
+  target.setAttribute('role', 'button');
+  target.setAttribute('aria-label', `Copy ${label}: ${value()}`);
+  if (enhancedTargets.has(target)) return;
+  enhancedTargets.add(target);
+  target.addEventListener('mousedown', (event) => event.stopPropagation());
+  const activate = (event: Event): void => {
     event.preventDefault();
     event.stopPropagation();
     const text = value();
     if (!text) return;
-    void copy(text)
-      .then(
-        () => {
-          button.title = 'Copied';
-          path.setAttribute('d', checkPath);
-        },
-        () => {
-          button.title = 'Copy failed';
-        },
-      )
-      .finally(() => {
-        button.setAttribute('aria-label', button.title);
-        window.setTimeout(() => {
-          button.title = defaultLabel;
-          button.setAttribute('aria-label', defaultLabel);
-          path.setAttribute('d', copyPath);
-        }, 1500);
-      });
+    void copy(text).then(
+      () => showNotice('Address copied'),
+      () => showNotice('Copy failed'),
+    );
+  };
+  target.addEventListener('click', activate);
+  target.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') activate(event);
   });
-  parent.append(button);
-  return button;
+}
+
+function showNotice(message: string): void {
+  let notice = document.querySelector<HTMLElement>('.bgm-copy-notice');
+  if (!notice) {
+    notice = element('div', 'bgm-copy-notice');
+    notice.setAttribute('role', 'status');
+    document.body.append(notice);
+  }
+  notice.textContent = message;
+  if (noticeTimer !== undefined) window.clearTimeout(noticeTimer);
+  const current = notice;
+  noticeTimer = window.setTimeout(() => current.remove(), 1500);
 }
 
 export function enhanceRows(root: ParentNode, copy: Copy): void {
-  if (!document.activeElement?.matches('.bgm-subject-cell > .bgm-row-action:focus')) {
-    document.querySelector('.bgm-subject-tooltip')?.remove();
-  }
-  for (const row of root.querySelectorAll<HTMLElement>(selectors.row)) {
+  const rows =
+    root instanceof HTMLElement && root.matches(selectors.row)
+      ? [root]
+      : root.querySelectorAll<HTMLElement>(selectors.row);
+  for (const row of rows) {
+    const background = getComputedStyle(row).backgroundColor.match(
+      /rgba?\(\s*(\d+)[, ]+\s*(\d+)[, ]+\s*(\d+)/,
+    );
+    if (background) {
+      const [, red = '0', green = '0', blue = '0'] = background;
+      row.classList.toggle(
+        'bgm-light-row',
+        Number(red) * 0.299 + Number(green) * 0.587 + Number(blue) * 0.114 > 160,
+      );
+    }
     const subject = row.querySelector<HTMLElement>(selectors.subject);
     if (!subject) continue;
     const text = subject.textContent?.trim() ?? '';
@@ -80,16 +75,18 @@ export function enhanceRows(root: ParentNode, copy: Copy): void {
       if (!addressLine) {
         addressLine = element('span', 'bgm-address-line');
         addressLine.append(element('span', 'bgm-sender-address'));
-        addAction(
-          addressLine,
-          'sender',
-          () => row.querySelector(selectors.visibleSender)?.getAttribute('email') ?? '',
-          copy,
-        );
         senderContainer.append(addressLine);
       }
       const addressText = addressLine.querySelector<HTMLElement>('.bgm-sender-address');
-      if (addressText && addressText.textContent !== address) addressText.textContent = address;
+      if (addressText) {
+        if (addressText.textContent !== address) addressText.textContent = address;
+        copyTarget(
+          addressText,
+          'sender address',
+          () => row.querySelector(selectors.visibleSender)?.getAttribute('email') ?? '',
+          copy,
+        );
+      }
     } else if (senderContainer) {
       senderContainer.querySelector('.bgm-address-line')?.remove();
       senderContainer.classList.remove('bgm-sender-container');
@@ -99,26 +96,10 @@ export function enhanceRows(root: ParentNode, copy: Copy): void {
     if (!parent) continue;
     parent.classList.add('bgm-subject-cell');
     parent.parentElement?.classList.add('bgm-subject-line');
-    parent.parentElement
-      ?.querySelector<HTMLElement>(selectors.snippet)
-      ?.classList.add('bgm-snippet');
-    let subjectAction = parent.querySelector<HTMLButtonElement>(':scope > .bgm-row-action');
-    if (!subjectAction) {
-      const currentSubject = () => row.querySelector(selectors.subject)?.textContent?.trim() ?? '';
-      subjectAction = addAction(parent, 'subject', currentSubject, copy);
-      let tooltip: HTMLElement | undefined;
-      subjectAction.addEventListener('focus', () => {
-        tooltip = element('div', 'bgm-subject-tooltip', currentSubject());
-        tooltip.setAttribute('role', 'tooltip');
-        document.body.append(tooltip);
-      });
-      subjectAction.addEventListener('blur', () => {
-        tooltip?.remove();
-        tooltip = undefined;
-      });
-    }
-    subjectAction.dataset.subject = text;
-    subjectAction.setAttribute('aria-label', `Copy subject: ${text}`);
+    const line = parent.parentElement;
+    const snippet = line?.querySelector<HTMLElement>(selectors.snippet);
+    snippet?.classList.add('bgm-snippet');
+    if (line) syncOtp(line, `${text} ${snippet?.textContent ?? ''}`, copy);
     row.classList.add('bgm-enhanced-row');
   }
 }

@@ -1,11 +1,13 @@
 # Better Gmail
 
-A local Gmail userscript with readable inbox rows and copy controls. Preserve the existing dependencies. Do not add network access or storage without a specific requirement.
+A local Gmail userscript with readable inbox rows and copy controls. Preserve the existing dependencies. Do not add storage or unrelated network access. Attachment downloads are user initiated and use Gmail-provided URLs.
 
 Use Bun, Vite+, TypeScript, and vite-plugin-monkey. `src/main.ts` starts the runtime; independent behavior is in `src/features/`, shared DOM helpers in `src/core/`, Gmail DOM selectors in `src/selectors.ts`, and presentation in `src/style.css`. Tests use Vite+ and happy-dom. Run `bun run verify` before considering changes complete.
 
 Gmail changes and re-renders its DOM, so keep modules idempotent, test navigation and real Gmail layouts, and keep injected interactions from triggering Gmail row actions. Support keyboard focus and light/dark Gmail themes. Gmail enforces Trusted Types: do not assign `innerHTML` in production.
 
-Resolve the visible sender and current subject from the row when copying; Gmail can replace nodes or change sender attributes. Keep Gmail's attachment indicators and previews visible. Observe only necessary attribute changes to avoid responding to the script's own updates.
+Resolve the visible sender from the row when copying; Gmail can replace nodes or change sender attributes. Keep Gmail's attachment indicators and previews visible. Observe only necessary attribute changes to avoid responding to the script's own updates. Conversation compaction only hides Gmail-marked signatures and quoted history in expanded message bodies; keep uncertain boundaries visible and reveal controls accessible and session-only. The userscript-manager menu toggles minimal email view for the current page session; disabling it restores script-collapsed content.
 
 The userscript and project are licensed GPL-3.0-or-later.
+
+OTP detection is heuristic; avoid promising that all unrelated numbers are excluded. Attachment downloads must remain scoped to the current message and report browser fallback as initiated, not confirmed.
