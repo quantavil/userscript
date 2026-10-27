@@ -75,4 +75,18 @@ describe('inbox enhancements', () => {
     senderButton?.click();
     expect(copy).toHaveBeenCalledWith('ops@example.com');
   });
+
+  test('keeps subject and snippet layout structure without displacing snippet or wrapping', () => {
+    document.body.innerHTML =
+      '<table><tbody><tr class="zA"><td><div class="xS"><div class="xT"><div class="y6"><span class="bog">Invoice 123</span></div><span class="y2"> - Payment received</span></div></div></td></tr></tbody></table>';
+    const copy = vi.fn().mockResolvedValue(undefined);
+    enhanceRows(document, copy);
+    const subjectCell = document.querySelector('.bgm-subject-cell');
+    expect(subjectCell).not.toBeNull();
+    const action = subjectCell?.querySelector('.bgm-row-action');
+    expect(action).not.toBeNull();
+    const snippet = document.querySelector('.bgm-snippet');
+    expect(snippet).not.toBeNull();
+    expect(snippet?.textContent).toBe(' - Payment received');
+  });
 });

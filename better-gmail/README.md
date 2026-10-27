@@ -4,7 +4,7 @@ A local Tampermonkey userscript that improves Gmail message rows.
 
 ## Features
 
-- Rows align the sender with the top of the message, keep thread counts beside the sender when space permits, show the address underneath, and wrap the subject to use the available width.
+- Rows align the sender with the top of the message, keep thread counts beside the sender when space permits, and show the address underneath while preserving Gmail's stable single-line subject and snippet layout.
 - Gmail's attachment indicator remains visible alongside its attachment previews.
 - Hover the subject or sender address and select its copy icon. The full subject appears on hover; focus the Subject button to show it with the keyboard. Row controls appear on hover or keyboard focus.
 - Focus indicators preserve keyboard navigation and Gmail's unread styling.
