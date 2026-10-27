@@ -125,6 +125,13 @@ test('edits and resets the Shipping Bill email template in settings', async () =
     expect(browser.localStorage.getItem('better-icegate.sb-template.v1')).toBe('SB {sb} dated {date}');
     browser.document.querySelector<HTMLButtonElement>('.restore')!.click();
     expect(browser.localStorage.getItem('better-icegate.sb-template.v1')).toBeNull();
+    const esanchit = browser.document.querySelector<HTMLTextAreaElement>('#esanchit-template')!;
+    expect(esanchit.value).toContain('Find below eSANCHIT upload details:');
+    esanchit.value = 'DRN {drn}';
+    esanchit.dispatchEvent(new browser.Event('input', { bubbles: true }));
+    expect(browser.localStorage.getItem('better-icegate.esanchit-template.v1')).toBe('DRN {drn}');
+    browser.document.querySelectorAll<HTMLButtonElement>('.restore')[1].click();
+    expect(browser.localStorage.getItem('better-icegate.esanchit-template.v1')).toBeNull();
   } finally {
     await browser.happyDOM.abort();
     Object.assign(globalThis, previous);

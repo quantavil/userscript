@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { defaultTemplate, renderTemplate, templateToHtml } from '../src/settings/template';
+import { defaultTemplate, renderTemplate, templateStore, templateToHtml } from '../src/settings/template';
 
 test('renders the default email template with tab-separated values', () => {
   expect(renderTemplate(defaultTemplate, { job: '61226', sb: '8112958', date: '27-10-2026', location: 'INMBD6' })).toBe(
@@ -18,4 +18,35 @@ test('turns tab-separated lines into a bordered table and escapes values', () =>
   expect(html).toContain('<td style="border:1px solid #000;padding:4px 10px;">61226</td><td style="border:1px solid #000;padding:4px 10px;">8112958</td>');
   expect(templateToHtml('a\t<b>&')).toContain('&lt;b&gt;&amp;');
   expect(templateToHtml('a\tb')).not.toContain('font-weight');
+});
+
+test('shares the template through the userscript manager and migrates the local copy', () => {
+  const values = new Map<string, string>();
+  const local = new Map([['k', 'old local']]);
+  const listeners: Array<() => void> = [];
+  const previous = Object.fromEntries(['GM_getValue', 'GM_setValue', 'GM_deleteValue', 'GM_addValueChangeListener', 'localStorage', 'window'].map(key => [key, (globalThis as any)[key]]));
+  Object.assign(globalThis, {
+    GM_getValue: (name: string, fallback?: string) => values.get(name) ?? fallback,
+    GM_setValue: (name: string, value: string) => { values.set(name, value); listeners.forEach(fn => fn()); },
+    GM_deleteValue: (name: string) => { values.delete(name); listeners.forEach(fn => fn()); },
+    GM_addValueChangeListener: (_: string, fn: () => void) => listeners.push(fn),
+    localStorage: { getItem: (name: string) => local.get(name) ?? null, removeItem: (name: string) => { local.delete(name); } },
+    window: { addEventListener() {}, removeEventListener() {} },
+  });
+  try {
+    const store = templateStore('k', 'default');
+    expect(store.read()).toBe('old local');
+    let changes = 0;
+    store.subscribe(() => changes++);
+    store.save('custom');
+    expect(values.get('k')).toBe('custom');
+    expect(local.has('k')).toBe(false);
+    expect(store.read()).toBe('custom');
+    store.save('default');
+    expect(values.has('k')).toBe(false);
+    expect(store.read()).toBe('default');
+    expect(changes).toBe(2);
+  } finally {
+    Object.assign(globalThis, previous);
+  }
 });

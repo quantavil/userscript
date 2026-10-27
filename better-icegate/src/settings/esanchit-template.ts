@@ -6,3 +6,4 @@ export const esanchitPlaceholders = ['{drn}', '{irn}', '{file}', '{type}', '{dat
 const store = templateStore('better-icegate.esanchit-template.v1', defaultEsanchitTemplate);
 export const readEsanchitTemplate = store.read;
 export const saveEsanchitTemplate = store.save;
+export const subscribeEsanchitTemplate = store.subscribe;

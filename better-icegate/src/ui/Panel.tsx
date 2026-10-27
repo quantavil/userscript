@@ -2,7 +2,8 @@ import { useEffect, useState } from 'preact/hooks';
 import { addFavorite, defaults, removeFavorite, type Favorite } from '../favorites/model';
 import { isFavoritesStorageEvent, loadFavorites, saveFavorites } from '../favorites/storage';
 import { paginationEnabled, setPaginationEnabled, isPaginationStorageEvent } from '../settings/pagination';
-import { defaultTemplate, isTemplateStorageEvent, readTemplate, saveTemplate, templatePlaceholders } from '../settings/template';
+import { defaultTemplate, readTemplate, saveTemplate, subscribeTemplate, templatePlaceholders } from '../settings/template';
+import { defaultEsanchitTemplate, esanchitPlaceholders, readEsanchitTemplate, saveEsanchitTemplate, subscribeEsanchitTemplate } from '../settings/esanchit-template';
 import { openEsanchit } from '../services/esanchit';
 
 function openFavorite(item: Favorite, target: '_blank' | '_self' = '_self') {
@@ -25,14 +26,15 @@ export function Panel() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pagination, setPagination] = useState(paginationEnabled);
   const [template, setTemplate] = useState(readTemplate);
+  const [esanchitTemplate, setEsanchitTemplate] = useState(readEsanchitTemplate);
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (isPaginationStorageEvent(event)) setPagination(paginationEnabled());
-      if (isTemplateStorageEvent(event)) setTemplate(readTemplate());
       if (isFavoritesStorageEvent(event)) setItems(loadFavorites());
     };
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    const stopTemplates = [subscribeTemplate(() => setTemplate(readTemplate())), subscribeEsanchitTemplate(() => setEsanchitTemplate(readEsanchitTemplate()))];
+    return () => { window.removeEventListener('storage', onStorage); stopTemplates.forEach(stop => stop()); };
   }, []);
   const [message, setMessage] = useState('');
   const update = (next: Favorite[]) => { setItems(next); saveFavorites(next); };
@@ -54,6 +56,10 @@ export function Panel() {
         <textarea id="sb-template" class="template-input" rows={9} spellcheck={false} value={template} onInput={event => { const value = event.currentTarget.value; setTemplate(value); saveTemplate(value); }} />
         <p class="hint">Copied by the green envelope on each Shipping Bill row. Placeholders: {templatePlaceholders.join(' ')}</p>
         <button class="restore" onClick={() => { setTemplate(defaultTemplate); saveTemplate(defaultTemplate); }}>Reset template</button>
+        <label class="template-label" for="esanchit-template">eSANCHIT email template</label>
+        <textarea id="esanchit-template" class="template-input" rows={9} spellcheck={false} value={esanchitTemplate} onInput={event => { const value = event.currentTarget.value; setEsanchitTemplate(value); saveEsanchitTemplate(value); }} />
+        <p class="hint">Copied by the green envelope on each eSANCHIT upload row. Placeholders: {esanchitPlaceholders.join(' ')}</p>
+        <button class="restore" onClick={() => { setEsanchitTemplate(defaultEsanchitTemplate); saveEsanchitTemplate(defaultEsanchitTemplate); }}>Reset template</button>
       </div> : <>
       <div class="list">{items.map((item) => <div class="row" key={item.id}>
         <button class="shortcut" onClick={() => openFavorite(item, '_self')} title={`Open ${item.label}`}><span class="star">★</span><span class="shortcut-text">{item.label}</span></button>

@@ -3,29 +3,50 @@ const key = 'better-icegate.sb-template.v1';
 export const defaultTemplate = 'Dear Sir,\n\nFind below Shipping Bill Number:\n\nJob No{tab}SB Number{tab}SB Date\n{job}{tab}{sb}{tab}{date}';
 export const templatePlaceholders = ['{job}', '{sb}', '{date}', '{location}', '{tab}'];
 
-/** Per-browser template storage; only a customised template is stored, so default changes reach everyone else. */
+declare const GM_getValue: ((name: string, fallback?: string) => string | undefined) | undefined;
+declare const GM_setValue: ((name: string, value: string) => void) | undefined;
+declare const GM_deleteValue: ((name: string) => void) | undefined;
+declare const GM_addValueChangeListener: ((name: string, listener: () => void) => unknown) | undefined;
+
+const managerStorage = () => typeof GM_getValue === 'function' && typeof GM_setValue === 'function' && typeof GM_deleteValue === 'function';
+
+/**
+ * Template storage shared by every ICEGATE site through the userscript manager (the panel and the
+ * eSANCHIT page are different origins), falling back to localStorage. Only a customised template is
+ * stored, so default changes reach everyone else.
+ */
 export function templateStore(storageKey: string, fallback: string) {
+  const local = (): string | null => { try { return localStorage.getItem(storageKey); } catch { return null; } };
   return {
     read(): string {
-      try {
-        const saved = localStorage.getItem(storageKey);
-        return saved?.trim() ? saved : fallback;
-      } catch { return fallback; }
+      const saved = (managerStorage() ? GM_getValue!(storageKey, '') : '') || local();
+      return saved?.trim() ? saved : fallback;
     },
     save(template: string): void {
+      const custom = template.trim() && template !== fallback;
+      if (managerStorage()) {
+        if (custom) GM_setValue!(storageKey, template); else GM_deleteValue!(storageKey);
+        try { localStorage.removeItem(storageKey); } catch { /* storage unavailable */ }
+        return;
+      }
       try {
-        if (template.trim() && template !== fallback) localStorage.setItem(storageKey, template);
-        else localStorage.removeItem(storageKey);
+        if (custom) localStorage.setItem(storageKey, template); else localStorage.removeItem(storageKey);
       } catch { /* storage unavailable */ }
     },
-    isEvent: (event: StorageEvent) => event.key === storageKey || event.key === null,
+    /** Calls `listener` when another tab or site changes the template; returns an unsubscribe. */
+    subscribe(listener: () => void): () => void {
+      const onStorage = (event: StorageEvent) => { if (event.key === storageKey || event.key === null) listener(); };
+      window.addEventListener('storage', onStorage);
+      if (typeof GM_addValueChangeListener === 'function') GM_addValueChangeListener(storageKey, listener);
+      return () => window.removeEventListener('storage', onStorage);
+    },
   };
 }
 
 const sbStore = templateStore(key, defaultTemplate);
 export const readTemplate = sbStore.read;
 export const saveTemplate = sbStore.save;
-export const isTemplateStorageEvent = sbStore.isEvent;
+export const subscribeTemplate = sbStore.subscribe;
 
 /** Replaces `{name}` with its value and `{tab}` with a tab; unknown names stay as typed. */
 export function renderTemplate(template: string, values: Record<string, string>): string {
