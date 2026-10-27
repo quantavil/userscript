@@ -151,3 +151,52 @@ tr.bgm-enhanced-row > .bgm-sender-cell {
     box-shadow: 0 3px 14px rgb(0 0 0 / 50%);
   }
 }
+
+.bgm-attachments-bar {
+  margin: 4px 0 8px;
+}
+
+.bgm-attachments-download {
+  padding: 5px 12px;
+  border: 1px solid #c4c7c5;
+  border-radius: 16px;
+  color: #174ea6;
+  background: #e8f0fe;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.bgm-attachments-download:hover:not(:disabled) {
+  background: #d2e3fc;
+}
+
+.bgm-attachments-download:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
+}
+
+.bgm-attachments-download:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+@media (prefers-color-scheme: dark) {
+  .bgm-attachments-download {
+    color: #8ab4f8;
+    background: #283344;
+    border-color: #5f6368;
+  }
+  .bgm-attachments-download:hover:not(:disabled) {
+    background: #39475c;
+  }
+}
+
+.bgm-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

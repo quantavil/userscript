@@ -9,3 +9,5 @@ Gmail changes and re-renders its DOM, so keep modules idempotent, test navigatio
 Resolve the visible sender and current subject from the row when copying; Gmail can replace nodes or change sender attributes. Keep Gmail's attachment indicators and previews visible. Observe only necessary attribute changes to avoid responding to the script's own updates.
 
 The userscript and project are licensed GPL-3.0-or-later.
+
+Attachment downloads (`features/attachments.ts`) read each card's `download_url` attribute (`mime:filename:url`), found by attribute rather than Gmail's obfuscated classes, and group cards by ancestor without crossing a `[role="listitem"]` message. They save to the default folder (`core/folder.ts`: File System Access handle persisted in IndexedDB, reset by a `GM_registerMenuCommand` in `main.ts`) and fall back to browser downloads on any failure. Selectors are unverified against live Gmail, so check them first if the button is missing.

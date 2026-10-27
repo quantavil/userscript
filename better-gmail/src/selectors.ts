@@ -5,4 +5,6 @@ export const selectors = {
   snippet: '.y2',
   visibleSender: '.yW [email]',
   senderContainer: '.yW',
+  attachmentCard: '[download_url]',
+  message: '[role="listitem"]',
 } as const;
