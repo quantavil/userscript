@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { addFavorite, defaults, removeFavorite, type Favorite } from '../favorites/model';
 import { isFavoritesStorageEvent, loadFavorites, saveFavorites } from '../favorites/storage';
 import { paginationEnabled, setPaginationEnabled, isPaginationStorageEvent } from '../settings/pagination';
+import { defaultTemplate, isTemplateStorageEvent, readTemplate, saveTemplate, templatePlaceholders } from '../settings/template';
 import { openEsanchit } from '../services/esanchit';
 
 function openFavorite(item: Favorite, target: '_blank' | '_self' = '_self') {
@@ -23,9 +24,11 @@ export function Panel() {
   const [editing, setEditing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pagination, setPagination] = useState(paginationEnabled);
+  const [template, setTemplate] = useState(readTemplate);
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (isPaginationStorageEvent(event)) setPagination(paginationEnabled());
+      if (isTemplateStorageEvent(event)) setTemplate(readTemplate());
       if (isFavoritesStorageEvent(event)) setItems(loadFavorites());
     };
     window.addEventListener('storage', onStorage);
@@ -46,7 +49,12 @@ export function Panel() {
   return <aside class="panel" aria-label="Better ICEGATE shortcuts">
     <div class="bar"><span class="brand"><span class="star">★</span> Better ICEGATE</span><button class="header-button" aria-label="Settings" aria-expanded={settingsOpen} onClick={() => { setSettingsOpen(!settingsOpen); setExpanded(true); }}>⚙</button><button class="header-button chevron" aria-label={expanded ? 'Collapse' : 'Expand'} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? '−' : '+'}</button></div>
     {expanded && <div class="body">
-      {settingsOpen ? <div class="settings"><span>Shipping Bill pagination</span><button class="switch" role="switch" aria-label="Shipping Bill pagination" aria-checked={pagination} onClick={() => { const enabled = !pagination; setPagination(enabled); setPaginationEnabled(enabled); }}><span /></button></div> : <>
+      {settingsOpen ? <div class="settings-page"><div class="settings"><span>Shipping Bill pagination</span><button class="switch" role="switch" aria-label="Shipping Bill pagination" aria-checked={pagination} onClick={() => { const enabled = !pagination; setPagination(enabled); setPaginationEnabled(enabled); }}><span /></button></div>
+        <label class="template-label" for="sb-template">Shipping Bill email template</label>
+        <textarea id="sb-template" class="template-input" rows={9} spellcheck={false} value={template} onInput={event => { const value = event.currentTarget.value; setTemplate(value); saveTemplate(value); }} />
+        <p class="hint">Copied by the green envelope on each Shipping Bill row. Placeholders: {templatePlaceholders.join(' ')}</p>
+        <button class="restore" onClick={() => { setTemplate(defaultTemplate); saveTemplate(defaultTemplate); }}>Reset template</button>
+      </div> : <>
       <div class="list">{items.map((item) => <div class="row" key={item.id}>
         <button class="shortcut" onClick={() => openFavorite(item, '_self')} title={`Open ${item.label}`}><span class="star">★</span><span class="shortcut-text">{item.label}</span></button>
         <button class="arrow-btn" onClick={() => openFavorite(item, '_blank')} title={`Open ${item.label} in a new tab`} aria-label={`Open ${item.label} in a new tab`}><span class="arrow">↗</span></button>

@@ -63,6 +63,24 @@ table.resultTable td { white-space: nowrap; }
   flex-shrink: 0;
 }
 .better-icegate-copy:hover { background: #e9f2fc; color: #1454a3; }
+.better-icegate-template {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 4px;
+  padding: 0;
+  border: 1px solid #b9dcc6;
+  border-radius: 13px;
+  background: #eaf7ef;
+  color: #1d7a45;
+  vertical-align: middle;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.better-icegate-template:hover { background: #d6efdf; border-color: #7fc197; color: #135c32; }
+.better-icegate-template:focus-visible { outline: 2px solid #1d7a45; outline-offset: 2px; }
 @media (max-width: 480px) {
   .better-icegate-presets { padding-left: 15px; padding-right: 15px; }
   .better-icegate-presets-label { width: 100%; }

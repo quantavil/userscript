@@ -107,3 +107,26 @@ test('handles eSANCHIT same tab and new tab actions', async () => {
     Object.assign(globalThis, previous);
   }
 });
+
+test('edits and resets the Shipping Bill email template in settings', async () => {
+  const browser = new Window({ url: 'https://foservices.icegate.gov.in/#/role-dashboard/role-dashboardView' });
+  const previous = Object.fromEntries(['window', 'document', 'location', 'localStorage', 'Event', 'Element'].map(key => [key, (globalThis as any)[key]]));
+  Object.assign(globalThis, { window: browser, document: browser.document, location: browser.location, localStorage: browser.localStorage, Event: browser.Event, Element: browser.Element });
+  try {
+    const root = browser.document.createElement('div');
+    browser.document.body.append(root);
+    render(<Panel />, root);
+    browser.document.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!.click();
+    await new Promise(resolve => setTimeout(resolve, 5));
+    const input = browser.document.querySelector<HTMLTextAreaElement>('#sb-template')!;
+    expect(input.value).toContain('Find below Shipping Bill Number:');
+    input.value = 'SB {sb} dated {date}';
+    input.dispatchEvent(new browser.Event('input', { bubbles: true }));
+    expect(browser.localStorage.getItem('better-icegate.sb-template.v1')).toBe('SB {sb} dated {date}');
+    browser.document.querySelector<HTMLButtonElement>('.restore')!.click();
+    expect(browser.localStorage.getItem('better-icegate.sb-template.v1')).toBeNull();
+  } finally {
+    await browser.happyDOM.abort();
+    Object.assign(globalThis, previous);
+  }
+});

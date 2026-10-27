@@ -1,4 +1,5 @@
 import { isPaginationStorageEvent, paginationChanged, paginationEnabled } from '../settings/pagination';
+import { readTemplate, renderTemplate, templateToHtml, type SbValues } from '../settings/template';
 import { dateRange, presets, toCsv, type DatePreset } from './tools';
 import shippingStyles from './styles.css?inline';
 
@@ -59,13 +60,14 @@ function updateSelected(bar: HTMLElement, from: HTMLInputElement, to: HTMLInputE
 interface CopyTarget {
   index: number;
   label: string;
+  key: keyof SbValues;
 }
 
 const copyColumnConfigs = [
-  { match: (h: string) => /job\s*(?:no|number)/i.test(h), fallbackIndex: 0, label: 'job number' },
-  { match: (h: string) => /sb\s*(?:no|number)/i.test(h), fallbackIndex: 2, label: 'SB number' },
-  { match: (h: string) => /sb\s*date/i.test(h), fallbackIndex: 3, label: 'SB date' },
-  { match: (h: string) => /(?:customs?\s*)?loc(?:ation)?/i.test(h), fallbackIndex: 4, label: 'custom location' },
+  { match: (h: string) => /job\s*(?:no|number)/i.test(h), fallbackIndex: 0, label: 'job number', key: 'job' as const },
+  { match: (h: string) => /sb\s*(?:no|number)/i.test(h), fallbackIndex: 2, label: 'SB number', key: 'sb' as const },
+  { match: (h: string) => /sb\s*date/i.test(h), fallbackIndex: 3, label: 'SB date', key: 'date' as const },
+  { match: (h: string) => /(?:customs?\s*)?loc(?:ation)?/i.test(h), fallbackIndex: 4, label: 'custom location', key: 'location' as const },
 ];
 
 function resolveCopyTargets(table: HTMLTableElement): CopyTarget[] {
@@ -75,6 +77,7 @@ function resolveCopyTargets(table: HTMLTableElement): CopyTarget[] {
     return {
       index: matchedIndex !== -1 ? matchedIndex : config.fallbackIndex,
       label: config.label,
+      key: config.key,
     };
   });
 }
@@ -127,14 +130,47 @@ function addResultsTools(details: Element) {
       copy.addEventListener('click', () => { void navigator.clipboard.writeText(cellText(cell)).then(() => { copy.textContent = '✓'; setTimeout(() => { copy.innerHTML = copyIcon; }, 1500); }).catch(() => { copy.textContent = '!'; }); });
       cell.append(copy);
     }
+    addTemplateCopy(row, targets);
   }
   filterRows(table, filter.value);
 }
 
+/** Copies HTML (a bordered table for Gmail) with a plain-text fallback. */
+async function copyRich(text: string): Promise<void> {
+  try {
+    if (typeof ClipboardItem === 'undefined' || !navigator.clipboard.write) throw new Error('rich clipboard unavailable');
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/html': new Blob([templateToHtml(text)], { type: 'text/html' }),
+      'text/plain': new Blob([text], { type: 'text/plain' }),
+    })]);
+  } catch {
+    await navigator.clipboard.writeText(text);
+  }
+}
+
+function addTemplateCopy(row: HTMLTableRowElement, targets: CopyTarget[]) {
+  const anchor = row.cells[targets[0].index];
+  if (!anchor || anchor.querySelector('.better-icegate-template')) return;
+  if (!cellText(anchor)) return;
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'better-icegate-template'; button.innerHTML = templateIcon;
+  button.setAttribute('aria-label', 'Copy Shipping Bill email template');
+  button.title = 'Copy email template (edit it in Better ICEGATE settings)';
+  button.addEventListener('click', () => {
+    const values = Object.fromEntries(targets.map(({ index, key }) => [key, row.cells[index] ? cellText(row.cells[index]) : ''])) as unknown as SbValues;
+    void copyRich(renderTemplate(readTemplate(), values))
+      .then(() => { button.textContent = '✓'; setTimeout(() => { button.innerHTML = templateIcon; }, 1500); })
+      .catch(() => { button.textContent = '!'; });
+  });
+  anchor.append(button);
+}
+
+const templateIcon = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3.5 6.5 8.5 6.5 8.5-6.5"></path></svg>';
+
 const copyIcon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="1.5"></rect><path d="M16 8V5a1.5 1.5 0 0 0-1.5-1.5h-9A1.5 1.5 0 0 0 4 5v10A1.5 1.5 0 0 0 5.5 16H8"></path></svg>';
 
 function cellText(cell: HTMLTableCellElement): string {
-  return [...cell.childNodes].filter(node => !(node instanceof Element && node.classList.contains('better-icegate-copy'))).map(node => node.textContent ?? '').join('').trim();
+  return [...cell.childNodes].filter(node => !(node instanceof Element && (node.classList.contains('better-icegate-copy') || node.classList.contains('better-icegate-template')))).map(node => node.textContent ?? '').join('').trim();
 }
 
 function filterRows(table: HTMLTableElement, query: string) {
