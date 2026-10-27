@@ -40,7 +40,7 @@ describe('attachment downloads', () => {
     expect(labels).toEqual(['Download all 2 attachments', 'Download attachment']);
   });
 
-  test('skips single attachments and removes a stale bar', () => {
+  test('offers a single attachment too and removes a stale bar', () => {
     document.body.innerHTML = `<div><div>${card('a.pdf', '0.1')}${card('b.pdf', '0.2')}</div></div>`;
     enhanceAttachments(document, vi.fn());
     document.querySelector('[download_url]:last-child')?.remove();
