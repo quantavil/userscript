@@ -1,12 +1,14 @@
+import type { Attachment } from '../core/download';
 import { element } from '../core/dom';
-import { getFolder, writeFile } from '../core/folder';
 import { selectors } from '../selectors';
 
-type Attachment = { url: string; filename: string };
 type Save = (file: Attachment) => Promise<void>;
 
-const gapMs = 500;
-const maxLevels = 4;
+const svgNamespace = 'http://www.w3.org/2000/svg';
+const downloadPath = 'M10 3v9m0 0-3.5-3.5M10 12l3.5-3.5M4 16h12';
+const checkPath = 'M4 10l4 4 8-8';
+const resultMs = 2000;
+const maxLevels = 6;
 
 // Gmail stores `mime:filename:url` on each attachment card; names may contain colons.
 function parseAttachment(card: Element): Attachment | undefined {
@@ -40,42 +42,26 @@ function attachmentsIn(group: Element): Attachment[] {
   return found;
 }
 
-function browserDownload(file: Attachment): Promise<void> {
-  const link = element('a', 'bgm-download-link');
-  link.href = file.url;
-  link.download = file.filename;
-  link.hidden = true;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  // Browsers throttle rapid-fire downloads; space them out.
-  return new Promise((resolve) => window.setTimeout(resolve, gapMs));
-}
-
-// Saves into the default folder when there is one. If there is none, or a fetch or write
-// fails, the browser downloads the file instead, so a click never silently does nothing.
-async function chooseSave(): Promise<Save> {
-  const folder = await getFolder();
-  if (!folder) return browserDownload;
-  return async (file) => {
-    try {
-      const response = await fetch(file.url, { credentials: 'include' });
-      if (!response.ok) throw new Error(String(response.status));
-      await writeFile(folder, file.filename, await response.blob());
-    } catch {
-      await browserDownload(file);
-    }
-  };
-}
-
 function setText(node: HTMLElement, text: string): void {
   if (node.textContent !== text) node.textContent = text;
 }
 
-function createBar(group: () => Element, chooseSaver: () => Promise<Save>): HTMLElement {
+function createBar(group: () => Element, save: Save): HTMLElement {
   const bar = element('div', 'bgm-attachments-bar');
   const button = element('button', 'bgm-attachments-download');
   button.type = 'button';
+  const svg = document.createElementNS(svgNamespace, 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.7');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const path = document.createElementNS(svgNamespace, 'path');
+  path.setAttribute('d', downloadPath);
+  svg.append(path);
+  button.append(svg, element('span', 'bgm-attachments-count'));
   const status = element('span', 'bgm-sr-only');
   status.setAttribute('role', 'status');
   bar.append(button, status);
@@ -88,27 +74,33 @@ function createBar(group: () => Element, chooseSaver: () => Promise<Save>): HTML
     button.setAttribute('aria-busy', 'true');
     void (async () => {
       try {
-        const save = await chooseSaver();
         for (const [index, file] of files.entries()) {
-          setText(button, `Downloading ${index + 1} of ${files.length}`);
+          setText(button.lastElementChild as HTMLElement, `${index + 1}/${files.length}`);
           await save(file);
         }
-        setText(status, `Downloaded ${files.length} attachments`);
+        path.setAttribute('d', checkPath);
+        setText(
+          status,
+          `Downloaded ${files.length} ${files.length === 1 ? 'attachment' : 'attachments'}`,
+        );
+        await new Promise((resolve) => window.setTimeout(resolve, resultMs));
       } catch {
         setText(status, 'Could not download all attachments');
       } finally {
+        path.setAttribute('d', downloadPath);
         button.disabled = false;
         button.removeAttribute('aria-busy');
+        setText(
+          button.lastElementChild as HTMLElement,
+          files.length > 1 ? String(files.length) : '',
+        );
       }
     })();
   });
   return bar;
 }
 
-export function enhanceAttachments(
-  root: ParentNode,
-  chooseSaver: () => Promise<Save> = chooseSave,
-): void {
+export function enhanceAttachments(root: ParentNode, save: Save): void {
   const groups = new Map<Element, Element>();
   for (const card of root.querySelectorAll(selectors.attachmentCard)) {
     const group = groupOf(card);
@@ -126,15 +118,16 @@ export function enhanceAttachments(
       ? (anchor.previousElementSibling as HTMLElement)
       : undefined;
     if (!bar) {
-      bar = createBar(() => group, chooseSaver);
+      bar = createBar(() => group, save);
       anchor.before(bar);
     }
     live.add(bar);
     const button = bar.querySelector<HTMLButtonElement>('button');
     if (button && !button.disabled) {
-      setText(button, `Download all ${count} attachments`);
-      const label = `Download all ${count} attachments as separate files`;
+      setText(button.lastElementChild as HTMLElement, count > 1 ? String(count) : '');
+      const label = count === 1 ? 'Download attachment' : `Download all ${count} attachments`;
       if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
+      if (button.title !== label) button.title = label;
     }
   }
   for (const bar of document.querySelectorAll('.bgm-attachments-bar')) {

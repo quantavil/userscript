@@ -157,14 +157,30 @@ tr.bgm-enhanced-row > .bgm-sender-cell {
 }
 
 .bgm-attachments-download {
-  padding: 5px 12px;
-  border: 1px solid #c4c7c5;
-  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 7px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 14px;
   color: #174ea6;
   background: #e8f0fe;
-  font: inherit;
-  font-size: 13px;
+  font:
+    600 12px/1 Arial,
+    sans-serif;
   cursor: pointer;
+}
+
+.bgm-attachments-download svg {
+  width: 16px;
+  height: 16px;
+}
+
+.bgm-attachments-count:empty {
+  display: none;
 }
 
 .bgm-attachments-download:hover:not(:disabled) {
@@ -178,14 +194,13 @@ tr.bgm-enhanced-row > .bgm-sender-cell {
 
 .bgm-attachments-download:disabled {
   cursor: progress;
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
 @media (prefers-color-scheme: dark) {
   .bgm-attachments-download {
     color: #8ab4f8;
     background: #283344;
-    border-color: #5f6368;
   }
   .bgm-attachments-download:hover:not(:disabled) {
     background: #39475c;
