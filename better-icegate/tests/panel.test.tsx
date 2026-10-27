@@ -126,7 +126,7 @@ test('edits and resets the Shipping Bill email template in settings', async () =
     browser.document.querySelector<HTMLButtonElement>('.restore')!.click();
     expect(browser.localStorage.getItem('better-icegate.sb-template.v1')).toBeNull();
     const esanchit = browser.document.querySelector<HTMLTextAreaElement>('#esanchit-template')!;
-    expect(esanchit.value).toContain('Find below eSANCHIT upload details:');
+    expect(esanchit.value).toContain('Find below the IRN and DRN details:');
     esanchit.value = 'DRN {drn}';
     esanchit.dispatchEvent(new browser.Event('input', { bubbles: true }));
     expect(browser.localStorage.getItem('better-icegate.esanchit-template.v1')).toBe('DRN {drn}');

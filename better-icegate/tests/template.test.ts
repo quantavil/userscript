@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { defaultTemplate, renderTemplate, templateStore, templateToHtml } from '../src/settings/template';
+import { defaultTemplate, renderRows, renderTemplate, templateStore, templateToHtml } from '../src/settings/template';
 
 test('renders the default email template with tab-separated values', () => {
   expect(renderTemplate(defaultTemplate, { job: '61226', sb: '8112958', date: '27-10-2026', location: 'INMBD6' })).toBe(
@@ -50,4 +50,9 @@ test('shares the template through the userscript manager and migrates the local 
   } finally {
     Object.assign(globalThis, previous);
   }
+});
+
+test('repeats lines that use row fields once per row', () => {
+  expect(renderRows('Hi\nCode{tab}Name\n{drn}{tab}{file}\nBye', [{ drn: '1', file: 'a' }, { drn: '2', file: 'b' }])).toBe('Hi\nCode\tName\n1\ta\n2\tb\nBye');
+  expect(renderRows('Dear {nope}\n{drn}', [{ drn: '1' }])).toBe('Dear {nope}\n1');
 });

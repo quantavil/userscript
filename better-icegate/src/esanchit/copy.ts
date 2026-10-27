@@ -1,5 +1,5 @@
 import { readEsanchitTemplate } from '../settings/esanchit-template';
-import { renderTemplate } from '../settings/template';
+import { renderRows } from '../settings/template';
 import { copyRich, ensureCopyStyles, templateIcon } from '../shared/copy';
 
 const rowSelector = 'input[id^="drn_"]';
@@ -17,7 +17,7 @@ function documentType(row: Element): string {
 }
 
 function rowValues(row: Element): Record<string, string> {
-  return {
+  const values = {
     drn: field(row, 'input[id^="drn_"]'),
     irn: field(row, 'input[id^="irn_"]'),
     file: field(row, 'textarea[id^="fileName_"]'),
@@ -25,6 +25,7 @@ function rowValues(row: Element): Record<string, string> {
     status: field(row, 'input[id^="digiSignValidated_"]'),
     type: documentType(row),
   };
+  return Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value.replace(/\s+/g, ' ').trim()]));
 }
 
 function flash(button: HTMLButtonElement, restore: string, ok: boolean) {
@@ -42,21 +43,17 @@ function enhanceRow(row: HTMLTableRowElement) {
   template.setAttribute('aria-label', 'Copy eSANCHIT email template');
   template.title = 'Copy email template (edit it in Better ICEGATE settings)';
   template.addEventListener('click', () => {
-    void copyRich(renderTemplate(readEsanchitTemplate(), rowValues(row)))
+    void copyRich(renderRows(readEsanchitTemplate(), [rowValues(row)]))
       .then(() => flash(template, templateIcon, true)).catch(() => flash(template, templateIcon, false));
   });
   tools.append(template);
   anchor.append(tools);
 }
 
-const tableColumns = [['File Name', 'file'], ['DRN', 'drn'], ['IRN', 'irn'], ['Start Date', 'date'], ['Digital Sign Validated', 'status'], ['Document Type', 'type']] as const;
-
-/** Every upload row as tab-separated text (pasted into Gmail it becomes a bordered table). */
+/** The template with its row line repeated for every upload row. */
 function tableText(table: HTMLTableElement): string {
-  const clean = (value: string) => value.replace(/\s+/g, ' ').trim();
-  const rows = [...table.querySelectorAll<HTMLTableRowElement>('tbody tr')].filter(row => row.querySelector(rowSelector))
-    .map(row => { const values = rowValues(row); return tableColumns.map(([, key]) => clean(values[key])); });
-  return [tableColumns.map(([label]) => label), ...rows].map(cells => cells.join('\t')).join('\n');
+  const rows = [...table.querySelectorAll<HTMLTableRowElement>('tbody tr')].filter(row => row.querySelector(rowSelector)).map(rowValues);
+  return renderRows(readEsanchitTemplate(), rows);
 }
 
 /** Sits beside the portal's "Upload Documents" button (just above the table if that button is missing). */
@@ -66,7 +63,7 @@ function addCopyTable(table: HTMLTableElement) {
   if ((upload?.parentElement ?? holder.parentElement)?.querySelector('.better-icegate-copy-table')) return;
   const button = document.createElement('button');
   button.type = 'button'; button.className = 'btn btn-outline-primary btn-sm better-icegate-copy-table'; button.textContent = 'Copy table';
-  button.title = 'Copy every row of the upload table';
+  button.title = 'Copy the email template with every row of the upload table';
   button.addEventListener('click', () => {
     void copyRich(tableText(table))
       .then(() => { button.textContent = 'Copied ✓'; }).catch(() => { button.textContent = 'Copy failed'; })

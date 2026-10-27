@@ -65,6 +65,15 @@ export function renderTemplate(template: string, values: Record<string, string>)
   return template.replace(/\{(\w+)\}/g, (match, name: string) => name === 'tab' ? '\t' : Object.hasOwn(values, name) ? values[name] : match);
 }
 
+/** Like `renderTemplate`, but every line using a row field (`{drn}` ...) is repeated once per row. */
+export function renderRows(template: string, rows: Record<string, string>[]): string {
+  const fields = new Set(rows.flatMap(Object.keys));
+  const usesRow = (line: string) => [...line.matchAll(/\{(\w+)\}/g)].some(([, name]) => fields.has(name));
+  return template.replace(/\r\n?/g, '\n').split('\n')
+    .flatMap(line => usesRow(line) ? rows.map(row => renderTemplate(line, row)) : [renderTemplate(line, {})])
+    .join('\n');
+}
+
 const escapeHtml = (text: string) => text.replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]!);
 const cellStyle = 'border:1px solid #000;padding:4px 10px;';
 
