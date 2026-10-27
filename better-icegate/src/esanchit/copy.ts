@@ -1,4 +1,4 @@
-import { defaultEsanchitTemplate, esanchitPlaceholders, readEsanchitTemplate, saveEsanchitTemplate } from '../settings/esanchit-template';
+import { readEsanchitTemplate } from '../settings/esanchit-template';
 import { renderTemplate } from '../settings/template';
 import { copyRich, ensureCopyStyles, templateIcon } from '../shared/copy';
 
@@ -40,7 +40,7 @@ function enhanceRow(row: HTMLTableRowElement) {
   const template = document.createElement('button');
   template.type = 'button'; template.className = 'better-icegate-template'; template.innerHTML = templateIcon;
   template.setAttribute('aria-label', 'Copy eSANCHIT email template');
-  template.title = 'Copy email template (edit it with "Email template" above the table)';
+  template.title = 'Copy email template (edit it in Better ICEGATE settings)';
   template.addEventListener('click', () => {
     void copyRich(renderTemplate(readEsanchitTemplate(), rowValues(row)))
       .then(() => flash(template, templateIcon, true)).catch(() => flash(template, templateIcon, false));
@@ -59,11 +59,11 @@ function tableText(table: HTMLTableElement): string {
   return [tableColumns.map(([label]) => label), ...rows].map(cells => cells.join('\t')).join('\n');
 }
 
-/** Sits beside the portal's "Upload Documents" button (the bar above the table if that button is missing). */
+/** Sits beside the portal's "Upload Documents" button (just above the table if that button is missing). */
 function addCopyTable(table: HTMLTableElement) {
   const upload = document.getElementById('modal');
-  const host = upload?.parentElement ?? table.closest('.divUpload')?.previousElementSibling;
-  if (!host || host.querySelector('.better-icegate-copy-table')) return;
+  const holder = table.closest('.divUpload') ?? table;
+  if ((upload?.parentElement ?? holder.parentElement)?.querySelector('.better-icegate-copy-table')) return;
   const button = document.createElement('button');
   button.type = 'button'; button.className = 'btn btn-outline-primary btn-sm better-icegate-copy-table'; button.textContent = 'Copy table';
   button.title = 'Copy every row of the upload table';
@@ -72,37 +72,7 @@ function addCopyTable(table: HTMLTableElement) {
       .then(() => { button.textContent = 'Copied ✓'; }).catch(() => { button.textContent = 'Copy failed'; })
       .finally(() => setTimeout(() => { button.textContent = 'Copy table'; }, 1500));
   });
-  if (upload) upload.after(button); else host.append(button);
-}
-
-function addEditor(table: HTMLTableElement) {
-  const holder = table.closest('.divUpload') ?? table;
-  if (holder.previousElementSibling?.classList.contains('better-icegate-esanchit-bar')) return;
-  const bar = document.createElement('div');
-  bar.className = 'better-icegate-esanchit-bar';
-  const toggle = document.createElement('button');
-  toggle.type = 'button'; toggle.textContent = 'Email template'; toggle.setAttribute('aria-expanded', 'false');
-  toggle.title = 'Edit the text copied by the green envelope on each row';
-  const editor = document.createElement('div');
-  editor.className = 'better-icegate-esanchit-editor';
-  editor.hidden = true;
-  const text = document.createElement('textarea');
-  text.rows = 8; text.spellcheck = false; text.value = readEsanchitTemplate();
-  text.setAttribute('aria-label', 'eSANCHIT email template');
-  text.addEventListener('input', () => saveEsanchitTemplate(text.value));
-  const hint = document.createElement('p');
-  hint.textContent = `Placeholders: ${esanchitPlaceholders.join(' ')}. Lines with {tab} become a bordered table when pasted into Gmail.`;
-  const reset = document.createElement('button');
-  reset.type = 'button'; reset.textContent = 'Reset template';
-  reset.addEventListener('click', () => { text.value = defaultEsanchitTemplate; saveEsanchitTemplate(defaultEsanchitTemplate); });
-  editor.append(text, hint, reset);
-  toggle.addEventListener('click', () => {
-    editor.hidden = !editor.hidden;
-    toggle.setAttribute('aria-expanded', String(!editor.hidden));
-    if (!editor.hidden) text.value = readEsanchitTemplate();
-  });
-  bar.append(toggle, editor);
-  holder.before(bar);
+  if (upload) upload.after(button); else holder.before(button);
 }
 
 function scan() {
@@ -111,7 +81,6 @@ function scan() {
     const table = row?.closest('table');
     if (!row || !table) continue;
     ensureCopyStyles();
-    addEditor(table);
     addCopyTable(table);
     enhanceRow(row);
   }

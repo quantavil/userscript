@@ -19,18 +19,4 @@
 }
 .better-icegate-esanchit-tools .better-icegate-copy,
 .better-icegate-esanchit-tools .better-icegate-template { margin-left: 0; height: 24px; min-width: 24px; }
-.better-icegate-esanchit-bar { margin: 0 30px 8px; font: 500 13px/1.35 Arial, sans-serif; color: #243d55; }
-.better-icegate-esanchit-bar > button,
-.better-icegate-esanchit-editor button {
-  min-height: 30px; padding: 4px 11px; border: 1px solid #c3d2df; border-radius: 4px;
-  background: #fff; color: #1454a3; font: 600 13px/1.35 Arial, sans-serif; cursor: pointer;
-}
-.better-icegate-esanchit-bar > button:hover,
-.better-icegate-esanchit-editor button:hover { background: #eef5fb; border-color: #7ea3c5; }
-.better-icegate-esanchit-editor { margin-top: 8px; max-width: 640px; }
-.better-icegate-esanchit-editor textarea {
-  box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid #c3d2df; border-radius: 4px;
-  font: 13px/1.45 ui-monospace, Consolas, monospace; color: #243d55; resize: vertical;
-}
-.better-icegate-esanchit-editor p { margin: 4px 0 8px; color: #647788; font-size: 12px; }
 .better-icegate-copy-table { margin-left: 8px; }

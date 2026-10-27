@@ -18,7 +18,7 @@ const page = `<form><button id="modal" class="btn">Upload Documents</button><div
   <td><input id="deleteRecord_1" type="submit" value="Delete"></td>
 </tr></tbody></table></div></form>`;
 
-test('adds an email envelope per row, a copy-table button and an editable email template to each upload row', async () => {
+test('adds an email envelope per row and a copy-table button email template to each upload row', async () => {
   const browser = new Window({ url: 'https://www.icegate.gov.in/esanchit/home' });
   const keys = ['window', 'document', 'localStorage', 'MutationObserver', 'Event', 'navigator', 'requestAnimationFrame'];
   const previous = Object.fromEntries(keys.map(key => [key, (globalThis as any)[key]]));
@@ -34,7 +34,6 @@ test('adds an email envelope per row, a copy-table button and an editable email 
     startEsanchitCopy();
     const rows = browser.document.querySelectorAll('tbody tr');
     expect(browser.document.querySelectorAll('.better-icegate-esanchit-tools')).toHaveLength(2);
-    expect(browser.document.querySelectorAll('.better-icegate-esanchit-bar')).toHaveLength(1);
 
     expect(rows[0].querySelectorAll('.better-icegate-esanchit-tools button')).toHaveLength(1);
     const mail = rows[0].querySelector<HTMLButtonElement>('.better-icegate-esanchit-tools button')!;
@@ -46,30 +45,19 @@ test('adds an email envelope per row, a copy-table button and an editable email 
     expect(copied).toEndWith('D2\tI2\tb.pdf\t380000-Commercial Invoice');
 
     const copyTable = browser.document.querySelector<HTMLButtonElement>('#modal + .better-icegate-copy-table')!;
-    const toggle = browser.document.querySelector<HTMLButtonElement>('.better-icegate-esanchit-bar > button')!;
-    expect(copyTable.textContent).toBe('Copy table');
-    copyTable.click(); await new Promise(resolve => setTimeout(resolve, 5));
-    expect(copied).toBe('File Name\tDRN\tIRN\tStart Date\tDigital Sign Validated\tDocument Type\n'
-      + 'KPS AGRO FODD[signed].pdf\t2026102700019579\t2026102700062887\t2026-10-27 13:16:05\tSuccessfully Verified\t331000-Commercial invoice which includes a packing list\n'
-      + 'b.pdf\tD2\tI2\t\t\t380000-Commercial Invoice');
-
-    const text = browser.document.querySelector<HTMLTextAreaElement>('.better-icegate-esanchit-editor textarea')!;
-    toggle.click();
-    text.value = 'DRN {drn} / {status} / {date}';
-    text.dispatchEvent(new browser.Event('input'));
+    const text = 'DRN {drn} / {status} / {date}';
+    browser.localStorage.setItem('better-icegate.esanchit-template.v1', text);
     mail.click(); await new Promise(resolve => setTimeout(resolve, 5));
     expect(copied).toBe('DRN 2026102700019579 / Successfully Verified / 2026-10-27 13:16:05');
-    browser.document.querySelector<HTMLButtonElement>('.better-icegate-esanchit-editor button')!.click();
-    expect(text.value).toStartWith('Dear Sir,');
-    expect(browser.localStorage.getItem('better-icegate.esanchit-template.v1')).toBeNull();
+    expect(browser.document.querySelector('textarea[aria-label="eSANCHIT email template"]')).toBeNull();
 
-    // Rows added later are enhanced once, without duplicating the editor.
+    // Rows added later are enhanced once, without duplicating the button.
     const extra = browser.document.createElement('tr');
     extra.innerHTML = '<td><textarea id="fileName_2">c.pdf</textarea></td><td><input id="drn_2" value="D3"></td><td></td><td></td><td></td><td></td><td></td>';
     browser.document.querySelector('tbody')!.append(extra);
     await new Promise(resolve => setTimeout(resolve, 20));
     expect(browser.document.querySelectorAll('.better-icegate-esanchit-tools')).toHaveLength(3);
-    expect(browser.document.querySelectorAll('.better-icegate-esanchit-bar')).toHaveLength(1);
+    expect(browser.document.querySelectorAll('.better-icegate-copy-table')).toHaveLength(1);
   } finally {
     await browser.happyDOM.abort();
     Object.assign(globalThis, previous);
