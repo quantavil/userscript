@@ -42,6 +42,50 @@ function showNotice(message: string): void {
   noticeTimer = window.setTimeout(() => current.remove(), 1500);
 }
 
+function senderColor(address: string): string {
+  let hash = 2166136261;
+  for (const byte of new TextEncoder().encode(address.trim().toLowerCase())) {
+    hash = Math.imul(hash ^ byte, 16777619);
+  }
+  const hue = (hash >>> 0) % 360;
+  // Adjust HSL lightness to a consistent relative luminance, keeping the strip
+  // visible on both light and dark backgrounds while retaining the hashed hue.
+  const channels = (lightness: number): number[] => {
+    const chroma = (1 - Math.abs(2 * lightness - 1)) * 0.75;
+    const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+    const offset = lightness - chroma / 2;
+    const parts =
+      hue < 60
+        ? [chroma, x, 0]
+        : hue < 120
+          ? [x, chroma, 0]
+          : hue < 180
+            ? [0, chroma, x]
+            : hue < 240
+              ? [0, x, chroma]
+              : hue < 300
+                ? [x, 0, chroma]
+                : [chroma, 0, x];
+    return parts.map((part) => part + offset);
+  };
+  let low = 0;
+  let high = 1;
+  for (let i = 0; i < 16; i++) {
+    const mid = (low + high) / 2;
+    const rgb = channels(mid).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    const luminance = rgb[0]! * 0.2126 + rgb[1]! * 0.7152 + rgb[2]! * 0.0722;
+    if (luminance < 0.18) low = mid;
+    else high = mid;
+  }
+  return `#${channels((low + high) / 2)
+    .map((v) =>
+      Math.round(v * 255)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
+}
+
 export function enhanceRows(root: ParentNode, copy: Copy): void {
   const rows =
     root instanceof HTMLElement && root.matches(selectors.row)
@@ -58,12 +102,17 @@ export function enhanceRows(root: ParentNode, copy: Copy): void {
         Number(red) * 0.299 + Number(green) * 0.587 + Number(blue) * 0.114 > 160,
       );
     }
-    const subject = row.querySelector<HTMLElement>(selectors.subject);
-    if (!subject) continue;
     const sender = row.querySelector<HTMLElement>(selectors.visibleSender);
     sender?.classList.add('bgm-sender');
     const senderContainer = row.querySelector<HTMLElement>(selectors.senderContainer);
     const address = sender?.getAttribute('email') ?? '';
+    const color = address.trim() ? senderColor(address) : '';
+    if (row.style.getPropertyValue('--bgm-sender-color') !== color) {
+      if (color) row.style.setProperty('--bgm-sender-color', color);
+      else row.style.removeProperty('--bgm-sender-color');
+    }
+    const subject = row.querySelector<HTMLElement>(selectors.subject);
+    if (!subject) continue;
     if (senderContainer && address) {
       senderContainer.classList.add('bgm-sender-container');
       senderContainer.parentElement?.classList.add('bgm-sender-cell');

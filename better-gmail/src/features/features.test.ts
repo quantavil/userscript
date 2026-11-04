@@ -23,6 +23,55 @@ describe('inbox enhancements', () => {
     expect(open).toHaveBeenCalledTimes(1);
   });
 
+  test('assigns stable sender colors and clears stale colors', () => {
+    document.body.innerHTML =
+      '<table><tbody><tr class="zA"><td><div class="yW"><span email="Ops@example.com">Ops</span></div></td><td><span class="bog">Subject</span></td></tr></tbody></table>';
+    const row = document.querySelector('tr')!;
+    const sender = document.querySelector('.yW [email]')!;
+    enhanceRows(document, vi.fn());
+    const color = row.style.getPropertyValue('--bgm-sender-color');
+    expect(color).toMatch(/^#[0-9a-f]{6}$/);
+    sender.setAttribute('email', 'ops@example.com');
+    enhanceRows(document, vi.fn());
+    expect(row.style.getPropertyValue('--bgm-sender-color')).toBe(color);
+    sender.setAttribute('email', 'other@example.com');
+    enhanceRows(document, vi.fn());
+    expect(row.style.getPropertyValue('--bgm-sender-color')).not.toBe(color);
+    sender.removeAttribute('email');
+    enhanceRows(document, vi.fn());
+    expect(row.style.getPropertyValue('--bgm-sender-color')).toBe('');
+  });
+
+  test('keeps sender colors visible against both light and dark backgrounds', () => {
+    document.body.innerHTML =
+      '<table><tbody><tr class="zA"><td><div class="yW"><span email="a@example.com">Sender</span></div></td><td><span class="bog">Subject</span></td></tr></tbody></table>';
+    const sender = document.querySelector('.yW [email]')!;
+    const row = document.querySelector('tr')!;
+    for (let i = 0; i < 100; i++) {
+      sender.setAttribute('email', `sender${i}@example.com`);
+      enhanceRows(document, vi.fn());
+      const color = row.style.getPropertyValue('--bgm-sender-color');
+      const rgb = color.match(/[0-9a-f]{2}/g)!.map((c) => {
+        const v = Number.parseInt(c, 16) / 255;
+        return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      });
+      const luminance = rgb[0]! * 0.2126 + rgb[1]! * 0.7152 + rgb[2]! * 0.0722;
+      expect(luminance).toBeGreaterThan(0.17);
+      expect(luminance).toBeLessThan(0.19);
+    }
+  });
+
+  test('clears a stale color even while the subject is temporarily absent', () => {
+    document.body.innerHTML =
+      '<table><tbody><tr class="zA"><td><div class="yW"><span email="a@example.com">Sender</span></div><span class="bog">Subject</span></td></tr></tbody></table>';
+    const row = document.querySelector('tr')!;
+    enhanceRows(document, vi.fn());
+    document.querySelector('.bog')!.remove();
+    document.querySelector('.yW [email]')!.removeAttribute('email');
+    enhanceRows(document, vi.fn());
+    expect(row.style.getPropertyValue('--bgm-sender-color')).toBe('');
+  });
+
   test('removes a stale address when Gmail removes the sender email', () => {
     document.body.innerHTML =
       '<table><tbody><tr class="zA"><td><span email="hidden@example.com" hidden></span><div class="yW"><span email="ops@example.com">Operations</span></div></td><td><span class="bog">Subject</span></td></tr></tbody></table>';

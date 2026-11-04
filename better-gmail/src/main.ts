@@ -1,17 +1,13 @@
 import { GM_registerMenuCommand, GM_unregisterMenuCommand } from '$';
-import { saveFile } from './core/download';
 import { observeUpdates } from './core/observer';
 import { enhanceConversation, setConversationEnabled } from './features/conversation';
 import { registerConversationMenu } from './features/conversation-menu';
-import { enhanceAttachments } from './features/attachments';
 import { enhanceRows } from './features/rows';
 import './style.css';
 
 const copy = async (value: string): Promise<void> => navigator.clipboard.writeText(value);
-const updateAttachments = (): void => enhanceAttachments(document, saveFile);
-observeUpdates((row) => enhanceRows(row, copy), updateAttachments, enhanceConversation);
+observeUpdates((row) => enhanceRows(row, copy), enhanceConversation);
 enhanceRows(document, copy);
-updateAttachments();
 
 enhanceConversation(document);
 

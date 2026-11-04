@@ -49,62 +49,6 @@ tr.bgm-enhanced-row > .bgm-sender-cell {
   height: auto;
 }
 
-.bgm-attachments-bar {
-  display: flex;
-  clear: both;
-  width: fit-content;
-  margin: 8px 8px 4px 0;
-}
-.bgm-attachments-bar-footer {
-  display: inline-flex;
-  clear: none;
-  margin: 4px 8px 4px 0;
-}
-.bgm-attachments-download {
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 16px 0 12px;
-  border: 1px solid currentColor;
-  border-radius: 18px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font:
-    500 14px/20px 'Google Sans',
-    Roboto,
-    Arial,
-    sans-serif;
-}
-.bgm-attachments-icon {
-  width: 18px;
-  height: 18px;
-  opacity: 0.65;
-}
-.bgm-attachments-count:empty {
-  display: none;
-}
-.bgm-attachments-download:hover:not(:disabled) {
-  background: rgb(127 127 127 / 10%);
-}
-.bgm-attachments-download:disabled {
-  cursor: progress;
-  opacity: 0.75;
-}
-.bgm-attachments-download:focus-visible {
-  outline: 2px solid #1a73e8;
-  outline-offset: 1px;
-}
-.bgm-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
 /* Match Gmail's light theme even when the operating system uses dark mode. */
 tr.bgm-light-row.yO:not(.x7):not(:hover) {
   background-color: #f8faff;
@@ -169,4 +113,18 @@ tr.bgm-light-row.yO:not(.x7):not(:hover) {
 }
 .bgm-conversation-message .a3s .bgm-collapsed-section[hidden] {
   display: none !important;
+}
+
+tr.zA[style*='--bgm-sender-color'] {
+  position: relative;
+}
+
+tr.zA[style*='--bgm-sender-color']::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 4px;
+  background: var(--bgm-sender-color);
+  z-index: 1;
+  pointer-events: none;
 }

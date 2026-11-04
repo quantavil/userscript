@@ -43,7 +43,7 @@ test('processes changed or replaced bodies without rescanning inbox selections',
   document.body.innerHTML =
     '<main role="main"><div class="adn"><div class="a3s">First</div></div></main><table><tbody><tr class="zA"><td><span class="afn">Not selected</span></td></tr></tbody></table>';
   const update = vi.fn(enhanceConversation);
-  const stop = observeUpdates(vi.fn(), vi.fn(), update);
+  const stop = observeUpdates(vi.fn(), update);
   document.querySelector('.afn')!.textContent = 'Selected';
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(update).not.toHaveBeenCalled();

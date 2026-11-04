@@ -1,16 +1,13 @@
 import { selectors } from '../selectors';
 
-const own = '.bgm-copy-notice, .bgm-attachments-bar, .bgm-address-line, .bgm-reveal';
-const attachmentStructure = '[download_url], [role="listitem"], .amn, .bgm-attachments-bar';
+const own = '.bgm-copy-notice, .bgm-address-line, .bgm-reveal';
 
 export function observeUpdates(
   updateRow: (row: HTMLElement) => void,
-  updateAttachments: () => void,
   updateConversation: (body: HTMLElement) => void = () => {},
 ): () => void {
   const rows = new Set<HTMLElement>();
   const bodies = new Set<HTMLElement>();
-  let attachmentsChanged = false;
   let frame: number | undefined;
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
@@ -31,7 +28,6 @@ export function observeUpdates(
       }
       const body = target.closest<HTMLElement>(selectors.messageBody);
       if (body) bodies.add(body);
-      if (target.closest('[role="listitem"], .amn')) attachmentsChanged = true;
       if (mutation.type !== 'childList') continue;
       for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
         if (!(node instanceof Element) || node.matches(own)) continue;
@@ -44,21 +40,15 @@ export function observeUpdates(
         for (const addedRow of node.querySelectorAll<HTMLElement>(selectors.row)) {
           if (addedRow.isConnected) rows.add(addedRow);
         }
-        if (node.matches(attachmentStructure) || node.querySelector(attachmentStructure))
-          attachmentsChanged = true;
       }
     }
-    if (frame !== undefined || (!rows.size && !bodies.size && !attachmentsChanged)) return;
+    if (frame !== undefined || (!rows.size && !bodies.size)) return;
     frame = requestAnimationFrame(() => {
       frame = undefined;
       for (const row of rows) if (row.isConnected) updateRow(row);
       rows.clear();
       for (const body of bodies) if (body.isConnected) updateConversation(body);
       bodies.clear();
-      if (attachmentsChanged) {
-        attachmentsChanged = false;
-        updateAttachments();
-      }
     });
   });
   observer.observe(document.body, {
