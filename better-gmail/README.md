@@ -1,6 +1,6 @@
 # Better Gmail
 
-Version 0.6.0 is a local Tampermonkey userscript that improves Gmail message rows and opened conversations.
+Version 0.7.0 is a local Tampermonkey userscript that improves Gmail message rows and opened conversations.
 
 ## Features
 

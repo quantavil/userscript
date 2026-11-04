@@ -116,10 +116,11 @@ tr.bgm-light-row.yO:not(.x7):not(:hover) {
 }
 
 tr.zA[style*='--bgm-sender-color'] .yW {
-  background: linear-gradient(
-    to right,
-    color-mix(in srgb, var(--bgm-sender-color) 18%, transparent),
-    transparent
+  box-sizing: border-box;
+  padding: 3px 8px;
+  background: radial-gradient(
+    ellipse 95% 85% at 12% 50%,
+    color-mix(in srgb, var(--bgm-sender-color) 16%, transparent),
+    transparent 100%
   );
-  border-radius: 4px;
 }
