@@ -3,6 +3,8 @@ import { selectors } from '../selectors';
 
 type Copy = (value: string) => Promise<void>;
 const enhancedTargets = new WeakSet<HTMLElement>();
+const colorsByHue = new Map<number, string>();
+const encoder = new TextEncoder();
 let noticeTimer: number | undefined;
 
 function copyTarget(target: HTMLElement, label: string, value: () => string, copy: Copy): void {
@@ -44,11 +46,13 @@ function showNotice(message: string): void {
 
 function senderColor(address: string): string {
   let hash = 2166136261;
-  for (const byte of new TextEncoder().encode(address.trim().toLowerCase())) {
+  for (const byte of encoder.encode(address.trim().toLowerCase())) {
     hash = Math.imul(hash ^ byte, 16777619);
   }
   const hue = (hash >>> 0) % 360;
-  // Adjust HSL lightness to a consistent relative luminance, keeping the strip
+  const cached = colorsByHue.get(hue);
+  if (cached) return cached;
+  // Adjust HSL lightness to a consistent relative luminance, keeping the color
   // visible on both light and dark backgrounds while retaining the hashed hue.
   const channels = (lightness: number): number[] => {
     const chroma = (1 - Math.abs(2 * lightness - 1)) * 0.75;
@@ -77,13 +81,15 @@ function senderColor(address: string): string {
     if (luminance < 0.18) low = mid;
     else high = mid;
   }
-  return `#${channels((low + high) / 2)
+  const color = `#${channels((low + high) / 2)
     .map((v) =>
       Math.round(v * 255)
         .toString(16)
         .padStart(2, '0'),
     )
     .join('')}`;
+  colorsByHue.set(hue, color);
+  return color;
 }
 
 export function enhanceRows(root: ParentNode, copy: Copy): void {
@@ -91,10 +97,13 @@ export function enhanceRows(root: ParentNode, copy: Copy): void {
     root instanceof HTMLElement && root.matches(selectors.row)
       ? [root]
       : root.querySelectorAll<HTMLElement>(selectors.row);
+  // Read styles before changing any rows to avoid repeated layout work.
+  const rowBackgrounds = Array.from(rows, (row) =>
+    getComputedStyle(row).backgroundColor.match(/rgba?\(\s*(\d+)[, ]+\s*(\d+)[, ]+\s*(\d+)/),
+  );
+  let index = 0;
   for (const row of rows) {
-    const background = getComputedStyle(row).backgroundColor.match(
-      /rgba?\(\s*(\d+)[, ]+\s*(\d+)[, ]+\s*(\d+)/,
-    );
+    const background = rowBackgrounds[index++];
     if (background) {
       const [, red = '0', green = '0', blue = '0'] = background;
       row.classList.toggle(

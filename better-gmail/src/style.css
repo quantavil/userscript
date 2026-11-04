@@ -115,16 +115,11 @@ tr.bgm-light-row.yO:not(.x7):not(:hover) {
   display: none !important;
 }
 
-tr.zA[style*='--bgm-sender-color'] {
-  position: relative;
-}
-
-tr.zA[style*='--bgm-sender-color']::after {
-  content: '';
-  position: absolute;
-  inset: 0 0 0 auto;
-  width: 4px;
-  background: var(--bgm-sender-color);
-  z-index: 1;
-  pointer-events: none;
+tr.zA[style*='--bgm-sender-color'] .yW {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--bgm-sender-color) 18%, transparent),
+    transparent
+  );
+  border-radius: 4px;
 }
