@@ -25,6 +25,10 @@ test("dropdown keyboard selection fires one change and respects disabled options
   const { installDropdowns } = await import("../src/dropdown");
   installDropdowns();
   await pause();
+  const trigger =
+    window.document.querySelector<HTMLButtonElement>(".bd-trigger")!;
+  expect(trigger.parentElement?.contains(select)).toBe(true);
+  expect(trigger.title).toBe("Alpha");
   window.document.querySelector<HTMLButtonElement>(".bd-trigger")!.click();
   await pause();
   const search = window.document.querySelector<HTMLInputElement>(".bd-search")!;
@@ -39,6 +43,7 @@ test("dropdown keyboard selection fires one change and respects disabled options
     }),
   );
   expect(select.value).toBe("b");
+  expect(trigger.title).toBe("Beta");
   expect(changes).toBe(1);
   window.document.querySelector<HTMLButtonElement>(".bd-trigger")!.click();
   search.value = "Blocked";
@@ -102,6 +107,11 @@ test("date controls preserve readonly and month navigation does not skip Februar
   input
     .parentElement!.querySelector<HTMLButtonElement>(".impex-date-btn")!
     .click();
+  expect(
+    [...window.document.querySelectorAll(".impex-quick-btn")].map(
+      (button) => button.textContent,
+    ),
+  ).toEqual(["Today", "Yesterday"]);
   window.document
     .querySelector<HTMLButtonElement>('[data-action="next-month"]')!
     .click();

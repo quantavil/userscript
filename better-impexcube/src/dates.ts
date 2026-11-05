@@ -64,7 +64,28 @@ function parse(value: string): Date | null {
 
 export function installDates(): void {
   const style = document.createElement("style");
-  style.textContent = `.impex-date-wrapper{display:inline-flex;align-items:center;gap:3px}.impex-date-btn{cursor:pointer;background:#fff;border:1px solid #9baeb2;border-radius:3px;padding:2px 5px}.impex-date-btn:disabled{opacity:.5;cursor:not-allowed}.impex-date-input.invalid{outline:2px solid #b64b4b}.impex-calendar-popup{position:fixed;z-index:2147483000;width:260px;box-sizing:border-box;padding:10px;background:#fff;border:1px solid #b8cbd1;border-radius:5px;box-shadow:0 8px 24px #183c4a26;font:13px/1.4 system-ui;color:#192e3a}.impex-calendar-popup[hidden]{display:none}.impex-cal-header,.impex-quick-btns{display:flex;justify-content:space-between;align-items:center;gap:4px}.impex-cal-title{font-weight:700}.impex-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;margin:8px 0;gap:2px}.impex-cal-day,.impex-cal-nav,.impex-quick-btn{background:#fff;border:0;border-radius:3px;color:inherit;cursor:pointer;padding:5px}.impex-cal-day:hover,.impex-cal-day:focus-visible,.impex-quick-btn:hover,.impex-cal-nav:hover{background:#e8f4f2}.impex-cal-day.selected{background:#217d72;color:#fff}.impex-cal-day.other-month{color:#8a9b9c}`;
+  style.textContent = `
+    .impex-date-wrapper{display:inline-flex;align-items:center;gap:3px}
+    .impex-date-btn{cursor:pointer;background:#fff;border:1px solid #9baeb2;border-radius:3px;padding:2px 5px}
+    .impex-date-btn:disabled{opacity:.5;cursor:not-allowed}
+    .impex-date-input.invalid{outline:2px solid #b64b4b}
+    .impex-calendar-popup{position:fixed;z-index:2147483000;width:288px;max-width:calc(100vw - 16px);box-sizing:border-box;padding:12px;background:#fff;border:1px solid #c8d6df;border-radius:10px;box-shadow:0 12px 32px #1c3c512b;font:14px/1.4 system-ui,sans-serif;color:#203849;font-variant-numeric:tabular-nums}
+    .impex-calendar-popup[hidden]{display:none}
+    .impex-calendar-popup button{box-sizing:border-box;min-width:0;margin:0;border:0;background:transparent;color:inherit;font:inherit;line-height:1;cursor:pointer;box-shadow:none;text-shadow:none}
+    .impex-cal-header{display:grid;grid-template-columns:32px 32px minmax(0,1fr) 32px 32px;align-items:center;text-align:center}
+    .impex-cal-title{font-weight:700;white-space:nowrap}
+    .impex-calendar-popup .impex-cal-nav{width:32px;height:32px;padding:0;border-radius:6px;font-size:20px}
+    .impex-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;margin:8px 0}
+    .impex-cal-grid>span{display:grid;place-items:center;height:28px;color:#687d8a;font-size:12px;font-weight:600}
+    .impex-calendar-popup .impex-cal-day{display:grid;place-items:center;width:100%;height:34px;padding:0;border-radius:6px}
+    .impex-calendar-popup .impex-cal-day.other-month{color:#9baab2}
+    .impex-calendar-popup .impex-cal-day.today:not(.selected){box-shadow:inset 0 0 0 1px #548a83;color:#176b62;font-weight:700}
+    .impex-calendar-popup .impex-cal-day.selected{background:#217d72;color:#fff;font-weight:700}
+    .impex-quick-btns{display:flex;justify-content:center;gap:8px;padding-top:9px;border-top:1px solid #e5ecef}
+    .impex-calendar-popup .impex-quick-btn{padding:8px 12px;border-radius:6px;color:#176b62;font-weight:600}
+    .impex-calendar-popup button:hover:not(.selected){background:#eaf4f2}
+    .impex-calendar-popup button:focus-visible{outline:2px solid #217d72;outline-offset:1px}
+  `;
   document.head.append(style);
   const popup = document.createElement("div");
   popup.className = "impex-calendar-popup";
@@ -135,6 +156,7 @@ export function installDates(): void {
       button.dataset.date = format(date);
       button.setAttribute("aria-label", format(date));
       if (date.getMonth() !== month) button.classList.add("other-month");
+      if (format(date) === format(new Date())) button.classList.add("today");
       if (
         active &&
         format(date) === format(parse(active.value) ?? new Date(1900, 0, 1))
@@ -148,8 +170,6 @@ export function installDates(): void {
     for (const [label, delta] of [
       ["Today", 0],
       ["Yesterday", -1],
-      ["−7 days", -7],
-      ["+7 days", 7],
     ] as const) {
       const button = document.createElement("button");
       button.type = "button";

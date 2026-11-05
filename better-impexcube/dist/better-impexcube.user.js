@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better ImpexCube
 // @namespace    https://github.com/quantavil/userscript
-// @version      1.0.0
+// @version      1.1.0
 // @description  Searchable dropdowns, smarter dates and RITC-specific DBK suggestions for ImpexCube
 // @license      GPL-3.0-or-later
 // @match        *://impexcube.in/*
@@ -1121,7 +1121,28 @@
 	}
 	function installDates() {
 		const style = document.createElement("style");
-		style.textContent = `.impex-date-wrapper{display:inline-flex;align-items:center;gap:3px}.impex-date-btn{cursor:pointer;background:#fff;border:1px solid #9baeb2;border-radius:3px;padding:2px 5px}.impex-date-btn:disabled{opacity:.5;cursor:not-allowed}.impex-date-input.invalid{outline:2px solid #b64b4b}.impex-calendar-popup{position:fixed;z-index:2147483000;width:260px;box-sizing:border-box;padding:10px;background:#fff;border:1px solid #b8cbd1;border-radius:5px;box-shadow:0 8px 24px #183c4a26;font:13px/1.4 system-ui;color:#192e3a}.impex-calendar-popup[hidden]{display:none}.impex-cal-header,.impex-quick-btns{display:flex;justify-content:space-between;align-items:center;gap:4px}.impex-cal-title{font-weight:700}.impex-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;margin:8px 0;gap:2px}.impex-cal-day,.impex-cal-nav,.impex-quick-btn{background:#fff;border:0;border-radius:3px;color:inherit;cursor:pointer;padding:5px}.impex-cal-day:hover,.impex-cal-day:focus-visible,.impex-quick-btn:hover,.impex-cal-nav:hover{background:#e8f4f2}.impex-cal-day.selected{background:#217d72;color:#fff}.impex-cal-day.other-month{color:#8a9b9c}`;
+		style.textContent = `
+    .impex-date-wrapper{display:inline-flex;align-items:center;gap:3px}
+    .impex-date-btn{cursor:pointer;background:#fff;border:1px solid #9baeb2;border-radius:3px;padding:2px 5px}
+    .impex-date-btn:disabled{opacity:.5;cursor:not-allowed}
+    .impex-date-input.invalid{outline:2px solid #b64b4b}
+    .impex-calendar-popup{position:fixed;z-index:2147483000;width:288px;max-width:calc(100vw - 16px);box-sizing:border-box;padding:12px;background:#fff;border:1px solid #c8d6df;border-radius:10px;box-shadow:0 12px 32px #1c3c512b;font:14px/1.4 system-ui,sans-serif;color:#203849;font-variant-numeric:tabular-nums}
+    .impex-calendar-popup[hidden]{display:none}
+    .impex-calendar-popup button{box-sizing:border-box;min-width:0;margin:0;border:0;background:transparent;color:inherit;font:inherit;line-height:1;cursor:pointer;box-shadow:none;text-shadow:none}
+    .impex-cal-header{display:grid;grid-template-columns:32px 32px minmax(0,1fr) 32px 32px;align-items:center;text-align:center}
+    .impex-cal-title{font-weight:700;white-space:nowrap}
+    .impex-calendar-popup .impex-cal-nav{width:32px;height:32px;padding:0;border-radius:6px;font-size:20px}
+    .impex-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;margin:8px 0}
+    .impex-cal-grid>span{display:grid;place-items:center;height:28px;color:#687d8a;font-size:12px;font-weight:600}
+    .impex-calendar-popup .impex-cal-day{display:grid;place-items:center;width:100%;height:34px;padding:0;border-radius:6px}
+    .impex-calendar-popup .impex-cal-day.other-month{color:#9baab2}
+    .impex-calendar-popup .impex-cal-day.today:not(.selected){box-shadow:inset 0 0 0 1px #548a83;color:#176b62;font-weight:700}
+    .impex-calendar-popup .impex-cal-day.selected{background:#217d72;color:#fff;font-weight:700}
+    .impex-quick-btns{display:flex;justify-content:center;gap:8px;padding-top:9px;border-top:1px solid #e5ecef}
+    .impex-calendar-popup .impex-quick-btn{padding:8px 12px;border-radius:6px;color:#176b62;font-weight:600}
+    .impex-calendar-popup button:hover:not(.selected){background:#eaf4f2}
+    .impex-calendar-popup button:focus-visible{outline:2px solid #217d72;outline-offset:1px}
+  `;
 		document.head.append(style);
 		const popup = document.createElement("div");
 		popup.className = "impex-calendar-popup";
@@ -1211,18 +1232,14 @@
 				button.dataset.date = format(date);
 				button.setAttribute("aria-label", format(date));
 				if (date.getMonth() !== month) button.classList.add("other-month");
+				if (format(date) === format(new Date())) button.classList.add("today");
 				if (active && format(date) === format(parse(active.value) ?? new Date(1900, 0, 1))) button.classList.add("selected");
 				button.addEventListener("click", () => setDate(date));
 				grid.append(button);
 			}
 			const shortcuts = document.createElement("div");
 			shortcuts.className = "impex-quick-btns";
-			for (const [label, delta] of [
-				["Today", 0],
-				["Yesterday", -1],
-				["−7 days", -7],
-				["+7 days", 7]
-			]) {
+			for (const [label, delta] of [["Today", 0], ["Yesterday", -1]]) {
 				const button = document.createElement("button");
 				button.type = "button";
 				button.className = "impex-quick-btn";
@@ -1919,8 +1936,8 @@
 		trigger.className = "bd-trigger";
 		trigger.setAttribute("aria-haspopup", "listbox");
 		trigger.setAttribute("aria-expanded", "false");
-		wrapper.append(trigger);
 		select.before(wrapper);
+		wrapper.append(select, trigger);
 		select.classList.add("bd-enhanced");
 		select.tabIndex = -1;
 		select.setAttribute("aria-hidden", "true");
@@ -1955,9 +1972,12 @@
 				disabled: element.disabled || element.parentElement?.tagName === "OPTGROUP" && element.parentElement.disabled
 			}));
 			trigger.textContent = select.selectedOptions[0]?.textContent?.trim() || "--Choose--";
+			trigger.title = trigger.textContent;
 			trigger.disabled = select.matches(":disabled");
 			wrapper.hidden = select.hidden || select.style.display === "none";
 			wrapper.style.width = select.style.width || "";
+			wrapper.classList.toggle("bd-sized", !!select.style.width);
+			trigger.style.font = getComputedStyle(select).font;
 			if (trigger.disabled && open) close(false);
 		};
 		const draw = () => {
@@ -2037,7 +2057,7 @@
 						size({
 							padding: 8,
 							apply({ rects, availableWidth, elements }) {
-								elements.floating.style.width = `${Math.min(Math.max(rects.reference.width, 200), availableWidth)}px`;
+								elements.floating.style.width = `${Math.min(Math.max(rects.reference.width, 320), availableWidth)}px`;
 							}
 						})
 					]
@@ -2094,6 +2114,7 @@
 			cleanup?.();
 			document.removeEventListener("pointerdown", outside);
 			select.removeEventListener("change", onChange);
+			wrapper.before(select);
 			wrapper.remove();
 			popup.remove();
 			select.classList.remove("bd-enhanced");
@@ -2105,7 +2126,18 @@
 	}
 	function installDropdowns() {
 		const style = document.createElement("style");
-		style.textContent = `.bd-wrapper[hidden]{display:none}.bd-wrapper{display:inline-block;vertical-align:middle;max-width:100%;min-width:130px}.bd-trigger{width:100%;min-height:25px;text-align:left;background:#fff;border:1px solid #9baeb2;border-radius:3px;padding:3px 24px 3px 7px;color:#18333a;cursor:pointer}.bd-trigger:after{content:'▾';float:right;margin-right:-17px}.bd-trigger:focus-visible,.bd-search:focus-visible{outline:2px solid #217d72;outline-offset:1px}.bd-trigger:disabled{opacity:.55;cursor:not-allowed}.bd-enhanced{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%)!important;opacity:0!important}.bd-dropdown{position:fixed;z-index:2147483000;background:white;border:1px solid #b8cbd1;border-radius:5px;box-shadow:0 8px 24px #183c4a26;font:13px/1.4 system-ui;color:#192e3a;padding:6px;box-sizing:border-box}.bd-dropdown[hidden]{display:none}.bd-search{box-sizing:border-box;width:100%;padding:7px;border:1px solid #b8cbd1;border-radius:3px}.bd-options{max-height:250px;overflow:auto}.bd-option{display:flex;justify-content:space-between;gap:8px;padding:7px;cursor:pointer}.bd-option:hover,.bd-highlighted{background:#e8f4f2}.bd-option[aria-disabled=true]{opacity:.5;cursor:not-allowed}.bd-option small{color:#526a72}`;
+		style.textContent = `
+    .bd-wrapper[hidden]{display:none}
+    .bd-wrapper{display:inline-block;position:relative;vertical-align:middle;max-width:100%}
+    .bd-wrapper .bd-enhanced{visibility:hidden!important}
+    .bd-wrapper.bd-sized .bd-enhanced{width:100%!important}
+    .bd-wrapper .bd-trigger{position:absolute;inset:0;box-sizing:border-box;width:100%;height:100%;min-width:0;min-height:0;margin:0;padding:0 20px 0 3px;overflow:hidden;text-align:left;text-overflow:ellipsis;white-space:nowrap;background:#fff;border:1px solid #8da7c3;border-radius:2px;color:#111;cursor:pointer;line-height:normal;box-shadow:none}
+    .bd-trigger:after{content:'▾';position:absolute;right:4px;top:50%;transform:translateY(-50%)}
+    .bd-trigger:focus-visible,.bd-search:focus-visible{outline:2px solid #217d72;outline-offset:1px}
+    .bd-wrapper .bd-trigger:disabled{background:#eee;color:#888;cursor:not-allowed}
+    .bd-dropdown{position:fixed;z-index:2147483000;background:white;border:1px solid #b8cbd1;border-radius:5px;box-shadow:0 8px 24px #183c4a26;font:13px/1.4 system-ui;color:#192e3a;padding:6px;box-sizing:border-box}
+    .bd-dropdown[hidden]{display:none}.bd-search{box-sizing:border-box;width:100%;padding:7px;border:1px solid #b8cbd1;border-radius:3px}.bd-options{max-height:250px;overflow:auto}.bd-option{display:flex;justify-content:space-between;gap:8px;padding:7px;cursor:pointer}.bd-option:hover,.bd-highlighted{background:#e8f4f2}.bd-option[aria-disabled=true]{opacity:.5;cursor:not-allowed}.bd-option small{color:#526a72}
+  `;
 		document.head.append(style);
 		const controls = new Map();
 		const scan = () => {
@@ -2125,7 +2157,60 @@
 			subtree: true
 		});
 	}
+	function installProductUi() {
+		if (!/\/frmEProductMainPage\.aspx$/i.test(location.pathname)) return;
+		const style = document.createElement("style");
+		style.textContent = `
+    .bic-product-table td{padding-top:4px;padding-bottom:4px}
+    .bic-product-table tr:hover td,.bic-product-table tr:focus-within td{box-shadow:inset 0 0 0 999px #4079a21a}
+    .bic-product-table a:focus-visible,.bic-product-table input:focus-visible{outline:2px solid #217d72;outline-offset:1px}
+  `;
+		document.head.append(style);
+		const titled = new WeakSet();
+		const showValue = (event) => {
+			const field = event.target;
+			if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) || !field.id.includes("tbProduct_") || field instanceof HTMLInputElement && field.type !== "text" || field.hasAttribute("title") && !titled.has(field)) return;
+			field.title = field.value;
+			titled.add(field);
+		};
+		for (const type of [
+			"focusin",
+			"pointerover",
+			"input",
+			"change"
+		]) document.addEventListener(type, showValue);
+		document.addEventListener("keydown", (event) => {
+			if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.key !== "ArrowDown" && event.key !== "ArrowUp" || !(event.target instanceof Element) || event.target.tagName !== "A" || event.target.textContent?.trim().toLowerCase() !== "select") return;
+			const table = event.target.closest(".bic-product-table");
+			const row = event.target.closest("tr");
+			if (!table || !row) return;
+			const rows = [...table.rows];
+			const direction = event.key === "ArrowDown" ? 1 : -1;
+			for (let index = rows.indexOf(row) + direction; index >= 0 && index < rows.length; index += direction) {
+				const link = Array.from(rows[index]?.querySelectorAll("a") ?? []).find((item) => item.textContent?.trim().toLowerCase() === "select");
+				if (link) {
+					event.preventDefault();
+					link.focus();
+					break;
+				}
+			}
+		});
+		const scan = () => {
+			document.querySelectorAll("table:not(.bic-product-table)").forEach((table) => {
+				const headings = [...table.querySelectorAll("th")].filter((cell) => cell.closest("table") === table).map((cell) => cell.textContent?.trim().toLowerCase());
+				if (headings.includes("pro des") && headings.includes("ritc no")) table.classList.add("bic-product-table");
+			});
+		};
+		scan();
+		new MutationObserver((mutations) => {
+			if (mutations.some((mutation) => [...mutation.addedNodes].some((node) => node instanceof Element && (node.matches("table, th") || node.querySelector("table, th"))))) scan();
+		}).observe(document.body, {
+			childList: true,
+			subtree: true
+		});
+	}
 	installDropdowns();
 	installDates();
 	installDbk();
+	installProductUi();
 })();
