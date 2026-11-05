@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better ImpexCube
 // @namespace    https://github.com/quantavil/userscript
-// @version      1.1.0
+// @version      1.2.0
 // @description  Searchable dropdowns, smarter dates and RITC-specific DBK suggestions for ImpexCube
 // @license      GPL-3.0-or-later
 // @match        *://impexcube.in/*
@@ -1126,20 +1126,20 @@
     .impex-date-btn{cursor:pointer;background:#fff;border:1px solid #9baeb2;border-radius:3px;padding:2px 5px}
     .impex-date-btn:disabled{opacity:.5;cursor:not-allowed}
     .impex-date-input.invalid{outline:2px solid #b64b4b}
-    .impex-calendar-popup{position:fixed;z-index:2147483000;width:288px;max-width:calc(100vw - 16px);box-sizing:border-box;padding:12px;background:#fff;border:1px solid #c8d6df;border-radius:10px;box-shadow:0 12px 32px #1c3c512b;font:14px/1.4 system-ui,sans-serif;color:#203849;font-variant-numeric:tabular-nums}
+    .impex-calendar-popup{position:fixed;z-index:2147483000;width:238px;max-width:calc(100vw - 16px);box-sizing:border-box;padding:8px;background:#fff;border:1px solid #c8d6df;border-radius:10px;box-shadow:0 12px 32px #1c3c512b;font:12px/1.4 system-ui,sans-serif;color:#203849;font-variant-numeric:tabular-nums}
     .impex-calendar-popup[hidden]{display:none}
     .impex-calendar-popup button{box-sizing:border-box;min-width:0;margin:0;border:0;background:transparent;color:inherit;font:inherit;line-height:1;cursor:pointer;box-shadow:none;text-shadow:none}
-    .impex-cal-header{display:grid;grid-template-columns:32px 32px minmax(0,1fr) 32px 32px;align-items:center;text-align:center}
+    .impex-cal-header{display:grid;grid-template-columns:26px 26px minmax(0,1fr) 26px 26px;align-items:center;text-align:center}
     .impex-cal-title{font-weight:700;white-space:nowrap}
-    .impex-calendar-popup .impex-cal-nav{width:32px;height:32px;padding:0;border-radius:6px;font-size:20px}
-    .impex-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;margin:8px 0}
-    .impex-cal-grid>span{display:grid;place-items:center;height:28px;color:#687d8a;font-size:12px;font-weight:600}
-    .impex-calendar-popup .impex-cal-day{display:grid;place-items:center;width:100%;height:34px;padding:0;border-radius:6px}
+    .impex-calendar-popup .impex-cal-nav{width:26px;height:26px;padding:0;border-radius:4px;font-size:16px}
+    .impex-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;margin:5px 0}
+    .impex-cal-grid>span{display:grid;place-items:center;height:22px;color:#687d8a;font-size:11px;font-weight:600}
+    .impex-calendar-popup .impex-cal-day{display:grid;place-items:center;width:100%;height:28px;padding:0;border-radius:4px}
     .impex-calendar-popup .impex-cal-day.other-month{color:#9baab2}
     .impex-calendar-popup .impex-cal-day.today:not(.selected){box-shadow:inset 0 0 0 1px #548a83;color:#176b62;font-weight:700}
     .impex-calendar-popup .impex-cal-day.selected{background:#217d72;color:#fff;font-weight:700}
-    .impex-quick-btns{display:flex;justify-content:center;gap:8px;padding-top:9px;border-top:1px solid #e5ecef}
-    .impex-calendar-popup .impex-quick-btn{padding:8px 12px;border-radius:6px;color:#176b62;font-weight:600}
+    .impex-quick-btns{display:flex;justify-content:center;gap:6px;padding-top:5px;border-top:1px solid #e5ecef}
+    .impex-calendar-popup .impex-quick-btn{padding:6px 9px;border-radius:4px;color:#176b62;font-weight:600}
     .impex-calendar-popup button:hover:not(.selected){background:#eaf4f2}
     .impex-calendar-popup button:focus-visible{outline:2px solid #217d72;outline-offset:1px}
   `;
@@ -2057,7 +2057,7 @@
 						size({
 							padding: 8,
 							apply({ rects, availableWidth, elements }) {
-								elements.floating.style.width = `${Math.min(Math.max(rects.reference.width, 320), availableWidth)}px`;
+								elements.floating.style.width = `${Math.min(Math.max(rects.reference.width, 240), availableWidth)}px`;
 							}
 						})
 					]
@@ -2135,8 +2135,8 @@
     .bd-trigger:after{content:'▾';position:absolute;right:4px;top:50%;transform:translateY(-50%)}
     .bd-trigger:focus-visible,.bd-search:focus-visible{outline:2px solid #217d72;outline-offset:1px}
     .bd-wrapper .bd-trigger:disabled{background:#eee;color:#888;cursor:not-allowed}
-    .bd-dropdown{position:fixed;z-index:2147483000;background:white;border:1px solid #b8cbd1;border-radius:5px;box-shadow:0 8px 24px #183c4a26;font:13px/1.4 system-ui;color:#192e3a;padding:6px;box-sizing:border-box}
-    .bd-dropdown[hidden]{display:none}.bd-search{box-sizing:border-box;width:100%;padding:7px;border:1px solid #b8cbd1;border-radius:3px}.bd-options{max-height:250px;overflow:auto}.bd-option{display:flex;justify-content:space-between;gap:8px;padding:7px;cursor:pointer}.bd-option:hover,.bd-highlighted{background:#e8f4f2}.bd-option[aria-disabled=true]{opacity:.5;cursor:not-allowed}.bd-option small{color:#526a72}
+    .bd-dropdown{position:fixed;z-index:2147483000;background:white;border:1px solid #b8cbd1;border-radius:5px;box-shadow:0 8px 24px #183c4a26;font:12px/1.35 system-ui;color:#192e3a;padding:4px;box-sizing:border-box}
+    .bd-dropdown[hidden]{display:none}.bd-search{box-sizing:border-box;width:100%;padding:5px;border:1px solid #b8cbd1;border-radius:3px}.bd-options{max-height:200px;overflow:auto}.bd-option{display:flex;justify-content:space-between;gap:6px;padding:5px 6px;cursor:pointer}.bd-option:hover,.bd-highlighted{background:#e8f4f2}.bd-option[aria-disabled=true]{opacity:.5;cursor:not-allowed}.bd-option small{color:#526a72}
   `;
 		document.head.append(style);
 		const controls = new Map();
@@ -2155,6 +2155,231 @@
 		}).observe(document.body, {
 			childList: true,
 			subtree: true
+		});
+	}
+	function parseJobs(doc) {
+		if (!doc.querySelector("#ContentPlaceHolder1_txtSearch")) throw new Error("Search session unavailable");
+		const table = doc.querySelector("#ContentPlaceHolder1_gvJobNo");
+		if (!table) return [];
+		const headers = Array.from(table.querySelectorAll("th"), (th) => th.textContent?.trim().toLowerCase());
+		const exporter = headers.indexOf("exportername");
+		const sb = headers.indexOf("sb no");
+		return Array.from(table.rows).flatMap((row) => {
+			const job = row.querySelector(".jobnomenu")?.textContent?.trim();
+			if (!job || !row.querySelector("a[href*=\"Select$\"]")) return [];
+			return [{
+				job,
+				exporter: row.cells[exporter]?.textContent?.trim() ?? "",
+				sb: row.cells[sb]?.textContent?.trim() ?? ""
+			}];
+		});
+	}
+	var searchPath = "/efrmJobDetails.aspx";
+	var copyPath = "/frmCopyEJobDetails.aspx";
+	var prefix = "better-impexcube:";
+	var fields = [
+		["a.JobNo", "Job number"],
+		["a.SBNo", "SB number"],
+		["b.ExporterName", "Exporter"],
+		["b.Consignee", "Consignee"]
+	];
+	function handoff() {
+		if (!window.name.startsWith(prefix)) return false;
+		let data;
+		try {
+			data = JSON.parse(window.name.slice(17));
+		} catch {
+			window.name = "";
+			return false;
+		}
+		window.name = "";
+		if (typeof data.job !== "string" || !data.job || data.job.length > 100) return false;
+		if (data.action === "copy" && location.pathname.toLowerCase() === copyPath.toLowerCase()) {
+			const input = document.querySelector("#ContentPlaceHolder1_txtJobNo");
+			if (input) {
+				input.value = data.job;
+				input.dispatchEvent(new Event("input", { bubbles: true }));
+				input.focus();
+			}
+			return false;
+		}
+		if (location.pathname.toLowerCase() !== searchPath.toLowerCase()) return false;
+		if (data.action === "search") {
+			const select = document.querySelector("#ContentPlaceHolder1_ddlsearch");
+			const input = document.querySelector("#ContentPlaceHolder1_txtSearch");
+			const button = document.querySelector("#ContentPlaceHolder1_btnSearch");
+			if (select && input && button && select.form) {
+				select.value = "a.JobNo";
+				input.value = data.job;
+				window.name = prefix + JSON.stringify({
+					action: "select",
+					job: data.job
+				});
+				select.form.requestSubmit(button);
+				return true;
+			}
+		} else if (data.action === "select") {
+			const link = Array.from(document.querySelectorAll("#ContentPlaceHolder1_gvJobNo tr")).find((r) => r.querySelector(".jobnomenu")?.textContent?.trim() === data.job)?.querySelector("a[href*=\"Select$\"]");
+			if (link) {
+				link.click();
+				return true;
+			}
+		}
+		return false;
+	}
+	function openJob(job, action) {
+		const tab = window.open("", "_blank");
+		if (!tab) return;
+		tab.name = prefix + JSON.stringify({
+			action,
+			job
+		});
+		tab.location.href = action === "copy" ? copyPath : searchPath;
+	}
+	async function search(query, signal) {
+		const response = await fetch(searchPath, { signal });
+		if (!response.ok) throw new Error("Search unavailable");
+		const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+		const form = doc.querySelector("form");
+		if (!form || !doc.querySelector("#ContentPlaceHolder1_txtSearch")) throw new Error("Search session unavailable");
+		const jobs = new Map();
+		let partial = false;
+		for (const [field] of fields) {
+			const data = new FormData(form);
+			data.set("ctl00$ContentPlaceHolder1$ddlsearch", field);
+			data.set("ctl00$ContentPlaceHolder1$txtSearch", query);
+			data.set("ctl00$ContentPlaceHolder1$btnSearch", "Search");
+			const result = await fetch(searchPath, {
+				method: "POST",
+				body: new URLSearchParams(data),
+				signal
+			});
+			if (!result.ok) throw new Error("Search unavailable");
+			const page = new DOMParser().parseFromString(await result.text(), "text/html");
+			for (const job of parseJobs(page)) jobs.set(job.job, job);
+			const table = page.querySelector("#ContentPlaceHolder1_gvJobNo");
+			if (table && Array.from(table.querySelectorAll("a")).some((a) => /Page\$/.test(a.getAttribute("href") ?? ""))) partial = true;
+		}
+		return {
+			jobs: [...jobs.values()],
+			partial
+		};
+	}
+	function installJobSearch() {
+		if (handoff()) return;
+		if (location.pathname.toLowerCase() !== searchPath.toLowerCase()) return;
+		const native = document.querySelector("#ContentPlaceHolder1_txtSearch");
+		const select = document.querySelector("#ContentPlaceHolder1_ddlsearch");
+		const button = document.querySelector("#ContentPlaceHolder1_btnSearch");
+		const label = document.querySelector("#ContentPlaceHolder1_lblSearch");
+		if (!native || !select || !button || !label || !native.parentElement) return;
+		const style = document.createElement("style");
+		style.textContent = `.bic-job-search{position:relative;display:inline-block;width:min(560px,75%);text-align:left;font:13px system-ui;vertical-align:middle}.bic-job-search input{box-sizing:border-box;width:100%;padding:7px 9px;border:1px solid #8da7c3;border-radius:4px;font:inherit}.bic-job-results{position:absolute;z-index:2147483000;left:0;right:0;top:100%;max-height:360px;overflow:auto;background:#fff;border:1px solid #b8cbd1;border-radius:4px;box-shadow:0 8px 24px #183c4a26;color:#192e3a}.bic-job-results[hidden]{display:none}.bic-job-result{display:flex;gap:8px;align-items:center;padding:8px;border-bottom:1px solid #edf2f2}.bic-job-result div{flex:1;min-width:0;overflow-wrap:anywhere}.bic-job-result small{display:block;color:#526a72}.bic-job-result button,.bic-job-more{cursor:pointer;font:inherit}.bic-job-message{padding:10px;color:#526a72}.bic-job-more{margin:0 6px}`;
+		document.head.append(style);
+		const box = document.createElement("div");
+		box.className = "bic-job-search";
+		const input = document.createElement("input");
+		input.type = "search";
+		input.placeholder = "Search job, SB, exporter or consignee";
+		input.setAttribute("aria-label", input.placeholder);
+		input.autocomplete = "off";
+		const results = document.createElement("div");
+		results.className = "bic-job-results";
+		results.hidden = true;
+		results.setAttribute("aria-live", "polite");
+		box.append(input, results);
+		const more = document.createElement("button");
+		more.type = "button";
+		more.className = "bic-job-more";
+		more.textContent = "Other search options";
+		label.before(box, more);
+		const original = [
+			label,
+			select.closest(".bd-wrapper") ?? select,
+			native,
+			button
+		];
+		original.forEach((element) => {
+			element.hidden = true;
+		});
+		more.addEventListener("click", () => {
+			const show = original[0]?.hidden;
+			original.forEach((element) => {
+				element.hidden = !show;
+			});
+			more.textContent = show ? "Hide other options" : "Other search options";
+		});
+		let timer;
+		let controller;
+		let generation = 0;
+		const message = (text) => {
+			results.replaceChildren();
+			const p = document.createElement("div");
+			p.className = "bic-job-message";
+			p.textContent = text;
+			results.append(p);
+			results.hidden = false;
+		};
+		input.addEventListener("input", () => {
+			clearTimeout(timer);
+			controller?.abort();
+			const current = ++generation;
+			const query = input.value.trim();
+			if (query.length < 2) {
+				results.hidden = true;
+				return;
+			}
+			message("Searching…");
+			timer = setTimeout(() => {
+				controller = new AbortController();
+				search(query, controller.signal).then(({ jobs, partial }) => {
+					if (current !== generation) return;
+					results.replaceChildren();
+					if (!jobs.length) {
+						message("No matching jobs found.");
+						return;
+					}
+					for (const job of jobs) {
+						const row = document.createElement("div");
+						row.className = "bic-job-result";
+						const info = document.createElement("div");
+						const title = document.createElement("strong");
+						title.textContent = job.job;
+						const details = document.createElement("small");
+						details.textContent = [job.exporter, job.sb && `SB ${job.sb}`].filter(Boolean).join(" · ");
+						info.append(title, details);
+						const open = document.createElement("button");
+						open.type = "button";
+						open.textContent = "Open";
+						open.addEventListener("click", () => openJob(job.job, "search"));
+						const copy = document.createElement("button");
+						copy.type = "button";
+						copy.textContent = "Copy job";
+						copy.addEventListener("click", () => openJob(job.job, "copy"));
+						row.append(info, open, copy);
+						results.append(row);
+					}
+					if (partial) {
+						const note = document.createElement("div");
+						note.className = "bic-job-message";
+						note.textContent = "Showing the first page for each search field. Refine your search for more results.";
+						results.append(note);
+					}
+					results.hidden = false;
+				}).catch((error) => {
+					if (current === generation && !(error instanceof DOMException && error.name === "AbortError")) message("Search failed. Check your session and try again.");
+				});
+			}, 500);
+		});
+		input.addEventListener("keydown", (event) => {
+			if (event.key === "Escape") results.hidden = true;
+			if (event.key === "Enter") event.preventDefault();
+		});
+		input.addEventListener("focus", () => {
+			if (input.value.trim().length >= 2 && results.childNodes.length) results.hidden = false;
+		});
+		document.addEventListener("pointerdown", (event) => {
+			if (!box.contains(event.target)) results.hidden = true;
 		});
 	}
 	function installProductUi() {
@@ -2209,6 +2434,7 @@
 			subtree: true
 		});
 	}
+	installJobSearch();
 	installDropdowns();
 	installDates();
 	installDbk();

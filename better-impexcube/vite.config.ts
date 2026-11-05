@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: "Better ImpexCube",
         namespace: "https://github.com/quantavil/userscript",
-        version: "1.1.0",
+        version: "1.2.0",
         description:
           "Searchable dropdowns, smarter dates and RITC-specific DBK suggestions for ImpexCube",
         match: ["*://impexcube.in/*", "*://*.impexcube.in/*"],
