@@ -1,3 +1,5 @@
+import Fuse from "fuse.js/basic";
+
 export type Job = { job: string; exporter: string; sb: string };
 
 export function parseJobs(doc: Document): Job[] {
@@ -23,4 +25,37 @@ export function parseJobs(doc: Document): Job[] {
       },
     ];
   });
+}
+
+export function nextPage(
+  doc: Document,
+  page: number,
+): { target: string; argument: string } | null {
+  for (const link of doc.querySelectorAll<HTMLAnchorElement>(
+    "#ContentPlaceHolder1_gvJobNo a",
+  )) {
+    const match = link
+      .getAttribute("href")
+      ?.match(/^javascript:__doPostBack\('([^']*\$gvJobNo)','(Page\$\d+)'\)$/);
+    if (match?.[1] && match[2] === `Page$${page}`)
+      return { target: match[1], argument: match[2] };
+  }
+  return null;
+}
+
+export function rankJobs(
+  jobs: Job[],
+  query: string,
+  onlyMatches = false,
+): Job[] {
+  const matches = new Fuse(jobs, {
+    keys: ["job", "sb", "exporter"],
+    threshold: 0.35,
+    ignoreLocation: true,
+  })
+    .search(query)
+    .map((result) => result.item);
+  if (onlyMatches) return matches;
+  const found = new Set(matches);
+  return [...matches, ...jobs.filter((job) => !found.has(job))];
 }

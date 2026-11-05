@@ -1,4 +1,4 @@
-import { type Job, parseJobs } from "./job-search-data";
+import { type Job, nextPage, parseJobs, rankJobs } from "./job-search-data";
 
 const searchPath = "/efrmJobDetails.aspx";
 const copyPath = "/frmCopyEJobDetails.aspx";
@@ -82,9 +82,11 @@ function openJob(job: string, action: "search" | "copy"): void {
   tab.location.href = action === "copy" ? copyPath : searchPath;
 }
 
-async function search(
+export async function searchJobs(
   query: string,
   signal: AbortSignal,
+  pageLimit: number,
+  progress?: (field: string, page: number) => void,
 ): Promise<{ jobs: Job[]; partial: boolean }> {
   const response = await fetch(searchPath, { signal });
   if (!response.ok) throw new Error("Search unavailable");
@@ -97,32 +99,36 @@ async function search(
     throw new Error("Search session unavailable");
   const jobs = new Map<string, Job>();
   let partial = false;
-  for (const [field] of fields) {
-    const data = new FormData(form);
+  for (const [field, label] of fields) {
+    let data = new FormData(form);
     data.set("ctl00$ContentPlaceHolder1$ddlsearch", field);
     data.set("ctl00$ContentPlaceHolder1$txtSearch", query);
     data.set("ctl00$ContentPlaceHolder1$btnSearch", "Search");
-    const result = await fetch(searchPath, {
-      method: "POST",
-      body: new URLSearchParams(data as never),
-      signal,
-    });
-    if (!result.ok) throw new Error("Search unavailable");
-    const page = new DOMParser().parseFromString(
-      await result.text(),
-      "text/html",
-    );
-    for (const job of parseJobs(page)) jobs.set(job.job, job);
-    const table = page.querySelector<HTMLTableElement>(
-      "#ContentPlaceHolder1_gvJobNo",
-    );
-    if (
-      table &&
-      Array.from(table.querySelectorAll("a")).some((a) =>
-        /Page\$/.test(a.getAttribute("href") ?? ""),
-      )
-    )
-      partial = true;
+    for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber++) {
+      progress?.(label, pageNumber);
+      const result = await fetch(searchPath, {
+        method: "POST",
+        body: new URLSearchParams(data as never),
+        signal,
+      });
+      if (!result.ok) throw new Error("Search unavailable");
+      const page = new DOMParser().parseFromString(
+        await result.text(),
+        "text/html",
+      );
+      for (const job of parseJobs(page)) jobs.set(job.job, job);
+      const next = nextPage(page, pageNumber + 1);
+      if (!next) break;
+      if (pageNumber === pageLimit) {
+        partial = true;
+        break;
+      }
+      const nextForm = page.querySelector<HTMLFormElement>("form");
+      if (!nextForm) throw new Error("Search session unavailable");
+      data = new FormData(nextForm);
+      data.set("__EVENTTARGET", next.target);
+      data.set("__EVENTARGUMENT", next.argument);
+    }
   }
   return { jobs: [...jobs.values()], partial };
 }
@@ -190,6 +196,89 @@ export function installJobSearch(): void {
     results.append(p);
     results.hidden = false;
   };
+  const runSearch = (query: string, current: number, pageLimit: number) => {
+    controller = new AbortController();
+    const signal = controller.signal;
+    const progress = (field: string, page: number) => {
+      if (current === generation) message(`Searching ${field}, page ${page}…`);
+    };
+    void (async () => {
+      let result = await searchJobs(query, signal, pageLimit, progress);
+      let suggestions = false;
+      // The server performs substring search. A short prefix can supply candidates
+      // for typo-tolerant matching when the full query returns nothing.
+      if (!result.jobs.length && query.length >= 4) {
+        result = await searchJobs(
+          query.slice(0, 3),
+          signal,
+          pageLimit,
+          progress,
+        );
+        suggestions = true;
+      }
+      if (current !== generation) return;
+      const jobs = rankJobs(result.jobs, query, suggestions);
+      results.replaceChildren();
+      if (!jobs.length) {
+        message(
+          result.partial
+            ? "No matches in the pages checked."
+            : "No matching jobs found.",
+        );
+        if (!result.partial) return;
+      }
+      if (suggestions && jobs.length) {
+        const note = document.createElement("div");
+        note.className = "bic-job-message";
+        note.textContent = "No exact matches. Possible close matches:";
+        results.append(note);
+      }
+      for (const job of jobs) {
+        const row = document.createElement("div");
+        row.className = "bic-job-result";
+        const info = document.createElement("div");
+        const title = document.createElement("strong");
+        title.textContent = job.job;
+        const details = document.createElement("small");
+        details.textContent = [job.exporter, job.sb && `SB ${job.sb}`]
+          .filter(Boolean)
+          .join(" · ");
+        info.append(title, details);
+        const open = document.createElement("button");
+        open.type = "button";
+        open.textContent = "Open";
+        open.addEventListener("click", () => openJob(job.job, "search"));
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.textContent = "Copy job";
+        copy.addEventListener("click", () => openJob(job.job, "copy"));
+        row.append(info, open, copy);
+        results.append(row);
+      }
+      if (result.partial) {
+        const note = document.createElement("div");
+        note.className = "bic-job-message";
+        note.textContent = `Showing up to ${pageLimit} pages per field. `;
+        if (pageLimit < 12) {
+          const load = document.createElement("button");
+          load.type = "button";
+          load.textContent = "Load more";
+          load.addEventListener("click", () =>
+            runSearch(query, current, pageLimit + 3),
+          );
+          note.append(load);
+        } else note.append("Refine your search for more results.");
+        results.append(note);
+      }
+      results.hidden = false;
+    })().catch((error: unknown) => {
+      if (
+        current === generation &&
+        !(error instanceof DOMException && error.name === "AbortError")
+      )
+        message("Search failed. Check your session and try again.");
+    });
+  };
   input.addEventListener("input", () => {
     clearTimeout(timer);
     controller?.abort();
@@ -200,55 +289,7 @@ export function installJobSearch(): void {
       return;
     }
     message("Searching…");
-    timer = setTimeout(() => {
-      controller = new AbortController();
-      void search(query, controller.signal)
-        .then(({ jobs, partial }) => {
-          if (current !== generation) return;
-          results.replaceChildren();
-          if (!jobs.length) {
-            message("No matching jobs found.");
-            return;
-          }
-          for (const job of jobs) {
-            const row = document.createElement("div");
-            row.className = "bic-job-result";
-            const info = document.createElement("div");
-            const title = document.createElement("strong");
-            title.textContent = job.job;
-            const details = document.createElement("small");
-            details.textContent = [job.exporter, job.sb && `SB ${job.sb}`]
-              .filter(Boolean)
-              .join(" · ");
-            info.append(title, details);
-            const open = document.createElement("button");
-            open.type = "button";
-            open.textContent = "Open";
-            open.addEventListener("click", () => openJob(job.job, "search"));
-            const copy = document.createElement("button");
-            copy.type = "button";
-            copy.textContent = "Copy job";
-            copy.addEventListener("click", () => openJob(job.job, "copy"));
-            row.append(info, open, copy);
-            results.append(row);
-          }
-          if (partial) {
-            const note = document.createElement("div");
-            note.className = "bic-job-message";
-            note.textContent =
-              "Showing the first page for each search field. Refine your search for more results.";
-            results.append(note);
-          }
-          results.hidden = false;
-        })
-        .catch((error: unknown) => {
-          if (
-            current === generation &&
-            !(error instanceof DOMException && error.name === "AbortError")
-          )
-            message("Search failed. Check your session and try again.");
-        });
-    }, 500);
+    timer = setTimeout(() => runSearch(query, current, 3), 500);
   });
   input.addEventListener("keydown", (event) => {
     if (event.key === "Escape") results.hidden = true;

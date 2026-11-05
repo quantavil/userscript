@@ -172,7 +172,7 @@ function enhance(select: HTMLSelectElement): () => void {
           size({
             padding: 8,
             apply({ rects, availableWidth, elements }) {
-              elements.floating.style.width = `${Math.min(Math.max(rects.reference.width, 240), availableWidth)}px`;
+              elements.floating.style.width = `${Math.min(Math.max(rects.reference.width, 180), 360, availableWidth)}px`;
             },
           }),
         ],
@@ -255,8 +255,8 @@ export function installDropdowns(): void {
     .bd-trigger:after{content:'▾';position:absolute;right:4px;top:50%;transform:translateY(-50%)}
     .bd-trigger:focus-visible,.bd-search:focus-visible{outline:2px solid #217d72;outline-offset:1px}
     .bd-wrapper .bd-trigger:disabled{background:#eee;color:#888;cursor:not-allowed}
-    .bd-dropdown{position:fixed;z-index:2147483000;background:white;border:1px solid #b8cbd1;border-radius:5px;box-shadow:0 8px 24px #183c4a26;font:12px/1.35 system-ui;color:#192e3a;padding:4px;box-sizing:border-box}
-    .bd-dropdown[hidden]{display:none}.bd-search{box-sizing:border-box;width:100%;padding:5px;border:1px solid #b8cbd1;border-radius:3px}.bd-options{max-height:200px;overflow:auto}.bd-option{display:flex;justify-content:space-between;gap:6px;padding:5px 6px;cursor:pointer}.bd-option:hover,.bd-highlighted{background:#e8f4f2}.bd-option[aria-disabled=true]{opacity:.5;cursor:not-allowed}.bd-option small{color:#526a72}
+    .bd-dropdown{position:fixed;z-index:2147483000;background:white;border:1px solid #b8cbd1;border-radius:5px;box-shadow:0 8px 24px #183c4a26;font:11px/1.3 system-ui;color:#192e3a;padding:3px;box-sizing:border-box}
+    .bd-dropdown[hidden]{display:none}.bd-search{box-sizing:border-box;width:100%;padding:3px 4px;border:1px solid #b8cbd1;border-radius:3px}.bd-options{max-height:150px;overflow:auto}.bd-option{display:flex;justify-content:space-between;gap:6px;padding:3px 5px;cursor:pointer}.bd-option:hover,.bd-highlighted{background:#e8f4f2}.bd-option[aria-disabled=true]{opacity:.5;cursor:not-allowed}.bd-option small{color:#526a72}
   `;
   document.head.append(style);
   const controls = new Map<HTMLSelectElement, () => void>();
@@ -267,7 +267,12 @@ export function installDropdowns(): void {
         controls.delete(element);
       }
     document.querySelectorAll("select").forEach((select) => {
-      if (!controls.has(select) && !select.multiple && !(select.size > 1))
+      if (
+        !controls.has(select) &&
+        !select.matches(".bic-context-select") &&
+        !select.multiple &&
+        !(select.size > 1)
+      )
         controls.set(select, enhance(select));
     });
   };
