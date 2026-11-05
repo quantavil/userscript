@@ -74,8 +74,7 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 | **[testbook-plus](./testbook-plus)** | Testbook test suite crawler and exporter that cleans tracking scripts, preserves MathJax formulas as LaTeX, and converts question papers to clean Markdown. |
 | **[guidely-plus](./guidely-plus)** | Guidely test review crawler that enables text selection/copying and exports full tests and solutions to structured Markdown. |
 | **[oliveboard-plus](./oliveboard-plus)** | Oliveboard UI declutterer and mock test extractor that strips banners, stops intrusive popups, and exports full question/solution suites to Markdown. |
-| **[impex-cube-dropdown](./impex-cube-dropdown)** | Transforms native select dropdowns into searchable, keyboard-friendly fuzzy dropdowns on Impex Cube portals. |
-| **[impex-cube-better-dates](./impex-cube-better-dates)** | Replaces ASP.NET calendars with a fast, manual-typing enabled, smart date picker on Impex Cube portals. |
+| **[better-impexcube](./better-impexcube)** | Searchable dropdowns, smarter dates and RITC-specific DBK suggestions for ImpexCube. |
 | **[floating-stopwatch](./floating-stopwatch)** | High-performance, tab-isolated floating stopwatch overlay with millisecond precision that persists seamlessly across page reloads. |
 | **[super-chess-bot](./super-chess-bot)** ([Chess.com](./super-chess-bot/README-c.md)) | Local Stockfish 19 analysis, 0 ms FEN-keyed premove engine, and automated move play for Chess.com and Lichess standard games with mobile bottom-sheet and desktop panel. |
 
