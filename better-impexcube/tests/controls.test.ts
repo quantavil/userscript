@@ -6,7 +6,7 @@ const pause = () => new Promise((resolve) => setTimeout(resolve, 80));
 test("dropdown keyboard selection fires one change and respects disabled options", async () => {
   const window = new Window({ url: "https://export.impexcube.in/" });
   window.document.body.innerHTML =
-    '<select id="port"><option value="a">Alpha</option><option value="b">Beta</option><option value="c" disabled>Blocked</option></select>';
+    '<span id="port-label">Destination port</span><select id="port" aria-labelledby="port-label"><option value="a">Alpha</option><option value="b">Beta</option><option value="c" disabled>Blocked</option></select>';
   const select = window.document.querySelector("select")!;
   let changes = 0;
   select.onchange = () => {
@@ -29,6 +29,7 @@ test("dropdown keyboard selection fires one change and respects disabled options
     window.document.querySelector<HTMLButtonElement>(".bd-trigger")!;
   expect(trigger.parentElement?.contains(select)).toBe(true);
   expect(trigger.title).toBe("Alpha");
+  expect(trigger.getAttribute("aria-label")).toBe("Destination port: Alpha");
   window.document.querySelector<HTMLButtonElement>(".bd-trigger")!.click();
   await pause();
   const search = window.document.querySelector<HTMLInputElement>(".bd-search")!;
@@ -44,6 +45,7 @@ test("dropdown keyboard selection fires one change and respects disabled options
   );
   expect(select.value).toBe("b");
   expect(trigger.title).toBe("Beta");
+  expect(trigger.getAttribute("aria-label")).toBe("Destination port: Beta");
   expect(changes).toBe(1);
   window.document.querySelector<HTMLButtonElement>(".bd-trigger")!.click();
   search.value = "Blocked";

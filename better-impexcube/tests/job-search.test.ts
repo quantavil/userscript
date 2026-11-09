@@ -19,7 +19,7 @@ test("searches the four fields, deduplicates results and preserves native search
   const window = new Window({
     url: "https://export.impexcube.in/efrmJobDetails.aspx",
   });
-  window.document.body.innerHTML = `<form><span id="ContentPlaceHolder1_lblSearch">Search By</span><select id="ContentPlaceHolder1_ddlsearch"></select><input id="ContentPlaceHolder1_txtSearch"><input id="ContentPlaceHolder1_btnSearch" type="submit"></form>`;
+  window.document.body.innerHTML = `<form><span id="ContentPlaceHolder1_lblSearch">Search By</span><select id="ContentPlaceHolder1_ddlsearch"><option value="0">--Choose--</option><option value="a.JobNo" selected>JobNo</option></select><input id="ContentPlaceHolder1_txtSearch"><input id="ContentPlaceHolder1_btnSearch" type="submit"></form>`;
   Object.assign(globalThis, {
     window,
     document: window.document,
@@ -60,12 +60,29 @@ test("searches the four fields, deduplicates results and preserves native search
   expect(
     window.document.querySelector(".bic-job-result")?.textContent,
   ).toContain("SB123");
-  window.document.querySelector<HTMLButtonElement>(".bic-job-more")!.click();
+  const select = window.document.querySelector<HTMLSelectElement>(
+    "#ContentPlaceHolder1_ddlsearch",
+  )!;
+  expect(select.value).toBe("0");
   expect(
-    window.document.querySelector<HTMLInputElement>(
-      "#ContentPlaceHolder1_txtSearch",
-    )!.hidden,
-  ).toBe(false);
+    window.document.querySelectorAll("#ContentPlaceHolder1_txtSearch"),
+  ).toHaveLength(1);
+  expect(window.document.querySelector(".bic-job-more")).toBeNull();
+  select.value = "a.JobNo";
+  select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  expect(
+    window.document.querySelector<HTMLDivElement>(".bic-job-results")!.hidden,
+  ).toBe(true);
+  const before = fields.length;
+  input.value = "EXP-2";
+  input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 550));
+  expect(fields).toHaveLength(before);
+  expect(input.value).toBe("EXP-2");
+  select.value = "0";
+  select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 650));
+  expect(fields.length).toBeGreaterThan(before);
   globalThis.fetch = originalFetch;
   await window.happyDOM.abort();
 });
@@ -154,4 +171,13 @@ test("search follows the next page with that response view state", async () => {
   ).toBe("first");
   globalThis.fetch = originalFetch;
   await window.happyDOM.abort();
+});
+
+test("reads and ranks consignee names when the server provides a column", async () => {
+  const { rankJobs } = await import("../src/job-search-data");
+  const { document } = new Window();
+  document.body.innerHTML = `<input id="ContentPlaceHolder1_txtSearch"><table id="ContentPlaceHolder1_gvJobNo"><tr><th>Job No</th><th>ExporterName</th><th>Consignee Name</th><th>SB No</th></tr><tr><td><a href="javascript:__doPostBack('grid','Select$0')">Select</a><span class="jobnomenu">EXP-1</span></td><td>Exporter</td><td>North Buyer</td><td>SB1</td></tr></table>`;
+  const jobs = parseJobs(document);
+  expect(jobs[0]?.consignee).toBe("North Buyer");
+  expect(rankJobs(jobs, "North Buyer", true)).toHaveLength(1);
 });

@@ -15,3 +15,7 @@ Keep the original product inputs, disabled state, change handlers, ASP.NET postb
 `src/login.ts` selects the Moradabad branch and current Indian financial year on the native login selection form. Never submit credentials or choose among multiple companies.
 
 `src/context-switch.ts` offers compact header selectors using the site’s native switch form and its available options. Keep the native form as the authority for branch and year changes.
+
+`src/invoice-date.ts` defaults a new supporting document’s issue date from the saved invoice grid. Verify job and invoice identity, preserve existing documents and user edits, and never persist job data.
+
+`src/site-style.css` themes shared native controls and `src/form-style.css` contains detailed invoice and product styling. Preserve native controls and layout tables; verify representative pages and shared popups when changing the theme.

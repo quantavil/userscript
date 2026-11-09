@@ -1,0 +1,86 @@
+/* Shared palette plus detailed invoice and product form styling. */
+:root {
+  color-scheme: dark;
+  --bic-bg: #171716;
+  --bic-panel: #222220;
+  --bic-raised: #2d2c29;
+  --bic-field: #191a19;
+  --bic-border: #45443e;
+  --bic-text: #eeeae2;
+  --bic-muted: #b8b2a6;
+  --bic-accent: #e4b971;
+}
+body { background: var(--bic-bg) !important; color: var(--bic-text); font-family: system-ui, sans-serif; }
+#lblCompName, #lblName { color: var(--bic-text); }
+#lblUser { color: var(--bic-text) !important; }
+tr:has(> .welcome) { background: #242320 !important; }
+#nav, #nav > li, #nav > li > a { background: #242320 !important; color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
+#nav > li:hover, #nav > li:hover > a { background: #39362f !important; }
+#nav ul, #nav ul li, #nav ul a { background: #2d2c29 !important; color: var(--bic-text) !important; }
+#nav ul li:hover > a, #nav ul a:focus-visible { background: #514532 !important; color: #fff1d9 !important; }
+.bic-context { color: var(--bic-muted) !important; }
+.bic-context select { background: #34322d !important; color: var(--bic-text) !important; }
+.bic-context option { background: var(--bic-raised) !important; color: var(--bic-text) !important; }
+#ContentPlaceHolder1_tbProduct, #ContentPlaceHolder1_tbInvoice { color: var(--bic-text); font: 14px/1.35 system-ui, sans-serif !important; }
+#ContentPlaceHolder1_tbProduct .ajax__tab_header, #ContentPlaceHolder1_tbInvoice .ajax__tab_header { padding: 6px 8px; background: #252421; border: 1px solid var(--bic-border); border-bottom: 0; }
+#ContentPlaceHolder1_tbProduct .ajax__tab_outer, #ContentPlaceHolder1_tbProduct .ajax__tab_inner,
+#ContentPlaceHolder1_tbInvoice .ajax__tab_outer, #ContentPlaceHolder1_tbInvoice .ajax__tab_inner { background: none !important; padding: 0 !important; }
+#ContentPlaceHolder1_tbProduct .ajax__tab_tab, #ContentPlaceHolder1_tbInvoice .ajax__tab_tab { display: inline-block; height: auto !important; padding: 9px 11px !important; margin: 2px !important; border: 1px solid #45433d !important; border-radius: 5px; background: #302f2b !important; color: var(--bic-muted) !important; font: 600 13px/1.25 system-ui, sans-serif !important; }
+#ContentPlaceHolder1_tbProduct .ajax__tab_active .ajax__tab_tab, #ContentPlaceHolder1_tbInvoice .ajax__tab_active .ajax__tab_tab { color: #241c11 !important; background: var(--bic-accent) !important; border-color: var(--bic-accent) !important; }
+#ContentPlaceHolder1_tbProduct .ajax__tab_tab:hover, #ContentPlaceHolder1_tbInvoice .ajax__tab_tab:hover { filter: brightness(1.13); }
+#ContentPlaceHolder1_tbInvoice_header .ajax__tab_tab br { display: none; }
+#ContentPlaceHolder1_tbProduct .ajax__tab_body, #ContentPlaceHolder1_tbInvoice .ajax__tab_body { background: var(--bic-panel) !important; border: 1px solid var(--bic-border) !important; padding: 14px !important; }
+#ContentPlaceHolder1_tbProduct_TabSupportingdoc_Td84 { background: transparent !important; text-align: left !important; font-size: 0; padding: 0 0 12px !important; }
+#ContentPlaceHolder1_tbProduct_TabSupportingdoc_Label157 { display: block; color: var(--bic-text) !important; font: 700 18px/1.3 system-ui, sans-serif !important; }
+#ContentPlaceHolder1_tbProduct input[type=text], #ContentPlaceHolder1_tbProduct select, #ContentPlaceHolder1_tbProduct textarea,
+#ContentPlaceHolder1_tbInvoice input[type=text], #ContentPlaceHolder1_tbInvoice select, #ContentPlaceHolder1_tbInvoice textarea { box-sizing: border-box; min-height: 28px; padding: 3px 7px; border: 1px solid #56544e; border-radius: 5px; background: var(--bic-field); color: var(--bic-text); font: 13px/1.3 system-ui, sans-serif; }
+#ContentPlaceHolder1_tbProduct input:disabled, #ContentPlaceHolder1_tbProduct select:disabled, #ContentPlaceHolder1_tbInvoice input:disabled, #ContentPlaceHolder1_tbInvoice select:disabled { background: #30302d; color: #aaa69d; }
+#ContentPlaceHolder1_tbProduct :is(input, select, textarea, a):focus-visible, #ContentPlaceHolder1_tbInvoice :is(input, select, textarea, a):focus-visible, input.stylebutton:focus-visible { outline: 2px solid var(--bic-accent); outline-offset: 2px; }
+#ContentPlaceHolder1_tbProduct .impex-date-input, #ContentPlaceHolder1_tbInvoice .impex-date-input { min-width: 92px; }
+input.stylebutton { min-width: max-content; min-height: 30px; padding: 0 12px !important; border: 1px solid #c69b59 !important; border-radius: 5px !important; background: var(--bic-accent) !important; color: #241c11 !important; box-shadow: none !important; text-shadow: none !important; cursor: pointer; }
+input.stylebutton:hover { background: #f0c98b !important; }
+/* The native percentage widths plus whitespace caused Exit to wrap. */
+td:has(> #ContentPlaceHolder1_btnExit) { white-space: nowrap; }
+td:has(> #ContentPlaceHolder1_btnExit) > input.stylebutton { width: auto !important; min-height: 34px; margin: 2px 3px; padding: 0 13px !important; background: var(--bic-raised) !important; border-color: var(--bic-border) !important; color: var(--bic-text) !important; font: 600 12px system-ui, sans-serif !important; }
+td:has(> #ContentPlaceHolder1_btnExit) > input.stylebutton:hover { background: #454037 !important; border-color: #8f7b5a !important; }
+#ContentPlaceHolder1_tbProduct .table-wrapper, #ContentPlaceHolder1_tbInvoice .table-wrapper, #ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails { border: 1px solid var(--bic-border) !important; color: var(--bic-text) !important; }
+#ContentPlaceHolder1_tbProduct .table-wrapper th, #ContentPlaceHolder1_tbInvoice .table-wrapper th, #ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails th { background: #35332e !important; color: #e0d5c3 !important; border-color: var(--bic-border) !important; padding: 8px 5px; font: 600 12px/1.2 system-ui, sans-serif; }
+#ContentPlaceHolder1_tbProduct .table-wrapper td, #ContentPlaceHolder1_tbInvoice .table-wrapper td, #ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails td { padding: 5px; border-color: var(--bic-border) !important; color: var(--bic-text); }
+#ContentPlaceHolder1_tbProduct .table-wrapper tr:nth-child(even), #ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails tr:nth-child(even) { background: #292825 !important; color: var(--bic-text) !important; }
+#ContentPlaceHolder1_tbProduct .table-wrapper tr:nth-child(odd), #ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails tr:nth-child(odd) { background: #232320 !important; color: var(--bic-text) !important; }
+#ContentPlaceHolder1_tbProduct a, #ContentPlaceHolder1_tbInvoice a { color: #efd0a0; }
+#ContentPlaceHolder1_tbProduct :is(td, div)[bgcolor], #ContentPlaceHolder1_tbInvoice :is(td, div)[bgcolor] { background-color: var(--bic-panel) !important; }
+.impex-date-btn { background: #37342e !important; border-color: #666052 !important; }
+/* The searchable select and calendar are shared enhancements rendered outside the form. */
+.bd-wrapper .bd-trigger { background: var(--bic-field) !important; border: 1px solid #56544e !important; border-radius: 5px !important; color: var(--bic-text) !important; padding-left: 7px; }
+.bd-wrapper .bd-trigger:disabled { background: #30302d !important; color: #aaa69d !important; }
+.bd-dropdown, .bic-dbk-list { background: #2b2a27 !important; border-color: #625d53 !important; color: var(--bic-text) !important; box-shadow: 0 12px 30px #0008; }
+.bd-dropdown .bd-search { background: #191a19; color: var(--bic-text); border-color: #625d53; }
+.bd-option:hover, .bd-highlighted, .bic-dbk-option:hover, .bic-dbk-option.is-active { background: #51432f !important; }
+.bd-option small, .bic-dbk-rate, .bic-dbk-message { color: #c9bda9 !important; }
+.bic-dbk-popup, .bic-dbk-code { color: #f0cf99 !important; }
+.impex-calendar-popup { background: #2b2a27 !important; border-color: #625d53 !important; color: var(--bic-text) !important; }
+.impex-calendar-popup button:hover:not(.selected) { background: #51432f !important; }
+.impex-calendar-popup .impex-cal-day.selected { background: var(--bic-accent) !important; color: #241c11 !important; }
+.impex-calendar-popup .impex-cal-day.today:not(.selected), .impex-calendar-popup .impex-quick-btn { color: #f0cf99 !important; }
+.impex-calendar-popup .impex-cal-grid > span { color: #c2b8a9; }
+.impex-quick-btns { border-color: #625d53; }
+.bd-trigger:focus-visible, .bd-search:focus-visible, .impex-calendar-popup button:focus-visible { outline-color: var(--bic-accent) !important; }
+#ContentPlaceHolder1_tbProduct_TabSupportingdoc_lblSDAmend { color: var(--bic-muted) !important; }
+#ContentPlaceHolder1_txtJobNo, #ContentPlaceHolder1_ddlInvNo, #ContentPlaceHolder1_ddlPrdSNo { background: var(--bic-field); color: var(--bic-text); border: 1px solid #56544e; }
+#ContentPlaceHolder1_btnGetJob { background: #39352e; color: var(--bic-text); border: 1px solid #625d53; }
+#ContentPlaceHolder1_tbInvoice table[bgcolor], #ContentPlaceHolder1_tbInvoice div[style*="F0F8FF"] { background: var(--bic-panel) !important; }
+#ContentPlaceHolder1_tbInvoice_TabPanel1_lblisAmend { color: var(--bic-muted) !important; }
+#ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails a { color: #efd0a0 !important; }
+
+/* Product grid is a native ASP.NET table, not a .table-wrapper. */
+#ContentPlaceHolder1_tbProduct .bic-product-table { border: 1px solid var(--bic-border) !important; color: var(--bic-text); }
+#ContentPlaceHolder1_tbProduct .bic-product-table th { background: #35332e !important; color: #e0d5c3 !important; border: 1px solid var(--bic-border) !important; padding: 8px 5px; font: 600 12px/1.2 system-ui, sans-serif; }
+#ContentPlaceHolder1_tbProduct .bic-product-table td { border: 1px solid var(--bic-border) !important; color: var(--bic-text) !important; padding: 6px 5px; }
+#ContentPlaceHolder1_tbProduct .bic-product-table tr:nth-child(even) { background: #292825 !important; }
+#ContentPlaceHolder1_tbProduct .bic-product-table tr:nth-child(odd) { background: #232320 !important; }
+#ContentPlaceHolder1_tbProduct .bic-product-table tr[style*="font-weight:bold"] { background: #514532 !important; }
+#ContentPlaceHolder1_tbProduct .bic-product-table tr:last-child:not(:has(a)) { background: #37352f !important; }
+#ContentPlaceHolder1_tbProduct .bic-product-table a { color: #efd0a0 !important; }
+#ContentPlaceHolder1_tbProduct .bic-product-table tr:hover td, #ContentPlaceHolder1_tbProduct .bic-product-table tr:focus-within td { box-shadow: inset 0 0 0 999px #e4b97114; }
+#ContentPlaceHolder1_tbProduct .bic-product-table :is(a, input):focus-visible { outline: 2px solid var(--bic-accent); outline-offset: 1px; }

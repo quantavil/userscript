@@ -116,7 +116,14 @@ export async function searchJobs(
         await result.text(),
         "text/html",
       );
-      for (const job of parseJobs(page)) jobs.set(job.job, job);
+      for (const job of parseJobs(page)) {
+        const previous = jobs.get(job.job);
+        jobs.set(job.job, {
+          ...previous,
+          ...job,
+          consignee: job.consignee || previous?.consignee,
+        });
+      }
       const next = nextPage(page, pageNumber + 1);
       if (!next) break;
       if (pageNumber === pageLimit) {
@@ -154,37 +161,25 @@ export function installJobSearch(): void {
   document.head.append(style);
   const box = document.createElement("div");
   box.className = "bic-job-search";
-  const input = document.createElement("input");
-  input.type = "search";
+  const input = native;
   input.placeholder = "Search job, SB, exporter or consignee";
-  input.setAttribute("aria-label", input.placeholder);
+  input.setAttribute("aria-label", "Search jobs");
   input.autocomplete = "off";
+  input.style.width = "100%";
   const results = document.createElement("div");
   results.className = "bic-job-results";
   results.hidden = true;
   results.setAttribute("aria-live", "polite");
+  input.before(box);
   box.append(input, results);
-  const more = document.createElement("button");
-  more.type = "button";
-  more.className = "bic-job-more";
-  more.textContent = "Other search options";
-  label.before(box, more);
-  const original = [
-    label,
-    select.closest<HTMLElement>(".bd-wrapper") ?? select,
-    native,
-    button,
-  ];
-  original.forEach((element) => {
-    element.hidden = true;
-  });
-  more.addEventListener("click", () => {
-    const show = original[0]?.hidden;
-    original.forEach((element) => {
-      element.hidden = !show;
-    });
-    more.textContent = show ? "Hide other options" : "Other search options";
-  });
+  // Start with the combined search on an untouched page. Preserve native
+  // selections and query text returned after a normal postback.
+  if (
+    !input.value.trim() &&
+    [...select.options].some((option) => option.value === "0")
+  )
+    select.value = "0";
+  const combined = () => !select.value || select.value === "0";
   let timer: ReturnType<typeof setTimeout> | undefined;
   let controller: AbortController | undefined;
   let generation = 0;
@@ -240,7 +235,11 @@ export function installJobSearch(): void {
         const title = document.createElement("strong");
         title.textContent = job.job;
         const details = document.createElement("small");
-        details.textContent = [job.exporter, job.sb && `SB ${job.sb}`]
+        details.textContent = [
+          job.exporter,
+          job.consignee ? `Consignee: ${job.consignee}` : "",
+          job.sb && `SB ${job.sb}`,
+        ]
           .filter(Boolean)
           .join(" · ");
         info.append(title, details);
@@ -279,24 +278,40 @@ export function installJobSearch(): void {
         message("Search failed. Check your session and try again.");
     });
   };
-  input.addEventListener("input", () => {
+  const queueSearch = (immediate = false) => {
     clearTimeout(timer);
     controller?.abort();
     const current = ++generation;
     const query = input.value.trim();
-    if (query.length < 2) {
+    if (!combined() || query.length < 2) {
       results.hidden = true;
       return;
     }
     message("Searching…");
-    timer = setTimeout(() => runSearch(query, current, 3), 500);
+    if (immediate) runSearch(query, current, 3);
+    else timer = setTimeout(() => runSearch(query, current, 3), 500);
+  };
+  input.addEventListener("input", () => queueSearch());
+  select.addEventListener("change", () => queueSearch());
+  button.addEventListener("click", (event) => {
+    if (combined()) {
+      event.preventDefault();
+      queueSearch(true);
+    }
   });
   input.addEventListener("keydown", (event) => {
     if (event.key === "Escape") results.hidden = true;
-    if (event.key === "Enter") event.preventDefault();
+    if (event.key === "Enter" && combined()) {
+      event.preventDefault();
+      queueSearch(true);
+    }
   });
   input.addEventListener("focus", () => {
-    if (input.value.trim().length >= 2 && results.childNodes.length)
+    if (
+      combined() &&
+      input.value.trim().length >= 2 &&
+      results.childNodes.length
+    )
       results.hidden = false;
   });
   document.addEventListener("pointerdown", (event) => {

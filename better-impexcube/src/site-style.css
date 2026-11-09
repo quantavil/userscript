@@ -1,0 +1,74 @@
+/* Shared ImpexCube controls. Layout tables remain untouched. */
+body { background: var(--bic-bg) !important; color: var(--bic-text) !important; }
+.main, .page, .panel, .panel-body { background-color: transparent; color: var(--bic-text); }
+input[type="text"], input[type="password"], input[type="number"], select, textarea {
+  box-sizing: border-box; min-height: 28px; padding: 3px 7px;
+  border: 1px solid #56544e; border-radius: 5px;
+  background: var(--bic-field); color: var(--bic-text); font: 13px/1.3 system-ui, sans-serif;
+}
+:is(input, select, textarea):disabled { background: #30302d; color: #aaa69d; }
+:is(input, select, textarea, button, a):focus-visible { outline: 2px solid var(--bic-accent); outline-offset: 2px; }
+.main a { color: #efd0a0; }
+.ajax__tab_header { padding: 6px 8px; background: #252421; border: 1px solid var(--bic-border); border-bottom: 0; }
+.ajax__tab_outer, .ajax__tab_inner { background: none !important; padding: 0 !important; }
+.ajax__tab_tab { display: inline-block; height: auto !important; padding: 9px 11px !important; margin: 2px !important; border: 1px solid #45433d !important; border-radius: 5px; background: #302f2b !important; color: var(--bic-muted) !important; font: 600 13px/1.25 system-ui, sans-serif !important; }
+.ajax__tab_active .ajax__tab_tab { background: var(--bic-accent) !important; border-color: var(--bic-accent) !important; color: #241c11 !important; }
+.ajax__tab_tab:hover { filter: brightness(1.13); }
+.ajax__tab_body { background: var(--bic-panel) !important; border: 1px solid var(--bic-border) !important; padding: 14px !important; color: var(--bic-text); }
+/* GridView tables only; ordinary tables are used extensively for form layout. */
+table.table-wrapper, table[id*="_gv"] { border: 1px solid var(--bic-border) !important; color: var(--bic-text) !important; }
+table.table-wrapper th, table[id*="_gv"] th { background: #35332e !important; color: #e0d5c3 !important; border-color: var(--bic-border) !important; padding: 8px 5px; }
+table.table-wrapper td, table[id*="_gv"] td { border-color: var(--bic-border) !important; color: var(--bic-text) !important; }
+table.table-wrapper tr:nth-child(even), table[id*="_gv"] tr:nth-child(even) { background: #292825 !important; }
+table.table-wrapper tr:nth-child(odd), table[id*="_gv"] tr:nth-child(odd) { background: #232320 !important; }
+table.table-wrapper a, table[id*="_gv"] a { color: #efd0a0 !important; }
+/* Native AJAX autocomplete can render either list items or a nested grid. */
+:is(.completionList, .completionListProduct) { background: #2b2a27 !important; color: var(--bic-text) !important; border: 1px solid #625d53 !important; box-shadow: 0 12px 30px #0008; }
+:is(.completionList, .completionListProduct) :is(li, table, tbody, tr, td, th, div, span), .listItem { background: #2b2a27 !important; color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
+:is(.completionList, .completionListProduct) th { background: #39362f !important; color: #e0d5c3 !important; }
+:is(.completionList, .completionListProduct) :is(li:hover, tr:hover, .highlightedListItem, .itemHighlighted), .highlightedListItem { background: #51432f !important; color: var(--bic-text) !important; }
+:is(.completionList, .completionListProduct) :is(li:hover, tr:hover) :is(td, span) { background: #51432f !important; }
+/* Legacy pages use hard-coded light panel colors rather than a shared class. */
+:is(table, td, div)[bgcolor="white" i], div.ajax__tab_container[style*="white" i], div[style*="#F0F8FF" i] { background-color: var(--bic-panel) !important; }
+.actionmenu .dot { background-color: var(--bic-muted) !important; }
+#ContentPlaceHolder1_txtPortdetails { background: var(--bic-field) !important; color: var(--bic-text) !important; }
+/* RITC and other multi-column suggestions use jQuery UI, not AJAX lists. */
+.ui-autocomplete.ui-menu { background: #2b2a27 !important; color: var(--bic-text) !important; border: 1px solid #625d53 !important; box-shadow: 0 12px 30px #0008; }
+.ui-autocomplete .ui-autocomplete-header { background: #39362f !important; color: #e0d5c3 !important; border-color: var(--bic-border) !important; }
+.ui-autocomplete .ui-menu-item-wrapper { background: #2b2a27 !important; color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
+.ui-autocomplete .ui-menu-item-wrapper:is(:hover, .ui-state-active) { background: #51432f !important; color: var(--bic-text) !important; }
+/* Native fieldsets and panels use inline white or AliceBlue backgrounds. */
+.ajax__tab_body :is(div, fieldset, table, td)[style*="#ffffff" i],
+.ajax__tab_body :is(div, fieldset, table, td)[style*="#fff;" i],
+.ajax__tab_body :is(div, fieldset, table, td)[style*="#f0f8ff" i],
+.ajax__tab_body :is(div, fieldset, table, td)[style*="background-color: white" i] { background-color: var(--bic-panel) !important; }
+.ajax__tab_body fieldset { border-color: var(--bic-border) !important; color: var(--bic-text); }
+.ajax__tab_body legend { color: var(--bic-muted); }
+/* A direct header row identifies data grids without affecting nested layout tables. */
+table:has(> tbody > tr > th) { border-color: var(--bic-border) !important; color: var(--bic-text) !important; }
+table:has(> tbody > tr > th) > tbody > tr > th { background: #35332e !important; color: #e0d5c3 !important; border-color: var(--bic-border) !important; }
+table:has(> tbody > tr > th) > tbody > tr > td { color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
+table:has(> tbody > tr > th) > tbody > tr:nth-child(even) { background: #292825 !important; color: var(--bic-text) !important; }
+table:has(> tbody > tr > th) > tbody > tr:nth-child(odd) { background: #232320 !important; color: var(--bic-text) !important; }
+table:has(> tbody > tr > th) > tbody > tr[style*="font-weight:bold" i] { background: #514532 !important; }
+table:has(> tbody > tr > th) > tbody > tr > td[style*="background" i], table:has(> tbody > tr > th) > tbody > tr > td[bgcolor] { background: transparent !important; }
+table:has(> tbody > tr > th) > tbody > tr > td a { color: #efd0a0 !important; }
+input[type="text"]:focus, textarea:focus { background-color: var(--bic-field) !important; color: var(--bic-text) !important; border-color: var(--bic-accent) !important; }
+
+/* Put the keyboard focus indicator on the field edge, not outside its border. */
+:is(input[type="text"], input[type="password"], input[type="number"], input[type="search"], textarea):focus-visible { outline: 2px solid var(--bic-accent) !important; outline-offset: -2px !important; }
+/* Dashboard notification and job-count cards share these native panels. */
+.panel:has(> .menubar, > .navbar) { background: var(--bic-panel) !important; color: var(--bic-text) !important; }
+.panel > :is(.menubar, .navbar) { background: #35332e !important; color: var(--bic-text) !important; }
+.panel > .panel-body { background: var(--bic-panel) !important; color: var(--bic-text) !important; }
+table[id*="_gv"] { background: var(--bic-panel) !important; }
+/* The job search creates its own popup after the shared theme is installed. */
+.bic-job-results { background: #2b2a27 !important; color: var(--bic-text) !important; border-color: #625d53 !important; box-shadow: 0 12px 30px #0008 !important; }
+.bic-job-result { border-color: var(--bic-border) !important; }
+.bic-job-result:hover { background: #39362f; }
+.bic-job-result small, .bic-job-message { color: var(--bic-muted) !important; }
+.bic-job-result button, .bic-job-more { background: #454037; color: var(--bic-text); border: 1px solid #625d53; border-radius: 4px; padding: 4px 8px; }
+.bic-job-result button:hover, .bic-job-more:hover { background: #67563c; }
+.bic-job-result button:focus-visible, .bic-job-more:focus-visible { outline: 2px solid var(--bic-accent); outline-offset: 2px; }
+input.masterbutton { background: var(--bic-accent) !important; color: #241c11 !important; border: 1px solid #c69b59 !important; border-radius: 5px; box-shadow: none !important; }
+input.masterbutton:hover { background: #f0c98b !important; }

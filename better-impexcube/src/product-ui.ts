@@ -4,8 +4,6 @@ export function installProductUi(): void {
   const style = document.createElement("style");
   style.textContent = `
     .bic-product-table td{padding-top:4px;padding-bottom:4px}
-    .bic-product-table tr:hover td,.bic-product-table tr:focus-within td{box-shadow:inset 0 0 0 999px #4079a21a}
-    .bic-product-table a:focus-visible,.bic-product-table input:focus-visible{outline:2px solid #217d72;outline-offset:1px}
   `;
   document.head.append(style);
 

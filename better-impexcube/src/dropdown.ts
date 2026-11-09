@@ -82,6 +82,22 @@ function enhance(select: HTMLSelectElement): () => void {
     trigger.textContent =
       select.selectedOptions[0]?.textContent?.trim() || "--Choose--";
     trigger.title = trigger.textContent;
+    const labelledBy = select
+      .getAttribute("aria-labelledby")
+      ?.split(/\s+/)
+      .map((id) => document.getElementById(id)?.textContent?.trim())
+      .filter(Boolean)
+      .join(" ");
+    const label =
+      labelledBy ||
+      select.getAttribute("aria-label")?.trim() ||
+      [...select.labels]
+        .map((item) => item.textContent?.trim())
+        .filter(Boolean)
+        .join(" ");
+    if (label)
+      trigger.setAttribute("aria-label", `${label}: ${trigger.textContent}`);
+    else trigger.removeAttribute("aria-label");
     trigger.disabled = select.matches(":disabled");
     wrapper.hidden = select.hidden || select.style.display === "none";
     wrapper.style.width = select.style.width || "";

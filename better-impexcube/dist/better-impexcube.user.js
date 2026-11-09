@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better ImpexCube
 // @namespace    https://github.com/quantavil/userscript
-// @version      1.4.0
+// @version      1.7.2
 // @description  Job search, compact controls and RITC-specific DBK suggestions for ImpexCube
 // @license      GPL-3.0-or-later
 // @match        *://impexcube.in/*
@@ -10,19 +10,19 @@
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
-// @run-at       document-end
+// @run-at       document-start
 // ==/UserScript==
 
 (function() {
 	"use strict";
 	var path = "/frmswitchBranch.aspx";
-	var prefix$2 = "better-impexcube-context:";
+	var prefix$3 = "better-impexcube-context:";
 	var branchId = "#ContentPlaceHolder1_ddlbranch";
 	var yearId = "#ContentPlaceHolder1_drFinancial";
 	async function installContextSwitch() {
 		if (location.hostname.toLowerCase() !== "export.impexcube.in") return;
 		if (location.pathname.toLowerCase() === path.toLowerCase()) {
-			if (!window.name.startsWith(prefix$2)) return;
+			if (!window.name.startsWith(prefix$3)) return;
 			const saved = window.name.slice(25);
 			window.name = "";
 			try {
@@ -71,7 +71,7 @@
 				};
 			});
 			const change = () => {
-				window.name = prefix$2 + JSON.stringify({
+				window.name = prefix$3 + JSON.stringify({
 					branch: controls[0].select.value,
 					year: controls[1].select.value
 				});
@@ -2042,6 +2042,9 @@
 			}));
 			trigger.textContent = select.selectedOptions[0]?.textContent?.trim() || "--Choose--";
 			trigger.title = trigger.textContent;
+			const label = select.getAttribute("aria-labelledby")?.split(/\s+/).map((id) => document.getElementById(id)?.textContent?.trim()).filter(Boolean).join(" ") || select.getAttribute("aria-label")?.trim() || [...select.labels].map((item) => item.textContent?.trim()).filter(Boolean).join(" ");
+			if (label) trigger.setAttribute("aria-label", `${label}: ${trigger.textContent}`);
+			else trigger.removeAttribute("aria-label");
 			trigger.disabled = select.matches(":disabled");
 			wrapper.hidden = select.hidden || select.style.display === "none";
 			wrapper.style.width = select.style.width || "";
@@ -2222,6 +2225,59 @@
 		new MutationObserver((mutations) => {
 			if (mutations.some((m) => [...m.addedNodes, ...m.removedNodes].some((node) => node instanceof Element && (node.matches("select") || node.querySelector("select"))))) scan();
 		}).observe(document.body, {
+			childList: true,
+			subtree: true
+		});
+	}
+	var form_style_default = ":root{--lightningcss-light: ;--lightningcss-dark:initial;color-scheme:dark;--bic-bg:#171716;--bic-panel:#222220;--bic-raised:#2d2c29;--bic-field:#191a19;--bic-border:#45443e;--bic-text:#eeeae2;--bic-muted:#b8b2a6;--bic-accent:#e4b971}body{color:var(--bic-text);font-family:system-ui,sans-serif;background:var(--bic-bg)!important}#lblCompName,#lblName{color:var(--bic-text)}#lblUser{color:var(--bic-text)!important}tr:has(>.welcome){background:#242320!important}#nav,#nav>li,#nav>li>a{color:var(--bic-text)!important;border-color:var(--bic-border)!important;background:#242320!important}#nav>li:hover,#nav>li:hover>a{background:#39362f!important}#nav ul,#nav ul li,#nav ul a{color:var(--bic-text)!important;background:#2d2c29!important}#nav ul li:hover>a,#nav ul a:focus-visible{color:#fff1d9!important;background:#514532!important}.bic-context{color:var(--bic-muted)!important}.bic-context select{color:var(--bic-text)!important;background:#34322d!important}.bic-context option{background:var(--bic-raised)!important;color:var(--bic-text)!important}#ContentPlaceHolder1_tbProduct,#ContentPlaceHolder1_tbInvoice{color:var(--bic-text);font:14px/1.35 system-ui,sans-serif!important}#ContentPlaceHolder1_tbProduct .ajax__tab_header,#ContentPlaceHolder1_tbInvoice .ajax__tab_header{border:1px solid var(--bic-border);background:#252421;border-bottom:0;padding:6px 8px}#ContentPlaceHolder1_tbProduct .ajax__tab_outer,#ContentPlaceHolder1_tbProduct .ajax__tab_inner,#ContentPlaceHolder1_tbInvoice .ajax__tab_outer,#ContentPlaceHolder1_tbInvoice .ajax__tab_inner{background:0 0!important;padding:0!important}#ContentPlaceHolder1_tbProduct .ajax__tab_tab,#ContentPlaceHolder1_tbInvoice .ajax__tab_tab{border-radius:5px;display:inline-block;height:auto!important;color:var(--bic-muted)!important;background:#302f2b!important;border:1px solid #45433d!important;margin:2px!important;padding:9px 11px!important;font:600 13px/1.25 system-ui,sans-serif!important}#ContentPlaceHolder1_tbProduct .ajax__tab_active .ajax__tab_tab,#ContentPlaceHolder1_tbInvoice .ajax__tab_active .ajax__tab_tab{color:#241c11!important;background:var(--bic-accent)!important;border-color:var(--bic-accent)!important}#ContentPlaceHolder1_tbProduct .ajax__tab_tab:hover,#ContentPlaceHolder1_tbInvoice .ajax__tab_tab:hover{filter:brightness(1.13)}#ContentPlaceHolder1_tbInvoice_header .ajax__tab_tab br{display:none}#ContentPlaceHolder1_tbProduct .ajax__tab_body,#ContentPlaceHolder1_tbInvoice .ajax__tab_body{background:var(--bic-panel)!important;border:1px solid var(--bic-border)!important;padding:14px!important}#ContentPlaceHolder1_tbProduct_TabSupportingdoc_Td84{font-size:0;text-align:left!important;background:0 0!important;padding:0 0 12px!important}#ContentPlaceHolder1_tbProduct_TabSupportingdoc_Label157{display:block;color:var(--bic-text)!important;font:700 18px/1.3 system-ui,sans-serif!important}#ContentPlaceHolder1_tbProduct input[type=text],#ContentPlaceHolder1_tbProduct select,#ContentPlaceHolder1_tbProduct textarea,#ContentPlaceHolder1_tbInvoice input[type=text],#ContentPlaceHolder1_tbInvoice select,#ContentPlaceHolder1_tbInvoice textarea{box-sizing:border-box;background:var(--bic-field);min-height:28px;color:var(--bic-text);border:1px solid #56544e;border-radius:5px;padding:3px 7px;font:13px/1.3 system-ui,sans-serif}#ContentPlaceHolder1_tbProduct input:disabled,#ContentPlaceHolder1_tbProduct select:disabled,#ContentPlaceHolder1_tbInvoice input:disabled,#ContentPlaceHolder1_tbInvoice select:disabled{color:#aaa69d;background:#30302d}#ContentPlaceHolder1_tbProduct :is(input,select,textarea,a):focus-visible,#ContentPlaceHolder1_tbInvoice :is(input,select,textarea,a):focus-visible,input.stylebutton:focus-visible{outline:2px solid var(--bic-accent);outline-offset:2px}#ContentPlaceHolder1_tbProduct .impex-date-input,#ContentPlaceHolder1_tbInvoice .impex-date-input{min-width:92px}input.stylebutton{cursor:pointer;min-width:max-content;min-height:30px;background:var(--bic-accent)!important;color:#241c11!important;box-shadow:none!important;text-shadow:none!important;border:1px solid #c69b59!important;border-radius:5px!important;padding:0 12px!important}input.stylebutton:hover{background:#f0c98b!important}td:has(>#ContentPlaceHolder1_btnExit){white-space:nowrap}td:has(>#ContentPlaceHolder1_btnExit)>input.stylebutton{min-height:34px;margin:2px 3px;background:var(--bic-raised)!important;border-color:var(--bic-border)!important;width:auto!important;color:var(--bic-text)!important;padding:0 13px!important;font:600 12px system-ui,sans-serif!important}td:has(>#ContentPlaceHolder1_btnExit)>input.stylebutton:hover{background:#454037!important;border-color:#8f7b5a!important}#ContentPlaceHolder1_tbProduct .table-wrapper,#ContentPlaceHolder1_tbInvoice .table-wrapper,#ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails{border:1px solid var(--bic-border)!important;color:var(--bic-text)!important}#ContentPlaceHolder1_tbProduct .table-wrapper th,#ContentPlaceHolder1_tbInvoice .table-wrapper th,#ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails th{padding:8px 5px;font:600 12px/1.2 system-ui,sans-serif;color:#e0d5c3!important;border-color:var(--bic-border)!important;background:#35332e!important}#ContentPlaceHolder1_tbProduct .table-wrapper td,#ContentPlaceHolder1_tbInvoice .table-wrapper td,#ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails td{color:var(--bic-text);padding:5px;border-color:var(--bic-border)!important}#ContentPlaceHolder1_tbProduct .table-wrapper tr:nth-child(2n),#ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails tr:nth-child(2n){color:var(--bic-text)!important;background:#292825!important}#ContentPlaceHolder1_tbProduct .table-wrapper tr:nth-child(odd),#ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails tr:nth-child(odd){color:var(--bic-text)!important;background:#232320!important}#ContentPlaceHolder1_tbProduct a,#ContentPlaceHolder1_tbInvoice a{color:#efd0a0}#ContentPlaceHolder1_tbProduct :is(td,div)[bgcolor],#ContentPlaceHolder1_tbInvoice :is(td,div)[bgcolor]{background-color:var(--bic-panel)!important}.impex-date-btn{background:#37342e!important;border-color:#666052!important}.bd-wrapper .bd-trigger{padding-left:7px;background:var(--bic-field)!important;color:var(--bic-text)!important;border:1px solid #56544e!important;border-radius:5px!important}.bd-wrapper .bd-trigger:disabled{color:#aaa69d!important;background:#30302d!important}.bd-dropdown,.bic-dbk-list{box-shadow:0 12px 30px #0008;color:var(--bic-text)!important;background:#2b2a27!important;border-color:#625d53!important}.bd-dropdown .bd-search{color:var(--bic-text);background:#191a19;border-color:#625d53}.bd-option:hover,.bd-highlighted,.bic-dbk-option:hover,.bic-dbk-option.is-active{background:#51432f!important}.bd-option small,.bic-dbk-rate,.bic-dbk-message{color:#c9bda9!important}.bic-dbk-popup,.bic-dbk-code{color:#f0cf99!important}.impex-calendar-popup{color:var(--bic-text)!important;background:#2b2a27!important;border-color:#625d53!important}.impex-calendar-popup button:hover:not(.selected){background:#51432f!important}.impex-calendar-popup .impex-cal-day.selected{background:var(--bic-accent)!important;color:#241c11!important}.impex-calendar-popup .impex-cal-day.today:not(.selected),.impex-calendar-popup .impex-quick-btn{color:#f0cf99!important}.impex-calendar-popup .impex-cal-grid>span{color:#c2b8a9}.impex-quick-btns{border-color:#625d53}.bd-trigger:focus-visible,.bd-search:focus-visible,.impex-calendar-popup button:focus-visible{outline-color:var(--bic-accent)!important}#ContentPlaceHolder1_tbProduct_TabSupportingdoc_lblSDAmend{color:var(--bic-muted)!important}#ContentPlaceHolder1_txtJobNo,#ContentPlaceHolder1_ddlInvNo,#ContentPlaceHolder1_ddlPrdSNo{background:var(--bic-field);color:var(--bic-text);border:1px solid #56544e}#ContentPlaceHolder1_btnGetJob{color:var(--bic-text);background:#39352e;border:1px solid #625d53}#ContentPlaceHolder1_tbInvoice table[bgcolor],#ContentPlaceHolder1_tbInvoice div[style*=F0F8FF]{background:var(--bic-panel)!important}#ContentPlaceHolder1_tbInvoice_TabPanel1_lblisAmend{color:var(--bic-muted)!important}#ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails a{color:#efd0a0!important}#ContentPlaceHolder1_tbProduct .bic-product-table{color:var(--bic-text);border:1px solid var(--bic-border)!important}#ContentPlaceHolder1_tbProduct .bic-product-table th{padding:8px 5px;font:600 12px/1.2 system-ui,sans-serif;color:#e0d5c3!important;border:1px solid var(--bic-border)!important;background:#35332e!important}#ContentPlaceHolder1_tbProduct .bic-product-table td{padding:6px 5px;border:1px solid var(--bic-border)!important;color:var(--bic-text)!important}#ContentPlaceHolder1_tbProduct .bic-product-table tr:nth-child(2n){background:#292825!important}#ContentPlaceHolder1_tbProduct .bic-product-table tr:nth-child(odd){background:#232320!important}#ContentPlaceHolder1_tbProduct .bic-product-table tr[style*=font-weight\\:bold]{background:#514532!important}#ContentPlaceHolder1_tbProduct .bic-product-table tr:last-child:not(:has(a)){background:#37352f!important}#ContentPlaceHolder1_tbProduct .bic-product-table a{color:#efd0a0!important}#ContentPlaceHolder1_tbProduct .bic-product-table tr:hover td,#ContentPlaceHolder1_tbProduct .bic-product-table tr:focus-within td{box-shadow:inset 0 0 0 999px #e4b97114}#ContentPlaceHolder1_tbProduct .bic-product-table :is(a,input):focus-visible{outline:2px solid var(--bic-accent);outline-offset:1px}";
+	var site_style_default = "body{background:var(--bic-bg)!important;color:var(--bic-text)!important}.main,.page,.panel,.panel-body{color:var(--bic-text);background-color:#0000}input[type=text],input[type=password],input[type=number],select,textarea{box-sizing:border-box;background:var(--bic-field);min-height:28px;color:var(--bic-text);border:1px solid #56544e;border-radius:5px;padding:3px 7px;font:13px/1.3 system-ui,sans-serif}:is(input,select,textarea):disabled{color:#aaa69d;background:#30302d}:is(input,select,textarea,button,a):focus-visible{outline:2px solid var(--bic-accent);outline-offset:2px}.main a{color:#efd0a0}.ajax__tab_header{border:1px solid var(--bic-border);background:#252421;border-bottom:0;padding:6px 8px}.ajax__tab_outer,.ajax__tab_inner{background:0 0!important;padding:0!important}.ajax__tab_tab{border-radius:5px;display:inline-block;height:auto!important;color:var(--bic-muted)!important;background:#302f2b!important;border:1px solid #45433d!important;margin:2px!important;padding:9px 11px!important;font:600 13px/1.25 system-ui,sans-serif!important}.ajax__tab_active .ajax__tab_tab{background:var(--bic-accent)!important;border-color:var(--bic-accent)!important;color:#241c11!important}.ajax__tab_tab:hover{filter:brightness(1.13)}.ajax__tab_body{color:var(--bic-text);background:var(--bic-panel)!important;border:1px solid var(--bic-border)!important;padding:14px!important}table.table-wrapper,table[id*=_gv]{border:1px solid var(--bic-border)!important;color:var(--bic-text)!important}table.table-wrapper th,table[id*=_gv] th{padding:8px 5px;color:#e0d5c3!important;border-color:var(--bic-border)!important;background:#35332e!important}table.table-wrapper td,table[id*=_gv] td{border-color:var(--bic-border)!important;color:var(--bic-text)!important}table.table-wrapper tr:nth-child(2n),table[id*=_gv] tr:nth-child(2n){background:#292825!important}table.table-wrapper tr:nth-child(odd),table[id*=_gv] tr:nth-child(odd){background:#232320!important}table.table-wrapper a,table[id*=_gv] a{color:#efd0a0!important}:is(.completionList,.completionListProduct){box-shadow:0 12px 30px #0008;color:var(--bic-text)!important;background:#2b2a27!important;border:1px solid #625d53!important}:is(.completionList,.completionListProduct) :is(li,table,tbody,tr,td,th,div,span),.listItem{color:var(--bic-text)!important;border-color:var(--bic-border)!important;background:#2b2a27!important}:is(.completionList,.completionListProduct) th{color:#e0d5c3!important;background:#39362f!important}:is(.completionList,.completionListProduct) :is(li:hover,tr:hover,.highlightedListItem,.itemHighlighted),.highlightedListItem{color:var(--bic-text)!important;background:#51432f!important}:is(.completionList,.completionListProduct) :is(li:hover,tr:hover) :is(td,span){background:#51432f!important}:is(table,td,div)[bgcolor=white i],div.ajax__tab_container[style*=white i],div[style*=\\#F0F8FF i]{background-color:var(--bic-panel)!important}.actionmenu .dot{background-color:var(--bic-muted)!important}#ContentPlaceHolder1_txtPortdetails{background:var(--bic-field)!important;color:var(--bic-text)!important}.ui-autocomplete.ui-menu{box-shadow:0 12px 30px #0008;color:var(--bic-text)!important;background:#2b2a27!important;border:1px solid #625d53!important}.ui-autocomplete .ui-autocomplete-header{color:#e0d5c3!important;border-color:var(--bic-border)!important;background:#39362f!important}.ui-autocomplete .ui-menu-item-wrapper{color:var(--bic-text)!important;border-color:var(--bic-border)!important;background:#2b2a27!important}.ui-autocomplete .ui-menu-item-wrapper:is(:hover,.ui-state-active){color:var(--bic-text)!important;background:#51432f!important}.ajax__tab_body :is(div,fieldset,table,td)[style*=\\#ffffff i],.ajax__tab_body :is(div,fieldset,table,td)[style*=\"#fff;\" i],.ajax__tab_body :is(div,fieldset,table,td)[style*=\\#f0f8ff i],.ajax__tab_body :is(div,fieldset,table,td)[style*=\"background-color: white\" i]{background-color:var(--bic-panel)!important}.ajax__tab_body fieldset{color:var(--bic-text);border-color:var(--bic-border)!important}.ajax__tab_body legend{color:var(--bic-muted)}table:has(>tbody>tr>th){border-color:var(--bic-border)!important;color:var(--bic-text)!important}table:has(>tbody>tr>th)>tbody>tr>th{color:#e0d5c3!important;border-color:var(--bic-border)!important;background:#35332e!important}table:has(>tbody>tr>th)>tbody>tr>td{color:var(--bic-text)!important;border-color:var(--bic-border)!important}table:has(>tbody>tr>th)>tbody>tr:nth-child(2n){color:var(--bic-text)!important;background:#292825!important}table:has(>tbody>tr>th)>tbody>tr:nth-child(odd){color:var(--bic-text)!important;background:#232320!important}table:has(>tbody>tr>th)>tbody>tr[style*=font-weight\\:bold i]{background:#514532!important}:is(table:has(>tbody>tr>th)>tbody>tr>td[style*=background i],table:has(>tbody>tr>th)>tbody>tr>td[bgcolor]){background:0 0!important}table:has(>tbody>tr>th)>tbody>tr>td a{color:#efd0a0!important}input[type=text]:focus,textarea:focus{background-color:var(--bic-field)!important;color:var(--bic-text)!important;border-color:var(--bic-accent)!important}:is(input[type=text],input[type=password],input[type=number],input[type=search],textarea):focus-visible{outline:2px solid var(--bic-accent)!important;outline-offset:-2px!important}.panel:has(>.menubar,>.navbar){background:var(--bic-panel)!important;color:var(--bic-text)!important}.panel>:is(.menubar,.navbar){color:var(--bic-text)!important;background:#35332e!important}.panel>.panel-body{background:var(--bic-panel)!important;color:var(--bic-text)!important}table[id*=_gv]{background:var(--bic-panel)!important}.bic-job-results{color:var(--bic-text)!important;background:#2b2a27!important;border-color:#625d53!important;box-shadow:0 12px 30px #0008!important}.bic-job-result{border-color:var(--bic-border)!important}.bic-job-result:hover{background:#39362f}.bic-job-result small,.bic-job-message{color:var(--bic-muted)!important}.bic-job-result button,.bic-job-more{color:var(--bic-text);background:#454037;border:1px solid #625d53;border-radius:4px;padding:4px 8px}.bic-job-result button:hover,.bic-job-more:hover{background:#67563c}.bic-job-result button:focus-visible,.bic-job-more:focus-visible{outline:2px solid var(--bic-accent);outline-offset:2px}input.masterbutton{border-radius:5px;background:var(--bic-accent)!important;color:#241c11!important;box-shadow:none!important;border:1px solid #c69b59!important}input.masterbutton:hover{background:#f0c98b!important}";
+	function installFormStyle() {
+		const style = document.createElement("style");
+		style.textContent = `${site_style_default}\n${form_style_default}`;
+		(document.head ?? document.documentElement).append(style);
+	}
+	var prefix$2 = "ContentPlaceHolder1_tbProduct_TabSupportingdoc_";
+	var todayDate = () => {
+		const date = new Date();
+		return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+	};
+	function installInvoiceDate(load = async () => {
+		const response = await fetch("/efrmInvoiceDetails.aspx?JobMode=Shipment", { credentials: "same-origin" });
+		if (!response.ok || !new URL(response.url).pathname.toLowerCase().endsWith("/efrminvoicedetails.aspx")) throw new Error("Invoice page unavailable");
+		return response.text();
+	}, today = todayDate) {
+		if (!/\/frmEProductMainPage\.aspx$/i.test(location.pathname)) return;
+		const attempted = new WeakSet();
+		const input = (id) => document.getElementById(id);
+		const scan = () => {
+			const issue = input(`${prefix$2}txtDocIssueDt`);
+			const job = input("ContentPlaceHolder1_txtJobNo")?.value.trim();
+			const invoice = document.getElementById("ContentPlaceHolder1_ddlInvNo")?.value.trim();
+			const docNo = input(`${prefix$2}txtDocumentNo`);
+			const irn = input(`${prefix$2}txtIRNNo`);
+			const type = document.getElementById(`${prefix$2}ddldoctypecode`);
+			if (!issue || attempted.has(issue) || !job || !invoice || !docNo || !irn || !type || issue.disabled || issue.readOnly || issue.value !== today() || docNo.value || irn.value || type.value) return;
+			attempted.add(issue);
+			let touched = false;
+			issue.addEventListener("input", () => {
+				touched = true;
+			}, { once: true });
+			load().then((html) => {
+				const page = new DOMParser().parseFromString(html, "text/html");
+				if (page.getElementById("ContentPlaceHolder1_txtJobNo")?.value.trim() !== job) return;
+				const rows = [...page.querySelectorAll("#ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails tr")];
+				const headings = [...rows.shift()?.querySelectorAll("th") ?? []].map((cell) => cell.textContent?.trim());
+				if (headings[3] !== "S.No" || headings[4] !== "Inv. No" || headings[5] !== "Date") return;
+				const matches = rows.filter((row) => row.cells[4]?.textContent?.trim() === invoice);
+				const date = matches.length === 1 ? matches[0]?.cells[5]?.textContent?.trim() : void 0;
+				if (!date || !/^\d{2}\/\d{2}\/\d{4}$/.test(date) || touched || !issue.isConnected || issue.disabled || issue.readOnly || issue.value !== today() || docNo.value || irn.value || type.value || input("ContentPlaceHolder1_txtJobNo")?.value.trim() !== job || document.getElementById("ContentPlaceHolder1_ddlInvNo")?.value.trim() !== invoice) return;
+				issue.value = date;
+				issue.dispatchEvent(new Event("input", { bubbles: true }));
+				issue.dispatchEvent(new Event("change", { bubbles: true }));
+			}).catch(() => {});
+		};
+		scan();
+		new MutationObserver(scan).observe(document.body, {
 			childList: true,
 			subtree: true
 		});
@@ -3429,13 +3485,15 @@
 		const headers = Array.from(table.querySelectorAll("th"), (th) => th.textContent?.trim().toLowerCase());
 		const exporter = headers.indexOf("exportername");
 		const sb = headers.indexOf("sb no");
+		const consignee = headers.findIndex((header) => /^(consignee|consignee ?name)$/.test(header ?? ""));
 		return Array.from(table.rows).flatMap((row) => {
 			const job = row.querySelector(".jobnomenu")?.textContent?.trim();
 			if (!job || !row.querySelector("a[href*=\"Select$\"]")) return [];
 			return [{
 				job,
 				exporter: row.cells[exporter]?.textContent?.trim() ?? "",
-				sb: row.cells[sb]?.textContent?.trim() ?? ""
+				sb: row.cells[sb]?.textContent?.trim() ?? "",
+				...consignee >= 0 ? { consignee: row.cells[consignee]?.textContent?.trim() ?? "" } : {}
 			}];
 		});
 	}
@@ -3454,7 +3512,8 @@
 			keys: [
 				"job",
 				"sb",
-				"exporter"
+				"exporter",
+				"consignee"
 			],
 			threshold: .35,
 			ignoreLocation: true
@@ -3547,7 +3606,14 @@
 				});
 				if (!result.ok) throw new Error("Search unavailable");
 				const page = new DOMParser().parseFromString(await result.text(), "text/html");
-				for (const job of parseJobs(page)) jobs.set(job.job, job);
+				for (const job of parseJobs(page)) {
+					const previous = jobs.get(job.job);
+					jobs.set(job.job, {
+						...previous,
+						...job,
+						consignee: job.consignee || previous?.consignee
+					});
+				}
 				const next = nextPage(page, pageNumber + 1);
 				if (!next) break;
 				if (pageNumber === pageLimit) {
@@ -3579,37 +3645,19 @@
 		document.head.append(style);
 		const box = document.createElement("div");
 		box.className = "bic-job-search";
-		const input = document.createElement("input");
-		input.type = "search";
+		const input = native;
 		input.placeholder = "Search job, SB, exporter or consignee";
-		input.setAttribute("aria-label", input.placeholder);
+		input.setAttribute("aria-label", "Search jobs");
 		input.autocomplete = "off";
+		input.style.width = "100%";
 		const results = document.createElement("div");
 		results.className = "bic-job-results";
 		results.hidden = true;
 		results.setAttribute("aria-live", "polite");
+		input.before(box);
 		box.append(input, results);
-		const more = document.createElement("button");
-		more.type = "button";
-		more.className = "bic-job-more";
-		more.textContent = "Other search options";
-		label.before(box, more);
-		const original = [
-			label,
-			select.closest(".bd-wrapper") ?? select,
-			native,
-			button
-		];
-		original.forEach((element) => {
-			element.hidden = true;
-		});
-		more.addEventListener("click", () => {
-			const show = original[0]?.hidden;
-			original.forEach((element) => {
-				element.hidden = !show;
-			});
-			more.textContent = show ? "Hide other options" : "Other search options";
-		});
+		if (!input.value.trim() && [...select.options].some((option) => option.value === "0")) select.value = "0";
+		const combined = () => !select.value || select.value === "0";
 		let timer;
 		let controller;
 		let generation = 0;
@@ -3654,7 +3702,11 @@
 					const title = document.createElement("strong");
 					title.textContent = job.job;
 					const details = document.createElement("small");
-					details.textContent = [job.exporter, job.sb && `SB ${job.sb}`].filter(Boolean).join(" · ");
+					details.textContent = [
+						job.exporter,
+						job.consignee ? `Consignee: ${job.consignee}` : "",
+						job.sb && `SB ${job.sb}`
+					].filter(Boolean).join(" · ");
 					info.append(title, details);
 					const open = document.createElement("button");
 					open.type = "button";
@@ -3685,24 +3737,36 @@
 				if (current === generation && !(error instanceof DOMException && error.name === "AbortError")) message("Search failed. Check your session and try again.");
 			});
 		};
-		input.addEventListener("input", () => {
+		const queueSearch = (immediate = false) => {
 			clearTimeout(timer);
 			controller?.abort();
 			const current = ++generation;
 			const query = input.value.trim();
-			if (query.length < 2) {
+			if (!combined() || query.length < 2) {
 				results.hidden = true;
 				return;
 			}
 			message("Searching…");
-			timer = setTimeout(() => runSearch(query, current, 3), 500);
+			if (immediate) runSearch(query, current, 3);
+			else timer = setTimeout(() => runSearch(query, current, 3), 500);
+		};
+		input.addEventListener("input", () => queueSearch());
+		select.addEventListener("change", () => queueSearch());
+		button.addEventListener("click", (event) => {
+			if (combined()) {
+				event.preventDefault();
+				queueSearch(true);
+			}
 		});
 		input.addEventListener("keydown", (event) => {
 			if (event.key === "Escape") results.hidden = true;
-			if (event.key === "Enter") event.preventDefault();
+			if (event.key === "Enter" && combined()) {
+				event.preventDefault();
+				queueSearch(true);
+			}
 		});
 		input.addEventListener("focus", () => {
-			if (input.value.trim().length >= 2 && results.childNodes.length) results.hidden = false;
+			if (combined() && input.value.trim().length >= 2 && results.childNodes.length) results.hidden = false;
 		});
 		document.addEventListener("pointerdown", (event) => {
 			if (!box.contains(event.target)) results.hidden = true;
@@ -3746,8 +3810,6 @@
 		const style = document.createElement("style");
 		style.textContent = `
     .bic-product-table td{padding-top:4px;padding-bottom:4px}
-    .bic-product-table tr:hover td,.bic-product-table tr:focus-within td{box-shadow:inset 0 0 0 999px #4079a21a}
-    .bic-product-table a:focus-visible,.bic-product-table input:focus-visible{outline:2px solid #217d72;outline-offset:1px}
   `;
 		document.head.append(style);
 		const titled = new WeakSet();
@@ -3793,12 +3855,18 @@
 			subtree: true
 		});
 	}
-	installLoginDefaults();
-	installContextSwitch();
-	installJobDelete();
-	installJobSearch();
-	installDropdowns();
-	installDates();
-	installDbk();
-	installProductUi();
+	installFormStyle();
+	function initialize() {
+		installLoginDefaults();
+		installContextSwitch();
+		installJobDelete();
+		installJobSearch();
+		installDropdowns();
+		installDates();
+		installDbk();
+		installProductUi();
+		installInvoiceDate();
+	}
+	if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize, { once: true });
+	else initialize();
 })();

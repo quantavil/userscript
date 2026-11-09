@@ -8,12 +8,12 @@ export default defineConfig({
       userscript: {
         name: "Better ImpexCube",
         namespace: "https://github.com/quantavil/userscript",
-        version: "1.4.0",
+        version: "1.7.2",
         description:
           "Job search, compact controls and RITC-specific DBK suggestions for ImpexCube",
         match: ["*://impexcube.in/*", "*://*.impexcube.in/*"],
         license: "GPL-3.0-or-later",
-        "run-at": "document-end",
+        "run-at": "document-start",
         grant: ["GM_addStyle", "GM_xmlhttpRequest", "unsafeWindow"],
         connect: ["impexcube.in"],
       },
