@@ -1,7 +1,8 @@
 import { watchDom } from "./dom";
 
 const promoText = /subscribe|newsletter|news letter|webinar|special offer/i;
-const dismissLabel = /^(close|cancel|no,? thanks|not now|later|dismiss|×|x)$/i;
+const dismissLabel =
+  /^(close|cancel|skip|no,? thanks|not now|later|dismiss|×|x)$/i;
 
 /** Promo popups: image-only jquery-confirm banners and newsletter/subscribe dialogs. Real dialogs (security notices, forms) stay. */
 export function installAnnouncementDismiss(): void {
@@ -18,9 +19,14 @@ export function installAnnouncementDismiss(): void {
 
   const dismiss = (box: Element) => {
     dismissed.add(box);
-    if (!closeButton(box)?.click()) (box as HTMLElement).hidden = true;
+    closeButton(box)?.click();
+    const root =
+      box.closest<HTMLElement>(".modal, .jconfirm") ?? (box as HTMLElement);
+    root.hidden = true;
+    root.style.setProperty("display", "none", "important");
+    if (!document.querySelector(".modal.show:not([hidden])"))
+      document.body.classList.remove("modal-open");
   };
-
   watchDom(".jconfirm, .modal", () => {
     for (const box of document.querySelectorAll<HTMLElement>(
       ".jconfirm-box, .modal-dialog",

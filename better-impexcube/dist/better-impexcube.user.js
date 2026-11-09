@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better ImpexCube
 // @namespace    https://github.com/quantavil/userscript
-// @version      2.1.6
+// @version      2.1.7
 // @description  Job search, compact controls and RITC-specific DBK suggestions for ImpexCube
 // @license      GPL-3.0-or-later
 // @match        *://impexcube.in/*
@@ -26,13 +26,17 @@
 		});
 	}
 	var promoText = /subscribe|newsletter|news letter|webinar|special offer/i;
-	var dismissLabel = /^(close|cancel|no,? thanks|not now|later|dismiss|×|x)$/i;
+	var dismissLabel = /^(close|cancel|skip|no,? thanks|not now|later|dismiss|×|x)$/i;
 	function installAnnouncementDismiss() {
 		const dismissed = new WeakSet();
 		const closeButton = (root) => root.querySelector(".closeIcon, .btn-close, button.close, [data-dismiss='modal'], [data-bs-dismiss='modal']") ?? [...root.querySelectorAll("button, a.btn, .btn")].find((button) => dismissLabel.test(button.textContent?.trim() ?? "")) ?? null;
 		const dismiss = (box) => {
 			dismissed.add(box);
-			if (!closeButton(box)?.click()) box.hidden = true;
+			closeButton(box)?.click();
+			const root = box.closest(".modal, .jconfirm") ?? box;
+			root.hidden = true;
+			root.style.setProperty("display", "none", "important");
+			if (!document.querySelector(".modal.show:not([hidden])")) document.body.classList.remove("modal-open");
 		};
 		watchDom(".jconfirm, .modal", () => {
 			for (const box of document.querySelectorAll(".jconfirm-box, .modal-dialog")) {
