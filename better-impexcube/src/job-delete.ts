@@ -1,5 +1,6 @@
 const deletePath = "/frmDeleteJobNo.aspx";
 const prefix = "better-impexcube-delete:";
+const jobPattern = /^[A-Za-z0-9/_-]{1,100}$/;
 
 function openDelete(job: string): void {
   const tab = window.open("", "_blank");
@@ -23,12 +24,15 @@ function confirmDelete(
   );
   if (!title || !typed || !confirm) return;
   title.textContent = job;
-  const valid = () => typed.value === job && input.value === job;
+  const valid = () => typed.value.trim() === job && input.value.trim() === job;
   const update = () => {
     confirm.disabled = !valid();
   };
   typed.addEventListener("input", update);
   input.addEventListener("input", update);
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
   dialog
     .querySelector(".bic-delete-cancel")
     ?.addEventListener("click", () => dialog.close());
@@ -39,9 +43,12 @@ function confirmDelete(
     native.click();
     update();
   });
-  const style = document.createElement("style");
-  style.textContent = `.bic-delete-dialog{width:min(400px,calc(100% - 48px));border:1px solid #c8d1db;border-radius:8px;padding:20px;color:#1f2937;font:14px system-ui;box-shadow:0 12px 40px #0004}.bic-delete-dialog::backdrop{background:#0008}.bic-delete-dialog h2{font-size:18px;margin:0 0 12px}.bic-delete-dialog p{line-height:1.5}.bic-delete-dialog label{display:block;font-weight:600}.bic-delete-dialog input{box-sizing:border-box;display:block;width:100%;margin:7px 0 16px;padding:8px;border:1px solid #9baabb;border-radius:4px;font:inherit}.bic-delete-actions{display:flex;justify-content:flex-end;gap:8px}.bic-delete-actions button{padding:7px 12px;border:1px solid #aab5c0;border-radius:4px;cursor:pointer}.bic-delete-confirm{background:#b42318;color:white;border-color:#b42318!important}.bic-delete-confirm:disabled{opacity:.45;cursor:not-allowed}`;
-  document.head.append(style);
+  if (!document.querySelector("style.bic-delete-style")) {
+    const style = document.createElement("style");
+    style.className = "bic-delete-style";
+    style.textContent = `.bic-delete-dialog{width:min(400px,calc(100% - 48px));border:1px solid #c8d1db;border-radius:8px;padding:20px;color:#1f2937;font:14px system-ui;box-shadow:0 12px 40px #0004}.bic-delete-dialog::backdrop{background:#0008}.bic-delete-dialog h2{font-size:18px;margin:0 0 12px}.bic-delete-dialog p{line-height:1.5}.bic-delete-dialog label{display:block;font-weight:600}.bic-delete-dialog input{box-sizing:border-box;display:block;width:100%;margin:7px 0 16px;padding:8px;border:1px solid #9baabb;border-radius:4px;font:inherit}.bic-delete-actions{display:flex;justify-content:flex-end;gap:8px}.bic-delete-actions button{padding:7px 12px;border:1px solid #aab5c0;border-radius:4px;cursor:pointer}.bic-delete-confirm{background:#b42318;color:white;border-color:#b42318!important}.bic-delete-confirm:disabled{opacity:.45;cursor:not-allowed}`;
+    document.head.append(style);
+  }
   document.body.append(dialog);
   dialog.showModal();
   typed.focus();
@@ -54,12 +61,25 @@ export function installJobDelete(
     location.pathname.toLowerCase() === deletePath.toLowerCase() &&
     window.name.startsWith(prefix)
   ) {
+    const isSameOrigin =
+      !document.referrer ||
+      document.referrer.startsWith(location.origin) ||
+      (() => {
+        try {
+          return Boolean(
+            window.opener && window.opener.location.origin === location.origin,
+          );
+        } catch {
+          return false;
+        }
+      })();
+    if (!isSameOrigin) return;
     const handoff = window.name.slice(prefix.length);
     window.name = "";
     const separator = handoff.indexOf(":");
     const phase = handoff.slice(0, separator);
     const job = handoff.slice(separator + 1);
-    if (separator < 0 || !job || job.length > 100) return;
+    if (separator < 0 || !jobPattern.test(job)) return;
     const input = document.querySelector<HTMLInputElement>(
       "#ContentPlaceHolder1_txtJobno",
     );

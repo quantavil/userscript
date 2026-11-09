@@ -52,3 +52,33 @@ test("never submits choices missing from the native switch form", async () => {
   await installContextSwitch();
   expect(submitted).toBe(0);
 });
+
+test("applies a header choice via sessionStorage", async () => {
+  const window = new Window({
+    url: "https://export.impexcube.in/frmswitchBranch.aspx",
+  });
+  window.sessionStorage.setItem(
+    "better-impexcube-context",
+    JSON.stringify({ branch: "DEL", year: "2025-2026" }),
+  );
+  Object.assign(globalThis, {
+    window,
+    document: window.document,
+    location: window.location,
+    sessionStorage: window.sessionStorage,
+  });
+  window.document.body.innerHTML = `<form><select id="ContentPlaceHolder1_ddlbranch"><option value="M">MORADABAD</option><option value="DEL">DELHI</option></select><select id="ContentPlaceHolder1_drFinancial"><option value="2026-2027">2026-2027</option><option value="2025-2026">2025-2026</option></select><input id="ContentPlaceHolder1_btnGo" type="submit"></form>`;
+  let submitted = 0;
+  window.document.querySelector("form")!.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitted++;
+  });
+  await installContextSwitch();
+  expect(
+    window.document.querySelector<HTMLSelectElement>(
+      "#ContentPlaceHolder1_ddlbranch",
+    )!.value,
+  ).toBe("DEL");
+  expect(submitted).toBe(1);
+  expect(window.sessionStorage.getItem("better-impexcube-context")).toBeNull();
+});

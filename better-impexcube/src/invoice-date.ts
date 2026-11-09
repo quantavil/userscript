@@ -1,7 +1,15 @@
 const prefix = "ContentPlaceHolder1_tbProduct_TabSupportingdoc_";
 const todayDate = () => {
-  const date = new Date();
-  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).formatToParts(new Date());
+  const day = parts.find((p) => p.type === "day")?.value ?? "01";
+  const month = parts.find((p) => p.type === "month")?.value ?? "01";
+  const year = parts.find((p) => p.type === "year")?.value ?? "1970";
+  return `${day}/${month}/${year}`;
 };
 
 export function installInvoiceDate(
@@ -79,20 +87,19 @@ export function installInvoiceDate(
           ),
         ];
         const headings = [...(rows.shift()?.querySelectorAll("th") ?? [])].map(
-          (cell) => cell.textContent?.trim(),
+          (cell) => cell.textContent?.trim().toLowerCase() ?? "",
         );
-        if (
-          headings[3] !== "S.No" ||
-          headings[4] !== "Inv. No" ||
-          headings[5] !== "Date"
-        )
-          return;
+        const invNoIndex = headings.findIndex((h) =>
+          /^inv\.?\s*no\.?$/i.test(h),
+        );
+        const dateIndex = headings.findIndex((h) => /^date$/i.test(h));
+        if (invNoIndex < 0 || dateIndex < 0) return;
         const matches = rows.filter(
-          (row) => row.cells[4]?.textContent?.trim() === invoice,
+          (row) => row.cells[invNoIndex]?.textContent?.trim() === invoice,
         );
         const date =
           matches.length === 1
-            ? matches[0]?.cells[5]?.textContent?.trim()
+            ? matches[0]?.cells[dateIndex]?.textContent?.trim()
             : undefined;
         if (
           !date ||

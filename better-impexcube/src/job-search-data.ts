@@ -17,8 +17,12 @@ export function parseJobs(doc: Document): Job[] {
   const headers = Array.from(table.querySelectorAll("th"), (th) =>
     th.textContent?.trim().toLowerCase(),
   );
-  const exporter = headers.indexOf("exportername");
-  const sb = headers.indexOf("sb no");
+  const exporter = headers.findIndex((h) =>
+    /^(exporter|exporter\s*name)$/i.test(h ?? ""),
+  );
+  const sb = headers.findIndex((h) =>
+    /^(sb\s*no\.?|sbno|shipping\s*bill\s*no\.?)$/i.test(h ?? ""),
+  );
   const consignee = headers.findIndex((header) =>
     /^(consignee|consignee ?name)$/.test(header ?? ""),
   );
@@ -47,7 +51,9 @@ export function nextPage(
   )) {
     const match = link
       .getAttribute("href")
-      ?.match(/^javascript:__doPostBack\('([^']*\$gvJobNo)','(Page\$\d+)'\)$/);
+      ?.match(
+        /^javascript:__doPostBack\('([^']*\$gvJobNo)',\s*'(Page\$\d+)'\)$/,
+      );
     if (match?.[1] && match[2] === `Page$${page}`)
       return { target: match[1], argument: match[2] };
   }

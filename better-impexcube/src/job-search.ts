@@ -9,11 +9,25 @@ const fields = [
   ["b.ExporterName", "Exporter"],
   ["b.Consignee", "Consignee"],
 ] as const;
+const jobPattern = /^[A-Za-z0-9/_-]{1,100}$/;
 
 type Handoff = { action: "search" | "select" | "copy"; job: string };
 
 function handoff(): boolean {
   if (!window.name.startsWith(prefix)) return false;
+  const isSameOrigin =
+    !document.referrer ||
+    document.referrer.startsWith(location.origin) ||
+    (() => {
+      try {
+        return Boolean(
+          window.opener && window.opener.location.origin === location.origin,
+        );
+      } catch {
+        return false;
+      }
+    })();
+  if (!isSameOrigin) return false;
   let data: Handoff;
   try {
     data = JSON.parse(window.name.slice(prefix.length)) as Handoff;
@@ -22,8 +36,7 @@ function handoff(): boolean {
     return false;
   }
   window.name = "";
-  if (typeof data.job !== "string" || !data.job || data.job.length > 100)
-    return false;
+  if (typeof data.job !== "string" || !jobPattern.test(data.job)) return false;
   if (
     data.action === "copy" &&
     location.pathname.toLowerCase() === copyPath.toLowerCase()
@@ -192,8 +205,10 @@ export function installJobSearch(): void {
     results.hidden = false;
   };
   const runSearch = (query: string, current: number, pageLimit: number) => {
+    controller?.abort();
     controller = new AbortController();
     const signal = controller.signal;
+    message("Searching…");
     const progress = (field: string, page: number) => {
       if (current === generation) message(`Searching ${field}, page ${page}…`);
     };
@@ -262,9 +277,11 @@ export function installJobSearch(): void {
           const load = document.createElement("button");
           load.type = "button";
           load.textContent = "Load more";
-          load.addEventListener("click", () =>
-            runSearch(query, current, pageLimit + 3),
-          );
+          load.addEventListener("click", () => {
+            load.disabled = true;
+            const nextGen = ++generation;
+            runSearch(query, nextGen, pageLimit + 3);
+          });
           note.append(load);
         } else note.append("Refine your search for more results.");
         results.append(note);
@@ -287,7 +304,6 @@ export function installJobSearch(): void {
       results.hidden = true;
       return;
     }
-    message("Searching…");
     if (immediate) runSearch(query, current, 3);
     else timer = setTimeout(() => runSearch(query, current, 3), 500);
   };

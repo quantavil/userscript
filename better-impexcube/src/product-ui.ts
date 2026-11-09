@@ -17,7 +17,7 @@ export function installProductUi(): void {
       ) ||
       !field.id.includes("tbProduct_") ||
       (field instanceof HTMLInputElement && field.type !== "text") ||
-      (field.hasAttribute("title") && !titled.has(field))
+      (Boolean(field.getAttribute("title")?.trim()) && !titled.has(field))
     )
       return;
     field.title = field.value;
@@ -65,8 +65,17 @@ export function installProductUi(): void {
       .forEach((table) => {
         const headings = [...table.querySelectorAll("th")]
           .filter((cell) => cell.closest("table") === table)
-          .map((cell) => cell.textContent?.trim().toLowerCase());
-        if (headings.includes("pro des") && headings.includes("ritc no"))
+          .map(
+            (cell) =>
+              cell.textContent
+                ?.trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, " ") ?? "",
+          );
+        if (
+          headings.some((h) => /\bpro\s*des\b/.test(h)) &&
+          headings.some((h) => /\britc\s*no\b/.test(h))
+        )
           table.classList.add("bic-product-table");
       });
   };
@@ -77,7 +86,8 @@ export function installProductUi(): void {
         [...mutation.addedNodes].some(
           (node) =>
             node instanceof Element &&
-            (node.matches("table, th") || node.querySelector("table, th")),
+            (node.matches("table, tbody, tr, th") ||
+              node.querySelector("table, th")),
         ),
       )
     )

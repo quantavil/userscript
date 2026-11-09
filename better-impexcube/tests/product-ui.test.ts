@@ -41,5 +41,25 @@ test("product fields expose current values and the product grid is identified af
     }),
   );
   expect(window.document.activeElement).toBe(links[1]);
+
+  const inputWithEmptyTitle = window.document.createElement("input");
+  inputWithEmptyTitle.id = "ctl_tbProduct_TabPanel1_emptyTitle";
+  inputWithEmptyTitle.setAttribute("title", "");
+  inputWithEmptyTitle.value = "Tooltip populated despite empty title attribute";
+  window.document.body.append(inputWithEmptyTitle);
+  inputWithEmptyTitle.dispatchEvent(
+    new window.Event("focusin", { bubbles: true }),
+  );
+  expect(inputWithEmptyTitle.title).toBe(
+    "Tooltip populated despite empty title attribute",
+  );
+
+  const punctuatedTable = window.document.createElement("table");
+  punctuatedTable.innerHTML =
+    "<tr><th>Pro. Des.</th><th>RITC No.</th></tr><tr><td>Select</td></tr>";
+  window.document.body.append(punctuatedTable);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(punctuatedTable.classList.contains("bic-product-table")).toBe(true);
+
   await window.happyDOM.abort();
 });

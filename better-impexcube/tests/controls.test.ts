@@ -122,3 +122,67 @@ test("date controls preserve readonly and month navigation does not skip Februar
   );
   await window.happyDOM.abort();
 });
+
+test("dropdown keyboard arrow navigation and focus forwarding", async () => {
+  const window = new Window({ url: "https://export.impexcube.in/" });
+  window.document.body.innerHTML =
+    '<select id="unit"><option value="PCS">Pieces</option><option value="BOX">Boxes</option></select>';
+  Object.assign(globalThis, {
+    window,
+    document: window.document,
+    Element: window.Element,
+    HTMLElement: window.HTMLElement,
+    Node: window.Node,
+    MutationObserver: window.MutationObserver,
+    Event: window.Event,
+    getComputedStyle: window.getComputedStyle.bind(window),
+  });
+  const { installDropdowns } = await import("../src/dropdown");
+  installDropdowns();
+  await pause();
+  const trigger =
+    window.document.querySelector<HTMLButtonElement>(".bd-trigger")!;
+  const select = window.document.querySelector<HTMLSelectElement>("#unit")!;
+  select.focus();
+  expect(window.document.activeElement).toBe(trigger);
+  trigger.dispatchEvent(
+    new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+  );
+  await pause();
+  const popup = window.document.querySelector<HTMLDivElement>(".bd-dropdown")!;
+  expect(popup.hidden).toBe(false);
+  const search = window.document.querySelector<HTMLInputElement>(".bd-search")!;
+  search.dispatchEvent(
+    new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true }),
+  );
+  expect(popup.hidden).toBe(true);
+  expect(window.document.activeElement).toBe(trigger);
+  await window.happyDOM.abort();
+});
+
+test("date parser handles invalid relative dates and clears error on empty blur", async () => {
+  const window = new Window({ url: "https://export.impexcube.in/" });
+  window.document.body.innerHTML = '<input id="testDate" value="31/01/2024">';
+  Object.assign(window, { GM_addStyle: () => {} });
+  Object.assign(globalThis, {
+    window,
+    document: window.document,
+    Element: window.Element,
+    HTMLElement: window.HTMLElement,
+    Node: window.Node,
+    MutationObserver: window.MutationObserver,
+    Event: window.Event,
+    getComputedStyle: window.getComputedStyle.bind(window),
+  });
+  const { installDates } = await import("../src/dates");
+  installDates();
+  await pause();
+  const input = window.document.querySelector<HTMLInputElement>("#testDate")!;
+  input.value = "+999999999";
+  input.dispatchEvent(new window.Event("change", { bubbles: true }));
+  expect(input.classList.contains("invalid")).toBe(true);
+  input.value = "";
+  input.dispatchEvent(new window.FocusEvent("blur"));
+  expect(input.classList.contains("invalid")).toBe(false);
+  await window.happyDOM.abort();
+});

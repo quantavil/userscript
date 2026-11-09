@@ -1,3 +1,16 @@
+/* Shared palette and base styles */
+:root {
+  color-scheme: dark;
+  --bic-bg: #171716;
+  --bic-panel: #222220;
+  --bic-raised: #2d2c29;
+  --bic-field: #191a19;
+  --bic-border: #45443e;
+  --bic-text: #eeeae2;
+  --bic-muted: #b8b2a6;
+  --bic-accent: #e4b971;
+}
+
 /* Shared ImpexCube controls. Layout tables remain untouched. */
 body { background: var(--bic-bg) !important; color: var(--bic-text) !important; }
 .main, .page, .panel, .panel-body { background-color: transparent; color: var(--bic-text); }
@@ -57,6 +70,37 @@ input[type="text"]:focus, textarea:focus { background-color: var(--bic-field) !i
 
 /* Put the keyboard focus indicator on the field edge, not outside its border. */
 :is(input[type="text"], input[type="password"], input[type="number"], input[type="search"], textarea):focus-visible { outline: 2px solid var(--bic-accent) !important; outline-offset: -2px !important; }
+.impex-date-wrapper { display: inline-flex !important; align-items: center !important; gap: 4px !important; vertical-align: middle !important; }
+.impex-date-input { min-width: 98px !important; }
+
+/* Accessible contrast overrides for hardcoded inline colors */
+:is(span, font, label, a, p)[style*="color:Red" i],
+:is(span, font, label, a, p)[style*="color: Red" i],
+:is(span, font, label, a, p)[style*="color:red" i],
+font[color="red" i] {
+  color: #f87171 !important;
+}
+:is(span, font, label, a, p)[style*="color:Green" i],
+:is(span, font, label, a, p)[style*="color: Green" i],
+:is(span, font, label, a, p)[style*="color:green" i] {
+  color: #86efac !important;
+}
+:is(span, font, label, a, p)[style*="color:Blue" i],
+:is(span, font, label, a, p)[style*="color: Blue" i],
+:is(span, font, label, a, p)[style*="color:blue" i],
+:is(span, font, label, a, p)[style*="color:#0066FF" i] {
+  color: #7dd3fc !important;
+}
+:is(span, font, label, p)[style*="color:Black" i],
+:is(span, font, label, p)[style*="color: Black" i],
+:is(span, font, label, p)[style*="color:black" i] {
+  color: var(--bic-text) !important;
+}
+input:disabled, select:disabled, textarea:disabled,
+input.aspNetDisabled, select.aspNetDisabled {
+  background-color: #30302d !important;
+  color: #aaa69d !important;
+}
 /* Dashboard notification and job-count cards share these native panels. */
 .panel:has(> .menubar, > .navbar) { background: var(--bic-panel) !important; color: var(--bic-text) !important; }
 .panel > :is(.menubar, .navbar) { background: #35332e !important; color: var(--bic-text) !important; }
@@ -72,3 +116,201 @@ table[id*="_gv"] { background: var(--bic-panel) !important; }
 .bic-job-result button:focus-visible, .bic-job-more:focus-visible { outline: 2px solid var(--bic-accent); outline-offset: 2px; }
 input.masterbutton { background: var(--bic-accent) !important; color: #241c11 !important; border: 1px solid #c69b59 !important; border-radius: 5px; box-shadow: none !important; }
 input.masterbutton:hover { background: #f0c98b !important; }
+input.button_image1 {
+  background: var(--bic-accent) !important;
+  color: #241c11 !important;
+  border: 1px solid #c69b59 !important;
+  border-radius: 4px !important;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+input.button_image1:hover {
+  background: #f0c98b !important;
+}
+
+/* ReportViewer and document preview canvas & sheet */
+div[id*="ReportViewer" i][id*="_ctl13" i],
+.MSRS-RVC [id*="_ctl13" i],
+.MSRS-RVC [id*="ReportArea" i],
+[id*="VisibleReportContent" i] {
+  background-color: #2b2a27 !important;
+  padding: 16px 0 !important;
+}
+div[id*="ReportViewer" i] [id$="_oReportDiv" i],
+.MSRS-RVC [id$="_oReportDiv" i] {
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+div[id*="ReportViewer" i] [id$="_oReportDiv" i] > table,
+.MSRS-RVC [id$="_oReportDiv" i] > table {
+  margin: 0 auto !important;
+}
+div[id*="ReportViewer" i] [id$="_oReportCell" i],
+.MSRS-RVC [id$="_oReportCell" i] {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45) !important;
+}
+div[id*="ReportViewer" i] [id$="_oReportCell" i] :is(span, div, table, td, th, p, b, i, font),
+.MSRS-RVC [id$="_oReportCell" i] :is(span, div, table, td, th, p, b, i, font) {
+  color: #000000 !important;
+}
+/* Report toolbar styling */
+.ToolBarBackground, .MenuBarBkGnd, div[id*="ReportViewer" i][id*="_ctl09" i] {
+  background: #252421 !important;
+  border-bottom: 1px solid #45443e !important;
+  color: var(--bic-text) !important;
+}
+.ToolBarBackground input, .ToolBarBackground select,
+.MenuBarBkGnd input, .MenuBarBkGnd select {
+  background: var(--bic-field) !important;
+  color: var(--bic-text) !important;
+  border: 1px solid #56544e !important;
+}
+.ToolBarBackground .glyphui {
+  filter: invert(1) brightness(1.5) !important;
+}
+.ToolBarBackground :is(.DisabledButton, .aspNetDisabled) .glyphui {
+  filter: invert(1) brightness(0.6) !important;
+  opacity: 0.5 !important;
+}
+.ToolBarBackground div:hover:not(.DisabledButton):not(.aspNetDisabled) {
+  background: #39362f !important;
+}
+/* Hide broken spacer images in report */
+img[src*="Blank.gif" i] {
+  display: none !important;
+}
+
+/* Checklist layout width optimization & border elimination */
+table.auto-style68,
+table.auto-style68 > tbody > tr > td {
+  border: none !important;
+}
+table.auto-style68 > tbody > tr:first-child > td:first-child {
+  width: 350px !important;
+}
+table:has(#ContentPlaceHolder1_ddlChecklistFormat) > tbody > tr > td:first-child {
+  width: 200px !important;
+  vertical-align: top !important;
+}
+
+/* Context menu styling */
+.contextMenu {
+  background: var(--bic-panel) !important;
+  border: 1px solid #625d53 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 12px 30px #0008 !important;
+  padding: 4px 0 !important;
+  width: 130px !important;
+  box-sizing: border-box !important;
+}
+.contextMenu li {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.contextMenu li a {
+  color: var(--bic-text) !important;
+  padding: 5px 12px 5px 30px !important;
+  height: auto !important;
+  line-height: 20px !important;
+  font: 13px system-ui, sans-serif !important;
+  display: block !important;
+}
+.contextMenu li.hover a, .contextMenu li a:hover {
+  background-color: #51432f !important;
+  color: var(--bic-accent) !important;
+}
+.contextMenu li.separator {
+  border-top: 1px solid var(--bic-border) !important;
+  margin: 3px 0 !important;
+}
+.contextMenu .bic-delete-menu a {
+  color: #f87171 !important;
+}
+.contextMenu .bic-delete-menu.hover a, .contextMenu .bic-delete-menu a:hover {
+  background-color: #5a2323 !important;
+  color: #fca5a5 !important;
+}
+.contextMenu .bic-delete-menu svg {
+  stroke: currentColor !important;
+}
+
+/* DevExtreme DataGrid and FreightCube styling */
+.dx-datagrid, .dx-datagrid-container, .dx-gridbase-container {
+  background-color: var(--bic-panel) !important;
+  color: var(--bic-text) !important;
+  border-color: var(--bic-border) !important;
+}
+.dx-datagrid-headers {
+  background-color: #35332e !important;
+  color: #e0d5c3 !important;
+  border-bottom: 1px solid var(--bic-border) !important;
+}
+.dx-datagrid-headers .dx-header-row,
+.dx-datagrid-headers th,
+.dx-datagrid-headers td {
+  background: #35332e !important;
+  color: #e0d5c3 !important;
+  border-color: var(--bic-border) !important;
+}
+.dx-datagrid-headers .dx-datagrid-text-content {
+  color: #e0d5c3 !important;
+}
+.dx-datagrid-rowsview {
+  background-color: var(--bic-panel) !important;
+  color: var(--bic-text) !important;
+}
+.dx-datagrid-rowsview .dx-row,
+.dx-datagrid-rowsview td {
+  border-color: var(--bic-border) !important;
+  color: var(--bic-text) !important;
+}
+.dx-datagrid-rowsview .dx-data-row:nth-child(even) {
+  background-color: #292825 !important;
+}
+.dx-datagrid-rowsview .dx-data-row:nth-child(odd) {
+  background-color: #232320 !important;
+}
+.dx-datagrid-rowsview .dx-data-row:hover,
+.dx-datagrid-rowsview .dx-data-row:hover td {
+  background-color: #3a3832 !important;
+}
+.dx-datagrid-header-panel,
+.dx-toolbar,
+.dx-toolbar-items-container {
+  background-color: var(--bic-panel) !important;
+  border-color: var(--bic-border) !important;
+}
+.dx-pager {
+  background-color: #252421 !important;
+  color: var(--bic-text) !important;
+  border-top: 1px solid var(--bic-border) !important;
+}
+.dx-pager .dx-page,
+.dx-pager .dx-page-sizes .dx-page-size {
+  color: var(--bic-text) !important;
+}
+.dx-pager .dx-selection,
+.dx-pager .dx-page.dx-selection {
+  background-color: var(--bic-accent) !important;
+  color: #241c11 !important;
+}
+.dx-button-mode-contained.dx-button-default,
+.btn-primary, button.btn-primary {
+  background-color: var(--bic-accent) !important;
+  border-color: #c69b59 !important;
+  color: #241c11 !important;
+}
+.btn-success, button.btn-success {
+  background-color: #2d6a4f !important;
+  border-color: #2d6a4f !important;
+  color: #fff !important;
+}
+@media print {
+  body { background: #ffffff !important; color: #000000 !important; }
+  div[id*="ReportViewer" i] [id$="_oReportCell" i],
+  .MSRS-RVC [id$="_oReportCell" i] {
+    box-shadow: none !important;
+  }
+}

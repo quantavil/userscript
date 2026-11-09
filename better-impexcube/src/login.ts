@@ -1,4 +1,5 @@
 export function currentFinancialYear(date = new Date()): string {
+  if (Number.isNaN(date.getTime())) return "";
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Kolkata",
     year: "numeric",

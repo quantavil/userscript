@@ -70,10 +70,13 @@ function attach(input: HTMLInputElement) {
   let cleanup: (() => void) | undefined;
   let nativeDisposed = false;
   let selecting = false;
+  let blurTimer: ReturnType<typeof setTimeout> | undefined;
   const getRitc = () =>
     document.querySelector<HTMLInputElement>(ritcSelector)?.value.trim() ?? "";
 
   function close() {
+    clearTimeout(blurTimer);
+    blurTimer = undefined;
     host.hidden = true;
     input.setAttribute("aria-expanded", "false");
     input.removeAttribute("aria-activedescendant");
@@ -81,7 +84,8 @@ function attach(input: HTMLInputElement) {
     cleanup = undefined;
   }
   function select(row: Scheme) {
-    if (input.disabled || getRitc() !== currentRitc) return close();
+    if (input.disabled || input.readOnly || getRitc() !== currentRitc)
+      return close();
     input.value = row.code;
     close();
     selecting = true;
@@ -165,6 +169,8 @@ function attach(input: HTMLInputElement) {
   }
   function open() {
     if (input.disabled || input.readOnly) return;
+    clearTimeout(blurTimer);
+    blurTimer = undefined;
     if (!nativeDisposed) {
       const id = input.id.replace(/txtDBKSchNo$/, "AutoCompleteExtender3");
       const behavior = unsafeWindow.$find?.(id);
@@ -237,7 +243,10 @@ function attach(input: HTMLInputElement) {
       select(visible[active]);
     } else if (event.key === "Tab") close();
   });
-  input.addEventListener("blur", () => window.setTimeout(close, 120));
+  input.addEventListener("focus", open);
+  input.addEventListener("blur", () => {
+    blurTimer = setTimeout(close, 120);
+  });
   const outside = (event: Event) => {
     if (event.target !== input && !host.contains(event.target as Node)) close();
   };
@@ -253,6 +262,7 @@ function attach(input: HTMLInputElement) {
   document.addEventListener("input", ritcChanged);
   document.addEventListener("change", ritcChanged);
   attached.set(input, () => {
+    clearTimeout(blurTimer);
     request++;
     close();
     render(null, host);

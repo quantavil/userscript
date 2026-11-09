@@ -27,8 +27,16 @@ function parse(value: string): Date | null {
   const text = value.trim().toLowerCase();
   if (text === "today" || /^[+-]\d+$/.test(text)) {
     const result = new Date();
-    if (text !== "today") result.setDate(result.getDate() + Number(text));
-    return result;
+    result.setHours(0, 0, 0, 0);
+    if (text !== "today") {
+      const delta = Number(text);
+      if (Math.abs(delta) > 36500) return null;
+      result.setDate(result.getDate() + delta);
+    }
+    const y = result.getFullYear();
+    return y >= 1900 && y <= 2100 && !Number.isNaN(result.getTime())
+      ? result
+      : null;
   }
   let day: number, month: number, year: number;
   const compact = text.match(/^(\d{2})(\d{2})(\d{4})$/);
@@ -45,6 +53,7 @@ function parse(value: string): Date | null {
   } else if (named) {
     day = Number(named[1]);
     month = months.findIndex((m) => named[2]?.startsWith(m.toLowerCase()));
+    if (month < 0) return null;
     year = named[3] ? Number(named[3]) : new Date().getFullYear();
   } else if (iso) {
     year = Number(iso[1]);
@@ -147,6 +156,9 @@ export function installDates(): void {
     const first = new Date(year, month, 1).getDay();
     const count =
       Math.ceil((first + new Date(year, month + 1, 0).getDate()) / 7) * 7;
+    const selectedFormatted = active?.value
+      ? format(parse(active.value) ?? new Date(1900, 0, 1))
+      : "";
     for (let i = 0; i < count; i++) {
       const date = new Date(year, month, i - first + 1),
         button = document.createElement("button");
@@ -157,10 +169,7 @@ export function installDates(): void {
       button.setAttribute("aria-label", format(date));
       if (date.getMonth() !== month) button.classList.add("other-month");
       if (format(date) === format(new Date())) button.classList.add("today");
-      if (
-        active &&
-        format(date) === format(parse(active.value) ?? new Date(1900, 0, 1))
-      )
+      if (active && format(date) === selectedFormatted)
         button.classList.add("selected");
       button.addEventListener("click", () => setDate(date));
       grid.append(button);
@@ -204,7 +213,7 @@ export function installDates(): void {
       );
     });
   };
-  document.addEventListener("pointerdown", (event) => {
+  const outside = (event: Event) => {
     const target = event.target as Node;
     if (
       active &&
@@ -213,7 +222,9 @@ export function installDates(): void {
       !(target instanceof Element && target.closest(".impex-date-btn"))
     )
       close();
-  });
+  };
+  document.addEventListener("pointerdown", outside);
+  document.addEventListener("focusin", outside);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") close();
   });
@@ -262,7 +273,11 @@ export function installDates(): void {
         );
       }
       const normalize = () => {
-        if (!input.value.trim() || input.readOnly || input.disabled) return;
+        if (!input.value.trim()) {
+          input.classList.remove("invalid");
+          return;
+        }
+        if (input.readOnly || input.disabled) return;
         const date = parse(input.value);
         if (date) {
           input.value = format(date);
@@ -278,6 +293,7 @@ export function installDates(): void {
         date.setDate(date.getDate() + (event.key === "ArrowUp" ? 1 : -1));
         input.value = format(date);
         input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
         event.preventDefault();
       });
     });

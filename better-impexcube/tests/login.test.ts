@@ -9,6 +9,7 @@ test("calculates the Indian financial year at the April boundary", () => {
   expect(currentFinancialYear(new Date("2026-03-31T18:30:00Z"))).toBe(
     "2026-2027",
   );
+  expect(currentFinancialYear(new Date(Number.NaN))).toBe("");
 });
 
 test("chooses Moradabad and current year, then submits only with one company", () => {

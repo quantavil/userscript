@@ -1,4 +1,5 @@
 const path = "/frmswitchBranch.aspx";
+const storageKey = "better-impexcube-context";
 const prefix = "better-impexcube-context:";
 const branchId = "#ContentPlaceHolder1_ddlbranch";
 const yearId = "#ContentPlaceHolder1_drFinancial";
@@ -6,9 +7,18 @@ const yearId = "#ContentPlaceHolder1_drFinancial";
 export async function installContextSwitch(): Promise<void> {
   if (location.hostname.toLowerCase() !== "export.impexcube.in") return;
   if (location.pathname.toLowerCase() === path.toLowerCase()) {
-    if (!window.name.startsWith(prefix)) return;
-    const saved = window.name.slice(prefix.length);
-    window.name = "";
+    let saved = "";
+    try {
+      saved = sessionStorage.getItem(storageKey) ?? "";
+      sessionStorage.removeItem(storageKey);
+    } catch {
+      /* Leave native switch form available. */
+    }
+    if (!saved && window.name.startsWith(prefix)) {
+      saved = window.name.slice(prefix.length);
+      window.name = "";
+    }
+    if (!saved) return;
     try {
       const choice: unknown = JSON.parse(saved);
       if (
@@ -88,12 +98,16 @@ export async function installContextSwitch(): Promise<void> {
       return { label, select };
     });
     const change = () => {
-      window.name =
-        prefix +
-        JSON.stringify({
-          branch: controls[0].select.value,
-          year: controls[1].select.value,
-        });
+      const payload = JSON.stringify({
+        branch: controls[0].select.value,
+        year: controls[1].select.value,
+      });
+      try {
+        sessionStorage.setItem(storageKey, payload);
+      } catch {
+        /* fallback to window.name if sessionStorage fails */
+        window.name = prefix + payload;
+      }
       location.assign(path);
     };
     for (const control of controls)

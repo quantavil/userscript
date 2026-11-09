@@ -120,7 +120,11 @@ function enhance(select: HTMLSelectElement): () => void {
       active = visible.findIndex((item) => !item.disabled);
     list.replaceChildren();
     if (!visible.length) {
-      list.textContent = "No matches found";
+      const empty = document.createElement("div");
+      empty.className = "bd-option";
+      empty.setAttribute("role", "status");
+      empty.textContent = "No matches found";
+      list.append(empty);
       return;
     }
     visible.forEach((item, index) => {
@@ -155,6 +159,7 @@ function enhance(select: HTMLSelectElement): () => void {
     trigger.setAttribute("aria-expanded", "false");
     cleanup?.();
     cleanup = undefined;
+    document.removeEventListener("pointerdown", outside);
     if (focus && trigger.isConnected && !trigger.disabled) trigger.focus();
   };
   const choose = (item: Option) => {
@@ -177,6 +182,7 @@ function enhance(select: HTMLSelectElement): () => void {
     search.value = "";
     active = -1;
     draw();
+    document.addEventListener("pointerdown", outside);
     cleanup = autoUpdate(trigger, popup, () => {
       void computePosition(trigger, popup, {
         strategy: "fixed",
@@ -199,6 +205,15 @@ function enhance(select: HTMLSelectElement): () => void {
     search.focus();
   };
   trigger.addEventListener("click", () => (open ? close(true) : show()));
+  trigger.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!open) show();
+    }
+  });
+  select.addEventListener("focus", () => {
+    if (!trigger.disabled) trigger.focus();
+  });
   search.addEventListener("input", () => {
     active = -1;
     draw();
@@ -207,8 +222,10 @@ function enhance(select: HTMLSelectElement): () => void {
     if (event.key === "Escape") {
       event.preventDefault();
       close(true);
-    } else if (event.key === "Tab") close(false);
-    else if (event.key === "Enter") {
+    } else if (event.key === "Tab") {
+      close(false);
+      if (!trigger.disabled) trigger.focus();
+    } else if (event.key === "Enter") {
       event.preventDefault();
       const item = visible[active];
       if (item) choose(item);
@@ -234,7 +251,6 @@ function enhance(select: HTMLSelectElement): () => void {
     sync();
     if (open) draw();
   };
-  document.addEventListener("pointerdown", outside);
   select.addEventListener("change", onChange);
   const observer = new MutationObserver(onChange);
   observer.observe(select, {
