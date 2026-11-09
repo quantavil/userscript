@@ -90,3 +90,17 @@ button.button:hover { background: var(--bic-accent-hover) !important; }
 .card-box { padding-bottom: 14px; }
 .card-box > .row, .card-box > form > .row { padding-left: 14px; padding-right: 14px; }
 .card-box .head_card > * { box-shadow: none !important; }
+/* Duty result page: nested white rows, light table panels, slate section bars. */
+:root .card-box .row, :root .card-box .main_Duty_content2, :root .card-box [class*="col-"] { background: transparent !important; color: var(--bic-text) !important; }
+:root .card-box summary { background: var(--bic-head) !important; color: var(--bic-accent) !important; border: 1px solid var(--bic-border); border-radius: 4px; }
+:root .card-box summary * { color: inherit !important; }
+:root .card-box :is(.tariff, .first-table) :is(td, label, strong) { color: var(--bic-muted) !important; }
+:root .card-box .first-table td:not(.tariff) , :root .card-box .first-table label { color: var(--bic-text) !important; }
+:root .card-box :is(td, th) { border-color: var(--bic-border) !important; }
+:root .card-box :is(h2, .head_card) { box-shadow: none !important; border-bottom: 0; }
+/* Specificity bumps: sticky header and Bootstrap tabs on the duty pages. */
+:root header.site-navbar, :root .site-navbar.js-sticky-header, :root .site-navbar.shrink, :root .sticky-wrapper .site-navbar { background: var(--bic-panel) !important; }
+:root .nav-tabs { border-bottom: 1px solid var(--bic-border) !important; }
+:root .nav-tabs .nav-link { background: transparent !important; color: var(--bic-muted) !important; border: 1px solid transparent !important; }
+:root .nav-tabs .nav-link:hover { color: var(--bic-accent) !important; }
+:root .nav-tabs .nav-link.active { background: var(--bic-raised) !important; color: var(--bic-accent) !important; border-color: var(--bic-border) var(--bic-border) var(--bic-raised) !important; }
