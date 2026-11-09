@@ -17,8 +17,18 @@ const isEmbedded = (): boolean => {
   return location.pathname.startsWith('/embed/');
 };
 
+/** Pages where the filter panel would sit on top of the player: watch and Shorts. */
+const syncPageUI = (): void => {
+  const p = location.pathname;
+  const onPlayerPage = p === '/watch' || p.startsWith('/shorts/') || p.startsWith('/live/');
+  document.documentElement.toggleAttribute('data-ytf-hide-ui', onPlayerPage);
+};
+
 const init = (): void => {
   if (isEmbedded()) return;
+  syncPageUI();
+  window.addEventListener('yt-navigate-finish', syncPageUI, true);
+  window.addEventListener('popstate', syncPageUI, true);
 
   // Inject scoped styles (Trusted Types safe)
   injectCSS(STYLES);

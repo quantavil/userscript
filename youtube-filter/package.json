@@ -1,6 +1,6 @@
 {
   "name": "youtube-filter",
-  "version": "3.4.0",
+  "version": "3.4.1",
   "private": true,
   "description": "Filter YouTube videos by views, upload date, duration, keywords, and channels, with watched video dimming and customizable profiles.",
   "homepage": "https://github.com/quantavil/userscript",

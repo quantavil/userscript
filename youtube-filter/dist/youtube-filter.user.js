@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Video Filter
 // @namespace    https://github.com/quantavil/userscript/youtube-filter
-// @version      3.4.0
+// @version      3.4.1
 // @author       quantavil
 // @description  Filter YouTube videos by views, upload date, duration, keywords, and channels, with watched video dimming and customizable profiles.
 // @license      GPL-3.0-or-later
@@ -623,9 +623,8 @@
 /* YouTube Theme: Left-edge Bookmark Tab */
 #yt-filter-toggle {
   position: fixed;
-  top: 50%;
+  bottom: 16px;
   left: 0;
-  transform: translateY(-50%);
   z-index: 99999;
   background: #212121;
   color: #f1f1f1;
@@ -660,7 +659,7 @@
   box-shadow: 3px 0 16px rgba(255, 0, 0, 0.35);
 }
 #yt-filter-toggle.panel-open {
-  transform: translateY(-50%) translateX(-100%);
+  transform: translateX(-100%);
   opacity: 0;
   pointer-events: none;
 }
@@ -683,6 +682,12 @@
 }
 #yt-filter-toggle.active .ytf-active-dot {
   display: block;
+}
+
+/* No filter UI on video watch / Shorts pages */
+html[data-ytf-hide-ui] #yt-filter-toggle,
+html[data-ytf-hide-ui] #yt-filter-panel {
+  display: none !important;
 }
 
 /* Dimmed / Greyed-out Watched Videos */
@@ -1842,8 +1847,16 @@
 		}
 		return location.pathname.startsWith("/embed/");
 	};
+	var syncPageUI = () => {
+		const p = location.pathname;
+		const onPlayerPage = p === "/watch" || p.startsWith("/shorts/") || p.startsWith("/live/");
+		document.documentElement.toggleAttribute("data-ytf-hide-ui", onPlayerPage);
+	};
 	var init = () => {
 		if (isEmbedded()) return;
+		syncPageUI();
+		window.addEventListener("yt-navigate-finish", syncPageUI, true);
+		window.addEventListener("popstate", syncPageUI, true);
 		injectCSS(STYLES);
 		const filters = loadFilters();
 		let ui;

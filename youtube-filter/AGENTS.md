@@ -6,7 +6,7 @@ A browser userscript (Tampermonkey/Violentmonkey) that filters YouTube videos by
 ## Structure
 ```
 youtube-filter/
-├── package.json          # Project metadata and dependencies (v3.4.0)
+├── package.json          # Project metadata and dependencies (v3.4.1)
 ├── tsconfig.json        # TypeScript configuration (strict, ES2022, bundler resolution)
 ├── vite.config.ts       # Vite build configuration using vite-plugin-monkey
 ├── vitest.config.ts     # Vitest configuration with happy-dom environment
