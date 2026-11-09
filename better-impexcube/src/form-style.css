@@ -35,7 +35,7 @@ td:has(> #ContentPlaceHolder1_btnExit) > input.stylebutton:hover { background: #
 .impex-date-btn { background: #37342e !important; border-color: #666052 !important; }
 /* The searchable select and calendar are shared enhancements rendered outside the form. */
 .bd-wrapper .bd-trigger { background: var(--bic-field) !important; border: 1px solid var(--bic-field-edge) !important; border-radius: 5px !important; color: var(--bic-text) !important; padding-left: 7px; }
-.bd-wrapper .bd-trigger:disabled { background: #30302d !important; color: #aaa69d !important; }
+.bd-wrapper .bd-trigger:disabled { background: var(--bic-disabled) !important; color: var(--bic-disabled-text) !important; }
 .bd-dropdown, .bic-dbk-list { background: var(--bic-surface-2) !important; border-color: var(--bic-border-strong) !important; color: var(--bic-text) !important; box-shadow: 0 12px 30px #0008; }
 .bd-dropdown .bd-search { background: #191a19; color: var(--bic-text); border-color: var(--bic-border-strong); }
 .bd-option:hover, .bd-highlighted, .bic-dbk-option:hover, .bic-dbk-option.is-active { background: var(--bic-accent-wash) !important; }

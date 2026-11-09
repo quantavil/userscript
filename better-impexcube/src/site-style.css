@@ -9,6 +9,9 @@
   --bic-head: #35332e;
   --bic-accent-wash: #51432f;
   --bic-hover: #39362f;
+  --bic-disabled: #26261f;
+  --bic-disabled-text: #b8b2a6;
+  --bic-danger: #f87171;
   --bic-bg: #171716;
   --bic-panel: #222220;
   --bic-raised: #2d2c29;
@@ -28,7 +31,7 @@ input[type="text"], input[type="password"], input[type="number"], select, textar
   border: 1px solid var(--bic-field-edge); border-radius: 5px;
   background: var(--bic-field); color: var(--bic-text); font: 13px/1.3 system-ui, sans-serif;
 }
-:is(input, select, textarea):disabled { background: #30302d; color: #aaa69d; }
+:is(input, select, textarea):disabled { background: var(--bic-disabled); color: var(--bic-disabled-text); }
 :is(input, select, textarea, button, a):focus-visible { outline: 2px solid var(--bic-accent); outline-offset: 2px; }
 .main a { color: #efd0a0; }
 .ajax__tab_header { padding: 6px 8px; background: #252421; border: 1px solid var(--bic-border); border-bottom: 0; }
@@ -105,11 +108,21 @@ font[color="red" i] {
 :is(span, font, label, p)[style*="color:black" i] {
   color: var(--bic-text) !important;
 }
-input:disabled, select:disabled, textarea:disabled,
+input:disabled, select:disabled, textarea:disabled, input[readonly], textarea[readonly],
 input.aspNetDisabled, select.aspNetDisabled {
-  background-color: #30302d !important;
-  color: #aaa69d !important;
+  background-color: var(--bic-disabled) !important;
+  color: var(--bic-disabled-text) !important;
+  -webkit-text-fill-color: var(--bic-disabled-text);
+  opacity: 1;
 }
+button.impex-date-btn:disabled { color: var(--bic-disabled-text); background: var(--bic-disabled); }
+button.impex-date-btn { min-height: 24px; }
+/* Pure-red inline text is under 4.5:1 on the dark panels. */
+:is(span, font, label, a, p, td)[style*="color:#ff0000" i], :is(span, font, label, a, p, td)[style*="color:#ff3300" i], :is(span, font, label, a, p, td)[style*="color: #ff0000" i] { color: var(--bic-danger) !important; }
+.style1007, a[href*="frmChangePassword" i] { color: var(--bic-danger) !important; }
+table[id*="GridViewJobHistory"] { background: var(--bic-panel) !important; border-color: var(--bic-border) !important; }
+table[id*="GridViewJobHistory"] :is(td, th) { background: transparent !important; color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
+textarea { font-size: 12px; }
 /* Dashboard notification and job-count cards share these native panels. */
 .panel:has(> .menubar, > .navbar) { background: var(--bic-panel) !important; color: var(--bic-text) !important; }
 .panel > :is(.menubar, .navbar) { background: var(--bic-head) !important; color: var(--bic-text) !important; }
@@ -336,3 +349,13 @@ table[id*="_gv"] tr:nth-child(even), table.table-wrapper tr:nth-child(even) { ba
 .jconfirm .jconfirm-box .jconfirm-buttons button { background: var(--bic-accent) !important; color: var(--bic-on-accent) !important; border-radius: 5px; }
 .jconfirm .jconfirm-box .jconfirm-buttons button:hover { background: var(--bic-accent-hover) !important; }
 .jconfirm .closeIcon { color: var(--bic-muted) !important; }
+
+/* Legacy light panels set by inline style or bgcolor (upload page, legends, Import section). */
+:is(div, td, tr, table, fieldset)[style*="background-color:#A6D3FB" i],
+:is(tr, td, table)[bgcolor="#F0F8FF" i],
+:is(tr, td, table)[bgcolor="#A6D3FB" i] { background: var(--bic-panel) !important; }
+div[style*="background-color:#A6D3FB" i] fieldset { border: 1px solid var(--bic-border) !important; border-radius: 6px; }
+div[style*="background-color:#A6D3FB" i] legend { color: var(--bic-accent) !important; padding: 0 6px; }
+#ContentPlaceHolder1_plPass[style*="#ffffff" i], div[style*="background-color: #FFFFFF" i]:has(> iframe) { background: var(--bic-panel) !important; }
+input[type="file"] { background: var(--bic-field) !important; color: var(--bic-text) !important; border: 1px solid var(--bic-field-edge) !important; border-radius: 4px; }
+input[type="file"]::file-selector-button { background: var(--bic-raised); color: var(--bic-text); border: 1px solid var(--bic-border); border-radius: 4px; padding: 3px 10px; margin-right: 8px; cursor: pointer; }
