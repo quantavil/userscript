@@ -69,3 +69,24 @@ button.button:hover { background: var(--bic-accent-hover) !important; }
 #mainContent .card :is(.btn, input[type="submit"], #btnGo):hover { background: var(--bic-accent-hover) !important; }
 #mainContent .card a { color: var(--bic-accent) !important; }
 #mainContent .card ::placeholder { color: var(--bic-muted); opacity: 0.7; }
+
+/* Duty Calculator (Export/Import): white card-box under light labels. */
+.card-box { background: var(--bic-panel) !important; color: var(--bic-text) !important; border: 1px solid var(--bic-border); border-radius: 12px; box-shadow: none !important; }
+.card-box :is(h1, h2, h3, h4, h5, .card-title) { color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
+.card-box :is(h1, h2, h3, h4, h5, div, hr)[style*="box-shadow"], .card-box :is(h1, h2, h3, h4, h5) { box-shadow: none !important; }
+.card-box label { display: block; color: var(--bic-muted) !important; font-size: 13px; margin-bottom: 4px; }
+.card-box :is(select, input.form-control, input[type="text"]) { width: 100%; min-height: 38px; font-size: 13px; }
+.card-box .bd-wrapper { display: block; min-height: 38px; }
+.card-box :is(.btn, input[type="submit"], button[type="submit"]):not(.bd-trigger) { background: var(--bic-accent) !important; color: var(--bic-on-accent) !important; border: 1px solid var(--bic-accent-edge) !important; font-weight: 600; }
+.card-box :is(.btn, input[type="submit"]):not(.bd-trigger):hover { background: var(--bic-accent-hover) !important; }
+.card-box a { color: var(--bic-accent) !important; }
+.card-box :is(p, span, small)[style*="color"], .card-box :is(p, span, div)[class*="text-"] { color: var(--bic-muted) !important; }
+.card-box table { color: var(--bic-text); border-color: var(--bic-border); }
+.card-box :is(th, td) { background: transparent !important; color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
+.card-box th { background: var(--bic-head) !important; }
+.card-box :is(.head_card, .head_card h2) { background: transparent !important; color: var(--bic-text) !important; }
+.card-box :is(input.form-control, input.cls_inp, input[type="text"]) { background: var(--bic-field) !important; color: var(--bic-text) !important; border: 1px solid var(--bic-field-edge) !important; border-radius: 4px; }
+.card-box input::placeholder { color: var(--bic-muted); opacity: 0.8; }
+.card-box { padding-bottom: 14px; }
+.card-box > .row, .card-box > form > .row { padding-left: 14px; padding-right: 14px; }
+.card-box .head_card > * { box-shadow: none !important; }
