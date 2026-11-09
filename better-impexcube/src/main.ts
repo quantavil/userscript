@@ -1,3 +1,4 @@
+import { installAnnouncementDismiss } from "./announcement";
 import { installContextSwitch } from "./context-switch";
 import { installDates } from "./dates";
 import { installDbk } from "./dbk";
@@ -14,6 +15,7 @@ installFormStyle();
 
 function initialize(): void {
   installLoginDefaults();
+  installAnnouncementDismiss();
   void installContextSwitch();
   installJobDelete();
   installJobSearch();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better ImpexCube
 // @namespace    https://github.com/quantavil/userscript
-// @version      2.1.1
+// @version      2.1.2
 // @description  Job search, compact controls and RITC-specific DBK suggestions for ImpexCube
 // @license      GPL-3.0-or-later
 // @match        *://impexcube.in/*
@@ -15,6 +15,27 @@
 
 (function() {
 	"use strict";
+	function watchDom(selector, scan) {
+		scan();
+		new MutationObserver((mutations) => {
+			const relevant = (node) => node instanceof Element && (node.matches(selector) || node.querySelector(selector));
+			if (mutations.some((m) => [...m.addedNodes, ...m.removedNodes].some(relevant))) scan();
+		}).observe(document.body, {
+			childList: true,
+			subtree: true
+		});
+	}
+	function installAnnouncementDismiss() {
+		const dismissed = new WeakSet();
+		watchDom(".jconfirm", () => {
+			for (const box of document.querySelectorAll(".jconfirm-box")) {
+				const content = box.querySelector(".content");
+				if (dismissed.has(box) || !content?.querySelector("img") || content.textContent?.trim() || box.querySelector("input, select, textarea, .buttons button")) continue;
+				dismissed.add(box);
+				box.querySelector(".closeIcon")?.click();
+			}
+		});
+	}
 	var path = "/frmswitchBranch.aspx";
 	var storageKey = "better-impexcube-context";
 	var prefix$3 = "better-impexcube-context:";
@@ -1153,16 +1174,6 @@
 			platform: platformWithCache
 		});
 	};
-	function watchDom(selector, scan) {
-		scan();
-		new MutationObserver((mutations) => {
-			const relevant = (node) => node instanceof Element && (node.matches(selector) || node.querySelector(selector));
-			if (mutations.some((m) => [...m.addedNodes, ...m.removedNodes].some(relevant))) scan();
-		}).observe(document.body, {
-			childList: true,
-			subtree: true
-		});
-	}
 	var months = [
 		"Jan",
 		"Feb",
@@ -2291,6 +2302,9 @@
 			public_style_default
 		].join("\n");
 		(document.head ?? document.documentElement).append(style);
+		const last = () => (document.head ?? document.documentElement).append(style);
+		document.addEventListener("DOMContentLoaded", last, { once: true });
+		window.addEventListener("load", last, { once: true });
 	}
 	var prefix$2 = "ContentPlaceHolder1_tbProduct_TabSupportingdoc_";
 	var todayDate = () => {
@@ -3955,6 +3969,7 @@
 	installFormStyle();
 	function initialize() {
 		installLoginDefaults();
+		installAnnouncementDismiss();
 		installContextSwitch();
 		installJobDelete();
 		installJobSearch();
