@@ -6,6 +6,7 @@ import {
   shift,
   size,
 } from "@floating-ui/dom";
+import { watchDom } from "./dom";
 
 type Option = {
   element: HTMLOptionElement;
@@ -283,12 +284,12 @@ export function installDropdowns(): void {
     .bd-wrapper{display:inline-block;position:relative;vertical-align:middle;max-width:100%}
     .bd-wrapper .bd-enhanced{visibility:hidden!important}
     .bd-wrapper.bd-sized .bd-enhanced{width:100%!important}
-    .bd-wrapper .bd-trigger{position:absolute;inset:0;box-sizing:border-box;width:100%;height:100%;min-width:0;min-height:0;margin:0;padding:0 20px 0 3px;overflow:hidden;text-align:left;text-overflow:ellipsis;white-space:nowrap;background:#fff;border:1px solid #8da7c3;border-radius:2px;color:#111;cursor:pointer;line-height:normal;box-shadow:none}
+    .bd-wrapper .bd-trigger{position:absolute;inset:0;box-sizing:border-box;width:100%;height:100%;min-width:0;min-height:0;margin:0;padding:0 20px 0 3px;overflow:hidden;text-align:left;text-overflow:ellipsis;white-space:nowrap;background:var(--bic-field);border:1px solid var(--bic-border);border-radius:4px;color:var(--bic-text);cursor:pointer;line-height:normal;box-shadow:none}
     .bd-trigger:after{content:'▾';position:absolute;right:4px;top:50%;transform:translateY(-50%)}
-    .bd-trigger:focus-visible,.bd-search:focus-visible{outline:2px solid #217d72;outline-offset:1px}
-    .bd-wrapper .bd-trigger:disabled{background:#eee;color:#888;cursor:not-allowed}
-    .bd-dropdown{position:fixed;z-index:2147483000;background:white;border:1px solid #b8cbd1;border-radius:5px;box-shadow:0 8px 24px #183c4a26;font:11px/1.3 system-ui;color:#192e3a;padding:3px;box-sizing:border-box}
-    .bd-dropdown[hidden]{display:none}.bd-search{box-sizing:border-box;width:100%;padding:3px 4px;border:1px solid #b8cbd1;border-radius:3px}.bd-options{max-height:150px;overflow:auto}.bd-option{display:flex;justify-content:space-between;gap:6px;padding:3px 5px;cursor:pointer}.bd-option:hover,.bd-highlighted{background:#e8f4f2}.bd-option[aria-disabled=true]{opacity:.5;cursor:not-allowed}.bd-option small{color:#526a72}
+    .bd-trigger:focus-visible,.bd-search:focus-visible{outline:2px solid var(--bic-accent);outline-offset:1px}
+    .bd-wrapper .bd-trigger:disabled{background:var(--bic-panel);color:var(--bic-muted);cursor:not-allowed}
+    .bd-dropdown{position:fixed;z-index:2147483000;background:var(--bic-panel);border:1px solid var(--bic-border);border-radius:6px;box-shadow:0 12px 30px #0008;font:12px/1.4 system-ui;color:var(--bic-text);padding:3px;box-sizing:border-box}
+    .bd-dropdown[hidden]{display:none}.bd-search{box-sizing:border-box;width:100%;padding:3px 4px;border:1px solid var(--bic-border);border-radius:4px;background:var(--bic-field);color:var(--bic-text)}.bd-options{max-height:150px;overflow:auto}.bd-option{display:flex;justify-content:space-between;gap:6px;padding:4px 6px;cursor:pointer}.bd-option:hover,.bd-highlighted{background:var(--bic-raised);color:var(--bic-accent)}.bd-option[aria-disabled=true]{opacity:.5;cursor:not-allowed}.bd-option small{color:var(--bic-muted)}
   `;
   document.head.append(style);
   const controls = new Map<HTMLSelectElement, () => void>();
@@ -308,17 +309,5 @@ export function installDropdowns(): void {
         controls.set(select, enhance(select));
     });
   };
-  scan();
-  new MutationObserver((mutations) => {
-    if (
-      mutations.some((m) =>
-        [...m.addedNodes, ...m.removedNodes].some(
-          (node) =>
-            node instanceof Element &&
-            (node.matches("select") || node.querySelector("select")),
-        ),
-      )
-    )
-      scan();
-  }).observe(document.body, { childList: true, subtree: true });
+  watchDom("select", scan);
 }

@@ -5,6 +5,7 @@ import {
   offset,
   shift,
 } from "@floating-ui/dom";
+import { watchDom } from "./dom";
 
 const months = [
   "Jan",
@@ -75,25 +76,25 @@ export function installDates(): void {
   const style = document.createElement("style");
   style.textContent = `
     .impex-date-wrapper{display:inline-flex;align-items:center;gap:3px}
-    .impex-date-btn{cursor:pointer;background:#fff;border:1px solid #9baeb2;border-radius:3px;padding:2px 5px}
+    .impex-date-btn{cursor:pointer;background:var(--bic-raised);border:1px solid var(--bic-border);border-radius:4px;padding:2px 6px;min-height:24px}
     .impex-date-btn:disabled{opacity:.5;cursor:not-allowed}
-    .impex-date-input.invalid{outline:2px solid #b64b4b}
-    .impex-calendar-popup{position:fixed;z-index:2147483000;width:238px;max-width:calc(100vw - 16px);box-sizing:border-box;padding:8px;background:#fff;border:1px solid #c8d6df;border-radius:10px;box-shadow:0 12px 32px #1c3c512b;font:12px/1.4 system-ui,sans-serif;color:#203849;font-variant-numeric:tabular-nums}
+    .impex-date-input.invalid{outline:2px solid #f87171}
+    .impex-calendar-popup{position:fixed;z-index:2147483000;width:238px;max-width:calc(100vw - 16px);box-sizing:border-box;padding:8px;background:var(--bic-panel);border:1px solid var(--bic-border);border-radius:10px;box-shadow:0 12px 30px #0008;font:12px/1.4 system-ui,sans-serif;color:var(--bic-text);font-variant-numeric:tabular-nums}
     .impex-calendar-popup[hidden]{display:none}
     .impex-calendar-popup button{box-sizing:border-box;min-width:0;margin:0;border:0;background:transparent;color:inherit;font:inherit;line-height:1;cursor:pointer;box-shadow:none;text-shadow:none}
     .impex-cal-header{display:grid;grid-template-columns:26px 26px minmax(0,1fr) 26px 26px;align-items:center;text-align:center}
     .impex-cal-title{font-weight:700;white-space:nowrap}
     .impex-calendar-popup .impex-cal-nav{width:26px;height:26px;padding:0;border-radius:4px;font-size:16px}
     .impex-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;margin:5px 0}
-    .impex-cal-grid>span{display:grid;place-items:center;height:22px;color:#687d8a;font-size:11px;font-weight:600}
+    .impex-cal-grid>span{display:grid;place-items:center;height:22px;color:var(--bic-muted);font-size:11px;font-weight:600}
     .impex-calendar-popup .impex-cal-day{display:grid;place-items:center;width:100%;height:28px;padding:0;border-radius:4px}
-    .impex-calendar-popup .impex-cal-day.other-month{color:#9baab2}
-    .impex-calendar-popup .impex-cal-day.today:not(.selected){box-shadow:inset 0 0 0 1px #548a83;color:#176b62;font-weight:700}
-    .impex-calendar-popup .impex-cal-day.selected{background:#217d72;color:#fff;font-weight:700}
-    .impex-quick-btns{display:flex;justify-content:center;gap:6px;padding-top:5px;border-top:1px solid #e5ecef}
-    .impex-calendar-popup .impex-quick-btn{padding:6px 9px;border-radius:4px;color:#176b62;font-weight:600}
-    .impex-calendar-popup button:hover:not(.selected){background:#eaf4f2}
-    .impex-calendar-popup button:focus-visible{outline:2px solid #217d72;outline-offset:1px}
+    .impex-calendar-popup .impex-cal-day.other-month{color:var(--bic-muted);opacity:.6}
+    .impex-calendar-popup .impex-cal-day.today:not(.selected){box-shadow:inset 0 0 0 1px var(--bic-accent);color:var(--bic-accent);font-weight:700}
+    .impex-calendar-popup .impex-cal-day.selected{background:var(--bic-accent);color:var(--bic-on-accent);font-weight:700}
+    .impex-quick-btns{display:flex;justify-content:center;gap:6px;padding-top:5px;border-top:1px solid var(--bic-border)}
+    .impex-calendar-popup .impex-quick-btn{padding:6px 9px;border-radius:4px;color:var(--bic-accent);font-weight:600}
+    .impex-calendar-popup button:hover:not(.selected){background:var(--bic-raised)}
+    .impex-calendar-popup button:focus-visible{outline:2px solid var(--bic-accent);outline-offset:1px}
   `;
   document.head.append(style);
   const popup = document.createElement("div");
@@ -299,17 +300,5 @@ export function installDates(): void {
     });
     if (active && !active.isConnected) close();
   };
-  scan();
-  new MutationObserver((mutations) => {
-    if (
-      mutations.some((m) =>
-        [...m.addedNodes, ...m.removedNodes].some(
-          (node) =>
-            node instanceof Element &&
-            (node.matches("input") || node.querySelector("input")),
-        ),
-      )
-    )
-      scan();
-  }).observe(document.body, { childList: true, subtree: true });
+  watchDom("input", scan);
 }

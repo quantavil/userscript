@@ -1,3 +1,4 @@
+import { watchDom } from "./dom";
 export function installProductUi(): void {
   if (!/\/frmEProductMainPage\.aspx$/i.test(location.pathname)) return;
 
@@ -79,18 +80,5 @@ export function installProductUi(): void {
           table.classList.add("bic-product-table");
       });
   };
-  scan();
-  new MutationObserver((mutations) => {
-    if (
-      mutations.some((mutation) =>
-        [...mutation.addedNodes].some(
-          (node) =>
-            node instanceof Element &&
-            (node.matches("table, tbody, tr, th") ||
-              node.querySelector("table, th")),
-        ),
-      )
-    )
-      scan();
-  }).observe(document.body, { childList: true, subtree: true });
+  watchDom("table, tbody, tr, th", scan);
 }

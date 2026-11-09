@@ -82,9 +82,6 @@ export async function installContextSwitch(): Promise<void> {
       (o) => o.text.trim() === yearText,
     );
     if (!currentBranch || !currentYear) return;
-    const style = document.createElement("style");
-    style.textContent = `.bic-context{color:white;font:8pt Verdana;white-space:nowrap}.bic-context select{font:inherit;color:white;background:#285bb2;border:0;max-width:112px;cursor:pointer}.bic-context option{color:#111;background:white}`;
-    document.head.append(style);
     const controls = [branch, year].map((source, index) => {
       const select = document.createElement("select");
       select.className = "bic-context-select";

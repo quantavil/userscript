@@ -11,14 +11,17 @@ export function currentFinancialYear(date = new Date()): string {
   return `${start}-${start + 1}`;
 }
 
-export function installLoginDefaults(date = new Date()): void {
-  if (location.hostname.toLowerCase() !== "export.impexcube.in") return;
-  if (location.pathname.toLowerCase() !== "/frmloginnew.aspx") return;
+const defaulted = new WeakSet<HTMLSelectElement>();
+
+/** Fill the selection panel once per rendered panel; false when it is absent. */
+function applyLoginDefaults(date: Date): boolean {
   const company = document.querySelector<HTMLSelectElement>("#drCompany");
   const branch = document.querySelector<HTMLSelectElement>("#drBranch");
   const year = document.querySelector<HTMLSelectElement>("#drFinancial");
   const go = document.querySelector<HTMLInputElement>("#btnGo");
-  if (!company || !branch || !year || !go?.form) return;
+  if (!company || !branch || !year || !go?.form) return false;
+  if (defaulted.has(company)) return true;
+  defaulted.add(company);
   const desiredYear = currentFinancialYear(date);
   const find = (select: HTMLSelectElement, label: string) => {
     const options = Array.from(select.options).filter(
@@ -31,7 +34,7 @@ export function installLoginDefaults(date = new Date()): void {
   };
   const desiredBranch = find(branch, "MORADABAD");
   const desiredYearOption = find(year, desiredYear);
-  if (!desiredBranch || !desiredYearOption) return;
+  if (!desiredBranch || !desiredYearOption) return true;
   branch.value = desiredBranch.value;
   year.value = desiredYearOption.value;
   const companies = Array.from(company.options).filter(
@@ -40,7 +43,20 @@ export function installLoginDefaults(date = new Date()): void {
       option.value &&
       !/^--?\s*(choose|select)/i.test(option.text.trim()),
   );
-  if (companies.length !== 1) return;
+  if (companies.length !== 1) return true;
   company.value = companies[0].value;
   go.click();
+  return true;
+}
+
+/**
+ * The selection panel is rendered by an UpdatePanel on the login page root
+ * after credentials are accepted, so it may appear after DOMContentLoaded.
+ */
+export function installLoginDefaults(date = new Date()): void {
+  if (location.hostname.toLowerCase() !== "export.impexcube.in") return;
+  applyLoginDefaults(date);
+  new MutationObserver(() => {
+    applyLoginDefaults(date);
+  }).observe(document.body, { childList: true, subtree: true });
 }

@@ -1,0 +1,71 @@
+/* Public marketing site (impexcube.in) and the export login page share the
+   palette from site-style.css; only layout and hard-coded light colors differ. */
+
+/* Header, top bar, footer and nav: one dark chrome for both sites. */
+.top-bar, .site-navbar, nav.navbar[style*="337ab7" i], footer[style*="337ab7" i] {
+  background: var(--bic-panel) !important; color: var(--bic-text) !important;
+  border-color: var(--bic-border) !important; box-shadow: none !important;
+}
+.site-navbar { border-bottom: 1px solid var(--bic-border) !important; }
+.top-bar a, .site-navbar .site-navigation .site-menu > li > a, .site-navbar .site-menu .nav-link,
+nav.navbar .nav-link { color: var(--bic-text) !important; }
+.top-bar a:hover, .site-navbar .site-navigation .site-menu > li > a:hover,
+.site-navbar .site-navigation .site-menu .active, nav.navbar .nav-link:hover,
+nav.navbar .nav-link.active { color: var(--bic-accent) !important; }
+.site-navbar .site-navigation .site-menu .has-children .dropdown {
+  background: var(--bic-raised) !important; border: 1px solid var(--bic-border) !important;
+  border-top: 2px solid var(--bic-accent) !important; border-radius: 0 0 8px 8px; box-shadow: 0 10px 25px #0009 !important;
+}
+.site-navbar .site-navigation .site-menu .has-children .dropdown a { color: var(--bic-text) !important; }
+.site-menu .has-children .dropdown > li > a:hover, .site-menu .has-children .dropdown a.active {
+  background: #473e31 !important; color: var(--bic-accent) !important;
+}
+/* Both sites' logo images are drawn for light backgrounds: use one text wordmark. */
+.site-logo img { display: none !important; }
+.site-logo a::after { content: "IMPEX CUBE"; display: inline-block; padding: 6px 0; color: var(--bic-accent); font: 700 20px/1.4 system-ui, sans-serif; letter-spacing: 0.12em; }
+nav.navbar .site-logo { padding: 4px 8px; }
+/* Social links and the empty footer are noise. */
+.top-bar .float-right, footer[style*="337ab7" i] { display: none !important; }
+/* Minimal: decorative banners, partner art and the chat shortcut add nothing. */
+.benefits-image, .benefit-image, .scm-logo, .bg-overlay, #mainContent .slideshow { display: none !important; }
+#mainContent > div:has(> .slideshow) { display: none !important; }
+
+/* Home: headings, copy and the benefits card were navy on dark. */
+:is(.about, .get-touch) { color: var(--bic-accent) !important; }
+:is(.scm-content, .get-content) { color: var(--bic-muted) !important; }
+.box { margin-top: 0 !important; height: auto !important; background: var(--bic-panel) !important; border: 1px solid var(--bic-border); border-radius: 12px; }
+.listing, .listing li { color: var(--bic-text) !important; }
+.listing strong { color: var(--bic-accent); }
+.col-md-3 hr { background: var(--bic-border) !important; height: 1px; border: 0; }
+button.button { background: var(--bic-accent) !important; border: 1px solid var(--bic-accent-edge) !important; border-radius: 6px !important; color: var(--bic-on-accent) !important; }
+button.button:hover { background: var(--bic-accent-hover) !important; }
+
+/* Login chooser: a centered grid of product tiles instead of a white slab. */
+.container-fluid > div[style*="background-color:#fff" i] { background: transparent !important; max-width: 560px; margin: 0 auto; }
+.container-fluid > div[style*="background-color:#fff" i] > br { display: none; }
+.container-fluid > div[style*="background-color:#fff" i] > .row { justify-content: center; gap: 24px; margin: 0 0 24px; }
+.container-fluid > div[style*="background-color:#fff" i] > .row > [class*="col-"] { flex: 0 0 auto; width: auto; max-width: none; padding: 0; }
+.container-fluid > div[style*="background-color:#fff" i] a img {
+  width: 180px !important; height: 180px; object-fit: contain; padding: 16px; background: #fff; border: 1px solid var(--bic-border);
+  border-radius: 14px; transition: transform 0.15s, box-shadow 0.15s;
+}
+.container-fluid > div[style*="background-color:#fff" i] a:is(:hover, :focus-visible) img { transform: translateY(-3px); box-shadow: 0 10px 24px #0008; }
+
+/* export.impexcube.in sign-in and company/branch/year selection. */
+#mainContent { background: transparent !important; height: auto !important; min-height: 420px; align-items: center; }
+#mainContent { justify-content: center; }
+#mainContent > .col-md-4 { flex: 0 0 auto; width: min(100%, 400px); }
+#mainContent .card {
+  background: var(--bic-panel) !important; color: var(--bic-text) !important;
+  border: 1px solid var(--bic-border) !important; border-radius: 12px; box-shadow: 0 12px 30px #0006; padding: 24px 0;
+}
+#mainContent .card :is(label, h3, .form-label) { display: block; color: var(--bic-text); }
+#mainContent .card label { margin-bottom: 4px; color: var(--bic-muted); font-size: 13px; }
+#mainContent .card :is(select, input.form-control) { width: 100%; min-height: 38px; font-size: 13px !important; }
+#mainContent .card :is(.btn, input[type="submit"], #btnGo) {
+  width: 100%; min-height: 38px; border: 1px solid var(--bic-accent-edge) !important; border-radius: 6px;
+  background: var(--bic-accent) !important; color: var(--bic-on-accent) !important; font-weight: 600; box-shadow: none;
+}
+#mainContent .card :is(.btn, input[type="submit"], #btnGo):hover { background: var(--bic-accent-hover) !important; }
+#mainContent .card a { color: var(--bic-accent) !important; }
+#mainContent .card ::placeholder { color: var(--bic-muted); opacity: 0.7; }
