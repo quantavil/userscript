@@ -7,11 +7,11 @@
   border-color: var(--bic-border) !important; box-shadow: none !important;
 }
 .site-navbar { border-bottom: 1px solid var(--bic-border) !important; }
-.top-bar a, .site-navbar .site-navigation .site-menu > li > a, .site-navbar .site-menu .nav-link,
-nav.navbar .nav-link { color: var(--bic-text) !important; }
-.top-bar a:hover, .site-navbar .site-navigation .site-menu > li > a:hover,
-.site-navbar .site-navigation .site-menu .active, nav.navbar .nav-link:hover,
-nav.navbar .nav-link.active { color: var(--bic-accent) !important; }
+:root .top-bar a, :root .site-navbar .site-navigation .site-menu > li > a, :root .sticky-wrapper .site-navbar ul li a, :root .site-navbar .site-menu .nav-link,
+:root nav.navbar .nav-link { color: var(--bic-text) !important; }
+:root .top-bar a:hover, :root .site-navbar .site-navigation .site-menu > li > a:hover, :root .sticky-wrapper .site-navbar ul li a:hover,
+:root .site-navbar .site-navigation .site-menu .active, :root nav.navbar .nav-link:hover,
+:root nav.navbar .nav-link.active { color: var(--bic-accent) !important; }
 .site-navbar .site-navigation .site-menu .has-children .dropdown {
   background: var(--bic-raised) !important; border: 1px solid var(--bic-border) !important;
   border-top: 2px solid var(--bic-accent) !important; border-radius: 0 0 8px 8px; box-shadow: 0 10px 25px #0009 !important;
