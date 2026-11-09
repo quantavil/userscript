@@ -108,8 +108,8 @@ font[color="red" i] {
 :is(span, font, label, p)[style*="color:black" i] {
   color: var(--bic-text) !important;
 }
-input:disabled, select:disabled, textarea:disabled, input[readonly], textarea[readonly],
-input.aspNetDisabled, select.aspNetDisabled {
+:root :is(input:disabled, select:disabled, textarea:disabled, input[readonly], textarea[readonly],
+input.aspNetDisabled, select.aspNetDisabled) {
   background-color: var(--bic-disabled) !important;
   color: var(--bic-disabled-text) !important;
   -webkit-text-fill-color: var(--bic-disabled-text);
