@@ -32,7 +32,7 @@ Guidance for work in this repository (`~/Documents/userscript`).
 - **Board & Display Fixes**: Broadened Lichess board selector support across dynamic layouts; stabilized Multi-PV line display to eliminate per-ply flickering; cleaned up verbose disclaimers from the user activity log.
 - **Verification**: 428 tests across 34 suites, Biome, strict TypeScript, Knip, and dual production builds passed. See [`super-chess-bot/docs/superpowers/plans/2026-10-14-hybrid-premove-engine.md`](super-chess-bot/docs/superpowers/plans/2026-10-14-hybrid-premove-engine.md).
 
-## Better ImpexCube Modernization (2026-11-09)
+## Better ImpexCube v2.0.0 (2026-11-09)
 
 - **SSRS ReportViewer & Document Previews**: Preserved authentic white document canvas with black text on `_oReportCell` while styling outer toolbars in dark panel palette (`#252421`) with inverted glyphs; eliminated sliced paper artifacts and empty trailing white voids.
 - **Navigation Bar & Multi-Level Popovers**: Anchored `#nav` dropdowns and multi-level flyouts cleanly at `top: 100%` and `left: 100%`, eliminating native 25px top-padding blackouts, harsh white right borders, and cyan background bleed. Added subtle chevrons (`›`) and rounded card elevation.
