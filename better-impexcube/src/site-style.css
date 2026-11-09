@@ -34,8 +34,8 @@ input[type="text"], input[type="password"], input[type="number"], select, textar
 :is(input, select, textarea):disabled { background: var(--bic-disabled); color: var(--bic-disabled-text); }
 :is(input, select, textarea, button, a):focus-visible { outline: 2px solid var(--bic-accent); outline-offset: 2px; }
 .main a { color: #efd0a0; }
-.ajax__tab_header { padding: 6px 8px; background: #252421; border: 1px solid var(--bic-border); border-bottom: 0; }
-.ajax__tab_outer, .ajax__tab_inner { background: none !important; padding: 0 !important; }
+:root .ajax__tab_header { height: auto !important; min-height: 42px; overflow: visible !important; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 8px; background: #252421; border: 1px solid var(--bic-border); border-bottom: 0; }
+:root .ajax__tab_header > span, :root .ajax__tab_outer, :root .ajax__tab_inner { background: none !important; padding: 0 !important; height: auto !important; }
 .ajax__tab_tab { display: inline-block; height: auto !important; padding: 9px 11px !important; margin: 2px !important; border: 1px solid #45433d !important; border-radius: 5px; background: #302f2b !important; color: var(--bic-muted) !important; font: 600 13px/1.25 system-ui, sans-serif !important; }
 .ajax__tab_active .ajax__tab_tab { background: var(--bic-accent) !important; border-color: var(--bic-accent) !important; color: var(--bic-on-accent) !important; }
 .ajax__tab_tab:hover { filter: brightness(1.13); }
