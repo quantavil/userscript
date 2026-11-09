@@ -5,7 +5,21 @@ import { loadFilters } from './storage';
 import { STYLES } from './styles';
 import { createUI } from './ui';
 
+/**
+ * Never run inside iframes or embedded players (e.g. youtube.com/embed/* on third-party pages).
+ */
+const isEmbedded = (): boolean => {
+  try {
+    if (window.top !== window.self) return true;
+  } catch {
+    return true; // cross-origin access to window.top throws: we are framed
+  }
+  return location.pathname.startsWith('/embed/');
+};
+
 const init = (): void => {
+  if (isEmbedded()) return;
+
   // Inject scoped styles (Trusted Types safe)
   injectCSS(STYLES);
 

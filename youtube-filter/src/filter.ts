@@ -74,7 +74,18 @@ export const getVideoMeta = (host: Element): VideoMeta => {
   );
 
   const viewsTxt = byText(metaLineSpans, (t) => /view/i.test(t) && !/watching/i.test(t));
-  const timeTxt = byText(metaLineSpans, (t) => /(ago|streamed|premiered|just now|moments? ago)/i.test(t));
+  // A span may hold "124K views • 2 days ago" or just the age; test each bullet-separated segment
+  let timeTxt = '';
+  for (const span of metaLineSpans) {
+    const seg = (span.textContent || '')
+      .split(/[•·|]/)
+      .map((t) => t.trim())
+      .find((t) => Number.isFinite(parseDaysAgo(t)));
+    if (seg) {
+      timeTxt = seg;
+      break;
+    }
+  }
 
   // Enhanced duration detection with 2026 YouTube fallback chain
   let durationTxt =

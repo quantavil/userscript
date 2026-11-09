@@ -40,39 +40,55 @@ export const parseViews = (txt: string): number => {
   return parseNumberWithSuffix((txt || '').replace(/views?/i, '').trim());
 };
 
+const DAY_MULT: Record<string, number> = {
+  second: 1 / (24 * 3600),
+  minute: 1 / (24 * 60),
+  hour: 1 / 24,
+  day: 1,
+  week: 7,
+  month: 30,
+  year: 365
+};
+
+/** Maps full and abbreviated unit words ("h", "hrs", "mo", "y", ...) to a canonical unit. */
+const UNIT_ALIASES: Record<string, keyof typeof DAY_MULT> = {
+  s: 'second', sec: 'second', secs: 'second', second: 'second', seconds: 'second',
+  m: 'minute', min: 'minute', mins: 'minute', minute: 'minute', minutes: 'minute',
+  h: 'hour', hr: 'hour', hrs: 'hour', hour: 'hour', hours: 'hour',
+  d: 'day', day: 'day', days: 'day',
+  w: 'week', wk: 'week', wks: 'week', week: 'week', weeks: 'week',
+  mo: 'month', mos: 'month', mth: 'month', mths: 'month', month: 'month', months: 'month',
+  y: 'year', yr: 'year', yrs: 'year', year: 'year', years: 'year'
+};
+
+/** Whole-string relative time: optional prefix, number, unit (full or abbreviated), "ago". */
+const RELATIVE_TIME_RE = /^(?:(?:streamed|premiered)\s+)?(?:live\s+)?(\d+)\s*([a-z]+)\s+ago$/;
+
 /**
  * Parses relative upload time to approximate fractional days ago.
- * Handles "2 days ago", "1 month ago", "just now", "streamed 3 hours ago", etc.
+ * Handles "2 days ago", "1 month ago", abbreviated "9y ago" / "6mo ago" / "7h ago",
+ * "just now", "streamed 3 hours ago", etc. The whole string must match, so titles
+ * or channel names that merely contain a number or "ago" are ignored.
  */
 export const parseDaysAgo = (txt: string): number => {
   if (!txt) return Infinity;
   const s = txt
     .toLowerCase()
-    .replace(/[\u00A0]/g, ' ')
+    .replace(/\u00A0/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
   // Instant / just now uploads
-  if (/(just now|moments? ago|right now)/i.test(s)) {
+  if (/^(?:(?:streamed|premiered)\s+)?(?:live\s+)?(?:just now|moments? ago|right now)$/.test(s)) {
     return 0;
   }
 
-  const cleaned = s.replace(/streamed/g, '').replace(/premiered/g, '').replace(/live/g, '').trim();
-  const m = cleaned.match(/(\d+)\s*(second|minute|hour|day|week|month|year)s?/);
+  const m = s.match(RELATIVE_TIME_RE);
   if (!m) return Infinity;
 
-  const v = parseInt(m[1], 10);
-  const unit = m[2];
-  const mult: Record<string, number> = {
-    second: 1 / (24 * 3600),
-    minute: 1 / (24 * 60),
-    hour: 1 / 24,
-    day: 1,
-    week: 7,
-    month: 30,
-    year: 365
-  };
-  return v * (mult[unit] || 1);
+  const unit = UNIT_ALIASES[m[2]];
+  if (!unit) return Infinity;
+  return parseInt(m[1], 10) * DAY_MULT[unit];
 };
 
 /**

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Video Filter
 // @namespace    https://github.com/quantavil/userscript/youtube-filter
-// @version      3.3.0
+// @version      3.4.0
 // @author       quantavil
 // @description  Filter YouTube videos by views, upload date, duration, keywords, and channels, with watched video dimming and customizable profiles.
 // @license      GPL-3.0-or-later
@@ -9,9 +9,11 @@
 // @homepageURL  https://github.com/quantavil/userscript
 // @match        https://www.youtube.com/*
 // @match        https://m.youtube.com/*
+// @exclude      https://www.youtube.com/embed/*
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
 // @run-at       document-end
+// @noframes
 // ==/UserScript==
 
 (function() {
@@ -137,21 +139,61 @@
 		}
 		return parseNumberWithSuffix((txt || "").replace(/views?/i, "").trim());
 	};
+	var DAY_MULT = {
+		second: 1 / 86400,
+		minute: 1 / 1440,
+		hour: 1 / 24,
+		day: 1,
+		week: 7,
+		month: 30,
+		year: 365
+	};
+	var UNIT_ALIASES = {
+		s: "second",
+		sec: "second",
+		secs: "second",
+		second: "second",
+		seconds: "second",
+		m: "minute",
+		min: "minute",
+		mins: "minute",
+		minute: "minute",
+		minutes: "minute",
+		h: "hour",
+		hr: "hour",
+		hrs: "hour",
+		hour: "hour",
+		hours: "hour",
+		d: "day",
+		day: "day",
+		days: "day",
+		w: "week",
+		wk: "week",
+		wks: "week",
+		week: "week",
+		weeks: "week",
+		mo: "month",
+		mos: "month",
+		mth: "month",
+		mths: "month",
+		month: "month",
+		months: "month",
+		y: "year",
+		yr: "year",
+		yrs: "year",
+		year: "year",
+		years: "year"
+	};
+	var RELATIVE_TIME_RE = /^(?:(?:streamed|premiered)\s+)?(?:live\s+)?(\d+)\s*([a-z]+)\s+ago$/;
 	var parseDaysAgo = (txt) => {
 		if (!txt) return Infinity;
-		const s = txt.toLowerCase().replace(/[\u00A0]/g, " ").replace(/\s+/g, " ").trim();
-		if (/(just now|moments? ago|right now)/i.test(s)) return 0;
-		const m = s.replace(/streamed/g, "").replace(/premiered/g, "").replace(/live/g, "").trim().match(/(\d+)\s*(second|minute|hour|day|week|month|year)s?/);
+		const s = txt.toLowerCase().replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
+		if (/^(?:(?:streamed|premiered)\s+)?(?:live\s+)?(?:just now|moments? ago|right now)$/.test(s)) return 0;
+		const m = s.match(RELATIVE_TIME_RE);
 		if (!m) return Infinity;
-		return parseInt(m[1], 10) * ({
-			second: 1 / 86400,
-			minute: 1 / 1440,
-			hour: 1 / 24,
-			day: 1,
-			week: 7,
-			month: 30,
-			year: 365
-		}[m[2]] || 1);
+		const unit = UNIT_ALIASES[m[2]];
+		if (!unit) return Infinity;
+		return parseInt(m[1], 10) * DAY_MULT[unit];
 	};
 	var parseDuration = (txt) => {
 		if (!txt) return NaN;
@@ -325,7 +367,14 @@
 	var getVideoMeta = (host) => {
 		const metaLineSpans = qsa(host, "#metadata-line span, .inline-metadata-item, .yt-content-metadata-view-model__metadata-row span, .yt-core-attributed-string, .badge-shape-wiz__text, [class*=\"metadata-text\"]");
 		const viewsTxt = byText(metaLineSpans, (t) => /view/i.test(t) && !/watching/i.test(t));
-		const timeTxt = byText(metaLineSpans, (t) => /(ago|streamed|premiered|just now|moments? ago)/i.test(t));
+		let timeTxt = "";
+		for (const span of metaLineSpans) {
+			const seg = (span.textContent || "").split(/[•·|]/).map((t) => t.trim()).find((t) => Number.isFinite(parseDaysAgo(t)));
+			if (seg) {
+				timeTxt = seg;
+				break;
+			}
+		}
 		let durationTxt = (qs(host, "ytd-thumbnail-overlay-time-status-renderer #text")?.textContent || "").trim() || (qs(host, "ytd-thumbnail-overlay-time-status-renderer [id=\"text\"]")?.textContent || "").trim() || (qs(host, ".yt-thumbnail-overlay-badge-view-model .yt-badge-shape__text")?.textContent || "").trim() || (qs(host, "badge-shape-wiz .badge-shape-wiz__text")?.textContent || "").trim() || (qs(host, "yt-badge-shape .yt-badge-shape__text")?.textContent || "").trim() || "";
 		if (!durationTxt) {
 			const match = ((qs(host, "ytd-thumbnail[aria-label]") || qs(host, "a#thumbnail[aria-label]") || qs(host, "a[aria-label*=\"views\"]"))?.getAttribute("aria-label") || "").match(/(\d+:\d+(?::\d+)?)/);
@@ -530,13 +579,34 @@
 			return getDefaultFilters();
 		}
 	};
+	var normalizeProfile = (p) => {
+		const bound = (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, v) : Infinity;
+		const floor = (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, v) : 0;
+		const list = (v) => Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+		return {
+			name: p.name,
+			minViews: floor(p.minViews),
+			maxViews: bound(p.maxViews),
+			minDays: floor(p.minDays),
+			maxDays: bound(p.maxDays),
+			minDuration: floor(p.minDuration),
+			maxDuration: bound(p.maxDuration),
+			keywordBlacklist: list(p.keywordBlacklist),
+			channelBlacklist: list(p.channelBlacklist),
+			channelWhitelist: list(p.channelWhitelist),
+			watchedMode: p.watchedMode === "hide" || p.watchedMode === "off" ? p.watchedMode : "dim",
+			hideShorts: Boolean(p.hideShorts),
+			hidePosts: Boolean(p.hidePosts)
+		};
+	};
 	var loadProfiles = () => {
 		try {
 			const rawStr = localStorage.getItem(PROFILES_STORAGE_KEY);
 			if (!rawStr) return [...DEFAULT_PROFILES];
 			const saved = JSON.parse(rawStr);
 			if (!Array.isArray(saved) || saved.length === 0) return [...DEFAULT_PROFILES];
-			return saved;
+			const profiles = saved.filter((p) => Boolean(p) && typeof p === "object" && typeof p.name === "string" && p.name !== "").map(normalizeProfile);
+			return profiles.length > 0 ? profiles : [...DEFAULT_PROFILES];
 		} catch (err) {
 			console.warn("[youtube-filter] Failed to load profiles from localStorage", err);
 			return [...DEFAULT_PROFILES];
@@ -1236,16 +1306,18 @@
 			e.stopPropagation();
 			closePanel();
 		});
-		document.addEventListener("click", (e) => {
+		const onDocClick = (e) => {
 			if (panel.classList.contains("visible") && !panel.contains(e.target) && !toggleBtn.contains(e.target)) closePanel();
-		});
-		document.addEventListener("keydown", (e) => {
+		};
+		document.addEventListener("click", onDocClick);
+		const onDocKeydown = (e) => {
 			if (e.key === "Escape" && panel.classList.contains("visible")) closePanel();
 			else if (e.altKey && (e.key === "f" || e.key === "F")) {
 				e.preventDefault();
 				togglePanel();
 			}
-		});
+		};
+		document.addEventListener("keydown", onDocKeydown);
 		const profileSection = document.createElement("div");
 		profileSection.className = "ytf-profile-section";
 		const profileHeader = document.createElement("div");
@@ -1308,8 +1380,11 @@
 			input.addEventListener("keydown", (e) => {
 				if (e.key === "Enter") {
 					e.preventDefault();
-					applyFilterAction();
+					commitFilters();
 				}
+			});
+			input.addEventListener("change", () => {
+				if (state.enabled) commitFilters();
 			});
 		}
 		const createGroup = (labelTxt, inputs, chips = []) => {
@@ -1377,7 +1452,7 @@
 			btn.textContent = label;
 			btn.addEventListener("click", () => {
 				state.watchedMode = mode;
-				for (const m of Object.keys(segmentBtns)) segmentBtns[m].classList.toggle("active", m === mode);
+				for (const m of Object.keys(segmentBtns)) segmentBtns[m]?.classList.toggle("active", m === mode);
 				if (state.enabled) {
 					saveFilters(state);
 					onFiltersChange();
@@ -1650,6 +1725,41 @@
 		applyBtn.type = "button";
 		applyBtn.textContent = state.enabled ? "Disable Filter" : "Apply Filter";
 		if (state.enabled) applyBtn.classList.add("active");
+		const commitFilters = () => {
+			keywordsTagInput.commit();
+			channelBlacklistInput.commit();
+			channelWhitelistInput.commit();
+			const { result, errors } = validateFormValues({
+				minViews: minViewsInput.value,
+				maxViews: maxViewsInput.value,
+				minDate: minDateInput.value,
+				maxDate: maxDateInput.value,
+				minDur: minDurInput.value,
+				maxDur: maxDurInput.value
+			});
+			for (const input of allNumberInputs) clearInputError(input);
+			if (!result.valid) {
+				if (errors.minViews) showInputError(minViewsInput, errors.minViews);
+				if (errors.maxViews) showInputError(maxViewsInput, errors.maxViews);
+				if (errors.minDate) showInputError(minDateInput, errors.minDate);
+				if (errors.maxDate) showInputError(maxDateInput, errors.maxDate);
+				if (errors.minDur) showInputError(minDurInput, errors.minDur);
+				if (errors.maxDur) showInputError(maxDurInput, errors.maxDur);
+				return;
+			}
+			state.minViews = result.minViews ?? 0;
+			state.maxViews = result.maxViews ?? Infinity;
+			state.maxDays = result.minDate ? dateToDaysAgo(result.minDate) : Infinity;
+			state.minDays = result.maxDate ? dateToDaysAgo(result.maxDate) : 0;
+			state.minDuration = result.minDur ?? 0;
+			state.maxDuration = result.maxDur ?? Infinity;
+			state.enabled = true;
+			applyBtn.textContent = "Disable Filter";
+			applyBtn.classList.add("active");
+			toggleBtn.classList.add("active");
+			saveFilters(state);
+			onFiltersChange();
+		};
 		const applyFilterAction = () => {
 			if (state.enabled) {
 				state.enabled = false;
@@ -1658,41 +1768,7 @@
 				toggleBtn.classList.remove("active");
 				saveFilters(state);
 				onFiltersChange();
-			} else {
-				keywordsTagInput.commit();
-				channelBlacklistInput.commit();
-				channelWhitelistInput.commit();
-				const { result, errors } = validateFormValues({
-					minViews: minViewsInput.value,
-					maxViews: maxViewsInput.value,
-					minDate: minDateInput.value,
-					maxDate: maxDateInput.value,
-					minDur: minDurInput.value,
-					maxDur: maxDurInput.value
-				});
-				for (const input of allNumberInputs) clearInputError(input);
-				if (!result.valid) {
-					if (errors.minViews) showInputError(minViewsInput, errors.minViews);
-					if (errors.maxViews) showInputError(maxViewsInput, errors.maxViews);
-					if (errors.minDate) showInputError(minDateInput, errors.minDate);
-					if (errors.maxDate) showInputError(maxDateInput, errors.maxDate);
-					if (errors.minDur) showInputError(minDurInput, errors.minDur);
-					if (errors.maxDur) showInputError(maxDurInput, errors.maxDur);
-					return;
-				}
-				state.minViews = result.minViews ?? 0;
-				state.maxViews = result.maxViews ?? Infinity;
-				state.maxDays = result.minDate ? dateToDaysAgo(result.minDate) : Infinity;
-				state.minDays = result.maxDate ? dateToDaysAgo(result.maxDate) : 0;
-				state.minDuration = result.minDur ?? 0;
-				state.maxDuration = result.maxDur ?? Infinity;
-				state.enabled = true;
-				applyBtn.textContent = "Disable Filter";
-				applyBtn.classList.add("active");
-				toggleBtn.classList.add("active");
-				saveFilters(state);
-				onFiltersChange();
-			}
+			} else commitFilters();
 		};
 		applyBtn.addEventListener("click", applyFilterAction);
 		const resetBtn = document.createElement("button");
@@ -1744,6 +1820,8 @@
 			mount();
 		};
 		const destroy = () => {
+			document.removeEventListener("click", onDocClick);
+			document.removeEventListener("keydown", onDocKeydown);
 			toggleBtn.remove();
 			panel.remove();
 		};
@@ -1756,7 +1834,16 @@
 			destroy
 		};
 	};
+	var isEmbedded = () => {
+		try {
+			if (window.top !== window.self) return true;
+		} catch {
+			return true;
+		}
+		return location.pathname.startsWith("/embed/");
+	};
 	var init = () => {
+		if (isEmbedded()) return;
 		injectCSS(STYLES);
 		const filters = loadFilters();
 		let ui;

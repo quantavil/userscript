@@ -53,7 +53,7 @@
 
 ### 5. ⏱️ Views, Date & Duration
 - **Views:** Format like `10K`, `1.5M`, or `1000000`. Includes inline `> 100K` and `> 1M` quick chips.
-- **Date Range:** `YYYY-MM-DD` pickers with validation.
+- **Date Range:** `YYYY-MM-DD` pickers with validation. Upload ages are read in full (`2 days ago`) and abbreviated (`9y ago`, `6mo ago`, `7h ago`) forms.
 - **Duration:** In minutes with spinner arrows removed. Includes inline `< 15m` and `> 20m` quick chips.
 
 ---
@@ -67,6 +67,7 @@
 - ⚡ **Debounced Mutation Observer** - 100ms debounced scanning + `requestAnimationFrame` for buttery-smooth scrolling on long feeds.
 - ⏱️ **Fast-Path Disabled State** - Unhides and un-dims elements with minimal CPU cycles when filter is turned off.
 - 🩳 **Shorts Immunity** - YouTube Shorts (`/shorts/`, `ytd-reel-item-renderer`, `ytm-reel-item-renderer`) are never hidden.
+- 🚫 **No Embeds** - Never runs in embedded players or iframes (`youtube.com/embed/*`).
 - 🔄 **SPA Navigation Aware** - Handles `yt-navigate-finish`, `yt-page-data-updated`, and history events across YouTube page transitions.
 - 💾 **Safe LocalStorage Persistence** - Handles `Infinity` $\leftrightarrow$ `null` JSON roundtripping seamlessly.
 

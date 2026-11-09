@@ -21,6 +21,8 @@ export default defineConfig({
         description: pkg.description,
         author: "quantavil",
         match: ["https://www.youtube.com/*", "https://m.youtube.com/*"],
+        exclude: ["https://www.youtube.com/embed/*"],
+        noframes: true,
         grant: ["GM_addStyle", "GM_registerMenuCommand"],
         license: "GPL-3.0-or-later",
         "run-at": "document-end",

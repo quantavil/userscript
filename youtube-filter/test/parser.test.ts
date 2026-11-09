@@ -80,6 +80,24 @@ describe("parser.ts", () => {
       expect(parseDaysAgo("Streamed live just now")).toBe(0);
     });
 
+    it("parses abbreviated units like 9y ago, 6mo ago, 7h ago", () => {
+      expect(parseDaysAgo("9y ago")).toBe(9 * 365);
+      expect(parseDaysAgo("6mo ago")).toBe(180);
+      expect(parseDaysAgo("7h ago")).toBeCloseTo(7 / 24);
+      expect(parseDaysAgo("3w ago")).toBe(21);
+      expect(parseDaysAgo("5d ago")).toBe(5);
+      expect(parseDaysAgo("10m ago")).toBeCloseTo(10 / 1440);
+      expect(parseDaysAgo("30s ago")).toBeCloseTo(30 / 86400);
+      expect(parseDaysAgo("2 yrs ago")).toBe(730);
+      expect(parseDaysAgo("Streamed 4h ago")).toBeCloseTo(4 / 24);
+    });
+
+    it("ignores titles and names that merely contain numbers or 'ago'", () => {
+      expect(parseDaysAgo("Chicago Bulls highlights")).toBe(Infinity);
+      expect(parseDaysAgo("Top 10 days of my life")).toBe(Infinity);
+      expect(parseDaysAgo("5m")).toBe(Infinity);
+    });
+
     it("returns Infinity for missing or non-matching time strings", () => {
       expect(parseDaysAgo("")).toBe(Infinity);
       expect(parseDaysAgo("unknown date")).toBe(Infinity);

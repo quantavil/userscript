@@ -6,7 +6,7 @@ A browser userscript (Tampermonkey/Violentmonkey) that filters YouTube videos by
 ## Structure
 ```
 youtube-filter/
-├── package.json          # Project metadata and dependencies (v3.3.0)
+├── package.json          # Project metadata and dependencies (v3.4.0)
 ├── tsconfig.json        # TypeScript configuration (strict, ES2022, bundler resolution)
 ├── vite.config.ts       # Vite build configuration using vite-plugin-monkey
 ├── vitest.config.ts     # Vitest configuration with happy-dom environment
@@ -29,6 +29,9 @@ youtube-filter/
 ```
 
 ## Conventions
+- **Embeds**: `@noframes` plus `@exclude youtube.com/embed/*` and a runtime frame guard in `src/index.ts`; the panel never appears in embedded players or iframes.
+- **Relative dates**: `parseDaysAgo` accepts full and abbreviated units (`9y ago`, `6mo ago`, `7h ago`, `3w`, `10m`) and requires a whole-string match, so titles containing "ago" or digits are ignored.
+- **Checks**: `bun run check` (tsc, unit tests, knip, build).
 - **S-Tier Features**:
   - **Title Keyword Blacklist**: Case-insensitive and regex keyword filtering (e.g. `prank`, `reaction`, `/trailer$/i`).
   - **Channel Blacklist & VIP Channels**: Block unwanted channels; whitelisted channels receive **VIP immunity** from view/duration limits.

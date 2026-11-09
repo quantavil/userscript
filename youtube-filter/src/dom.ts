@@ -24,26 +24,6 @@ export const byText = (nodes: Iterable<Element>, pred: (text: string) => boolean
 };
 
 /**
- * Trusted-Types-safe HTML-to-DocumentFragment parser.
- * Works on YouTube without violating Trusted Types policies.
- */
-export function htmlToFragment(html: string): DocumentFragment {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const frag = document.createDocumentFragment();
-  while (doc.body.firstChild) {
-    frag.appendChild(doc.body.firstChild);
-  }
-  return frag;
-}
-
-/**
- * Safely sets element HTML without triggering Trusted Types sinks.
- */
-export function setHTML(el: Element, html: string): void {
-  el.replaceChildren(htmlToFragment(html));
-}
-
-/**
  * Safely injects CSS styles into document with Trusted Types safety.
  */
 export function injectCSS(css: string): void {

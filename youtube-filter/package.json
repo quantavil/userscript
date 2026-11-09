@@ -1,6 +1,6 @@
 {
   "name": "youtube-filter",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "private": true,
   "description": "Filter YouTube videos by views, upload date, duration, keywords, and channels, with watched video dimming and customizable profiles.",
   "homepage": "https://github.com/quantavil/userscript",
@@ -13,19 +13,21 @@
     "tsc": "tsc",
     "test": "vp test run",
     "test:unit": "vp test run --exclude test/e2e.test.ts",
-    "test:e2e": "vp test run test/e2e.test.ts"
+    "test:e2e": "vp test run test/e2e.test.ts",
+    "knip": "knip",
+    "check": "bun run tsc && bun run test:unit && bun run knip && bun run build"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.0",
-    "@types/node": "^26.6.5",
-    "happy-dom": "^20.14.6",
-    "playwright": "^1.64.0",
+    "@types/node": "^26.6.6",
+    "happy-dom": "^21.0.4",
+    "knip": "^6.44.2",
+    "playwright": "^1.65.0",
     "playwright-extra": "^4.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "typescript": "~7.0.2",
-    "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.5.1",
     "vite-plugin-monkey": "^8.1.1",
-    "vite-plus": "1.2.0"
+    "vite-plus": "1.5.1"
   },
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0"

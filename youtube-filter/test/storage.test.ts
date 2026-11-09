@@ -125,5 +125,7 @@ describe("storage.ts", () => {
     const found = reloaded.find((p) => p.name === "My Custom Profile");
     expect(found?.hideShorts).toBe(true);
     expect(found?.hidePosts).toBe(false);
+    // Infinity round-trips through JSON as null: it must come back as Infinity, not null
+    expect(found?.maxViews).toBe(Infinity);
   });
 });

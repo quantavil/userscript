@@ -136,7 +136,7 @@ export const createUI = (
   });
 
   // Close panel on click outside
-  document.addEventListener('click', (e) => {
+  const onDocClick = (e: MouseEvent): void => {
     if (
       panel.classList.contains('visible') &&
       !panel.contains(e.target as Node) &&
@@ -144,17 +144,19 @@ export const createUI = (
     ) {
       closePanel();
     }
-  });
+  };
+  document.addEventListener('click', onDocClick);
 
   // Keyboard shortcut: Alt+F to toggle, Escape to close
-  document.addEventListener('keydown', (e) => {
+  const onDocKeydown = (e: KeyboardEvent): void => {
     if (e.key === 'Escape' && panel.classList.contains('visible')) {
       closePanel();
     } else if (e.altKey && (e.key === 'f' || e.key === 'F')) {
       e.preventDefault();
       togglePanel();
     }
-  });
+  };
+  document.addEventListener('keydown', onDocKeydown);
 
   // 1. Profile Switcher Section
   const profileSection = document.createElement('div');
@@ -231,8 +233,12 @@ export const createUI = (
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        applyFilterAction();
+        commitFilters();
       }
+    });
+    // While the filter is active, edits take effect without toggling it off and on
+    input.addEventListener('change', () => {
+      if (state.enabled) commitFilters();
     });
   }
 
@@ -300,7 +306,7 @@ export const createUI = (
     { mode: 'off', label: 'Off' }
   ];
 
-  const segmentBtns: Record<WatchedMode, HTMLButtonElement> = {} as any;
+  const segmentBtns: Partial<Record<WatchedMode, HTMLButtonElement>> = {};
 
   for (const { mode, label } of modes) {
     const btn = document.createElement('button');
@@ -310,7 +316,7 @@ export const createUI = (
     btn.addEventListener('click', () => {
       state.watchedMode = mode;
       for (const m of Object.keys(segmentBtns) as WatchedMode[]) {
-        segmentBtns[m].classList.toggle('active', m === mode);
+        segmentBtns[m]?.classList.toggle('active', m === mode);
       }
       if (state.enabled) {
         saveFilters(state);
@@ -690,9 +696,53 @@ export const createUI = (
   applyBtn.textContent = state.enabled ? 'Disable Filter' : 'Apply Filter';
   if (state.enabled) applyBtn.classList.add('active');
 
-  const applyFilterAction = () => {
+  /** Validates the form and (re)applies the filter. Keeps it enabled; never toggles it off. */
+  const commitFilters = (): void => {
+    // Commit pending tag fields first
+    keywordsTagInput.commit();
+    channelBlacklistInput.commit();
+    channelWhitelistInput.commit();
+
+    const { result, errors } = validateFormValues({
+      minViews: minViewsInput.value,
+      maxViews: maxViewsInput.value,
+      minDate: minDateInput.value,
+      maxDate: maxDateInput.value,
+      minDur: minDurInput.value,
+      maxDur: maxDurInput.value
+    });
+
+    for (const input of allNumberInputs) {
+      clearInputError(input);
+    }
+
+    if (!result.valid) {
+      if (errors.minViews) showInputError(minViewsInput, errors.minViews);
+      if (errors.maxViews) showInputError(maxViewsInput, errors.maxViews);
+      if (errors.minDate) showInputError(minDateInput, errors.minDate);
+      if (errors.maxDate) showInputError(maxDateInput, errors.maxDate);
+      if (errors.minDur) showInputError(minDurInput, errors.minDur);
+      if (errors.maxDur) showInputError(maxDurInput, errors.maxDur);
+      return;
+    }
+
+    state.minViews = result.minViews ?? 0;
+    state.maxViews = result.maxViews ?? Infinity;
+    state.maxDays = result.minDate ? dateToDaysAgo(result.minDate) : Infinity;
+    state.minDays = result.maxDate ? dateToDaysAgo(result.maxDate) : 0;
+    state.minDuration = result.minDur ?? 0;
+    state.maxDuration = result.maxDur ?? Infinity;
+
+    state.enabled = true;
+    applyBtn.textContent = 'Disable Filter';
+    applyBtn.classList.add('active');
+    toggleBtn.classList.add('active');
+    saveFilters(state);
+    onFiltersChange();
+  };
+
+  const applyFilterAction = (): void => {
     if (state.enabled) {
-      // Disable mode
       state.enabled = false;
       applyBtn.textContent = 'Apply Filter';
       applyBtn.classList.remove('active');
@@ -700,48 +750,7 @@ export const createUI = (
       saveFilters(state);
       onFiltersChange();
     } else {
-      // Commit pending tag fields first
-      keywordsTagInput.commit();
-      channelBlacklistInput.commit();
-      channelWhitelistInput.commit();
-
-      // Apply mode
-      const { result, errors } = validateFormValues({
-        minViews: minViewsInput.value,
-        maxViews: maxViewsInput.value,
-        minDate: minDateInput.value,
-        maxDate: maxDateInput.value,
-        minDur: minDurInput.value,
-        maxDur: maxDurInput.value
-      });
-
-      for (const input of allNumberInputs) {
-        clearInputError(input);
-      }
-
-      if (!result.valid) {
-        if (errors.minViews) showInputError(minViewsInput, errors.minViews);
-        if (errors.maxViews) showInputError(maxViewsInput, errors.maxViews);
-        if (errors.minDate) showInputError(minDateInput, errors.minDate);
-        if (errors.maxDate) showInputError(maxDateInput, errors.maxDate);
-        if (errors.minDur) showInputError(minDurInput, errors.minDur);
-        if (errors.maxDur) showInputError(maxDurInput, errors.maxDur);
-        return;
-      }
-
-      state.minViews = result.minViews ?? 0;
-      state.maxViews = result.maxViews ?? Infinity;
-      state.maxDays = result.minDate ? dateToDaysAgo(result.minDate) : Infinity;
-      state.minDays = result.maxDate ? dateToDaysAgo(result.maxDate) : 0;
-      state.minDuration = result.minDur ?? 0;
-      state.maxDuration = result.maxDur ?? Infinity;
-
-      state.enabled = true;
-      applyBtn.textContent = 'Disable Filter';
-      applyBtn.classList.add('active');
-      toggleBtn.classList.add('active');
-      saveFilters(state);
-      onFiltersChange();
+      commitFilters();
     }
   };
 
@@ -807,6 +816,8 @@ export const createUI = (
   };
 
   const destroy = () => {
+    document.removeEventListener('click', onDocClick);
+    document.removeEventListener('keydown', onDocKeydown);
     toggleBtn.remove();
     panel.remove();
   };

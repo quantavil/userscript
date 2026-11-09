@@ -74,6 +74,31 @@ export const loadFilters = (): FilterState => {
 };
 
 /**
+ * Restores a profile read from JSON: JSON.stringify turns Infinity into null,
+ * which would otherwise make every video fail the max-bound comparisons.
+ */
+const normalizeProfile = (p: Partial<FilterProfile>): FilterProfile => {
+  const bound = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, v) : Infinity);
+  const floor = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, v) : 0);
+  const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  return {
+    name: p.name as string,
+    minViews: floor(p.minViews),
+    maxViews: bound(p.maxViews),
+    minDays: floor(p.minDays),
+    maxDays: bound(p.maxDays),
+    minDuration: floor(p.minDuration),
+    maxDuration: bound(p.maxDuration),
+    keywordBlacklist: list(p.keywordBlacklist),
+    channelBlacklist: list(p.channelBlacklist),
+    channelWhitelist: list(p.channelWhitelist),
+    watchedMode: p.watchedMode === 'hide' || p.watchedMode === 'off' ? p.watchedMode : 'dim',
+    hideShorts: Boolean(p.hideShorts),
+    hidePosts: Boolean(p.hidePosts)
+  };
+};
+
+/**
  * Loads saved profiles list from localStorage, merged with defaults.
  */
 export const loadProfiles = (): FilterProfile[] => {
@@ -81,11 +106,14 @@ export const loadProfiles = (): FilterProfile[] => {
     const rawStr = localStorage.getItem(PROFILES_STORAGE_KEY);
     if (!rawStr) return [...DEFAULT_PROFILES];
 
-    const saved: FilterProfile[] = JSON.parse(rawStr);
+    const saved: unknown = JSON.parse(rawStr);
     if (!Array.isArray(saved) || saved.length === 0) {
       return [...DEFAULT_PROFILES];
     }
-    return saved;
+    const profiles = saved
+      .filter((p): p is Partial<FilterProfile> => Boolean(p) && typeof p === 'object' && typeof p.name === 'string' && p.name !== '')
+      .map(normalizeProfile);
+    return profiles.length > 0 ? profiles : [...DEFAULT_PROFILES];
   } catch (err) {
     console.warn('[youtube-filter] Failed to load profiles from localStorage', err);
     return [...DEFAULT_PROFILES];
