@@ -2,9 +2,9 @@
 
 A single Bun / TypeScript / Preact userscript for ImpexCube. Vite+ and vite-plugin-monkey produce `dist/better-impexcube.user.js`. Run `bun run check` before committing.
 
-`src/dates.ts` and `src/dropdown.ts` provide the calendar and searchable select enhancements. `src/dbk-data.ts` validates and parses duty data; `src/dbk.tsx` integrates the product input, ASP.NET autocomplete, Preact and Floating UI.
+`src/dates.ts` and `src/dropdown.ts` provide the calendar and searchable select enhancements. Preserve strict date validation and the native select options, including duplicate values. Flatpickr and Tom Select were trialed but not adopted: their default date parsing and value-keyed options respectively fail those requirements. `src/dbk-data.ts` validates and parses duty data; `src/dbk.tsx` integrates the product input, ASP.NET autocomplete, Preact and Floating UI.
 
-`src/job-search.ts` searches the export job list using the site’s native form and bounded pagination, ranks retrieved results with Fuse.js, and opens results via native postbacks. Prefix fallback cannot find all typos or fuzzy-match consignee names absent from grid results. Copy job only prefills the original copy form; never submit or copy automatically. Keep customer data out of persistent storage and retain the native search.
+`src/job-search.ts` searches the export job list using the site’s native form and bounded pagination, ranks retrieved results with Fuse.js, and opens results via native postbacks. Prefix fallback cannot find all typos or fuzzy-match consignee names absent from grid results. Copy job only prefills the original copy form; never submit or copy automatically. Keep customer data out of persistent storage and retain the native search. The shared input uses combined search when the field selector is unset and native search when a field is selected; preserve both modes. The current job grid does not return consignee names, and the effect of background job-detail requests on the shared active-job context is unverified.
 
 `src/product-ui.ts` adds product-field value previews and product-table focus/navigation cues. Keep these scoped to the product page and preserve existing field titles and table actions.
 
@@ -18,4 +18,4 @@ Keep the original product inputs, disabled state, change handlers, ASP.NET postb
 
 `src/invoice-date.ts` defaults a new supporting document’s issue date from the saved invoice grid. Verify job and invoice identity, preserve existing documents and user edits, and never persist job data.
 
-`src/site-style.css` themes shared native controls and `src/form-style.css` contains detailed invoice and product styling. Preserve native controls and layout tables; verify representative pages and shared popups when changing the theme.
+`src/site-style.css` themes shared native controls and `src/form-style.css` contains detailed invoice and product styling. The theme is installed at document start; other enhancements initialize when the DOM is ready. Preserve native controls and layout tables; verify representative pages and shared popups when changing the theme.

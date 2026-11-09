@@ -4,7 +4,7 @@ One userscript for searchable dropdowns, improved date entry and RITC-specific D
 
 ## Install
 
-Install Tampermonkey or Violentmonkey, then install `dist/better-impexcube.user.js` after building.. Refresh the ImpexCube page.
+Install Tampermonkey or Violentmonkey, then install `dist/better-impexcube.user.js` after building. Refresh the ImpexCube page.
 
 ## Features
 
