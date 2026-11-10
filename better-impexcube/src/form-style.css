@@ -17,9 +17,12 @@ tr:has(> .welcome) { background: #242320 !important; }
 #nav li ul li ul { top: 0 !important; left: 100% !important; margin-left: 2px !important; z-index: 1001 !important; }
 #nav li ul li:has(> ul):not(.hide) > a::after { content: "›"; font-size: 14px; margin-left: 14px; color: var(--bic-muted); }
 #nav li ul li:hover:has(> ul) > a::after { color: var(--bic-accent); }
-.bic-context { color: var(--bic-muted) !important; font: 12px system-ui, sans-serif; white-space: nowrap; }
-.bic-context select { min-height: 24px; max-width: 124px; padding: 2px 6px; font: inherit; background: var(--bic-raised) !important; color: var(--bic-text) !important; border: 1px solid var(--bic-border); cursor: pointer; }
+/* Sized to the native branch/year label line box so swapping the labels for these selects does not grow the header. */
+.bic-context { color: var(--bic-muted) !important; font: 8pt Verdana, sans-serif; line-height: normal; white-space: nowrap; }
+.bic-context select { min-height: 0; height: 15px; max-width: 124px; padding: 0 4px; line-height: 13px; font: inherit; background: var(--bic-raised) !important; color: var(--bic-text) !important; border: 1px solid var(--bic-border); cursor: pointer; }
 .bic-context option { background: var(--bic-raised) !important; color: var(--bic-text) !important; }
+/* Keep the logo and sign-out buttons side by side: when the branch selector cannot wrap, a squeezed button cell stacks them and grows the header. */
+td:has(> #btnBranch) { white-space: nowrap; }
 #ContentPlaceHolder1_tbProduct, #ContentPlaceHolder1_tbInvoice { color: var(--bic-text); font: 14px/1.35 system-ui, sans-serif !important; }
 #ContentPlaceHolder1_tbInvoice_header .ajax__tab_tab br { display: none; }
 #ContentPlaceHolder1_tbProduct_TabSupportingdoc_Td84 { background: transparent !important; text-align: left !important; font-size: 0; padding: 0 0 12px !important; }

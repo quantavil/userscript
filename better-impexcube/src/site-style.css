@@ -357,5 +357,9 @@ table[id*="_gv"] tr:nth-child(even), table.table-wrapper tr:nth-child(even) { ba
 div[style*="background-color:#A6D3FB" i] fieldset { border: 1px solid var(--bic-border) !important; border-radius: 6px; }
 div[style*="background-color:#A6D3FB" i] legend { color: var(--bic-accent) !important; padding: 0 6px; }
 #ContentPlaceHolder1_plPass[style*="#ffffff" i], div[style*="background-color: #FFFFFF" i]:has(> iframe) { background: var(--bic-panel) !important; }
+/* BE generation status sits outside .ajax__tab_body: its summary card, status grid (inline `background: white`) and result pane (site white) stay light unless themed here. */
+#ContentPlaceHolder1_panelStatus :is(table, div)[style*="white" i],
+#ContentPlaceHolder1_panelStatus #divResult { background-color: var(--bic-panel) !important; color: var(--bic-text) !important; }
+#ContentPlaceHolder1_panelStatus th { background-color: var(--bic-head) !important; color: #e0d5c3 !important; }
 input[type="file"] { background: var(--bic-field) !important; color: var(--bic-text) !important; border: 1px solid var(--bic-field-edge) !important; border-radius: 4px; }
 input[type="file"]::file-selector-button { background: var(--bic-raised); color: var(--bic-text); border: 1px solid var(--bic-border); border-radius: 4px; padding: 3px 10px; margin-right: 8px; cursor: pointer; }
