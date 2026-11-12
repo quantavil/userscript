@@ -4,22 +4,22 @@
   --bic-on-accent: #241c11;
   --bic-accent-hover: #f0c98b;
   --bic-accent-edge: #c69b59;
-  --bic-border-strong: #625d53;
-  --bic-surface-2: #2b2a27;
-  --bic-head: #35332e;
+  --bic-border-strong: #5c6675;
+  --bic-surface-2: #3e454f;
+  --bic-head: #454d58;
   --bic-accent-wash: #51432f;
-  --bic-hover: #39362f;
-  --bic-disabled: #26261f;
-  --bic-disabled-text: #b8b2a6;
-  --bic-danger: #f87171;
-  --bic-bg: #171716;
-  --bic-panel: #222220;
-  --bic-raised: #2d2c29;
-  --bic-field: #191a19;
-  --bic-field-edge: #77725f;
-  --bic-border: #45443e;
-  --bic-text: #eeeae2;
-  --bic-muted: #b8b2a6;
+  --bic-hover: #474f5a;
+  --bic-disabled: #393f48;
+  --bic-disabled-text: #bcc4cf;
+  --bic-danger: #ffa0a0;
+  --bic-bg: #2f343b;
+  --bic-panel: #373d46;
+  --bic-raised: #3f4751;
+  --bic-field: #272c34;
+  --bic-field-edge: #667282;
+  --bic-border: #4e5763;
+  --bic-text: #eef1f5;
+  --bic-muted: #bcc4cf;
   --bic-accent: #e4b971;
 }
 
@@ -34,23 +34,23 @@ input[type="text"], input[type="password"], input[type="number"], select, textar
 :is(input, select, textarea):disabled { background: var(--bic-disabled); color: var(--bic-disabled-text); }
 :is(input, select, textarea, button, a):focus-visible { outline: 2px solid var(--bic-accent); outline-offset: 2px; }
 .main a { color: #efd0a0; }
-:root .ajax__tab_header { height: auto !important; min-height: 42px; overflow: visible !important; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 8px; background: #252421; border: 1px solid var(--bic-border); border-bottom: 0; }
+:root .ajax__tab_header { height: auto !important; min-height: 42px; overflow: visible !important; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 8px; background: #394049; border: 1px solid var(--bic-border); border-bottom: 0; }
 :root .ajax__tab_header > span, :root .ajax__tab_outer, :root .ajax__tab_inner { background: none !important; padding: 0 !important; height: auto !important; }
-.ajax__tab_tab { display: inline-block; height: auto !important; padding: 9px 11px !important; margin: 2px !important; border: 1px solid #45433d !important; border-radius: 5px; background: #302f2b !important; color: var(--bic-muted) !important; font: 600 13px/1.25 system-ui, sans-serif !important; }
+.ajax__tab_tab { display: inline-block; height: auto !important; padding: 9px 11px !important; margin: 2px !important; border: 1px solid #4e5763 !important; border-radius: 5px; background: #424954 !important; color: var(--bic-muted) !important; font: 600 13px/1.25 system-ui, sans-serif !important; }
 .ajax__tab_active .ajax__tab_tab { background: var(--bic-accent) !important; border-color: var(--bic-accent) !important; color: var(--bic-on-accent) !important; }
 .ajax__tab_tab:hover { filter: brightness(1.13); }
 .ajax__tab_body { background: var(--bic-panel) !important; border: 1px solid var(--bic-border) !important; padding: 14px !important; color: var(--bic-text); }
 /* GridView tables only; ordinary tables are used extensively for form layout. */
 table.table-wrapper, table[id*="_gv"] { border: 1px solid var(--bic-border) !important; color: var(--bic-text) !important; }
-table.table-wrapper th, table[id*="_gv"] th { background: var(--bic-head) !important; color: #e0d5c3 !important; border-color: var(--bic-border) !important; padding: 8px 5px; }
+table.table-wrapper th, table[id*="_gv"] th { background: var(--bic-head) !important; color: #e3e8ee !important; border-color: var(--bic-border) !important; padding: 8px 5px; }
 table.table-wrapper td, table[id*="_gv"] td { border-color: var(--bic-border) !important; color: var(--bic-text) !important; }
-table.table-wrapper tr:nth-child(even), table[id*="_gv"] tr:nth-child(even) { background: #292825 !important; }
-table.table-wrapper tr:nth-child(odd), table[id*="_gv"] tr:nth-child(odd) { background: #232320 !important; }
+table.table-wrapper tr:nth-child(even), table[id*="_gv"] tr:nth-child(even) { background: #3c434d !important; }
+table.table-wrapper tr:nth-child(odd), table[id*="_gv"] tr:nth-child(odd) { background: #383e47 !important; }
 table.table-wrapper a, table[id*="_gv"] a { color: #efd0a0 !important; }
 /* Native AJAX autocomplete can render either list items or a nested grid. */
 :is(.completionList, .completionListProduct) { background: var(--bic-surface-2) !important; color: var(--bic-text) !important; border: 1px solid var(--bic-border-strong) !important; box-shadow: 0 12px 30px #0008; }
 :is(.completionList, .completionListProduct) :is(li, table, tbody, tr, td, th, div, span), .listItem { background: var(--bic-surface-2) !important; color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
-:is(.completionList, .completionListProduct) th { background: var(--bic-hover) !important; color: #e0d5c3 !important; }
+:is(.completionList, .completionListProduct) th { background: var(--bic-hover) !important; color: #e3e8ee !important; }
 :is(.completionList, .completionListProduct) :is(li:hover, tr:hover, .highlightedListItem, .itemHighlighted), .highlightedListItem { background: var(--bic-accent-wash) !important; color: var(--bic-text) !important; }
 :is(.completionList, .completionListProduct) :is(li:hover, tr:hover) :is(td, span) { background: var(--bic-accent-wash) !important; }
 /* Legacy pages use hard-coded light panel colors rather than a shared class. */
@@ -59,7 +59,7 @@ table.table-wrapper a, table[id*="_gv"] a { color: #efd0a0 !important; }
 #ContentPlaceHolder1_txtPortdetails { background: var(--bic-field) !important; color: var(--bic-text) !important; }
 /* RITC and other multi-column suggestions use jQuery UI, not AJAX lists. */
 .ui-autocomplete.ui-menu { background: var(--bic-surface-2) !important; color: var(--bic-text) !important; border: 1px solid var(--bic-border-strong) !important; box-shadow: 0 12px 30px #0008; }
-.ui-autocomplete .ui-autocomplete-header { background: var(--bic-hover) !important; color: #e0d5c3 !important; border-color: var(--bic-border) !important; }
+.ui-autocomplete .ui-autocomplete-header { background: var(--bic-hover) !important; color: #e3e8ee !important; border-color: var(--bic-border) !important; }
 .ui-autocomplete .ui-menu-item-wrapper { background: var(--bic-surface-2) !important; color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
 .ui-autocomplete .ui-menu-item-wrapper:is(:hover, .ui-state-active) { background: var(--bic-accent-wash) !important; color: var(--bic-text) !important; }
 /* Native fieldsets and panels use inline white or AliceBlue backgrounds. */
@@ -71,10 +71,10 @@ table.table-wrapper a, table[id*="_gv"] a { color: #efd0a0 !important; }
 .ajax__tab_body legend { color: var(--bic-muted); }
 /* A direct header row identifies data grids without affecting nested layout tables. */
 table:has(> tbody > tr > th) { border-color: var(--bic-border) !important; color: var(--bic-text) !important; }
-table:has(> tbody > tr > th) > tbody > tr > th { background: var(--bic-head) !important; color: #e0d5c3 !important; border-color: var(--bic-border) !important; }
+table:has(> tbody > tr > th) > tbody > tr > th { background: var(--bic-head) !important; color: #e3e8ee !important; border-color: var(--bic-border) !important; }
 table:has(> tbody > tr > th) > tbody > tr > td { color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
-table:has(> tbody > tr > th) > tbody > tr:nth-child(even) { background: #292825 !important; color: var(--bic-text) !important; }
-table:has(> tbody > tr > th) > tbody > tr:nth-child(odd) { background: #232320 !important; color: var(--bic-text) !important; }
+table:has(> tbody > tr > th) > tbody > tr:nth-child(even) { background: #3c434d !important; color: var(--bic-text) !important; }
+table:has(> tbody > tr > th) > tbody > tr:nth-child(odd) { background: #383e47 !important; color: var(--bic-text) !important; }
 table:has(> tbody > tr > th) > tbody > tr[style*="font-weight:bold" i] { background: #514532 !important; }
 table:has(> tbody > tr > th) > tbody > tr > td[style*="background" i], table:has(> tbody > tr > th) > tbody > tr > td[bgcolor] { background: transparent !important; }
 table:has(> tbody > tr > th) > tbody > tr > td a { color: #efd0a0 !important; }
@@ -90,7 +90,7 @@ input[type="text"]:focus, textarea:focus { background-color: var(--bic-field) !i
 :is(span, font, label, a, p)[style*="color: Red" i],
 :is(span, font, label, a, p)[style*="color:red" i],
 font[color="red" i] {
-  color: #f87171 !important;
+  color: #ffa0a0 !important;
 }
 :is(span, font, label, a, p)[style*="color:Green" i],
 :is(span, font, label, a, p)[style*="color: Green" i],
@@ -133,7 +133,7 @@ table[id*="_gv"] { background: var(--bic-panel) !important; }
 .bic-job-result { border-color: var(--bic-border) !important; }
 .bic-job-result:hover { background: var(--bic-hover); }
 .bic-job-result small, .bic-job-message { color: var(--bic-muted) !important; }
-.bic-job-result button, .bic-job-more { background: #454037; color: var(--bic-text); border: 1px solid var(--bic-border-strong); border-radius: 4px; padding: 4px 8px; }
+.bic-job-result button, .bic-job-more { background: #4c5561; color: var(--bic-text); border: 1px solid var(--bic-border-strong); border-radius: 4px; padding: 4px 8px; }
 .bic-job-result button:hover, .bic-job-more:hover { background: #67563c; }
 .bic-job-result button:focus-visible, .bic-job-more:focus-visible { outline: 2px solid var(--bic-accent); outline-offset: 2px; }
 input.masterbutton { background: var(--bic-accent) !important; color: var(--bic-on-accent) !important; border: 1px solid var(--bic-accent-edge) !important; border-radius: 5px; box-shadow: none !important; }
@@ -179,8 +179,8 @@ div[id*="ReportViewer" i] [id$="_oReportCell" i] :is(span, div, table, td, th, p
 }
 /* Report toolbar styling */
 .ToolBarBackground, .MenuBarBkGnd, div[id*="ReportViewer" i][id*="_ctl09" i] {
-  background: #252421 !important;
-  border-bottom: 1px solid #45443e !important;
+  background: #394049 !important;
+  border-bottom: 1px solid #4e5763 !important;
   color: var(--bic-text) !important;
 }
 .ToolBarBackground input, .ToolBarBackground select,
@@ -248,7 +248,7 @@ table:has(#ContentPlaceHolder1_ddlChecklistFormat) > tbody > tr > td:first-child
   margin: 3px 0 !important;
 }
 .contextMenu .bic-delete-menu a {
-  color: #f87171 !important;
+  color: #ffa0a0 !important;
 }
 .contextMenu .bic-delete-menu.hover a, .contextMenu .bic-delete-menu a:hover {
   background-color: #5a2323 !important;
@@ -266,18 +266,18 @@ table:has(#ContentPlaceHolder1_ddlChecklistFormat) > tbody > tr > td:first-child
 }
 .dx-datagrid-headers {
   background-color: var(--bic-head) !important;
-  color: #e0d5c3 !important;
+  color: #e3e8ee !important;
   border-bottom: 1px solid var(--bic-border) !important;
 }
 .dx-datagrid-headers .dx-header-row,
 .dx-datagrid-headers th,
 .dx-datagrid-headers td {
   background: var(--bic-head) !important;
-  color: #e0d5c3 !important;
+  color: #e3e8ee !important;
   border-color: var(--bic-border) !important;
 }
 .dx-datagrid-headers .dx-datagrid-text-content {
-  color: #e0d5c3 !important;
+  color: #e3e8ee !important;
 }
 .dx-datagrid-rowsview {
   background-color: var(--bic-panel) !important;
@@ -289,14 +289,14 @@ table:has(#ContentPlaceHolder1_ddlChecklistFormat) > tbody > tr > td:first-child
   color: var(--bic-text) !important;
 }
 .dx-datagrid-rowsview .dx-data-row:nth-child(even) {
-  background-color: #292825 !important;
+  background-color: #3c434d !important;
 }
 .dx-datagrid-rowsview .dx-data-row:nth-child(odd) {
-  background-color: #232320 !important;
+  background-color: #383e47 !important;
 }
 .dx-datagrid-rowsview .dx-data-row:hover,
 .dx-datagrid-rowsview .dx-data-row:hover td {
-  background-color: #3a3832 !important;
+  background-color: #48505b !important;
 }
 .dx-datagrid-header-panel,
 .dx-toolbar,
@@ -305,7 +305,7 @@ table:has(#ContentPlaceHolder1_ddlChecklistFormat) > tbody > tr > td:first-child
   border-color: var(--bic-border) !important;
 }
 .dx-pager {
-  background-color: #252421 !important;
+  background-color: #394049 !important;
   color: var(--bic-text) !important;
   border-top: 1px solid var(--bic-border) !important;
 }
@@ -340,7 +340,7 @@ table:has(#ContentPlaceHolder1_ddlChecklistFormat) > tbody > tr > td:first-child
 /* Native controls and widgets that kept browser or site default colours. */
 input:is([type="checkbox"], [type="radio"]) { accent-color: var(--bic-accent); }
 :is(input, textarea)::placeholder { color: var(--bic-muted); opacity: 0.8; }
-table[id*="_gv"] tr:nth-child(even), table.table-wrapper tr:nth-child(even) { background: #2c2b27 !important; }
+table[id*="_gv"] tr:nth-child(even), table.table-wrapper tr:nth-child(even) { background: #3f4650 !important; }
 /* The dashboard container is overflow:scroll without overflowing, so it showed empty scrollbars. */
 #dvDash { overflow: auto !important; }
 /* jquery-confirm dialogs (announcements, confirmations) default to white boxes. */
@@ -360,7 +360,7 @@ div[style*="background-color:#A6D3FB" i] legend { color: var(--bic-accent) !impo
 /* BE generation status sits outside .ajax__tab_body: its summary card, status grid (inline `background: white`) and result pane (site white) stay light unless themed here. */
 #ContentPlaceHolder1_panelStatus :is(table, div)[style*="white" i],
 #ContentPlaceHolder1_panelStatus #divResult { background-color: var(--bic-panel) !important; color: var(--bic-text) !important; }
-#ContentPlaceHolder1_panelStatus th { background-color: var(--bic-head) !important; color: #e0d5c3 !important; }
+#ContentPlaceHolder1_panelStatus th { background-color: var(--bic-head) !important; color: #e3e8ee !important; }
 input[type="file"] { background: var(--bic-field) !important; color: var(--bic-text) !important; border: 1px solid var(--bic-field-edge) !important; border-radius: 4px; }
 input[type="file"]::file-selector-button { background: var(--bic-raised); color: var(--bic-text); border: 1px solid var(--bic-border); border-radius: 4px; padding: 3px 10px; margin-right: 8px; cursor: pointer; }
 
@@ -375,3 +375,18 @@ label:not([style*="color" i]) { color: var(--bic-text); }
 :is(.Popup, .PopupCopy) :is(h1, h2, h3, h4, label, span, td, div) { color: var(--bic-text) !important; }
 /* Chrome autofill / history suggestions repaint fields with black text on a light fill. */
 :is(input, textarea, select):-webkit-autofill, :is(input, textarea, select):-webkit-autofill:focus { -webkit-text-fill-color: var(--bic-text) !important; caret-color: var(--bic-text); box-shadow: 0 0 0 1000px var(--bic-field) inset !important; transition: background-color 9999s ease-out; }
+/* Bootstrap link blue (#0d6efd) is ~4:1 on the dark panel; bootstrap-select menus are white. */
+label.link > a { color: #7dd3fc !important; }
+.bootstrap-select > .dropdown-menu, .bootstrap-select .dropdown-menu.inner { background: var(--bic-surface-2) !important; border: 1px solid var(--bic-border-strong) !important; box-shadow: 0 12px 30px #0008; }
+.bootstrap-select .dropdown-menu :is(li, a, .text, .dropdown-item) { color: var(--bic-text) !important; background: transparent !important; }
+.bootstrap-select .dropdown-menu :is(a:hover, .active > a, li.selected > a, .dropdown-item:hover, .dropdown-item.active, .dropdown-item.selected) { background: var(--bic-accent-wash) !important; }
+
+/* bootstrap-select toggle button (Role etc.) */
+.bootstrap-select > .dropdown-toggle,
+.bootstrap-select > .dropdown-toggle.bs-placeholder {
+  background: var(--bic-field) !important;
+  color: var(--bic-text) !important;
+  border: 1px solid var(--bic-field-edge) !important;
+}
+.bootstrap-select > .dropdown-toggle .filter-option-inner-inner { color: var(--bic-text) !important; }
+h4.clsHeaderMaster, .page-headerStyle { color: #7dd3fc !important; }

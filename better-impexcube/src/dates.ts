@@ -78,7 +78,7 @@ export function installDates(): void {
     .impex-date-wrapper{display:inline-flex;align-items:center;gap:3px}
     .impex-date-btn{cursor:pointer;background:var(--bic-raised);border:1px solid var(--bic-border);border-radius:4px;padding:2px 6px;min-height:24px}
     .impex-date-btn:disabled{opacity:.5;cursor:not-allowed}
-    .impex-date-input.invalid{outline:2px solid #f87171}
+    .impex-date-input.invalid{outline:2px solid #ffa0a0}
     .impex-calendar-popup{position:fixed;z-index:2147483000;width:238px;max-width:calc(100vw - 16px);box-sizing:border-box;padding:8px;background:var(--bic-panel);border:1px solid var(--bic-border);border-radius:10px;box-shadow:0 12px 30px #0008;font:12px/1.4 system-ui,sans-serif;color:var(--bic-text);font-variant-numeric:tabular-nums}
     .impex-calendar-popup[hidden]{display:none}
     .impex-calendar-popup button{box-sizing:border-box;min-width:0;margin:0;border:0;background:transparent;color:inherit;font:inherit;line-height:1;cursor:pointer;box-shadow:none;text-shadow:none}

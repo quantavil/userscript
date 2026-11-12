@@ -1,14 +1,14 @@
 /* Detailed invoice and product form styling. */
 #lblCompName, #lblName { color: var(--bic-text); }
 #lblUser { color: var(--bic-text) !important; }
-tr:has(> .welcome) { background: #242320 !important; }
+tr:has(> .welcome) { background: #383f48 !important; }
 #menu_div, #navigation, #nav, #nav li a, #nav li ul a { opacity: 1 !important; }
-#nav, #nav > li, #nav > li > a { background: #242320 !important; color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
+#nav, #nav > li, #nav > li > a { background: #383f48 !important; color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
 #nav > li { position: relative !important; }
 #nav > li > a { border-right: 1px solid var(--bic-border) !important; font-family: system-ui, -apple-system, sans-serif !important; }
 #nav > li:hover, #nav > li:hover > a { background: var(--bic-hover) !important; }
 #nav li a::before, .nav li a::before { display: none !important; content: none !important; }
-#nav li ul { margin: 0 !important; padding: 4px 0 !important; background: #252422 !important; border: 1px solid #45433d !important; border-radius: 6px !important; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6) !important; z-index: 1000 !important; min-width: 175px !important; width: max-content !important; }
+#nav li ul { margin: 0 !important; padding: 4px 0 !important; background: #3a4049 !important; border: 1px solid #4e5763 !important; border-radius: 6px !important; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6) !important; z-index: 1000 !important; min-width: 175px !important; width: max-content !important; }
 #nav > li > ul.first, #nav > li > ul { top: 100% !important; left: 0 !important; }
 #nav li ul li { float: none !important; clear: both !important; display: block !important; width: 100% !important; position: relative !important; background: transparent !important; }
 #nav li.hide, #nav li ul li.hide { display: none !important; }
@@ -33,27 +33,27 @@ input.stylebutton:hover { background: var(--bic-accent-hover) !important; }
 /* The native percentage widths plus whitespace caused Exit to wrap. */
 td:has(> #ContentPlaceHolder1_btnExit) { white-space: nowrap; }
 td:has(> #ContentPlaceHolder1_btnExit) > input.stylebutton { width: auto !important; min-height: 34px; margin: 2px 3px; padding: 0 13px !important; background: var(--bic-raised) !important; border-color: var(--bic-border) !important; color: var(--bic-text) !important; font: 600 12px system-ui, sans-serif !important; }
-td:has(> #ContentPlaceHolder1_btnExit) > input.stylebutton:hover { background: #454037 !important; border-color: #8f7b5a !important; }
+td:has(> #ContentPlaceHolder1_btnExit) > input.stylebutton:hover { background: #4c5561 !important; border-color: #8f7b5a !important; }
 #ContentPlaceHolder1_tbProduct :is(td, div)[bgcolor], #ContentPlaceHolder1_tbInvoice :is(td, div)[bgcolor] { background-color: var(--bic-panel) !important; }
-.impex-date-btn { background: #37342e !important; border-color: #666052 !important; }
+.impex-date-btn { background: #464e59 !important; border-color: #5d6776 !important; }
 /* The searchable select and calendar are shared enhancements rendered outside the form. */
 .bd-wrapper .bd-trigger { background: var(--bic-field) !important; border: 1px solid var(--bic-field-edge) !important; border-radius: 5px !important; color: var(--bic-text) !important; padding-left: 7px; }
 .bd-wrapper .bd-trigger:disabled { background: var(--bic-disabled) !important; color: var(--bic-disabled-text) !important; }
 .bd-dropdown, .bic-dbk-list { background: var(--bic-surface-2) !important; border-color: var(--bic-border-strong) !important; color: var(--bic-text) !important; box-shadow: 0 12px 30px #0008; }
-.bd-dropdown .bd-search { background: #191a19; color: var(--bic-text); border-color: var(--bic-border-strong); }
+.bd-dropdown .bd-search { background: #272c34; color: var(--bic-text); border-color: var(--bic-border-strong); }
 .bd-option:hover, .bd-highlighted, .bic-dbk-option:hover, .bic-dbk-option.is-active { background: var(--bic-accent-wash) !important; }
-.bd-option small, .bic-dbk-rate, .bic-dbk-message { color: #c9bda9 !important; }
+.bd-option small, .bic-dbk-rate, .bic-dbk-message { color: #c9d0da !important; }
 .bic-dbk-popup, .bic-dbk-code { color: #f0cf99 !important; }
 .impex-calendar-popup { background: var(--bic-surface-2) !important; border-color: var(--bic-border-strong) !important; color: var(--bic-text) !important; }
 .impex-calendar-popup button:hover:not(.selected) { background: var(--bic-accent-wash) !important; }
 .impex-calendar-popup .impex-cal-day.selected { background: var(--bic-accent) !important; color: var(--bic-on-accent) !important; }
 .impex-calendar-popup .impex-cal-day.today:not(.selected), .impex-calendar-popup .impex-quick-btn { color: #f0cf99 !important; }
-.impex-calendar-popup .impex-cal-grid > span { color: #c2b8a9; }
+.impex-calendar-popup .impex-cal-grid > span { color: #c2c9d3; }
 .impex-quick-btns { border-color: var(--bic-border-strong); }
 .bd-trigger:focus-visible, .bd-search:focus-visible, .impex-calendar-popup button:focus-visible { outline-color: var(--bic-accent) !important; }
 #ContentPlaceHolder1_tbProduct_TabSupportingdoc_lblSDAmend { color: var(--bic-muted) !important; }
 #ContentPlaceHolder1_txtJobNo, #ContentPlaceHolder1_ddlInvNo, #ContentPlaceHolder1_ddlPrdSNo { background: var(--bic-field); color: var(--bic-text); border: 1px solid var(--bic-field-edge); }
-#ContentPlaceHolder1_btnGetJob { background: #39352e; color: var(--bic-text); border: 1px solid var(--bic-border-strong); }
+#ContentPlaceHolder1_btnGetJob { background: #464e5a; color: var(--bic-text); border: 1px solid var(--bic-border-strong); }
 #ContentPlaceHolder1_tbInvoice table[bgcolor], #ContentPlaceHolder1_tbInvoice div[style*="F0F8FF"] { background: var(--bic-panel) !important; }
 #ContentPlaceHolder1_tbInvoice_TabPanel1_lblisAmend { color: var(--bic-muted) !important; }
 #ContentPlaceHolder1_tbInvoice_TabPanel1_gvInvoiceDetails a { color: #efd0a0 !important; }
@@ -61,12 +61,12 @@ td:has(> #ContentPlaceHolder1_btnExit) > input.stylebutton:hover { background: #
 
 /* Product grid is a native ASP.NET table, not a .table-wrapper. */
 #ContentPlaceHolder1_tbProduct .bic-product-table { border: 1px solid var(--bic-border) !important; color: var(--bic-text); }
-#ContentPlaceHolder1_tbProduct .bic-product-table th { background: var(--bic-head) !important; color: #e0d5c3 !important; border: 1px solid var(--bic-border) !important; padding: 8px 5px; font: 600 12px/1.2 system-ui, sans-serif; }
+#ContentPlaceHolder1_tbProduct .bic-product-table th { background: var(--bic-head) !important; color: #e3e8ee !important; border: 1px solid var(--bic-border) !important; padding: 8px 5px; font: 600 12px/1.2 system-ui, sans-serif; }
 #ContentPlaceHolder1_tbProduct .bic-product-table td { border: 1px solid var(--bic-border) !important; color: var(--bic-text) !important; padding: 6px 5px; }
-#ContentPlaceHolder1_tbProduct .bic-product-table tr:nth-child(even) { background: #292825 !important; }
-#ContentPlaceHolder1_tbProduct .bic-product-table tr:nth-child(odd) { background: #232320 !important; }
+#ContentPlaceHolder1_tbProduct .bic-product-table tr:nth-child(even) { background: #3c434d !important; }
+#ContentPlaceHolder1_tbProduct .bic-product-table tr:nth-child(odd) { background: #383e47 !important; }
 #ContentPlaceHolder1_tbProduct .bic-product-table tr[style*="font-weight:bold"] { background: #514532 !important; }
-#ContentPlaceHolder1_tbProduct .bic-product-table tr:last-child:not(:has(a)) { background: #37352f !important; }
+#ContentPlaceHolder1_tbProduct .bic-product-table tr:last-child:not(:has(a)) { background: #464e5a !important; }
 #ContentPlaceHolder1_tbProduct .bic-product-table a { color: #efd0a0 !important; }
 #ContentPlaceHolder1_tbProduct .bic-product-table tr:hover td, #ContentPlaceHolder1_tbProduct .bic-product-table tr:focus-within td { box-shadow: inset 0 0 0 999px #e4b97114; }
 #ContentPlaceHolder1_tbProduct .bic-product-table :is(a, input):focus-visible { outline: 2px solid var(--bic-accent); outline-offset: 1px; }
