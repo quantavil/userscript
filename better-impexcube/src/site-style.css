@@ -363,3 +363,15 @@ div[style*="background-color:#A6D3FB" i] legend { color: var(--bic-accent) !impo
 #ContentPlaceHolder1_panelStatus th { background-color: var(--bic-head) !important; color: #e0d5c3 !important; }
 input[type="file"] { background: var(--bic-field) !important; color: var(--bic-text) !important; border: 1px solid var(--bic-field-edge) !important; border-radius: 4px; }
 input[type="file"]::file-selector-button { background: var(--bic-raised); color: var(--bic-text); border: 1px solid var(--bic-border); border-radius: 4px; padding: 3px 10px; margin-right: 8px; cursor: pointer; }
+
+/* Account master (kpoimport.impexcube.in, Bootstrap 5): site CSS paints every label #333, unreadable on the dark panel. */
+label:not([style*="color" i]) { color: var(--bic-text); }
+:is(span, label)[style*="rgb(0, 128, 0)" i] { color: #86efac !important; }
+:is(span, label, h4)[style*="rgb(255, 0, 0)" i] { color: var(--bic-danger) !important; }
+:is(span, label, h4)[style*="rgb(0, 0, 255)" i] { color: #7dd3fc !important; }
+.btn-info, button.btn-info { background-color: #38bdf8 !important; border-color: #38bdf8 !important; color: #06202e !important; }
+/* Native modal panels (copy confirmation, supporting-doc popup) have a white background; the shared light text was invisible on it. */
+:is(.Popup, .PopupCopy) { background: var(--bic-panel) !important; color: var(--bic-text) !important; border: 1px solid var(--bic-border-strong) !important; border-radius: 8px; box-shadow: 0 18px 48px #000a; }
+:is(.Popup, .PopupCopy) :is(h1, h2, h3, h4, label, span, td, div) { color: var(--bic-text) !important; }
+/* Chrome autofill / history suggestions repaint fields with black text on a light fill. */
+:is(input, textarea, select):-webkit-autofill, :is(input, textarea, select):-webkit-autofill:focus { -webkit-text-fill-color: var(--bic-text) !important; caret-color: var(--bic-text); box-shadow: 0 0 0 1000px var(--bic-field) inset !important; transition: background-color 9999s ease-out; }
