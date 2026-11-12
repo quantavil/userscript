@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Better ImpexCube
 // @namespace    https://github.com/quantavil/userscript
-// @version      2.2.2
+// @version      2.3.0
 // @description  Job search, compact controls and RITC-specific DBK suggestions for ImpexCube
 // @license      GPL-3.0-or-later
 // @match        *://impexcube.in/*
@@ -3932,6 +3932,19 @@
 			subtree: true
 		});
 	}
+	var newLoginText = /new login detected/i;
+	function installNewLoginDeny() {
+		const answered = new WeakSet();
+		watchDom(".jconfirm", () => {
+			for (const box of document.querySelectorAll(".jconfirm-box")) {
+				if (answered.has(box) || !newLoginText.test(box.textContent ?? "")) continue;
+				const deny = [...box.querySelectorAll(".buttons button")].find((button) => /^deny$/i.test(button.textContent?.trim() ?? ""));
+				if (!deny) continue;
+				answered.add(box);
+				deny.click();
+			}
+		});
+	}
 	function installProductUi() {
 		if (!/\/frmEProductMainPage\.aspx$/i.test(location.pathname)) return;
 		const style = document.createElement("style");
@@ -3980,6 +3993,7 @@
 	function initialize() {
 		installLoginDefaults();
 		installAnnouncementDismiss();
+		installNewLoginDeny();
 		installContextSwitch();
 		installJobDelete();
 		installJobSearch();

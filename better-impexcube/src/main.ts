@@ -8,6 +8,7 @@ import { installInvoiceDate } from "./invoice-date";
 import { installJobDelete } from "./job-delete";
 import { installJobSearch } from "./job-search";
 import { installLoginDefaults } from "./login";
+import { installNewLoginDeny } from "./new-login";
 import { installProductUi } from "./product-ui";
 
 // Apply the theme before the site paints; enhancements need the completed DOM.
@@ -16,6 +17,7 @@ installFormStyle();
 function initialize(): void {
   installLoginDefaults();
   installAnnouncementDismiss();
+  installNewLoginDeny();
   void installContextSwitch();
   installJobDelete();
   installJobSearch();

@@ -14,6 +14,8 @@ Keep the original product inputs, disabled state, change handlers, ASP.NET postb
 
 `src/login.ts` selects the Moradabad branch and current Indian financial year on the native login selection form. The panel is rendered by an UpdatePanel at the site root (`/`) after credentials are accepted, so a MutationObserver applies defaults once per rendered panel and never overwrites later user changes. Never submit credentials or choose among multiple companies.
 
+`src/new-login.ts` answers the native "New Login Detected!" jquery-confirm prompt (shown when the account is opened in another browser) by clicking Deny, which keeps this session; it never touches other dialogs.
+
 `src/context-switch.ts` offers compact header selectors using the site’s native switch form and its available options. Keep the native form as the authority for branch and year changes.
 
 `src/invoice-date.ts` defaults a new supporting document’s issue date from the saved invoice grid. Verify job and invoice identity, preserve existing documents and user edits, and never persist job data.
