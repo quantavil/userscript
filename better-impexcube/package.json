@@ -1,6 +1,6 @@
 {
   "name": "better-impexcube",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-or-later",
@@ -18,11 +18,11 @@
     "preact": "^11.2.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.6",
+    "@biomejs/biome": "^2.6.7",
     "happy-dom": "21.0.4",
-    "knip": "6.44.2",
+    "knip": "6.45.1",
     "typescript": "7.0.2",
     "vite-plugin-monkey": "8.1.1",
-    "vite-plus": "1.5.1"
+    "vite-plus": "1.6.0"
   }
 }
