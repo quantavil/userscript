@@ -70,3 +70,107 @@ td:has(> #ContentPlaceHolder1_btnExit) > input.stylebutton:hover { background: #
 #ContentPlaceHolder1_tbProduct .bic-product-table a { color: #efd0a0 !important; }
 #ContentPlaceHolder1_tbProduct .bic-product-table tr:hover td, #ContentPlaceHolder1_tbProduct .bic-product-table tr:focus-within td { box-shadow: inset 0 0 0 999px #e4b97114; }
 #ContentPlaceHolder1_tbProduct .bic-product-table :is(a, input):focus-visible { outline: 2px solid var(--bic-accent); outline-offset: 1px; }
+
+/* Job Copy and standalone utility card styling (frmCopyEJobDetails.aspx) */
+#MainDiv table:has(#ContentPlaceHolder1_lblIName) {
+  max-width: 860px !important;
+  margin: 24px auto !important;
+  background: var(--bic-panel) !important;
+  border: 1px solid var(--bic-border) !important;
+  border-radius: 8px !important;
+  padding: 24px 28px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35) !important;
+  box-sizing: border-box !important;
+}
+#MainDiv table:has(#ContentPlaceHolder1_lblIName) > tbody > tr > td {
+  border: none !important;
+}
+#MainDiv table:has(#ContentPlaceHolder1_lblIName) table:has(#ContentPlaceHolder1_txtJobNo) {
+  margin: 16px auto 8px !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+#MainDiv table:has(#ContentPlaceHolder1_lblIName) table:has(#ContentPlaceHolder1_txtJobNo) td {
+  border: none !important;
+}
+#ContentPlaceHolder1_lblIName {
+  display: inline-block !important;
+  font: 700 18px/1.3 system-ui, -apple-system, sans-serif !important;
+  color: var(--bic-accent) !important;
+  letter-spacing: 0.3px;
+  padding-bottom: 8px !important;
+}
+#ContentPlaceHolder1_lblJobNo {
+  font: 600 13px/1.4 system-ui, -apple-system, sans-serif !important;
+  color: var(--bic-text) !important;
+  margin-right: 8px !important;
+}
+#ContentPlaceHolder1_txtJobNo {
+  min-height: 32px !important;
+  height: 32px !important;
+  font: 13px/1.3 system-ui, -apple-system, sans-serif !important;
+  border-radius: 5px !important;
+  padding: 4px 10px !important;
+  background: var(--bic-field) !important;
+  color: var(--bic-text) !important;
+  border: 1px solid var(--bic-field-edge) !important;
+  vertical-align: middle !important;
+}
+#ContentPlaceHolder1_txtJobNo:focus {
+  border-color: var(--bic-accent) !important;
+  outline: 2px solid var(--bic-accent) !important;
+  outline-offset: -2px !important;
+}
+#ContentPlaceHolder1_btnViewJob {
+  min-height: 32px !important;
+  height: 32px !important;
+  line-height: 30px !important;
+  width: auto !important;
+  min-width: 80px !important;
+  padding: 0 16px !important;
+  margin-left: 8px !important;
+  font: 600 13px system-ui, -apple-system, sans-serif !important;
+  border-radius: 5px !important;
+  background: var(--bic-accent) !important;
+  color: var(--bic-on-accent) !important;
+  border: 1px solid var(--bic-accent-edge) !important;
+  vertical-align: middle !important;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+#ContentPlaceHolder1_btnViewJob:hover {
+  background: var(--bic-accent-hover) !important;
+}
+.grid_scroll-2 {
+  background: transparent !important;
+  border-radius: 6px !important;
+  margin-top: 14px !important;
+}
+.grid_scroll-2:not(:has(table)) {
+  height: auto !important;
+  min-height: 0 !important;
+  border: none !important;
+}
+.grid_scroll-2:has(table) {
+  border: 1px solid var(--bic-border) !important;
+  background: var(--bic-panel) !important;
+}
+.grid_scroll-2 table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  font: 13px system-ui, -apple-system, sans-serif !important;
+}
+.grid_scroll-2 table th {
+  background: var(--bic-head) !important;
+  color: var(--bic-text) !important;
+  border: 1px solid var(--bic-border) !important;
+  padding: 8px 10px !important;
+  font-weight: 600 !important;
+}
+.grid_scroll-2 table td {
+  border: 1px solid var(--bic-border) !important;
+  color: var(--bic-text) !important;
+  padding: 7px 10px !important;
+}

@@ -186,3 +186,19 @@ test("date parser handles invalid relative dates and clears error on empty blur"
   expect(input.classList.contains("invalid")).toBe(false);
   await window.happyDOM.abort();
 });
+
+test("theme stylesheets include Job Copy and MainDiv rules", async () => {
+  const { file } = await import("bun");
+  const siteCss = await file(
+    new URL("../src/site-style.css", import.meta.url).pathname,
+  ).text();
+  const formCss = await file(
+    new URL("../src/form-style.css", import.meta.url).pathname,
+  ).text();
+  expect(siteCss).toContain("#MainDiv");
+  expect(siteCss).toContain("--bic-success-bg");
+  expect(siteCss).toContain("#ContentPlaceHolder1_lblMessage");
+  expect(formCss).toContain("#ContentPlaceHolder1_lblIName");
+  expect(formCss).toContain("#ContentPlaceHolder1_btnViewJob");
+  expect(formCss).toContain(".grid_scroll-2");
+});

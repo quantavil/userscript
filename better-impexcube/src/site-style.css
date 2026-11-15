@@ -12,6 +12,11 @@
   --bic-disabled: #393f48;
   --bic-disabled-text: #bcc4cf;
   --bic-danger: #ffa0a0;
+  --bic-success: #86efac;
+  --bic-success-bg: #1a382b;
+  --bic-success-border: #2d6a4f;
+  --bic-danger-bg: #3b1c1c;
+  --bic-danger-border: #7f1d1d;
   --bic-bg: #2f343b;
   --bic-panel: #373d46;
   --bic-raised: #3f4751;
@@ -53,8 +58,25 @@ table.table-wrapper a, table[id*="_gv"] a { color: #efd0a0 !important; }
 :is(.completionList, .completionListProduct) th { background: var(--bic-hover) !important; color: #e3e8ee !important; }
 :is(.completionList, .completionListProduct) :is(li:hover, tr:hover, .highlightedListItem, .itemHighlighted), .highlightedListItem { background: var(--bic-accent-wash) !important; color: var(--bic-text) !important; }
 :is(.completionList, .completionListProduct) :is(li:hover, tr:hover) :is(td, span) { background: var(--bic-accent-wash) !important; }
-/* Legacy pages use hard-coded light panel colors rather than a shared class. */
-:is(table, td, div)[bgcolor="white" i], div.ajax__tab_container[style*="white" i], div[style*="#F0F8FF" i] { background-color: var(--bic-panel) !important; }
+/* Legacy pages and panels use hard-coded light inline background colors rather than a shared class. */
+:is(table, td, div, fieldset)[bgcolor="white" i],
+:is(table, td, div, fieldset)[bgcolor="#ffffff" i],
+:is(table, td, div, fieldset)[bgcolor="#fff" i],
+:is(table, td, div, fieldset)[style*="#ffffff" i]:not([id$="_oReportCell" i]):not(.MSRS-RVC *),
+:is(table, td, div, fieldset)[style*="#fff;" i]:not([id$="_oReportCell" i]):not(.MSRS-RVC *),
+:is(table, td, div, fieldset)[style*="#f0f8ff" i],
+:is(table, td, div, fieldset)[style*="background-color: white" i]:not([id$="_oReportCell" i]):not(.MSRS-RVC *),
+:is(table, td, div, fieldset)[style*="background-color:white" i]:not([id$="_oReportCell" i]):not(.MSRS-RVC *),
+:is(table, td, div, fieldset)[style*="background: white" i]:not([id$="_oReportCell" i]):not(.MSRS-RVC *),
+:is(table, td, div, fieldset)[style*="background:white" i]:not([id$="_oReportCell" i]):not(.MSRS-RVC *) {
+  background-color: var(--bic-panel) !important;
+}
+#MainDiv {
+  background-color: var(--bic-bg) !important;
+  color: var(--bic-text) !important;
+  height: auto !important;
+  min-height: calc(100vh - 120px);
+}
 .actionmenu .dot { background-color: var(--bic-muted) !important; }
 #ContentPlaceHolder1_txtPortdetails { background: var(--bic-field) !important; color: var(--bic-text) !important; }
 /* RITC and other multi-column suggestions use jQuery UI, not AJAX lists. */
@@ -62,11 +84,6 @@ table.table-wrapper a, table[id*="_gv"] a { color: #efd0a0 !important; }
 .ui-autocomplete .ui-autocomplete-header { background: var(--bic-hover) !important; color: #e3e8ee !important; border-color: var(--bic-border) !important; }
 .ui-autocomplete .ui-menu-item-wrapper { background: var(--bic-surface-2) !important; color: var(--bic-text) !important; border-color: var(--bic-border) !important; }
 .ui-autocomplete .ui-menu-item-wrapper:is(:hover, .ui-state-active) { background: var(--bic-accent-wash) !important; color: var(--bic-text) !important; }
-/* Native fieldsets and panels use inline white or AliceBlue backgrounds. */
-.ajax__tab_body :is(div, fieldset, table, td)[style*="#ffffff" i],
-.ajax__tab_body :is(div, fieldset, table, td)[style*="#fff;" i],
-.ajax__tab_body :is(div, fieldset, table, td)[style*="#f0f8ff" i],
-.ajax__tab_body :is(div, fieldset, table, td)[style*="background-color: white" i] { background-color: var(--bic-panel) !important; }
 .ajax__tab_body fieldset { border-color: var(--bic-border) !important; color: var(--bic-text); }
 .ajax__tab_body legend { color: var(--bic-muted); }
 /* A direct header row identifies data grids without affecting nested layout tables. */
@@ -90,12 +107,12 @@ input[type="text"]:focus, textarea:focus { background-color: var(--bic-field) !i
 :is(span, font, label, a, p)[style*="color: Red" i],
 :is(span, font, label, a, p)[style*="color:red" i],
 font[color="red" i] {
-  color: #ffa0a0 !important;
+  color: var(--bic-danger) !important;
 }
 :is(span, font, label, a, p)[style*="color:Green" i],
 :is(span, font, label, a, p)[style*="color: Green" i],
 :is(span, font, label, a, p)[style*="color:green" i] {
-  color: #86efac !important;
+  color: var(--bic-success) !important;
 }
 :is(span, font, label, a, p)[style*="color:Blue" i],
 :is(span, font, label, a, p)[style*="color: Blue" i],
@@ -107,6 +124,32 @@ font[color="red" i] {
 :is(span, font, label, p)[style*="color: Black" i],
 :is(span, font, label, p)[style*="color:black" i] {
   color: var(--bic-text) !important;
+}
+
+/* Status and validation message labels */
+#ContentPlaceHolder1_lblMessage {
+  font: 600 13px/1.4 system-ui, -apple-system, sans-serif !important;
+  letter-spacing: 0.2px;
+}
+#ContentPlaceHolder1_lblMessage:not(:empty) {
+  display: inline-block !important;
+  padding: 8px 18px !important;
+  margin: 14px auto 8px !important;
+  border-radius: 6px !important;
+  text-align: center !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+}
+#ContentPlaceHolder1_lblMessage:not(:empty)[style*="green" i],
+#ContentPlaceHolder1_lblMessage:not(:empty)[style*="Green" i] {
+  background-color: var(--bic-success-bg) !important;
+  border: 1px solid var(--bic-success-border) !important;
+  color: var(--bic-success) !important;
+}
+#ContentPlaceHolder1_lblMessage:not(:empty)[style*="red" i],
+#ContentPlaceHolder1_lblMessage:not(:empty)[style*="Red" i] {
+  background-color: var(--bic-danger-bg) !important;
+  border: 1px solid var(--bic-danger-border) !important;
+  color: var(--bic-danger) !important;
 }
 :root :is(input:disabled, select:disabled, textarea:disabled, input[readonly], textarea[readonly],
 input.aspNetDisabled, select.aspNetDisabled) {

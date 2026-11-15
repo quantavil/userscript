@@ -40,3 +40,9 @@ Guidance for work in this repository (`~/Documents/userscript`).
 - **Concurrency & Lifecycle Safety**: Fixed unbounded pointerdown listeners, DBK blur races, multi-page job search generation tracking, and context-switch session storage scoping.
 - **Verification**: 26 unit tests across 9 suites, strict TypeScript (`tsc --noEmit`), Biome linter, Knip, and production build passed cleanly. Full live browser verification performed across all routes.
 
+## Better ImpexCube v2.4.1 (2026-11-15)
+
+- **Job Copy & Standalone Utility Theming**: Themed `#MainDiv` and generalized legacy white container overrides across utility pages (`frmCopyEJobDetails.aspx`). Styled centered utility tables into elevated dark cards with gold headings (`#ContentPlaceHolder1_lblIName`), aligned inputs and buttons (`#ContentPlaceHolder1_btnViewJob`), and responsive grid scroll areas (`.grid_scroll-2`).
+- **Accessible Status Badges**: Added `--bic-success` (`#86efac`), `--bic-success-bg` (`#1a382b`), `--bic-success-border` (`#2d6a4f`), and danger badge tokens; converted bare inline success/error message labels (`#ContentPlaceHolder1_lblMessage`) into high-contrast status pill callouts.
+- **Verification**: 30 unit tests across 10 suites, Biome linter, strict TypeScript, Knip, and production build passed cleanly. Visual browser verification confirmed via screenshots.
+
