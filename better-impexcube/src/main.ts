@@ -9,6 +9,7 @@ import { installJobDelete } from "./job-delete";
 import { installJobSearch } from "./job-search";
 import { installLoginDefaults } from "./login";
 import { installNewLoginDeny } from "./new-login";
+import { installProductHistory } from "./product-history";
 import { installProductUi } from "./product-ui";
 
 // Apply the theme before the site paints; enhancements need the completed DOM.
@@ -25,6 +26,7 @@ function initialize(): void {
   installDates();
   installDbk();
   installProductUi();
+  installProductHistory();
   installInvoiceDate();
 }
 

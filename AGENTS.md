@@ -46,3 +46,21 @@ Guidance for work in this repository (`~/Documents/userscript`).
 - **Accessible Status Badges**: Added `--bic-success` (`#86efac`), `--bic-success-bg` (`#1a382b`), `--bic-success-border` (`#2d6a4f`), and danger badge tokens; converted bare inline success/error message labels (`#ContentPlaceHolder1_lblMessage`) into high-contrast status pill callouts.
 - **Verification**: 30 unit tests across 10 suites, Biome linter, strict TypeScript, Knip, and production build passed cleanly. Visual browser verification confirmed via screenshots.
 
+## Better ImpexCube v2.5.0 — Product History navigation (2026-11-18)
+
+- **Fast invoice/product switching**: The export product page History panel is now a compact card with one-click invoice and product chips that drive the native `ddlInvNo`/`ddlProductSLNo` selects and their existing `__doPostBack` handlers. Chip groups are hidden when fewer than two real options exist.
+- **Automatic first invoice**: The first real invoice is selected once per job, dispatching its native `change` so ImpexCube loads the product list without a `--Choose--` step. Server-selected invoices and selections the user clears or changes are never overridden.
+- **Panel layout**: Restyled the table into a rounded card with a gold HISTORY heading, aligned Job No/Go controls, a scrollable chip area, a dense stat list with highlighted key values, and a full-width Submit All button. Status text becomes a muted pill and the row hides when empty.
+- **Verification**: 37 tests across 11 suites, strict TypeScript, Biome, Knip, and the production build passed. Live read-only browser checks on `EXP-2627-731` auto-selected `INV-731-101`, switched to `INV-731-104` by chip, and moved between products 1–7 without console errors; no data was submitted.
+
+## Better ImpexCube v2.5.1 — dependency refresh (2026-11-18)
+
+- Upgraded the toolchain to Biome 2.6.8 (config schema updated) and Vite+ 1.7.0, refreshed transitive dependencies, and rebuilt `dist/better-impexcube.user.js`.
+- **Verification**: 37 tests across 11 suites, strict TypeScript, Biome, Knip, and the production build passed.
+
+## Better ImpexCube v2.5.2 — History chips and scroll-lock fix (2026-11-18)
+
+- **More invoices visible**: Raised the History chip lists to whole rows (eight invoice rows, four product rows) with a thin scrollbar and row-aligned caps, so pills are no longer sliced mid-height. Scrolling past either list now chains to the page instead of being contained.
+- **Stuck page scrolling**: The actual lock was a leftover `jconfirm-noscroll` class on `<body>` after the “New Login Detected” prompt was dismissed. `new-login.ts` now removes it whenever no jquery-confirm dialog remains, including at startup. Live check: removing the class restored wheel scrolling from 0 to 195px.
+- **Verification**: 43 tests across 11 suites (including disabled-option, single-option group and scroll-lock cases), strict TypeScript, Biome, Knip, and the production build passed.
+

@@ -71,6 +71,285 @@ td:has(> #ContentPlaceHolder1_btnExit) > input.stylebutton:hover { background: #
 #ContentPlaceHolder1_tbProduct .bic-product-table tr:hover td, #ContentPlaceHolder1_tbProduct .bic-product-table tr:focus-within td { box-shadow: inset 0 0 0 999px #e4b97114; }
 #ContentPlaceHolder1_tbProduct .bic-product-table :is(a, input):focus-visible { outline: 2px solid var(--bic-accent); outline-offset: 1px; }
 
+/* Product page History panel (frmEProductMainPage.aspx) */
+.bic-history-table {
+  display: block !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  background: var(--bic-panel);
+  border: 1px solid var(--bic-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
+  font: 12px/1.35 system-ui, -apple-system, sans-serif;
+}
+.bic-history-table > tbody {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0 10px 10px;
+}
+.bic-history-table > tbody > tr {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none !important;
+}
+.bic-history-table > tbody > tr > td {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none !important;
+}
+.bic-history-table .bic-h-head {
+  width: calc(100% + 20px);
+  margin: 0 -10px 2px;
+  border-radius: 9px 9px 0 0;
+  border-bottom: 1px solid var(--bic-border);
+  background: linear-gradient(180deg, var(--bic-raised), var(--bic-panel)) !important;
+}
+.bic-history-table .bic-h-head > td {
+  padding: 9px 11px 8px !important;
+}
+.bic-history-table .bic-h-head strong {
+  font: 700 11px/1 system-ui, -apple-system, sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--bic-accent);
+}
+.bic-history-table .bic-h-head strong::before {
+  content: "◷";
+  margin-right: 7px;
+  color: var(--bic-muted);
+  font-size: 13px;
+  letter-spacing: 0;
+  vertical-align: -1px;
+}
+.bic-history-table .bic-h-status {
+  padding-bottom: 6px !important;
+}
+.bic-history-table .bic-h-status[hidden],
+.bic-history-table .bic-h-nav[hidden],
+.bic-history-table .bic-h-quick-group[hidden] {
+  display: none !important;
+}
+.bic-history-table .bic-h-status span {
+  display: block !important;
+  padding: 5px 8px !important;
+  border: 1px solid var(--bic-border) !important;
+  border-radius: 5px !important;
+  background: var(--bic-field) !important;
+  color: var(--bic-muted) !important;
+  text-align: center !important;
+  text-decoration: none !important;
+  font: 500 11px/1.35 system-ui, -apple-system, sans-serif !important;
+}
+.bic-history-table .bic-h-control {
+  display: grid !important;
+  grid-template-columns: 62px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 5px !important;
+}
+.bic-history-table .bic-h-control > td {
+  width: auto !important;
+  max-width: none !important;
+}
+.bic-history-table .bic-h-control > td:first-child {
+  width: auto !important;
+  color: var(--bic-muted) !important;
+  font: 600 9px/1.2 system-ui, -apple-system, sans-serif !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.bic-history-table .bic-h-control > td:last-child {
+  min-width: 0;
+}
+.bic-history-table .bic-h-job > td:last-child {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.bic-history-table .bic-h-job #ContentPlaceHolder1_txtJobNo {
+  flex: 1;
+  min-width: 0;
+  width: auto !important;
+  height: 27px !important;
+  min-height: 26px !important;
+  padding: 2px 7px !important;
+  border-radius: 5px !important;
+  font: 600 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace !important;
+}
+.bic-history-table .bic-h-job #ContentPlaceHolder1_btnGetJob {
+  flex: none;
+  width: 38px !important;
+  height: 27px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 1px solid var(--bic-accent-edge) !important;
+  border-radius: 5px !important;
+  background: var(--bic-accent) !important;
+  color: var(--bic-on-accent) !important;
+  font: 700 11px system-ui, -apple-system, sans-serif !important;
+  cursor: pointer;
+}
+.bic-history-table .bic-h-job #ContentPlaceHolder1_btnGetJob:hover {
+  background: var(--bic-accent-hover) !important;
+}
+.bic-history-table .bic-h-control .bd-wrapper {
+  display: block !important;
+  width: 100% !important;
+  height: 27px;
+}
+.bic-history-table .bic-h-control .bd-enhanced {
+  height: 27px !important;
+  min-height: 27px !important;
+}
+.bic-history-table .bic-h-control .bd-trigger {
+  height: 27px !important;
+  padding: 0 22px 0 8px !important;
+  border-radius: 5px !important;
+  color: var(--bic-text) !important;
+  font: 600 12px/1.2 system-ui, -apple-system, sans-serif !important;
+  text-overflow: ellipsis;
+}
+.bic-history-table .bic-h-product .bd-trigger {
+  color: var(--bic-text) !important;
+  font: 700 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace !important;
+}
+.bic-history-table .bic-h-nav {
+  padding: 0 0 5px !important;
+}
+.bic-history-table .bic-h-quick {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.bic-history-table .bic-h-quick-label {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--bic-muted);
+  font: 600 8px/1.2 system-ui, -apple-system, sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.bic-history-table .bic-h-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  /* 22px chips + 4px gaps; keep caps on whole rows so pills are never sliced. */
+  max-height: 204px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-color: var(--bic-border-strong) transparent;
+  scrollbar-width: thin;
+}
+.bic-history-table
+  .bic-h-quick-group[data-group="product"]
+  .bic-h-chips {
+  max-height: 100px;
+}
+.bic-history-table .bic-h-chip {
+  appearance: none;
+  max-width: 100%;
+  min-height: 22px;
+  overflow: hidden;
+  padding: 1px 9px;
+  border: 1px solid var(--bic-border);
+  border-radius: 999px;
+  background: var(--bic-field);
+  color: var(--bic-text);
+  font: 600 11px/1.55 system-ui, -apple-system, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bic-history-table .bic-h-chip:hover {
+  border-color: var(--bic-accent-edge);
+  background: var(--bic-hover);
+  color: var(--bic-text);
+}
+.bic-history-table .bic-h-chip.is-active {
+  border-color: var(--bic-accent-edge);
+  background: var(--bic-accent);
+  color: var(--bic-on-accent);
+}
+.bic-history-table .bic-h-stat {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 7px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--bic-border) !important;
+  background: none !important;
+}
+.bic-history-table .bic-h-stat > td {
+  width: auto !important;
+  max-width: none !important;
+}
+.bic-history-table .bic-h-stat > td:first-child {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--bic-muted) !important;
+  font: 600 9px/1.35 system-ui, -apple-system, sans-serif !important;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bic-history-table .bic-h-stat > td:last-child {
+  justify-self: end;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--bic-text) !important;
+  font: 600 11.5px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.bic-history-table .bic-h-stat > td:last-child > span.arealaber1a {
+  width: auto !important;
+  font: inherit !important;
+}
+.bic-history-table .bic-h-key > td:last-child {
+  color: var(--bic-accent) !important;
+}
+.bic-history-table
+  .bic-h-stat
+  td:last-child
+  > span.arealaber1a:empty::after {
+  content: "—";
+  color: var(--bic-muted);
+  font-weight: 400;
+}
+.bic-history-table #ContentPlaceHolder1_lblInvAmtCurrency,
+.bic-history-table #ContentPlaceHolder1_lblProductCurrency {
+  display: inline-block;
+  width: auto !important;
+  margin-left: 4px;
+  padding: 0 3px;
+  border: 1px solid var(--bic-border);
+  border-radius: 3px;
+  color: var(--bic-muted) !important;
+  font: 600 7.5px/1.5 system-ui, -apple-system, sans-serif !important;
+  letter-spacing: 0.04em;
+  vertical-align: 1px;
+}
+.bic-history-table .bic-h-action {
+  padding: 8px 0 0 !important;
+}
+.bic-history-table .bic-h-action input.stylebutton {
+  width: 100% !important;
+  height: 34px !important;
+  border-radius: 6px !important;
+  font: 700 12px/1 system-ui, -apple-system, sans-serif !important;
+  letter-spacing: 0.02em;
+}
+
 /* Job Copy and standalone utility card styling (frmCopyEJobDetails.aspx) */
 #MainDiv table:has(#ContentPlaceHolder1_lblIName) {
   max-width: 860px !important;

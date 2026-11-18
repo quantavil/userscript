@@ -17,6 +17,7 @@ Install Tampermonkey or Violentmonkey, then install `dist/better-impexcube.user.
 - DevExtreme grids (`frmDocketCreation.aspx` FreightCube) and row action context menus (`.contextMenu` on `efrmJobDetails.aspx`) seamlessly follow the dark panel palette.
 - High-contrast color overrides replace hardcoded native inline styles (black text, dark green, dark blue) for optimal readability across dark backgrounds.
 - In the export product form, the DBK field shows schemes from ImpexCube's export duty structure for the current eight-digit RITC. Type to filter the scheme number or description, then click or use arrows and Enter. The original change handler runs after selection. ImpexCube remains responsible for validating and calculating product values.
+- On the export product page, the History panel becomes a compact card. The first available invoice is selected automatically once per job, so the product list loads without choosing `--Choose--`. One-click invoice and product chips replace walking the dropdowns; they set the native select and trigger its usual postback. Chip groups stay hidden when there is only one real option, and an invoice you clear or change yourself is never overridden. The Job No field, Go button and Submit All remain the native controls.
 - Hover over a product field to see its full value. The product table highlights the row under the pointer or keyboard focus. When a row's Select link is focused, use Alt+Up or Alt+Down to move to another row's Select link.
 
 Job search sends your query to the same ImpexCube server for each of the four fields. Job data is not stored by the userscript.
@@ -25,7 +26,7 @@ DBK lookup sends the RITC to `impexcube.in`; no job or customer data is sent. Re
 
 ## Development
 
-Install with `bun install`. Run `bun run check` for tests, type checking, lint, Knip and the production build. Build with `bun run build`. The date picker, searchable dropdown and DBK selector are TypeScript modules. The DBK selector uses Preact; floating menus use Floating UI.
+Install with `bun install`. Run `bun run check` for tests, type checking, lint, Knip and the production build. Build with `bun run build`. Refresh dependencies with `bun update --latest`, then rerun `bun run check` and rebuild. The date picker, searchable dropdown, DBK selector and product History panel are TypeScript modules. The DBK selector uses Preact; floating menus use Floating UI.
 
 Licensed GPL-3.0-or-later.
 
@@ -34,3 +35,18 @@ The job list’s three-dot action menu includes **Delete job**. It opens the nat
 After credentials are entered, Better ImpexCube selects Moradabad and the current Indian financial year. If exactly one company is available, it continues automatically; otherwise choose the company and continue.
 
 The header branch and financial-year dropdowns use the options from ImpexCube’s switch form. Choosing a different value navigates through that form and changes the active session context.
+
+## Changelog
+
+### 2.5.2
+
+- Enlarged the invoice and product chip lists to whole rows (up to eight invoice rows and four product rows) with a thin scrollbar, and allowed scrolling to chain to the page at the list edges instead of trapping it.
+- Fixed an occasional page scroll lock after the “New Login Detected” prompt closed. A leftover `jconfirm-noscroll` class on `<body>` is now removed once no jquery-confirm dialog remains.
+
+### 2.5.1
+
+- Refreshed dependencies: Biome 2.6.8 (config schema updated) and Vite+ 1.7.0, plus transitive updates. Rebuilt `dist/better-impexcube.user.js`.
+
+### 2.5.0
+
+- Reworked the export product page History panel into a compact card with automatic first-invoice selection, one-click invoice/product chips, hidden single-option chip groups, and highlighted key values. The native selects, Job No, Go and Submit All controls still drive ImpexCube.

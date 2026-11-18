@@ -13,6 +13,8 @@ function setup() {
   Object.assign(globalThis, {
     window,
     document: window.document,
+    location: window.location,
+    Element: window.Element,
     MutationObserver: window.MutationObserver,
   });
   const clicks: string[] = [];
@@ -38,4 +40,56 @@ test("ignores other confirmation dialogs", async () => {
   window.document.body.insertAdjacentHTML("beforeend", box("Delete job?"));
   await new Promise((r) => setTimeout(r, 10));
   expect(clicks).toEqual([]);
+});
+
+test("releases a stuck jquery-confirm scroll lock when no dialog remains", () => {
+  const window = new Window({ url: "https://export.impexcube.in/" });
+  window.document.body.classList.add("jconfirm-noscroll");
+  Object.assign(globalThis, {
+    window,
+    document: window.document,
+    location: window.location,
+    Element: window.Element,
+    MutationObserver: window.MutationObserver,
+  });
+  installNewLoginDeny();
+
+  expect(window.document.body.classList.contains("jconfirm-noscroll")).toBe(
+    false,
+  );
+});
+
+test("releases the scroll lock after the new-login prompt closes", async () => {
+  const { window, clicks } = setup();
+  window.document.body.classList.add("jconfirm-noscroll");
+  window.document.body.insertAdjacentHTML(
+    "beforeend",
+    box("New Login Detected !"),
+  );
+  const deny = [
+    ...window.document.querySelectorAll<HTMLButtonElement>(
+      ".jconfirm-box .buttons button",
+    ),
+  ].find((button) => button.textContent?.trim() === "Deny")!;
+  deny.addEventListener("click", () => {
+    deny.closest(".jconfirm")?.remove();
+  });
+  await new Promise((r) => setTimeout(r, 10));
+
+  expect(clicks).toEqual(["Deny"]);
+  expect(window.document.querySelector(".jconfirm")).toBeNull();
+  expect(window.document.body.classList.contains("jconfirm-noscroll")).toBe(
+    false,
+  );
+});
+
+test("keeps the scroll lock while another confirmation dialog is open", async () => {
+  const { window } = setup();
+  window.document.body.classList.add("jconfirm-noscroll");
+  window.document.body.insertAdjacentHTML("beforeend", box("Delete job?"));
+  await new Promise((r) => setTimeout(r, 10));
+
+  expect(window.document.body.classList.contains("jconfirm-noscroll")).toBe(
+    true,
+  );
 });

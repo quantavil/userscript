@@ -8,13 +8,15 @@ A single Bun / TypeScript / Preact userscript for ImpexCube. Vite+ and vite-plug
 
 `src/product-ui.ts` adds product-field value previews and product-table focus/navigation cues. Keep these scoped to the product page and preserve existing field titles and table actions.
 
+`src/product-history.ts` turns the export product page History table into a compact card, auto-selects the first real invoice once per job and renders one-click invoice/product chips. Chips drive the native selects and their existing postbacks; never override a server-selected invoice or a selection the user cleared. Hide a chip group when it has fewer than two real options. Keep the Job No field, Go and Submit All native.
+
 Keep the original product inputs, disabled state, change handlers, ASP.NET postbacks and select synchronization intact. Never substitute schemes from a different RITC after an asynchronous response. Do not store customer/job data or commit authenticated responses. DBK data comes from the public duty endpoint via GM cross-origin request; never hardcode rates. Support UpdatePanel replacement and avoid silently falling back to unfiltered suggestions. Only make read-only checks on live customer jobs unless explicitly authorized otherwise.
 
 `src/job-delete.ts` adds deletion to the job list action menu using the native delete page. Require an exact job number confirmation and preserve the native confirmation and permission checks. Never delete live jobs during testing.
 
 `src/login.ts` selects the Moradabad branch and current Indian financial year on the native login selection form. The panel is rendered by an UpdatePanel at the site root (`/`) after credentials are accepted, so a MutationObserver applies defaults once per rendered panel and never overwrites later user changes. Never submit credentials or choose among multiple companies.
 
-`src/new-login.ts` answers the native "New Login Detected!" jquery-confirm prompt (shown when the account is opened in another browser) by clicking Deny, which keeps this session; it never touches other dialogs.
+`src/new-login.ts` answers the native "New Login Detected!" jquery-confirm prompt (shown when the account is opened in another browser) by clicking Deny, which keeps this session; it never touches other dialogs. It also removes jquery-confirm's `jconfirm-noscroll` body class once no dialog remains, because some close paths leave the page scroll-locked.
 
 `src/context-switch.ts` offers compact header selectors using the site’s native switch form and its available options. Keep the native form as the authority for branch and year changes.
 
