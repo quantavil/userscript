@@ -57,7 +57,6 @@ The filter button in the bottom-right corner of any GitHub page opens the panel;
 - `Enter` in any text field or clicking Search runs the query on GitHub
 - `Esc`, or a click outside, closes the panel
 - `←`/`→` move between Builder and Presets tabs
-- The theme button cycles: matches GitHub → light → dark → back to matching GitHub
 
 ## Development
 

@@ -20,11 +20,10 @@ const write = (key: string, value: unknown) => {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    /* quota or private mode — presets are a convenience, not worth throwing over */
+    /* ignore storage quota errors */
   }
 };
 
-/** Old or partial records are patched up here so the panel never renders a half-made state. */
 export const getPresets = (): Preset[] =>
   read<Preset[]>(STORE.presets, [])
     .filter(p => p?.id && p?.name)
@@ -42,46 +41,17 @@ export const removePreset = (id: string): Preset[] => {
   return presets;
 };
 
-export const getStoredTheme = () => {
-  try {
-    return localStorage.getItem(STORE.theme);
-  } catch {
-    // Private mode / blocked storage — fall back to matching GitHub.
-    return null;
-  }
-};
-export const setStoredTheme = (theme: string) => {
-  try {
-    localStorage.setItem(STORE.theme, theme);
-  } catch {
-    /* quota or private mode — the override just doesn't persist */
-  }
-};
-
-/** Carry v7's localStorage over rather than silently dropping saved presets on upgrade. */
+/** Carry legacy v7 presets over and clear abandoned cache keys. */
 export function migrateLegacyStorage() {
   try {
-    migrateLegacyStorageUnsafe();
-  } catch {
-    /* Unreadable or blocked storage — the launcher must still mount. */
-  }
-}
-
-function migrateLegacyStorageUnsafe() {
-  const legacyPresets = localStorage.getItem('gh-adv-presets');
-  if (legacyPresets && !localStorage.getItem(STORE.presets)) {
-    try {
-      const old = JSON.parse(legacyPresets) as {
-        id?: string;
-        name?: string;
-        fields?: Record<string, any>;
-      }[];
+    const legacyPresets = localStorage.getItem('gh-adv-presets');
+    if (legacyPresets && !localStorage.getItem(STORE.presets)) {
+      const old = JSON.parse(legacyPresets) as { id?: string; name?: string; fields?: Record<string, any> }[];
       const migrated: Preset[] = old
         .filter(p => p?.name)
         .map((p, i) => ({
           id: p.id ?? `p${i}`,
           name: p.name!,
-          // `normalizeState` reads the old `q` map, so the v7 shape needs no special case.
           state: normalizeState({
             sort: p.fields?.sort ?? '',
             and: p.fields?.and ?? '',
@@ -91,21 +61,17 @@ function migrateLegacyStorageUnsafe() {
           })
         }));
       write(STORE.presets, migrated);
-    } catch {
-      /* unreadable legacy blob — nothing to rescue */
     }
+    localStorage.removeItem('gh-adv-presets');
+    localStorage.removeItem('gh-adv-theme');
+    localStorage.removeItem('ghf:theme');
+    localStorage.removeItem('gh-adv-scan');
+    localStorage.removeItem('ghf:scan');
+    localStorage.removeItem('ghf:releases');
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('gh-rel-')) localStorage.removeItem(key);
+    }
+  } catch {
+    /* ignore unreadable legacy state */
   }
-  localStorage.removeItem('gh-adv-presets');
-
-  const legacyTheme = localStorage.getItem('gh-adv-theme');
-  if (legacyTheme && !getStoredTheme()) setStoredTheme(legacyTheme);
-  localStorage.removeItem('gh-adv-theme');
-
-  // Release detection is gone. v7 wrote one key per repo and never pruned them.
-  for (const key of Object.keys(localStorage)) {
-    if (key.startsWith('gh-rel-')) localStorage.removeItem(key);
-  }
-  localStorage.removeItem('gh-adv-scan');
-  localStorage.removeItem('ghf:scan');
-  localStorage.removeItem('ghf:releases');
 }

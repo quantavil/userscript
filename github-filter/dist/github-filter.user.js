@@ -22,10 +22,7 @@
 		style: "ghf-style",
 		fab: "ghf-fab"
 	};
-	var STORE = {
-		presets: "ghf:presets",
-		theme: "ghf:theme"
-	};
+	var STORE = { presets: "ghf:presets" };
 	var PARAM = { hide: "ghf_hide" };
 	var RESULTS_LIST = "[data-testid=\"results-list\"]";
 	var LEGACY_ROW = ".repo-list-item, .Box-row";
@@ -57,21 +54,18 @@
 	var KEYWORDS = [
 		{
 			id: "and",
-			key: "all",
 			label: "All of these words",
 			placeholder: "e.g. rust async engine"
 		},
 		{
 			id: "or",
-			key: "any",
 			label: "Any of these words",
 			placeholder: "e.g. react, vue, svelte"
 		},
 		{
 			id: "hide",
-			key: "hide",
 			label: "Hide results containing",
-			placeholder: "e.g. spam, tutorial, homework"
+			placeholder: "e.g. spam, tutorial, bot"
 		}
 	];
 	var POPULAR_LANGUAGES = [
@@ -88,6 +82,36 @@
 		100,
 		500,
 		1e3,
+		5e3,
+		1e4
+	];
+	var STARS_STOPS = [
+		0,
+		10,
+		25,
+		50,
+		100,
+		250,
+		500,
+		1e3,
+		2e3,
+		5e3,
+		1e4,
+		2e4,
+		5e4,
+		1e5
+	];
+	var FORKS_STOPS = [
+		0,
+		5,
+		10,
+		25,
+		50,
+		100,
+		250,
+		500,
+		1e3,
+		2e3,
 		5e3,
 		1e4
 	];
@@ -112,42 +136,14 @@
 			id: "stars",
 			label: "Stars",
 			qualifier: "stars",
-			stops: [
-				0,
-				10,
-				25,
-				50,
-				100,
-				250,
-				500,
-				1e3,
-				2e3,
-				5e3,
-				1e4,
-				2e4,
-				5e4,
-				1e5
-			]
+			stops: STARS_STOPS
 		},
 		{
 			kind: "number",
 			id: "forks",
 			label: "Forks",
 			qualifier: "forks",
-			stops: [
-				0,
-				5,
-				10,
-				25,
-				50,
-				100,
-				250,
-				500,
-				1e3,
-				2e3,
-				5e3,
-				1e4
-			]
+			stops: FORKS_STOPS
 		},
 		{
 			kind: "date",
@@ -510,1097 +506,317 @@
 		write(STORE.presets, presets);
 		return presets;
 	};
-	var getStoredTheme = () => {
-		try {
-			return localStorage.getItem(STORE.theme);
-		} catch {
-			return null;
-		}
-	};
-	var setStoredTheme = (theme) => {
-		try {
-			localStorage.setItem(STORE.theme, theme);
-		} catch {}
-	};
 	function migrateLegacyStorage() {
 		try {
-			migrateLegacyStorageUnsafe();
+			const legacyPresets = localStorage.getItem("gh-adv-presets");
+			if (legacyPresets && !localStorage.getItem(STORE.presets)) {
+				const migrated = JSON.parse(legacyPresets).filter((p) => p?.name).map((p, i) => ({
+					id: p.id ?? `p${i}`,
+					name: p.name,
+					state: normalizeState({
+						sort: p.fields?.sort ?? "",
+						and: p.fields?.and ?? "",
+						or: p.fields?.or ?? "",
+						hide: p.fields?.hideKeys ?? "",
+						q: p.fields?.meta ?? {}
+					})
+				}));
+				write(STORE.presets, migrated);
+			}
+			localStorage.removeItem("gh-adv-presets");
+			localStorage.removeItem("gh-adv-theme");
+			localStorage.removeItem("ghf:theme");
+			localStorage.removeItem("gh-adv-scan");
+			localStorage.removeItem("ghf:scan");
+			localStorage.removeItem("ghf:releases");
+			for (const key of Object.keys(localStorage)) if (key.startsWith("gh-rel-")) localStorage.removeItem(key);
 		} catch {}
-	}
-	function migrateLegacyStorageUnsafe() {
-		const legacyPresets = localStorage.getItem("gh-adv-presets");
-		if (legacyPresets && !localStorage.getItem(STORE.presets)) try {
-			const migrated = JSON.parse(legacyPresets).filter((p) => p?.name).map((p, i) => ({
-				id: p.id ?? `p${i}`,
-				name: p.name,
-				state: normalizeState({
-					sort: p.fields?.sort ?? "",
-					and: p.fields?.and ?? "",
-					or: p.fields?.or ?? "",
-					hide: p.fields?.hideKeys ?? "",
-					q: p.fields?.meta ?? {}
-				})
-			}));
-			write(STORE.presets, migrated);
-		} catch {}
-		localStorage.removeItem("gh-adv-presets");
-		const legacyTheme = localStorage.getItem("gh-adv-theme");
-		if (legacyTheme && !getStoredTheme()) setStoredTheme(legacyTheme);
-		localStorage.removeItem("gh-adv-theme");
-		for (const key of Object.keys(localStorage)) if (key.startsWith("gh-rel-")) localStorage.removeItem(key);
-		localStorage.removeItem("gh-adv-scan");
-		localStorage.removeItem("ghf:scan");
-		localStorage.removeItem("ghf:releases");
 	}
 	var P$1 = `#${IDS.panel}`;
 	var F$2 = `#${IDS.fab}`;
 	var CSS = `
 ${P$1}, ${F$2} {
-  --ghf-canvas: var(--overlay-bgColor, var(--bgColor-default, var(--color-canvas-default, #ffffff)));
-  --ghf-sunken: var(--bgColor-inset, var(--color-canvas-inset, #f6f8fa));
-  --ghf-raised: var(--bgColor-muted, var(--color-canvas-subtle, #f6f8fa));
-  --ghf-card: var(--bgColor-default, var(--color-canvas-default, #ffffff));
-  --ghf-fg: var(--fgColor-default, var(--color-fg-default, #1f2328));
-  --ghf-muted: var(--fgColor-muted, var(--color-fg-muted, #59636e));
-  --ghf-accent: var(--fgColor-accent, var(--color-accent-fg, #0969da));
-  --ghf-accent-subtle: rgba(9, 105, 218, 0.12);
-  --ghf-accent-border: rgba(9, 105, 218, 0.35);
-  --ghf-danger: var(--fgColor-danger, var(--color-danger-fg, #d1242f));
-  --ghf-danger-subtle: rgba(209, 36, 47, 0.12);
-  --ghf-border: var(--borderColor-default, var(--color-border-default, #d1d9e0));
-  --ghf-hairline: var(--borderColor-muted, var(--color-border-muted, #eaeef2));
-  --ghf-hover: var(--control-transparent-bgColor-hover, rgba(175, 184, 193, 0.15));
-  --ghf-selected: var(--bgColor-neutral-muted, rgba(175, 184, 193, 0.22));
-  --ghf-btn-bg: var(--button-default-bgColor-rest, #f6f8fa);
-  --ghf-btn-hover: var(--button-default-bgColor-hover, #eef1f4);
-  --ghf-primary: var(--button-primary-bgColor-rest, #1f883d);
-  --ghf-primary-hover: var(--button-primary-bgColor-hover, #1a7f37);
-  --ghf-shadow: 0 16px 36px rgba(31, 35, 40, 0.18), 0 4px 12px rgba(31, 35, 40, 0.08);
-  --ghf-shadow-drawer: -8px 0 32px rgba(31, 35, 40, 0.2);
-  --ghf-radius: 8px;
-  --ghf-radius-sm: 6px;
-  --ghf-radius-pill: 999px;
-  --ghf-font: var(--fontStack-sansSerif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif);
-  --ghf-mono: var(--fontStack-monospace, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace);
-}
-
-${P$1}[data-theme="light"], ${F$2}[data-theme="light"] {
-  color-scheme: light;
-  --ghf-canvas: #ffffff;
-  --ghf-sunken: #f6f8fa;
-  --ghf-raised: #f8fafc;
-  --ghf-card: #ffffff;
-  --ghf-fg: #1f2328;
-  --ghf-muted: #59636e;
-  --ghf-accent: #0969da;
-  --ghf-accent-subtle: rgba(9, 105, 218, 0.1);
-  --ghf-accent-border: rgba(9, 105, 218, 0.35);
-  --ghf-danger: #d1242f;
-  --ghf-danger-subtle: rgba(209, 36, 47, 0.1);
-  --ghf-border: #d0d7de;
-  --ghf-hairline: #e8ecf0;
-  --ghf-hover: #f3f5f8;
-  --ghf-selected: #e5ebf1;
-  --ghf-btn-bg: #f6f8fa;
-  --ghf-btn-hover: #eaedf1;
-  --ghf-primary: #1f883d;
-  --ghf-primary-hover: #1a7f37;
-  --ghf-shadow: 0 16px 36px rgba(31, 35, 40, 0.16);
-  --ghf-shadow-drawer: -8px 0 32px rgba(31, 35, 40, 0.16);
-}
-
-${P$1}[data-theme="dark"], ${F$2}[data-theme="dark"] {
   color-scheme: dark;
-  --ghf-canvas: #0d1117;
-  --ghf-sunken: #090d13;
-  --ghf-raised: #161b22;
+  --ghf-bg: #0d1117;
+  --ghf-sunken: #010409;
   --ghf-card: #161b22;
   --ghf-fg: #f0f6fc;
   --ghf-muted: #8b949e;
   --ghf-accent: #2f81f7;
   --ghf-accent-subtle: rgba(47, 129, 247, 0.15);
-  --ghf-accent-border: rgba(47, 129, 247, 0.4);
   --ghf-danger: #f85149;
   --ghf-danger-subtle: rgba(248, 81, 73, 0.15);
   --ghf-border: #30363d;
   --ghf-hairline: #21262d;
-  --ghf-hover: #1f242c;
-  --ghf-selected: #282e37;
   --ghf-btn-bg: #21262d;
-  --ghf-btn-hover: #292e36;
+  --ghf-btn-hover: #30363d;
   --ghf-primary: #238636;
   --ghf-primary-hover: #2ea043;
-  --ghf-shadow: 0 20px 48px rgba(1, 4, 9, 0.7);
-  --ghf-shadow-drawer: -12px 0 40px rgba(1, 4, 9, 0.7);
+  --ghf-radius: 8px;
+  --ghf-radius-sm: 6px;
+  --ghf-radius-pill: 999px;
+  --ghf-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --ghf-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
-/* ==========================================================================
-   Panel Container & Backdrop
-   ========================================================================== */
+${P$1} *, ${P$1} *::before, ${P$1} *::after { box-sizing: border-box; }
+${P$1} svg, ${F$2} svg { fill: currentColor; color: inherit; flex-shrink: 0; }
 
+/* Panel drawer & backdrop */
 ${P$1} {
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: auto;
-  width: min(460px, 100vw);
-  max-width: 100vw;
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: auto;
+  width: min(440px, 100vw);
   height: 100dvh;
-  max-height: 100dvh;
-  margin: 0 0 0 auto;
-  padding: 0;
-  border: none;
-  border-left: 1px solid var(--ghf-border);
-  background: var(--ghf-canvas);
+  margin: 0; padding: 0;
+  border: none; border-left: 1px solid var(--ghf-border);
+  background: var(--ghf-bg);
   color: var(--ghf-fg);
   font-family: var(--ghf-font);
-  font-size: 13px;
-  line-height: 1.5;
-  box-shadow: var(--ghf-shadow-drawer);
-  box-sizing: border-box;
+  font-size: 13px; line-height: 1.5;
+  box-shadow: -10px 0 32px rgba(1, 4, 9, 0.7);
   overflow: hidden;
   transform: translateX(100%);
   opacity: 0;
-  transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1), opacity .2s ease,
-              display .25s allow-discrete, overlay .25s allow-discrete;
+  transition: transform .22s cubic-bezier(0.16, 1, 0.3, 1), opacity .18s ease, display .22s allow-discrete, overlay .22s allow-discrete;
 }
-
-${P$1}[open] {
-  transform: translateX(0);
-  opacity: 1;
-}
-
-@starting-style {
-  ${P$1}[open] {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-}
+${P$1}[open] { transform: translateX(0); opacity: 1; }
+@starting-style { ${P$1}[open] { transform: translateX(100%); opacity: 0; } }
 
 ${P$1}::backdrop {
-  background: rgba(1, 4, 9, 0.45);
+  background: rgba(1, 4, 9, 0.5);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   opacity: 0;
-  transition: opacity .22s ease, display .22s allow-discrete, overlay .22s allow-discrete;
+  transition: opacity .2s ease, display .22s allow-discrete, overlay .22s allow-discrete;
 }
-
-${P$1}[open]::backdrop {
-  opacity: 1;
-}
-
-@starting-style {
-  ${P$1}[open]::backdrop {
-    opacity: 0;
-  }
-}
-
-${P$1} *, ${P$1} *::before, ${P$1} *::after {
-  box-sizing: border-box;
-}
-
-${P$1} ::selection {
-  background: var(--ghf-selected);
-  color: var(--ghf-fg);
-}
-
-${P$1} .ghf-form {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
+${P$1}[open]::backdrop { opacity: 1; }
+@starting-style { ${P$1}[open]::backdrop { opacity: 0; } }
 
 @media (max-width: 767px) {
   ${P$1} {
-    top: auto;
-    bottom: 0;
-    left: 0;
-    width: 100vw;
-    height: auto;
-    max-height: 90dvh;
-    margin: auto 0 0;
-    border-left: none;
-    border-top: 1px solid var(--ghf-border);
-    border-radius: 16px 16px 0 0;
+    top: auto; bottom: 0; left: 0;
+    width: 100vw; height: auto; max-height: 88dvh;
+    border-left: none; border-top: 1px solid var(--ghf-border);
+    border-radius: 14px 14px 0 0;
     transform: translateY(100%);
   }
   ${P$1}[open] { transform: translateY(0); }
   @starting-style { ${P$1}[open] { transform: translateY(100%); opacity: 0; } }
 }
 
-/* ==========================================================================
-   Header & Tabs
-   ========================================================================== */
+${P$1} .ghf-form { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 
-${P$1} .ghf-head {
-  flex: 0 0 auto;
-  padding: 14px 18px 0;
-  border-bottom: 1px solid var(--ghf-hairline);
-  background: var(--ghf-canvas);
-}
-
-${P$1} .ghf-titlebar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 32px;
-}
-
-${P$1} .ghf-brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
+/* Header & Tabs */
+${P$1} .ghf-head { flex: 0 0 auto; padding: 12px 16px 0; border-bottom: 1px solid var(--ghf-hairline); }
+${P$1} .ghf-titlebar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+${P$1} .ghf-brand { display: flex; align-items: center; gap: 8px; color: var(--ghf-fg); font-size: 14px; font-weight: 600; }
 ${P$1} .ghf-brand-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-accent-subtle);
-  color: var(--ghf-accent);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: var(--ghf-radius-sm);
+  background: var(--ghf-accent-subtle); color: var(--ghf-accent);
 }
-
-${P$1} h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: 14.5px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--ghf-fg);
-}
-
 ${P$1} .ghf-badge-shortcut {
-  padding: 1px 6px;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-sunken);
-  color: var(--ghf-muted);
-  font-family: var(--ghf-mono);
-  font-size: 10px;
-  font-weight: 500;
+  padding: 1px 5px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm);
+  background: var(--ghf-sunken); color: var(--ghf-muted); font-family: var(--ghf-mono); font-size: 10px;
 }
-
-${P$1} .ghf-titlebar nav {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 ${P$1} .ghf-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--ghf-radius-sm);
-  background: transparent;
-  color: var(--ghf-muted);
-  cursor: pointer;
-  font: inherit;
-  transition: background .12s ease, color .12s ease, transform .08s ease;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: var(--ghf-radius-sm);
+  background: transparent; color: var(--ghf-muted); cursor: pointer;
+  transition: background .12s, color .12s;
 }
+${P$1} .ghf-icon-btn:hover { background: var(--ghf-btn-bg); color: var(--ghf-fg); }
 
-${P$1} .ghf-icon-btn svg { fill: currentColor; }
-${P$1} .ghf-icon-btn:hover {
-  background: var(--ghf-btn-hover);
-  color: var(--ghf-fg);
-}
-${P$1} .ghf-icon-btn:active { transform: scale(0.95); }
-
-${P$1} .ghf-tabs {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-
+${P$1} .ghf-tabs { display: flex; gap: 8px; margin-top: 10px; }
 ${P$1} .ghf-tab-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 12px 9px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: none;
-  color: var(--ghf-muted);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: color .12s ease;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px 8px; border: 0; border-bottom: 2px solid transparent;
+  background: none; color: var(--ghf-muted); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
 }
-
 ${P$1} .ghf-tab-btn:hover { color: var(--ghf-fg); }
-
-${P$1} .ghf-tab-btn[aria-selected="true"] {
-  color: var(--ghf-fg);
-  font-weight: 600;
-  border-bottom-color: var(--ghf-accent);
+${P$1} .ghf-tab-btn[aria-selected="true"] { color: var(--ghf-fg); font-weight: 600; border-bottom-color: var(--ghf-accent); }
+${P$1} .ghf-pill {
+  min-width: 17px; height: 17px; padding: 0 5px; border-radius: var(--ghf-radius-pill);
+  background: var(--ghf-accent-subtle); color: var(--ghf-accent); font-size: 10.5px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 
-${P$1} .ghf-pill-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--ghf-radius-pill);
-  background: var(--ghf-accent-subtle);
-  color: var(--ghf-accent);
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ==========================================================================
-   Body & Cards
-   ========================================================================== */
-
+/* Scrollable body & cards */
 ${P$1} .ghf-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 14px 18px 24px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--ghf-border) transparent;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 12px 16px 20px; scrollbar-width: thin; scrollbar-color: var(--ghf-border) transparent;
 }
-
 ${P$1} [role="tabpanel"][hidden] { display: none; }
-
 ${P$1} .ghf-card {
-  margin-bottom: 14px;
-  padding: 12px 14px 14px;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius);
-  background: var(--ghf-card);
-  box-shadow: 0 1px 3px rgba(31, 35, 40, 0.04);
+  margin-bottom: 12px; padding: 12px; border: 1px solid var(--ghf-border);
+  border-radius: var(--ghf-radius); background: var(--ghf-card);
 }
-
-${P$1} .ghf-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
+${P$1} .ghf-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 ${P$1} .ghf-card-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  color: var(--ghf-fg);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  display: flex; align-items: center; gap: 6px; margin: 0;
+  color: var(--ghf-fg); font-size: 12px; font-weight: 600;
 }
-
 ${P$1} .ghf-card-title svg { color: var(--ghf-muted); }
 
-/* ==========================================================================
-   Fields & Inputs
-   ========================================================================== */
-
-${P$1} .ghf-field-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-${P$1} .ghf-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-${P$1} .ghf-field-label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-${P$1} .ghf-label {
-  color: var(--ghf-muted);
-  font-size: 11.5px;
-  font-weight: 500;
-}
-
+/* Fields & Inputs */
+${P$1} .ghf-fields { display: flex; flex-direction: column; gap: 8px; }
+${P$1} .ghf-field { display: flex; flex-direction: column; gap: 4px; }
+${P$1} .ghf-label { color: var(--ghf-muted); font-size: 11px; font-weight: 500; }
 ${P$1} .ghf-input-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-canvas);
-  transition: border-color .12s ease, box-shadow .12s ease;
+  display: flex; align-items: center; width: 100%; border: 1px solid var(--ghf-border);
+  border-radius: var(--ghf-radius-sm); background: var(--ghf-bg);
+  transition: border-color .12s, box-shadow .12s;
 }
-
-${P$1} .ghf-input-wrap:focus-within {
-  border-color: var(--ghf-accent);
-  box-shadow: 0 0 0 2px var(--ghf-accent-subtle);
-}
-
+${P$1} .ghf-input-wrap:focus-within { border-color: var(--ghf-accent); box-shadow: 0 0 0 2px var(--ghf-accent-subtle); }
 ${P$1} .ghf-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 32px;
-  padding: 0 10px;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--ghf-fg);
-  font: inherit;
-  font-size: 12.5px;
+  flex: 1; min-width: 0; height: 30px; padding: 0 8px; border: 0; outline: 0;
+  background: transparent; color: var(--ghf-fg); font: inherit; font-size: 12.5px;
 }
-
-${P$1} .ghf-input::placeholder {
-  color: var(--ghf-muted);
-  opacity: 0.8;
-}
-
+${P$1} .ghf-input::placeholder { color: var(--ghf-muted); opacity: 0.7; }
 ${P$1} .ghf-clear-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  margin-right: 6px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--ghf-muted);
-  cursor: pointer;
-  transition: background .12s ease, color .12s ease;
+  width: 20px; height: 20px; margin-right: 5px; padding: 0; border: 0; border-radius: 4px;
+  background: transparent; color: var(--ghf-muted); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
 }
+${P$1} .ghf-clear-btn:hover { background: var(--ghf-btn-bg); color: var(--ghf-fg); }
 
-${P$1} .ghf-clear-btn svg { fill: currentColor; }
-${P$1} .ghf-clear-btn:hover {
-  background: var(--ghf-selected);
-  color: var(--ghf-fg);
-}
-
-${P$1} .ghf-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 6px;
-}
-
+/* Quick chips */
+${P$1} .ghf-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 ${P$1} .ghf-chip {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius-pill);
-  background: var(--ghf-sunken);
-  color: var(--ghf-muted);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  user-select: none;
-  transition: background .12s ease, border-color .12s ease, color .12s ease;
+  display: inline-flex; align-items: center; height: 20px; padding: 0 7px;
+  border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-pill);
+  background: var(--ghf-sunken); color: var(--ghf-muted); font: inherit; font-size: 10.5px; font-weight: 500;
+  cursor: pointer; transition: border-color .1s, color .1s, background .1s;
 }
-
-${P$1} .ghf-chip:hover {
-  border-color: var(--ghf-accent-border);
-  color: var(--ghf-fg);
-}
-
+${P$1} .ghf-chip:hover { border-color: var(--ghf-accent); color: var(--ghf-fg); }
 ${P$1} .ghf-chip.ghf-chip-active {
-  border-color: var(--ghf-accent);
-  background: var(--ghf-accent-subtle);
-  color: var(--ghf-accent);
-  font-weight: 600;
+  border-color: var(--ghf-accent); background: var(--ghf-accent-subtle);
+  color: var(--ghf-accent); font-weight: 600;
 }
 
-/* ==========================================================================
-   Dual Sliders
-   ========================================================================== */
-
-${P$1} .ghf-slider-row {
-  margin-top: 8px;
-}
-
-${P$1} .ghf-slider-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-${P$1} .ghf-slider-title {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--ghf-fg);
-  font-size: 12px;
-  font-weight: 500;
-}
-
+/* Sliders */
+${P$1} .ghf-slider-row { margin-top: 6px; }
+${P$1} .ghf-slider-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+${P$1} .ghf-slider-title { display: flex; align-items: center; gap: 5px; color: var(--ghf-fg); font-size: 11.5px; font-weight: 500; }
 ${P$1} .ghf-slider-title svg { color: var(--ghf-muted); }
-
-${P$1} .ghf-readout-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 7px;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-sunken);
-  color: var(--ghf-fg);
-  font-family: var(--ghf-mono);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+${P$1} .ghf-readout {
+  padding: 1px 6px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm);
+  background: var(--ghf-sunken); color: var(--ghf-fg); font-family: var(--ghf-mono); font-size: 10.5px;
 }
-
-${P$1} .ghf-slider {
-  position: relative;
-  height: 28px;
-  cursor: pointer;
-  touch-action: none;
-}
-
+${P$1} .ghf-slider { position: relative; height: 26px; cursor: pointer; touch-action: none; }
 ${P$1} .ghf-slider-track {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  top: 11px;
-  height: 6px;
-  border-radius: var(--ghf-radius-pill);
-  background: var(--ghf-border);
-  pointer-events: none;
+  position: absolute; left: 6px; right: 6px; top: 10px; height: 6px;
+  border-radius: var(--ghf-radius-pill); background: var(--ghf-border); pointer-events: none;
 }
-
-${P$1} .ghf-slider-fill {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-radius: var(--ghf-radius-pill);
-  background: var(--ghf-accent);
-}
-
+${P$1} .ghf-slider-fill { position: absolute; top: 0; bottom: 0; border-radius: var(--ghf-radius-pill); background: var(--ghf-accent); }
 ${P$1} .ghf-slider input {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  width: 100%;
-  height: 28px;
-  margin: 0;
-  -webkit-appearance: none;
-  appearance: none;
-  background: none;
-  pointer-events: none;
+  position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 26px; margin: 0;
+  -webkit-appearance: none; appearance: none; background: none; pointer-events: none;
 }
-
-${P$1} .ghf-slider input::-webkit-slider-runnable-track {
-  height: 28px;
-  background: none;
-}
-${P$1} .ghf-slider input::-moz-range-track {
-  height: 28px;
-  background: none;
-}
-
 ${P$1} .ghf-slider input::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  pointer-events: auto;
-  width: 16px;
-  height: 16px;
-  margin-top: 6px;
-  border: 2px solid var(--ghf-accent);
-  border-radius: 50%;
-  background: var(--ghf-card);
-  cursor: grab;
-  box-shadow: 0 1px 4px rgba(31, 35, 40, 0.35);
-  transition: transform .1s ease, box-shadow .1s ease;
+  -webkit-appearance: none; pointer-events: auto;
+  width: 16px; height: 16px; margin-top: 5px; border: 2px solid var(--ghf-accent);
+  border-radius: 50%; background: var(--ghf-card); cursor: grab;
+  box-shadow: 0 1px 4px rgba(1, 4, 9, 0.6); transition: transform .1s;
 }
-
-${P$1} .ghf-slider input::-webkit-slider-thumb:hover {
-  transform: scale(1.18);
-  box-shadow: 0 0 0 3px var(--ghf-accent-subtle), 0 2px 6px rgba(31, 35, 40, 0.4);
-}
-
-${P$1} .ghf-slider input:active::-webkit-slider-thumb {
-  cursor: grabbing;
-  transform: scale(1.22);
-}
-
+${P$1} .ghf-slider input::-webkit-slider-thumb:hover { transform: scale(1.15); }
 ${P$1} .ghf-slider input::-moz-range-thumb {
-  pointer-events: auto;
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--ghf-accent);
-  border-radius: 50%;
-  background: var(--ghf-card);
-  cursor: grab;
-  box-shadow: 0 1px 4px rgba(31, 35, 40, 0.35);
+  pointer-events: auto; width: 12px; height: 12px; border: 2px solid var(--ghf-accent);
+  border-radius: 50%; background: var(--ghf-card); cursor: grab;
 }
 
-/* ==========================================================================
-   Date Pickers
-   ========================================================================== */
-
-${P$1} .ghf-date-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
+/* Dates */
+${P$1} .ghf-dates { display: grid; grid-template-columns: 1fr 16px 1fr; align-items: center; gap: 6px; margin-top: 4px; }
+${P$1} .ghf-date {
+  width: 100%; height: 30px; padding: 0 6px; border: 1px solid var(--ghf-border);
+  border-radius: var(--ghf-radius-sm); background: var(--ghf-bg); color: var(--ghf-fg);
+  font: inherit; font-size: 11px; outline: 0;
 }
+${P$1} .ghf-date:focus { border-color: var(--ghf-accent); box-shadow: 0 0 0 2px var(--ghf-accent-subtle); }
+${P$1} .ghf-date-sep { text-align: center; color: var(--ghf-muted); font-size: 11px; }
 
-${P$1} .ghf-date-input {
-  width: 100%;
-  min-width: 0;
-  height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-canvas);
-  color: var(--ghf-fg);
-  font: inherit;
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-  outline: 0;
-  transition: border-color .12s ease, box-shadow .12s ease;
-}
-
-${P$1} .ghf-date-input:focus {
-  border-color: var(--ghf-accent);
-  box-shadow: 0 0 0 2px var(--ghf-accent-subtle);
-}
-
-${P$1} .ghf-date-sep {
-  text-align: center;
-  color: var(--ghf-muted);
-  font-size: 12px;
-}
-
-/* ==========================================================================
-   Sort Selection
-   ========================================================================== */
-
-${P$1} .ghf-sort-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
+/* Sort */
+${P$1} .ghf-sort-wrap { position: relative; display: inline-flex; align-items: center; }
 ${P$1} .ghf-sort-select {
-  appearance: none;
-  height: 28px;
-  padding: 0 24px 0 10px;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-canvas);
-  color: var(--ghf-fg);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  outline: 0;
+  appearance: none; height: 26px; padding: 0 22px 0 8px; border: 1px solid var(--ghf-border);
+  border-radius: var(--ghf-radius-sm); background: var(--ghf-bg); color: var(--ghf-fg);
+  font: inherit; font-size: 11px; cursor: pointer; outline: 0;
 }
+${P$1} .ghf-sort-wrap svg { position: absolute; right: 6px; color: var(--ghf-muted); pointer-events: none; }
 
-${P$1} .ghf-sort-select:focus {
-  border-color: var(--ghf-accent);
-  box-shadow: 0 0 0 2px var(--ghf-accent-subtle);
-}
-
-${P$1} .ghf-sort-wrap svg {
-  position: absolute;
-  right: 7px;
-  color: var(--ghf-muted);
-  pointer-events: none;
-  fill: currentColor;
-}
-
-/* ==========================================================================
-   Footer & Live Query Tape
-   ========================================================================== */
-
+/* Footer & Live tape */
 ${P$1} .ghf-foot {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 18px calc(14px + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid var(--ghf-border);
-  background: var(--ghf-raised);
+  flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--ghf-border); background: var(--ghf-card);
 }
-
-${P$1} .ghf-tape-card {
-  padding: 8px 10px;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius);
-  background: var(--ghf-sunken);
-}
-
-${P$1} .ghf-tape-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-${P$1} .ghf-tape-title {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--ghf-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-
-${P$1} .ghf-copy-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-card);
-  color: var(--ghf-muted);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background .12s ease, border-color .12s ease, color .12s ease;
-}
-
-${P$1} .ghf-copy-btn svg { fill: currentColor; }
-${P$1} .ghf-copy-btn:hover:not(:disabled) {
-  border-color: var(--ghf-accent-border);
-  color: var(--ghf-fg);
-}
-${P$1} .ghf-copy-btn:disabled {
-  opacity: .5;
-  cursor: default;
-}
-
-${P$1} .ghf-tape-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  max-height: 72px;
-  overflow-y: auto;
-  padding: 2px 0;
-  scrollbar-width: thin;
-}
-
+${P$1} .ghf-tape-box { padding: 8px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm); background: var(--ghf-sunken); }
+${P$1} .ghf-tape-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+${P$1} .ghf-tape-label { color: var(--ghf-muted); font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+${P$1} .ghf-tape-chips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 60px; overflow-y: auto; scrollbar-width: thin; }
 ${P$1} .ghf-tape-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-card);
-  color: var(--ghf-fg);
-  font-family: var(--ghf-mono);
-  font-size: 11px;
-  line-height: 1.4;
+  display: inline-flex; align-items: center; gap: 3px; padding: 1px 5px;
+  border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm);
+  background: var(--ghf-card); color: var(--ghf-fg); font-family: var(--ghf-mono); font-size: 10.5px;
 }
-
-${P$1} .ghf-tape-chip-key {
-  color: var(--ghf-accent);
-  font-weight: 600;
+${P$1} .ghf-tape-chip-key { color: var(--ghf-accent); font-weight: 600; }
+${P$1} .ghf-tape-chip-x {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--ghf-muted); cursor: pointer;
 }
+${P$1} .ghf-tape-chip-x:hover { background: var(--ghf-danger-subtle); color: var(--ghf-danger); }
+${P$1} .ghf-tape-empty { color: var(--ghf-muted); font-size: 11px; font-style: italic; }
+${P$1} .ghf-tape-hide { margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--ghf-border); color: var(--ghf-muted); font-size: 10.5px; }
 
-${P$1} .ghf-tape-chip-remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--ghf-muted);
-  cursor: pointer;
-  transition: background .1s ease, color .1s ease;
-}
-
-${P$1} .ghf-tape-chip-remove:hover {
-  background: var(--ghf-danger-subtle);
-  color: var(--ghf-danger);
-}
-
-${P$1} .ghf-tape-empty {
-  color: var(--ghf-muted);
-  font-size: 12px;
-  font-style: italic;
-  padding: 2px 0;
-}
-
-${P$1} .ghf-tape-hide {
-  margin-top: 6px;
-  padding-top: 5px;
-  border-top: 1px dashed var(--ghf-border);
-  color: var(--ghf-muted);
-  font-size: 11px;
-}
-
-${P$1} .ghf-tape-hide b {
-  color: var(--ghf-fg);
-  font-family: var(--ghf-mono);
-}
-
-${P$1} .ghf-actions-bar {
-  display: grid;
-  grid-template-columns: 100px minmax(0, 1fr);
-  gap: 8px;
-}
-
+/* Action buttons */
+${P$1} .ghf-actions { display: grid; grid-template-columns: 85px 1fr; gap: 8px; }
 ${P$1} .ghf-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 14px;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-btn-bg);
-  color: var(--ghf-fg);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background .12s ease, border-color .12s ease, color .12s ease, transform .08s ease;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  height: 32px; padding: 0 10px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm);
+  background: var(--ghf-btn-bg); color: var(--ghf-fg); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: background .1s, border-color .1s;
 }
-
-${P$1} .ghf-btn svg { fill: currentColor; }
 ${P$1} .ghf-btn:hover { background: var(--ghf-btn-hover); }
-${P$1} .ghf-btn:active { transform: translateY(1px); }
+${P$1} .ghf-btn-primary { border-color: var(--ghf-primary); background: var(--ghf-primary); color: #fff; font-weight: 600; }
+${P$1} .ghf-btn-primary:hover { border-color: var(--ghf-primary-hover); background: var(--ghf-primary-hover); }
+${P$1} .ghf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-${P$1} .ghf-btn.ghf-btn-primary {
-  border-color: var(--ghf-primary);
-  background: var(--ghf-primary);
-  color: #ffffff;
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(31, 35, 40, 0.2);
-}
-
-${P$1} .ghf-btn.ghf-btn-primary:hover {
-  border-color: var(--ghf-primary-hover);
-  background: var(--ghf-primary-hover);
-}
-
-${P$1} .ghf-btn:disabled, ${P$1} .ghf-btn.ghf-btn-primary:disabled {
-  border-color: var(--ghf-border);
-  background: var(--ghf-btn-bg);
-  color: var(--ghf-muted);
-  box-shadow: none;
-  cursor: not-allowed;
-  transform: none;
-  opacity: 0.6;
-}
-
-/* ==========================================================================
-   Presets Tab
-   ========================================================================== */
-
-${P$1} .ghf-save-bar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-${P$1} .ghf-preset-list {
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
+/* Presets */
+${P$1} .ghf-preset-list { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
 ${P$1} .ghf-preset-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius);
-  background: var(--ghf-card);
-  transition: border-color .12s ease, box-shadow .12s ease;
+  padding: 8px 10px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius);
+  background: var(--ghf-card); display: flex; flex-direction: column; gap: 6px;
 }
+${P$1} .ghf-preset-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+${P$1} .ghf-preset-name { font-size: 12.5px; font-weight: 600; color: var(--ghf-fg); }
+${P$1} .ghf-preset-summary { color: var(--ghf-muted); font-family: var(--ghf-mono); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+${P$1} .ghf-empty { padding: 30px 16px; border: 1px dashed var(--ghf-border); border-radius: var(--ghf-radius); color: var(--ghf-muted); text-align: center; }
+${P$1} .ghf-empty svg { color: var(--ghf-accent); margin-bottom: 6px; }
 
-${P$1} .ghf-preset-card:hover {
-  border-color: var(--ghf-accent-border);
-  box-shadow: 0 2px 6px rgba(31, 35, 40, 0.06);
-}
-
-${P$1} .ghf-preset-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-${P$1} .ghf-preset-name {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--ghf-fg);
-}
-
-${P$1} .ghf-preset-query {
-  color: var(--ghf-muted);
-  font-family: var(--ghf-mono);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-${P$1} .ghf-preset-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-${P$1} .ghf-error-msg {
-  min-height: 16px;
-  margin: 4px 0 0;
-  color: var(--ghf-danger);
-  font-size: 11.5px;
-}
-
-${P$1} .ghf-empty-presets {
-  padding: 36px 20px;
-  border: 1px dashed var(--ghf-border);
-  border-radius: var(--ghf-radius);
-  color: var(--ghf-muted);
-  text-align: center;
-}
-
-${P$1} .ghf-empty-presets svg {
-  margin-bottom: 8px;
-  color: var(--ghf-accent);
-  opacity: 0.8;
-}
-
-${P$1} .ghf-empty-title {
-  margin: 0 0 6px;
-  color: var(--ghf-fg);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-${P$1} .ghf-empty-text {
-  margin: 0 auto 16px;
-  max-width: 32ch;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-/* ==========================================================================
-   Focus & Accessibility
-   ========================================================================== */
-
-${P$1} :is(button, select, input):focus-visible {
-  outline: 2px solid var(--ghf-accent);
-  outline-offset: 1px;
-}
-
-${P$1} .ghf-slider input:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 2px var(--ghf-canvas), 0 0 0 4px var(--ghf-accent);
-}
-
-/* ==========================================================================
-   Floating Launcher Button (FAB)
-   ========================================================================== */
-
+/* Floating button */
 ${F$2} {
-  position: fixed;
-  right: calc(20px + env(safe-area-inset-right, 0px));
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  height: 42px;
-  min-width: 42px;
-  padding: 0 14px;
-  border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius-pill);
-  background: var(--ghf-canvas);
-  color: var(--ghf-fg);
-  box-shadow: var(--ghf-shadow);
-  cursor: pointer;
-  z-index: 9999;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease;
+  position: fixed; right: calc(18px + env(safe-area-inset-right, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 38px; min-width: 38px; padding: 0 12px;
+  border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-pill);
+  background: var(--ghf-card); color: var(--ghf-fg);
+  box-shadow: 0 8px 24px rgba(1, 4, 9, 0.7); cursor: pointer; z-index: 9999;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transition: transform .12s, border-color .12s;
 }
-
-${F$2}:hover {
-  transform: translateY(-2px);
-  border-color: var(--ghf-accent);
-  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.22);
-}
-
-${F$2}:active { transform: translateY(0) scale(0.97); }
-
-${F$2} svg {
-  flex: 0 0 auto;
-  fill: currentColor;
-  color: var(--ghf-accent);
-}
-
-${F$2} .ghf-fab-text {
-  font-family: var(--ghf-font);
-  font-size: 12.5px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
+${F$2}:hover { transform: translateY(-2px); border-color: var(--ghf-accent); }
+${F$2} svg { color: var(--ghf-accent); }
+${F$2} .ghf-fab-text { font-family: var(--ghf-font); font-size: 12px; font-weight: 600; }
 ${F$2} .ghf-fab-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--ghf-radius-pill);
-  background: var(--ghf-accent);
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--ghf-radius-pill);
+  background: var(--ghf-accent); color: #fff; font-size: 10px; font-weight: 700;
 }
 
-@media (pointer: coarse) {
-  ${F$2} { height: 48px; min-width: 48px; }
-}
-
-@media print {
-  ${F$2}, ${P$1} { display: none !important; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  ${P$1}, ${P$1}::backdrop, ${F$2}, ${P$1} * {
-    transition-duration: 0.01ms !important;
-  }
-}
-
+@media print { ${F$2}, ${P$1} { display: none !important; } }
+@media (prefers-reduced-motion: reduce) { ${P$1}, ${P$1}::backdrop, ${F$2}, ${P$1} * { transition-duration: 0.01ms !important; } }
 .ghf-hidden { display: none !important; }
 `;
 	function injectStyles() {
@@ -1680,7 +896,7 @@ ${F$2} .ghf-fab-badge {
 	}
 	function I(n, t, r, u, i, f, o, e, l, c, a) {
 		var s, h, v, w, d, _, g = u.__k || y$1, k = t.length;
-		for (l = q(r, t, g, l, k), s = 0; s < k; s++) null != (v = r.__k[s]) && (h = ~v.__i && g[v.__i] || p$1, v.__i = s, _ = z$1(n, v, h, i, f, o, e, l, c, a), w = v.__e, (h.ref != v.ref || 8 & h.__u) && (h.ref && G$1(h.ref, null, v, h), v.ref && a.push(v.ref, v.__c || w, v)), d = d || w, 4 & v.__u ? (l = A$1(v, l, n, !h.__v), h.__e && (h.__e = null)) : "function" == typeof v.type && void 0 !== _ ? l = _ : w && (l = w.nextSibling), v.__u &= -21);
+		for (l = q(r, t, g, l, k), s = 0; s < k; s++) null != (v = r.__k[s]) && (h = ~v.__i && g[v.__i] || p$1, v.__i = s, _ = z$1(n, v, h, i, f, o, e, l, c, a), w = v.__e, (h.ref != v.ref || 8 & h.__u) && (h.ref && G$1(h.ref, null, v, h), v.ref && a.push(v.ref, v.__c || w, v)), d = d || w, 4 & v.__u ? (l = A(v, l, n, !h.__v), h.__e && (h.__e = null)) : "function" == typeof v.type && void 0 !== _ ? l = _ : w && (l = w.nextSibling), v.__u &= -21);
 		return r.__e = d, l;
 	}
 	function q(n, t, r, u, i) {
@@ -1696,11 +912,11 @@ ${F$2} .ghf-fab-badge {
 		if (d) for (f = 0; f < v; f++) !(e = r[f]) || 2 & e.__u || (e.__e == u && (u = S(e)), J(e, e));
 		return u;
 	}
-	function A$1(n, t, r, u) {
+	function A(n, t, r, u) {
 		var i, f, o, e;
 		if ("function" == typeof n.type) {
 			if (n.props.__P) return t;
-			if (i = n.__k) for (f = 0; f < i.length; f++) i[f] && (i[f].__ = n, t = A$1(i[f], t, r, !1));
+			if (i = n.__k) for (f = 0; f < i.length; f++) i[f] && (i[f].__ = n, t = A(i[f], t, r, !1));
 			return t;
 		}
 		for (t && !t.parentNode && (t = S(n)) && !t.parentNode && (t = null), o = n.__e, e = t; e && 8 == e.nodeType;) e = e.nextSibling;
@@ -1933,10 +1149,6 @@ ${F$2} .ghf-fab-badge {
 		}
 		return f.__;
 	}
-	function A(n, u) {
-		var i = y(t++, 3);
-		!a$1.__s && E(i.__H, u) && (i.__P = !0, i.__ = n, i.u = u, r.__H.__h.push(i));
-	}
 	function F(n, u) {
 		var i = y(t++, 4);
 		!a$1.__s && E(i.__H, u) && (i.__P = !1, i.__ = n, i.u = u, r.__h.push(i));
@@ -2068,9 +1280,6 @@ ${F$2} .ghf-fab-badge {
 		filter: "M.75 3h14.5a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1 0-1.5ZM3 7.75A.75.75 0 0 1 3.75 7h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 3 7.75Zm3 4a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z",
 		x: "M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z",
 		trash: "M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.576l-.66-6.6a.75.75 0 1 1 1.492-.149ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z",
-		sun: "M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-1.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Zm5.657-8.157a.75.75 0 0 1 0 1.061l-1.061 1.06a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734l1.06-1.06a.75.75 0 0 1 1.06 0Zm-9.193 9.193a.75.75 0 0 1 0 1.06l-1.06 1.061a.75.75 0 1 1-1.061-1.06l1.06-1.061a.75.75 0 0 1 1.061 0ZM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0ZM3 8a.75.75 0 0 1-.75.75H.75a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 3 8Zm13 0a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 16 8Zm-8 5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 13ZM2.343 2.343a.75.75 0 0 1 1.061 0l1.06 1.061a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018l-1.06-1.06a.75.75 0 0 1 0-1.06Zm9.193 9.193a.75.75 0 0 1 1.06 0l1.061 1.06a.75.75 0 0 1-1.06 1.061l-1.061-1.06a.75.75 0 0 1 0-1.061Z",
-		moon: "M9.598 1.591a.749.749 0 0 1 .785-.175 7.001 7.001 0 1 1-8.967 8.967.75.75 0 0 1 .961-.96 5.5 5.5 0 0 0 7.046-7.046.75.75 0 0 1 .175-.786Zm1.616 1.945a7 7 0 0 1-7.678 7.678 5.499 5.499 0 1 0 7.678-7.678Z",
-		desktop: "M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 14.25 12h-3.727c.099 1.041.52 1.872 1.292 2.757A.752.752 0 0 1 11.25 16h-6.5a.752.752 0 0 1-.565-1.243c.772-.885 1.192-1.716 1.292-2.757H1.75A1.75 1.75 0 0 1 0 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z",
 		copy: "M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25ZM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z",
 		check: "M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z",
 		arrowRight: "M8.22 2.97a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l2.97-2.97H3.75a.75.75 0 0 1 0-1.5h7.44L8.22 4.03a.75.75 0 0 1 0-1.06Z",
@@ -2085,6 +1294,7 @@ ${F$2} .ghf-fab-badge {
 			viewBox: "0 0 16 16",
 			width: size,
 			height: size,
+			fill: "currentColor",
 			class: className,
 			"aria-hidden": "true",
 			focusable: "false",
@@ -2096,6 +1306,7 @@ ${F$2} .ghf-fab-badge {
 		svg.setAttribute("viewBox", "0 0 16 16");
 		svg.setAttribute("width", String(size));
 		svg.setAttribute("height", String(size));
+		svg.setAttribute("fill", "currentColor");
 		svg.setAttribute("aria-hidden", "true");
 		svg.setAttribute("focusable", "false");
 		const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -2103,69 +1314,46 @@ ${F$2} .ghf-fab-badge {
 		svg.append(path);
 		return svg;
 	}
-	var CYCLE = [
-		"auto",
-		"light",
-		"dark"
-	];
-	var LABEL = {
-		auto: "Theme: matches GitHub",
-		light: "Theme: light",
-		dark: "Theme: dark"
-	};
-	var THEME_ICON = {
-		auto: "desktop",
-		light: "sun",
-		dark: "moon"
-	};
-	function getTheme() {
-		const stored = getStoredTheme();
-		return CYCLE.includes(stored) ? stored : "auto";
-	}
-	var setTheme = setStoredTheme;
-	var nextTheme = (theme) => CYCLE[(CYCLE.indexOf(theme) + 1) % CYCLE.length];
 	var panelControl = null;
 	var host = null;
 	var setExpanded = (open) => document.getElementById(IDS.fab)?.setAttribute("aria-expanded", String(open));
 	var search = (state) => location.assign(buildUrl(state));
-	var THUMB = 16;
 	var formatCount = (value) => {
 		if (value < 1e3) return String(value);
-		const thousands = Math.round(value / 100) / 10;
-		return `${Number.isInteger(thousands) ? thousands : thousands.toFixed(1)}k`;
+		const k = Math.round(value / 100) / 10;
+		return `${Number.isInteger(k) ? k : k.toFixed(1)}k`;
 	};
-	function rangeReadout(range) {
-		if (range.min > 0 && range.max > 0) return `${formatCount(range.min)} – ${formatCount(range.max)}`;
-		if (range.min > 0) return `${formatCount(range.min)}+`;
-		if (range.max > 0) return `≤ ${formatCount(range.max)}`;
+	function rangeReadout(r) {
+		if (r.min > 0 && r.max > 0) return `${formatCount(r.min)} – ${formatCount(r.max)}`;
+		if (r.min > 0) return `${formatCount(r.min)}+`;
+		if (r.max > 0) return `≤ ${formatCount(r.max)}`;
 		return "Any";
 	}
-	function dateReadout(range) {
-		if (range.from && range.to) return range.from === range.to ? range.from : `${range.from} – ${range.to}`;
-		if (range.from) return `From ${range.from}`;
-		if (range.to) return `Until ${range.to}`;
-		return "Any time";
+	function dateReadout(d) {
+		if (d.from && d.to) return d.from === d.to ? d.from : `${d.from} – ${d.to}`;
+		if (d.from) return `From ${d.from}`;
+		if (d.to) return `Until ${d.to}`;
+		return "Any";
 	}
-	function KeywordRow({ id, label, placeholder, value, onChange }) {
-		const inputId = `ghf-${id}`;
+	function Field({ id, label, value, placeholder, onChange }) {
 		return a("div", {
 			class: "ghf-field",
 			children: [a("label", {
 				class: "ghf-label",
-				for: inputId,
+				for: `ghf-${id}`,
 				children: label
 			}), a("div", {
 				class: "ghf-input-wrap",
 				children: [a("input", {
-					id: inputId,
+					id: `ghf-${id}`,
 					class: "ghf-input",
 					type: "text",
 					value,
 					placeholder,
 					autocomplete: "off",
 					spellcheck: false,
-					onInput: (event) => onChange(event.currentTarget.value)
-				}), value ? a("button", {
+					onInput: (e) => onChange(e.currentTarget.value)
+				}), value && a("button", {
 					type: "button",
 					class: "ghf-clear-btn",
 					"aria-label": `Clear ${label}`,
@@ -2174,127 +1362,33 @@ ${F$2} .ghf-fab-badge {
 						name: "x",
 						size: 12
 					})
-				}) : null]
+				})]
 			})]
 		});
 	}
-	function LanguageRow({ value, onChange }) {
-		const currentTokens = tokenize(value);
-		const toggleLang = (langName) => {
-			onChange((currentTokens.some((t) => t.toLowerCase() === langName.toLowerCase()) ? currentTokens.filter((t) => t.toLowerCase() !== langName.toLowerCase()) : [...currentTokens, langName]).join(", "));
-		};
-		return a("div", {
-			class: "ghf-field",
-			children: [
-				a("div", {
-					class: "ghf-field-label-row",
-					children: [a("label", {
-						class: "ghf-label",
-						for: "ghf-lang",
-						children: "Language"
-					}), value && a("button", {
-						type: "button",
-						class: "ghf-clear-btn",
-						"aria-label": "Clear language",
-						onClick: () => onChange(""),
-						children: a(Icon, {
-							name: "x",
-							size: 12
-						})
-					})]
-				}),
-				a("div", {
-					class: "ghf-input-wrap",
-					children: a("input", {
-						id: "ghf-lang",
-						class: "ghf-input",
-						type: "text",
-						value,
-						placeholder: "e.g. python, -html",
-						autocomplete: "off",
-						spellcheck: false,
-						onInput: (event) => onChange(event.currentTarget.value)
-					})
-				}),
-				a("div", {
-					class: "ghf-chips",
-					children: POPULAR_LANGUAGES.map((lang) => {
-						return a("button", {
-							type: "button",
-							class: currentTokens.some((t) => t.toLowerCase() === lang.toLowerCase()) ? "ghf-chip ghf-chip-active" : "ghf-chip",
-							onClick: () => toggleLang(lang),
-							children: lang
-						}, lang);
-					})
-				})
-			]
-		});
-	}
-	function RepoRow({ value, onChange }) {
-		return a("div", {
-			class: "ghf-field",
-			children: [a("label", {
-				class: "ghf-label",
-				for: "ghf-repo",
-				children: "Target Repository"
-			}), a("div", {
-				class: "ghf-input-wrap",
-				children: [a("input", {
-					id: "ghf-repo",
-					class: "ghf-input",
-					type: "text",
-					value,
-					placeholder: "e.g. facebook/react",
-					autocomplete: "off",
-					spellcheck: false,
-					onInput: (event) => onChange(event.currentTarget.value)
-				}), value ? a("button", {
-					type: "button",
-					class: "ghf-clear-btn",
-					"aria-label": "Clear repo",
-					onClick: () => onChange(""),
-					children: a(Icon, {
-						name: "x",
-						size: 12
-					})
-				}) : null]
-			})]
-		});
-	}
-	function RangeRow({ field, value, onChange }) {
-		const { stops } = field;
+	function RangeSlider({ label, icon, stops, value, presets, onChange }) {
 		const last = stops.length - 1;
 		const [lead, setLead] = d("max");
 		const lo = value.min > 0 ? toIndex(stops, value.min, "min") : 0;
 		const hi = value.max > 0 ? toIndex(stops, value.max, "max") : last;
 		const filtered = value.min > 0 || value.max > 0;
-		const setLo = (index) => onChange({
-			min: fromIndex(stops, Math.min(index, hi), "min"),
+		const setLo = (idx) => onChange({
+			min: fromIndex(stops, Math.min(idx, hi), "min"),
 			max: value.max
 		});
-		const setHi = (index) => onChange({
+		const setHi = (idx) => onChange({
 			min: value.min,
-			max: fromIndex(stops, Math.max(index, lo, 1), "max")
+			max: fromIndex(stops, Math.max(idx, lo, 1), "max")
 		});
-		const jump = (event) => {
-			if (event.target !== event.currentTarget) return;
-			const rect = event.currentTarget.getBoundingClientRect();
-			const usable = Math.max(rect.width - THUMB, 1);
-			const ratio = Math.min(Math.max((event.clientX - rect.left - THUMB / 2) / usable, 0), 1);
-			const index = Math.round(ratio * last);
-			if (index < lo) {
-				setLead("min");
-				setLo(index);
-			} else if (index > hi) {
-				setLead("max");
-				setHi(index);
-			} else if (index - lo < hi - index) {
-				setLead("min");
-				setLo(index);
-			} else {
-				setLead("max");
-				setHi(index);
-			}
+		const jump = (e) => {
+			if (e.target !== e.currentTarget) return;
+			const rect = e.currentTarget.getBoundingClientRect();
+			const ratio = Math.min(Math.max((e.clientX - rect.left - 8) / Math.max(rect.width - 16, 1), 0), 1);
+			const idx = Math.round(ratio * last);
+			const target = idx < lo ? "min" : idx > hi ? "max" : idx - lo < hi - idx ? "min" : "max";
+			setLead(target);
+			if (target === "min") setLo(idx);
+			else setHi(idx);
 		};
 		return a("div", {
 			class: "ghf-slider-row",
@@ -2304,18 +1398,22 @@ ${F$2} .ghf-fab-badge {
 					children: [a("span", {
 						class: "ghf-slider-title",
 						children: [a(Icon, {
-							name: field.id === "stars" ? "star" : "gitFork",
+							name: icon,
 							size: 14
-						}), field.label]
+						}), label]
 					}), a("div", {
-						class: "ghf-field-label-row",
+						style: {
+							display: "flex",
+							alignItems: "center",
+							gap: "4px"
+						},
 						children: [a("span", {
-							class: "ghf-readout-badge",
+							class: "ghf-readout",
 							children: rangeReadout(value)
 						}), filtered && a("button", {
 							type: "button",
 							class: "ghf-clear-btn",
-							"aria-label": `Clear ${field.label}`,
+							"aria-label": `Clear ${label}`,
 							onClick: () => onChange({
 								min: 0,
 								max: 0
@@ -2347,14 +1445,13 @@ ${F$2} .ghf-fab-badge {
 							max: last,
 							step: 1,
 							value: lo,
-							"aria-label": `Minimum ${field.label.toLowerCase()}`,
-							"aria-valuetext": value.min > 0 ? `${formatCount(value.min)} or more` : "No minimum",
+							"aria-label": `Minimum ${label}`,
 							style: { zIndex: lead === "min" ? 3 : 2 },
 							onFocus: () => setLead("min"),
 							onPointerDown: () => setLead("min"),
-							onInput: (event) => {
+							onInput: (e) => {
 								setLead("min");
-								setLo(Number(event.currentTarget.value));
+								setLo(Number(e.currentTarget.value));
 							}
 						}),
 						a("input", {
@@ -2363,37 +1460,36 @@ ${F$2} .ghf-fab-badge {
 							max: last,
 							step: 1,
 							value: hi,
-							"aria-label": `Maximum ${field.label.toLowerCase()}`,
-							"aria-valuetext": value.max > 0 ? `Up to ${formatCount(value.max)}` : "No maximum",
+							"aria-label": `Maximum ${label}`,
 							style: { zIndex: lead === "max" ? 3 : 2 },
 							onFocus: () => setLead("max"),
 							onPointerDown: () => setLead("max"),
-							onInput: (event) => {
+							onInput: (e) => {
 								setLead("max");
-								setHi(Number(event.currentTarget.value));
+								setHi(Number(e.currentTarget.value));
 							}
 						})
 					]
 				}),
-				field.id === "stars" && a("div", {
+				presets && a("div", {
 					class: "ghf-chips",
-					children: STAR_PRESETS.map((preset) => {
-						const active = value.min === preset && value.max === 0;
+					children: presets.map((p) => {
+						const active = value.min === p && value.max === 0;
 						return a("button", {
 							type: "button",
-							class: active ? "ghf-chip ghf-chip-active" : "ghf-chip",
+							class: `ghf-chip ${active ? "ghf-chip-active" : ""}`,
 							onClick: () => onChange({
-								min: active ? 0 : preset,
+								min: active ? 0 : p,
 								max: 0
 							}),
-							children: [formatCount(preset), "+"]
-						}, preset);
+							children: [formatCount(p), "+"]
+						}, p);
 					})
 				})
 			]
 		});
 	}
-	function DateRow({ field, value, onChange }) {
+	function DatePicker({ label, value, onChange }) {
 		const filtered = Boolean(value.from || value.to);
 		const applyPreset = (days) => {
 			onChange({
@@ -2411,16 +1507,20 @@ ${F$2} .ghf-fab-badge {
 						children: [a(Icon, {
 							name: "calendar",
 							size: 14
-						}), field.label]
+						}), label]
 					}), a("div", {
-						class: "ghf-field-label-row",
+						style: {
+							display: "flex",
+							alignItems: "center",
+							gap: "4px"
+						},
 						children: [a("span", {
-							class: "ghf-readout-badge",
+							class: "ghf-readout",
 							children: dateReadout(value)
 						}), filtered && a("button", {
 							type: "button",
 							class: "ghf-clear-btn",
-							"aria-label": `Clear ${field.label}`,
+							"aria-label": `Clear ${label}`,
 							onClick: () => onChange({
 								from: "",
 								to: ""
@@ -2433,33 +1533,32 @@ ${F$2} .ghf-fab-badge {
 					})]
 				}),
 				a("div", {
-					class: "ghf-date-grid",
+					class: "ghf-dates",
 					children: [
 						a("input", {
-							class: "ghf-date-input",
+							class: "ghf-date",
 							type: "date",
 							value: value.from,
 							max: value.to || void 0,
-							"aria-label": `${field.label} on or after`,
-							onInput: (event) => onChange({
+							"aria-label": `${label} from`,
+							onInput: (e) => onChange({
 								...value,
-								from: event.currentTarget.value
+								from: e.currentTarget.value
 							})
 						}),
 						a("span", {
 							class: "ghf-date-sep",
-							"aria-hidden": "true",
 							children: "→"
 						}),
 						a("input", {
-							class: "ghf-date-input",
+							class: "ghf-date",
 							type: "date",
 							value: value.to,
 							min: value.from || void 0,
-							"aria-label": `${field.label} on or before`,
-							onInput: (event) => onChange({
+							"aria-label": `${label} to`,
+							onInput: (e) => onChange({
 								...value,
-								to: event.currentTarget.value
+								to: e.currentTarget.value
 							})
 						})
 					]
@@ -2468,11 +1567,11 @@ ${F$2} .ghf-fab-badge {
 					class: "ghf-chips",
 					children: [
 						{
-							label: "Past 7 days",
+							label: "Past 7d",
 							days: 7
 						},
 						{
-							label: "Past 30 days",
+							label: "Past 30d",
 							days: 30
 						},
 						{
@@ -2489,74 +1588,12 @@ ${F$2} .ghf-fab-badge {
 			]
 		});
 	}
-	function PresetCard({ preset, pending, onLoad, onRun, onDelete }) {
-		const parts = queryParts(preset.state);
-		const summary = buildQuery(preset.state) || "All repositories";
-		return a("li", {
-			class: "ghf-preset-card",
-			children: [a("div", {
-				class: "ghf-preset-top",
-				children: [a("span", {
-					class: "ghf-preset-name",
-					children: preset.name
-				}), a("div", {
-					class: "ghf-preset-actions",
-					children: [
-						a("button", {
-							type: "button",
-							class: "ghf-btn",
-							onClick: onLoad,
-							title: "Load into builder",
-							children: "Load"
-						}),
-						a("button", {
-							type: "button",
-							class: "ghf-btn ghf-btn-primary",
-							onClick: onRun,
-							title: "Run search",
-							children: ["Run", a(Icon, {
-								name: "arrowRight",
-								size: 12
-							})]
-						}),
-						a("button", {
-							type: "button",
-							class: "ghf-icon-btn",
-							style: { color: pending ? "var(--ghf-danger)" : void 0 },
-							title: pending ? "Click again to confirm delete" : "Delete preset",
-							onClick: onDelete,
-							children: pending ? a("span", {
-								style: {
-									fontSize: "11px",
-									fontWeight: 600
-								},
-								children: "Sure?"
-							}) : a(Icon, {
-								name: "trash",
-								size: 13
-							})
-						})
-					]
-				})]
-			}), a("div", {
-				class: "ghf-preset-query",
-				title: summary,
-				children: parts.length ? parts.map((p) => a("span", {
-					class: "ghf-tape-chip",
-					style: { marginRight: "4px" },
-					children: p.text
-				}, p.text)) : a("span", { children: summary })
-			})]
-		});
-	}
 	function App() {
 		const dialogRef = T(null);
-		const bodyRef = T(null);
 		const nameRef = T(null);
 		const copyTimer = T(void 0);
 		const [state, setState] = d(emptyState);
 		const [tab, setTab] = d("builder");
-		const [theme, setTheme$1] = d(getTheme);
 		const [presets, setPresets] = d(getPresets);
 		const [name, setName] = d("");
 		const [error, setError] = d("");
@@ -2565,43 +1602,29 @@ ${F$2} .ghf-fab-badge {
 		const [openRequest, setOpenRequest] = d(0);
 		const parts = w(() => queryParts(state), [state]);
 		const activeCount = w(() => countActiveFilters(state), [state]);
-		const setField = (key, value) => setState((current) => ({
-			...current,
-			[key]: value
+		const setField = (key, val) => setState((cur) => ({
+			...cur,
+			[key]: val
 		}));
-		const reset = () => {
-			setState(emptyState());
-			setError("");
-		};
-		const handleRemovePart = (part) => {
-			setState((current) => removeQueryPart(current, part));
-		};
-		const loadPreset = (preset) => {
-			setState(preset.state);
-			setTab("builder");
+		const toggleLang = (langName) => {
+			const cur = tokenize(state.lang);
+			const next = cur.some((t) => t.toLowerCase() === langName.toLowerCase()) ? cur.filter((t) => t.toLowerCase() !== langName.toLowerCase()) : [...cur, langName];
+			setField("lang", next.join(", "));
 		};
 		const savePreset = () => {
 			if (!parts.length) {
-				setError("Add at least one search term or filter to save.");
+				setError("Add terms or filters first.");
 				return;
 			}
 			const trimmed = name.trim();
 			if (!trimmed) {
-				setError("Please give this preset a name.");
+				setError("Name required.");
 				nameRef.current?.focus();
 				return;
 			}
 			setPresets(addPreset(trimmed, state));
 			setName("");
 			setError("");
-		};
-		const deletePreset = (id) => {
-			if (pendingDelete !== id) {
-				setPendingDelete(id);
-				return;
-			}
-			setPresets(removePreset(id));
-			setPendingDelete(null);
 		};
 		const copyQuery = () => {
 			const text = buildQuery(state);
@@ -2610,25 +1633,20 @@ ${F$2} .ghf-fab-badge {
 				setCopied(true);
 				window.clearTimeout(copyTimer.current);
 				copyTimer.current = window.setTimeout(() => setCopied(false), 1400);
-			}).catch(() => {});
-		};
-		const cycleTheme = () => {
-			const next = nextTheme(theme);
-			setTheme$1(next);
-			setTheme(next);
+			});
 		};
 		F(() => {
 			panelControl = { toggle(next) {
-				const dialog = dialogRef.current;
-				if (!dialog) return;
-				if (dialog.open) {
-					dialog.close();
+				const d = dialogRef.current;
+				if (!d) return;
+				if (d.open) {
+					d.close();
 					return;
 				}
 				setState(next);
 				setTab("builder");
 				setPresets(getPresets());
-				setOpenRequest((request) => request + 1);
+				setOpenRequest((r) => r + 1);
 			} };
 			return () => {
 				panelControl = null;
@@ -2636,33 +1654,14 @@ ${F$2} .ghf-fab-badge {
 		}, []);
 		F(() => {
 			if (!openRequest) return;
-			const dialog = dialogRef.current;
-			if (!dialog || dialog.open) return;
-			dialog.showModal();
+			const d = dialogRef.current;
+			if (!d || d.open) return;
+			d.showModal();
 			setExpanded(true);
-			dialog.querySelector(".ghf-input")?.focus();
+			d.querySelector(".ghf-input")?.focus();
 		}, [openRequest]);
-		A(() => {
-			dialogRef.current?.setAttribute("data-theme", theme);
-			document.getElementById(IDS.fab)?.setAttribute("data-theme", theme);
-		}, [theme]);
-		A(() => {
-			bodyRef.current?.scrollTo({ top: 0 });
-			setPendingDelete(null);
-		}, [tab]);
-		A(() => {
-			setPendingDelete(null);
-		}, [presets.length]);
-		A(() => () => window.clearTimeout(copyTimer.current), []);
 		const close = () => dialogRef.current?.close();
-		const tabKeyDown = (event) => {
-			if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-			event.preventDefault();
-			const next = tab === "builder" ? "presets" : "builder";
-			setTab(next);
-			document.getElementById(`ghf-tab-${next}`)?.focus();
-		};
-		const hideWords = tokenize(state.hide).map((word) => word.replace(/^-?"|"$/g, ""));
+		const hideWords = tokenize(state.hide).map((w) => w.replace(/^-?"|"$/g, ""));
 		return a("dialog", {
 			id: IDS.panel,
 			ref: dialogRef,
@@ -2671,16 +1670,16 @@ ${F$2} .ghf-fab-badge {
 				setExpanded(false);
 				setPendingDelete(null);
 			},
-			onClick: (event) => {
-				if (event.target === dialogRef.current) close();
+			onClick: (e) => {
+				if (e.target === dialogRef.current) close();
 			},
-			onKeyDown: (event) => {
-				if (event.key === "Escape") close();
+			onKeyDown: (e) => {
+				if (e.key === "Escape") close();
 			},
 			children: a("form", {
 				class: "ghf-form",
-				onSubmit: (event) => {
-					event.preventDefault();
+				onSubmit: (e) => {
+					e.preventDefault();
 					search(state);
 				},
 				children: [
@@ -2704,20 +1703,9 @@ ${F$2} .ghf-fab-badge {
 									}),
 									a("span", {
 										class: "ghf-badge-shortcut",
-										title: "Keyboard shortcut",
 										children: SHORTCUT_LABEL
 									})
 								]
-							}), a("nav", { children: [a("button", {
-								type: "button",
-								class: "ghf-icon-btn",
-								title: LABEL[theme],
-								"aria-label": LABEL[theme],
-								onClick: cycleTheme,
-								children: a(Icon, {
-									name: THEME_ICON[theme],
-									size: 15
-								})
 							}), a("button", {
 								type: "button",
 								class: "ghf-icon-btn",
@@ -2728,36 +1716,29 @@ ${F$2} .ghf-fab-badge {
 									name: "x",
 									size: 16
 								})
-							})] })]
+							})]
 						}), a("div", {
 							class: "ghf-tabs",
 							role: "tablist",
-							"aria-label": "Search sections",
-							onKeyDown: tabKeyDown,
+							"aria-label": "Sections",
 							children: [a("button", {
 								type: "button",
 								role: "tab",
-								id: "ghf-tab-builder",
 								class: "ghf-tab-btn",
 								"aria-selected": tab === "builder",
-								"aria-controls": "ghf-panel-builder",
-								tabIndex: tab === "builder" ? 0 : -1,
 								onClick: () => setTab("builder"),
-								children: ["Builder", activeCount > 0 && a("span", {
-									class: "ghf-pill-badge",
+								children: ["Builder ", activeCount > 0 && a("span", {
+									class: "ghf-pill",
 									children: activeCount
 								})]
 							}), a("button", {
 								type: "button",
 								role: "tab",
-								id: "ghf-tab-presets",
 								class: "ghf-tab-btn",
 								"aria-selected": tab === "presets",
-								"aria-controls": "ghf-panel-presets",
-								tabIndex: tab === "presets" ? 0 : -1,
 								onClick: () => setTab("presets"),
-								children: ["Saved Presets", presets.length > 0 && a("span", {
-									class: "ghf-pill-badge",
+								children: ["Presets ", presets.length > 0 && a("span", {
+									class: "ghf-pill",
 									children: presets.length
 								})]
 							})]
@@ -2765,11 +1746,7 @@ ${F$2} .ghf-fab-badge {
 					}),
 					a("div", {
 						class: "ghf-body",
-						ref: bodyRef,
 						children: [a("div", {
-							id: "ghf-panel-builder",
-							role: "tabpanel",
-							"aria-labelledby": "ghf-tab-builder",
 							hidden: tab !== "builder",
 							children: [
 								a("div", {
@@ -2781,17 +1758,17 @@ ${F$2} .ghf-fab-badge {
 											children: [a(Icon, {
 												name: "search",
 												size: 14
-											}), "Keywords & Search Terms"]
+											}), "Keywords"]
 										})
 									}), a("div", {
-										class: "ghf-field-group",
-										children: KEYWORDS.map((field) => a(KeywordRow, {
-											id: field.id,
-											label: field.label,
-											placeholder: field.placeholder,
-											value: state[field.id],
-											onChange: (value) => setField(field.id, value)
-										}, field.id))
+										class: "ghf-fields",
+										children: KEYWORDS.map((k) => a(Field, {
+											id: k.id,
+											label: k.label,
+											placeholder: k.placeholder,
+											value: state[k.id],
+											onChange: (v) => setField(k.id, v)
+										}, k.id))
 									})]
 								}),
 								a("div", {
@@ -2809,73 +1786,103 @@ ${F$2} .ghf-fab-badge {
 											children: [a("select", {
 												class: "ghf-sort-select",
 												value: state.sort,
-												"aria-label": "Sort repositories",
-												onChange: (event) => setField("sort", event.currentTarget.value),
-												children: SORTS.map((sort) => a("option", {
-													value: sort.value,
-													children: sort.label
-												}, sort.value))
+												onChange: (e) => setField("sort", e.currentTarget.value),
+												children: SORTS.map((s) => a("option", {
+													value: s.value,
+													children: s.label
+												}, s.value))
 											}), a(Icon, {
 												name: "chevronDown",
 												size: 12
 											})]
 										})]
 									}), a("div", {
-										class: "ghf-field-group",
-										children: [a(RepoRow, {
+										class: "ghf-fields",
+										children: [a(Field, {
+											id: "repo",
+											label: "Target Repository",
+											placeholder: "e.g. facebook/react",
 											value: state.repo,
-											onChange: (val) => setField("repo", val)
-										}), a(LanguageRow, {
-											value: state.lang,
-											onChange: (val) => setField("lang", val)
+											onChange: (v) => setField("repo", v)
+										}), a("div", {
+											class: "ghf-field",
+											children: [a(Field, {
+												id: "lang",
+												label: "Language",
+												placeholder: "e.g. python, -html",
+												value: state.lang,
+												onChange: (v) => setField("lang", v)
+											}), a("div", {
+												class: "ghf-chips",
+												children: POPULAR_LANGUAGES.map((lang) => {
+													return a("button", {
+														type: "button",
+														class: `ghf-chip ${tokenize(state.lang).some((t) => t.toLowerCase() === lang.toLowerCase()) ? "ghf-chip-active" : ""}`,
+														onClick: () => toggleLang(lang),
+														children: lang
+													}, lang);
+												})
+											})]
 										})]
 									})]
 								}),
 								a("div", {
 									class: "ghf-card",
-									children: [a("div", {
-										class: "ghf-card-head",
-										children: a("h3", {
-											class: "ghf-card-title",
-											children: [a(Icon, {
-												name: "star",
-												size: 14
-											}), "Metrics & Popularity"]
+									children: [
+										a("div", {
+											class: "ghf-card-head",
+											children: a("h3", {
+												class: "ghf-card-title",
+												children: [a(Icon, {
+													name: "star",
+													size: 14
+												}), "Metrics"]
+											})
+										}),
+										a(RangeSlider, {
+											label: "Stars",
+											icon: "star",
+											stops: STARS_STOPS,
+											value: state.stars,
+											presets: STAR_PRESETS,
+											onChange: (v) => setField("stars", v)
+										}),
+										a(RangeSlider, {
+											label: "Forks",
+											icon: "gitFork",
+											stops: FORKS_STOPS,
+											value: state.forks,
+											onChange: (v) => setField("forks", v)
 										})
-									}), a("div", {
-										class: "ghf-field-group",
-										children: QUALIFIERS.filter((f) => f.kind === "number").map((field) => a(RangeRow, {
-											field,
-											value: state[field.id],
-											onChange: (next) => setField(field.id, next)
-										}, field.id))
-									})]
+									]
 								}),
 								a("div", {
 									class: "ghf-card",
-									children: [a("div", {
-										class: "ghf-card-head",
-										children: a("h3", {
-											class: "ghf-card-title",
-											children: [a(Icon, {
-												name: "calendar",
-												size: 14
-											}), "Activity & Dates"]
+									children: [
+										a("div", {
+											class: "ghf-card-head",
+											children: a("h3", {
+												class: "ghf-card-title",
+												children: [a(Icon, {
+													name: "calendar",
+													size: 14
+												}), "Activity"]
+											})
+										}),
+										a(DatePicker, {
+											label: "Created",
+											value: state.created,
+											onChange: (v) => setField("created", v)
+										}),
+										a(DatePicker, {
+											label: "Pushed",
+											value: state.pushed,
+											onChange: (v) => setField("pushed", v)
 										})
-									}), a("div", {
-										class: "ghf-field-group",
-										children: QUALIFIERS.filter((f) => f.kind === "date").map((field) => a(DateRow, {
-											field,
-											value: state[field.id],
-											onChange: (next) => setField(field.id, next)
-										}, field.id))
-									})]
+									]
 								})
 							]
 						}), a("div", {
-							id: "ghf-panel-presets",
-							role: "tabpanel",
-							"aria-labelledby": "ghf-tab-presets",
 							hidden: tab !== "presets",
 							children: [a("div", {
 								class: "ghf-card",
@@ -2884,11 +1891,14 @@ ${F$2} .ghf-fab-badge {
 										class: "ghf-card-head",
 										children: a("h3", {
 											class: "ghf-card-title",
-											children: "Save Current Search"
+											children: "Save Preset"
 										})
 									}),
 									a("div", {
-										class: "ghf-save-bar",
+										style: {
+											display: "flex",
+											gap: "6px"
+										},
 										children: [a("div", {
 											class: "ghf-input-wrap",
 											style: { flex: 1 },
@@ -2896,17 +1906,16 @@ ${F$2} .ghf-fab-badge {
 												ref: nameRef,
 												class: "ghf-input",
 												type: "text",
-												placeholder: "e.g. Active Rust Projects",
-												"aria-label": "Preset name",
+												placeholder: "Preset name",
 												maxLength: 60,
 												value: name,
-												onInput: (event) => {
-													setName(event.currentTarget.value);
+												onInput: (e) => {
+													setName(e.currentTarget.value);
 													setError("");
 												},
-												onKeyDown: (event) => {
-													if (event.key === "Enter") {
-														event.preventDefault();
+												onKeyDown: (e) => {
+													if (e.key === "Enter") {
+														e.preventDefault();
 														savePreset();
 													}
 												}
@@ -2920,39 +1929,87 @@ ${F$2} .ghf-fab-badge {
 										})]
 									}),
 									error && a("p", {
-										class: "ghf-error-msg",
+										style: {
+											color: "var(--ghf-danger)",
+											fontSize: "11px",
+											margin: "4px 0 0"
+										},
 										children: error
 									})
 								]
 							}), presets.length ? a("ul", {
 								class: "ghf-preset-list",
-								children: presets.map((preset) => a(PresetCard, {
-									preset,
-									pending: pendingDelete === preset.id,
-									onLoad: () => loadPreset(preset),
-									onRun: () => search(preset.state),
-									onDelete: () => deletePreset(preset.id)
-								}, preset.id))
+								children: presets.map((p) => a("li", {
+									class: "ghf-preset-card",
+									children: [a("div", {
+										class: "ghf-preset-row",
+										children: [a("span", {
+											class: "ghf-preset-name",
+											children: p.name
+										}), a("div", {
+											style: {
+												display: "flex",
+												gap: "4px"
+											},
+											children: [
+												a("button", {
+													type: "button",
+													class: "ghf-btn",
+													onClick: () => {
+														setState(p.state);
+														setTab("builder");
+													},
+													children: "Load"
+												}),
+												a("button", {
+													type: "button",
+													class: "ghf-btn ghf-btn-primary",
+													onClick: () => search(p.state),
+													children: "Run"
+												}),
+												a("button", {
+													type: "button",
+													class: "ghf-icon-btn",
+													style: { color: pendingDelete === p.id ? "var(--ghf-danger)" : void 0 },
+													onClick: () => {
+														if (pendingDelete === p.id) {
+															setPresets(removePreset(p.id));
+															setPendingDelete(null);
+														} else setPendingDelete(p.id);
+													},
+													children: pendingDelete === p.id ? "Del?" : a(Icon, {
+														name: "trash",
+														size: 13
+													})
+												})
+											]
+										})]
+									}), a("span", {
+										class: "ghf-preset-summary",
+										children: buildQuery(p.state) || "All repos"
+									})]
+								}, p.id))
 							}) : a("div", {
-								class: "ghf-empty-presets",
+								class: "ghf-empty",
 								children: [
 									a(Icon, {
 										name: "filter",
 										size: 24
 									}),
-									a("h4", {
-										class: "ghf-empty-title",
-										children: "No saved presets yet"
+									a("p", {
+										style: {
+											margin: "4px 0 2px",
+											fontWeight: 600,
+											color: "var(--ghf-fg)"
+										},
+										children: "No saved presets"
 									}),
 									a("p", {
-										class: "ghf-empty-text",
-										children: "Configure filters in the Builder tab and name them above to quickly re-run queries later."
-									}),
-									a("button", {
-										type: "button",
-										class: "ghf-btn",
-										onClick: () => setTab("builder"),
-										children: "Open Builder"
+										style: {
+											margin: 0,
+											fontSize: "11.5px"
+										},
+										children: "Configure filters and save them here for quick reuse."
 									})
 								]
 							})]
@@ -2961,71 +2018,77 @@ ${F$2} .ghf-fab-badge {
 					tab === "builder" && a("footer", {
 						class: "ghf-foot",
 						children: [a("div", {
-							class: "ghf-tape-card",
+							class: "ghf-tape-box",
 							children: [
 								a("div", {
 									class: "ghf-tape-head",
 									children: [a("span", {
-										class: "ghf-tape-title",
-										children: "Live GitHub Query"
+										class: "ghf-tape-label",
+										children: "Live Query"
 									}), a("button", {
 										type: "button",
-										class: "ghf-copy-btn",
+										class: "ghf-btn",
+										style: {
+											height: "20px",
+											padding: "0 6px",
+											fontSize: "10.5px"
+										},
 										disabled: !parts.length,
 										onClick: copyQuery,
-										"aria-live": "polite",
-										children: [a(Icon, {
-											name: copied ? "check" : "copy",
-											size: 12
-										}), copied ? "Copied!" : "Copy"]
+										children: [
+											a(Icon, {
+												name: copied ? "check" : "copy",
+												size: 11
+											}),
+											" ",
+											copied ? "Copied" : "Copy"
+										]
 									})]
 								}),
 								a("div", {
 									class: "ghf-tape-chips",
-									children: parts.length ? parts.map((part, index) => {
-										const colonIdx = part.text.indexOf(":");
+									children: parts.length ? parts.map((p, i) => {
+										const colon = p.text.indexOf(":");
 										return a("span", {
 											class: "ghf-tape-chip",
-											children: [colonIdx !== -1 && part.kind === "qualifier" ? a($, { children: [a("span", {
+											children: [colon !== -1 && p.kind === "qualifier" ? a($, { children: [a("span", {
 												class: "ghf-tape-chip-key",
-												children: part.text.slice(0, colonIdx + 1)
-											}), a("span", { children: part.text.slice(colonIdx + 1) })] }) : a("span", { children: part.text }), a("button", {
+												children: p.text.slice(0, colon + 1)
+											}), a("span", { children: p.text.slice(colon + 1) })] }) : a("span", { children: p.text }), a("button", {
 												type: "button",
-												class: "ghf-tape-chip-remove",
-												title: `Remove ${part.text}`,
-												"aria-label": `Remove ${part.text}`,
-												onClick: () => handleRemovePart(part),
+												class: "ghf-tape-chip-x",
+												"aria-label": `Remove ${p.text}`,
+												onClick: () => setState((cur) => removeQueryPart(cur, p)),
 												children: a(Icon, {
 													name: "x",
-													size: 10
+													size: 9
 												})
 											})]
-										}, `${index}:${part.text}`);
+										}, `${i}:${p.text}`);
 									}) : a("span", {
 										class: "ghf-tape-empty",
-										children: "No active filters — add keywords or qualifiers above."
+										children: "No active filters"
 									})
 								}),
 								hideWords.length > 0 && a("div", {
 									class: "ghf-tape-hide",
-									children: ["🚫 Hiding results matching: ", a("b", { children: hideWords.join(", ") })]
+									children: ["🚫 Hiding: ", a("b", { children: hideWords.join(", ") })]
 								})
 							]
 						}), a("div", {
-							class: "ghf-actions-bar",
+							class: "ghf-actions",
 							children: [a("button", {
 								type: "button",
 								class: "ghf-btn",
 								disabled: activeCount === 0,
-								onClick: reset,
+								onClick: () => setState(emptyState()),
 								children: "Reset"
 							}), a("button", {
 								type: "submit",
 								class: "ghf-btn ghf-btn-primary",
-								title: "Search GitHub (Enter)",
-								children: ["Search GitHub", a(Icon, {
+								children: ["Search ", a(Icon, {
 									name: "arrowRight",
-									size: 14
+									size: 13
 								})]
 							})]
 						})]
@@ -3065,11 +2128,11 @@ ${F$2} .ghf-fab-badge {
 			return;
 		}
 		if (!document.body) return;
-		const activeCount = countActiveFilters(parseUrl(location.search));
+		const count = countActiveFilters(parseUrl(location.search));
 		const existing = document.getElementById(IDS.fab);
 		if (existing) {
 			if (!existing.isConnected) document.body.append(existing);
-			updateFabBadge(existing, activeCount);
+			updateFabBadge(existing, count);
 			return;
 		}
 		const button = document.createElement("button");
@@ -3078,8 +2141,7 @@ ${F$2} .ghf-fab-badge {
 		button.title = `${NAME} (${SHORTCUT_LABEL})`;
 		button.setAttribute("aria-label", `${NAME} (${SHORTCUT_LABEL})`);
 		button.setAttribute("aria-haspopup", "dialog");
-		button.setAttribute("aria-expanded", String(dialogRefOpen()));
-		button.dataset.theme = getTheme();
+		button.setAttribute("aria-expanded", String(document.getElementById(IDS.panel)?.hasAttribute("open") ?? false));
 		button.append(iconSvg("filter", 16));
 		const text = document.createElement("span");
 		text.className = "ghf-fab-text";
@@ -3087,14 +2149,13 @@ ${F$2} .ghf-fab-badge {
 		button.append(text);
 		const badge = document.createElement("span");
 		badge.className = "ghf-fab-badge";
-		badge.textContent = String(activeCount);
-		badge.style.display = activeCount > 0 ? "inline-flex" : "none";
+		badge.textContent = String(count);
+		badge.style.display = count > 0 ? "inline-flex" : "none";
 		button.append(badge);
 		button.addEventListener("click", openPanel);
 		document.body.append(button);
 		observeLauncher();
 	}
-	var dialogRefOpen = () => document.getElementById(IDS.panel)?.hasAttribute("open") ?? false;
 	var launcherObserved = false;
 	function observeLauncher() {
 		if (launcherObserved) return;

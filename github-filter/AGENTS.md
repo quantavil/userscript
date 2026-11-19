@@ -13,19 +13,18 @@ src/
 ├── scanner.ts        # Hides result rows matching the hide list
 ├── scanner.test.ts   # Covers matching, re-render recovery, and page gating
 ├── storage.ts        # localStorage accessors, preset CRUD, legacy migration
-├── styles.ts         # The whole stylesheet as one template literal
-├── theme.ts          # auto/light/dark cycle
+├── styles.ts         # The whole stylesheet as one template literal (dark theme)
 ├── icons.tsx         # Octicon path registry, <Icon>, and the imperative launcher glyph
 └── ui.tsx            # Preact: dialog shell, query table, sliders, date ranges, tape, presets
 ```
 
 ## Conventions
-- **The field schema is the single source of truth.** `KEYWORDS`, `SORTS` and `QUALIFIERS` in `config.ts` drive the rendered rows, `queryParts`, the preset summaries and URL parsing. Adding a filter means adding one entry there — `kind` (`text` / `number` / `date`) picks the control and the shape of the value, and the union narrows `state[field.id]` for the compiler.
-- **`FormState` is typed, not stringly.** `repo`/`lang` hold the raw comma-separated input; `stars`/`forks` are `{ min, max }` where 0 means unbounded; `created`/`pushed` are `{ from, to }` holding `YYYY-MM-DD` or empty. Never go back to one raw string per qualifier — the sliders and date pickers have no way to round-trip it.
-- **Preact owns the panel.** `ui.tsx` is a component tree (`App`, `QueryRow`, `TextRow`, `RangeRow`, `DateRow`, `PresetRow`), state is `useState`/`useMemo`, and JSX escapes user-supplied preset names and qualifier values. Do not reintroduce markup strings. The launcher button is the only imperative node, because it must be re-appended to `<body>` after Turbo swaps.
-- **The panel opens after state commits.** `openPanel` updates builder state and bumps `openRequest`; a `useLayoutEffect` then calls `showModal()`, so the dialog never flashes the previous search before painting the new one.
-- **The query tape is derived, not stored.** `queryParts(state)` returns `{ text, kind }` parts; the footer colours qualifier keys and `buildQuery` joins the same parts for copy and search. Do not render a separately-built preview string.
-- **Themes are token blocks.** Every value is a `--ghf-*` custom property. `auto` maps those onto GitHub's own Primer variables (`--bgColor-default`, `--fgColor-muted`, …) with legacy `--color-*` fallbacks, so it tracks dimmed and high-contrast for free and needs no observer. `light`/`dark` override with literal Primer palette values, including `color-scheme` so native date pickers follow.
+- **The field schema is the single source of truth.** `KEYWORDS`, `SORTS` and `QUALIFIERS` in `config.ts` drive the rendered rows, `queryParts`, the preset summaries and URL parsing.
+- **`FormState` is typed, not stringly.** `repo`/`lang` hold the raw comma-separated input; `stars`/`forks` are `{ min, max }` where 0 means unbounded; `created`/`pushed` are `{ from, to }` holding `YYYY-MM-DD` or empty.
+- **Preact owns the panel.** State is `useState`/`useMemo`, and JSX escapes user-supplied preset names and qualifier values.
+- **The panel opens after state commits.** `openPanel` updates builder state and bumps `openRequest`; a `useLayoutEffect` then calls `showModal()`.
+- **The query tape is derived, not stored.** `queryParts(state)` returns `{ text, kind }` parts; the footer renders interactive removal chips and `buildQuery` joins the same parts for copy and search.
+- **Dark theme only.** Uses native GitHub dark mode tokens (`#0d1117`, `#161b22`, `--ghf-*`). SVGs explicitly inherit text/accent colors (`fill="currentColor"`).
 - **Pure logic is separated and tested.** `query.ts` has no DOM or network dependency; everything else is glue.
 - **Version and description come from `package.json`** via `vite.config.ts`.
 

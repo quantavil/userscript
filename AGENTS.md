@@ -90,8 +90,11 @@ Guidance for work in this repository (`~/Documents/userscript`).
   - Fixed dual slider track click lockups when thumbs coincide (`lo === hi`), prioritizing thumb direction and updating `lead` state on track jumps and keyboard tab `onFocus`.
   - Fixed hide list persistence: `scanResults` now toggles `.ghf-hidden` so clearing or modifying hide terms immediately unhides rows.
   - Fixed userscript DOM bootstrap timing: guarded `watchResults` and launcher mutation observers against early document execution.
-- **UI & UX Modernization**:
-  - Replaced cramped monospace table layout with elevated Primer cards, fluid inputs, and accessible focus rings.
+- **UI & UX Modernization & Codebase Streamlining**:
+  - Replaced cramped monospace table layout with elevated dark Primer cards, fluid inputs, and accessible focus rings.
+  - Locked to dark theme only: eliminated theme toggling complexity, removed `theme.ts`, streamlined CSS variables, and reduced bundle size (76.6 kB, 21.4 kB gzip).
+  - Fixed SVG colors: added explicit `fill="currentColor"` so icons always inherit text/accent colors instead of rendering black.
+  - Eliminated DRY violations & bloat: consolidated redundant field, slider, and date pickers in `ui.tsx` and unified `styles.ts`, reducing source lines by >1,200 LOC without removing features.
   - Added 1-click quick chips for popular languages (`TypeScript`, `Python`, `Rust`, `Go`, `JavaScript`, `C++`, `Java`, `Ruby`), star cutoffs (`100+`, `1k+`, `5k+`, `10k+`), and date presets (`Past 7d`, `Past 30d`, `Past year`).
   - Upgraded live query tape into an interactive chip console with 1-click token removal (`×`), formatted hide pills, and visual copy confirmation.
   - Added global keyboard shortcut `Alt+F` (or `Cmd+Shift+F`) to open or toggle the filter panel from anywhere on GitHub.
