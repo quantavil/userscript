@@ -226,10 +226,11 @@ describe("normalizeState", () => {
 });
 
 describe("slider scale", () => {
-  it("maps the ends of the track to open bounds", () => {
+  it("maps the ends of the track to open bounds and supports 1", () => {
     expect(fromIndex(STARS_STOPS, 0, "min")).toBe(0);
+    expect(fromIndex(STARS_STOPS, 1, "min")).toBe(1);
+    expect(toIndex(STARS_STOPS, 1, "min")).toBe(1);
     expect(fromIndex(STARS_STOPS, STARS_STOPS.length - 1, "max")).toBe(0);
-    expect(fromIndex(STARS_STOPS, 3, "min")).toBe(50);
     expect(toIndex(STARS_STOPS, 0, "max")).toBe(STARS_STOPS.length - 1);
   });
 

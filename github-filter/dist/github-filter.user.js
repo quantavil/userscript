@@ -32,7 +32,6 @@
 		"pjax:end"
 	];
 	var SEARCH_TYPE = "repositories";
-	var SHORTCUT_LABEL = "Alt+F";
 	var SORTS = [
 		{
 			value: "",
@@ -70,39 +69,24 @@
 	];
 	var POPULAR_LANGUAGES = [
 		"TypeScript",
-		"JavaScript",
 		"Python",
 		"Rust",
 		"Go",
-		"C++",
-		"Java",
-		"Ruby"
+		"Zig",
+		"Swift",
+		"Kotlin",
+		"C++"
 	];
 	var STAR_PRESETS = [
+		1,
+		10,
 		100,
-		500,
 		1e3,
-		5e3,
 		1e4
 	];
 	var STARS_STOPS = [
 		0,
-		10,
-		25,
-		50,
-		100,
-		250,
-		500,
-		1e3,
-		2e3,
-		5e3,
-		1e4,
-		2e4,
-		5e4,
-		1e5
-	];
-	var FORKS_STOPS = [
-		0,
+		1,
 		5,
 		10,
 		25,
@@ -111,7 +95,25 @@
 		250,
 		500,
 		1e3,
-		2e3,
+		2500,
+		5e3,
+		1e4,
+		25e3,
+		5e4,
+		1e5
+	];
+	var FORKS_STOPS = [
+		0,
+		1,
+		5,
+		10,
+		25,
+		50,
+		100,
+		250,
+		500,
+		1e3,
+		2500,
 		5e3,
 		1e4
 	];
@@ -562,7 +564,7 @@ ${P$1}, ${F$2} {
 ${P$1} *, ${P$1} *::before, ${P$1} *::after { box-sizing: border-box; }
 ${P$1} svg, ${F$2} svg { fill: currentColor; color: inherit; flex-shrink: 0; }
 
-/* Panel drawer & backdrop */
+/* Panel drawer & backdrop (prevent-page-scroll-under-modal-dialog) */
 ${P$1} {
   position: fixed;
   top: 0; right: 0; bottom: 0; left: auto;
@@ -576,6 +578,7 @@ ${P$1} {
   font-size: 13px; line-height: 1.5;
   box-shadow: -10px 0 32px rgba(1, 4, 9, 0.7);
   overflow: hidden;
+  overscroll-behavior: contain;
   transform: translateX(100%);
   opacity: 0;
   transition: transform .22s cubic-bezier(0.16, 1, 0.3, 1), opacity .18s ease, display .22s allow-discrete, overlay .22s allow-discrete;
@@ -584,6 +587,8 @@ ${P$1}[open] { transform: translateX(0); opacity: 1; }
 @starting-style { ${P$1}[open] { transform: translateX(100%); opacity: 0; } }
 
 ${P$1}::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
   background: rgba(1, 4, 9, 0.5);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
@@ -615,10 +620,6 @@ ${P$1} .ghf-brand-icon {
   display: inline-flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; border-radius: var(--ghf-radius-sm);
   background: var(--ghf-accent-subtle); color: var(--ghf-accent);
-}
-${P$1} .ghf-badge-shortcut {
-  padding: 1px 5px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-sunken); color: var(--ghf-muted); font-family: var(--ghf-mono); font-size: 10px;
 }
 ${P$1} .ghf-icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1665,6 +1666,7 @@ ${F$2} .ghf-fab-badge {
 		return a("dialog", {
 			id: IDS.panel,
 			ref: dialogRef,
+			closedby: "any",
 			"aria-labelledby": "ghf-panel-title",
 			onClose: () => {
 				setExpanded(false);
@@ -1689,23 +1691,16 @@ ${F$2} .ghf-fab-badge {
 							class: "ghf-titlebar",
 							children: [a("div", {
 								class: "ghf-brand",
-								children: [
-									a("span", {
-										class: "ghf-brand-icon",
-										children: a(Icon, {
-											name: "filter",
-											size: 15
-										})
-									}),
-									a("h2", {
-										id: "ghf-panel-title",
-										children: NAME
-									}),
-									a("span", {
-										class: "ghf-badge-shortcut",
-										children: SHORTCUT_LABEL
+								children: [a("span", {
+									class: "ghf-brand-icon",
+									children: a(Icon, {
+										name: "filter",
+										size: 15
 									})
-								]
+								}), a("h2", {
+									id: "ghf-panel-title",
+									children: NAME
+								})]
 							}), a("button", {
 								type: "button",
 								class: "ghf-icon-btn",
@@ -2138,8 +2133,8 @@ ${F$2} .ghf-fab-badge {
 		const button = document.createElement("button");
 		button.id = IDS.fab;
 		button.type = "button";
-		button.title = `${NAME} (${SHORTCUT_LABEL})`;
-		button.setAttribute("aria-label", `${NAME} (${SHORTCUT_LABEL})`);
+		button.title = NAME;
+		button.setAttribute("aria-label", NAME);
 		button.setAttribute("aria-haspopup", "dialog");
 		button.setAttribute("aria-expanded", String(document.getElementById(IDS.panel)?.hasAttribute("open") ?? false));
 		button.append(iconSvg("filter", 16));
@@ -2179,11 +2174,5 @@ ${F$2} .ghf-fab-badge {
 	for (const event of NAV_EVENTS) document.addEventListener(event, recheck);
 	window.addEventListener("popstate", recheck);
 	window.addEventListener("pageshow", recheck);
-	window.addEventListener("keydown", (event) => {
-		if (event.altKey && event.code === "KeyF" || (event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "KeyF") {
-			event.preventDefault();
-			openPanel();
-		}
-	});
 	GM_registerMenuCommand("GitHub Filter", openPanel);
 })();

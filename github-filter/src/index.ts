@@ -30,15 +30,4 @@ for (const event of NAV_EVENTS) document.addEventListener(event, recheck);
 window.addEventListener('popstate', recheck);
 window.addEventListener('pageshow', recheck);
 
-// Global keyboard shortcut: Alt+F (or Cmd+Shift+F / Ctrl+Shift+F)
-window.addEventListener('keydown', event => {
-  if (
-    (event.altKey && event.code === 'KeyF') ||
-    ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'KeyF')
-  ) {
-    event.preventDefault();
-    openPanel();
-  }
-});
-
 GM_registerMenuCommand('GitHub Filter', openPanel);

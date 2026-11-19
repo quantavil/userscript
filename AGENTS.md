@@ -95,8 +95,9 @@ Guidance for work in this repository (`~/Documents/userscript`).
   - Locked to dark theme only: eliminated theme toggling complexity, removed `theme.ts`, streamlined CSS variables, and reduced bundle size (76.6 kB, 21.4 kB gzip).
   - Fixed SVG colors: added explicit `fill="currentColor"` so icons always inherit text/accent colors instead of rendering black.
   - Eliminated DRY violations & bloat: consolidated redundant field, slider, and date pickers in `ui.tsx` and unified `styles.ts`, reducing source lines by >1,200 LOC without removing features.
-  - Added 1-click quick chips for popular languages (`TypeScript`, `Python`, `Rust`, `Go`, `JavaScript`, `C++`, `Java`, `Ruby`), star cutoffs (`100+`, `1k+`, `5k+`, `10k+`), and date presets (`Past 7d`, `Past 30d`, `Past year`).
+  - Added 1-click quick chips for modern languages (`TypeScript`, `Python`, `Rust`, `Go`, `Zig`, `Swift`, `Kotlin`, `C++`), logarithmic star cutoffs (`1+`, `10+`, `100+`, `1k+`, `10k+`), and date presets (`Past 7d`, `Past 30d`, `Past year`).
+  - Upgraded sliders to fine-grained logarithmic stops starting from 0 and 1 (`STARS_STOPS` / `FORKS_STOPS`), supporting searches for `1+` star repos.
+  - Aligned with modern web platform guidance: added declarative `closedby="any"` to `<dialog>`, applied `overscroll-behavior: contain` to `:modal` and `::backdrop` (with `overflow: hidden`) to prevent background scroll chaining.
   - Upgraded live query tape into an interactive chip console with 1-click token removal (`×`), formatted hide pills, and visual copy confirmation.
-  - Added global keyboard shortcut `Alt+F` (or `Cmd+Shift+F`) to open or toggle the filter panel from anywhere on GitHub.
   - Enhanced launcher FAB with active filter count badge when viewing filtered search results.
 - **Verification**: 37 tests across 2 suites, strict TypeScript, Biome linter, Knip, and production build passed cleanly.

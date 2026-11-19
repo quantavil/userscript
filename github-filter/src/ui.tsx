@@ -6,7 +6,6 @@ import {
   KEYWORDS,
   NAME,
   POPULAR_LANGUAGES,
-  SHORTCUT_LABEL,
   SORTS,
   STAR_PRESETS,
   STARS_STOPS
@@ -325,7 +324,11 @@ function App() {
 
   return (
     <dialog
-      id={IDS.panel} ref={dialogRef} aria-labelledby="ghf-panel-title"
+      id={IDS.panel}
+      ref={dialogRef}
+      // Light dismiss per modern-web-guidance: closedby="any" with fallback click handler
+      {...({ closedby: 'any' } as any)}
+      aria-labelledby="ghf-panel-title"
       onClose={() => { setExpanded(false); setPendingDelete(null); }}
       onClick={e => { if (e.target === dialogRef.current) close(); }}
       onKeyDown={e => { if (e.key === 'Escape') close(); }}
@@ -336,7 +339,6 @@ function App() {
             <div class="ghf-brand">
               <span class="ghf-brand-icon"><Icon name="filter" size={15} /></span>
               <h2 id="ghf-panel-title">{NAME}</h2>
-              <span class="ghf-badge-shortcut">{SHORTCUT_LABEL}</span>
             </div>
             <button type="button" class="ghf-icon-btn" title="Close" aria-label="Close" onClick={close}>
               <Icon name="x" size={16} />
@@ -564,8 +566,8 @@ export function syncLauncher() {
   const button = document.createElement('button');
   button.id = IDS.fab;
   button.type = 'button';
-  button.title = `${NAME} (${SHORTCUT_LABEL})`;
-  button.setAttribute('aria-label', `${NAME} (${SHORTCUT_LABEL})`);
+  button.title = NAME;
+  button.setAttribute('aria-label', NAME);
   button.setAttribute('aria-haspopup', 'dialog');
   button.setAttribute('aria-expanded', String(document.getElementById(IDS.panel)?.hasAttribute('open') ?? false));
   button.append(iconSvg('filter', 16));

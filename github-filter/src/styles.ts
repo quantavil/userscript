@@ -31,7 +31,7 @@ ${P}, ${F} {
 ${P} *, ${P} *::before, ${P} *::after { box-sizing: border-box; }
 ${P} svg, ${F} svg { fill: currentColor; color: inherit; flex-shrink: 0; }
 
-/* Panel drawer & backdrop */
+/* Panel drawer & backdrop (prevent-page-scroll-under-modal-dialog) */
 ${P} {
   position: fixed;
   top: 0; right: 0; bottom: 0; left: auto;
@@ -45,6 +45,7 @@ ${P} {
   font-size: 13px; line-height: 1.5;
   box-shadow: -10px 0 32px rgba(1, 4, 9, 0.7);
   overflow: hidden;
+  overscroll-behavior: contain;
   transform: translateX(100%);
   opacity: 0;
   transition: transform .22s cubic-bezier(0.16, 1, 0.3, 1), opacity .18s ease, display .22s allow-discrete, overlay .22s allow-discrete;
@@ -53,6 +54,8 @@ ${P}[open] { transform: translateX(0); opacity: 1; }
 @starting-style { ${P}[open] { transform: translateX(100%); opacity: 0; } }
 
 ${P}::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
   background: rgba(1, 4, 9, 0.5);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
@@ -84,10 +87,6 @@ ${P} .ghf-brand-icon {
   display: inline-flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; border-radius: var(--ghf-radius-sm);
   background: var(--ghf-accent-subtle); color: var(--ghf-accent);
-}
-${P} .ghf-badge-shortcut {
-  padding: 1px 5px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-sunken); color: var(--ghf-muted); font-family: var(--ghf-mono); font-size: 10px;
 }
 ${P} .ghf-icon-btn {
   display: inline-flex; align-items: center; justify-content: center;

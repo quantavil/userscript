@@ -20,7 +20,6 @@ export const NAV_EVENTS = ['turbo:render', 'turbo:load', 'pjax:end'] as const;
 
 export const SEARCH_PATH = '/search';
 export const SEARCH_TYPE = 'repositories';
-export const SHORTCUT_LABEL = 'Alt+F';
 
 export const SORTS = [
   { value: '', label: 'Best match' },
@@ -35,20 +34,24 @@ export const KEYWORDS = [
   { id: 'hide', label: 'Hide results containing', placeholder: 'e.g. spam, tutorial, bot' }
 ] as const;
 
+/** Modern, popular languages for quick filtering. */
 export const POPULAR_LANGUAGES = [
   'TypeScript',
-  'JavaScript',
   'Python',
   'Rust',
   'Go',
-  'C++',
-  'Java',
-  'Ruby'
+  'Zig',
+  'Swift',
+  'Kotlin',
+  'C++'
 ] as const;
 
-export const STAR_PRESETS = [100, 500, 1000, 5000, 10000] as const;
-export const STARS_STOPS = [0, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
-export const FORKS_STOPS = [0, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000];
+/** Logarithmic star thresholds including 1+. */
+export const STAR_PRESETS = [1, 10, 100, 1000, 10000] as const;
+
+/** Logarithmic stop scales starting from 0, 1 for fine-grained low-count filtering. */
+export const STARS_STOPS = [0, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
+export const FORKS_STOPS = [0, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
 
 export type QualifierField =
   | { kind: 'text'; id: 'repo' | 'lang'; label: string; qualifier: string; placeholder: string; aliases?: string[] }

@@ -23,7 +23,7 @@ It reads GitHub's own Primer design tokens, so it inherits whatever theme you ha
 | Any of these → `react, vue` | `(react OR vue)` |
 | All of these → `"machine learning"` | `"machine learning"` |
 
-The sliders are scaled, not linear: 10, 25, 50, 100, 250, 500, 1k, 2k, 5k, 10k, 20k, 50k, 100k. Equal thumb travel on a linear 0–100k track would put every useful cut-off in the first centimetre.
+The sliders are logarithmic: 1, 5, 10, 25, 50, 100, 250, 500, 1k, 2.5k, 5k, 10k, 25k, 50k, 100k. Supporting fine-grained searches from 1+ star to 100k+.
 
 Open the panel on a results page and it parses the current URL back into the controls, so you can adjust one filter and re-run. A pasted `stars:>500` is widened to `>=501`, which is the same set, and a `stars:500` with no operator reads as "at least 500" — writing 500 and getting only repos with *exactly* 500 stars is never what you wanted.
 
@@ -48,10 +48,10 @@ Every control maps to a repository qualifier, so the panel always searches `type
 
 ## Using it
 
-The filter button in the bottom-right corner of any GitHub page opens the panel; so does pressing `Alt+F` (or `Cmd+Shift+F`) anywhere on GitHub, or selecting **GitHub Filter** in your userscript manager's menu.
+The filter button in the bottom-right corner of any GitHub page opens the panel; so does selecting **GitHub Filter** in your userscript manager's menu.
 
-- **Quick Chips**: 1-click popular language filters (`TypeScript`, `Python`, `Rust`, `Go`, etc.), star cutoffs (`100+`, `1k+`, `5k+`, `10k+`), and date presets (`Past 7d`, `Past 30d`, `Past year`)
-- **Dual Sliders**: Drag thumbs to set ranges or click the track; thumbs smoothly prioritize closer bounds without overlap lockups
+- **Quick Chips**: 1-click modern language filters (`TypeScript`, `Python`, `Rust`, `Go`, `Zig`, `Swift`, `Kotlin`, `C++`), star cutoffs (`1+`, `10+`, `100+`, `1k+`, `10k+`), and date presets (`Past 7d`, `Past 30d`, `Past year`)
+- **Logarithmic Dual Sliders**: Drag thumbs to set ranges (from 1+ upwards) or click the track; thumbs smoothly prioritize closer bounds without overlap lockups
 - **Interactive Live Query Tape**: Live query parts render as clickable chips with instant 1-click removal (`×`) and 1-click copy with feedback
 - **Active Filter Badge**: The floating launcher button displays an active filter count pill whenever filters are applied on the current search
 - `Enter` in any text field or clicking Search runs the query on GitHub
