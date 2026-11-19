@@ -1,6 +1,6 @@
 {
   "name": "github-filter",
-  "version": "10.1.0",
+  "version": "10.2.0",
   "private": true,
   "description": "Filter GitHub repository search with sliders for stars and forks, date pickers, saved presets and a local hide list.",
   "homepage": "https://github.com/quantavil/userscript",

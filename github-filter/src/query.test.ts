@@ -10,10 +10,12 @@ import {
   normalizeState,
   parseUrl,
   queryParts,
+  ratioToVal,
   removeQueryPart,
   shiftDays,
   splitTerms,
   toIndex,
+  valToRatio,
 } from "./query";
 
 const q = (url: string) => new URL(url).searchParams.get("q");
@@ -237,6 +239,29 @@ describe("slider scale", () => {
   it("snaps an off-scale value to the nearest stop but keeps it readable", () => {
     expect(toIndex(STARS_STOPS, 600, "min")).toBe(toIndex(STARS_STOPS, 500, "min"));
     expect(toIndex(FORKS_STOPS, 3, "max")).toBe(1);
+  });
+
+  it("smoothly maps continuous ratios and roundtrips key thresholds", () => {
+    // 0 / open bound
+    expect(valToRatio(0, 100000, "min")).toBe(0);
+    expect(ratioToVal(0, 100000, "min")).toBe(0);
+    expect(valToRatio(0, 100000, "max")).toBe(1);
+    expect(ratioToVal(1, 100000, "max")).toBe(0);
+
+    // 1 threshold
+    expect(ratioToVal(valToRatio(1, 100000, "min"), 100000, "min")).toBe(1);
+
+    // key logarithmic thresholds
+    for (const val of [10, 50, 100, 500, 1000, 5000, 10000, 50000, 100000]) {
+      const ratio = valToRatio(val, 100000, "min");
+      expect(ratioToVal(ratio, 100000, "min")).toBe(val);
+    }
+
+    // forks cap
+    for (const val of [1, 10, 100, 1000, 25000]) {
+      const ratio = valToRatio(val, 25000, "min");
+      expect(ratioToVal(ratio, 25000, "min")).toBe(val);
+    }
   });
 });
 

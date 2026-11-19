@@ -50,13 +50,14 @@ Every control maps to a repository qualifier, so the panel always searches `type
 
 The filter button in the bottom-right corner of any GitHub page opens the panel; so does selecting **GitHub Filter** in your userscript manager's menu.
 
-- **Quick Chips**: 1-click modern language filters (`TypeScript`, `Python`, `Rust`, `Go`, `Zig`, `Swift`, `Kotlin`, `C++`), star cutoffs (`1+`, `10+`, `100+`, `1k+`, `10k+`), and date presets (`Past 7d`, `Past 30d`, `Past year`)
-- **Logarithmic Dual Sliders**: Drag thumbs to set ranges (from 1+ upwards) or click the track; thumbs smoothly prioritize closer bounds without overlap lockups
+- **Unified Single Page**: No dual tabs or separate pages. All filters, live query tape, and saved presets reside in one compact, elegant view.
+- **Symmetric Quick Chips**: 1-click modern language filters (`TypeScript`, `Python`, `Rust`, `Go`, `Zig`, `Swift`, `Kotlin`, `C++`), symmetric metric chips for Stars (`1+`, `10+`, `100+`, `1k+`, `10k+`) and Forks (`1+`, `10+`, `100+`, `1k+`), and date presets (`7d`, `30d`, `1y`) integrated compactly into section headers.
+- **Silky Smooth Logarithmic Dual Sliders**: Continuous pointer-captured dual sliders with smooth logarithmic travel, active accent fill, grab feedback, and natural round numbers across 5 orders of magnitude (from 1+ to 100k+).
+- **Single-Page Presets**: View saved presets as compact chips with 1-click loading, direct run (`➔`), and safe 2-click delete (`del?`); save current filters instantly via inline input.
 - **Interactive Live Query Tape**: Live query parts render as clickable chips with instant 1-click removal (`×`) and 1-click copy with feedback
 - **Active Filter Badge**: The floating launcher button displays an active filter count pill whenever filters are applied on the current search
 - `Enter` in any text field or clicking Search runs the query on GitHub
 - `Esc`, or a click outside, closes the panel
-- `←`/`→` move between Builder and Presets tabs
 
 ## Development
 

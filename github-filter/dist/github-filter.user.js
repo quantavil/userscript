@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Filter
 // @namespace    https://github.com/quantavil/userscript/github-filter
-// @version      10.1.0
+// @version      10.2.0
 // @author       quantavil (https://github.com/quantavil)
 // @description  Filter GitHub repository search with sliders for stars and forks, date pickers, saved presets and a local hide list.
 // @license      GPL-3.0-or-later
@@ -84,39 +84,14 @@
 		1e3,
 		1e4
 	];
-	var STARS_STOPS = [
-		0,
+	var FORK_PRESETS = [
 		1,
-		5,
 		10,
-		25,
-		50,
 		100,
-		250,
-		500,
-		1e3,
-		2500,
-		5e3,
-		1e4,
-		25e3,
-		5e4,
-		1e5
+		1e3
 	];
-	var FORKS_STOPS = [
-		0,
-		1,
-		5,
-		10,
-		25,
-		50,
-		100,
-		250,
-		500,
-		1e3,
-		2500,
-		5e3,
-		1e4
-	];
+	var STARS_MAX = 1e5;
+	var FORKS_MAX = 25e3;
 	var QUALIFIERS = [
 		{
 			kind: "text",
@@ -138,14 +113,45 @@
 			id: "stars",
 			label: "Stars",
 			qualifier: "stars",
-			stops: STARS_STOPS
+			stops: [
+				0,
+				1,
+				5,
+				10,
+				25,
+				50,
+				100,
+				250,
+				500,
+				1e3,
+				2500,
+				5e3,
+				1e4,
+				25e3,
+				5e4,
+				1e5
+			]
 		},
 		{
 			kind: "number",
 			id: "forks",
 			label: "Forks",
 			qualifier: "forks",
-			stops: FORKS_STOPS
+			stops: [
+				0,
+				1,
+				5,
+				10,
+				25,
+				50,
+				100,
+				250,
+				500,
+				1e3,
+				2500,
+				5e3,
+				1e4
+			]
 		},
 		{
 			kind: "date",
@@ -427,16 +433,30 @@
 		}
 		return state;
 	}
-	function toIndex(stops, value, end) {
-		const last = stops.length - 1;
-		if (value <= 0) return end === "min" ? 0 : last;
-		let best = 1;
-		for (let i = 1; i <= last; i += 1) if (Math.abs((stops[i] ?? 0) - value) < Math.abs((stops[best] ?? 0) - value)) best = i;
-		return best;
+	function valToRatio(val, max, end) {
+		if (val <= 0) return end === "min" ? 0 : 1;
+		if (val <= 1) return .02;
+		if (val >= max) return 1;
+		return .02 + .98 * (Math.log10(val) / Math.log10(max));
 	}
-	function fromIndex(stops, index, end) {
-		if (end === "min") return index <= 0 ? 0 : stops[index] ?? 0;
-		return index >= stops.length - 1 ? 0 : stops[index] ?? 0;
+	function quantizeVal(raw, max) {
+		if (raw <= 1.5) return 1;
+		if (raw < 10) return Math.round(raw);
+		if (raw < 50) return Math.round(raw / 5) * 5;
+		if (raw < 200) return Math.round(raw / 10) * 10;
+		if (raw < 1e3) return Math.round(raw / 50) * 50;
+		if (raw < 5e3) return Math.round(raw / 250) * 250;
+		if (raw < 2e4) return Math.round(raw / 1e3) * 1e3;
+		const rounded = Math.round(raw / 5e3) * 5e3;
+		return Math.min(rounded, max);
+	}
+	function ratioToVal(ratio, max, end) {
+		if (end === "min" && ratio <= .015) return 0;
+		if (end === "max" && ratio >= .985) return 0;
+		if (ratio <= .025) return 1;
+		if (ratio >= .975 && end === "min") return max;
+		const logMax = Math.log10(max);
+		return quantizeVal(10 ** (Math.max(0, Math.min(1, (ratio - .02) / .98)) * logMax), max);
 	}
 	var escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 	function buildHideMatcher(input) {
@@ -568,7 +588,7 @@ ${P$1} svg, ${F$2} svg { fill: currentColor; color: inherit; flex-shrink: 0; }
 ${P$1} {
   position: fixed;
   top: 0; right: 0; bottom: 0; left: auto;
-  width: min(440px, 100vw);
+  width: min(420px, 100vw);
   height: 100dvh;
   margin: 0; padding: 0;
   border: none; border-left: 1px solid var(--ghf-border);
@@ -601,9 +621,9 @@ ${P$1}[open]::backdrop { opacity: 1; }
 @media (max-width: 767px) {
   ${P$1} {
     top: auto; bottom: 0; left: 0;
-    width: 100vw; height: auto; max-height: 88dvh;
+    width: 100vw; height: auto; max-height: 90dvh;
     border-left: none; border-top: 1px solid var(--ghf-border);
-    border-radius: 14px 14px 0 0;
+    border-radius: 12px 12px 0 0;
     transform: translateY(100%);
   }
   ${P$1}[open] { transform: translateY(0); }
@@ -612,58 +632,49 @@ ${P$1}[open]::backdrop { opacity: 1; }
 
 ${P$1} .ghf-form { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 
-/* Header & Tabs */
-${P$1} .ghf-head { flex: 0 0 auto; padding: 12px 16px 0; border-bottom: 1px solid var(--ghf-hairline); }
+/* Header */
+${P$1} .ghf-head { flex: 0 0 auto; padding: 8px 12px; border-bottom: 1px solid var(--ghf-hairline); }
 ${P$1} .ghf-titlebar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-${P$1} .ghf-brand { display: flex; align-items: center; gap: 8px; color: var(--ghf-fg); font-size: 14px; font-weight: 600; }
+${P$1} .ghf-brand { display: flex; align-items: center; gap: 7px; color: var(--ghf-fg); font-size: 13.5px; font-weight: 600; }
 ${P$1} .ghf-brand-icon {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; border-radius: var(--ghf-radius-sm);
+  width: 22px; height: 22px; border-radius: var(--ghf-radius-sm);
   background: var(--ghf-accent-subtle); color: var(--ghf-accent);
+}
+${P$1} .ghf-pill {
+  min-width: 16px; height: 16px; padding: 0 5px; border-radius: var(--ghf-radius-pill);
+  background: var(--ghf-accent-subtle); color: var(--ghf-accent); font-size: 10px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 ${P$1} .ghf-icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: var(--ghf-radius-sm);
+  width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: var(--ghf-radius-sm);
   background: transparent; color: var(--ghf-muted); cursor: pointer;
   transition: background .12s, color .12s;
 }
 ${P$1} .ghf-icon-btn:hover { background: var(--ghf-btn-bg); color: var(--ghf-fg); }
 
-${P$1} .ghf-tabs { display: flex; gap: 8px; margin-top: 10px; }
-${P$1} .ghf-tab-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 10px 8px; border: 0; border-bottom: 2px solid transparent;
-  background: none; color: var(--ghf-muted); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
-}
-${P$1} .ghf-tab-btn:hover { color: var(--ghf-fg); }
-${P$1} .ghf-tab-btn[aria-selected="true"] { color: var(--ghf-fg); font-weight: 600; border-bottom-color: var(--ghf-accent); }
-${P$1} .ghf-pill {
-  min-width: 17px; height: 17px; padding: 0 5px; border-radius: var(--ghf-radius-pill);
-  background: var(--ghf-accent-subtle); color: var(--ghf-accent); font-size: 10.5px; font-weight: 600;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-
 /* Scrollable body & cards */
 ${P$1} .ghf-body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
-  padding: 12px 16px 20px; scrollbar-width: thin; scrollbar-color: var(--ghf-border) transparent;
+  padding: 8px 12px 14px; scrollbar-width: thin; scrollbar-color: var(--ghf-border) transparent;
+  display: flex; flex-direction: column; gap: 8px;
 }
-${P$1} [role="tabpanel"][hidden] { display: none; }
 ${P$1} .ghf-card {
-  margin-bottom: 12px; padding: 12px; border: 1px solid var(--ghf-border);
-  border-radius: var(--ghf-radius); background: var(--ghf-card);
+  padding: 8px 10px; border: 1px solid var(--ghf-border);
+  border-radius: var(--ghf-radius-sm); background: var(--ghf-card);
 }
-${P$1} .ghf-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+${P$1} .ghf-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 ${P$1} .ghf-card-title {
-  display: flex; align-items: center; gap: 6px; margin: 0;
-  color: var(--ghf-fg); font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; gap: 5px; margin: 0;
+  color: var(--ghf-fg); font-size: 11.5px; font-weight: 600;
 }
 ${P$1} .ghf-card-title svg { color: var(--ghf-muted); }
 
 /* Fields & Inputs */
-${P$1} .ghf-fields { display: flex; flex-direction: column; gap: 8px; }
-${P$1} .ghf-field { display: flex; flex-direction: column; gap: 4px; }
-${P$1} .ghf-label { color: var(--ghf-muted); font-size: 11px; font-weight: 500; }
+${P$1} .ghf-fields { display: flex; flex-direction: column; gap: 6px; }
+${P$1} .ghf-field { display: flex; flex-direction: column; gap: 2px; }
+${P$1} .ghf-label { color: var(--ghf-muted); font-size: 10.5px; font-weight: 500; }
 ${P$1} .ghf-input-wrap {
   display: flex; align-items: center; width: 100%; border: 1px solid var(--ghf-border);
   border-radius: var(--ghf-radius-sm); background: var(--ghf-bg);
@@ -671,21 +682,21 @@ ${P$1} .ghf-input-wrap {
 }
 ${P$1} .ghf-input-wrap:focus-within { border-color: var(--ghf-accent); box-shadow: 0 0 0 2px var(--ghf-accent-subtle); }
 ${P$1} .ghf-input {
-  flex: 1; min-width: 0; height: 30px; padding: 0 8px; border: 0; outline: 0;
-  background: transparent; color: var(--ghf-fg); font: inherit; font-size: 12.5px;
+  flex: 1; min-width: 0; height: 28px; padding: 0 8px; border: 0; outline: 0;
+  background: transparent; color: var(--ghf-fg); font: inherit; font-size: 12px;
 }
 ${P$1} .ghf-input::placeholder { color: var(--ghf-muted); opacity: 0.7; }
 ${P$1} .ghf-clear-btn {
-  width: 20px; height: 20px; margin-right: 5px; padding: 0; border: 0; border-radius: 4px;
+  width: 18px; height: 18px; margin-right: 4px; padding: 0; border: 0; border-radius: 4px;
   background: transparent; color: var(--ghf-muted); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
 }
 ${P$1} .ghf-clear-btn:hover { background: var(--ghf-btn-bg); color: var(--ghf-fg); }
 
 /* Quick chips */
-${P$1} .ghf-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+${P$1} .ghf-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 ${P$1} .ghf-chip {
-  display: inline-flex; align-items: center; height: 20px; padding: 0 7px;
+  display: inline-flex; align-items: center; height: 20px; padding: 0 6px;
   border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-pill);
   background: var(--ghf-sunken); color: var(--ghf-muted); font: inherit; font-size: 10.5px; font-weight: 500;
   cursor: pointer; transition: border-color .1s, color .1s, background .1s;
@@ -697,86 +708,129 @@ ${P$1} .ghf-chip.ghf-chip-active {
 }
 
 /* Sliders */
-${P$1} .ghf-slider-row { margin-top: 6px; }
-${P$1} .ghf-slider-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-${P$1} .ghf-slider-title { display: flex; align-items: center; gap: 5px; color: var(--ghf-fg); font-size: 11.5px; font-weight: 500; }
+${P$1} .ghf-slider-row { margin-top: 5px; }
+${P$1} .ghf-slider-header { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 2px; }
+${P$1} .ghf-slider-title-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+${P$1} .ghf-slider-title { display: flex; align-items: center; gap: 4px; color: var(--ghf-fg); font-size: 11px; font-weight: 600; }
 ${P$1} .ghf-slider-title svg { color: var(--ghf-muted); }
+${P$1} .ghf-mini-chips { display: inline-flex; align-items: center; gap: 3px; }
+${P$1} .ghf-mini-chip {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 5px;
+  border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-pill);
+  background: var(--ghf-sunken); color: var(--ghf-muted); font: inherit; font-size: 10px; font-weight: 500;
+  cursor: pointer; transition: border-color .1s, color .1s, background .1s;
+}
+${P$1} .ghf-mini-chip:hover { border-color: var(--ghf-accent); color: var(--ghf-fg); }
+${P$1} .ghf-mini-chip.ghf-mini-chip-active {
+  border-color: var(--ghf-accent); background: var(--ghf-accent-subtle);
+  color: var(--ghf-accent); font-weight: 600;
+}
+${P$1} .ghf-slider-readout-group { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 ${P$1} .ghf-readout {
-  padding: 1px 6px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-sunken); color: var(--ghf-fg); font-family: var(--ghf-mono); font-size: 10.5px;
+  padding: 1px 5px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm);
+  background: var(--ghf-sunken); color: var(--ghf-fg); font-family: var(--ghf-mono); font-size: 10px;
 }
-${P$1} .ghf-slider { position: relative; height: 26px; cursor: pointer; touch-action: none; }
+${P$1} .ghf-slider { position: relative; height: 22px; cursor: pointer; touch-action: none; user-select: none; }
 ${P$1} .ghf-slider-track {
-  position: absolute; left: 6px; right: 6px; top: 10px; height: 6px;
-  border-radius: var(--ghf-radius-pill); background: var(--ghf-border); pointer-events: none;
+  position: absolute; left: 7px; right: 7px; top: 9px; height: 4px;
+  border-radius: 999px; background: var(--ghf-hairline); border: 1px solid var(--ghf-border); pointer-events: none;
 }
-${P$1} .ghf-slider-fill { position: absolute; top: 0; bottom: 0; border-radius: var(--ghf-radius-pill); background: var(--ghf-accent); }
-${P$1} .ghf-slider input {
-  position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 26px; margin: 0;
-  -webkit-appearance: none; appearance: none; background: none; pointer-events: none;
+${P$1} .ghf-slider-fill {
+  position: absolute; top: 0; bottom: 0; border-radius: 999px;
+  background: var(--ghf-accent); pointer-events: none;
 }
-${P$1} .ghf-slider input::-webkit-slider-thumb {
-  -webkit-appearance: none; pointer-events: auto;
-  width: 16px; height: 16px; margin-top: 5px; border: 2px solid var(--ghf-accent);
-  border-radius: 50%; background: var(--ghf-card); cursor: grab;
-  box-shadow: 0 1px 4px rgba(1, 4, 9, 0.6); transition: transform .1s;
+${P$1} .ghf-slider-thumb {
+  position: absolute; top: 4px; width: 14px; height: 14px; margin-left: -7px;
+  border-radius: 50%; background: #e6edf3; border: 2px solid var(--ghf-accent);
+  box-shadow: 0 1px 4px rgba(1, 4, 9, 0.8); cursor: grab; outline: none; touch-action: none;
+  transition: transform .1s, box-shadow .1s, border-color .1s;
 }
-${P$1} .ghf-slider input::-webkit-slider-thumb:hover { transform: scale(1.15); }
-${P$1} .ghf-slider input::-moz-range-thumb {
-  pointer-events: auto; width: 12px; height: 12px; border: 2px solid var(--ghf-accent);
-  border-radius: 50%; background: var(--ghf-card); cursor: grab;
+${P$1} .ghf-slider-thumb:hover {
+  transform: scale(1.15); box-shadow: 0 0 0 3px var(--ghf-accent-subtle), 0 2px 6px rgba(1, 4, 9, 0.9);
+}
+${P$1} .ghf-slider-thumb:focus-visible, ${P$1} .ghf-slider-thumb.ghf-thumb-active {
+  cursor: grabbing; transform: scale(1.2); border-color: #58a6ff; background: #ffffff;
+  box-shadow: 0 0 0 4px var(--ghf-accent-subtle), 0 2px 8px rgba(1, 4, 9, 0.9);
 }
 
 /* Dates */
-${P$1} .ghf-dates { display: grid; grid-template-columns: 1fr 16px 1fr; align-items: center; gap: 6px; margin-top: 4px; }
+${P$1} .ghf-dates { display: grid; grid-template-columns: 1fr 14px 1fr; align-items: center; gap: 4px; margin-top: 3px; }
 ${P$1} .ghf-date {
-  width: 100%; height: 30px; padding: 0 6px; border: 1px solid var(--ghf-border);
+  width: 100%; height: 26px; padding: 0 6px; border: 1px solid var(--ghf-border);
   border-radius: var(--ghf-radius-sm); background: var(--ghf-bg); color: var(--ghf-fg);
   font: inherit; font-size: 11px; outline: 0;
 }
 ${P$1} .ghf-date:focus { border-color: var(--ghf-accent); box-shadow: 0 0 0 2px var(--ghf-accent-subtle); }
-${P$1} .ghf-date-sep { text-align: center; color: var(--ghf-muted); font-size: 11px; }
+${P$1} .ghf-date-sep { text-align: center; color: var(--ghf-muted); font-size: 10px; }
 
 /* Sort */
 ${P$1} .ghf-sort-wrap { position: relative; display: inline-flex; align-items: center; }
 ${P$1} .ghf-sort-select {
-  appearance: none; height: 26px; padding: 0 22px 0 8px; border: 1px solid var(--ghf-border);
+  appearance: none; height: 24px; padding: 0 20px 0 6px; border: 1px solid var(--ghf-border);
   border-radius: var(--ghf-radius-sm); background: var(--ghf-bg); color: var(--ghf-fg);
   font: inherit; font-size: 11px; cursor: pointer; outline: 0;
 }
-${P$1} .ghf-sort-wrap svg { position: absolute; right: 6px; color: var(--ghf-muted); pointer-events: none; }
+${P$1} .ghf-sort-wrap svg { position: absolute; right: 5px; color: var(--ghf-muted); pointer-events: none; }
+
+/* Presets on single page */
+${P$1} .ghf-preset-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+${P$1} .ghf-preset-chip-item {
+  display: inline-flex; align-items: center; border: 1px solid var(--ghf-border);
+  border-radius: var(--ghf-radius-pill); background: var(--ghf-sunken); overflow: hidden; max-width: 100%;
+  transition: border-color .1s;
+}
+${P$1} .ghf-preset-chip-item:hover { border-color: var(--ghf-accent); }
+${P$1} .ghf-preset-apply-btn {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px;
+  border: 0; background: transparent; color: var(--ghf-fg); font: inherit; font-size: 11px; font-weight: 500;
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+${P$1} .ghf-preset-apply-btn:hover { color: var(--ghf-accent); }
+${P$1} .ghf-preset-run-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 22px;
+  border: 0; border-left: 1px solid var(--ghf-border); background: transparent; color: var(--ghf-muted); cursor: pointer;
+}
+${P$1} .ghf-preset-run-btn:hover { color: var(--ghf-accent); background: var(--ghf-accent-subtle); }
+${P$1} .ghf-preset-del-btn {
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; height: 22px;
+  border: 0; border-left: 1px solid var(--ghf-border); background: transparent; color: var(--ghf-muted); cursor: pointer;
+}
+${P$1} .ghf-preset-del-btn:hover { color: var(--ghf-danger); background: var(--ghf-danger-subtle); }
+${P$1} .ghf-del-confirm { font-size: 9px; font-weight: 700; color: var(--ghf-danger); text-transform: uppercase; }
+${P$1} .ghf-preset-save-row { display: flex; gap: 6px; align-items: center; }
+${P$1} .ghf-error-msg { margin: 4px 0 0; color: var(--ghf-danger); font-size: 10.5px; }
 
 /* Footer & Live tape */
 ${P$1} .ghf-foot {
-  flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px;
-  padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--ghf-border); background: var(--ghf-card);
 }
-${P$1} .ghf-tape-box { padding: 8px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm); background: var(--ghf-sunken); }
-${P$1} .ghf-tape-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-${P$1} .ghf-tape-label { color: var(--ghf-muted); font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-${P$1} .ghf-tape-chips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 60px; overflow-y: auto; scrollbar-width: thin; }
+${P$1} .ghf-tape-box { padding: 6px 8px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm); background: var(--ghf-sunken); }
+${P$1} .ghf-tape-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
+${P$1} .ghf-tape-label { color: var(--ghf-muted); font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+${P$1} .ghf-tape-chips { display: flex; flex-wrap: wrap; gap: 3px; max-height: 48px; overflow-y: auto; scrollbar-width: thin; }
 ${P$1} .ghf-tape-chip {
-  display: inline-flex; align-items: center; gap: 3px; padding: 1px 5px;
+  display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 4px;
   border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-card); color: var(--ghf-fg); font-family: var(--ghf-mono); font-size: 10.5px;
+  background: var(--ghf-card); color: var(--ghf-fg); font-family: var(--ghf-mono); font-size: 10px;
 }
 ${P$1} .ghf-tape-chip-key { color: var(--ghf-accent); font-weight: 600; }
 ${P$1} .ghf-tape-chip-x {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 13px; height: 13px; padding: 0; border: 0; border-radius: 50%;
+  width: 12px; height: 12px; padding: 0; border: 0; border-radius: 50%;
   background: transparent; color: var(--ghf-muted); cursor: pointer;
 }
 ${P$1} .ghf-tape-chip-x:hover { background: var(--ghf-danger-subtle); color: var(--ghf-danger); }
-${P$1} .ghf-tape-empty { color: var(--ghf-muted); font-size: 11px; font-style: italic; }
-${P$1} .ghf-tape-hide { margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--ghf-border); color: var(--ghf-muted); font-size: 10.5px; }
+${P$1} .ghf-tape-empty { color: var(--ghf-muted); font-size: 10.5px; font-style: italic; }
+${P$1} .ghf-tape-hide { margin-top: 3px; padding-top: 3px; border-top: 1px dashed var(--ghf-border); color: var(--ghf-muted); font-size: 10px; }
 
 /* Action buttons */
-${P$1} .ghf-actions { display: grid; grid-template-columns: 85px 1fr; gap: 8px; }
+${P$1} .ghf-actions { display: grid; grid-template-columns: 80px 1fr; gap: 6px; }
 ${P$1} .ghf-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-  height: 32px; padding: 0 10px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm);
-  background: var(--ghf-btn-bg); color: var(--ghf-fg); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  height: 28px; padding: 0 8px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius-sm);
+  background: var(--ghf-btn-bg); color: var(--ghf-fg); font: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer;
   transition: background .1s, border-color .1s;
 }
 ${P$1} .ghf-btn:hover { background: var(--ghf-btn-hover); }
@@ -784,17 +838,6 @@ ${P$1} .ghf-btn-primary { border-color: var(--ghf-primary); background: var(--gh
 ${P$1} .ghf-btn-primary:hover { border-color: var(--ghf-primary-hover); background: var(--ghf-primary-hover); }
 ${P$1} .ghf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Presets */
-${P$1} .ghf-preset-list { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
-${P$1} .ghf-preset-card {
-  padding: 8px 10px; border: 1px solid var(--ghf-border); border-radius: var(--ghf-radius);
-  background: var(--ghf-card); display: flex; flex-direction: column; gap: 6px;
-}
-${P$1} .ghf-preset-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-${P$1} .ghf-preset-name { font-size: 12.5px; font-weight: 600; color: var(--ghf-fg); }
-${P$1} .ghf-preset-summary { color: var(--ghf-muted); font-family: var(--ghf-mono); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-${P$1} .ghf-empty { padding: 30px 16px; border: 1px dashed var(--ghf-border); border-radius: var(--ghf-radius); color: var(--ghf-muted); text-align: center; }
-${P$1} .ghf-empty svg { color: var(--ghf-accent); margin-bottom: 6px; }
 
 /* Floating button */
 ${F$2} {
@@ -1288,7 +1331,8 @@ ${F$2} .ghf-fab-badge {
 		star: "M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z",
 		gitFork: "M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z",
 		calendar: "M4.75 0a.75.75 0 0 1 .75.75V2h5V.75a.75.75 0 0 1 1.5 0V2h1.25c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 13.25 16H2.75A1.75 1.75 0 0 1 1 14.25V3.75C1 2.784 1.784 2 2.75 2H4V.75A.75.75 0 0 1 4.75 0ZM2.5 7.5v6.75c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25V7.5Zm10.75-2a.25.25 0 0 0-.25-.25H2.75a.25.25 0 0 0-.25.25V6h10.5Z",
-		code: "M4.72 3.22a.75.75 0 0 1 1.06 1.06L2.06 8l3.72 3.72a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018l-4.25-4.25a.75.75 0 0 1 0-1.06l4.25-4.25Zm6.56 0a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L13.94 8l-3.72-3.72a.75.75 0 0 1 0-1.06Z"
+		code: "M4.72 3.22a.75.75 0 0 1 1.06 1.06L2.06 8l3.72 3.72a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018l-4.25-4.25a.75.75 0 0 1 0-1.06l4.25-4.25Zm6.56 0a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L13.94 8l-3.72-3.72a.75.75 0 0 1 0-1.06Z",
+		bookmark: "M3 2.75C3 1.784 3.784 1 4.75 1h6.5c.966 0 1.75.784 1.75 1.75v11.5a.75.75 0 0 1-1.227.579L8 11.722l-3.773 3.107A.751.751 0 0 1 3 14.25ZM4.75 2.5a.25.25 0 0 0-.25.25v9.91l3.023-2.489a.751.751 0 0 1 .954 0l3.023 2.49V2.75a.25.25 0 0 0-.25-.25Z"
 	};
 	function Icon({ name, size = 16, className }) {
 		return a("svg", {
@@ -1361,133 +1405,186 @@ ${F$2} .ghf-fab-badge {
 					onClick: () => onChange(""),
 					children: a(Icon, {
 						name: "x",
-						size: 12
+						size: 11
 					})
 				})]
 			})]
 		});
 	}
-	function RangeSlider({ label, icon, stops, value, presets, onChange }) {
-		const last = stops.length - 1;
+	function SmoothSlider({ label, icon, maxCap, value, presets, onChange }) {
+		const trackRef = T(null);
+		const [activeThumb, setActiveThumb] = d(null);
 		const [lead, setLead] = d("max");
-		const lo = value.min > 0 ? toIndex(stops, value.min, "min") : 0;
-		const hi = value.max > 0 ? toIndex(stops, value.max, "max") : last;
+		const loRatio = valToRatio(value.min, maxCap, "min");
+		const hiRatio = valToRatio(value.max, maxCap, "max");
 		const filtered = value.min > 0 || value.max > 0;
-		const setLo = (idx) => onChange({
-			min: fromIndex(stops, Math.min(idx, hi), "min"),
-			max: value.max
-		});
-		const setHi = (idx) => onChange({
-			min: value.min,
-			max: fromIndex(stops, Math.max(idx, lo, 1), "max")
-		});
-		const jump = (e) => {
-			if (e.target !== e.currentTarget) return;
-			const rect = e.currentTarget.getBoundingClientRect();
-			const ratio = Math.min(Math.max((e.clientX - rect.left - 8) / Math.max(rect.width - 16, 1), 0), 1);
-			const idx = Math.round(ratio * last);
-			const target = idx < lo ? "min" : idx > hi ? "max" : idx - lo < hi - idx ? "min" : "max";
+		const getRatioFromPointer = (clientX) => {
+			if (!trackRef.current) return 0;
+			const rect = trackRef.current.getBoundingClientRect();
+			if (rect.width <= 0) return 0;
+			return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+		};
+		const handlePointerDown = (e) => {
+			if (e.button !== 0) return;
+			const ratio = getRatioFromPointer(e.clientX);
+			const distToLo = Math.abs(ratio - loRatio);
+			const distToHi = Math.abs(ratio - hiRatio);
+			const target = distToLo === distToHi ? ratio < loRatio ? "min" : "max" : distToLo < distToHi ? "min" : "max";
 			setLead(target);
-			if (target === "min") setLo(idx);
-			else setHi(idx);
+			setActiveThumb(target);
+			if (target === "min") onChange({
+				min: ratioToVal(Math.min(ratio, hiRatio), maxCap, "min"),
+				max: value.max
+			});
+			else {
+				const newMax = ratioToVal(Math.max(ratio, loRatio), maxCap, "max");
+				onChange({
+					min: value.min,
+					max: newMax
+				});
+			}
+			try {
+				e.currentTarget.setPointerCapture(e.pointerId);
+			} catch {}
+		};
+		const handlePointerMove = (e) => {
+			if (!activeThumb) return;
+			const ratio = getRatioFromPointer(e.clientX);
+			if (activeThumb === "min") {
+				const newMin = ratioToVal(Math.min(ratio, hiRatio), maxCap, "min");
+				if (newMin !== value.min) onChange({
+					min: newMin,
+					max: value.max
+				});
+			} else {
+				const newMax = ratioToVal(Math.max(ratio, loRatio), maxCap, "max");
+				if (newMax !== value.max) onChange({
+					min: value.min,
+					max: newMax
+				});
+			}
+		};
+		const handlePointerUp = (e) => {
+			if (activeThumb) {
+				try {
+					e.currentTarget.releasePointerCapture(e.pointerId);
+				} catch {}
+				setActiveThumb(null);
+			}
+		};
+		const handleKey = (thumb, e) => {
+			let delta = 0;
+			if (e.key === "ArrowRight" || e.key === "ArrowUp") delta = .03;
+			else if (e.key === "ArrowLeft" || e.key === "ArrowDown") delta = -.03;
+			else if (e.key === "Home") delta = -1;
+			else if (e.key === "End") delta = 1;
+			else return;
+			e.preventDefault();
+			setLead(thumb);
+			if (thumb === "min") onChange({
+				min: ratioToVal(Math.max(0, Math.min(hiRatio, loRatio + delta)), maxCap, "min"),
+				max: value.max
+			});
+			else {
+				const nextRatio = Math.max(loRatio, Math.min(1, hiRatio + delta));
+				onChange({
+					min: value.min,
+					max: ratioToVal(nextRatio, maxCap, "max")
+				});
+			}
 		};
 		return a("div", {
 			class: "ghf-slider-row",
-			children: [
-				a("div", {
-					class: "ghf-slider-header",
+			children: [a("div", {
+				class: "ghf-slider-header",
+				children: [a("div", {
+					class: "ghf-slider-title-group",
 					children: [a("span", {
 						class: "ghf-slider-title",
 						children: [a(Icon, {
 							name: icon,
-							size: 14
+							size: 13
 						}), label]
 					}), a("div", {
-						style: {
-							display: "flex",
-							alignItems: "center",
-							gap: "4px"
-						},
-						children: [a("span", {
-							class: "ghf-readout",
-							children: rangeReadout(value)
-						}), filtered && a("button", {
-							type: "button",
-							class: "ghf-clear-btn",
-							"aria-label": `Clear ${label}`,
-							onClick: () => onChange({
-								min: 0,
-								max: 0
-							}),
-							children: a(Icon, {
-								name: "x",
-								size: 12
-							})
-						})]
+						class: "ghf-mini-chips",
+						children: presets.map((p) => {
+							const active = value.min === p && value.max === 0;
+							return a("button", {
+								type: "button",
+								class: `ghf-mini-chip ${active ? "ghf-mini-chip-active" : ""}`,
+								onClick: () => onChange({
+									min: active ? 0 : p,
+									max: 0
+								}),
+								children: [formatCount(p), "+"]
+							}, p);
+						})
 					})]
-				}),
-				a("div", {
-					class: "ghf-slider",
-					onPointerDown: jump,
-					children: [
-						a("div", {
-							class: "ghf-slider-track",
-							children: filtered && a("div", {
-								class: "ghf-slider-fill",
-								style: {
-									left: `${lo / last * 100}%`,
-									right: `${(1 - hi / last) * 100}%`
-								}
-							})
-						}),
-						a("input", {
-							type: "range",
+				}), a("div", {
+					class: "ghf-slider-readout-group",
+					children: [a("span", {
+						class: "ghf-readout",
+						children: rangeReadout(value)
+					}), filtered && a("button", {
+						type: "button",
+						class: "ghf-clear-btn",
+						"aria-label": `Clear ${label}`,
+						onClick: () => onChange({
 							min: 0,
-							max: last,
-							step: 1,
-							value: lo,
-							"aria-label": `Minimum ${label}`,
-							style: { zIndex: lead === "min" ? 3 : 2 },
-							onFocus: () => setLead("min"),
-							onPointerDown: () => setLead("min"),
-							onInput: (e) => {
-								setLead("min");
-								setLo(Number(e.currentTarget.value));
-							}
+							max: 0
 						}),
-						a("input", {
-							type: "range",
-							min: 0,
-							max: last,
-							step: 1,
-							value: hi,
-							"aria-label": `Maximum ${label}`,
-							style: { zIndex: lead === "max" ? 3 : 2 },
-							onFocus: () => setLead("max"),
-							onPointerDown: () => setLead("max"),
-							onInput: (e) => {
-								setLead("max");
-								setHi(Number(e.currentTarget.value));
+						children: a(Icon, {
+							name: "x",
+							size: 11
+						})
+					})]
+				})]
+			}), a("div", {
+				ref: trackRef,
+				class: "ghf-slider",
+				onPointerDown: handlePointerDown,
+				onPointerMove: handlePointerMove,
+				onPointerUp: handlePointerUp,
+				onPointerCancel: handlePointerUp,
+				children: [
+					a("div", {
+						class: "ghf-slider-track",
+						children: filtered && a("div", {
+							class: "ghf-slider-fill",
+							style: {
+								left: `${loRatio * 100}%`,
+								width: `${Math.max(0, hiRatio - loRatio) * 100}%`
 							}
 						})
-					]
-				}),
-				presets && a("div", {
-					class: "ghf-chips",
-					children: presets.map((p) => {
-						const active = value.min === p && value.max === 0;
-						return a("button", {
-							type: "button",
-							class: `ghf-chip ${active ? "ghf-chip-active" : ""}`,
-							onClick: () => onChange({
-								min: active ? 0 : p,
-								max: 0
-							}),
-							children: [formatCount(p), "+"]
-						}, p);
+					}),
+					a("div", {
+						class: `ghf-slider-thumb ${activeThumb === "min" ? "ghf-thumb-active" : ""}`,
+						style: {
+							left: `${loRatio * 100}%`,
+							zIndex: lead === "min" ? 4 : 2
+						},
+						tabIndex: 0,
+						role: "slider",
+						"aria-label": `Minimum ${label}`,
+						"aria-valuenow": value.min,
+						onKeyDown: (e) => handleKey("min", e),
+						onFocus: () => setLead("min")
+					}),
+					a("div", {
+						class: `ghf-slider-thumb ${activeThumb === "max" ? "ghf-thumb-active" : ""}`,
+						style: {
+							left: `${hiRatio * 100}%`,
+							zIndex: lead === "max" ? 4 : 2
+						},
+						tabIndex: 0,
+						role: "slider",
+						"aria-label": `Maximum ${label}`,
+						"aria-valuenow": value.max,
+						onKeyDown: (e) => handleKey("max", e),
+						onFocus: () => setLead("max")
 					})
-				})
-			]
+				]
+			})]
 		});
 	}
 	function DatePicker({ label, value, onChange }) {
@@ -1500,93 +1597,88 @@ ${F$2} .ghf-fab-badge {
 		};
 		return a("div", {
 			class: "ghf-slider-row",
-			children: [
-				a("div", {
-					class: "ghf-slider-header",
+			children: [a("div", {
+				class: "ghf-slider-header",
+				children: [a("div", {
+					class: "ghf-slider-title-group",
 					children: [a("span", {
 						class: "ghf-slider-title",
 						children: [a(Icon, {
 							name: "calendar",
-							size: 14
+							size: 13
 						}), label]
 					}), a("div", {
-						style: {
-							display: "flex",
-							alignItems: "center",
-							gap: "4px"
-						},
-						children: [a("span", {
-							class: "ghf-readout",
-							children: dateReadout(value)
-						}), filtered && a("button", {
+						class: "ghf-mini-chips",
+						children: [
+							{
+								label: "7d",
+								days: 7
+							},
+							{
+								label: "30d",
+								days: 30
+							},
+							{
+								label: "1y",
+								days: 365
+							}
+						].map((p) => a("button", {
 							type: "button",
-							class: "ghf-clear-btn",
-							"aria-label": `Clear ${label}`,
-							onClick: () => onChange({
-								from: "",
-								to: ""
-							}),
-							children: a(Icon, {
-								name: "x",
-								size: 12
-							})
-						})]
+							class: "ghf-mini-chip",
+							onClick: () => applyPreset(p.days),
+							children: p.label
+						}, p.days))
 					})]
-				}),
-				a("div", {
-					class: "ghf-dates",
-					children: [
-						a("input", {
-							class: "ghf-date",
-							type: "date",
-							value: value.from,
-							max: value.to || void 0,
-							"aria-label": `${label} from`,
-							onInput: (e) => onChange({
-								...value,
-								from: e.currentTarget.value
-							})
-						}),
-						a("span", {
-							class: "ghf-date-sep",
-							children: "→"
-						}),
-						a("input", {
-							class: "ghf-date",
-							type: "date",
-							value: value.to,
-							min: value.from || void 0,
-							"aria-label": `${label} to`,
-							onInput: (e) => onChange({
-								...value,
-								to: e.currentTarget.value
-							})
-						})
-					]
-				}),
-				a("div", {
-					class: "ghf-chips",
-					children: [
-						{
-							label: "Past 7d",
-							days: 7
-						},
-						{
-							label: "Past 30d",
-							days: 30
-						},
-						{
-							label: "Past year",
-							days: 365
-						}
-					].map((p) => a("button", {
+				}), a("div", {
+					class: "ghf-slider-readout-group",
+					children: [a("span", {
+						class: "ghf-readout",
+						children: dateReadout(value)
+					}), filtered && a("button", {
 						type: "button",
-						class: "ghf-chip",
-						onClick: () => applyPreset(p.days),
-						children: p.label
-					}, p.days))
-				})
-			]
+						class: "ghf-clear-btn",
+						"aria-label": `Clear ${label}`,
+						onClick: () => onChange({
+							from: "",
+							to: ""
+						}),
+						children: a(Icon, {
+							name: "x",
+							size: 11
+						})
+					})]
+				})]
+			}), a("div", {
+				class: "ghf-dates",
+				children: [
+					a("input", {
+						class: "ghf-date",
+						type: "date",
+						value: value.from,
+						max: value.to || void 0,
+						"aria-label": `${label} from`,
+						onInput: (e) => onChange({
+							...value,
+							from: e.currentTarget.value
+						})
+					}),
+					a("span", {
+						class: "ghf-date-sep",
+						children: "→"
+					}),
+					a("input", {
+						class: "ghf-date",
+						type: "date",
+						value: value.to,
+						min: value.from || void 0,
+						"aria-label": `${label} to`,
+						onInput: (e) => onChange({
+							...value,
+							to: e.currentTarget.value
+						})
+					})
+				]
+			})]
 		});
 	}
 	function App() {
@@ -1594,7 +1686,6 @@ ${F$2} .ghf-fab-badge {
 		const nameRef = T(null);
 		const copyTimer = T(void 0);
 		const [state, setState] = d(emptyState);
-		const [tab, setTab] = d("builder");
 		const [presets, setPresets] = d(getPresets);
 		const [name, setName] = d("");
 		const [error, setError] = d("");
@@ -1614,7 +1705,7 @@ ${F$2} .ghf-fab-badge {
 		};
 		const savePreset = () => {
 			if (!parts.length) {
-				setError("Add terms or filters first.");
+				setError("Add filters first.");
 				return;
 			}
 			const trimmed = name.trim();
@@ -1645,7 +1736,6 @@ ${F$2} .ghf-fab-badge {
 					return;
 				}
 				setState(next);
-				setTab("builder");
 				setPresets(getPresets());
 				setOpenRequest((r) => r + 1);
 			} };
@@ -1687,20 +1777,27 @@ ${F$2} .ghf-fab-badge {
 				children: [
 					a("header", {
 						class: "ghf-head",
-						children: [a("div", {
+						children: a("div", {
 							class: "ghf-titlebar",
 							children: [a("div", {
 								class: "ghf-brand",
-								children: [a("span", {
-									class: "ghf-brand-icon",
-									children: a(Icon, {
-										name: "filter",
-										size: 15
+								children: [
+									a("span", {
+										class: "ghf-brand-icon",
+										children: a(Icon, {
+											name: "filter",
+											size: 14
+										})
+									}),
+									a("h2", {
+										id: "ghf-panel-title",
+										children: NAME
+									}),
+									activeCount > 0 && a("span", {
+										class: "ghf-pill",
+										children: activeCount
 									})
-								}), a("h2", {
-									id: "ghf-panel-title",
-									children: NAME
-								})]
+								]
 							}), a("button", {
 								type: "button",
 								class: "ghf-icon-btn",
@@ -1709,199 +1806,222 @@ ${F$2} .ghf-fab-badge {
 								onClick: close,
 								children: a(Icon, {
 									name: "x",
-									size: 16
+									size: 14
 								})
 							})]
-						}), a("div", {
-							class: "ghf-tabs",
-							role: "tablist",
-							"aria-label": "Sections",
-							children: [a("button", {
-								type: "button",
-								role: "tab",
-								class: "ghf-tab-btn",
-								"aria-selected": tab === "builder",
-								onClick: () => setTab("builder"),
-								children: ["Builder ", activeCount > 0 && a("span", {
-									class: "ghf-pill",
-									children: activeCount
-								})]
-							}), a("button", {
-								type: "button",
-								role: "tab",
-								class: "ghf-tab-btn",
-								"aria-selected": tab === "presets",
-								onClick: () => setTab("presets"),
-								children: ["Presets ", presets.length > 0 && a("span", {
-									class: "ghf-pill",
-									children: presets.length
-								})]
-							})]
-						})]
+						})
 					}),
 					a("div", {
 						class: "ghf-body",
-						children: [a("div", {
-							hidden: tab !== "builder",
-							children: [
-								a("div", {
-									class: "ghf-card",
-									children: [a("div", {
-										class: "ghf-card-head",
-										children: a("h3", {
-											class: "ghf-card-title",
-											children: [a(Icon, {
-												name: "search",
-												size: 14
-											}), "Keywords"]
-										})
+						children: [
+							a("div", {
+								class: "ghf-card",
+								children: [a("div", {
+									class: "ghf-card-head",
+									children: a("h3", {
+										class: "ghf-card-title",
+										children: [a(Icon, {
+											name: "search",
+											size: 13
+										}), "Keywords"]
+									})
+								}), a("div", {
+									class: "ghf-fields",
+									children: KEYWORDS.map((k) => a(Field, {
+										id: k.id,
+										label: k.label,
+										placeholder: k.placeholder,
+										value: state[k.id],
+										onChange: (v) => setField(k.id, v)
+									}, k.id))
+								})]
+							}),
+							a("div", {
+								class: "ghf-card",
+								children: [a("div", {
+									class: "ghf-card-head",
+									children: [a("h3", {
+										class: "ghf-card-title",
+										children: [a(Icon, {
+											name: "code",
+											size: 13
+										}), "Repository & Language"]
 									}), a("div", {
-										class: "ghf-fields",
-										children: KEYWORDS.map((k) => a(Field, {
-											id: k.id,
-											label: k.label,
-											placeholder: k.placeholder,
-											value: state[k.id],
-											onChange: (v) => setField(k.id, v)
-										}, k.id))
-									})]
-								}),
-								a("div", {
-									class: "ghf-card",
-									children: [a("div", {
-										class: "ghf-card-head",
-										children: [a("h3", {
-											class: "ghf-card-title",
-											children: [a(Icon, {
-												name: "code",
-												size: 14
-											}), "Repository & Language"]
-										}), a("div", {
-											class: "ghf-sort-wrap",
-											children: [a("select", {
-												class: "ghf-sort-select",
-												value: state.sort,
-												onChange: (e) => setField("sort", e.currentTarget.value),
-												children: SORTS.map((s) => a("option", {
-													value: s.value,
-													children: s.label
-												}, s.value))
-											}), a(Icon, {
-												name: "chevronDown",
-												size: 12
-											})]
+										class: "ghf-sort-wrap",
+										children: [a("select", {
+											class: "ghf-sort-select",
+											value: state.sort,
+											onChange: (e) => setField("sort", e.currentTarget.value),
+											children: SORTS.map((s) => a("option", {
+												value: s.value,
+												children: s.label
+											}, s.value))
+										}), a(Icon, {
+											name: "chevronDown",
+											size: 11
 										})]
+									})]
+								}), a("div", {
+									class: "ghf-fields",
+									children: [a(Field, {
+										id: "repo",
+										label: "Target Repository",
+										placeholder: "e.g. facebook/react",
+										value: state.repo,
+										onChange: (v) => setField("repo", v)
 									}), a("div", {
-										class: "ghf-fields",
+										class: "ghf-field",
 										children: [a(Field, {
-											id: "repo",
-											label: "Target Repository",
-											placeholder: "e.g. facebook/react",
-											value: state.repo,
-											onChange: (v) => setField("repo", v)
+											id: "lang",
+											label: "Language",
+											placeholder: "e.g. python, -html",
+											value: state.lang,
+											onChange: (v) => setField("lang", v)
 										}), a("div", {
-											class: "ghf-field",
-											children: [a(Field, {
-												id: "lang",
-												label: "Language",
-												placeholder: "e.g. python, -html",
-												value: state.lang,
-												onChange: (v) => setField("lang", v)
-											}), a("div", {
-												class: "ghf-chips",
-												children: POPULAR_LANGUAGES.map((lang) => {
-													return a("button", {
-														type: "button",
-														class: `ghf-chip ${tokenize(state.lang).some((t) => t.toLowerCase() === lang.toLowerCase()) ? "ghf-chip-active" : ""}`,
-														onClick: () => toggleLang(lang),
-														children: lang
-													}, lang);
-												})
-											})]
+											class: "ghf-chips",
+											children: POPULAR_LANGUAGES.map((lang) => {
+												return a("button", {
+													type: "button",
+													class: `ghf-chip ${tokenize(state.lang).some((t) => t.toLowerCase() === lang.toLowerCase()) ? "ghf-chip-active" : ""}`,
+													onClick: () => toggleLang(lang),
+													children: lang
+												}, lang);
+											})
 										})]
 									})]
-								}),
-								a("div", {
-									class: "ghf-card",
-									children: [
-										a("div", {
-											class: "ghf-card-head",
-											children: a("h3", {
-												class: "ghf-card-title",
-												children: [a(Icon, {
-													name: "star",
-													size: 14
-												}), "Metrics"]
-											})
-										}),
-										a(RangeSlider, {
-											label: "Stars",
-											icon: "star",
-											stops: STARS_STOPS,
-											value: state.stars,
-											presets: STAR_PRESETS,
-											onChange: (v) => setField("stars", v)
-										}),
-										a(RangeSlider, {
-											label: "Forks",
-											icon: "gitFork",
-											stops: FORKS_STOPS,
-											value: state.forks,
-											onChange: (v) => setField("forks", v)
-										})
-									]
-								}),
-								a("div", {
-									class: "ghf-card",
-									children: [
-										a("div", {
-											class: "ghf-card-head",
-											children: a("h3", {
-												class: "ghf-card-title",
-												children: [a(Icon, {
-													name: "calendar",
-													size: 14
-												}), "Activity"]
-											})
-										}),
-										a(DatePicker, {
-											label: "Created",
-											value: state.created,
-											onChange: (v) => setField("created", v)
-										}),
-										a(DatePicker, {
-											label: "Pushed",
-											value: state.pushed,
-											onChange: (v) => setField("pushed", v)
-										})
-									]
-								})
-							]
-						}), a("div", {
-							hidden: tab !== "presets",
-							children: [a("div", {
+								})]
+							}),
+							a("div", {
 								class: "ghf-card",
 								children: [
 									a("div", {
 										class: "ghf-card-head",
 										children: a("h3", {
 											class: "ghf-card-title",
-											children: "Save Preset"
+											children: [a(Icon, {
+												name: "star",
+												size: 13
+											}), "Metrics"]
 										})
 									}),
+									a(SmoothSlider, {
+										label: "Stars",
+										icon: "star",
+										maxCap: STARS_MAX,
+										value: state.stars,
+										presets: STAR_PRESETS,
+										onChange: (v) => setField("stars", v)
+									}),
+									a(SmoothSlider, {
+										label: "Forks",
+										icon: "gitFork",
+										maxCap: FORKS_MAX,
+										value: state.forks,
+										presets: FORK_PRESETS,
+										onChange: (v) => setField("forks", v)
+									})
+								]
+							}),
+							a("div", {
+								class: "ghf-card",
+								children: [
 									a("div", {
-										style: {
-											display: "flex",
-											gap: "6px"
-										},
+										class: "ghf-card-head",
+										children: a("h3", {
+											class: "ghf-card-title",
+											children: [a(Icon, {
+												name: "calendar",
+												size: 13
+											}), "Activity"]
+										})
+									}),
+									a(DatePicker, {
+										label: "Created",
+										value: state.created,
+										onChange: (v) => setField("created", v)
+									}),
+									a(DatePicker, {
+										label: "Pushed",
+										value: state.pushed,
+										onChange: (v) => setField("pushed", v)
+									})
+								]
+							}),
+							a("div", {
+								class: "ghf-card",
+								children: [
+									a("div", {
+										class: "ghf-card-head",
+										children: a("h3", {
+											class: "ghf-card-title",
+											children: [
+												a(Icon, {
+													name: "bookmark",
+													size: 13
+												}),
+												"Presets",
+												presets.length > 0 && a("span", {
+													class: "ghf-pill",
+													children: presets.length
+												})
+											]
+										})
+									}),
+									presets.length > 0 && a("div", {
+										class: "ghf-preset-chips",
+										children: presets.map((p) => a("div", {
+											class: "ghf-preset-chip-item",
+											children: [
+												a("button", {
+													type: "button",
+													class: "ghf-preset-apply-btn",
+													title: `Load: ${buildQuery(p.state) || "All repos"}`,
+													onClick: () => setState(p.state),
+													children: a("span", {
+														class: "ghf-preset-chip-name",
+														children: p.name
+													})
+												}),
+												a("button", {
+													type: "button",
+													class: "ghf-preset-run-btn",
+													title: "Run search",
+													onClick: () => search(p.state),
+													children: a(Icon, {
+														name: "arrowRight",
+														size: 10
+													})
+												}),
+												a("button", {
+													type: "button",
+													class: "ghf-preset-del-btn",
+													title: pendingDelete === p.id ? "Confirm delete" : "Delete preset",
+													onClick: () => {
+														if (pendingDelete === p.id) {
+															setPresets(removePreset(p.id));
+															setPendingDelete(null);
+														} else setPendingDelete(p.id);
+													},
+													children: pendingDelete === p.id ? a("span", {
+														class: "ghf-del-confirm",
+														children: "del?"
+													}) : a(Icon, {
+														name: "x",
+														size: 10
+													})
+												})
+											]
+										}, p.id))
+									}),
+									a("div", {
+										class: "ghf-preset-save-row",
 										children: [a("div", {
 											class: "ghf-input-wrap",
-											style: { flex: 1 },
 											children: a("input", {
 												ref: nameRef,
 												class: "ghf-input",
 												type: "text",
-												placeholder: "Preset name",
+												placeholder: "Save current filters as preset...",
 												maxLength: 60,
 												value: name,
 												onInput: (e) => {
@@ -1924,93 +2044,14 @@ ${F$2} .ghf-fab-badge {
 										})]
 									}),
 									error && a("p", {
-										style: {
-											color: "var(--ghf-danger)",
-											fontSize: "11px",
-											margin: "4px 0 0"
-										},
+										class: "ghf-error-msg",
 										children: error
 									})
 								]
-							}), presets.length ? a("ul", {
-								class: "ghf-preset-list",
-								children: presets.map((p) => a("li", {
-									class: "ghf-preset-card",
-									children: [a("div", {
-										class: "ghf-preset-row",
-										children: [a("span", {
-											class: "ghf-preset-name",
-											children: p.name
-										}), a("div", {
-											style: {
-												display: "flex",
-												gap: "4px"
-											},
-											children: [
-												a("button", {
-													type: "button",
-													class: "ghf-btn",
-													onClick: () => {
-														setState(p.state);
-														setTab("builder");
-													},
-													children: "Load"
-												}),
-												a("button", {
-													type: "button",
-													class: "ghf-btn ghf-btn-primary",
-													onClick: () => search(p.state),
-													children: "Run"
-												}),
-												a("button", {
-													type: "button",
-													class: "ghf-icon-btn",
-													style: { color: pendingDelete === p.id ? "var(--ghf-danger)" : void 0 },
-													onClick: () => {
-														if (pendingDelete === p.id) {
-															setPresets(removePreset(p.id));
-															setPendingDelete(null);
-														} else setPendingDelete(p.id);
-													},
-													children: pendingDelete === p.id ? "Del?" : a(Icon, {
-														name: "trash",
-														size: 13
-													})
-												})
-											]
-										})]
-									}), a("span", {
-										class: "ghf-preset-summary",
-										children: buildQuery(p.state) || "All repos"
-									})]
-								}, p.id))
-							}) : a("div", {
-								class: "ghf-empty",
-								children: [
-									a(Icon, {
-										name: "filter",
-										size: 24
-									}),
-									a("p", {
-										style: {
-											margin: "4px 0 2px",
-											fontWeight: 600,
-											color: "var(--ghf-fg)"
-										},
-										children: "No saved presets"
-									}),
-									a("p", {
-										style: {
-											margin: 0,
-											fontSize: "11.5px"
-										},
-										children: "Configure filters and save them here for quick reuse."
-									})
-								]
-							})]
-						})]
+							})
+						]
 					}),
-					tab === "builder" && a("footer", {
+					a("footer", {
 						class: "ghf-foot",
 						children: [a("div", {
 							class: "ghf-tape-box",
@@ -2024,16 +2065,16 @@ ${F$2} .ghf-fab-badge {
 										type: "button",
 										class: "ghf-btn",
 										style: {
-											height: "20px",
-											padding: "0 6px",
-											fontSize: "10.5px"
+											height: "18px",
+											padding: "0 5px",
+											fontSize: "10px"
 										},
 										disabled: !parts.length,
 										onClick: copyQuery,
 										children: [
 											a(Icon, {
 												name: copied ? "check" : "copy",
-												size: 11
+												size: 10
 											}),
 											" ",
 											copied ? "Copied" : "Copy"
@@ -2083,7 +2124,7 @@ ${F$2} .ghf-fab-badge {
 								class: "ghf-btn ghf-btn-primary",
 								children: ["Search ", a(Icon, {
 									name: "arrowRight",
-									size: 13
+									size: 12
 								})]
 							})]
 						})]

@@ -101,3 +101,11 @@ Guidance for work in this repository (`~/Documents/userscript`).
   - Upgraded live query tape into an interactive chip console with 1-click token removal (`×`), formatted hide pills, and visual copy confirmation.
   - Enhanced launcher FAB with active filter count badge when viewing filtered search results.
 - **Verification**: 37 tests across 2 suites, strict TypeScript, Biome linter, Knip, and production build passed cleanly.
+
+## GitHub Filter v10.2.0 — Smooth continuous sliders, single-page architecture, compact UI (2026-11-20)
+
+- **Silky Smooth Logarithmic Sliders**: Replaced stepped notched inputs with continuous pointer-captured dual sliders (`SmoothSlider`). Maps normalized ratios to natural human-rounded values across 5 orders of magnitude (1+ to 100k+ stars and 1+ to 25k+ forks). Features custom thumbs with scale and hover/active glow, accent fill with drop shadow, and full ARIA keyboard accessibility.
+- **Symmetric Metric Quick Chips**: Integrated compact quick-chip thresholds directly into the slider header next to the live readout for both Stars (`1+`, `10+`, `100+`, `1k+`, `10k+`) and Forks (`1+`, `10+`, `100+`, `1k+`), eliminating dedicated chip rows and maintaining UI symmetry.
+- **Unified Single-Page Architecture**: Completely removed dual-tab header (`Builder` / `Presets` tabs removed). Presets now live directly on the main panel as interactive chip pills with 1-click load, instant search run (`➔`), and 2-click delete confirmation, paired with an inline preset save row.
+- **Compact UI Density**: Reduced dialog width to 420px, tightened inner padding (8px 10px), condensed field gaps, input heights (28px), date pickers (26px), live query tape, and buttons (28px) for maximum information density without unnecessary vertical scrolling.
+- **Verification**: 38 tests across 2 suites, strict TypeScript, Biome linter, Knip, and production build passed cleanly (78.5 kB, 21.7 kB gzip).

@@ -46,8 +46,12 @@ export const POPULAR_LANGUAGES = [
   'C++'
 ] as const;
 
-/** Logarithmic star thresholds including 1+. */
+/** Logarithmic thresholds including 1+. */
 export const STAR_PRESETS = [1, 10, 100, 1000, 10000] as const;
+export const FORK_PRESETS = [1, 10, 100, 1000] as const;
+
+export const STARS_MAX = 100000;
+export const FORKS_MAX = 25000;
 
 /** Logarithmic stop scales starting from 0, 1 for fine-grained low-count filtering. */
 export const STARS_STOPS = [0, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];

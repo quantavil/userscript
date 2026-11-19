@@ -346,6 +346,40 @@ export function normalizeState(raw: unknown): FormState {
 
 /* --------------------------------- sliders -------------------------------- */
 
+/** Maps numeric value to continuous 0..1 ratio on a logarithmic track. */
+export function valToRatio(val: number, max: number, end: 'min' | 'max'): number {
+  if (val <= 0) return end === 'min' ? 0 : 1;
+  if (val <= 1) return 0.02;
+  if (val >= max) return 1;
+  const logMax = Math.log10(max);
+  const logVal = Math.log10(val);
+  return 0.02 + 0.98 * (logVal / logMax);
+}
+
+function quantizeVal(raw: number, max: number): number {
+  if (raw <= 1.5) return 1;
+  if (raw < 10) return Math.round(raw);
+  if (raw < 50) return Math.round(raw / 5) * 5;
+  if (raw < 200) return Math.round(raw / 10) * 10;
+  if (raw < 1000) return Math.round(raw / 50) * 50;
+  if (raw < 5000) return Math.round(raw / 250) * 250;
+  if (raw < 20000) return Math.round(raw / 1000) * 1000;
+  const rounded = Math.round(raw / 5000) * 5000;
+  return Math.min(rounded, max);
+}
+
+/** Maps continuous 0..1 ratio on track to clean, naturally rounded value. */
+export function ratioToVal(ratio: number, max: number, end: 'min' | 'max'): number {
+  if (end === 'min' && ratio <= 0.015) return 0;
+  if (end === 'max' && ratio >= 0.985) return 0;
+  if (ratio <= 0.025) return 1;
+  if (ratio >= 0.975 && end === 'min') return max;
+  const logMax = Math.log10(max);
+  const norm = Math.max(0, Math.min(1, (ratio - 0.02) / 0.98));
+  const raw = 10 ** (norm * logMax);
+  return quantizeVal(raw, max);
+}
+
 export function toIndex(stops: readonly number[], value: number, end: 'min' | 'max'): number {
   const last = stops.length - 1;
   if (value <= 0) return end === 'min' ? 0 : last;
