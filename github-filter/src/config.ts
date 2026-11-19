@@ -1,3 +1,5 @@
+export const NAME = 'GitHub Filter';
+
 export const IDS = {
   panel: 'ghf-panel',
   style: 'ghf-style',
@@ -23,25 +25,12 @@ export const NAV_EVENTS = ['turbo:render', 'turbo:load', 'pjax:end'] as const;
 
 export const SEARCH_PATH = '/search';
 
-/** Qualifiers that take a bare number, so a lone `500` should mean `>=500`. */
-export const NUMERIC = new Set(['stars', 'forks', 'size']);
-
-export interface SearchType {
-  /** GitHub's `type` query parameter. */
-  value: string;
-  label: string;
-  /** Short form for the scope switch, where the full label would overflow. */
-  short: string;
-}
-
-export const TYPES: SearchType[] = [
-  { value: 'repositories', label: 'Repositories', short: 'Repos' },
-  { value: 'code', label: 'Code', short: 'Code' },
-  { value: 'issues', label: 'Issues', short: 'Issues' },
-  { value: 'pullrequests', label: 'Pull requests', short: 'PRs' },
-  { value: 'discussions', label: 'Discussions', short: 'Discussions' },
-  { value: 'users', label: 'Users', short: 'Users' }
-];
+/**
+ * The panel only builds repository searches. Every qualifier it offers (stars,
+ * forks, pushed) means nothing on a code or issue search, and half the old scope
+ * options produced queries GitHub ignored.
+ */
+export const SEARCH_TYPE = 'repositories';
 
 export const SORTS = [
   { value: '', label: 'Best match' },
@@ -64,44 +53,57 @@ export const KEYWORDS: KeywordField[] = [
   { id: 'hide', key: 'hide', label: 'Hide results containing', placeholder: 'spam, bot' }
 ];
 
-export interface QualifierField {
-  id: string;
+/**
+ * Slider scales, not linear ranges: 10 stars and 1 000 stars are both meaningful
+ * cut-offs, so equal thumb travel should not be worth equal stars.
+ */
+export const STARS_STOPS = [0, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
+export const FORKS_STOPS = [0, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000];
+
+type TextField = {
+  kind: 'text';
+  id: 'repo' | 'lang';
   label: string;
-  placeholder: string;
-  /** GitHub search qualifier this field compiles to. */
   qualifier: string;
+  placeholder: string;
   /** Shorthands GitHub also accepts, so parsing a pasted query finds them. */
   aliases?: string[];
-}
+};
 
-export interface FilterGroup {
-  title: string;
-  fields: QualifierField[];
-}
+type NumberField = {
+  kind: 'number';
+  id: 'stars' | 'forks';
+  label: string;
+  qualifier: string;
+  stops: number[];
+};
+
+type DateField = {
+  kind: 'date';
+  id: 'created' | 'pushed';
+  label: string;
+  qualifier: string;
+};
+
+export type QualifierField = TextField | NumberField | DateField;
 
 /**
  * The field schema is the single source of truth: the query builder, the URL
- * parser, the preset chips and the generated query all derive from it.
+ * parser, the preset summaries and the tape all derive from it. `kind` picks the
+ * control (text input, dual slider, date range) and the shape of its value.
  */
-export const FILTER_GROUPS: FilterGroup[] = [
+export const QUALIFIERS: QualifierField[] = [
+  { kind: 'text', id: 'repo', label: 'Repo', qualifier: 'repo', placeholder: 'facebook/react' },
   {
-    title: 'Repository',
-    fields: [
-      { id: 'repo', label: 'Repo', placeholder: 'facebook/react', qualifier: 'repo' },
-      { id: 'lang', label: 'Language', placeholder: 'python, -html', qualifier: 'language', aliases: ['lang'] },
-      { id: 'ext', label: 'Extension', placeholder: 'md', qualifier: 'extension', aliases: ['ext'] }
-    ]
+    kind: 'text',
+    id: 'lang',
+    label: 'Language',
+    qualifier: 'language',
+    aliases: ['lang'],
+    placeholder: 'python, -html'
   },
-  {
-    title: 'Limits',
-    fields: [
-      { id: 'stars', label: 'Stars', placeholder: '>500', qualifier: 'stars' },
-      { id: 'forks', label: 'Forks', placeholder: '>100', qualifier: 'forks' },
-      { id: 'size', label: 'Size (KB)', placeholder: '<5000', qualifier: 'size' },
-      { id: 'created', label: 'Created', placeholder: '>2023-01', qualifier: 'created' },
-      { id: 'pushed', label: 'Pushed', placeholder: '>2024-01-01', qualifier: 'pushed' }
-    ]
-  }
+  { kind: 'number', id: 'stars', label: 'Stars', qualifier: 'stars', stops: STARS_STOPS },
+  { kind: 'number', id: 'forks', label: 'Forks', qualifier: 'forks', stops: FORKS_STOPS },
+  { kind: 'date', id: 'created', label: 'Created', qualifier: 'created' },
+  { kind: 'date', id: 'pushed', label: 'Pushed', qualifier: 'pushed' }
 ];
-
-export const QUALIFIERS: QualifierField[] = FILTER_GROUPS.flatMap(group => group.fields);

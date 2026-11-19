@@ -1,8 +1,20 @@
 import { Fragment, render } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { FILTER_GROUPS, IDS, KEYWORDS, type QualifierField, SORTS, TYPES } from './config';
+import { IDS, KEYWORDS, NAME, QUALIFIERS, type QualifierField, SORTS } from './config';
 import { Icon, iconSvg } from './icons';
-import { buildQuery, buildUrl, emptyState, type FormState, parseUrl, queryParts, tokenize } from './query';
+import {
+  buildQuery,
+  buildUrl,
+  type DateRange,
+  emptyState,
+  type FormState,
+  fromIndex,
+  type NumberRange,
+  parseUrl,
+  queryParts,
+  toIndex,
+  tokenize
+} from './query';
 import { addPreset, getPresets, type Preset, removePreset } from './storage';
 import { getTheme, LABEL, nextTheme, setTheme as persistTheme, THEME_ICON, type Theme } from './theme';
 
@@ -23,6 +35,34 @@ const search = (state: FormState) => location.assign(buildUrl(state));
 
 /* -------------------------------- building ------------------------------- */
 
+/** Must match the thumb width in the stylesheet: the pointer maths depends on it. */
+const THUMB = 14;
+
+type TextQualifier = Extract<QualifierField, { kind: 'text' }>;
+type NumberQualifier = Extract<QualifierField, { kind: 'number' }>;
+type DateQualifier = Extract<QualifierField, { kind: 'date' }>;
+
+const formatCount = (value: number) => {
+  if (value < 1000) return String(value);
+  // One decimal is enough at this scale; 1001 reads as "1k", not "1.0k".
+  const thousands = Math.round(value / 100) / 10;
+  return `${Number.isInteger(thousands) ? thousands : thousands.toFixed(1)}k`;
+};
+
+function rangeReadout(range: NumberRange): string {
+  if (range.min > 0 && range.max > 0) return `${formatCount(range.min)} – ${formatCount(range.max)}`;
+  if (range.min > 0) return `${formatCount(range.min)}+`;
+  if (range.max > 0) return `Under ${formatCount(range.max)}`;
+  return 'Any';
+}
+
+function dateReadout(range: DateRange): string {
+  if (range.from && range.to) return `${range.from} – ${range.to}`;
+  if (range.from) return `From ${range.from}`;
+  if (range.to) return `Until ${range.to}`;
+  return 'Any';
+}
+
 function QualifierToken({ text }: { text: string }) {
   const negated = text.startsWith('-');
   const body = negated ? text.slice(1) : text;
@@ -37,19 +77,20 @@ function QualifierToken({ text }: { text: string }) {
   );
 }
 
-interface RowProps {
+interface TextRowProps {
   id: string;
   label: string;
   gutter: string;
   placeholder: string;
   value: string;
+  /** Keyword rows are the three headline inputs and get a taller hit area. */
   large?: boolean;
   colon?: boolean;
   onChange(value: string): void;
 }
 
 /** One line of the query table: a monospace key gutter, the input, and a clear affordance. */
-function QueryRow({ id, label, gutter, placeholder, value, large, colon, onChange }: RowProps) {
+function QueryRow({ id, label, gutter, placeholder, value, large, colon, onChange }: TextRowProps) {
   const inputId = `ghf-${id}`;
 
   return (
@@ -78,7 +119,7 @@ function QueryRow({ id, label, gutter, placeholder, value, large, colon, onChang
   );
 }
 
-function QualifierRow({ field, value, onChange }: { field: QualifierField; value: string; onChange(value: string): void }) {
+function TextRow({ field, value, onChange }: { field: TextQualifier; value: string; onChange(value: string): void }) {
   return (
     <QueryRow
       id={field.id}
@@ -89,6 +130,163 @@ function QualifierRow({ field, value, onChange }: { field: QualifierField; value
       value={value}
       onChange={onChange}
     />
+  );
+}
+
+/**
+ * Two thumbs over one track. The inputs are stacked transparent ranges with
+ * `pointer-events` only on the thumbs, so each thumb stays grabbable while the
+ * container handles a bare track press. `lead` decides which input wins when the
+ * thumbs meet, which is the only state a plain range pair cannot express.
+ */
+function RangeRow({
+  field,
+  value,
+  onChange
+}: {
+  field: NumberQualifier;
+  value: NumberRange;
+  onChange(next: NumberRange): void;
+}) {
+  const { stops } = field;
+  const last = stops.length - 1;
+  const [lead, setLead] = useState<'min' | 'max'>('max');
+
+  const lo = value.min > 0 ? toIndex(stops, value.min, 'min') : 0;
+  const hi = value.max > 0 ? toIndex(stops, value.max, 'max') : last;
+  const filtered = value.min > 0 || value.max > 0;
+
+  const setLo = (index: number) =>
+    onChange({ min: fromIndex(stops, Math.min(index, hi), 'min'), max: value.max });
+  // Index 0 would mean "at most nothing", so the upper thumb starts at the first real stop.
+  const setHi = (index: number) =>
+    onChange({ min: value.min, max: fromIndex(stops, Math.max(index, lo, 1), 'max') });
+
+  const jump = (event: PointerEvent) => {
+    if (event.target !== event.currentTarget) return;
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const usable = Math.max(rect.width - THUMB, 1);
+    const ratio = Math.min(Math.max((event.clientX - rect.left - THUMB / 2) / usable, 0), 1);
+    const index = Math.round(ratio * last);
+    if (Math.abs(index - lo) <= Math.abs(index - hi)) setLo(index);
+    else setHi(index);
+  };
+
+  return (
+    <div class="ghf-row ghf-row--stack">
+      <span class="ghf-key" aria-hidden="true">
+        {field.qualifier}
+      </span>
+      <div class="ghf-row-head">
+        <output class="ghf-value">{rangeReadout(value)}</output>
+        {filtered && (
+          <button
+            type="button"
+            class="ghf-clear"
+            aria-label={`Clear ${field.label}`}
+            onClick={() => onChange({ min: 0, max: 0 })}
+          >
+            <Icon name="x" size={12} />
+          </button>
+        )}
+      </div>
+
+      <div class="ghf-slider" onPointerDown={jump}>
+        <div class="ghf-slider-track">
+          {filtered && (
+            <div
+              class="ghf-slider-fill"
+              style={{ left: `${(lo / last) * 100}%`, right: `${(1 - hi / last) * 100}%` }}
+            />
+          )}
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={last}
+          step={1}
+          value={lo}
+          aria-label={`Minimum ${field.label.toLowerCase()}`}
+          aria-valuetext={value.min > 0 ? `${formatCount(value.min)} or more` : 'No minimum'}
+          style={{ zIndex: lead === 'min' ? 3 : 2 }}
+          onPointerDown={() => setLead('min')}
+          onInput={event => {
+            setLead('min');
+            setLo(Number(event.currentTarget.value));
+          }}
+        />
+        <input
+          type="range"
+          min={0}
+          max={last}
+          step={1}
+          value={hi}
+          aria-label={`Maximum ${field.label.toLowerCase()}`}
+          aria-valuetext={value.max > 0 ? `Up to ${formatCount(value.max)}` : 'No maximum'}
+          style={{ zIndex: lead === 'max' ? 3 : 2 }}
+          onPointerDown={() => setLead('max')}
+          onInput={event => {
+            setLead('max');
+            setHi(Number(event.currentTarget.value));
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DateRow({
+  field,
+  value,
+  onChange
+}: {
+  field: DateQualifier;
+  value: DateRange;
+  onChange(next: DateRange): void;
+}) {
+  const filtered = Boolean(value.from || value.to);
+
+  return (
+    <div class="ghf-row ghf-row--stack">
+      <span class="ghf-key" aria-hidden="true">
+        {field.qualifier}
+      </span>
+      <div class="ghf-row-head">
+        <output class="ghf-value">{dateReadout(value)}</output>
+        {filtered && (
+          <button
+            type="button"
+            class="ghf-clear"
+            aria-label={`Clear ${field.label}`}
+            onClick={() => onChange({ from: '', to: '' })}
+          >
+            <Icon name="x" size={12} />
+          </button>
+        )}
+      </div>
+
+      <div class="ghf-dates">
+        <input
+          class="ghf-date"
+          type="date"
+          value={value.from}
+          max={value.to || undefined}
+          aria-label={`${field.label} on or after`}
+          onInput={event => onChange({ ...value, from: event.currentTarget.value })}
+        />
+        <span class="ghf-dash" aria-hidden="true">
+          →
+        </span>
+        <input
+          class="ghf-date"
+          type="date"
+          value={value.to}
+          min={value.from || undefined}
+          aria-label={`${field.label} on or before`}
+          onInput={event => onChange({ ...value, to: event.currentTarget.value })}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -105,9 +303,7 @@ function PresetRow({
   onRun(): void;
   onDelete(): void;
 }) {
-  const summary =
-    buildQuery(preset.state) ||
-    `All ${(TYPES.find(type => type.value === preset.state.type)?.label ?? 'results').toLowerCase()}`;
+  const summary = buildQuery(preset.state) || 'All repositories';
 
   return (
     <li class="ghf-preset">
@@ -160,15 +356,8 @@ function App() {
 
   /* -------------------------------- state -------------------------------- */
 
-  const patch = (change: Partial<FormState>) => setState(current => ({ ...current, ...change }));
-
-  const setQualifier = (id: string, value: string) =>
-    setState(current => {
-      const q = { ...current.q };
-      if (value) q[id] = value;
-      else delete q[id];
-      return { ...current, q };
-    });
+  const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+    setState(current => ({ ...current, [key]: value }));
 
   const reset = () => {
     setState(emptyState());
@@ -183,7 +372,7 @@ function App() {
 
   const savePreset = () => {
     if (!parts.length) {
-      setError('Add a term or qualifier to save.');
+      setError('Add a term or filter to save.');
       return;
     }
     const trimmed = name.trim();
@@ -316,8 +505,8 @@ function App() {
         <header class="ghf-head">
           <div class="ghf-titlebar">
             <h2 id="ghf-panel-title">
-              <Icon name="search" size={15} />
-              Advanced search
+              <Icon name="filter" size={15} />
+              {NAME}
             </h2>
             <nav>
               <button
@@ -365,23 +554,6 @@ function App() {
         <div class="ghf-body" ref={bodyRef}>
           <div id="ghf-panel-builder" role="tabpanel" aria-labelledby="ghf-tab-builder" hidden={tab !== 'builder'}>
             <section class="ghf-sec">
-              <fieldset class="ghf-scope">
-                <legend class="ghf-sr">Search in</legend>
-                {TYPES.map(type => (
-                  <button
-                    type="button"
-                    key={type.value}
-                    aria-pressed={state.type === type.value}
-                    title={type.label}
-                    onClick={() => patch({ type: type.value })}
-                  >
-                    {type.short}
-                  </button>
-                ))}
-              </fieldset>
-            </section>
-
-            <section class="ghf-sec">
               <div class="ghf-sec-head">
                 <h3 class="ghf-sec-title">Terms</h3>
               </div>
@@ -395,7 +567,7 @@ function App() {
                     placeholder={field.placeholder}
                     value={state[field.id]}
                     large
-                    onChange={value => patch({ [field.id]: value })}
+                    onChange={value => setField(field.id, value)}
                   />
                 ))}
               </div>
@@ -406,12 +578,12 @@ function App() {
 
             <section class="ghf-sec">
               <div class="ghf-sec-head">
-                <h3 class="ghf-sec-title">Qualifiers</h3>
+                <h3 class="ghf-sec-title">Filters</h3>
                 <div class="ghf-sort">
                   <span class="ghf-sort-label" aria-hidden="true">
                     Sort
                   </span>
-                  <select value={state.sort} aria-label="Sort results" onChange={event => patch({ sort: event.currentTarget.value })}>
+                  <select value={state.sort} aria-label="Sort results" onChange={event => setField('sort', event.currentTarget.value)}>
                     {SORTS.map(sort => (
                       <option key={sort.value} value={sort.value}>
                         {sort.label}
@@ -422,21 +594,38 @@ function App() {
                 </div>
               </div>
 
-              {FILTER_GROUPS.map(group => (
-                <div class="ghf-group" key={group.title}>
-                  <p class="ghf-group-title">{group.title}</p>
-                  <div class="ghf-rows">
-                    {group.fields.map(field => (
-                      <QualifierRow
+              <div class="ghf-rows">
+                {QUALIFIERS.map(field => {
+                  if (field.kind === 'number') {
+                    return (
+                      <RangeRow
                         key={field.id}
                         field={field}
-                        value={state.q[field.id] ?? ''}
-                        onChange={value => setQualifier(field.id, value)}
+                        value={state[field.id]}
+                        onChange={next => setField(field.id, next)}
                       />
-                    ))}
-                  </div>
-                </div>
-              ))}
+                    );
+                  }
+                  if (field.kind === 'date') {
+                    return (
+                      <DateRow
+                        key={field.id}
+                        field={field}
+                        value={state[field.id]}
+                        onChange={next => setField(field.id, next)}
+                      />
+                    );
+                  }
+                  return (
+                    <TextRow
+                      key={field.id}
+                      field={field}
+                      value={state[field.id]}
+                      onChange={next => setField(field.id, next)}
+                    />
+                  );
+                })}
+              </div>
             </section>
           </div>
 
@@ -492,11 +681,9 @@ function App() {
                 </ul>
               ) : (
                 <div class="ghf-empty">
-                  <Icon name="search" size={20} />
+                  <Icon name="filter" size={20} />
                   <p class="ghf-empty-title">No saved searches yet</p>
-                  <p>
-                    Build a query, then name it above. A preset keeps its scope, terms, qualifiers and local hide list.
-                  </p>
+                  <p>Build a query, then name it above. A preset keeps its terms, filters and local hide list.</p>
                   <button type="button" class="ghf-btn ghf-compact" onClick={() => setTab('builder')}>
                     Open the builder
                   </button>
@@ -525,7 +712,7 @@ function App() {
                     </Fragment>
                   ))
                 ) : (
-                  <span class="ghf-tape-empty">Nothing yet — add a term or a qualifier.</span>
+                  <span class="ghf-tape-empty">Nothing yet — add a term or a filter.</span>
                 )}
               </p>
               {hideWords.length > 0 && (
@@ -593,16 +780,16 @@ export function syncLauncher() {
   const button = document.createElement('button');
   button.id = IDS.fab;
   button.type = 'button';
-  button.title = 'Advanced search';
-  button.setAttribute('aria-label', 'Advanced search');
+  button.title = NAME;
+  button.setAttribute('aria-label', NAME);
   button.setAttribute('aria-haspopup', 'dialog');
   button.setAttribute('aria-expanded', String(dialogRefOpen()));
   button.dataset.theme = getTheme();
-  button.append(iconSvg('search', 18));
+  button.append(iconSvg('filter', 18));
 
   const label = document.createElement('span');
   label.className = 'ghf-fab-label';
-  label.textContent = 'Advanced search';
+  label.textContent = NAME;
   button.append(label);
 
   button.addEventListener('click', openPanel);

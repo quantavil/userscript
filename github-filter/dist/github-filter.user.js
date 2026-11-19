@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         GitHub Advanced Search
+// @name         GitHub Filter
 // @namespace    https://github.com/quantavil/userscript/github-filter
-// @version      9.0.0
+// @version      10.0.0
 // @author       quantavil (https://github.com/quantavil)
-// @description  Build GitHub search queries without memorising qualifier syntax, save them as presets, and hide results you never want to see.
+// @description  Filter GitHub repository search with sliders for stars and forks, date pickers, saved presets and a local hide list.
 // @license      GPL-3.0-or-later
 // @icon         https://github.githubassets.com/favicons/favicon.svg
 // @homepage     https://github.com/quantavil/userscript
@@ -16,6 +16,7 @@
 
 (function() {
 	"use strict";
+	var NAME = "GitHub Filter";
 	var IDS = {
 		panel: "ghf-panel",
 		style: "ghf-style",
@@ -33,43 +34,7 @@
 		"turbo:load",
 		"pjax:end"
 	];
-	var NUMERIC = new Set([
-		"stars",
-		"forks",
-		"size"
-	]);
-	var TYPES = [
-		{
-			value: "repositories",
-			label: "Repositories",
-			short: "Repos"
-		},
-		{
-			value: "code",
-			label: "Code",
-			short: "Code"
-		},
-		{
-			value: "issues",
-			label: "Issues",
-			short: "Issues"
-		},
-		{
-			value: "pullrequests",
-			label: "Pull requests",
-			short: "PRs"
-		},
-		{
-			value: "discussions",
-			label: "Discussions",
-			short: "Discussions"
-		},
-		{
-			value: "users",
-			label: "Users",
-			short: "Users"
-		}
-	];
+	var SEARCH_TYPE = "repositories";
 	var SORTS = [
 		{
 			value: "",
@@ -108,76 +73,116 @@
 			placeholder: "spam, bot"
 		}
 	];
-	var FILTER_GROUPS = [{
-		title: "Repository",
-		fields: [
-			{
-				id: "repo",
-				label: "Repo",
-				placeholder: "facebook/react",
-				qualifier: "repo"
-			},
-			{
-				id: "lang",
-				label: "Language",
-				placeholder: "python, -html",
-				qualifier: "language",
-				aliases: ["lang"]
-			},
-			{
-				id: "ext",
-				label: "Extension",
-				placeholder: "md",
-				qualifier: "extension",
-				aliases: ["ext"]
-			}
-		]
-	}, {
-		title: "Limits",
-		fields: [
-			{
-				id: "stars",
-				label: "Stars",
-				placeholder: ">500",
-				qualifier: "stars"
-			},
-			{
-				id: "forks",
-				label: "Forks",
-				placeholder: ">100",
-				qualifier: "forks"
-			},
-			{
-				id: "size",
-				label: "Size (KB)",
-				placeholder: "<5000",
-				qualifier: "size"
-			},
-			{
-				id: "created",
-				label: "Created",
-				placeholder: ">2023-01",
-				qualifier: "created"
-			},
-			{
-				id: "pushed",
-				label: "Pushed",
-				placeholder: ">2024-01-01",
-				qualifier: "pushed"
-			}
-		]
-	}];
-	var QUALIFIERS = FILTER_GROUPS.flatMap((group) => group.fields);
+	var QUALIFIERS = [
+		{
+			kind: "text",
+			id: "repo",
+			label: "Repo",
+			qualifier: "repo",
+			placeholder: "facebook/react"
+		},
+		{
+			kind: "text",
+			id: "lang",
+			label: "Language",
+			qualifier: "language",
+			aliases: ["lang"],
+			placeholder: "python, -html"
+		},
+		{
+			kind: "number",
+			id: "stars",
+			label: "Stars",
+			qualifier: "stars",
+			stops: [
+				0,
+				10,
+				25,
+				50,
+				100,
+				250,
+				500,
+				1e3,
+				2e3,
+				5e3,
+				1e4,
+				2e4,
+				5e4,
+				1e5
+			]
+		},
+		{
+			kind: "number",
+			id: "forks",
+			label: "Forks",
+			qualifier: "forks",
+			stops: [
+				0,
+				5,
+				10,
+				25,
+				50,
+				100,
+				250,
+				500,
+				1e3,
+				2e3,
+				5e3,
+				1e4
+			]
+		},
+		{
+			kind: "date",
+			id: "created",
+			label: "Created",
+			qualifier: "created"
+		},
+		{
+			kind: "date",
+			id: "pushed",
+			label: "Pushed",
+			qualifier: "pushed"
+		}
+	];
 	var emptyState = () => ({
-		type: "repositories",
-		sort: "",
 		and: "",
 		or: "",
 		hide: "",
-		q: {}
+		sort: "",
+		repo: "",
+		lang: "",
+		stars: {
+			min: 0,
+			max: 0
+		},
+		forks: {
+			min: 0,
+			max: 0
+		},
+		created: {
+			from: "",
+			to: ""
+		},
+		pushed: {
+			from: "",
+			to: ""
+		}
 	});
 	var tokenize = (input) => input.match(/-?"[^"]*"|[^\s,]+/g) ?? [];
+	var splitTerms = (input) => input.match(/-?"[^"]*"|\S+/g) ?? [];
 	var splitNegation = (token) => token.startsWith("-") ? [token.slice(1), "-"] : [token, ""];
+	function numberRange(range) {
+		if (range.min > 0 && range.max > 0) return `${range.min}..${range.max}`;
+		if (range.min > 0) return `>=${range.min}`;
+		if (range.max > 0) return `<${range.max}`;
+		return null;
+	}
+	function dateRange(range) {
+		if (range.from && range.to) return `${range.from}..${range.to}`;
+		if (range.from) return `>=${range.from}`;
+		if (range.to) return `<=${range.to}`;
+		return null;
+	}
 	function queryParts(state) {
 		const parts = tokenize(state.and).map((text) => ({
 			text,
@@ -188,12 +193,21 @@
 			text: anyOf.length === 1 ? anyOf[0] : `(${anyOf.join(" OR ")})`,
 			kind: "term"
 		});
-		for (const field of QUALIFIERS) for (const token of tokenize(state.q[field.id] ?? "")) {
-			const [bare, negate] = splitNegation(token);
-			if (!bare) continue;
-			const value = NUMERIC.has(field.qualifier) && /^\d+$/.test(bare) ? `>=${bare}` : bare;
-			parts.push({
-				text: `${negate}${field.qualifier}:${value}`,
+		for (const field of QUALIFIERS) {
+			if (field.kind === "text") {
+				for (const token of tokenize(state[field.id])) {
+					const [bare, negate] = splitNegation(token);
+					if (!bare) continue;
+					parts.push({
+						text: `${negate}${field.qualifier}:${bare}`,
+						kind: "qualifier"
+					});
+				}
+				continue;
+			}
+			const value = field.kind === "number" ? numberRange(state[field.id]) : dateRange(state[field.id]);
+			if (value) parts.push({
+				text: `${field.qualifier}:${value}`,
 				kind: "qualifier"
 			});
 		}
@@ -202,8 +216,9 @@
 	var buildQuery = (state) => queryParts(state).map((part) => part.text).join(" ");
 	function buildUrl(state) {
 		const url = new URL("https://github.com/search");
-		url.searchParams.set("q", buildQuery(state));
-		url.searchParams.set("type", state.type);
+		const query = buildQuery(state);
+		if (query) url.searchParams.set("q", query);
+		url.searchParams.set("type", SEARCH_TYPE);
 		if (state.sort) {
 			url.searchParams.set("s", state.sort);
 			url.searchParams.set("o", "desc");
@@ -211,31 +226,157 @@
 		if (state.hide.trim()) url.searchParams.set(PARAM.hide, state.hide.trim());
 		return url.toString();
 	}
-	function parseUrl(search) {
-		const params = new URLSearchParams(search);
+	var NUMBER = /^(>=|<=|>|<)?(\d+)(?:\.\.(\d+))?$/;
+	var DATE = /^(>=|<=|>|<)?(\d{4}-\d{2}-\d{2})(?:\.\.(\d{4}-\d{2}-\d{2}))?$/;
+	function parseNumberRange(value) {
+		const match = value.match(NUMBER);
+		if (!match) return null;
+		const [, operator = "", lower = "", upper] = match;
+		if (upper) return {
+			min: Number(lower),
+			max: Number(upper)
+		};
+		const count = Number(lower);
+		if (operator === ">") return {
+			min: count + 1,
+			max: 0
+		};
+		if (operator === "<") return {
+			min: 0,
+			max: Math.max(count - 1, 0)
+		};
+		if (operator === "<=") return {
+			min: 0,
+			max: count
+		};
+		return {
+			min: count,
+			max: 0
+		};
+	}
+	function shiftDays(date, days) {
+		const parsed = new Date(`${date}T00:00:00Z`);
+		if (Number.isNaN(parsed.getTime())) return date;
+		parsed.setUTCDate(parsed.getUTCDate() + days);
+		return parsed.toISOString().slice(0, 10);
+	}
+	function parseDateRange(value) {
+		const match = value.match(DATE);
+		if (!match) return null;
+		const [, operator = "", lower = "", upper] = match;
+		if (upper) return {
+			from: lower,
+			to: upper
+		};
+		if (operator === ">") return {
+			from: shiftDays(lower, 1),
+			to: ""
+		};
+		if (operator === "<") return {
+			from: "",
+			to: shiftDays(lower, -1)
+		};
+		if (operator === "<=") return {
+			from: "",
+			to: lower
+		};
+		return {
+			from: lower,
+			to: ""
+		};
+	}
+	function readQuery(state, query) {
+		const free = [];
+		for (const term of splitTerms(query)) {
+			const keyword = term.match(/^(-?)([\w-]+):(.*)$/);
+			const [, negate = "", key = "", raw = ""] = keyword ?? [];
+			const lowered = key.toLowerCase();
+			const field = keyword && QUALIFIERS.find((f) => f.qualifier === lowered || "aliases" in f && f.aliases?.includes(lowered));
+			if (!field) {
+				free.push(term);
+				continue;
+			}
+			if (field.kind === "text") {
+				const values = tokenize(raw.replace(/^"|"$/g, "")).map((value) => `${negate}${value}`);
+				if (values.length) state[field.id] = [...tokenize(state[field.id]), ...values].join(", ");
+				continue;
+			}
+			if (negate) {
+				free.push(term);
+				continue;
+			}
+			if (field.kind === "number") {
+				const range = parseNumberRange(raw);
+				if (range) state[field.id] = range;
+				else free.push(term);
+				continue;
+			}
+			const range = parseDateRange(raw);
+			if (range) state[field.id] = range;
+			else free.push(term);
+		}
+		return free.join(" ");
+	}
+	function stateFromQuery(query, sort = "", hide = "") {
 		const state = emptyState();
-		state.type = (params.get("type") || "repositories").toLowerCase();
-		state.sort = params.get("s") ?? "";
-		state.hide = params.get(PARAM.hide) ?? "";
-		let q = params.get("q") ?? "";
-		for (const field of QUALIFIERS) {
-			const keys = [field.qualifier, ...field.aliases ?? []].sort((a, b) => b.length - a.length).join("|");
-			const found = [];
-			q = q.replace(new RegExp(`(^|\\s)(-?)(?:${keys}):("[^"]*"|\\S+)`, "gi"), (_m, _sp, negate, raw) => {
-				let value = raw.replace(/^"|"$/g, "");
-				if (NUMERIC.has(field.qualifier) && /^>=\d+$/.test(value)) value = value.slice(2);
-				found.push(negate + value);
-				return " ";
-			});
-			if (found.length) state.q[field.id] = found.join(", ");
-		}
-		const group = q.match(/\(([^()]+)\)/);
+		state.sort = sort;
+		state.hide = hide;
+		let rest = query;
+		const group = rest.match(/\(([^()]+)\)/);
 		if (group?.[1]?.includes(" OR ")) {
-			state.or = group[1].split(" OR ").map((s) => s.trim()).filter(Boolean).join(", ");
-			q = q.replace(group[0], " ");
+			state.or = group[1].split(" OR ").map((term) => term.trim()).filter(Boolean).join(", ");
+			rest = rest.replace(group[0], " ");
 		}
-		state.and = q.replace(/\s+/g, " ").trim();
+		state.and = readQuery(state, rest).replace(/\s+/g, " ").trim();
 		return state;
+	}
+	var parseUrl = (search) => {
+		const params = new URLSearchParams(search);
+		return stateFromQuery(params.get("q") ?? "", params.get("s") ?? "", params.get(PARAM.hide) ?? "");
+	};
+	function legacyQuery(q) {
+		if (!q || typeof q !== "object") return "";
+		const source = q;
+		const terms = [];
+		for (const field of QUALIFIERS) {
+			const value = source[field.id];
+			if (typeof value !== "string") continue;
+			for (const token of tokenize(value)) {
+				const [bare, negate] = splitNegation(token);
+				if (!bare) continue;
+				const numeric = field.kind === "number" && /^\d+$/.test(bare) ? `>=${bare}` : bare;
+				terms.push(`${negate}${field.qualifier}:${numeric}`);
+			}
+		}
+		return terms.join(" ");
+	}
+	var isNumberRange = (value) => typeof value === "object" && value !== null && Number.isFinite(value.min) && Number.isFinite(value.max);
+	var isDateRange = (value) => typeof value === "object" && value !== null && typeof value.from === "string" && typeof value.to === "string";
+	function normalizeState(raw) {
+		if (!raw || typeof raw !== "object") return emptyState();
+		const input = raw;
+		const text = (key) => typeof input[key] === "string" ? input[key] : "";
+		const state = stateFromQuery(legacyQuery(input.q), text("sort"), text("hide"));
+		state.and = text("and");
+		state.or = text("or");
+		for (const field of QUALIFIERS) {
+			const value = input[field.id];
+			if (field.kind === "text" && typeof value === "string") state[field.id] = value;
+			else if (field.kind === "number" && isNumberRange(value)) state[field.id] = value;
+			else if (field.kind === "date" && isDateRange(value)) state[field.id] = value;
+		}
+		return state;
+	}
+	function toIndex(stops, value, end) {
+		const last = stops.length - 1;
+		if (value <= 0) return end === "min" ? 0 : last;
+		let best = 1;
+		for (let i = 1; i <= last; i += 1) if (Math.abs((stops[i] ?? 0) - value) < Math.abs((stops[best] ?? 0) - value)) best = i;
+		return best;
+	}
+	function fromIndex(stops, index, end) {
+		if (end === "min") return index <= 0 ? 0 : stops[index] ?? 0;
+		return index >= stops.length - 1 ? 0 : stops[index] ?? 0;
 	}
 	var escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 	function buildHideMatcher(input) {
@@ -288,11 +429,7 @@
 	};
 	var getPresets = () => read(STORE.presets, []).filter((p) => p?.id && p?.name).map((p) => ({
 		...p,
-		state: {
-			...emptyState(),
-			...p.state,
-			q: p.state?.q ?? {}
-		}
+		state: normalizeState(p.state)
 	}));
 	var addPreset = (name, state) => {
 		const presets = [...getPresets(), {
@@ -331,15 +468,13 @@
 			const migrated = JSON.parse(legacyPresets).filter((p) => p?.name).map((p, i) => ({
 				id: p.id ?? `p${i}`,
 				name: p.name,
-				state: {
-					...emptyState(),
-					type: p.fields?.type ?? "repositories",
+				state: normalizeState({
 					sort: p.fields?.sort ?? "",
 					and: p.fields?.and ?? "",
 					or: p.fields?.or ?? "",
 					hide: p.fields?.hideKeys ?? "",
 					q: p.fields?.meta ?? {}
-				}
+				})
 			}));
 			write(STORE.presets, migrated);
 		} catch {}
@@ -524,44 +659,35 @@ ${P$1} .ghf-sec-title {
   font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
 }
 
-/* ---------- scope switch ---------- */
-
-${P$1} .ghf-scope {
-  display: flex; gap: 2px; margin: 0; min-width: 0; padding: 3px;
-  border: 1px solid var(--ghf-hairline); border-radius: 8px; background: var(--ghf-sunken);
-  overflow-x: auto; scrollbar-width: none;
-}
-${P$1} .ghf-sr {
-  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
-  overflow: hidden; clip-path: inset(50%); border: 0; white-space: nowrap;
-}
-${P$1} .ghf-scope::-webkit-scrollbar { display: none; }
-${P$1} .ghf-scope button {
-  flex: 0 0 auto; padding: 5px 9px; border: 0; border-radius: 6px;
-  background: transparent; color: var(--ghf-muted);
-  font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer;
-  transition: background .12s ease, color .12s ease;
-}
-${P$1} .ghf-scope button:hover { color: var(--ghf-fg); }
-${P$1} .ghf-scope button[aria-pressed="true"] {
-  background: var(--ghf-canvas); color: var(--ghf-fg); font-weight: 600;
-  box-shadow: 0 1px 2px rgba(31, 35, 40, .14), 0 0 0 1px var(--ghf-hairline);
-}
-
 /* ---------- query rows ---------- */
 
 ${P$1} .ghf-rows { border-top: 1px solid var(--ghf-hairline); }
 ${P$1} .ghf-row {
   display: grid; grid-template-columns: 70px minmax(0, 1fr) 24px; align-items: center;
-  min-height: 38px; margin: 0 -6px; padding: 0 6px;
-  border-bottom: 1px solid var(--ghf-hairline); border-radius: 5px;
+  min-inline-size: 0; min-height: 38px; margin: 0 -6px; padding: 0 6px;
+  border: 0; border-bottom: 1px solid var(--ghf-hairline); border-radius: 5px;
   transition: background .12s ease, box-shadow .12s ease;
 }
 ${P$1} .ghf-row:hover { background: var(--ghf-hover); }
 ${P$1} .ghf-row:focus-within { background: var(--ghf-hover); box-shadow: inset 0 0 0 2px var(--ghf-accent); }
 ${P$1} .ghf-row--lg { min-height: 46px; }
+
+/* Sliders and date pickers need the full width, so their value sits on a header line. */
+${P$1} .ghf-row--stack {
+  grid-template-columns: 70px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  min-height: 0; padding: 7px 6px 9px;
+}
+${P$1} .ghf-row-head {
+  display: flex; align-items: center; justify-content: flex-end; gap: 4px;
+  min-height: 18px; margin-left: auto;
+}
+${P$1} .ghf-value {
+  color: var(--ghf-fg); font-family: var(--ghf-mono);
+  font-size: 10.5px; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
 ${P$1} .ghf-key {
-  overflow: hidden; padding-right: 10px;
+  overflow: hidden; padding: 0 10px 0 0;
   color: var(--ghf-muted); font-family: var(--ghf-mono); font-size: 10.5px; line-height: 1;
   text-align: right; text-overflow: ellipsis; white-space: nowrap;
   cursor: text; user-select: none;
@@ -585,6 +711,68 @@ ${P$1} .ghf-clear {
 ${P$1} .ghf-clear svg { fill: currentColor; }
 ${P$1} .ghf-clear:hover { background: var(--ghf-selected); color: var(--ghf-fg); }
 
+/* ---------- dual range slider ---------- */
+
+${P$1} .ghf-slider {
+  position: relative; grid-column: 1 / -1;
+  height: 26px; margin-top: 1px;
+  cursor: pointer; touch-action: none;
+}
+${P$1} .ghf-slider-track {
+  position: absolute; left: 7px; right: 7px; top: 11px; height: 4px;
+  border-radius: 2px; background: var(--ghf-border); pointer-events: none;
+}
+${P$1} .ghf-slider-fill {
+  position: absolute; top: 0; bottom: 0;
+  border-radius: 2px; background: var(--ghf-accent);
+}
+/* Transparent, stacked ranges: only the thumbs take pointer events, so the
+   container underneath can handle a press anywhere on the track. */
+${P$1} .ghf-slider input {
+  position: absolute; left: 0; right: 0; top: 0;
+  width: 100%; height: 26px; margin: 0;
+  -webkit-appearance: none; appearance: none;
+  background: none; pointer-events: none;
+}
+${P$1} .ghf-slider input::-webkit-slider-runnable-track { height: 26px; background: none; }
+${P$1} .ghf-slider input::-moz-range-track { height: 26px; background: none; }
+${P$1} .ghf-slider input::-webkit-slider-thumb {
+  -webkit-appearance: none; pointer-events: auto;
+  width: 14px; height: 14px; margin-top: 6px;
+  border: 2px solid var(--ghf-accent); border-radius: 50%;
+  background: var(--ghf-canvas); cursor: grab;
+  box-shadow: 0 1px 2px rgba(31, 35, 40, .25);
+}
+${P$1} .ghf-slider input::-moz-range-thumb {
+  pointer-events: auto;
+  width: 10px; height: 10px;
+  border: 2px solid var(--ghf-accent); border-radius: 50%;
+  background: var(--ghf-canvas); cursor: grab;
+  box-shadow: 0 1px 2px rgba(31, 35, 40, .25);
+}
+${P$1} .ghf-slider input:active::-webkit-slider-thumb { cursor: grabbing; }
+
+/* ---------- date ranges ---------- */
+
+${P$1} .ghf-dates {
+  display: grid; grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr);
+  align-items: center; gap: 6px; margin-top: 3px;
+}
+${P$1} .ghf-date {
+  width: 100%; min-width: 0; height: 30px; padding: 0 7px;
+  border: 1px solid var(--ghf-border); border-radius: 5px;
+  background: var(--ghf-canvas); color: var(--ghf-fg);
+  font: inherit; font-size: 11.5px; font-variant-numeric: tabular-nums;
+  outline: 0; transition: border-color .12s ease, box-shadow .12s ease;
+}
+${P$1} .ghf-date::-webkit-calendar-picker-indicator {
+  opacity: .55; cursor: pointer; transition: opacity .12s ease;
+}
+${P$1} .ghf-date::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+${P$1} .ghf-date:focus { border-color: var(--ghf-accent); box-shadow: inset 0 0 0 1px var(--ghf-accent); }
+${P$1} .ghf-dash { color: var(--ghf-muted); font-family: var(--ghf-mono); font-size: 11px; text-align: center; }
+
 ${P$1} .ghf-hint {
   margin: 7px 0 0; color: var(--ghf-muted);
   font-size: 10.5px; line-height: 1.5;
@@ -592,12 +780,6 @@ ${P$1} .ghf-hint {
 ${P$1} .ghf-hint code {
   padding: 0 3px; border: 1px solid var(--ghf-hairline); border-radius: 3px;
   background: var(--ghf-sunken); font-family: var(--ghf-mono); font-size: 10px;
-}
-
-${P$1} .ghf-group + .ghf-group { margin-top: 14px; }
-${P$1} .ghf-group-title {
-  margin: 0 0 3px; color: var(--ghf-muted);
-  font-size: 10.5px; font-weight: 500; letter-spacing: .01em;
 }
 
 /* ---------- sort ---------- */
@@ -742,6 +924,13 @@ ${P$1} :is(button, select, input):focus-visible {
   outline: 2px solid var(--ghf-accent); outline-offset: 1px;
 }
 ${P$1} .ghf-row input:focus-visible { outline: none; }
+/* The range input is a transparent overlay, so the ring belongs on the thumb. */
+${P$1} .ghf-slider input:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--ghf-canvas), 0 0 0 4px var(--ghf-accent);
+}
+${P$1} .ghf-slider input:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px var(--ghf-canvas), 0 0 0 4px var(--ghf-accent);
+}
 
 /* ---------- launcher ---------- */
 
@@ -1254,6 +1443,7 @@ ${F$2}:hover .ghf-fab-label, ${F$2}:focus-visible .ghf-fab-label {
 	}
 	var ICON = {
 		search: "M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z",
+		filter: "M.75 3h14.5a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1 0-1.5ZM3 7.75A.75.75 0 0 1 3.75 7h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 3 7.75Zm3 4a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z",
 		x: "M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z",
 		trash: "M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.576l-.66-6.6a.75.75 0 1 1 1.492-.149ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z",
 		sun: "M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-1.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Zm5.657-8.157a.75.75 0 0 1 0 1.061l-1.061 1.06a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734l1.06-1.06a.75.75 0 0 1 1.06 0Zm-9.193 9.193a.75.75 0 0 1 0 1.06l-1.06 1.061a.75.75 0 1 1-1.061-1.06l1.06-1.061a.75.75 0 0 1 1.061 0ZM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0ZM3 8a.75.75 0 0 1-.75.75H.75a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 3 8Zm13 0a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 16 8Zm-8 5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 13ZM2.343 2.343a.75.75 0 0 1 1.061 0l1.06 1.061a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018l-1.06-1.06a.75.75 0 0 1 0-1.06Zm9.193 9.193a.75.75 0 0 1 1.06 0l1.061 1.06a.75.75 0 0 1-1.06 1.061l-1.061-1.06a.75.75 0 0 1 0-1.061Z",
@@ -1311,6 +1501,24 @@ ${F$2}:hover .ghf-fab-label, ${F$2}:focus-visible .ghf-fab-label {
 	var host = null;
 	var setExpanded = (open) => document.getElementById(IDS.fab)?.setAttribute("aria-expanded", String(open));
 	var search = (state) => location.assign(buildUrl(state));
+	var THUMB = 14;
+	var formatCount = (value) => {
+		if (value < 1e3) return String(value);
+		const thousands = Math.round(value / 100) / 10;
+		return `${Number.isInteger(thousands) ? thousands : thousands.toFixed(1)}k`;
+	};
+	function rangeReadout(range) {
+		if (range.min > 0 && range.max > 0) return `${formatCount(range.min)} – ${formatCount(range.max)}`;
+		if (range.min > 0) return `${formatCount(range.min)}+`;
+		if (range.max > 0) return `Under ${formatCount(range.max)}`;
+		return "Any";
+	}
+	function dateReadout(range) {
+		if (range.from && range.to) return `${range.from} – ${range.to}`;
+		if (range.from) return `From ${range.from}`;
+		if (range.to) return `Until ${range.to}`;
+		return "Any";
+	}
 	function QualifierToken({ text }) {
 		const negated = text.startsWith("-");
 		const body = negated ? text.slice(1) : text;
@@ -1371,7 +1579,7 @@ ${F$2}:hover .ghf-fab-label, ${F$2}:focus-visible .ghf-fab-label {
 			]
 		});
 	}
-	function QualifierRow({ field, value, onChange }) {
+	function TextRow({ field, value, onChange }) {
 		return a(QueryRow, {
 			id: field.id,
 			label: field.label,
@@ -1382,8 +1590,172 @@ ${F$2}:hover .ghf-fab-label, ${F$2}:focus-visible .ghf-fab-label {
 			onChange
 		});
 	}
+	function RangeRow({ field, value, onChange }) {
+		const { stops } = field;
+		const last = stops.length - 1;
+		const [lead, setLead] = d("max");
+		const lo = value.min > 0 ? toIndex(stops, value.min, "min") : 0;
+		const hi = value.max > 0 ? toIndex(stops, value.max, "max") : last;
+		const filtered = value.min > 0 || value.max > 0;
+		const setLo = (index) => onChange({
+			min: fromIndex(stops, Math.min(index, hi), "min"),
+			max: value.max
+		});
+		const setHi = (index) => onChange({
+			min: value.min,
+			max: fromIndex(stops, Math.max(index, lo, 1), "max")
+		});
+		const jump = (event) => {
+			if (event.target !== event.currentTarget) return;
+			const rect = event.currentTarget.getBoundingClientRect();
+			const usable = Math.max(rect.width - THUMB, 1);
+			const ratio = Math.min(Math.max((event.clientX - rect.left - THUMB / 2) / usable, 0), 1);
+			const index = Math.round(ratio * last);
+			if (Math.abs(index - lo) <= Math.abs(index - hi)) setLo(index);
+			else setHi(index);
+		};
+		return a("div", {
+			class: "ghf-row ghf-row--stack",
+			children: [
+				a("span", {
+					class: "ghf-key",
+					"aria-hidden": "true",
+					children: field.qualifier
+				}),
+				a("div", {
+					class: "ghf-row-head",
+					children: [a("output", {
+						class: "ghf-value",
+						children: rangeReadout(value)
+					}), filtered && a("button", {
+						type: "button",
+						class: "ghf-clear",
+						"aria-label": `Clear ${field.label}`,
+						onClick: () => onChange({
+							min: 0,
+							max: 0
+						}),
+						children: a(Icon, {
+							name: "x",
+							size: 12
+						})
+					})]
+				}),
+				a("div", {
+					class: "ghf-slider",
+					onPointerDown: jump,
+					children: [
+						a("div", {
+							class: "ghf-slider-track",
+							children: filtered && a("div", {
+								class: "ghf-slider-fill",
+								style: {
+									left: `${lo / last * 100}%`,
+									right: `${(1 - hi / last) * 100}%`
+								}
+							})
+						}),
+						a("input", {
+							type: "range",
+							min: 0,
+							max: last,
+							step: 1,
+							value: lo,
+							"aria-label": `Minimum ${field.label.toLowerCase()}`,
+							"aria-valuetext": value.min > 0 ? `${formatCount(value.min)} or more` : "No minimum",
+							style: { zIndex: lead === "min" ? 3 : 2 },
+							onPointerDown: () => setLead("min"),
+							onInput: (event) => {
+								setLead("min");
+								setLo(Number(event.currentTarget.value));
+							}
+						}),
+						a("input", {
+							type: "range",
+							min: 0,
+							max: last,
+							step: 1,
+							value: hi,
+							"aria-label": `Maximum ${field.label.toLowerCase()}`,
+							"aria-valuetext": value.max > 0 ? `Up to ${formatCount(value.max)}` : "No maximum",
+							style: { zIndex: lead === "max" ? 3 : 2 },
+							onPointerDown: () => setLead("max"),
+							onInput: (event) => {
+								setLead("max");
+								setHi(Number(event.currentTarget.value));
+							}
+						})
+					]
+				})
+			]
+		});
+	}
+	function DateRow({ field, value, onChange }) {
+		const filtered = Boolean(value.from || value.to);
+		return a("div", {
+			class: "ghf-row ghf-row--stack",
+			children: [
+				a("span", {
+					class: "ghf-key",
+					"aria-hidden": "true",
+					children: field.qualifier
+				}),
+				a("div", {
+					class: "ghf-row-head",
+					children: [a("output", {
+						class: "ghf-value",
+						children: dateReadout(value)
+					}), filtered && a("button", {
+						type: "button",
+						class: "ghf-clear",
+						"aria-label": `Clear ${field.label}`,
+						onClick: () => onChange({
+							from: "",
+							to: ""
+						}),
+						children: a(Icon, {
+							name: "x",
+							size: 12
+						})
+					})]
+				}),
+				a("div", {
+					class: "ghf-dates",
+					children: [
+						a("input", {
+							class: "ghf-date",
+							type: "date",
+							value: value.from,
+							max: value.to || void 0,
+							"aria-label": `${field.label} on or after`,
+							onInput: (event) => onChange({
+								...value,
+								from: event.currentTarget.value
+							})
+						}),
+						a("span", {
+							class: "ghf-dash",
+							"aria-hidden": "true",
+							children: "→"
+						}),
+						a("input", {
+							class: "ghf-date",
+							type: "date",
+							value: value.to,
+							min: value.from || void 0,
+							"aria-label": `${field.label} on or before`,
+							onInput: (event) => onChange({
+								...value,
+								to: event.currentTarget.value
+							})
+						})
+					]
+				})
+			]
+		});
+	}
 	function PresetRow({ preset, pending, onLoad, onRun, onDelete }) {
-		const summary = buildQuery(preset.state) || `All ${(TYPES.find((type) => type.value === preset.state.type)?.label ?? "results").toLowerCase()}`;
+		const summary = buildQuery(preset.state) || "All repositories";
 		return a("li", {
 			class: "ghf-preset",
 			children: [a("button", {
@@ -1439,19 +1811,10 @@ ${F$2}:hover .ghf-fab-label, ${F$2}:focus-visible .ghf-fab-label {
 		const [copied, setCopied] = d(false);
 		const [openRequest, setOpenRequest] = d(0);
 		const parts = w(() => queryParts(state), [state]);
-		const patch = (change) => setState((current) => ({
+		const setField = (key, value) => setState((current) => ({
 			...current,
-			...change
+			[key]: value
 		}));
-		const setQualifier = (id, value) => setState((current) => {
-			const q = { ...current.q };
-			if (value) q[id] = value;
-			else delete q[id];
-			return {
-				...current,
-				q
-			};
-		});
 		const reset = () => {
 			setState(emptyState());
 			setError("");
@@ -1463,7 +1826,7 @@ ${F$2}:hover .ghf-fab-label, ${F$2}:focus-visible .ghf-fab-label {
 		};
 		const savePreset = () => {
 			if (!parts.length) {
-				setError("Add a term or qualifier to save.");
+				setError("Add a term or filter to save.");
 				return;
 			}
 			const trimmed = name.trim();
@@ -1572,9 +1935,9 @@ ${F$2}:hover .ghf-fab-label, ${F$2}:focus-visible .ghf-fab-label {
 							children: [a("h2", {
 								id: "ghf-panel-title",
 								children: [a(Icon, {
-									name: "search",
+									name: "filter",
 									size: 15
-								}), "Advanced search"]
+								}), NAME]
 							}), a("nav", { children: [a("button", {
 								type: "button",
 								class: "ghf-icon-btn",
@@ -1633,101 +1996,88 @@ ${F$2}:hover .ghf-fab-label, ${F$2}:focus-visible .ghf-fab-label {
 							role: "tabpanel",
 							"aria-labelledby": "ghf-tab-builder",
 							hidden: tab !== "builder",
-							children: [
-								a("section", {
-									class: "ghf-sec",
-									children: a("fieldset", {
-										class: "ghf-scope",
-										children: [a("legend", {
-											class: "ghf-sr",
-											children: "Search in"
-										}), TYPES.map((type) => a("button", {
-											type: "button",
-											"aria-pressed": state.type === type.value,
-											title: type.label,
-											onClick: () => patch({ type: type.value }),
-											children: type.short
-										}, type.value))]
-									})
-								}),
-								a("section", {
-									class: "ghf-sec",
-									children: [
-										a("div", {
-											class: "ghf-sec-head",
-											children: a("h3", {
-												class: "ghf-sec-title",
-												children: "Terms"
-											})
-										}),
-										a("div", {
-											class: "ghf-rows",
-											children: KEYWORDS.map((field) => a(QueryRow, {
-												id: field.id,
-												label: field.label,
-												gutter: field.key,
-												placeholder: field.placeholder,
-												value: state[field.id],
-												large: true,
-												onChange: (value) => patch({ [field.id]: value })
-											}, field.id))
-										}),
-										a("p", {
-											class: "ghf-hint",
-											children: [
-												"Commas or spaces separate values · ",
-												a("code", { children: "-" }),
-												" excludes · quotes keep phrases"
-											]
-										})
-									]
-								}),
-								a("section", {
-									class: "ghf-sec",
-									children: [a("div", {
+							children: [a("section", {
+								class: "ghf-sec",
+								children: [
+									a("div", {
 										class: "ghf-sec-head",
-										children: [a("h3", {
+										children: a("h3", {
 											class: "ghf-sec-title",
-											children: "Qualifiers"
-										}), a("div", {
-											class: "ghf-sort",
-											children: [
-												a("span", {
-													class: "ghf-sort-label",
-													"aria-hidden": "true",
-													children: "Sort"
-												}),
-												a("select", {
-													value: state.sort,
-													"aria-label": "Sort results",
-													onChange: (event) => patch({ sort: event.currentTarget.value }),
-													children: SORTS.map((sort) => a("option", {
-														value: sort.value,
-														children: sort.label
-													}, sort.value))
-												}),
-												a(Icon, {
-													name: "chevronDown",
-													size: 12
-												})
-											]
-										})]
-									}), FILTER_GROUPS.map((group) => a("div", {
-										class: "ghf-group",
-										children: [a("p", {
-											class: "ghf-group-title",
-											children: group.title
-										}), a("div", {
-											class: "ghf-rows",
-											children: group.fields.map((field) => a(QualifierRow, {
-												field,
-												value: state.q[field.id] ?? "",
-												onChange: (value) => setQualifier(field.id, value)
-											}, field.id))
-										})]
-									}, group.title))]
-								})
-							]
+											children: "Terms"
+										})
+									}),
+									a("div", {
+										class: "ghf-rows",
+										children: KEYWORDS.map((field) => a(QueryRow, {
+											id: field.id,
+											label: field.label,
+											gutter: field.key,
+											placeholder: field.placeholder,
+											value: state[field.id],
+											large: true,
+											onChange: (value) => setField(field.id, value)
+										}, field.id))
+									}),
+									a("p", {
+										class: "ghf-hint",
+										children: [
+											"Commas or spaces separate values · ",
+											a("code", { children: "-" }),
+											" excludes · quotes keep phrases"
+										]
+									})
+								]
+							}), a("section", {
+								class: "ghf-sec",
+								children: [a("div", {
+									class: "ghf-sec-head",
+									children: [a("h3", {
+										class: "ghf-sec-title",
+										children: "Filters"
+									}), a("div", {
+										class: "ghf-sort",
+										children: [
+											a("span", {
+												class: "ghf-sort-label",
+												"aria-hidden": "true",
+												children: "Sort"
+											}),
+											a("select", {
+												value: state.sort,
+												"aria-label": "Sort results",
+												onChange: (event) => setField("sort", event.currentTarget.value),
+												children: SORTS.map((sort) => a("option", {
+													value: sort.value,
+													children: sort.label
+												}, sort.value))
+											}),
+											a(Icon, {
+												name: "chevronDown",
+												size: 12
+											})
+										]
+									})]
+								}), a("div", {
+									class: "ghf-rows",
+									children: QUALIFIERS.map((field) => {
+										if (field.kind === "number") return a(RangeRow, {
+											field,
+											value: state[field.id],
+											onChange: (next) => setField(field.id, next)
+										}, field.id);
+										if (field.kind === "date") return a(DateRow, {
+											field,
+											value: state[field.id],
+											onChange: (next) => setField(field.id, next)
+										}, field.id);
+										return a(TextRow, {
+											field,
+											value: state[field.id],
+											onChange: (next) => setField(field.id, next)
+										}, field.id);
+									})
+								})]
+							})]
 						}), a("div", {
 							id: "ghf-panel-presets",
 							role: "tabpanel",
@@ -1783,14 +2133,14 @@ ${F$2}:hover .ghf-fab-label, ${F$2}:focus-visible .ghf-fab-label {
 										class: "ghf-empty",
 										children: [
 											a(Icon, {
-												name: "search",
+												name: "filter",
 												size: 20
 											}),
 											a("p", {
 												class: "ghf-empty-title",
 												children: "No saved searches yet"
 											}),
-											a("p", { children: "Build a query, then name it above. A preset keeps its scope, terms, qualifiers and local hide list." }),
+											a("p", { children: "Build a query, then name it above. A preset keeps its terms, filters and local hide list." }),
 											a("button", {
 												type: "button",
 												class: "ghf-btn ghf-compact",
@@ -1832,7 +2182,7 @@ ${F$2}:hover .ghf-fab-label, ${F$2}:focus-visible .ghf-fab-label {
 										children: part.text
 									})] }, `${index}:${part.text}`)) : a("span", {
 										class: "ghf-tape-empty",
-										children: "Nothing yet — add a term or a qualifier."
+										children: "Nothing yet — add a term or a filter."
 									})
 								}),
 								hideWords.length > 0 && a("p", {
@@ -1892,15 +2242,15 @@ ${F$2}:hover .ghf-fab-label, ${F$2}:focus-visible .ghf-fab-label {
 		const button = document.createElement("button");
 		button.id = IDS.fab;
 		button.type = "button";
-		button.title = "Advanced search";
-		button.setAttribute("aria-label", "Advanced search");
+		button.title = NAME;
+		button.setAttribute("aria-label", NAME);
 		button.setAttribute("aria-haspopup", "dialog");
 		button.setAttribute("aria-expanded", String(dialogRefOpen()));
 		button.dataset.theme = getTheme();
-		button.append(iconSvg("search", 18));
+		button.append(iconSvg("filter", 18));
 		const label = document.createElement("span");
 		label.className = "ghf-fab-label";
-		label.textContent = "Advanced search";
+		label.textContent = NAME;
 		button.append(label);
 		button.addEventListener("click", openPanel);
 		document.body.append(button);
@@ -1927,5 +2277,5 @@ ${F$2}:hover .ghf-fab-label, ${F$2}:focus-visible .ghf-fab-label {
 	window.addEventListener("popstate", recheck);
 	window.addEventListener("pageshow", recheck);
 	if (!document.body) document.addEventListener("DOMContentLoaded", () => safe(syncLauncher), { once: true });
-	GM_registerMenuCommand("Advanced search", openPanel);
+	GM_registerMenuCommand("GitHub Filter", openPanel);
 })();

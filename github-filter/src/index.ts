@@ -28,4 +28,4 @@ window.addEventListener('pageshow', recheck);
 // In case the script ran before <body> existed.
 if (!document.body) document.addEventListener('DOMContentLoaded', () => safe(syncLauncher), { once: true });
 
-GM_registerMenuCommand('Advanced search', openPanel);
+GM_registerMenuCommand('GitHub Filter', openPanel);

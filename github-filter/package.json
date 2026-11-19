@@ -1,8 +1,8 @@
 {
   "name": "github-filter",
-  "version": "9.0.0",
+  "version": "10.0.0",
   "private": true,
-  "description": "Build GitHub search queries without memorising qualifier syntax, save them as presets, and hide results you never want to see.",
+  "description": "Filter GitHub repository search with sliders for stars and forks, date pickers, saved presets and a local hide list.",
   "homepage": "https://github.com/quantavil/userscript",
   "license": "GPL-3.0-or-later",
   "author": "quantavil (https://github.com/quantavil)",

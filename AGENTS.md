@@ -72,3 +72,12 @@ Guidance for work in this repository (`~/Documents/userscript`).
 - **Library refresh**: Preact 11.2.0 (only runtime dependency), vite-plus 1.7.0, Biome 2.6.8, happy-dom 21.0.4, TypeScript 7.0.2, Knip 6.46.1; added `knip`/`check` scripts and `knip.json`.
 - **Verification**: 24 tests across 2 suites, strict TypeScript, Biome, Knip, and the production build passed (70.0 kB, 20.1 kB gzip). Live browser checks at 1440×900 and 390×844 covered light/dark/auto themes, typed queries and tape, preset save/load/delete confirmation, Esc and backdrop close, disabled Save, and the launcher's hover/focus pill.
 
+
+## GitHub Filter v10.0.0 — Sliders, calendars, scope removal (2026-11-20)
+
+- **Renamed**: The userscript is now **GitHub Filter** (`NAME`, panel title, launcher label and tooltip, GM menu command, `vite.config.ts` metadata). Directory and output filename stay `github-filter` / `github-filter.user.js`.
+- **Removed**: The scope switch (Code, Issues, PRs, Discussions, Users) and the `extension`/`size` qualifiers. Every remaining control is a repository qualifier, so `buildUrl` always sends `type=repositories`; a v9 preset's leftover values are dropped and a pasted `size:`/`ext:` term stays as free text.
+- **Two-way sliders**: `stars` and `forks` are dual-thumb ranges over non-linear stop scales (10 → 100k), built from two stacked transparent `<input type=range>` elements with thumb-only pointer events and a `lead` z-index for the thumb last grabbed. A bare minimum compiles to `stars:>=500`, a full range to `stars:500..1000`.
+- **Calendars**: `created` and `pushed` use native `<input type=date>` pairs with real pickers and inclusive `from`/`to` bounds (`created:2024-01-01..2024-06-30`).
+- **Typed state**: `FormState` no longer holds one raw string per qualifier — `repo`/`lang` stay text, ranges are `{min,max}`/`{from,to}`. Parsing widens strict operators (`stars:>500` → `>=501`) so a round-trip is exact, and v7/v9 presets still load through `normalizeState`.
+- **Verification**: 32 tests across 2 suites, strict TypeScript, Biome, Knip, and the production build passed (80.8 kB, 22.4 kB gzip). Live checks at 1440×900 and 390×844 covered slider drags, calendar fields, clear buttons, presets, and all three themes; on github.com a `stars:>1000 language:rust created:>2024-01-01` URL parsed into the controls and the hide list dropped all 10 rows.

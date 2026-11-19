@@ -15,7 +15,7 @@ export default defineConfig({
     monkey({
       entry: "src/index.ts",
       userscript: {
-        name: "GitHub Advanced Search",
+        name: "GitHub Filter",
         namespace: "https://github.com/quantavil/userscript/github-filter",
         version: pkg.version,
         description: pkg.description,

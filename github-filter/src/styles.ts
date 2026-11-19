@@ -183,44 +183,35 @@ ${P} .ghf-sec-title {
   font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
 }
 
-/* ---------- scope switch ---------- */
-
-${P} .ghf-scope {
-  display: flex; gap: 2px; margin: 0; min-width: 0; padding: 3px;
-  border: 1px solid var(--ghf-hairline); border-radius: 8px; background: var(--ghf-sunken);
-  overflow-x: auto; scrollbar-width: none;
-}
-${P} .ghf-sr {
-  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
-  overflow: hidden; clip-path: inset(50%); border: 0; white-space: nowrap;
-}
-${P} .ghf-scope::-webkit-scrollbar { display: none; }
-${P} .ghf-scope button {
-  flex: 0 0 auto; padding: 5px 9px; border: 0; border-radius: 6px;
-  background: transparent; color: var(--ghf-muted);
-  font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer;
-  transition: background .12s ease, color .12s ease;
-}
-${P} .ghf-scope button:hover { color: var(--ghf-fg); }
-${P} .ghf-scope button[aria-pressed="true"] {
-  background: var(--ghf-canvas); color: var(--ghf-fg); font-weight: 600;
-  box-shadow: 0 1px 2px rgba(31, 35, 40, .14), 0 0 0 1px var(--ghf-hairline);
-}
-
 /* ---------- query rows ---------- */
 
 ${P} .ghf-rows { border-top: 1px solid var(--ghf-hairline); }
 ${P} .ghf-row {
   display: grid; grid-template-columns: 70px minmax(0, 1fr) 24px; align-items: center;
-  min-height: 38px; margin: 0 -6px; padding: 0 6px;
-  border-bottom: 1px solid var(--ghf-hairline); border-radius: 5px;
+  min-inline-size: 0; min-height: 38px; margin: 0 -6px; padding: 0 6px;
+  border: 0; border-bottom: 1px solid var(--ghf-hairline); border-radius: 5px;
   transition: background .12s ease, box-shadow .12s ease;
 }
 ${P} .ghf-row:hover { background: var(--ghf-hover); }
 ${P} .ghf-row:focus-within { background: var(--ghf-hover); box-shadow: inset 0 0 0 2px var(--ghf-accent); }
 ${P} .ghf-row--lg { min-height: 46px; }
+
+/* Sliders and date pickers need the full width, so their value sits on a header line. */
+${P} .ghf-row--stack {
+  grid-template-columns: 70px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  min-height: 0; padding: 7px 6px 9px;
+}
+${P} .ghf-row-head {
+  display: flex; align-items: center; justify-content: flex-end; gap: 4px;
+  min-height: 18px; margin-left: auto;
+}
+${P} .ghf-value {
+  color: var(--ghf-fg); font-family: var(--ghf-mono);
+  font-size: 10.5px; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
 ${P} .ghf-key {
-  overflow: hidden; padding-right: 10px;
+  overflow: hidden; padding: 0 10px 0 0;
   color: var(--ghf-muted); font-family: var(--ghf-mono); font-size: 10.5px; line-height: 1;
   text-align: right; text-overflow: ellipsis; white-space: nowrap;
   cursor: text; user-select: none;
@@ -244,6 +235,68 @@ ${P} .ghf-clear {
 ${P} .ghf-clear svg { fill: currentColor; }
 ${P} .ghf-clear:hover { background: var(--ghf-selected); color: var(--ghf-fg); }
 
+/* ---------- dual range slider ---------- */
+
+${P} .ghf-slider {
+  position: relative; grid-column: 1 / -1;
+  height: 26px; margin-top: 1px;
+  cursor: pointer; touch-action: none;
+}
+${P} .ghf-slider-track {
+  position: absolute; left: 7px; right: 7px; top: 11px; height: 4px;
+  border-radius: 2px; background: var(--ghf-border); pointer-events: none;
+}
+${P} .ghf-slider-fill {
+  position: absolute; top: 0; bottom: 0;
+  border-radius: 2px; background: var(--ghf-accent);
+}
+/* Transparent, stacked ranges: only the thumbs take pointer events, so the
+   container underneath can handle a press anywhere on the track. */
+${P} .ghf-slider input {
+  position: absolute; left: 0; right: 0; top: 0;
+  width: 100%; height: 26px; margin: 0;
+  -webkit-appearance: none; appearance: none;
+  background: none; pointer-events: none;
+}
+${P} .ghf-slider input::-webkit-slider-runnable-track { height: 26px; background: none; }
+${P} .ghf-slider input::-moz-range-track { height: 26px; background: none; }
+${P} .ghf-slider input::-webkit-slider-thumb {
+  -webkit-appearance: none; pointer-events: auto;
+  width: 14px; height: 14px; margin-top: 6px;
+  border: 2px solid var(--ghf-accent); border-radius: 50%;
+  background: var(--ghf-canvas); cursor: grab;
+  box-shadow: 0 1px 2px rgba(31, 35, 40, .25);
+}
+${P} .ghf-slider input::-moz-range-thumb {
+  pointer-events: auto;
+  width: 10px; height: 10px;
+  border: 2px solid var(--ghf-accent); border-radius: 50%;
+  background: var(--ghf-canvas); cursor: grab;
+  box-shadow: 0 1px 2px rgba(31, 35, 40, .25);
+}
+${P} .ghf-slider input:active::-webkit-slider-thumb { cursor: grabbing; }
+
+/* ---------- date ranges ---------- */
+
+${P} .ghf-dates {
+  display: grid; grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr);
+  align-items: center; gap: 6px; margin-top: 3px;
+}
+${P} .ghf-date {
+  width: 100%; min-width: 0; height: 30px; padding: 0 7px;
+  border: 1px solid var(--ghf-border); border-radius: 5px;
+  background: var(--ghf-canvas); color: var(--ghf-fg);
+  font: inherit; font-size: 11.5px; font-variant-numeric: tabular-nums;
+  outline: 0; transition: border-color .12s ease, box-shadow .12s ease;
+}
+${P} .ghf-date::-webkit-calendar-picker-indicator {
+  opacity: .55; cursor: pointer; transition: opacity .12s ease;
+}
+${P} .ghf-date::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+${P} .ghf-date:focus { border-color: var(--ghf-accent); box-shadow: inset 0 0 0 1px var(--ghf-accent); }
+${P} .ghf-dash { color: var(--ghf-muted); font-family: var(--ghf-mono); font-size: 11px; text-align: center; }
+
 ${P} .ghf-hint {
   margin: 7px 0 0; color: var(--ghf-muted);
   font-size: 10.5px; line-height: 1.5;
@@ -251,12 +304,6 @@ ${P} .ghf-hint {
 ${P} .ghf-hint code {
   padding: 0 3px; border: 1px solid var(--ghf-hairline); border-radius: 3px;
   background: var(--ghf-sunken); font-family: var(--ghf-mono); font-size: 10px;
-}
-
-${P} .ghf-group + .ghf-group { margin-top: 14px; }
-${P} .ghf-group-title {
-  margin: 0 0 3px; color: var(--ghf-muted);
-  font-size: 10.5px; font-weight: 500; letter-spacing: .01em;
 }
 
 /* ---------- sort ---------- */
@@ -401,6 +448,13 @@ ${P} :is(button, select, input):focus-visible {
   outline: 2px solid var(--ghf-accent); outline-offset: 1px;
 }
 ${P} .ghf-row input:focus-visible { outline: none; }
+/* The range input is a transparent overlay, so the ring belongs on the thumb. */
+${P} .ghf-slider input:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--ghf-canvas), 0 0 0 4px var(--ghf-accent);
+}
+${P} .ghf-slider input:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px var(--ghf-canvas), 0 0 0 4px var(--ghf-accent);
+}
 
 /* ---------- launcher ---------- */
 

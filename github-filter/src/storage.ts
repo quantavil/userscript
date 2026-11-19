@@ -1,5 +1,5 @@
 import { STORE } from './config';
-import { emptyState, type FormState } from './query';
+import { type FormState, normalizeState } from './query';
 
 export interface Preset {
   id: string;
@@ -28,7 +28,7 @@ const write = (key: string, value: unknown) => {
 export const getPresets = (): Preset[] =>
   read<Preset[]>(STORE.presets, [])
     .filter(p => p?.id && p?.name)
-    .map(p => ({ ...p, state: { ...emptyState(), ...p.state, q: p.state?.q ?? {} } }));
+    .map(p => ({ ...p, state: normalizeState(p.state) }));
 
 export const addPreset = (name: string, state: FormState): Preset[] => {
   const presets = [...getPresets(), { id: `p${Date.now().toString(36)}`, name, state }];
@@ -81,15 +81,14 @@ function migrateLegacyStorageUnsafe() {
         .map((p, i) => ({
           id: p.id ?? `p${i}`,
           name: p.name!,
-          state: {
-            ...emptyState(),
-            type: p.fields?.type ?? 'repositories',
+          // `normalizeState` reads the old `q` map, so the v7 shape needs no special case.
+          state: normalizeState({
             sort: p.fields?.sort ?? '',
             and: p.fields?.and ?? '',
             or: p.fields?.or ?? '',
             hide: p.fields?.hideKeys ?? '',
             q: p.fields?.meta ?? {}
-          }
+          })
         }));
       write(STORE.presets, migrated);
     } catch {
