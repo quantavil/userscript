@@ -4,11 +4,15 @@ import {
   buildHideMatcher,
   buildQuery,
   buildUrl,
+  countActiveFilters,
   emptyState,
   fromIndex,
   normalizeState,
   parseUrl,
   queryParts,
+  removeQueryPart,
+  shiftDays,
+  splitTerms,
   toIndex,
 } from "./query";
 
@@ -31,7 +35,7 @@ describe("buildUrl", () => {
 
   it("writes a star range as a bounded, open or single-ended filter", () => {
     expect(q(buildUrl({ ...emptyState(), stars: { min: 500, max: 0 } }))).toBe("stars:>=500");
-    expect(q(buildUrl({ ...emptyState(), stars: { min: 0, max: 1000 } }))).toBe("stars:<1000");
+    expect(q(buildUrl({ ...emptyState(), stars: { min: 0, max: 1000 } }))).toBe("stars:<=1000");
     expect(q(buildUrl({ ...emptyState(), stars: { min: 500, max: 1000 } }))).toBe("stars:500..1000");
     expect(q(buildUrl({ ...emptyState(), stars: { min: 0, max: 0 } }))).toBeNull();
   });
@@ -88,7 +92,7 @@ describe("buildQuery", () => {
       lang: "python, -html",
       forks: { min: 10, max: 100 },
     });
-    expect(parts).toEqual([
+    expect(parts.map(p => ({ text: p.text, kind: p.kind }))).toEqual([
       { text: "(react OR vue)", kind: "term" },
       { text: "language:python", kind: "qualifier" },
       { text: "-language:html", kind: "qualifier" },
@@ -102,7 +106,7 @@ describe("buildQuery", () => {
 });
 
 describe("parseUrl", () => {
-  it("round-trips a built URL", () => {
+  it("round-trips a built URL without decrement drift", () => {
     const state = {
       ...emptyState(),
       and: "rust",
@@ -133,6 +137,11 @@ describe("parseUrl", () => {
     expect(parseUrl("?q=created%3A%3E2024-01-01").created).toEqual({ from: "2024-01-02", to: "" });
   });
 
+  it("correctly handles language with spaces in quotes", () => {
+    const parsed = parseUrl('?q=language%3A%22Jupyter+Notebook%22');
+    expect(parsed.lang).toBe('"Jupyter Notebook"');
+  });
+
   it("reads shorthand qualifiers without eating the longhand", () => {
     expect(parseUrl("?q=lang%3Ajs").lang).toBe("js");
     expect(parseUrl("?q=language%3Ajavascript").lang).toBe("javascript");
@@ -146,6 +155,40 @@ describe("parseUrl", () => {
   it("leaves plain text that merely contains parentheses in the AND field", () => {
     expect(parseUrl("?q=parser+(experimental)").or).toBe("");
     expect(parseUrl("?q=parser+(experimental)").and).toBe("parser (experimental)");
+  });
+});
+
+describe("splitTerms", () => {
+  it("keeps quoted qualifier values attached", () => {
+    const terms = splitTerms('rust language:"Jupyter Notebook" stars:>=500 -repo:"org/some repo"');
+    expect(terms).toEqual([
+      'rust',
+      'language:"Jupyter Notebook"',
+      'stars:>=500',
+      '-repo:"org/some repo"'
+    ]);
+  });
+});
+
+describe("removeQueryPart & countActiveFilters", () => {
+  it("removes parts cleanly", () => {
+    const state = {
+      ...emptyState(),
+      and: "rust async",
+      lang: "python, js",
+      stars: { min: 100, max: 0 }
+    };
+    expect(countActiveFilters(state)).toBe(3);
+
+    const parts = queryParts(state);
+    const starPart = parts.find(p => p.fieldId === 'stars')!;
+    const stateWithoutStars = removeQueryPart(state, starPart);
+    expect(stateWithoutStars.stars).toEqual({ min: 0, max: 0 });
+    expect(countActiveFilters(stateWithoutStars)).toBe(2);
+
+    const langPart = parts.find(p => p.token === 'python')!;
+    const stateWithoutPython = removeQueryPart(stateWithoutStars, langPart);
+    expect(stateWithoutPython.lang).toBe('js');
   });
 });
 
@@ -193,6 +236,13 @@ describe("slider scale", () => {
   it("snaps an off-scale value to the nearest stop but keeps it readable", () => {
     expect(toIndex(STARS_STOPS, 600, "min")).toBe(toIndex(STARS_STOPS, 500, "min"));
     expect(toIndex(FORKS_STOPS, 3, "max")).toBe(1);
+  });
+});
+
+describe("shiftDays", () => {
+  it("shifts dates correctly by days", () => {
+    expect(shiftDays("2024-01-10", 5)).toBe("2024-01-15");
+    expect(shiftDays("2024-01-10", -10)).toBe("2023-12-31");
   });
 });
 

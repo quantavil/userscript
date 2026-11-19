@@ -81,3 +81,19 @@ Guidance for work in this repository (`~/Documents/userscript`).
 - **Calendars**: `created` and `pushed` use native `<input type=date>` pairs with real pickers and inclusive `from`/`to` bounds (`created:2024-01-01..2024-06-30`).
 - **Typed state**: `FormState` no longer holds one raw string per qualifier — `repo`/`lang` stay text, ranges are `{min,max}`/`{from,to}`. Parsing widens strict operators (`stars:>500` → `>=501`) so a round-trip is exact, and v7/v9 presets still load through `normalizeState`.
 - **Verification**: 32 tests across 2 suites, strict TypeScript, Biome, Knip, and the production build passed (80.8 kB, 22.4 kB gzip). Live checks at 1440×900 and 390×844 covered slider drags, calendar fields, clear buttons, presets, and all three themes; on github.com a `stars:>1000 language:rust created:>2024-01-01` URL parsed into the controls and the hide list dropped all 10 rows.
+
+## GitHub Filter v10.1.0 — Code audit, bug fixes, UI/UX polish (2026-11-20)
+
+- **Audit & Bug Fixes**:
+  - Fixed numeric range compilation from `<${max}` to `<=${max}`, preventing decrement drift on repeated URL roundtrips (`<100` -> `99` -> `98`...) and aligning with inclusive `500..1000` ranges.
+  - Fixed query tokenizer breaking quoted qualifiers with spaces (e.g. `language:"Jupyter Notebook"` or `-repo:"org/some repo"`) by upgrading `splitTerms` regex and preserving quotes in `readQuery`.
+  - Fixed dual slider track click lockups when thumbs coincide (`lo === hi`), prioritizing thumb direction and updating `lead` state on track jumps and keyboard tab `onFocus`.
+  - Fixed hide list persistence: `scanResults` now toggles `.ghf-hidden` so clearing or modifying hide terms immediately unhides rows.
+  - Fixed userscript DOM bootstrap timing: guarded `watchResults` and launcher mutation observers against early document execution.
+- **UI & UX Modernization**:
+  - Replaced cramped monospace table layout with elevated Primer cards, fluid inputs, and accessible focus rings.
+  - Added 1-click quick chips for popular languages (`TypeScript`, `Python`, `Rust`, `Go`, `JavaScript`, `C++`, `Java`, `Ruby`), star cutoffs (`100+`, `1k+`, `5k+`, `10k+`), and date presets (`Past 7d`, `Past 30d`, `Past year`).
+  - Upgraded live query tape into an interactive chip console with 1-click token removal (`×`), formatted hide pills, and visual copy confirmation.
+  - Added global keyboard shortcut `Alt+F` (or `Cmd+Shift+F`) to open or toggle the filter panel from anywhere on GitHub.
+  - Enhanced launcher FAB with active filter count badge when viewing filtered search results.
+- **Verification**: 37 tests across 2 suites, strict TypeScript, Biome linter, Knip, and production build passed cleanly.

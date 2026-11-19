@@ -58,6 +58,17 @@ describe("scanResults", () => {
     expect(hidden(row!)).toBe(true);
   });
 
+  it("clears hidden state when hide filter is removed", () => {
+    goTo("https://github.com/search?q=x&ghf_hide=spam");
+    const [row] = renderResults("pure spam here");
+    scanResults();
+    expect(hidden(row!)).toBe(true);
+
+    goTo("https://github.com/search?q=x");
+    scanResults();
+    expect(hidden(row!)).toBe(false);
+  });
+
   it("does nothing without a hide list", () => {
     goTo("https://github.com/search?q=x");
     const [row] = renderResults("pure spam here");

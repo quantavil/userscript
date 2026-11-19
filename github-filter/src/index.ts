@@ -4,28 +4,41 @@ import { migrateLegacyStorage } from './storage';
 import { injectStyles } from './styles';
 import { openPanel, syncLauncher } from './ui';
 
-/** Each step is isolated so a failure (e.g. blocked storage) never takes down the rest. */
 const safe = (step: () => void) => {
   try {
     step();
   } catch {
-    /* userscript conveniences must not break the page */
+    /* userscript steps must never disrupt native page execution */
   }
 };
 
-safe(migrateLegacyStorage);
-safe(injectStyles);
-safe(syncLauncher);
-safe(watchResults);
+const init = () => {
+  safe(migrateLegacyStorage);
+  safe(injectStyles);
+  safe(syncLauncher);
+  safe(watchResults);
+};
 
-// Turbo swaps the page without a document load, so the launcher has to re-check.
-// The rAF defers past the body swap when an event fires before the new body lands.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init, { once: true });
+} else {
+  init();
+}
+
 const recheck = () => requestAnimationFrame(() => safe(syncLauncher));
 for (const event of NAV_EVENTS) document.addEventListener(event, recheck);
-// Back/forward cache restores and hash navigations don't always emit Turbo events.
 window.addEventListener('popstate', recheck);
 window.addEventListener('pageshow', recheck);
-// In case the script ran before <body> existed.
-if (!document.body) document.addEventListener('DOMContentLoaded', () => safe(syncLauncher), { once: true });
+
+// Global keyboard shortcut: Alt+F (or Cmd+Shift+F / Ctrl+Shift+F)
+window.addEventListener('keydown', event => {
+  if (
+    (event.altKey && event.code === 'KeyF') ||
+    ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'KeyF')
+  ) {
+    event.preventDefault();
+    openPanel();
+  }
+});
 
 GM_registerMenuCommand('GitHub Filter', openPanel);

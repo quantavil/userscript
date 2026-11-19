@@ -1,27 +1,38 @@
-import { Fragment, render } from 'preact';
+import { render } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { IDS, KEYWORDS, NAME, QUALIFIERS, type QualifierField, SORTS } from './config';
+import {
+  IDS,
+  KEYWORDS,
+  NAME,
+  POPULAR_LANGUAGES,
+  QUALIFIERS,
+  type QualifierField,
+  SHORTCUT_LABEL,
+  SORTS,
+  STAR_PRESETS
+} from './config';
 import { Icon, iconSvg } from './icons';
 import {
   buildQuery,
   buildUrl,
+  countActiveFilters,
   type DateRange,
   emptyState,
   type FormState,
   fromIndex,
   type NumberRange,
   parseUrl,
+  type QueryPart,
   queryParts,
+  removeQueryPart,
+  shiftDays,
   toIndex,
   tokenize
 } from './query';
 import { addPreset, getPresets, type Preset, removePreset } from './storage';
 import { getTheme, LABEL, nextTheme, setTheme as persistTheme, THEME_ICON, type Theme } from './theme';
 
-/* ------------------------------- controller ------------------------------ */
-
 interface PanelControl {
-  /** Open with `next`, or close when the panel is already open. */
   toggle(next: FormState): void;
 }
 
@@ -33,18 +44,13 @@ const setExpanded = (open: boolean) =>
 
 const search = (state: FormState) => location.assign(buildUrl(state));
 
-/* -------------------------------- building ------------------------------- */
+const THUMB = 16;
 
-/** Must match the thumb width in the stylesheet: the pointer maths depends on it. */
-const THUMB = 14;
-
-type TextQualifier = Extract<QualifierField, { kind: 'text' }>;
 type NumberQualifier = Extract<QualifierField, { kind: 'number' }>;
 type DateQualifier = Extract<QualifierField, { kind: 'date' }>;
 
 const formatCount = (value: number) => {
   if (value < 1000) return String(value);
-  // One decimal is enough at this scale; 1001 reads as "1k", not "1.0k".
   const thousands = Math.round(value / 100) / 10;
   return `${Number.isInteger(thousands) ? thousands : thousands.toFixed(1)}k`;
 };
@@ -52,93 +58,149 @@ const formatCount = (value: number) => {
 function rangeReadout(range: NumberRange): string {
   if (range.min > 0 && range.max > 0) return `${formatCount(range.min)} – ${formatCount(range.max)}`;
   if (range.min > 0) return `${formatCount(range.min)}+`;
-  if (range.max > 0) return `Under ${formatCount(range.max)}`;
+  if (range.max > 0) return `≤ ${formatCount(range.max)}`;
   return 'Any';
 }
 
 function dateReadout(range: DateRange): string {
-  if (range.from && range.to) return `${range.from} – ${range.to}`;
+  if (range.from && range.to) {
+    return range.from === range.to ? range.from : `${range.from} – ${range.to}`;
+  }
   if (range.from) return `From ${range.from}`;
   if (range.to) return `Until ${range.to}`;
-  return 'Any';
+  return 'Any time';
 }
 
-function QualifierToken({ text }: { text: string }) {
-  const negated = text.startsWith('-');
-  const body = negated ? text.slice(1) : text;
-  const colon = body.indexOf(':');
-
-  return (
-    <span class="ghf-tok">
-      {negated && <span class="ghf-tok-neg">-</span>}
-      <span class="ghf-tok-key">{body.slice(0, colon + 1)}</span>
-      <span class="ghf-tok-val">{body.slice(colon + 1)}</span>
-    </span>
-  );
-}
-
-interface TextRowProps {
+interface KeywordRowProps {
   id: string;
   label: string;
-  gutter: string;
   placeholder: string;
   value: string;
-  /** Keyword rows are the three headline inputs and get a taller hit area. */
-  large?: boolean;
-  colon?: boolean;
   onChange(value: string): void;
 }
 
-/** One line of the query table: a monospace key gutter, the input, and a clear affordance. */
-function QueryRow({ id, label, gutter, placeholder, value, large, colon, onChange }: TextRowProps) {
+function KeywordRow({ id, label, placeholder, value, onChange }: KeywordRowProps) {
   const inputId = `ghf-${id}`;
 
   return (
-    <div class={large ? 'ghf-row ghf-row--lg' : 'ghf-row'}>
-      <label class="ghf-key" for={inputId} aria-hidden="true">
-        {gutter}
-        {colon && <span class="ghf-colon">:</span>}
+    <div class="ghf-field">
+      <label class="ghf-label" for={inputId}>
+        {label}
       </label>
-      <input
-        id={inputId}
-        class="ghf-input"
-        type="text"
-        value={value}
-        placeholder={placeholder}
-        autocomplete="off"
-        spellcheck={false}
-        aria-label={label}
-        onInput={event => onChange(event.currentTarget.value)}
-      />
-      {value ? (
-        <button type="button" class="ghf-clear" aria-label={`Clear ${label}`} onClick={() => onChange('')}>
-          <Icon name="x" size={12} />
-        </button>
-      ) : null}
+      <div class="ghf-input-wrap">
+        <input
+          id={inputId}
+          class="ghf-input"
+          type="text"
+          value={value}
+          placeholder={placeholder}
+          autocomplete="off"
+          spellcheck={false}
+          onInput={event => onChange(event.currentTarget.value)}
+        />
+        {value ? (
+          <button type="button" class="ghf-clear-btn" aria-label={`Clear ${label}`} onClick={() => onChange('')}>
+            <Icon name="x" size={12} />
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function TextRow({ field, value, onChange }: { field: TextQualifier; value: string; onChange(value: string): void }) {
+function LanguageRow({
+  value,
+  onChange
+}: {
+  value: string;
+  onChange(val: string): void;
+}) {
+  const currentTokens = tokenize(value);
+
+  const toggleLang = (langName: string) => {
+    const exists = currentTokens.some(t => t.toLowerCase() === langName.toLowerCase());
+    const nextTokens = exists
+      ? currentTokens.filter(t => t.toLowerCase() !== langName.toLowerCase())
+      : [...currentTokens, langName];
+    onChange(nextTokens.join(', '));
+  };
+
   return (
-    <QueryRow
-      id={field.id}
-      label={field.label}
-      gutter={field.qualifier}
-      colon
-      placeholder={field.placeholder}
-      value={value}
-      onChange={onChange}
-    />
+    <div class="ghf-field">
+      <div class="ghf-field-label-row">
+        <label class="ghf-label" for="ghf-lang">
+          Language
+        </label>
+        {value && (
+          <button type="button" class="ghf-clear-btn" aria-label="Clear language" onClick={() => onChange('')}>
+            <Icon name="x" size={12} />
+          </button>
+        )}
+      </div>
+      <div class="ghf-input-wrap">
+        <input
+          id="ghf-lang"
+          class="ghf-input"
+          type="text"
+          value={value}
+          placeholder="e.g. python, -html"
+          autocomplete="off"
+          spellcheck={false}
+          onInput={event => onChange(event.currentTarget.value)}
+        />
+      </div>
+      <div class="ghf-chips">
+        {POPULAR_LANGUAGES.map(lang => {
+          const active = currentTokens.some(t => t.toLowerCase() === lang.toLowerCase());
+          return (
+            <button
+              key={lang}
+              type="button"
+              class={active ? 'ghf-chip ghf-chip-active' : 'ghf-chip'}
+              onClick={() => toggleLang(lang)}
+            >
+              {lang}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
-/**
- * Two thumbs over one track. The inputs are stacked transparent ranges with
- * `pointer-events` only on the thumbs, so each thumb stays grabbable while the
- * container handles a bare track press. `lead` decides which input wins when the
- * thumbs meet, which is the only state a plain range pair cannot express.
- */
+function RepoRow({
+  value,
+  onChange
+}: {
+  value: string;
+  onChange(val: string): void;
+}) {
+  return (
+    <div class="ghf-field">
+      <label class="ghf-label" for="ghf-repo">
+        Target Repository
+      </label>
+      <div class="ghf-input-wrap">
+        <input
+          id="ghf-repo"
+          class="ghf-input"
+          type="text"
+          value={value}
+          placeholder="e.g. facebook/react"
+          autocomplete="off"
+          spellcheck={false}
+          onInput={event => onChange(event.currentTarget.value)}
+        />
+        {value ? (
+          <button type="button" class="ghf-clear-btn" aria-label="Clear repo" onClick={() => onChange('')}>
+            <Icon name="x" size={12} />
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function RangeRow({
   field,
   value,
@@ -158,7 +220,6 @@ function RangeRow({
 
   const setLo = (index: number) =>
     onChange({ min: fromIndex(stops, Math.min(index, hi), 'min'), max: value.max });
-  // Index 0 would mean "at most nothing", so the upper thumb starts at the first real stop.
   const setHi = (index: number) =>
     onChange({ min: value.min, max: fromIndex(stops, Math.max(index, lo, 1), 'max') });
 
@@ -168,27 +229,41 @@ function RangeRow({
     const usable = Math.max(rect.width - THUMB, 1);
     const ratio = Math.min(Math.max((event.clientX - rect.left - THUMB / 2) / usable, 0), 1);
     const index = Math.round(ratio * last);
-    if (Math.abs(index - lo) <= Math.abs(index - hi)) setLo(index);
-    else setHi(index);
+    if (index < lo) {
+      setLead('min');
+      setLo(index);
+    } else if (index > hi) {
+      setLead('max');
+      setHi(index);
+    } else if (index - lo < hi - index) {
+      setLead('min');
+      setLo(index);
+    } else {
+      setLead('max');
+      setHi(index);
+    }
   };
 
   return (
-    <div class="ghf-row ghf-row--stack">
-      <span class="ghf-key" aria-hidden="true">
-        {field.qualifier}
-      </span>
-      <div class="ghf-row-head">
-        <output class="ghf-value">{rangeReadout(value)}</output>
-        {filtered && (
-          <button
-            type="button"
-            class="ghf-clear"
-            aria-label={`Clear ${field.label}`}
-            onClick={() => onChange({ min: 0, max: 0 })}
-          >
-            <Icon name="x" size={12} />
-          </button>
-        )}
+    <div class="ghf-slider-row">
+      <div class="ghf-slider-header">
+        <span class="ghf-slider-title">
+          <Icon name={field.id === 'stars' ? 'star' : 'gitFork'} size={14} />
+          {field.label}
+        </span>
+        <div class="ghf-field-label-row">
+          <span class="ghf-readout-badge">{rangeReadout(value)}</span>
+          {filtered && (
+            <button
+              type="button"
+              class="ghf-clear-btn"
+              aria-label={`Clear ${field.label}`}
+              onClick={() => onChange({ min: 0, max: 0 })}
+            >
+              <Icon name="x" size={12} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div class="ghf-slider" onPointerDown={jump}>
@@ -209,6 +284,7 @@ function RangeRow({
           aria-label={`Minimum ${field.label.toLowerCase()}`}
           aria-valuetext={value.min > 0 ? `${formatCount(value.min)} or more` : 'No minimum'}
           style={{ zIndex: lead === 'min' ? 3 : 2 }}
+          onFocus={() => setLead('min')}
           onPointerDown={() => setLead('min')}
           onInput={event => {
             setLead('min');
@@ -224,6 +300,7 @@ function RangeRow({
           aria-label={`Maximum ${field.label.toLowerCase()}`}
           aria-valuetext={value.max > 0 ? `Up to ${formatCount(value.max)}` : 'No maximum'}
           style={{ zIndex: lead === 'max' ? 3 : 2 }}
+          onFocus={() => setLead('max')}
           onPointerDown={() => setLead('max')}
           onInput={event => {
             setLead('max');
@@ -231,6 +308,24 @@ function RangeRow({
           }}
         />
       </div>
+
+      {field.id === 'stars' && (
+        <div class="ghf-chips">
+          {STAR_PRESETS.map(preset => {
+            const active = value.min === preset && value.max === 0;
+            return (
+              <button
+                key={preset}
+                type="button"
+                class={active ? 'ghf-chip ghf-chip-active' : 'ghf-chip'}
+                onClick={() => onChange({ min: active ? 0 : preset, max: 0 })}
+              >
+                {formatCount(preset)}+
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -246,39 +341,47 @@ function DateRow({
 }) {
   const filtered = Boolean(value.from || value.to);
 
+  const applyPreset = (days: number) => {
+    const today = new Date().toISOString().slice(0, 10);
+    onChange({ from: shiftDays(today, -days), to: '' });
+  };
+
   return (
-    <div class="ghf-row ghf-row--stack">
-      <span class="ghf-key" aria-hidden="true">
-        {field.qualifier}
-      </span>
-      <div class="ghf-row-head">
-        <output class="ghf-value">{dateReadout(value)}</output>
-        {filtered && (
-          <button
-            type="button"
-            class="ghf-clear"
-            aria-label={`Clear ${field.label}`}
-            onClick={() => onChange({ from: '', to: '' })}
-          >
-            <Icon name="x" size={12} />
-          </button>
-        )}
+    <div class="ghf-slider-row">
+      <div class="ghf-slider-header">
+        <span class="ghf-slider-title">
+          <Icon name="calendar" size={14} />
+          {field.label}
+        </span>
+        <div class="ghf-field-label-row">
+          <span class="ghf-readout-badge">{dateReadout(value)}</span>
+          {filtered && (
+            <button
+              type="button"
+              class="ghf-clear-btn"
+              aria-label={`Clear ${field.label}`}
+              onClick={() => onChange({ from: '', to: '' })}
+            >
+              <Icon name="x" size={12} />
+            </button>
+          )}
+        </div>
       </div>
 
-      <div class="ghf-dates">
+      <div class="ghf-date-grid">
         <input
-          class="ghf-date"
+          class="ghf-date-input"
           type="date"
           value={value.from}
           max={value.to || undefined}
           aria-label={`${field.label} on or after`}
           onInput={event => onChange({ ...value, from: event.currentTarget.value })}
         />
-        <span class="ghf-dash" aria-hidden="true">
+        <span class="ghf-date-sep" aria-hidden="true">
           →
         </span>
         <input
-          class="ghf-date"
+          class="ghf-date-input"
           type="date"
           value={value.to}
           min={value.from || undefined}
@@ -286,11 +389,23 @@ function DateRow({
           onInput={event => onChange({ ...value, to: event.currentTarget.value })}
         />
       </div>
+
+      <div class="ghf-chips">
+        {[
+          { label: 'Past 7 days', days: 7 },
+          { label: 'Past 30 days', days: 30 },
+          { label: 'Past year', days: 365 }
+        ].map(p => (
+          <button key={p.days} type="button" class="ghf-chip" onClick={() => applyPreset(p.days)}>
+            {p.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
-function PresetRow({
+function PresetCard({
   preset,
   pending,
   onLoad,
@@ -303,34 +418,42 @@ function PresetRow({
   onRun(): void;
   onDelete(): void;
 }) {
+  const parts = queryParts(preset.state);
   const summary = buildQuery(preset.state) || 'All repositories';
 
   return (
-    <li class="ghf-preset">
-      <button
-        type="button"
-        class="ghf-preset-main"
-        onClick={onLoad}
-        aria-label={`Load ${preset.name} into the builder`}
-        title={`Load ${preset.name} into the builder`}
-      >
+    <li class="ghf-preset-card">
+      <div class="ghf-preset-top">
         <span class="ghf-preset-name">{preset.name}</span>
-        <span class="ghf-preset-query">{summary}</span>
-      </button>
-      <div class="ghf-preset-side">
-        <button type="button" class="ghf-run" onClick={onRun} title={`Run ${preset.name}`}>
-          Run
-          <Icon name="arrowRight" size={12} />
-        </button>
-        <button
-          type="button"
-          class={pending ? 'ghf-icon-btn ghf-danger ghf-confirm' : 'ghf-icon-btn ghf-danger'}
-          aria-label={pending ? `Confirm delete ${preset.name}` : `Delete ${preset.name}`}
-          title={pending ? 'Click again to delete' : 'Delete preset'}
-          onClick={onDelete}
-        >
-          {pending ? 'Delete?' : <Icon name="trash" size={13} />}
-        </button>
+        <div class="ghf-preset-actions">
+          <button type="button" class="ghf-btn" onClick={onLoad} title="Load into builder">
+            Load
+          </button>
+          <button type="button" class="ghf-btn ghf-btn-primary" onClick={onRun} title="Run search">
+            Run
+            <Icon name="arrowRight" size={12} />
+          </button>
+          <button
+            type="button"
+            class="ghf-icon-btn"
+            style={{ color: pending ? 'var(--ghf-danger)' : undefined }}
+            title={pending ? 'Click again to confirm delete' : 'Delete preset'}
+            onClick={onDelete}
+          >
+            {pending ? <span style={{ fontSize: '11px', fontWeight: 600 }}>Sure?</span> : <Icon name="trash" size={13} />}
+          </button>
+        </div>
+      </div>
+      <div class="ghf-preset-query" title={summary}>
+        {parts.length ? (
+          parts.map(p => (
+            <span key={p.text} class="ghf-tape-chip" style={{ marginRight: '4px' }}>
+              {p.text}
+            </span>
+          ))
+        ) : (
+          <span>{summary}</span>
+        )}
       </div>
     </li>
   );
@@ -353,8 +476,7 @@ function App() {
   const [openRequest, setOpenRequest] = useState(0);
 
   const parts = useMemo(() => queryParts(state), [state]);
-
-  /* -------------------------------- state -------------------------------- */
+  const activeCount = useMemo(() => countActiveFilters(state), [state]);
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setState(current => ({ ...current, [key]: value }));
@@ -364,20 +486,23 @@ function App() {
     setError('');
   };
 
+  const handleRemovePart = (part: QueryPart) => {
+    setState(current => removeQueryPart(current, part));
+  };
+
   const loadPreset = (preset: Preset) => {
     setState(preset.state);
     setTab('builder');
-    requestAnimationFrame(() => document.getElementById('ghf-and')?.focus());
   };
 
   const savePreset = () => {
     if (!parts.length) {
-      setError('Add a term or filter to save.');
+      setError('Add at least one search term or filter to save.');
       return;
     }
     const trimmed = name.trim();
     if (!trimmed) {
-      setError('Give the preset a name first.');
+      setError('Please give this preset a name.');
       nameRef.current?.focus();
       return;
     }
@@ -405,9 +530,7 @@ function App() {
         window.clearTimeout(copyTimer.current);
         copyTimer.current = window.setTimeout(() => setCopied(false), 1400);
       })
-      .catch(() => {
-        /* Clipboard blocked — the query is still selectable in the tape. */
-      });
+      .catch(() => {});
   };
 
   const cycleTheme = () => {
@@ -415,8 +538,6 @@ function App() {
     setTheme(next);
     persistTheme(next);
   };
-
-  /* ------------------------------- effects ------------------------------- */
 
   useLayoutEffect(() => {
     panelControl = {
@@ -438,8 +559,6 @@ function App() {
     };
   }, []);
 
-  // The request counter changes after the state above is committed, so the
-  // dialog opens on the new content instead of flashing the previous search.
   useLayoutEffect(() => {
     if (!openRequest) return;
     const dialog = dialogRef.current;
@@ -464,8 +583,6 @@ function App() {
   }, [presets.length]);
 
   useEffect(() => () => window.clearTimeout(copyTimer.current), []);
-
-  /* -------------------------------- markup ------------------------------- */
 
   const close = () => dialogRef.current?.close();
 
@@ -504,10 +621,15 @@ function App() {
       >
         <header class="ghf-head">
           <div class="ghf-titlebar">
-            <h2 id="ghf-panel-title">
-              <Icon name="filter" size={15} />
-              {NAME}
-            </h2>
+            <div class="ghf-brand">
+              <span class="ghf-brand-icon">
+                <Icon name="filter" size={15} />
+              </span>
+              <h2 id="ghf-panel-title">{NAME}</h2>
+              <span class="ghf-badge-shortcut" title="Keyboard shortcut">
+                {SHORTCUT_LABEL}
+              </span>
+            </div>
             <nav>
               <button
                 type="button"
@@ -524,66 +646,74 @@ function App() {
             </nav>
           </div>
 
-          <div class="ghf-tabs" role="tablist" aria-label="Search panel sections" onKeyDown={tabKeyDown}>
+          <div class="ghf-tabs" role="tablist" aria-label="Search sections" onKeyDown={tabKeyDown}>
             <button
               type="button"
               role="tab"
               id="ghf-tab-builder"
+              class="ghf-tab-btn"
               aria-selected={tab === 'builder'}
               aria-controls="ghf-panel-builder"
               tabIndex={tab === 'builder' ? 0 : -1}
               onClick={() => setTab('builder')}
             >
               Builder
+              {activeCount > 0 && <span class="ghf-pill-badge">{activeCount}</span>}
             </button>
             <button
               type="button"
               role="tab"
               id="ghf-tab-presets"
+              class="ghf-tab-btn"
               aria-selected={tab === 'presets'}
               aria-controls="ghf-panel-presets"
               tabIndex={tab === 'presets' ? 0 : -1}
               onClick={() => setTab('presets')}
             >
-              Presets
-              {presets.length > 0 && <span class="ghf-count">{presets.length}</span>}
+              Saved Presets
+              {presets.length > 0 && <span class="ghf-pill-badge">{presets.length}</span>}
             </button>
           </div>
         </header>
 
         <div class="ghf-body" ref={bodyRef}>
           <div id="ghf-panel-builder" role="tabpanel" aria-labelledby="ghf-tab-builder" hidden={tab !== 'builder'}>
-            <section class="ghf-sec">
-              <div class="ghf-sec-head">
-                <h3 class="ghf-sec-title">Terms</h3>
+            {/* Search terms */}
+            <div class="ghf-card">
+              <div class="ghf-card-head">
+                <h3 class="ghf-card-title">
+                  <Icon name="search" size={14} />
+                  Keywords & Search Terms
+                </h3>
               </div>
-              <div class="ghf-rows">
+              <div class="ghf-field-group">
                 {KEYWORDS.map(field => (
-                  <QueryRow
+                  <KeywordRow
                     key={field.id}
                     id={field.id}
                     label={field.label}
-                    gutter={field.key}
                     placeholder={field.placeholder}
                     value={state[field.id]}
-                    large
                     onChange={value => setField(field.id, value)}
                   />
                 ))}
               </div>
-              <p class="ghf-hint">
-                Commas or spaces separate values · <code>-</code> excludes · quotes keep phrases
-              </p>
-            </section>
+            </div>
 
-            <section class="ghf-sec">
-              <div class="ghf-sec-head">
-                <h3 class="ghf-sec-title">Filters</h3>
-                <div class="ghf-sort">
-                  <span class="ghf-sort-label" aria-hidden="true">
-                    Sort
-                  </span>
-                  <select value={state.sort} aria-label="Sort results" onChange={event => setField('sort', event.currentTarget.value)}>
+            {/* Scope & Language */}
+            <div class="ghf-card">
+              <div class="ghf-card-head">
+                <h3 class="ghf-card-title">
+                  <Icon name="code" size={14} />
+                  Repository & Language
+                </h3>
+                <div class="ghf-sort-wrap">
+                  <select
+                    class="ghf-sort-select"
+                    value={state.sort}
+                    aria-label="Sort repositories"
+                    onChange={event => setField('sort', event.currentTarget.value)}
+                  >
                     {SORTS.map(sort => (
                       <option key={sort.value} value={sort.value}>
                         {sort.label}
@@ -594,140 +724,184 @@ function App() {
                 </div>
               </div>
 
-              <div class="ghf-rows">
-                {QUALIFIERS.map(field => {
-                  if (field.kind === 'number') {
-                    return (
-                      <RangeRow
-                        key={field.id}
-                        field={field}
-                        value={state[field.id]}
-                        onChange={next => setField(field.id, next)}
-                      />
-                    );
-                  }
-                  if (field.kind === 'date') {
-                    return (
-                      <DateRow
-                        key={field.id}
-                        field={field}
-                        value={state[field.id]}
-                        onChange={next => setField(field.id, next)}
-                      />
-                    );
-                  }
-                  return (
-                    <TextRow
-                      key={field.id}
-                      field={field}
-                      value={state[field.id]}
-                      onChange={next => setField(field.id, next)}
-                    />
-                  );
-                })}
+              <div class="ghf-field-group">
+                <RepoRow value={state.repo} onChange={val => setField('repo', val)} />
+                <LanguageRow value={state.lang} onChange={val => setField('lang', val)} />
               </div>
-            </section>
+            </div>
+
+            {/* Metrics */}
+            <div class="ghf-card">
+              <div class="ghf-card-head">
+                <h3 class="ghf-card-title">
+                  <Icon name="star" size={14} />
+                  Metrics & Popularity
+                </h3>
+              </div>
+              <div class="ghf-field-group">
+                {QUALIFIERS.filter(
+                  (f): f is NumberQualifier => f.kind === 'number'
+                ).map(field => (
+                  <RangeRow
+                    key={field.id}
+                    field={field}
+                    value={state[field.id]}
+                    onChange={next => setField(field.id, next)}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Timestamps */}
+            <div class="ghf-card">
+              <div class="ghf-card-head">
+                <h3 class="ghf-card-title">
+                  <Icon name="calendar" size={14} />
+                  Activity & Dates
+                </h3>
+              </div>
+              <div class="ghf-field-group">
+                {QUALIFIERS.filter(
+                  (f): f is DateQualifier => f.kind === 'date'
+                ).map(field => (
+                  <DateRow
+                    key={field.id}
+                    field={field}
+                    value={state[field.id]}
+                    onChange={next => setField(field.id, next)}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
 
           <div id="ghf-panel-presets" role="tabpanel" aria-labelledby="ghf-tab-presets" hidden={tab !== 'presets'}>
-            <section class="ghf-sec">
-              <div class="ghf-save">
-                <input
-                  ref={nameRef}
-                  class="ghf-name"
-                  type="text"
-                  placeholder="Name this search"
-                  aria-label="Preset name"
-                  maxLength={60}
-                  value={name}
-                  aria-invalid={error ? 'true' : undefined}
-                  onInput={event => {
-                    setName(event.currentTarget.value);
-                    setError('');
-                  }}
-                  onKeyDown={event => {
-                    // Otherwise Enter reaches the form's submit button and searches.
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      savePreset();
-                    }
-                  }}
-                />
+            <div class="ghf-card">
+              <div class="ghf-card-head">
+                <h3 class="ghf-card-title">Save Current Search</h3>
+              </div>
+              <div class="ghf-save-bar">
+                <div class="ghf-input-wrap" style={{ flex: 1 }}>
+                  <input
+                    ref={nameRef}
+                    class="ghf-input"
+                    type="text"
+                    placeholder="e.g. Active Rust Projects"
+                    aria-label="Preset name"
+                    maxLength={60}
+                    value={name}
+                    onInput={event => {
+                      setName(event.currentTarget.value);
+                      setError('');
+                    }}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        savePreset();
+                      }
+                    }}
+                  />
+                </div>
                 <button
                   type="button"
-                  class="ghf-btn ghf-primary ghf-compact"
+                  class="ghf-btn ghf-btn-primary"
                   disabled={!parts.length || !name.trim()}
                   onClick={savePreset}
                 >
                   Save
                 </button>
               </div>
-              <p class="ghf-error" role="alert">
-                {error}
-              </p>
+              {error && <p class="ghf-error-msg">{error}</p>}
+            </div>
 
-              {presets.length ? (
-                <ul class="ghf-presets">
-                  {presets.map(preset => (
-                    <PresetRow
-                      key={preset.id}
-                      preset={preset}
-                      pending={pendingDelete === preset.id}
-                      onLoad={() => loadPreset(preset)}
-                      onRun={() => search(preset.state)}
-                      onDelete={() => deletePreset(preset.id)}
-                    />
-                  ))}
-                </ul>
-              ) : (
-                <div class="ghf-empty">
-                  <Icon name="filter" size={20} />
-                  <p class="ghf-empty-title">No saved searches yet</p>
-                  <p>Build a query, then name it above. A preset keeps its terms, filters and local hide list.</p>
-                  <button type="button" class="ghf-btn ghf-compact" onClick={() => setTab('builder')}>
-                    Open the builder
-                  </button>
-                </div>
-              )}
-            </section>
+            {presets.length ? (
+              <ul class="ghf-preset-list">
+                {presets.map(preset => (
+                  <PresetCard
+                    key={preset.id}
+                    preset={preset}
+                    pending={pendingDelete === preset.id}
+                    onLoad={() => loadPreset(preset)}
+                    onRun={() => search(preset.state)}
+                    onDelete={() => deletePreset(preset.id)}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <div class="ghf-empty-presets">
+                <Icon name="filter" size={24} />
+                <h4 class="ghf-empty-title">No saved presets yet</h4>
+                <p class="ghf-empty-text">
+                  Configure filters in the Builder tab and name them above to quickly re-run queries later.
+                </p>
+                <button type="button" class="ghf-btn" onClick={() => setTab('builder')}>
+                  Open Builder
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         {tab === 'builder' && (
           <footer class="ghf-foot">
-            <div class="ghf-tape">
+            <div class="ghf-tape-card">
               <div class="ghf-tape-head">
-                <span class="ghf-tape-label">Query</span>
-                <button type="button" class="ghf-copy" disabled={!parts.length} onClick={copyQuery} aria-live="polite">
+                <span class="ghf-tape-title">Live GitHub Query</span>
+                <button
+                  type="button"
+                  class="ghf-copy-btn"
+                  disabled={!parts.length}
+                  onClick={copyQuery}
+                  aria-live="polite"
+                >
                   <Icon name={copied ? 'check' : 'copy'} size={12} />
-                  {copied ? 'Copied' : 'Copy'}
+                  {copied ? 'Copied!' : 'Copy'}
                 </button>
               </div>
-              <p class="ghf-tape-body">
+              <div class="ghf-tape-chips">
                 {parts.length ? (
-                  parts.map((part, index) => (
-                    <Fragment key={`${index}:${part.text}`}>
-                      {index > 0 ? ' ' : null}
-                      {part.kind === 'qualifier' ? <QualifierToken text={part.text} /> : <span class="ghf-tok">{part.text}</span>}
-                    </Fragment>
-                  ))
+                  parts.map((part, index) => {
+                    const colonIdx = part.text.indexOf(':');
+                    const hasColon = colonIdx !== -1 && part.kind === 'qualifier';
+                    return (
+                      <span key={`${index}:${part.text}`} class="ghf-tape-chip">
+                        {hasColon ? (
+                          <>
+                            <span class="ghf-tape-chip-key">{part.text.slice(0, colonIdx + 1)}</span>
+                            <span>{part.text.slice(colonIdx + 1)}</span>
+                          </>
+                        ) : (
+                          <span>{part.text}</span>
+                        )}
+                        <button
+                          type="button"
+                          class="ghf-tape-chip-remove"
+                          title={`Remove ${part.text}`}
+                          aria-label={`Remove ${part.text}`}
+                          onClick={() => handleRemovePart(part)}
+                        >
+                          <Icon name="x" size={10} />
+                        </button>
+                      </span>
+                    );
+                  })
                 ) : (
-                  <span class="ghf-tape-empty">Nothing yet — add a term or a filter.</span>
+                  <span class="ghf-tape-empty">No active filters — add keywords or qualifiers above.</span>
                 )}
-              </p>
+              </div>
               {hideWords.length > 0 && (
-                <p class="ghf-tape-hide">
-                  Hiding results with <b>{hideWords.join(' · ')}</b>
-                </p>
+                <div class="ghf-tape-hide">
+                  🚫 Hiding results matching: <b>{hideWords.join(', ')}</b>
+                </div>
               )}
             </div>
 
-            <div class="ghf-actions">
-              <button type="button" class="ghf-btn" onClick={reset}>
+            <div class="ghf-actions-bar">
+              <button type="button" class="ghf-btn" disabled={activeCount === 0} onClick={reset}>
                 Reset
               </button>
-              <button type="submit" class="ghf-btn ghf-primary" title="Search GitHub (Enter)">
-                Search
+              <button type="submit" class="ghf-btn ghf-btn-primary" title="Search GitHub (Enter)">
+                Search GitHub
                 <Icon name="arrowRight" size={14} />
               </button>
             </div>
@@ -737,8 +911,6 @@ function App() {
     </dialog>
   );
 }
-
-/* ------------------------------- mounting -------------------------------- */
 
 function mount() {
   if (!document.body) return;
@@ -756,13 +928,18 @@ export function openPanel() {
   panelControl?.toggle(parseUrl(location.search));
 }
 
-/**
- * The launcher lives on all GitHub pages. Fixed to the bottom-right corner with high z-index
- * and safe-area spacing. Re-checked on Turbo navigation, which has no document load, and
- * re-inserted if Turbo swapped the body out from under it.
- */
+function updateFabBadge(button: HTMLElement, count: number) {
+  let badge = button.querySelector<HTMLElement>('.ghf-fab-badge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'ghf-fab-badge';
+    button.append(badge);
+  }
+  badge.textContent = String(count);
+  badge.style.display = count > 0 ? 'inline-flex' : 'none';
+}
+
 export function syncLauncher() {
-  // Never mount inside iframes (embeds, previews) — the top frame owns the launcher.
   try {
     if (window.self !== window.top) return;
   } catch {
@@ -770,27 +947,34 @@ export function syncLauncher() {
   }
   if (!document.body) return;
 
+  const activeCount = countActiveFilters(parseUrl(location.search));
   const existing = document.getElementById(IDS.fab);
   if (existing) {
-    if (existing.isConnected) return;
-    document.body.append(existing);
+    if (!existing.isConnected) document.body.append(existing);
+    updateFabBadge(existing, activeCount);
     return;
   }
 
   const button = document.createElement('button');
   button.id = IDS.fab;
   button.type = 'button';
-  button.title = NAME;
-  button.setAttribute('aria-label', NAME);
+  button.title = `${NAME} (${SHORTCUT_LABEL})`;
+  button.setAttribute('aria-label', `${NAME} (${SHORTCUT_LABEL})`);
   button.setAttribute('aria-haspopup', 'dialog');
   button.setAttribute('aria-expanded', String(dialogRefOpen()));
   button.dataset.theme = getTheme();
-  button.append(iconSvg('filter', 18));
+  button.append(iconSvg('filter', 16));
 
-  const label = document.createElement('span');
-  label.className = 'ghf-fab-label';
-  label.textContent = NAME;
-  button.append(label);
+  const text = document.createElement('span');
+  text.className = 'ghf-fab-text';
+  text.textContent = 'Filter';
+  button.append(text);
+
+  const badge = document.createElement('span');
+  badge.className = 'ghf-fab-badge';
+  badge.textContent = String(activeCount);
+  badge.style.display = activeCount > 0 ? 'inline-flex' : 'none';
+  button.append(badge);
 
   button.addEventListener('click', openPanel);
   document.body.append(button);
@@ -800,8 +984,6 @@ export function syncLauncher() {
 const dialogRefOpen = () => document.getElementById(IDS.panel)?.hasAttribute('open') ?? false;
 
 let launcherObserved = false;
-/** Re-run the presence check when Turbo swaps <head>/<body>, catching the gap
- *  between a navigation event firing and the new body landing. */
 function observeLauncher() {
   if (launcherObserved) return;
   launcherObserved = true;

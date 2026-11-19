@@ -16,7 +16,7 @@ It reads GitHub's own Primer design tokens, so it inherits whatever theme you ha
 |---|---|
 | Stars, both thumbs at 500 and 1k | `stars:500..1000` |
 | Stars, left thumb at 500 | `stars:>=500` |
-| Forks, right thumb at 100 | `forks:<100` |
+| Forks, right thumb at 100 | `forks:<=100` |
 | Created, 2024-01-01 → 2024-06-30 | `created:2024-01-01..2024-06-30` |
 | Created, from 2024-01-01 | `created:>=2024-01-01` |
 | Language → `python, -html` | `language:python -language:html` |
@@ -48,13 +48,15 @@ Every control maps to a repository qualifier, so the panel always searches `type
 
 ## Using it
 
-The filter button in the bottom-right corner of any GitHub page opens the panel; so does **GitHub Filter** in your userscript manager's menu.
+The filter button in the bottom-right corner of any GitHub page opens the panel; so does pressing `Alt+F` (or `Cmd+Shift+F`) anywhere on GitHub, or selecting **GitHub Filter** in your userscript manager's menu.
 
-- Drag a thumb to set a bound, or press on the track to send the nearest thumb there
-- The calendar button in a date field opens the native picker
-- `Enter` in any text field runs the search
+- **Quick Chips**: 1-click popular language filters (`TypeScript`, `Python`, `Rust`, `Go`, etc.), star cutoffs (`100+`, `1k+`, `5k+`, `10k+`), and date presets (`Past 7d`, `Past 30d`, `Past year`)
+- **Dual Sliders**: Drag thumbs to set ranges or click the track; thumbs smoothly prioritize closer bounds without overlap lockups
+- **Interactive Live Query Tape**: Live query parts render as clickable chips with instant 1-click removal (`×`) and 1-click copy with feedback
+- **Active Filter Badge**: The floating launcher button displays an active filter count pill whenever filters are applied on the current search
+- `Enter` in any text field or clicking Search runs the query on GitHub
 - `Esc`, or a click outside, closes the panel
-- `←`/`→` move between Builder and Presets
+- `←`/`→` move between Builder and Presets tabs
 - The theme button cycles: matches GitHub → light → dark → back to matching GitHub
 
 ## Development

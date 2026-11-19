@@ -42,28 +42,40 @@ export const emptyState = (): FormState => ({
   pushed: { from: '', to: '' }
 });
 
-/** Split user input on commas/whitespace, keeping quoted phrases (and `-"negated phrases"`) intact. */
+/** Split user input on commas or whitespace, keeping quoted phrases intact. */
 export const tokenize = (input: string): string[] => input.match(/-?"[^"]*"|[^\s,]+/g) ?? [];
 
-/** Same, without treating commas as separators — a pasted GitHub query has none. */
-const splitTerms = (input: string): string[] => input.match(/-?"[^"]*"|\S+/g) ?? [];
+/**
+ * Split query terms from full GitHub query string, keeping quoted values attached
+ * to qualifiers (e.g. language:"Jupyter Notebook" or -repo:"foo bar").
+ */
+export const splitTerms = (input: string): string[] =>
+  input.match(/-?(?:[\w-]+:)?(?:"[^"]*"|\S+)/g) ?? [];
 
 const splitNegation = (token: string) =>
   token.startsWith('-') ? ([token.slice(1), '-'] as const) : ([token, ''] as const);
 
 /* -------------------------------- compiling ------------------------------- */
 
-/** `500..1000`, `>=500`, `<1000`, or null when the range is open at both ends. */
+/** Compiles numeric range to GitHub filter: `500..1000`, `>=500`, `<=1000`, or null. */
 function numberRange(range: NumberRange): string | null {
-  if (range.min > 0 && range.max > 0) return `${range.min}..${range.max}`;
+  if (range.min > 0 && range.max > 0) {
+    const min = Math.min(range.min, range.max);
+    const max = Math.max(range.min, range.max);
+    return `${min}..${max}`;
+  }
   if (range.min > 0) return `>=${range.min}`;
-  if (range.max > 0) return `<${range.max}`;
+  if (range.max > 0) return `<=${range.max}`;
   return null;
 }
 
 /** GitHub date bounds are whole days, inclusive on both ends. */
 function dateRange(range: DateRange): string | null {
-  if (range.from && range.to) return `${range.from}..${range.to}`;
+  if (range.from && range.to) {
+    if (range.from === range.to) return range.from;
+    const [from, to] = range.from <= range.to ? [range.from, range.to] : [range.to, range.from];
+    return `${from}..${to}`;
+  }
   if (range.from) return `>=${range.from}`;
   if (range.to) return `<=${range.to}`;
   return null;
@@ -71,20 +83,27 @@ function dateRange(range: DateRange): string | null {
 
 export interface QueryPart {
   text: string;
-  /** `qualifier` parts render as `key:value`; everything else is free text. */
   kind: 'term' | 'qualifier';
+  fieldId?: keyof FormState;
+  token?: string;
 }
 
-/**
- * The exact terms GitHub will receive, as discrete parts. `buildQuery` joins
- * them for copying and searching; the panel renders them one by one.
- */
+/** Discrete query parts for rendering interactive chips and assembling the final search string. */
 export function queryParts(state: FormState): QueryPart[] {
-  const parts: QueryPart[] = tokenize(state.and).map(text => ({ text, kind: 'term' }));
+  const parts: QueryPart[] = tokenize(state.and).map(token => ({
+    text: token,
+    kind: 'term',
+    fieldId: 'and',
+    token
+  }));
 
   const anyOf = tokenize(state.or);
   if (anyOf.length) {
-    parts.push({ text: anyOf.length === 1 ? anyOf[0]! : `(${anyOf.join(' OR ')})`, kind: 'term' });
+    parts.push({
+      text: anyOf.length === 1 ? anyOf[0]! : `(${anyOf.join(' OR ')})`,
+      kind: 'term',
+      fieldId: 'or'
+    });
   }
 
   for (const field of QUALIFIERS) {
@@ -92,13 +111,24 @@ export function queryParts(state: FormState): QueryPart[] {
       for (const token of tokenize(state[field.id])) {
         const [bare, negate] = splitNegation(token);
         if (!bare) continue;
-        parts.push({ text: `${negate}${field.qualifier}:${bare}`, kind: 'qualifier' });
+        parts.push({
+          text: `${negate}${field.qualifier}:${bare}`,
+          kind: 'qualifier',
+          fieldId: field.id,
+          token
+        });
       }
       continue;
     }
 
     const value = field.kind === 'number' ? numberRange(state[field.id]) : dateRange(state[field.id]);
-    if (value) parts.push({ text: `${field.qualifier}:${value}`, kind: 'qualifier' });
+    if (value) {
+      parts.push({
+        text: `${field.qualifier}:${value}`,
+        kind: 'qualifier',
+        fieldId: field.id
+      });
+    }
   }
 
   return parts;
@@ -119,15 +149,47 @@ export function buildUrl(state: FormState): string {
   return url.toString();
 }
 
+/** Removes a specific part from the form state (for 1-click chip removal). */
+export function removeQueryPart(state: FormState, part: QueryPart): FormState {
+  if (!part.fieldId) return state;
+  const next = { ...state };
+  if (part.fieldId === 'stars' || part.fieldId === 'forks') {
+    next[part.fieldId] = { min: 0, max: 0 };
+  } else if (part.fieldId === 'created' || part.fieldId === 'pushed') {
+    next[part.fieldId] = { from: '', to: '' };
+  } else if (part.fieldId === 'or') {
+    next.or = '';
+  } else if (part.token && (part.fieldId === 'and' || part.fieldId === 'repo' || part.fieldId === 'lang')) {
+    const current = tokenize(state[part.fieldId]);
+    const filtered = current.filter(t => t !== part.token);
+    next[part.fieldId] = filtered.join(part.fieldId === 'and' ? ' ' : ', ');
+  }
+  return next;
+}
+
+export function countActiveFilters(state: FormState): number {
+  let count = 0;
+  if (state.and.trim()) count += 1;
+  if (state.or.trim()) count += 1;
+  if (state.hide.trim()) count += 1;
+  if (state.sort) count += 1;
+  if (state.repo.trim()) count += 1;
+  if (state.lang.trim()) count += 1;
+  if (state.stars.min > 0 || state.stars.max > 0) count += 1;
+  if (state.forks.min > 0 || state.forks.max > 0) count += 1;
+  if (state.created.from || state.created.to) count += 1;
+  if (state.pushed.from || state.pushed.to) count += 1;
+  return count;
+}
+
 /* -------------------------------- parsing --------------------------------- */
 
 const NUMBER = /^(>=|<=|>|<)?(\d+)(?:\.\.(\d+))?$/;
 const DATE = /^(>=|<=|>|<)?(\d{4}-\d{2}-\d{2})(?:\.\.(\d{4}-\d{2}-\d{2}))?$/;
 
 /**
- * A bare number reads as "at least", matching what the builder means by a single
- * left thumb; the comparison operators are widened to whole units so a parsed
- * `>500` round-trips exactly as `>=501`.
+ * A bare number reads as "at least", matching a single left thumb;
+ * strict operators are converted so parsed values round-trip exactly.
  */
 function parseNumberRange(value: string): NumberRange | null {
   const match = value.match(NUMBER);
@@ -141,7 +203,7 @@ function parseNumberRange(value: string): NumberRange | null {
   return { min: count, max: 0 };
 }
 
-function shiftDays(date: string, days: number): string {
+export function shiftDays(date: string, days: number): string {
   const parsed = new Date(`${date}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime())) return date;
   parsed.setUTCDate(parsed.getUTCDate() + days);
@@ -159,7 +221,7 @@ function parseDateRange(value: string): DateRange | null {
   return { from: lower, to: '' };
 }
 
-/** Pull every recognised qualifier out of `query` into `state`; returns the leftover free text. */
+/** Extracts recognised qualifiers out of `query` into `state`; returns leftover free text. */
 function readQuery(state: FormState, query: string): string {
   const free: string[] = [];
 
@@ -176,12 +238,15 @@ function readQuery(state: FormState, query: string): string {
     }
 
     if (field.kind === 'text') {
-      const values = tokenize(raw.replace(/^"|"$/g, '')).map(value => `${negate}${value}`);
+      const isQuoted = raw.startsWith('"') && raw.endsWith('"');
+      const cleanRaw = isQuoted ? raw.slice(1, -1) : raw;
+      const values = isQuoted
+        ? [`${negate}"${cleanRaw}"`]
+        : tokenize(cleanRaw).map(value => `${negate}${value}`);
       if (values.length) state[field.id] = [...tokenize(state[field.id]), ...values].join(', ');
       continue;
     }
 
-    // The controls cannot express a negated number or date, so keep it as text.
     if (negate) {
       free.push(term);
       continue;
@@ -222,7 +287,6 @@ function stateFromQuery(query: string, sort = '', hide = ''): FormState {
   return state;
 }
 
-/** Rebuild builder state from a search URL's query string, so the panel opens pre-filled. */
 export const parseUrl = (search: string): FormState => {
   const params = new URLSearchParams(search);
   return stateFromQuery(params.get('q') ?? '', params.get('s') ?? '', params.get(PARAM.hide) ?? '');
@@ -230,10 +294,6 @@ export const parseUrl = (search: string): FormState => {
 
 /* ------------------------------- normalising ------------------------------ */
 
-/**
- * v9 kept one raw string per field under `q`. Presets saved by that build still
- * deserve to open, so their values are translated back into the typed shape.
- */
 function legacyQuery(q: unknown): string {
   if (!q || typeof q !== 'object') return '';
   const source = q as Record<string, string>;
@@ -265,7 +325,6 @@ const isDateRange = (value: unknown): value is DateRange =>
   typeof (value as DateRange).from === 'string' &&
   typeof (value as DateRange).to === 'string';
 
-/** Old, partial and future records are patched up here so the panel never renders half a state. */
 export function normalizeState(raw: unknown): FormState {
   if (!raw || typeof raw !== 'object') return emptyState();
   const input = raw as Record<string, unknown>;
@@ -275,7 +334,6 @@ export function normalizeState(raw: unknown): FormState {
   state.and = text('and');
   state.or = text('or');
 
-  // Typed values win over the legacy translation when both are present.
   for (const field of QUALIFIERS) {
     const value = input[field.id];
     if (field.kind === 'text' && typeof value === 'string') state[field.id] = value;
@@ -288,7 +346,6 @@ export function normalizeState(raw: unknown): FormState {
 
 /* --------------------------------- sliders -------------------------------- */
 
-/** Nearest slider position for a bound; either end of the track means "unbounded". */
 export function toIndex(stops: readonly number[], value: number, end: 'min' | 'max'): number {
   const last = stops.length - 1;
   if (value <= 0) return end === 'min' ? 0 : last;
@@ -300,7 +357,6 @@ export function toIndex(stops: readonly number[], value: number, end: 'min' | 'm
   return best;
 }
 
-/** The bound a slider position stands for; the far end of either track is open. */
 export function fromIndex(stops: readonly number[], index: number, end: 'min' | 'max'): number {
   if (end === 'min') return index <= 0 ? 0 : (stops[index] ?? 0);
   return index >= stops.length - 1 ? 0 : (stops[index] ?? 0);
@@ -310,10 +366,6 @@ export function fromIndex(stops: readonly number[], index: number, end: 'min' | 
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/**
- * Match any of `words` as a whole word. Substring matching made "bot" hide "robotics";
- * lookaround on letters/digits keeps "node.js" and "c++" matchable, unlike `\b`.
- */
 export function buildHideMatcher(input: string): RegExp | null {
   const words = tokenize(input)
     .map(w => w.replace(/^-?"|"$/g, '').trim())
