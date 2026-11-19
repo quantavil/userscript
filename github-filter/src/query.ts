@@ -25,11 +25,23 @@ export const tokenize = (input: string): string[] => input.match(/-?"[^"]*"|[^\s
 const splitNegation = (token: string) =>
   token.startsWith('-') ? ([token.slice(1), '-'] as const) : ([token, ''] as const);
 
-export function buildUrl(state: FormState): string {
-  const terms = tokenize(state.and);
+export interface QueryPart {
+  text: string;
+  /** `qualifier` parts render as `key:value`; everything else is free text. */
+  kind: 'term' | 'qualifier';
+}
+
+/**
+ * The exact terms GitHub will receive, as discrete parts. `buildQuery` joins
+ * them for copying and searching; the panel renders them one by one.
+ */
+export function queryParts(state: FormState): QueryPart[] {
+  const parts: QueryPart[] = tokenize(state.and).map(text => ({ text, kind: 'term' }));
 
   const anyOf = tokenize(state.or);
-  if (anyOf.length) terms.push(anyOf.length === 1 ? anyOf[0]! : `(${anyOf.join(' OR ')})`);
+  if (anyOf.length) {
+    parts.push({ text: anyOf.length === 1 ? anyOf[0]! : `(${anyOf.join(' OR ')})`, kind: 'term' });
+  }
 
   for (const field of QUALIFIERS) {
     for (const token of tokenize(state.q[field.id] ?? '')) {
@@ -37,12 +49,18 @@ export function buildUrl(state: FormState): string {
       if (!bare) continue;
       // A lone number reads as "at least this many" — GitHub would treat it as exactly.
       const value = NUMERIC.has(field.qualifier) && /^\d+$/.test(bare) ? `>=${bare}` : bare;
-      terms.push(`${negate}${field.qualifier}:${value}`);
+      parts.push({ text: `${negate}${field.qualifier}:${value}`, kind: 'qualifier' });
     }
   }
 
+  return parts;
+}
+
+export const buildQuery = (state: FormState): string => queryParts(state).map(part => part.text).join(' ');
+
+export function buildUrl(state: FormState): string {
   const url = new URL('https://github.com/search');
-  url.searchParams.set('q', terms.join(' '));
+  url.searchParams.set('q', buildQuery(state));
   url.searchParams.set('type', state.type);
   if (state.sort) {
     url.searchParams.set('s', state.sort);

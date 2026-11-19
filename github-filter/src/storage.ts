@@ -24,7 +24,11 @@ const write = (key: string, value: unknown) => {
   }
 };
 
-export const getPresets = (): Preset[] => read<Preset[]>(STORE.presets, []).filter(p => p?.id && p?.name);
+/** Old or partial records are patched up here so the panel never renders a half-made state. */
+export const getPresets = (): Preset[] =>
+  read<Preset[]>(STORE.presets, [])
+    .filter(p => p?.id && p?.name)
+    .map(p => ({ ...p, state: { ...emptyState(), ...p.state, q: p.state?.q ?? {} } }));
 
 export const addPreset = (name: string, state: FormState): Preset[] => {
   const presets = [...getPresets(), { id: `p${Date.now().toString(36)}`, name, state }];

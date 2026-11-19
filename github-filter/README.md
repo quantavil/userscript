@@ -2,7 +2,7 @@
 
 [![GitHub](https://img.shields.io/badge/GitHub-quantavil%2Fuserscript-181717?logo=github&logoColor=white)](https://github.com/quantavil/userscript)
 
-A search panel for GitHub that builds the query for you, remembers the searches you run often, and hides results you never want to see.
+A search panel for GitHub that builds the query for you, shows the query as you type it, remembers the searches you run often, and hides results you never want to see.
 
 It reads GitHub's own Primer design tokens, so it inherits whatever theme you have set — light, dark, dimmed, high contrast — and looks like part of the page instead of something bolted onto it.
 
@@ -12,7 +12,7 @@ It reads GitHub's own Primer design tokens, so it inherits whatever theme you ha
 
 ### Builds the query
 
-Fill in fields; it writes the qualifiers.
+Pick a scope, fill in the rows, and watch the query tape at the bottom compile: `rust async (tokio OR rayon) language:python -language:html stars:>=500`. Copy it, or run it.
 
 | You type | It searches |
 |---|---|
@@ -25,11 +25,11 @@ Fill in fields; it writes the qualifiers.
 
 Values are comma or space separated, `-` negates, and quoted phrases stay whole. A bare number on stars/forks/size means "at least" — writing `500` and getting only repos with *exactly* 500 stars is never what you wanted. Explicit operators and ranges pass through untouched.
 
-Open the panel on a results page and it parses the current URL back into the form, so you can adjust one field and re-run instead of retyping. Shorthand qualifiers (`lang:`, `ext:`) are recognised alongside the long forms.
+Open the panel on a results page and it parses the current URL back into the rows, so you can adjust one field and re-run instead of retyping. Shorthand qualifiers (`lang:`, `ext:`) are recognised alongside the long forms.
 
 ### Remembers searches
 
-Save the current configuration under a name. Each preset shows its qualifiers as chips, and runs directly or loads back into the builder for editing. Stored in `localStorage`.
+Save the current configuration under a name. Each preset shows the query it compiles to and runs directly, or loads back into the builder for editing. Deleting takes a second click, never a modal. Stored in `localStorage`.
 
 ### Hides noise
 
@@ -48,6 +48,7 @@ The search button in the bottom-right corner of any results page opens the panel
 
 - `Enter` in any builder field runs the search
 - `Esc`, or a click outside, closes the panel
+- `←`/`→` move between Builder and Presets
 - The theme button cycles: matches GitHub → light → dark → back to matching GitHub
 
 ## Development
@@ -59,6 +60,8 @@ bun run dev     # vite dev server
 bun run test    # vitest
 bun run tsc     # typecheck
 bun run lint    # biome
+bun run knip    # unused files/exports/dependencies
+bun run check   # tsc + test + lint + knip + build
 ```
 
 ## Notes
@@ -69,4 +72,4 @@ Earlier versions added a badge to each result showing the repository's latest re
 
 ## License
 
-MIT
+GPL-3.0-or-later

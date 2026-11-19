@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { buildHideMatcher, buildUrl, emptyState, parseUrl } from "./query";
+import { buildHideMatcher, buildQuery, buildUrl, emptyState, parseUrl, queryParts } from "./query";
 
 const q = (url: string) => new URL(url).searchParams.get("q");
 
@@ -47,6 +47,27 @@ describe("buildUrl", () => {
   it("only emits sort params when a sort is chosen", () => {
     expect(buildUrl(emptyState())).not.toContain("&s=");
     expect(buildUrl({ ...emptyState(), sort: "stars" })).toContain("s=stars&o=desc");
+  });
+});
+
+describe("buildQuery", () => {
+  it("is the single string the tape renders and the URL carries", () => {
+    const state = { ...emptyState(), and: "rust", q: { lang: "python", stars: "500" } };
+    expect(buildQuery(state)).toBe("rust language:python stars:>=500");
+    expect(new URL(buildUrl(state)).searchParams.get("q")).toBe(buildQuery(state));
+  });
+
+  it("keeps qualifier parts separate so the tape can colour the key", () => {
+    const parts = queryParts({ ...emptyState(), or: "react, vue", q: { lang: "python, -html" } });
+    expect(parts).toEqual([
+      { text: "(react OR vue)", kind: "term" },
+      { text: "language:python", kind: "qualifier" },
+      { text: "-language:html", kind: "qualifier" },
+    ]);
+  });
+
+  it("is empty for a type-only search", () => {
+    expect(buildQuery({ ...emptyState(), type: "issues" })).toBe("");
   });
 });
 

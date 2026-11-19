@@ -26,78 +26,82 @@ export const SEARCH_PATH = '/search';
 /** Qualifiers that take a bare number, so a lone `500` should mean `>=500`. */
 export const NUMERIC = new Set(['stars', 'forks', 'size']);
 
-export type Field =
-  | { id: string; label: string; kind: 'select'; options: { value: string; label: string }[] }
-  | {
-      id: string;
-      label: string;
-      kind: 'text';
-      placeholder?: string;
-      /** GitHub search qualifier this field compiles to. Absent for free text. */
-      qualifier?: string;
-      /** Shorthands GitHub also accepts, so parsing a pasted query finds them. */
-      aliases?: string[];
-      full?: boolean;
-    };
-
-export interface Section {
-  title: string;
-  fields: Field[];
+export interface SearchType {
+  /** GitHub's `type` query parameter. */
+  value: string;
+  label: string;
+  /** Short form for the scope switch, where the full label would overflow. */
+  short: string;
 }
 
-export const SECTIONS: Section[] = [
+export const TYPES: SearchType[] = [
+  { value: 'repositories', label: 'Repositories', short: 'Repos' },
+  { value: 'code', label: 'Code', short: 'Code' },
+  { value: 'issues', label: 'Issues', short: 'Issues' },
+  { value: 'pullrequests', label: 'Pull requests', short: 'PRs' },
+  { value: 'discussions', label: 'Discussions', short: 'Discussions' },
+  { value: 'users', label: 'Users', short: 'Users' }
+];
+
+export const SORTS = [
+  { value: '', label: 'Best match' },
+  { value: 'stars', label: 'Most stars' },
+  { value: 'forks', label: 'Most forks' },
+  { value: 'updated', label: 'Recently updated' }
+];
+
+export interface KeywordField {
+  id: 'and' | 'or' | 'hide';
+  /** Monospace gutter key shown in the query table. */
+  key: string;
+  label: string;
+  placeholder: string;
+}
+
+export const KEYWORDS: KeywordField[] = [
+  { id: 'and', key: 'all', label: 'All of these words', placeholder: 'rust async' },
+  { id: 'or', key: 'any', label: 'Any of these words', placeholder: 'react, vue' },
+  { id: 'hide', key: 'hide', label: 'Hide results containing', placeholder: 'spam, bot' }
+];
+
+export interface QualifierField {
+  id: string;
+  label: string;
+  placeholder: string;
+  /** GitHub search qualifier this field compiles to. */
+  qualifier: string;
+  /** Shorthands GitHub also accepts, so parsing a pasted query finds them. */
+  aliases?: string[];
+}
+
+export interface FilterGroup {
+  title: string;
+  fields: QualifierField[];
+}
+
+/**
+ * The field schema is the single source of truth: the query builder, the URL
+ * parser, the preset chips and the generated query all derive from it.
+ */
+export const FILTER_GROUPS: FilterGroup[] = [
   {
-    title: 'Search',
+    title: 'Repository',
     fields: [
-      {
-        id: 'type',
-        label: 'Type',
-        kind: 'select',
-        options: [
-          { value: 'repositories', label: 'Repositories' },
-          { value: 'code', label: 'Code' },
-          { value: 'issues', label: 'Issues' },
-          { value: 'pullrequests', label: 'Pull requests' },
-          { value: 'discussions', label: 'Discussions' },
-          { value: 'users', label: 'Users' }
-        ]
-      },
-      {
-        id: 'sort',
-        label: 'Sort by',
-        kind: 'select',
-        options: [
-          { value: '', label: 'Best match' },
-          { value: 'stars', label: 'Most stars' },
-          { value: 'forks', label: 'Most forks' },
-          { value: 'updated', label: 'Recently updated' }
-        ]
-      }
+      { id: 'repo', label: 'Repo', placeholder: 'facebook/react', qualifier: 'repo' },
+      { id: 'lang', label: 'Language', placeholder: 'python, -html', qualifier: 'language', aliases: ['lang'] },
+      { id: 'ext', label: 'Extension', placeholder: 'md', qualifier: 'extension', aliases: ['ext'] }
     ]
   },
   {
-    title: 'Terms',
+    title: 'Limits',
     fields: [
-      { id: 'and', label: 'All of these', kind: 'text', placeholder: 'rust async' },
-      { id: 'or', label: 'Any of these', kind: 'text', placeholder: 'react, vue' },
-      { id: 'hide', label: 'Hide results containing', kind: 'text', placeholder: 'spam, bot', full: true }
-    ]
-  },
-  {
-    title: 'Qualifiers',
-    fields: [
-      { id: 'repo', label: 'Repo', kind: 'text', placeholder: 'facebook/react', qualifier: 'repo' },
-      { id: 'lang', label: 'Language', kind: 'text', placeholder: 'python, -html', qualifier: 'language', aliases: ['lang'] },
-      { id: 'ext', label: 'Extension', kind: 'text', placeholder: 'md', qualifier: 'extension', aliases: ['ext'] },
-      { id: 'stars', label: 'Stars', kind: 'text', placeholder: '>500', qualifier: 'stars' },
-      { id: 'forks', label: 'Forks', kind: 'text', placeholder: '>100', qualifier: 'forks' },
-      { id: 'size', label: 'Size (KB)', kind: 'text', placeholder: '<5000', qualifier: 'size' },
-      { id: 'created', label: 'Created', kind: 'text', placeholder: '>2023-01', qualifier: 'created' },
-      { id: 'pushed', label: 'Pushed', kind: 'text', placeholder: '>2024-01-01', qualifier: 'pushed' }
+      { id: 'stars', label: 'Stars', placeholder: '>500', qualifier: 'stars' },
+      { id: 'forks', label: 'Forks', placeholder: '>100', qualifier: 'forks' },
+      { id: 'size', label: 'Size (KB)', placeholder: '<5000', qualifier: 'size' },
+      { id: 'created', label: 'Created', placeholder: '>2023-01', qualifier: 'created' },
+      { id: 'pushed', label: 'Pushed', placeholder: '>2024-01-01', qualifier: 'pushed' }
     ]
   }
 ];
 
-export const QUALIFIERS = SECTIONS.flatMap(s => s.fields).filter(
-  (f): f is Extract<Field, { kind: 'text' }> & { qualifier: string } => f.kind === 'text' && !!f.qualifier
-);
+export const QUALIFIERS: QualifierField[] = FILTER_GROUPS.flatMap(group => group.fields);

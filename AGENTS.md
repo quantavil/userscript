@@ -64,3 +64,11 @@ Guidance for work in this repository (`~/Documents/userscript`).
 - **Stuck page scrolling**: The actual lock was a leftover `jconfirm-noscroll` class on `<body>` after the “New Login Detected” prompt was dismissed. `new-login.ts` now removes it whenever no jquery-confirm dialog remains, including at startup. Live check: removing the class restored wheel scrolling from 0 to 195px.
 - **Verification**: 43 tests across 11 suites (including disabled-option, single-option group and scroll-lock cases), strict TypeScript, Biome, Knip, and the production build passed.
 
+## GitHub Filter v9.0.0 — Preact query console (2026-11-20)
+
+- **Preact port**: The search panel is now a Preact component tree (`ui.tsx`) with controlled `FormState` inputs, replacing the imperative `el()` builder. The launcher stays imperative because Turbo re-appends it to `<body>`. `dom.ts` is gone; `icons.tsx` holds the Octicon registry and `<Icon>`.
+- **Live query tape**: The footer compiles the exact GitHub query as you type, colouring qualifier keys (`language:python`) and keeping the local hide list on its own line. `queryParts()` is the shared source for the tape, copy and `buildUrl`.
+- **Redesign**: One canvas with hairlines instead of stacked bands; scope pills replace the type select, a monospace key gutter turns every input into a query row, Sort moved into the Qualifiers header, and presets show their compiled query with inline second-click delete. Panel width 440px, bottom sheet under 768px.
+- **Library refresh**: Preact 11.2.0 (only runtime dependency), vite-plus 1.7.0, Biome 2.6.8, happy-dom 21.0.4, TypeScript 7.0.2, Knip 6.46.1; added `knip`/`check` scripts and `knip.json`.
+- **Verification**: 24 tests across 2 suites, strict TypeScript, Biome, Knip, and the production build passed (70.0 kB, 20.1 kB gzip). Live browser checks at 1440×900 and 390×844 covered light/dark/auto themes, typed queries and tape, preset save/load/delete confirmation, Esc and backdrop close, disabled Save, and the launcher's hover/focus pill.
+
