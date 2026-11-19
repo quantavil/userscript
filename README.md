@@ -53,7 +53,7 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 | :--- | :--- |
 | **[better-search](./better-search)** | Domain highlighter and blocker across Google, Bing, DuckDuckGo, Brave, and Yandex search results. |
 | **[search-switcher](./search-switcher)** | Minimal dark floating switcher with SVG icons to jump queries instantly across Brave, Yandex, Bing, DDG, YouTube, and Google. |
-| **[github-filter](./github-filter)** | GitHub search query builder with saved presets, whole-word result filter, and native GitHub Primer design tokens. |
+| **[github-filter](./github-filter)** | Compact single-page GitHub repository search filter with continuous logarithmic sliders, symmetric quick chips, interactive live query tape, noise filtering, and inline presets. |
 | **[greasey-fork-filter](./greasey-fork-filter)** | Persistent Greasy Fork script listing filter to hide low-quality scripts by install threshold, author, or keyword. |
 | **[reddit-manager](./reddit-manager)** | Export/import Reddit subscriptions and clean up visible posts and comments from a responsive, keyboard-accessible panel with light/dark themes. |
 | **[better-alternativeto](./better-alternativeto)** | AlternativeTo enhancer adding direct website/GitHub/app-store chips to cards, pinned compact filter bar with likes range, and accessible dark mode. |

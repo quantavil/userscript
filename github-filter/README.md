@@ -2,9 +2,9 @@
 
 [![GitHub](https://img.shields.io/badge/GitHub-quantavil%2Fuserscript-181717?logo=github&logoColor=white)](https://github.com/quantavil/userscript)
 
-A filter panel for GitHub repository search: drag two sliders for stars and forks, pick dates from a calendar, and watch the query compile as you go. Save the ones you run often, and hide results you never want to see.
+A filter panel for GitHub repository search: drag continuous smooth dual sliders for stars and forks, pick dates from a calendar, and watch the query compile as you go. Save presets right on the main panel, and hide results you never want to see.
 
-It reads GitHub's own Primer design tokens, so it inherits whatever theme you have set — light, dark, dimmed, high contrast — and looks like part of the page instead of something bolted onto it.
+It uses GitHub's authentic dark palette (`#0d1117`, `#161b22`, `#2f81f7`) with crisp contrast and accessible focus rings, looking like native UI instead of something bolted on.
 
 ---
 
@@ -23,13 +23,13 @@ It reads GitHub's own Primer design tokens, so it inherits whatever theme you ha
 | Any of these → `react, vue` | `(react OR vue)` |
 | All of these → `"machine learning"` | `"machine learning"` |
 
-The sliders are logarithmic: 1, 5, 10, 25, 50, 100, 250, 500, 1k, 2.5k, 5k, 10k, 25k, 50k, 100k. Supporting fine-grained searches from 1+ star to 100k+.
+The sliders are continuous and logarithmic across 5 orders of magnitude (from 1+ to 100k+ stars and 1+ to 25k+ forks), with pointer capture for buttery-smooth dragging and natural round-number snapping.
 
 Open the panel on a results page and it parses the current URL back into the controls, so you can adjust one filter and re-run. A pasted `stars:>500` is widened to `>=501`, which is the same set, and a `stars:500` with no operator reads as "at least 500" — writing 500 and getting only repos with *exactly* 500 stars is never what you wanted.
 
-### Remembers searches
+### Remembers searches (Single-Page Presets)
 
-Save the current configuration under a name. Each preset shows the query it compiles to and runs directly, or loads back into the builder for editing. Deleting takes a second click, never a modal. Stored in `localStorage`.
+Save the current configuration under a name directly from the main panel. Saved presets display as compact interactive pills with 1-click loading into the form, a direct run button (`➔`), and safe 2-click delete confirmation (`del?`). Stored in `localStorage`.
 
 ### Hides noise
 
