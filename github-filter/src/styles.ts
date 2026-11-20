@@ -60,21 +60,100 @@ ${P}::backdrop {
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   opacity: 0;
+  cursor: pointer;
+  pointer-events: auto;
   transition: opacity .2s ease, display .22s allow-discrete, overlay .22s allow-discrete;
 }
 ${P}[open]::backdrop { opacity: 1; }
 @starting-style { ${P}[open]::backdrop { opacity: 0; } }
 
+${P} .ghf-drag-handle { display: none; }
+
 @media (max-width: 767px) {
   ${P} {
-    top: auto; bottom: 0; left: 0;
-    width: 100vw; height: auto; max-height: 90dvh;
+    top: auto; bottom: 0; left: 0; right: 0;
+    width: 100%; max-width: 100vw;
+    height: 85dvh; max-height: 88dvh;
+    margin: 0;
     border-left: none; border-top: 1px solid var(--ghf-border);
-    border-radius: 12px 12px 0 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 32px rgba(1, 4, 9, 0.85);
     transform: translateY(100%);
+    opacity: 0;
   }
-  ${P}[open] { transform: translateY(0); }
+  ${P}[open] { transform: translateY(0); opacity: 1; }
   @starting-style { ${P}[open] { transform: translateY(100%); opacity: 0; } }
+
+  ${P} .ghf-drag-handle {
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 2px auto 6px;
+    border-radius: 999px;
+    background: var(--ghf-border);
+  }
+
+  /* Prevent iOS Safari from auto-zooming on input focus */
+  ${P} .ghf-input,
+  ${P} .ghf-date,
+  ${P} .ghf-sort-select {
+    font-size: 16px !important;
+  }
+
+  /* Mobile touch targets & spacing */
+  ${P} .ghf-head { padding: 6px 12px 8px; }
+  ${P} .ghf-icon-btn { width: 32px; height: 32px; }
+
+  ${P} .ghf-input { height: 34px; }
+  ${P} .ghf-clear-btn { width: 26px; height: 26px; }
+
+  ${P} .ghf-chips { gap: 6px; }
+  ${P} .ghf-chip { height: 26px; padding: 0 9px; font-size: 11.5px; }
+
+  /* Smooth slider mobile touch sizing */
+  ${P} .ghf-slider-row { margin-top: 6px; }
+  ${P} .ghf-slider {
+    height: 32px;
+    margin: 4px 0;
+  }
+  ${P} .ghf-slider-track {
+    top: 14px;
+    height: 5px;
+  }
+  ${P} .ghf-slider-thumb {
+    top: 7px;
+    width: 18px;
+    height: 18px;
+    margin-left: -9px;
+  }
+  ${P} .ghf-slider-thumb::before {
+    content: '';
+    position: absolute;
+    top: -12px; left: -12px; right: -12px; bottom: -12px;
+    border-radius: 50%;
+  }
+
+  ${P} .ghf-mini-chip { height: 22px; padding: 0 6px; font-size: 10.5px; }
+
+  ${P} .ghf-date { height: 34px; }
+  ${P} .ghf-sort-select { height: 30px; font-size: 13px !important; }
+
+  /* Presets touch targets */
+  ${P} .ghf-preset-chips { gap: 6px; }
+  ${P} .ghf-preset-chip-item { height: 28px; }
+  ${P} .ghf-preset-apply-btn { height: 28px; padding: 0 8px; font-size: 12px; }
+  ${P} .ghf-preset-run-btn { width: 28px; height: 28px; }
+  ${P} .ghf-preset-del-btn { width: 26px; height: 28px; }
+
+  /* Footer action buttons */
+  ${P} .ghf-actions { grid-template-columns: 85px 1fr; gap: 8px; }
+  ${P} .ghf-actions .ghf-btn { height: 36px; font-size: 13px; font-weight: 600; }
+
+  /* Launcher FAB mobile positioning */
+  ${F} {
+    right: calc(14px + env(safe-area-inset-right, 0px));
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 ${P} .ghf-form { display: flex; flex-direction: column; height: 100%; min-height: 0; }
@@ -106,6 +185,7 @@ ${P} .ghf-body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
   padding: 8px 12px 14px; scrollbar-width: thin; scrollbar-color: var(--ghf-border) transparent;
   display: flex; flex-direction: column; gap: 8px;
+  -webkit-overflow-scrolling: touch;
 }
 ${P} .ghf-card {
   padding: 8px 10px; border: 1px solid var(--ghf-border);
@@ -304,6 +384,12 @@ ${F} .ghf-fab-badge {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--ghf-radius-pill);
   background: var(--ghf-accent); color: #fff; font-size: 10px; font-weight: 700;
+}
+
+/* Hide launcher FAB when modal panel is open */
+${F}[aria-expanded="true"],
+body:has(${P}[open]) ${F} {
+  display: none !important;
 }
 
 @media print { ${F}, ${P} { display: none !important; } }

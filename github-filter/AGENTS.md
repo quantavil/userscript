@@ -37,6 +37,14 @@ src/
 - **Thumb `z-index` and focus follow the active thumb.** `lead` state raises whichever thumb the user clicked, dragged, or focused via keyboard tab (`onFocus`).
 - **Interactive query tape chips.** `queryParts(state)` assigns `fieldId` and `token` attributes to parts; clicking `×` on any tape chip invokes `removeQueryPart(state, part)` for instant 1-click filter removal.
 - **`<dialog>` + `showModal()`** provides the focus trap, `Esc` handling, inert background and top-layer stacking. Follows modern web platform guidance: `closedby="any"` enables native light dismiss, and `overscroll-behavior: contain` on both dialog and `::backdrop` (with `overflow: hidden`) prevents scroll chaining to the page underneath.
+- **Mobile Bottom-Sheet Architecture (≤767px).**
+  - `<dialog>` specifies a definite height (`height: 85dvh; max-height: 88dvh;`) to avoid CSS 2.1 §10.5 indefinite flex height collapse. This keeps header, drag handle, and footer pinned while `.ghf-body` scrolls with touch momentum (`-webkit-overflow-scrolling: touch`).
+  - `SmoothSlider` handles pointer interactions across both mouse and touch by only enforcing `e.button === 0` when `e.pointerType === 'mouse'` (touch interactions report `button === -1`).
+  - Mobile slider thumb hit target expands to 42px via `::before` pseudo-element.
+  - Enforces `font-size: 16px !important` on mobile inputs to eliminate iOS Safari viewport auto-zooming.
+  - Auto-focus is disabled on viewports ≤767px (`window.innerWidth > 767`) to prevent unwanted virtual keyboard pops upon modal opening.
+  - Modal backdrop dismiss verifies `e.clientX`/`e.clientY` against `d.getBoundingClientRect()` to prevent premature dismissals from inner taps.
+  - Launcher button (`#ghf-fab`) is hidden while dialog is open via `${F}[aria-expanded="true"], body:has(${P}[open]) ${F} { display: none !important; }`.
 - **The launcher is present on all GitHub pages.** Fixed bottom-right with `z-index: 9999` and `safe-area-inset` spacing; displays an active filter count badge on search pages.
 
 ## Removed

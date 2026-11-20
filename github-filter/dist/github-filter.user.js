@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Filter
 // @namespace    https://github.com/quantavil/userscript/github-filter
-// @version      10.2.0
+// @version      10.2.1
 // @author       quantavil (https://github.com/quantavil)
 // @description  Filter GitHub repository search with sliders for stars and forks, date pickers, saved presets and a local hide list.
 // @license      GPL-3.0-or-later
@@ -613,21 +613,100 @@ ${P$1}::backdrop {
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   opacity: 0;
+  cursor: pointer;
+  pointer-events: auto;
   transition: opacity .2s ease, display .22s allow-discrete, overlay .22s allow-discrete;
 }
 ${P$1}[open]::backdrop { opacity: 1; }
 @starting-style { ${P$1}[open]::backdrop { opacity: 0; } }
 
+${P$1} .ghf-drag-handle { display: none; }
+
 @media (max-width: 767px) {
   ${P$1} {
-    top: auto; bottom: 0; left: 0;
-    width: 100vw; height: auto; max-height: 90dvh;
+    top: auto; bottom: 0; left: 0; right: 0;
+    width: 100%; max-width: 100vw;
+    height: 85dvh; max-height: 88dvh;
+    margin: 0;
     border-left: none; border-top: 1px solid var(--ghf-border);
-    border-radius: 12px 12px 0 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 32px rgba(1, 4, 9, 0.85);
     transform: translateY(100%);
+    opacity: 0;
   }
-  ${P$1}[open] { transform: translateY(0); }
+  ${P$1}[open] { transform: translateY(0); opacity: 1; }
   @starting-style { ${P$1}[open] { transform: translateY(100%); opacity: 0; } }
+
+  ${P$1} .ghf-drag-handle {
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 2px auto 6px;
+    border-radius: 999px;
+    background: var(--ghf-border);
+  }
+
+  /* Prevent iOS Safari from auto-zooming on input focus */
+  ${P$1} .ghf-input,
+  ${P$1} .ghf-date,
+  ${P$1} .ghf-sort-select {
+    font-size: 16px !important;
+  }
+
+  /* Mobile touch targets & spacing */
+  ${P$1} .ghf-head { padding: 6px 12px 8px; }
+  ${P$1} .ghf-icon-btn { width: 32px; height: 32px; }
+
+  ${P$1} .ghf-input { height: 34px; }
+  ${P$1} .ghf-clear-btn { width: 26px; height: 26px; }
+
+  ${P$1} .ghf-chips { gap: 6px; }
+  ${P$1} .ghf-chip { height: 26px; padding: 0 9px; font-size: 11.5px; }
+
+  /* Smooth slider mobile touch sizing */
+  ${P$1} .ghf-slider-row { margin-top: 6px; }
+  ${P$1} .ghf-slider {
+    height: 32px;
+    margin: 4px 0;
+  }
+  ${P$1} .ghf-slider-track {
+    top: 14px;
+    height: 5px;
+  }
+  ${P$1} .ghf-slider-thumb {
+    top: 7px;
+    width: 18px;
+    height: 18px;
+    margin-left: -9px;
+  }
+  ${P$1} .ghf-slider-thumb::before {
+    content: '';
+    position: absolute;
+    top: -12px; left: -12px; right: -12px; bottom: -12px;
+    border-radius: 50%;
+  }
+
+  ${P$1} .ghf-mini-chip { height: 22px; padding: 0 6px; font-size: 10.5px; }
+
+  ${P$1} .ghf-date { height: 34px; }
+  ${P$1} .ghf-sort-select { height: 30px; font-size: 13px !important; }
+
+  /* Presets touch targets */
+  ${P$1} .ghf-preset-chips { gap: 6px; }
+  ${P$1} .ghf-preset-chip-item { height: 28px; }
+  ${P$1} .ghf-preset-apply-btn { height: 28px; padding: 0 8px; font-size: 12px; }
+  ${P$1} .ghf-preset-run-btn { width: 28px; height: 28px; }
+  ${P$1} .ghf-preset-del-btn { width: 26px; height: 28px; }
+
+  /* Footer action buttons */
+  ${P$1} .ghf-actions { grid-template-columns: 85px 1fr; gap: 8px; }
+  ${P$1} .ghf-actions .ghf-btn { height: 36px; font-size: 13px; font-weight: 600; }
+
+  /* Launcher FAB mobile positioning */
+  ${F$2} {
+    right: calc(14px + env(safe-area-inset-right, 0px));
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 ${P$1} .ghf-form { display: flex; flex-direction: column; height: 100%; min-height: 0; }
@@ -659,6 +738,7 @@ ${P$1} .ghf-body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
   padding: 8px 12px 14px; scrollbar-width: thin; scrollbar-color: var(--ghf-border) transparent;
   display: flex; flex-direction: column; gap: 8px;
+  -webkit-overflow-scrolling: touch;
 }
 ${P$1} .ghf-card {
   padding: 8px 10px; border: 1px solid var(--ghf-border);
@@ -857,6 +937,12 @@ ${F$2} .ghf-fab-badge {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--ghf-radius-pill);
   background: var(--ghf-accent); color: #fff; font-size: 10px; font-weight: 700;
+}
+
+/* Hide launcher FAB when modal panel is open */
+${F$2}[aria-expanded="true"],
+body:has(${P$1}[open]) ${F$2} {
+  display: none !important;
 }
 
 @media print { ${F$2}, ${P$1} { display: none !important; } }
@@ -1425,7 +1511,7 @@ ${F$2} .ghf-fab-badge {
 			return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
 		};
 		const handlePointerDown = (e) => {
-			if (e.button !== 0) return;
+			if (e.pointerType === "mouse" && e.button !== 0) return;
 			const ratio = getRatioFromPointer(e.clientX);
 			const distToLo = Math.abs(ratio - loRatio);
 			const distToHi = Math.abs(ratio - hiRatio);
@@ -1749,7 +1835,7 @@ ${F$2} .ghf-fab-badge {
 			if (!d || d.open) return;
 			d.showModal();
 			setExpanded(true);
-			d.querySelector(".ghf-input")?.focus();
+			if (window.innerWidth > 767) d.querySelector(".ghf-input")?.focus();
 		}, [openRequest]);
 		const close = () => dialogRef.current?.close();
 		const hideWords = tokenize(state.hide).map((w) => w.replace(/^-?"|"$/g, ""));
@@ -1763,7 +1849,12 @@ ${F$2} .ghf-fab-badge {
 				setPendingDelete(null);
 			},
 			onClick: (e) => {
-				if (e.target === dialogRef.current) close();
+				const d = dialogRef.current;
+				if (!d) return;
+				if (e.target === d) {
+					const rect = d.getBoundingClientRect();
+					if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) close();
+				}
 			},
 			onKeyDown: (e) => {
 				if (e.key === "Escape") close();
@@ -1777,7 +1868,10 @@ ${F$2} .ghf-fab-badge {
 				children: [
 					a("header", {
 						class: "ghf-head",
-						children: a("div", {
+						children: [a("div", {
+							class: "ghf-drag-handle",
+							"aria-hidden": "true"
+						}), a("div", {
 							class: "ghf-titlebar",
 							children: [a("div", {
 								class: "ghf-brand",
@@ -1809,7 +1903,7 @@ ${F$2} .ghf-fab-badge {
 									size: 14
 								})
 							})]
-						})
+						})]
 					}),
 					a("div", {
 						class: "ghf-body",

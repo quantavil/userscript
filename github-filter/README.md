@@ -56,6 +56,7 @@ The filter button in the bottom-right corner of any GitHub page opens the panel;
 - **Single-Page Presets**: View saved presets as compact chips with 1-click loading, direct run (`➔`), and safe 2-click delete (`del?`); save current filters instantly via inline input.
 - **Interactive Live Query Tape**: Live query parts render as clickable chips with instant 1-click removal (`×`) and 1-click copy with feedback
 - **Active Filter Badge**: The floating launcher button displays an active filter count pill whenever filters are applied on the current search
+- **Mobile Bottom Sheet**: On mobile viewports (≤767px), opens as an elevated bottom sheet with a native top drag handle, definite `85dvh` height with momentum scrolling (`-webkit-overflow-scrolling: touch`), enlarged 42px touch hit targets on slider thumbs, 16px form inputs to prevent iOS Safari auto-zoom, and auto-hidden launcher button
 - `Enter` in any text field or clicking Search runs the query on GitHub
 - `Esc`, or a click outside, closes the panel
 

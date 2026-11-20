@@ -130,7 +130,7 @@ function SmoothSlider({
   };
 
   const handlePointerDown = (e: PointerEvent) => {
-    if (e.button !== 0) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     const ratio = getRatioFromPointer(e.clientX);
     const distToLo = Math.abs(ratio - loRatio);
     const distToHi = Math.abs(ratio - hiRatio);
@@ -404,7 +404,9 @@ function App() {
     if (!d || d.open) return;
     d.showModal();
     setExpanded(true);
-    d.querySelector<HTMLInputElement>('.ghf-input')?.focus();
+    if (window.innerWidth > 767) {
+      d.querySelector<HTMLInputElement>('.ghf-input')?.focus();
+    }
   }, [openRequest]);
 
   const close = () => dialogRef.current?.close();
@@ -419,11 +421,24 @@ function App() {
       {...({ closedby: 'any' } as any)}
       aria-labelledby="ghf-panel-title"
       onClose={() => { setExpanded(false); setPendingDelete(null); }}
-      onClick={e => { if (e.target === dialogRef.current) close(); }}
+      onClick={e => {
+        const d = dialogRef.current;
+        if (!d) return;
+        if (e.target === d) {
+          const rect = d.getBoundingClientRect();
+          const isOutside =
+            e.clientX < rect.left ||
+            e.clientX > rect.right ||
+            e.clientY < rect.top ||
+            e.clientY > rect.bottom;
+          if (isOutside) close();
+        }
+      }}
       onKeyDown={e => { if (e.key === 'Escape') close(); }}
     >
       <form class="ghf-form" onSubmit={e => { e.preventDefault(); search(state); }}>
         <header class="ghf-head">
+          <div class="ghf-drag-handle" aria-hidden="true" />
           <div class="ghf-titlebar">
             <div class="ghf-brand">
               <span class="ghf-brand-icon"><Icon name="filter" size={14} /></span>
