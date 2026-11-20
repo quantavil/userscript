@@ -24,10 +24,18 @@ const write = (key: string, value: unknown) => {
   }
 };
 
-export const getPresets = (): Preset[] =>
-  read<Preset[]>(STORE.presets, [])
-    .filter(p => p?.id && p?.name)
+export const getPresets = (): Preset[] => {
+  const raw = read<unknown>(STORE.presets, []);
+  // localStorage is shared with the page and can hold a corrupted or legacy shape.
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((p): p is Preset => {
+      if (!p || typeof p !== 'object') return false;
+      const candidate = p as Partial<Preset>;
+      return typeof candidate.id === 'string' && typeof candidate.name === 'string' && Boolean(candidate.id && candidate.name);
+    })
     .map(p => ({ ...p, state: normalizeState(p.state) }));
+};
 
 export const addPreset = (name: string, state: FormState): Preset[] => {
   const presets = [...getPresets(), { id: `p${Date.now().toString(36)}`, name, state }];
@@ -46,7 +54,12 @@ export function migrateLegacyStorage() {
   try {
     const legacyPresets = localStorage.getItem('gh-adv-presets');
     if (legacyPresets && !localStorage.getItem(STORE.presets)) {
-      const old = JSON.parse(legacyPresets) as { id?: string; name?: string; fields?: Record<string, any> }[];
+      const parsed: unknown = JSON.parse(legacyPresets);
+      const old = (Array.isArray(parsed) ? parsed : []) as {
+        id?: string;
+        name?: string;
+        fields?: Record<string, any>;
+      }[];
       const migrated: Preset[] = old
         .filter(p => p?.name)
         .map((p, i) => ({

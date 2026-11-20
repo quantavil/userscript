@@ -84,4 +84,12 @@ describe("scanResults", () => {
 
     expect(hidden(row!)).toBe(false);
   });
+
+  it("accepts a trailing slash on the search path", () => {
+    goTo("https://github.com/search/?q=x&ghf_hide=spam");
+    const [row] = renderResults("pure spam here");
+    scanResults();
+
+    expect(hidden(row!)).toBe(true);
+  });
 });

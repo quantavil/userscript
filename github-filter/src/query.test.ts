@@ -7,6 +7,7 @@ import {
   countActiveFilters,
   emptyState,
   fromIndex,
+  normalizeSort,
   normalizeState,
   parseUrl,
   queryParts,
@@ -14,6 +15,8 @@ import {
   removeQueryPart,
   shiftDays,
   splitTerms,
+  stepValue,
+  todayLocal,
   toIndex,
   valToRatio,
 } from "./query";
@@ -158,6 +161,16 @@ describe("parseUrl", () => {
     expect(parseUrl("?q=parser+(experimental)").or).toBe("");
     expect(parseUrl("?q=parser+(experimental)").and).toBe("parser (experimental)");
   });
+
+  it("drops an unknown sort value instead of leaving the select blank", () => {
+    expect(parseUrl("?q=react&s=best-match-ever").sort).toBe("");
+    expect(parseUrl("?q=react&s=stars").sort).toBe("stars");
+  });
+
+  it("rejects impossible calendar dates back into free text", () => {
+    expect(parseUrl("?q=created%3A2024-02-31").created).toEqual({ from: "", to: "" });
+    expect(parseUrl("?q=created%3A2024-02-31").and).toBe("created:2024-02-31");
+  });
 });
 
 describe("splitTerms", () => {
@@ -225,6 +238,12 @@ describe("normalizeState", () => {
     expect(normalizeState(null)).toEqual(emptyState());
     expect(normalizeState({ stars: "nope", created: 7 })).toEqual(emptyState());
   });
+
+  it("normalises an unsupported sort to an empty value", () => {
+    expect(normalizeSort("stars")).toBe("stars");
+    expect(normalizeSort("wat")).toBe("");
+    expect(normalizeSort(7)).toBe("");
+  });
 });
 
 describe("slider scale", () => {
@@ -263,12 +282,39 @@ describe("slider scale", () => {
       expect(ratioToVal(ratio, 25000, "min")).toBe(val);
     }
   });
+
+  it("steps keyboard values forward without wedging at 1", () => {
+    expect(stepValue(0, 100000, "min", 1)).toBe(1);
+    expect(stepValue(1, 100000, "min", 1)).toBe(2);
+    expect(stepValue(2, 100000, "min", 1)).toBe(3);
+    expect(stepValue(10, 100000, "min", 1)).toBeGreaterThan(10);
+    expect(stepValue(100000, 100000, "min", 1)).toBe(100000);
+
+    expect(stepValue(2, 100000, "min", -1)).toBe(1);
+    expect(stepValue(1, 100000, "min", -1)).toBe(0);
+    expect(stepValue(0, 100000, "min", -1)).toBe(0);
+  });
+
+  it("steps max thumb values and keeps open bounds at the ends", () => {
+    // 0 means unbounded for a max thumb, drawn at the right edge.
+    expect(stepValue(0, 100000, "max", -1)).toBe(100000);
+    expect(stepValue(0, 100000, "max", 1)).toBe(0);
+    expect(stepValue(100000, 100000, "max", 1)).toBe(0);
+    expect(stepValue(100000, 100000, "max", -1)).toBeLessThan(100000);
+    expect(stepValue(2, 100000, "max", -1)).toBe(1);
+    expect(stepValue(1, 100000, "max", -1)).toBe(1);
+    expect(stepValue(1, 100000, "max", 1)).toBe(2);
+  });
 });
 
 describe("shiftDays", () => {
   it("shifts dates correctly by days", () => {
     expect(shiftDays("2024-01-10", 5)).toBe("2024-01-15");
     expect(shiftDays("2024-01-10", -10)).toBe("2023-12-31");
+  });
+
+  it("reads today from the local calendar, not UTC", () => {
+    expect(todayLocal(new Date(2024, 0, 5, 23, 30))).toBe("2024-01-05");
   });
 });
 

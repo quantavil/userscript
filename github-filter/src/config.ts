@@ -1,4 +1,5 @@
 export const NAME = 'GitHub Filter';
+export const LAUNCHER_LABEL = 'Advanced filters';
 
 export const IDS = {
   panel: 'ghf-panel',
@@ -18,8 +19,12 @@ export const RESULTS_LIST = '[data-testid="results-list"]';
 export const LEGACY_ROW = '.repo-list-item, .Box-row';
 export const NAV_EVENTS = ['turbo:render', 'turbo:load', 'pjax:end'] as const;
 
-export const SEARCH_PATH = '/search';
+const SEARCH_PATH = '/search';
 export const SEARCH_TYPE = 'repositories';
+
+/** GitHub occasionally renders `/search/`; treat both as the results page. */
+export const isSearchPath = (pathname: string): boolean =>
+  pathname.replace(/\/+$/, '') === SEARCH_PATH;
 
 export const SORTS = [
   { value: '', label: 'Best match' },
@@ -43,7 +48,9 @@ export const POPULAR_LANGUAGES = [
   'Zig',
   'Swift',
   'Kotlin',
-  'C++'
+  'Dart',
+  'C++',
+  'C'
 ] as const;
 
 /** Logarithmic thresholds including 1+. */

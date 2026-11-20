@@ -1,4 +1,4 @@
-import { PARAM, QUALIFIERS, SEARCH_TYPE } from './config';
+import { PARAM, QUALIFIERS, SEARCH_TYPE, SORTS } from './config';
 
 export interface NumberRange {
   /** 0 means "no lower bound". */
@@ -210,16 +210,36 @@ export function shiftDays(date: string, days: number): string {
   return parsed.toISOString().slice(0, 10);
 }
 
+/** Today in the user's local calendar, not UTC, so “past 7 days” matches their clock. */
+export function todayLocal(now = new Date()): string {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/** Rejects impossible dates such as 2024-02-31 that the regex alone would accept. */
+const isCalendarDate = (value: string): boolean => {
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
+
 function parseDateRange(value: string): DateRange | null {
   const match = value.match(DATE);
   if (!match) return null;
   const [, operator = '', lower = '', upper] = match;
+  if (!isCalendarDate(lower)) return null;
+  if (upper && !isCalendarDate(upper)) return null;
   if (upper) return { from: lower, to: upper };
   if (operator === '>') return { from: shiftDays(lower, 1), to: '' };
   if (operator === '<') return { from: '', to: shiftDays(lower, -1) };
   if (operator === '<=') return { from: '', to: lower };
   return { from: lower, to: '' };
 }
+
+/** Only the sort values the panel can render are kept from a URL or preset. */
+export const normalizeSort = (value: unknown): string =>
+  typeof value === 'string' && SORTS.some(sort => sort.value === value) ? value : '';
 
 /** Extracts recognised qualifiers out of `query` into `state`; returns leftover free text. */
 function readQuery(state: FormState, query: string): string {
@@ -269,7 +289,7 @@ function readQuery(state: FormState, query: string): string {
 
 function stateFromQuery(query: string, sort = '', hide = ''): FormState {
   const state = emptyState();
-  state.sort = sort;
+  state.sort = normalizeSort(sort);
   state.hide = hide;
 
   let rest = query;
@@ -378,6 +398,38 @@ export function ratioToVal(ratio: number, max: number, end: 'min' | 'max'): numb
   const norm = Math.max(0, Math.min(1, (ratio - 0.02) / 0.98));
   const raw = 10 ** (norm * logMax);
   return quantizeVal(raw, max);
+}
+
+/**
+ * One keyboard step for a range thumb. Values follow the same natural
+ * quantization as dragging, and the result always moves so holding an arrow
+ * key cannot wedge at 1 (the log scale compresses the bottom of the track).
+ */
+export function stepValue(
+  value: number,
+  max: number,
+  end: 'min' | 'max',
+  direction: 1 | -1
+): number {
+  if (end === 'min') {
+    if (direction > 0) {
+      if (value <= 0) return 1;
+      if (value >= max) return max;
+      return Math.min(max, Math.max(value + 1, quantizeVal(value * 1.25, max)));
+    }
+    if (value <= 1) return 0;
+    return Math.max(1, Math.min(value - 1, quantizeVal(value / 1.25, max)));
+  }
+
+  // A max thumb at 0 is unbounded and sits at the far right of the track.
+  if (direction > 0) {
+    if (value <= 0) return 0;
+    if (value >= max) return 0;
+    return Math.min(max, Math.max(value + 1, quantizeVal(value * 1.25, max)));
+  }
+  if (value <= 0) return max;
+  if (value <= 1) return 1;
+  return Math.max(1, Math.min(value - 1, quantizeVal(value / 1.25, max)));
 }
 
 export function toIndex(stops: readonly number[], value: number, end: 'min' | 'max'): number {

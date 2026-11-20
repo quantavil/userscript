@@ -1,8 +1,9 @@
-import { NAV_EVENTS } from './config';
+import { NAME, NAV_EVENTS } from './config';
+import { syncLauncher } from './launcher';
 import { watchResults } from './scanner';
 import { migrateLegacyStorage } from './storage';
 import { injectStyles } from './styles';
-import { openPanel, syncLauncher } from './ui';
+import { openPanel } from './ui';
 
 const safe = (step: () => void) => {
   try {
@@ -12,10 +13,12 @@ const safe = (step: () => void) => {
   }
 };
 
+const refreshLauncher = () => safe(() => syncLauncher(openPanel));
+
 const init = () => {
   safe(migrateLegacyStorage);
   safe(injectStyles);
-  safe(syncLauncher);
+  refreshLauncher();
   safe(watchResults);
 };
 
@@ -25,9 +28,11 @@ if (document.readyState === 'loading') {
   init();
 }
 
-const recheck = () => requestAnimationFrame(() => safe(syncLauncher));
+const recheck = () => requestAnimationFrame(refreshLauncher);
 for (const event of NAV_EVENTS) document.addEventListener(event, recheck);
 window.addEventListener('popstate', recheck);
 window.addEventListener('pageshow', recheck);
 
-GM_registerMenuCommand('GitHub Filter', openPanel);
+if (typeof GM_registerMenuCommand === 'function') {
+  GM_registerMenuCommand(NAME, openPanel);
+}
