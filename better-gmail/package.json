@@ -1,6 +1,6 @@
 {
   "name": "better-gmail",
-  "version": "0.7.0",
+  "version": "0.8.1",
   "private": true,
   "description": "Readable inbox rows and copy tools for Gmail.",
   "license": "GPL-3.0-or-later",
@@ -11,14 +11,10 @@
   },
   "devDependencies": {
     "happy-dom": "^21.0.4",
-    "knip": "^6.44.1",
+    "knip": "^6.47.0",
     "typescript": "^7.0.2",
     "vite-plugin-monkey": "^8.1.1",
-    "vite-plus": "^1.5.0"
-  },
-  "overrides": {
-    "vite": "npm:@voidzero-dev/vite-plus-core@1.5.0",
-    "vitest": "5.1.0"
+    "vite-plus": "^1.7.0"
   },
   "engines": {
     "node": "^22.18.0 || ^24.11.0 || >=26.0.0"

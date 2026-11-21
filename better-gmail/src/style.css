@@ -124,3 +124,18 @@ tr.zA[style*='--bgm-sender-color'] .yW {
     transparent 100%
   );
 }
+
+/* Restore native signature pen button and reclaim horizontal space in compose toolbars */
+.bAK .wG[command='locker'] {
+  display: none !important;
+}
+
+.bAK .wG[command='signature'] {
+  display: inline-flex !important;
+}
+
+.bAK .wG {
+  min-width: 28px !important;
+  padding: 0 2px !important;
+  margin: 0 1px !important;
+}

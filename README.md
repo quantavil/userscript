@@ -75,6 +75,8 @@ A curated, production-grade monorepo of modern userscripts, browser extensions, 
 | **[guidely-plus](./guidely-plus)** | Guidely test review crawler that enables text selection/copying and exports full tests and solutions to structured Markdown. |
 | **[oliveboard-plus](./oliveboard-plus)** | Oliveboard UI declutterer and mock test extractor that strips banners, stops intrusive popups, and exports full question/solution suites to Markdown. |
 | **[better-impexcube](./better-impexcube)** | Searchable dropdowns, smarter dates, RITC-specific DBK suggestions, SSRS checklist preview theming, and modern dark UI suite for ImpexCube. |
+| **[better-odex](./better-odex)** | Docked slide-over eVGM workspace, customer directory, auto-fill, SOLAS Annexure-1 PDF export, and entity normalization for ODeX. |
+| **[better-gmail](./better-gmail)** | Readable inbox rows, sender gradient hues, conversation compaction, and compose signature pen icon toolbar restoration. |
 | **[floating-stopwatch](./floating-stopwatch)** | High-performance, tab-isolated floating stopwatch overlay with millisecond precision that persists seamlessly across page reloads. |
 | **[super-chess-bot](./super-chess-bot)** ([Chess.com](./super-chess-bot/README-c.md)) | Local Stockfish 19 analysis, 0 ms FEN-keyed premove engine, and automated move play for Chess.com and Lichess standard games with mobile bottom-sheet and desktop panel. |
 

@@ -56,12 +56,12 @@ export function setConversationEnabled(value: boolean): void {
 }
 
 function restoreConversation(root: ParentNode): void {
+  for (const button of root.querySelectorAll('.bgm-reveal')) {
+    button.remove();
+  }
   for (const section of root.querySelectorAll<HTMLElement>('.bgm-collapsed-section')) {
-    const button = controls.get(section);
-    if (!button) continue;
     section.hidden = false;
     section.classList.remove('bgm-collapsed-section');
-    button.remove();
     controls.delete(section);
   }
   if (root instanceof HTMLElement) {

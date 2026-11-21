@@ -6,6 +6,8 @@ Use Bun, Vite+, TypeScript, and vite-plugin-monkey. `src/main.ts` starts the run
 
 Gmail changes and re-renders its DOM, so keep modules idempotent, test navigation and real Gmail layouts, and keep injected interactions from triggering Gmail row actions. Support keyboard focus and light/dark Gmail themes. Gmail enforces Trusted Types: do not assign `innerHTML` in production.
 
-Resolve the visible sender from the row when copying; Gmail can replace nodes or change sender attributes. Keep Gmail's attachment indicators and previews visible. Observe only necessary attribute changes to avoid responding to the script's own updates. Conversation compaction only hides Gmail-marked signatures and quoted history in expanded message bodies; keep uncertain boundaries visible and reveal controls accessible and session-only. The userscript-manager menu toggles minimal email view for the current page session; disabling it restores script-collapsed content.
+Resolve the visible sender from the row when copying; Gmail can replace nodes or change sender attributes. Keep Gmail's attachment indicators and previews visible. Observe only necessary attribute changes to avoid responding to the script's own updates. Conversation compaction only hides Gmail-marked signatures and quoted history in expanded message bodies; keep uncertain boundaries visible and reveal controls accessible and session-only. The userscript-manager menu command (access key `m`) toggles minimal email view for the current page session and shows a toast notice; disabling it restores script-collapsed content.
+
+Compose toolbars unhide the native signature pen button and reclaim horizontal space by suppressing confidential mode and tightening button padding, preventing toolbar button wrapping in compact inline replies.
 
 The userscript and project are licensed GPL-3.0-or-later.
