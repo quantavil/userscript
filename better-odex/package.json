@@ -1,0 +1,34 @@
+{
+  "name": "better-odex",
+  "version": "1.2.1",
+  "description": "Docked eVGM workspace, Customer directory, ODeX auto-fill, and SOLAS Annexure-1 PDF generator for ODeX.",
+  "author": "quantavil (https://github.com/quantavil)",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "tsc": "tsc --noEmit",
+    "test": "bun test",
+    "lint": "biome check src tests vite.config.ts",
+    "lint:fix": "biome check --write src tests vite.config.ts",
+    "knip": "knip",
+    "check": "bun run tsc && bun test && bun run lint && bun run knip && bun run build"
+  },
+  "dependencies": {
+    "jspdf": "^4.2.1",
+    "modern-screenshot": "^4.7.0",
+    "preact": "^11.2.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
+    "@preact/preset-vite": "^2.10.6",
+    "@types/tampermonkey": "^5.5.0",
+    "happy-dom": "^21.0.4",
+    "knip": "^6.47.0",
+    "typescript": "~7.0.2",
+    "vite-plugin-monkey": "^8.1.1",
+    "vite-plus": "latest"
+  }
+}
