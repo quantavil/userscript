@@ -115,6 +115,34 @@ tr.bgm-light-row.yO:not(.x7):not(:hover) {
   display: none !important;
 }
 
+.bgm-print-button {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font:
+    12px/1.5 Arial,
+    sans-serif;
+  opacity: 0.75;
+  vertical-align: middle;
+}
+.bgm-print-button:hover {
+  background: rgb(127 127 127 / 10%);
+  opacity: 1;
+}
+.bgm-print-button:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}
+.bgm-print-frame {
+  border: 0;
+}
+
 tr.zA[style*='--bgm-sender-color'] .yW {
   box-sizing: border-box;
   padding: 3px 8px;

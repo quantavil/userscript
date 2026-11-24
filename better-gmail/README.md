@@ -1,6 +1,6 @@
 # Better Gmail
 
-Version 0.7.0 is a local Tampermonkey userscript that improves Gmail message rows and opened conversations.
+Version 0.8.0 is a local Tampermonkey userscript that improves Gmail message rows and opened conversations.
 
 ## Features
 
@@ -9,6 +9,7 @@ Version 0.7.0 is a local Tampermonkey userscript that improves Gmail message row
 - Gmail's attachment indicator remains visible alongside its attachment previews.
 - Click the sender address to copy it, or focus it and press Enter or Space. Click the subject or elsewhere on the row to open the message.
 - Opened conversations separate expanded replies and collapse Gmail-marked signatures and quoted history. Use the Show/Hide buttons to reveal each section; greetings and unmarked text stay visible. Use the userscript manager menu to disable or enable minimal email view. The toggle and reveal state last only for the current page session.
+- Click **Print** beside the thread subject to print only the messages you expanded, with their signatures and quoted history shown in full. The same action is available as **Print expanded messages** in the userscript manager menu (access key `p`).
 - Focus indicators preserve keyboard navigation and Gmail's unread styling.
 
 The script does not store data. Clipboard access occurs only when you choose a copy action and depends on browser permissions.

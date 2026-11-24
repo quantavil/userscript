@@ -142,3 +142,9 @@ Guidance for work in this repository (`~/Documents/userscript`).
 - **Copy and Conversation Tools**: Click or keyboard-activate the sender address to copy it. Opened conversations separate replies and hide Gmail-marked signatures and quoted history behind Show/Hide controls; the userscript menu toggles minimal view for the current session.
 - **Verification**: 18 unit tests across 4 test suites, strict TypeScript (`vp check`), Knip (0 issues), and Vite+ production build passed cleanly (`dist/better-gmail.user.js`, 13.4 kB / 4.3 kB gzip). The accidental v0.8.1 signature-toolbar commit was removed from history.
 
+## Better Gmail v0.8.0 — Print expanded messages (2026-11-24)
+
+- **Thread Print Control**: A **Print** button appears beside the open thread subject. It prints only the messages Gmail currently shows as expanded; collapsed messages are skipped. The same action is in the userscript menu as **Print expanded messages** (access key `p`).
+- **Clean Printable Output**: Message bodies are cloned into a same-origin iframe with sender, address, and date headers, page margins, and print-safe image and table sizing. Sections compacted by Better Gmail are revealed in the print copy, while scripts and interactive controls are removed. Gmail's live DOM is never mutated.
+- **Verification**: 25 unit tests across 6 test suites, strict TypeScript (`vp check`), Knip (0 issues), and Vite+ production build passed cleanly (`dist/better-gmail.user.js`, 21.7 kB / 6.4 kB gzip). Live fixture check confirmed the Print control appears beside the thread subject and conversation compaction still works.
+

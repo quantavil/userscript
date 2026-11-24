@@ -6,4 +6,10 @@ export const selectors = {
   snippet: '.y2',
   visibleSender: '.yW [email]',
   senderContainer: '.yW',
+  thread: '[role="main"]',
+  threadSubject: 'h2.hP',
+  message: '.adn',
+  messageSender: '.gD',
+  messageEmail: '.go',
+  messageDate: '.g3',
 } as const;

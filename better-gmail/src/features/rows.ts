@@ -1,11 +1,11 @@
 import { element } from '../core/dom';
+import { showNotice } from '../core/notice';
 import { selectors } from '../selectors';
 
 type Copy = (value: string) => Promise<void>;
 const enhancedTargets = new WeakSet<HTMLElement>();
 const colorsByHue = new Map<number, string>();
 const encoder = new TextEncoder();
-let noticeTimer: number | undefined;
 
 function copyTarget(target: HTMLElement, label: string, value: () => string, copy: Copy): void {
   target.classList.add('bgm-copy-target');
@@ -29,19 +29,6 @@ function copyTarget(target: HTMLElement, label: string, value: () => string, cop
   target.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') activate(event);
   });
-}
-
-function showNotice(message: string): void {
-  let notice = document.querySelector<HTMLElement>('.bgm-copy-notice');
-  if (!notice) {
-    notice = element('div', 'bgm-copy-notice');
-    notice.setAttribute('role', 'status');
-    document.body.append(notice);
-  }
-  notice.textContent = message;
-  if (noticeTimer !== undefined) window.clearTimeout(noticeTimer);
-  const current = notice;
-  noticeTimer = window.setTimeout(() => current.remove(), 1500);
 }
 
 function senderColor(address: string): string {

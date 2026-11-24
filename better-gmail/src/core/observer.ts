@@ -1,6 +1,6 @@
 import { selectors } from '../selectors';
 
-const own = '.bgm-copy-notice, .bgm-address-line, .bgm-reveal';
+const own = '.bgm-copy-notice, .bgm-address-line, .bgm-reveal, .bgm-print-frame, .bgm-print-button';
 
 export function observeUpdates(
   updateRow: (row: HTMLElement) => void,

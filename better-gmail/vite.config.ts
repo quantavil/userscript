@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'Better Gmail',
         namespace: 'better-gmail',
-        description: 'Readable inbox rows and copy tools for Gmail.',
+        description: 'Readable inbox rows, copy tools, and expanded-message printing for Gmail.',
         license: 'GPL-3.0-or-later',
         match: ['https://mail.google.com/mail/*'],
         'run-at': 'document-idle',
