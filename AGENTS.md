@@ -127,3 +127,18 @@ Guidance for work in this repository (`~/Documents/userscript`).
 - **Resilient State & Turbo Integration**: Validated stored presets and migrations against schema corruption; hardened Turbo navigation with `Turbo.visit` and URL assign fallbacks; scoped scanner mutation observer to `document.documentElement` to survive Turbo body re-renders.
 - **Verification**: 58 unit tests across 4 test suites, strict TypeScript (`tsc`), Biome linter, Knip, and production build passed cleanly (97.2 kB, 25.7 kB gzip).
 
+## Better ODeX v1.2.1 (2026-11-20)
+
+- **Brand Icon & Maritime Consistency**: Replaced the leftover 3D cube SVG in the slide-over workspace panel header with the authentic nautical helm FAB SVG (`Icons.Fab`), matching the floating launcher button and maritime shipping domain.
+- **Docked Slide-Over & Width Toggle**: Interactive Compact (540px) vs. Expand (820px) width toggle in the header, giving spacious room for multi-container rosters and side-by-side inputs while remembering user preference via `localStorage`.
+- **UI/UX Polish & Lifecycle Fixes**: Eliminated continuous 10-second idle spin on launcher FAB (now provides smooth hover rotation and tactile scale, spinning only when busy during PDF export or auto-fill); strictly SVG-only launcher (no text) across all pages; actively purges and hides legacy standalone FAB (`#vls-evgm-pdf-fab-host`) to prevent duplicate button overlaps; added reactive MutationObserver and URL listeners for dynamic ODeX SPA page hydration; enhanced `:focus-visible` accessible outline rings; cleared file inputs after image upload for repeatable uploads.
+- **Entity Normalization**: Continuously and reactively replaces `KHATEMA FIBRES LIMITED` with `VISHAL LOGISTICS SOLUTIONS` across DOM text nodes, inputs (`input[value]`), and `data-refid` attributes, handling tight boundary patterns (`LIMITEDMundra` -> `VISHAL LOGISTICS SOLUTIONS Mundra`).
+- **Dependencies & Tooling Refresh**: Upgraded Preact to 11.2.0, TypeScript to 7.0.2, and `@types/tampermonkey` to 5.5.0; added Biome 2.6.8 and Knip 6.47.0; standard GPL-3.0-or-later licensing throughout.
+- **Verification**: 34 unit tests across 4 test suites, strict TypeScript (`tsc --noEmit`), Biome linter, Knip (0 issues), and Vite production build passed cleanly (`dist/better-odex.user.js`, 870 kB / 263 kB gzip).
+
+## Better Gmail v0.7.0 (2026-11-21)
+
+- **Row Readability**: Sender names align with the top of each message, thread counts stay beside the sender when space permits, and the sender address sits underneath with a soft hue derived from the address.
+- **Copy and Conversation Tools**: Click or keyboard-activate the sender address to copy it. Opened conversations separate replies and hide Gmail-marked signatures and quoted history behind Show/Hide controls; the userscript menu toggles minimal view for the current session.
+- **Verification**: 18 unit tests across 4 test suites, strict TypeScript (`vp check`), Knip (0 issues), and Vite+ production build passed cleanly (`dist/better-gmail.user.js`, 13.4 kB / 4.3 kB gzip). The accidental v0.8.1 signature-toolbar commit was removed from history.
+
